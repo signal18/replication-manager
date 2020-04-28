@@ -1031,7 +1031,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedRestart(w http.ResponseWri
 				return
 			}
 			w.Write([]byte("503 -No restart needed!"))
-			http.Error(w, "Encoding error", 503)
+			http.Error(w, "No restart needed", 503)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Server!"))
@@ -1063,7 +1063,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedReprov(w http.ResponseWrit
 				return
 			}
 			w.Write([]byte("503 -No reprov needed!"))
-			http.Error(w, "Encoding error", 503)
+			http.Error(w, "No reprov needed", 503)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Server!"))
@@ -1084,17 +1084,17 @@ func (repman *ReplicationManager) handlerMuxServerNeedStart(w http.ResponseWrite
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
 			if node.HasWaitStartCookie() {
-				w.Write([]byte("200 -Need restart!"))
+				w.Write([]byte("200 -Need start!"))
 				return
 			}
-			w.Write([]byte("503 -No reprov needed!"))
-			http.Error(w, "Encoding error", 503)
+			w.Write([]byte("503 -No start needed!"))
+			http.Error(w, "No start needed", 503)
 		} else if proxy != nil {
 			if proxy.HasWaitStartCookie() {
-				w.Write([]byte("200 -Need reprov!"))
+				w.Write([]byte("200 -Need start!"))
 				return
 			}
-			w.Write([]byte("503 -No reprov needed!"))
+			w.Write([]byte("503 -No start needed!"))
 			http.Error(w, "Encoding error", 503)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -1116,18 +1116,18 @@ func (repman *ReplicationManager) handlerMuxServerNeedStop(w http.ResponseWriter
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil && node.IsDown() == false {
 			if node.HasWaitStopCookie() {
-				w.Write([]byte("200 -Need restart!"))
+				w.Write([]byte("200 -Need stop!"))
 				return
 			}
-			w.Write([]byte("503 -No reprov needed!"))
+			w.Write([]byte("503 -No stop needed!"))
 			http.Error(w, "Encoding error", 503)
 		} else if proxy != nil {
 			if proxy.HasWaitStopCookie() {
-				w.Write([]byte("200 -Need reprov!"))
+				w.Write([]byte("200 -Need stop!"))
 				return
 			}
-			w.Write([]byte("503 -No reprov needed!"))
-			http.Error(w, "Encoding error", 503)
+			w.Write([]byte("503 -No stop needed!"))
+			http.Error(w, "No stop needed", 503)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Server!"))
