@@ -963,7 +963,7 @@ func (cluster *Cluster) RollingReprov() error {
 			cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
 			return err
 		}
-		err = cluster.WaitDatabaseRejoin(master)
+		err = cluster.WaitDatabaseStart(master)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
 			return err
