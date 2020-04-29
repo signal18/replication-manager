@@ -54,8 +54,11 @@ func (server *ServerMonitor) RejoinMaster() error {
 				server.ClusterGroup.SetState("ERR00066", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00066"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
 				if server.ClusterGroup.Conf.Autoseed {
 					server.RejoinMasterSST()
+					server.ClusterGroup.rejoinCond.Send <- true
 					return nil
+
 				} else {
+					server.ClusterGroup.rejoinCond.Send <- true
 					return errors.New("No crash")
 				}
 			}
@@ -74,7 +77,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 			if server.ClusterGroup.Conf.AutorejoinBackupBinlog == true {
 				server.saveBinlog(crash)
 			}
-			server.ClusterGroup.rejoinCond.Send <- true
+
 		}
 	} else {
 		//no master discovered
@@ -100,6 +103,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 		// if consul or internal proxy need to adapt read only route to new slaves
 		server.ClusterGroup.backendStateChangeProxies()
 	}
+	server.ClusterGroup.rejoinCond.Send <- true
 	return nil
 }
 
@@ -362,12 +366,14 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	if server.ClusterGroup.GetTopology() == topoMultiMasterRing || server.ClusterGroup.GetTopology() == topoMultiMasterWsrep {
 		if server.ClusterGroup.GetTopology() == topoMultiMasterRing {
 			server.RejoinLoop()
+			server.ClusterGroup.rejoinCond.Send <- true
 			return nil
 		}
 	}
 	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
 	if mycurrentmaster == nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "No master found from replication")
+		server.ClusterGroup.rejoinCond.Send <- true
 		return errors.New("No master found from replication")
 	}
 	if server.ClusterGroup.master != nil && mycurrentmaster != nil {
@@ -380,6 +386,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				crash := server.ClusterGroup.getCrashFromMaster(server.ClusterGroup.master.URL)
 				if crash == nil {
 					server.ClusterGroup.SetState("ERR00065", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00065"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
+					server.ClusterGroup.rejoinCond.Send <- true
 					return errors.New("No Crash info on current master")
 				}
 				server.ClusterGroup.LogPrintf("INFO", "Crash info on current master %s", crash)
@@ -453,6 +460,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				}
 			}
 		}
+		server.ClusterGroup.rejoinCond.Send <- true
 	}
 
 	// In case of state change, reintroduce the server in the slave list

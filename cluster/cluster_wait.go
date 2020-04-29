@@ -233,6 +233,31 @@ func (cluster *Cluster) WaitDatabaseSuspect(server *ServerMonitor) error {
 	return nil
 }
 
+func (cluster *Cluster) WaitDatabaseFailed(server *ServerMonitor) error {
+	exitloop := 0
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
+	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
+		select {
+		case <-ticker.C:
+
+			exitloop++
+
+			if server.IsFailed() {
+				exitloop = 9999999
+			} else {
+				cluster.LogPrintf(LvlInfo, "Waiting state failed on %s ", server.URL)
+			}
+		}
+	}
+	if exitloop == 9999999 {
+		cluster.LogPrintf(LvlInfo, "Waiting state failed reach on %s", server.URL)
+	} else {
+		cluster.LogPrintf(LvlInfo, "Wait state failed timeout on %s", server.URL)
+		return errors.New("Failed to wait state failed")
+	}
+	return nil
+}
+
 func (cluster *Cluster) WaitBootstrapDiscovery() error {
 	cluster.LogPrintf(LvlInfo, "Waiting Bootstrap and discovery")
 	exitloop := 0
