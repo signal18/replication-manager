@@ -91,12 +91,12 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 			cluster.LogPrintf(LvlInfo, "Waiting Rejoin")
 			exitloop++
 		case <-cluster.rejoinCond.Recv:
-			return
+			exitloop = 9999999
 
 		}
 
 	}
-	if int64(exitloop) < cluster.Conf.MonitorWaitRetry {
+	if exitloop == 9999999 {
 		cluster.LogPrintf(LvlInfo, "Rejoin Finished")
 
 	} else {

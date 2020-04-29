@@ -1015,11 +1015,6 @@ func (cluster *Cluster) RollingRestart() error {
 		return err
 	}
 
-	err = cluster.StartDatabaseWaitRejoin(master)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "Cancel rolling restart %s", err)
-		return err
-	}
 	cluster.SwitchOver()
 
 	return nil

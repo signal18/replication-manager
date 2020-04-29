@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -124,7 +125,7 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 	} else if server.ClusterGroup.Conf.RejoinScript != "" {
 		server.ClusterGroup.LogPrintf("INFO", "Calling rejoin script")
 		var out []byte
-		out, err := exec.Command(server.ClusterGroup.Conf.RejoinScript, server.Host, server.ClusterGroup.master.Host).CombinedOutput()
+		out, err := exec.Command(server.ClusterGroup.Conf.RejoinScript, misc.Unbracket(server.Host), misc.Unbracket(server.ClusterGroup.master.Host)).CombinedOutput()
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "%s", err)
 		}
@@ -214,7 +215,7 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	}
 
 	binlogCmd := exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--flashback", "--to-last-log", server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
-	clientCmd := exec.Command(server.ClusterGroup.GetMysqlclientPath(), "--host="+server.Host, "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+	clientCmd := exec.Command(server.ClusterGroup.GetMysqlclientPath(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 	server.ClusterGroup.LogPrintf("INFO", "FlashBack: %s %s", server.ClusterGroup.GetMysqlBinlogPath(), binlogCmd.Args)
 	var err error
 	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
@@ -540,7 +541,7 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	server.ClusterGroup.LogPrintf("INFO", "Backup ahead binlog events of previously failed server %s", server.URL)
 	filepath.Walk(server.ClusterGroup.Conf.WorkingDir+"/", server.deletefiles)
 
-	cmdrun = exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+server.Host, "--port="+server.Port, "--result-file="+server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
+	cmdrun = exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
 	server.ClusterGroup.LogPrintf("INFO", "Backup %s %s", server.ClusterGroup.GetMysqlBinlogPath(), cmdrun.Args)
 
 	var outrun bytes.Buffer
@@ -586,8 +587,8 @@ func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonit
 
 		usegtid = "--gtid"
 	}
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+source.Host, "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), "--host="+dest.Host, "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), "--host="+misc.Unbracket(dest.Host), "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
 	cluster.LogPrintf(LvlInfo, "Command: %s ", dumpCmd.Path)
 	var err error
