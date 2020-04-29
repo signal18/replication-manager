@@ -928,12 +928,17 @@ func (cluster *Cluster) RollingReprov() error {
 				cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
 				return err
 			}
+			err = cluster.WaitDatabaseFailed(slave)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not transit suspect %s %s", slave.DSN, err)
+				return err
+			}
 			err = cluster.InitDatabaseService(slave)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
 				return err
 			}
-			err = cluster.WaitDatabaseStart(slave)
+			err = cluster.StartDatabaseWaitRejoin(slave)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
 				return err
@@ -948,12 +953,17 @@ func (cluster *Cluster) RollingReprov() error {
 			cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
 			return err
 		}
+		err = cluster.WaitDatabaseFailed(master)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not transit suspect %s %s", master.DSN, err)
+			return err
+		}
 		err = cluster.InitDatabaseService(master)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
 			return err
 		}
-		err = cluster.WaitDatabaseStart(master)
+		err = cluster.WaitDatabaseRejoin(master)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
 			return err
