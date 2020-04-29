@@ -10,41 +10,40 @@
 package cluster
 
 import (
-	"fmt"
 	"os"
 )
 
 func (server *ServerMonitor) DelProvisionCookie() {
 	err := os.Remove(server.Datadir + "/@cookie_prov")
 	if err != nil {
-		fmt.Println("Error:", err)
+		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
 	}
 }
 
 func (server *ServerMonitor) DelWaitStartCookie() {
 	err := os.Remove(server.Datadir + "/@cookie_waitstart")
 	if err != nil {
-		fmt.Println("Error:", err)
+		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
 	}
 }
 
 func (server *ServerMonitor) DelWaitStopCookie() {
 	err := os.Remove(server.Datadir + "/@cookie_waitstop")
 	if err != nil {
-		fmt.Println("Error:", err)
+		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
 	}
 }
 
 func (server *ServerMonitor) DelReprovisionCookie() {
 	err := os.Remove(server.Datadir + "/@cookie_reprov")
 	if err != nil {
-		fmt.Println("Error:", err)
+		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
 	}
 }
 
 func (server *ServerMonitor) DelRestartCookie() {
 	err := os.Remove(server.Datadir + "/@cookie_restart")
 	if err != nil {
-		fmt.Println("Error:", err)
+		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
 	}
 }

@@ -23,27 +23,27 @@ func (proxy *Proxy) DelProvisionCookie() {
 func (proxy *Proxy) DelReprovisionCookie() {
 	err := os.Remove(proxy.Datadir + "/@cookie_reprov")
 	if err != nil {
-		fmt.Println("Error:", err)
+		proxy.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
 	}
 }
 
 func (proxy *Proxy) DelRestartCookie() {
 	err := os.Remove(proxy.Datadir + "/@cookie_restart")
 	if err != nil {
-		fmt.Println("Error:", err)
+		proxy.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
 	}
 }
 
 func (proxy *Proxy) DelWaitStartCookie() {
 	err := os.Remove(proxy.Datadir + "/@cookie_waitstart")
 	if err != nil {
-		fmt.Println("Error:", err)
+		proxy.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
 	}
 }
 
 func (proxy *Proxy) DelWaitStopCookie() {
 	err := os.Remove(proxy.Datadir + "/@cookie_waitstop")
 	if err != nil {
-		fmt.Println("Error:", err)
+		proxy.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
 	}
 }

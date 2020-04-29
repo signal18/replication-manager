@@ -34,8 +34,8 @@ func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
 	cluster.LogPrintf(LvlInfo, "Waiting failover end")
 	defer wg.Done()
 	exitloop := 0
-	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 15 {
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
+	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
 		case <-ticker.C:
 			cluster.LogPrintf(LvlInfo, "Waiting failover end")
@@ -58,8 +58,8 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 	exitloop := 0
-	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 15 {
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
+	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
 		case <-ticker.C:
 			cluster.LogPrintf(LvlInfo, "Waiting switchover end")
@@ -83,8 +83,8 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 	exitloop := 0
 
-	ticker := time.NewTicker(time.Millisecond * 2000)
-	for exitloop < 15 {
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
+	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 
 		select {
 		case <-ticker.C:
@@ -96,7 +96,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 		}
 
 	}
-	if exitloop < 15 {
+	if int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		cluster.LogPrintf(LvlInfo, "Rejoin Finished")
 
 	} else {
@@ -108,9 +108,9 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 func (cluster *Cluster) WaitClusterStop() error {
 	exitloop := 0
-	ticker := time.NewTicker(time.Millisecond * 2000)
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	cluster.LogPrintf(LvlInfo, "Waiting for cluster shutdown")
-	for exitloop < 10 {
+	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
 		case <-ticker.C:
 			cluster.LogPrintf(LvlInfo, "Waiting for cluster shutdown")
@@ -133,9 +133,9 @@ func (cluster *Cluster) WaitClusterStop() error {
 
 func (cluster *Cluster) WaitProxyEqualMaster() error {
 	exitloop := 0
-	ticker := time.NewTicker(time.Millisecond * 2000)
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	cluster.LogPrintf(LvlInfo, "Waiting for proxy to join master")
-	for exitloop < 60 {
+	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
 		case <-ticker.C:
 			cluster.LogPrintf(LvlInfo, "Waiting for proxy to join master")
