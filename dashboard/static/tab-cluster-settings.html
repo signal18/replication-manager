@@ -1,153 +1,27 @@
 <md-content class="md-padding">
     <div layout="column" layout-gt-xs="row">
         <div flex-gt-xs="30" class="col-lg-33">
-            <md-card>
-
-                <table ng-if="settings" class="table">
-
-                    <tr>
-                        <th>Failover Mode (interactive)</th>
-                    </tr>
-                    <tr>
-                        <td>
-
-                            <md-switch  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.interactive"
-                                       ng-click="switchsettings('failover-mode')" aria-label="Mode Change">
-                                <span ng-if="selectedCluster.config.interactive"
-                                      class="label label-primary">On-call (manual)</span><span
-                                    ng-if="!selectedCluster.config.interactive"
-                                    class="label label-warning">On-leave (auto)</span>
-
-                        </md-switch>
-                        </td>
-                    </tr>
-
-                </table>
-            </md-card>
-            <BR>
+              <div  ng-include src="'static/card-setting-failovermode.html'"></div>
+          ‡    <BR>
               <div  ng-include src="'static/card-backup.html'"></div>
 
     <BR>
-        <div  ng-include src="'static/card-scheduler.html'"></div>
+        <div  ng-include src="'static/card-setting-scheduler.html'"></div>
       <BR>
         </div>
 
         <div flex-gt-xs="30" class="col-lg-33">
-            <md-card>
-                <table ng-if="settings" class="table">
-                    <tr>
-                        <th>Checks All Replication Constraint</th>
-                    </tr>
-                    <tr>
-                        <td>
-                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.checkReplicationState"
-                                       ng-click="switchsettings('check-replication-state')"
-                                       aria-label="Failover in Sync">
-                                <span ng-if="selectedCluster.config.checkReplicationState"
-                                      ng-click="switchsettings('check-replication-state')" class="label label-primary">On</span><span
-                                    ng-if="!selectedCluster.config.checkReplicationState" ng-click="rplchecks()"
-                                    class="label label-warning">Off</span>
-                            </md-switch>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th>Failover Only On Semi-sync State Sync</th>
-                    </tr>
-                    <tr>
-                        <td>
-                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.failoverAtSync"
-                                       ng-click="switchsettings('failover-at-sync')" aria-label="Failover in Sync">
-                                <span ng-if="selectedCluster.config.failoverAtSync" ng-click="switchsettings('failover-at-sync')"
-                                      class="label label-primary">On</span>
-                                <span ng-if="!selectedCluster.config.failoverAtSync"
-                                                                                 ng-click="failsync()"
-                                                                                 class="label label-warning">Off</span>
-                            </md-switch>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th>Failover Using Pseudo GTID</th>
-                    </tr>
-                    <tr>
-                        <td>
-                            <md-switch  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false"
-                                       ng-model="selectedCluster.config.autorejoinSlavePositionalHeartbeat"
-                                       ng-click="switchsettings('autorejoin-slave-positional-heartbeat')"
-                                       aria-label="Auto rejoin using pseudo GTID">
-                                <span ng-if="selectedCluster.config.autorejoinSlavePositionalHeartbeat"
-                                      class="label label-primary">On</span><span
-                                    ng-if="!selectedCluster.config.autorejoinSlavePositionalHeartbeat" class="label label-warning">Off</span>
-
-                        </md-switch>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th>Switchover Only On Semi-sync State Sync</th>
-                    </tr>
-                    <tr>
-                        <td>
-                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.switchoverAtSync"
-                                       ng-click="switchsettings('switchover-at-sync')()"
-                                       aria-label="Switchover in Sync">
-                                <span ng-if="selectedCluster.config.switchoverAtSync"
-                                      ng-click="switchsettings('switchover-at-sync')"
-                                      class="label label-primary">On</span><span ng-if="!selectedCluster.config.switchoverAtSync"
-                                                                                 ng-click="switchsync()"
-                                                                                 class="label label-warning">Off</span>
-                            </md-switch>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th>Replication Max Delay</th>
-                    </tr>
-                    <tr>
-                        <td>
-                            <md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-value="selectedCluster.config.failoverMaxSlaveDelay" md-discrete ng-if="selectedCluster.config.checkReplicationState" flex
-                                       ng-model="selectedMaxSlaveDelay" ng-change="changemaxdelay(selectedMaxSlaveDelay)" step="1" min="10" max="100" aria-label="delay">
-                            </md-slider>
-
-                            <span class="label label-primary">{{selectedCluster.config.failoverMaxSlaveDelay}}</span>
-
-                        </td>
-                    </tr>
-                </table>
-            </md-card>
+          <div  ng-include src="'static/card-setting-replication.html'"></div>
+          
+          <BR>
+          <div  ng-include src="'static/card-setting-capture.html'"></div>
             <BR>
-            <md-card>
-                <table ng-if="settings" class="table">
-                    <tr>
-                        <th>Test Mode</th>
-                    </tr>
-                    <tr>
-                        <td>
-                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.test"
-                                       ng-click="switchsettings('test')" aria-label="Test Mode Change">
-                                <span ng-if="selectedCluster.config.test" class="label label-primary">On</span><span
-                                    ng-if="!selectedCluster.config.test" class="label label-warning">Off</span>
-
-                        </md-switch>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th>Verbose</th>
-                    </tr>
-                    <tr>
-                        <td>
-                            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.verbose"
-                                       ng-click="switchsettings('verbose')" aria-label="Verbosity Change">
-                                <span ng-if="selectedCluster.config.verbose" class="label label-primary">On</span><span
-                                    ng-if="!selectedCluster.config.verbose" class="label label-warning">Off</span>
-
-                        </md-switch>
-                        </td>
-                    </tr>
-                </table>
-    </md-card>
+            <div  ng-include src="'static/card-setting-testmode.html'"></div>
         </div>
 
 
         <div flex-gt-xs="30" class="col-lg-33">
-            <div  ng-include src="'static/card-rejoin.html'"></div>
+            <div  ng-include src="'static/card-setting-rejoin.html'"></div>
         </div>
     </div>
 

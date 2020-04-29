@@ -436,6 +436,9 @@ func (cluster *Cluster) IsCurrentGTIDSync(m *ServerMonitor, s *ServerMonitor) bo
 }
 
 func (cluster *Cluster) CheckCapture(state state.State) {
+	if !cluster.Conf.MonitorCapture {
+		return
+	}
 	if strings.Contains(cluster.Conf.MonitorCaptureTrigger, state.ErrKey) {
 		if state.ServerUrl != "" {
 			srv := cluster.GetServerFromURL(state.ServerUrl)

@@ -91,6 +91,18 @@ func (cluster *Cluster) IsInPreferedHosts(server *ServerMonitor) bool {
 	return false
 }
 
+func (cluster *Cluster) IsInCaptureMode() bool {
+	if !cluster.Conf.MonitorCapture {
+		return false
+	}
+	for _, server := range cluster.Servers {
+		if server.InCaptureMode {
+			return true
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) HasAllDbUp() bool {
 	if cluster.Servers == nil {
 		return false

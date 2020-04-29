@@ -933,6 +933,8 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchMonitoringScheduler()
 		case "monitoring-schema-change":
 			mycluster.SwitchMonitoringSchemaChange()
+		case "monitoring-capture":
+			mycluster.SwitchMonitoringCapture()
 		case "proxysql-copy-grants":
 			mycluster.SwitchProxysqlCopyGrants()
 		case "proxysql-bootstrap":

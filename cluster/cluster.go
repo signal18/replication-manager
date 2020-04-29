@@ -61,6 +61,7 @@ type Cluster struct {
 	IsNeedDatabasesRollingReprov  bool                        `json:"isNeedDatabasesRollingReprov"`
 	IsNeedDatabasesReprov         bool                        `json:"isNeedDatabasesReprov"`
 	IsNotMonitoring               bool                        `json:"isNotMonitoring"`
+	IsCapturing                   bool                        `json:"isCapturing"`
 	Conf                          config.Config               `json:"config"`
 	CleanAll                      bool                        `json:"cleanReplication"` //used in testing
 	ConfigDBTags                  []Tag                       `json:"configTags"`       //from module
@@ -359,6 +360,7 @@ func (cluster *Cluster) Run() {
 		cluster.UptimeFailable = cluster.GetStateMachine().GetUptimeFailable()
 		cluster.UptimeSemiSync = cluster.GetStateMachine().GetUptimeSemiSync()
 		cluster.IsNotMonitoring = cluster.sme.IsInFailover()
+		cluster.IsCapturing = cluster.IsInCaptureMode()
 		cluster.MonitorSpin = fmt.Sprintf("%d ", cluster.GetStateMachine().GetHeartbeats())
 		select {
 		case sig := <-cluster.switchoverChan:

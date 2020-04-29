@@ -170,6 +170,10 @@ func (cluster *Cluster) SwitchMonitoringSchemaChange() {
 	cluster.Conf.MonitorSchemaChange = !cluster.Conf.MonitorSchemaChange
 }
 
+func (cluster *Cluster) SwitchMonitoringCapture() {
+	cluster.Conf.MonitorCapture = !cluster.Conf.MonitorCapture
+}
+
 func (cluster *Cluster) SwitchMonitoringScheduler() {
 	cluster.Conf.MonitorScheduler = !cluster.Conf.MonitorScheduler
 	if cluster.Conf.MonitorScheduler {

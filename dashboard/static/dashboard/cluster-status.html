@@ -36,7 +36,7 @@
                        <span ng-if="selectedCluster.isNeedDatabasesRollingRestart" class="label label-warning">NeedRollingRestart</span><span ng-if="selectedCluster.isNeedDatabasesRollingReprov" class="label label-warning">NeedRollingReprov</span>
                        <span ng-if="selectedCluster.isNeedDatabasesRestart" class="label label-warning">NeedDabaseRestart</span> <span ng-if="selectedCluster.isNeedDatabasesReprov" class="label label-warning">NeedDatabaseReprov</span>
                        <span ng-if="selectedCluster.isNeedProxiesRestart" class="label label-warning">NeedProxyRestart</span><span ng-if="selectedCluster.isNeedProxiesReprov" class="label label-warning">NeedProxyReprov</span>
-                        <span ng-if="selectedCluster.isNotMonitoring" class="label label-warning">UnMonitored</span>
+                        <span ng-if="selectedCluster.isNotMonitoring" class="label label-warning">UnMonitored</span> <span ng-if="selectedCluster.isCapturing" class="label label-warning">Capturing</span> 
                     </td>
                 </tr>
 

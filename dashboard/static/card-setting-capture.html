@@ -1,0 +1,25 @@
+<md-card>
+    <table ng-if="settings" class="table">
+        <tr>
+            <th>Capture</th>
+        </tr>
+        <tr>
+            <td>
+                Stack trace contain show processlist, engine status, slave and master status for
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringCapture"
+                           ng-click="switchsettings('monitoring-capture')" aria-label="Monitoring capture">
+                    <span ng-if="selectedCluster.config.monitoringCapture" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.monitoringCapture" class="label label-warning">Off</span>
+            </td>
+            </md-switch>
+            </td>
+
+        </tr>
+        <tr>
+            <th>Capture Trigger</th>
+        </tr>
+        <tr>
+
+
+    </table>
+</md-card>

@@ -1088,23 +1088,26 @@ func (repman *ReplicationManager) handlerMuxServerNeedStart(w http.ResponseWrite
 				node.DelWaitStartCookie()
 				return
 			}
-			w.Write([]byte("503 -No start needed!"))
-			http.Error(w, "No start needed", 503)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No start needed!"))
+
 		} else if proxy != nil {
 			if proxy.HasWaitStartCookie() {
 				w.Write([]byte("200 -Need start!"))
 				proxy.DelWaitStartCookie()
 				return
 			}
-			w.Write([]byte("503 -No start needed!"))
-			http.Error(w, "Encoding error", 503)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No start needed!"))
+			//http.Error(w, "No start needed", 501)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("503 -Not a Valid Server!"))
+			w.Write([]byte("500 -No valid server!"))
 		}
 
 	} else {
-		http.Error(w, "No cluster", 500)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("500 -No cluster!"))
 		return
 	}
 }
@@ -1122,23 +1125,25 @@ func (repman *ReplicationManager) handlerMuxServerNeedStop(w http.ResponseWriter
 				w.Write([]byte("200 -Need stop!"))
 				return
 			}
-			w.Write([]byte("503 -No stop needed!"))
-			http.Error(w, "Encoding error", 503)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No stop needed!"))
+
 		} else if proxy != nil {
 			if proxy.HasWaitStopCookie() {
 				w.Write([]byte("200 -Need stop!"))
 				proxy.DelWaitStopCookie()
 				return
 			}
-			w.Write([]byte("503 -No stop needed!"))
-			http.Error(w, "No stop needed", 503)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No stop needed!"))
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("503 -Not a Valid Server!"))
+			w.Write([]byte("500 -No valid server!"))
 		}
 
 	} else {
-		http.Error(w, "No cluster", 500)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("500 -No cluster!"))
 		return
 	}
 }
