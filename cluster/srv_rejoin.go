@@ -220,7 +220,7 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 
 	binlogCmd := exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--flashback", "--to-last-log", server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
 	clientCmd := exec.Command(server.ClusterGroup.GetMysqlclientPath(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
-	server.ClusterGroup.LogPrintf("INFO", "FlashBack: %s %s", server.ClusterGroup.GetMysqlBinlogPath(), strings.Replace(strings.Join(binlogCmd.Args, " "), server.ClusterGroup.rplPass, "XXXX", 0))
+	server.ClusterGroup.LogPrintf("INFO", "FlashBack: %s %s", server.ClusterGroup.GetMysqlBinlogPath(), strings.Replace(strings.Join(binlogCmd.Args, " "), server.ClusterGroup.rplPass, "XXXX", -1))
 	var err error
 	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
 	if err != nil {
@@ -228,11 +228,11 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 		return err
 	}
 	if err := binlogCmd.Start(); err != nil {
-		server.ClusterGroup.LogPrintf("ERROR", "Failed mysqlbinlog command: %s at %s", err, strings.Replace(binlogCmd.Path, server.ClusterGroup.rplPass, "XXXX", 0))
+		server.ClusterGroup.LogPrintf("ERROR", "Failed mysqlbinlog command: %s at %s", err, strings.Replace(binlogCmd.Path, server.ClusterGroup.rplPass, "XXXX", -1))
 		return err
 	}
 	if err := clientCmd.Run(); err != nil {
-		server.ClusterGroup.LogPrintf("ERROR", "Error starting client: %s at %s", err, strings.Replace(clientCmd.Path, server.ClusterGroup.rplPass, "XXXX", 0))
+		server.ClusterGroup.LogPrintf("ERROR", "Error starting client: %s at %s", err, strings.Replace(clientCmd.Path, server.ClusterGroup.rplPass, "XXXX", -1))
 		return err
 	}
 	logs, err := dbhelper.SetGTIDSlavePos(server.Conn, crash.FailoverIOGtid.Sprint())
@@ -552,7 +552,7 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	filepath.Walk(server.ClusterGroup.Conf.WorkingDir+"/", server.deletefiles)
 
 	cmdrun = exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
-	server.ClusterGroup.LogPrintf("INFO", "Backup %s %s", server.ClusterGroup.GetMysqlBinlogPath(), strings.Replace(strings.Join(cmdrun.Args, " "), server.ClusterGroup.rplPass, "XXXX", 0))
+	server.ClusterGroup.LogPrintf("INFO", "Backup %s %s", server.ClusterGroup.GetMysqlBinlogPath(), strings.Replace(strings.Join(cmdrun.Args, " "), server.ClusterGroup.rplPass, "XXXX", -1))
 
 	var outrun bytes.Buffer
 	cmdrun.Stdout = &outrun
@@ -600,7 +600,7 @@ func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonit
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), "--host="+misc.Unbracket(dest.Host), "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
-	cluster.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.Path, cluster.dbPass, "XXXX", 0))
+	cluster.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.Path, cluster.dbPass, "XXXX", -1))
 	var err error
 	clientCmd.Stdin, err = dumpCmd.StdoutPipe()
 	if err != nil {
@@ -608,11 +608,11 @@ func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonit
 		return err
 	}
 	if err := dumpCmd.Start(); err != nil {
-		cluster.LogPrintf(LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(dumpCmd.Path, cluster.dbPass, "XXXX", 0))
+		cluster.LogPrintf(LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(dumpCmd.Path, cluster.dbPass, "XXXX", -1))
 		return err
 	}
 	if err := clientCmd.Run(); err != nil {
-		cluster.LogPrintf(LvlErr, "Can't start mysql client:%s at %s", err, strings.Replace(clientCmd.Path, cluster.dbPass, "XXXX", 0))
+		cluster.LogPrintf(LvlErr, "Can't start mysql client:%s at %s", err, strings.Replace(clientCmd.Path, cluster.dbPass, "XXXX", -1))
 		return err
 	}
 	dumpCmd.Wait()

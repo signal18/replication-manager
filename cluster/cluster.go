@@ -973,11 +973,14 @@ func (cluster *Cluster) RollingRestart() error {
 	cluster.SetFailSync(false)
 	defer cluster.SetFailSync(saveFailoverMode)
 	for _, slave := range cluster.slaves {
+
 		if !slave.IsDown() {
+			//slave.SetMaintenance()
+			//proxy.
 			err := cluster.StopDatabaseService(slave)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.DSN, err)
-
+				slave.SetMaintenance()
 				return err
 			}
 
