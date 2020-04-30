@@ -943,6 +943,9 @@ function (
       $scope.dbmaintenance = function (server) {
         if (confirm("Confirm maintenance for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/maintenance');
       };
+      $scope.dbjobs = function (server) {
+        if (confirm("Confirm running remote jobs for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/run-jobs');
+      };
       $scope.dbstart = function (server) {
         if (confirm("Confirm start for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/start');
       };

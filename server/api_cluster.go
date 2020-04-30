@@ -1376,7 +1376,7 @@ func (repman *ReplicationManager) handlerMuxClusterOptimize(w http.ResponseWrite
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		mycluster.Optimize()
+		mycluster.RollingOptimize()
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "No cluster found:"+vars["clusterName"])

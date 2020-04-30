@@ -135,7 +135,7 @@ func (cluster *Cluster) SetSchedulerOptimize() {
 		var err error
 		cluster.LogPrintf(LvlInfo, "Schedule database optimize at: %s", cluster.Conf.BackupDatabaseOptimizeCron)
 		cluster.idSchedulerOptimize, err = cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseOptimizeCron, func() {
-			cluster.Optimize()
+			cluster.RollingOptimize()
 		})
 		if err == nil {
 			cluster.Schedule["optimize"] = cluster.scheduler.Entry(cluster.idSchedulerOptimize)

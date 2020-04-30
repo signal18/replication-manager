@@ -573,6 +573,7 @@ const (
 	GrantClusterReplication      string = "cluster-replication"
 	GrantClusterRotateKey        string = "cluster-rotate-keys"
 	GrantClusterBench            string = "cluster-bench"
+	GrantClusterProcess          string = "cluster-process" //Can ssh for jobs
 	GrantClusterTest             string = "cluster-test"
 	GrantClusterTraffic          string = "cluster-traffic"
 	GrantClusterShowBackups      string = "cluster-show-backups"
@@ -815,6 +816,7 @@ func (conf *Config) GetGrantType() map[string]string {
 		GrantClusterBench:            GrantClusterBench,
 		GrantClusterTest:             GrantClusterTest,
 		GrantClusterTraffic:          GrantClusterTraffic,
+		GrantClusterProcess:          GrantClusterProcess,
 		GrantClusterDebug:            GrantClusterDebug,
 		GrantClusterShowBackups:      GrantClusterShowBackups,
 		GrantClusterShowAgents:       GrantClusterShowAgents,

@@ -118,7 +118,11 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 	/*
 		missing "/api/clusters/{clusterName}/servers/{serverName}/service-opensvc"
 	*/
-
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterProcess] {
+		if strings.Contains(URL, "/actions/run-jobs") {
+			return true
+		}
+	}
 	if cluster.APIUsers[strUser].Grants[config.GrantProvDBProvision] {
 		if strings.Contains(URL, "/actions/provision") {
 			return true
@@ -193,7 +197,6 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/actions/backup-slowquery-log") {
 			return true
 		}
-
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBRestore] {
 		if strings.Contains(URL, "/actions/reseed/") {

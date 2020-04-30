@@ -48,6 +48,13 @@
                             Unprovision Database
                         </md-button>
                     </md-menu-item>
+                    <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+                                  ng-click="dbjobs(server.id)">
+                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['prov-db-unprovision']==false">
+                            <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
+                            Run Remote Jobs
+                        </md-button>
+                    </md-menu-item>
                 </md-menu-content>
             </md-menu>
         </md-menu-item>

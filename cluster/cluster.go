@@ -680,12 +680,6 @@ func (cluster *Cluster) RotateLogs() {
 func (cluster *Cluster) ResetCrashes() {
 	cluster.Crashes = nil
 }
-func (cluster *Cluster) Optimize() {
-	for _, s := range cluster.slaves {
-		jobid, _ := s.JobOptimize()
-		cluster.LogPrintf(LvlInfo, "Optimize job id %d on %s ", jobid, s.URL)
-	}
-}
 
 func (cluster *Cluster) MonitorVariablesDiff() {
 	if !cluster.Conf.MonitorVariableDiff || cluster.GetMaster() == nil {
@@ -1027,4 +1021,11 @@ func (cluster *Cluster) RollingRestart() error {
 	cluster.SwitchOver()
 
 	return nil
+}
+
+func (cluster *Cluster) RollingOptimize() {
+	for _, s := range cluster.slaves {
+		jobid, _ := s.JobOptimize()
+		cluster.LogPrintf(LvlInfo, "Optimize job id %d on %s ", jobid, s.URL)
+	}
 }
