@@ -473,19 +473,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		// maxscale is in the list of slave
 
 		if fail == false && cluster.Conf.MxsBinlogOn == false && cluster.Conf.SwitchSlaveWaitCatch {
-			cluster.LogPrintf(LvlInfo, "Waiting for slave %s to sync", sl.URL)
-			if sl.DBVersion.Flavor == "MariaDB" {
-				logs, err = dbhelper.MasterWaitGTID(sl.Conn, cluster.oldMaster.GTIDBinlogPos.Sprint(), 30)
-				cluster.LogSQL(logs, err, sl.URL, "MasterFailover", LvlErr, "Failed MasterWaitGTID, %s", err)
-
-			} else {
-				logs, err = dbhelper.MasterPosWait(sl.Conn, cluster.oldMaster.BinaryLogFile, cluster.oldMaster.BinaryLogPos, 30)
-				cluster.LogSQL(logs, err, sl.URL, "MasterFailover", LvlErr, "Failed MasterPosWait, %s", err)
-			}
-
-			if cluster.Conf.LogLevel > 2 {
-				sl.log()
-			}
+			sl.WaitSyncToMaster(cluster.oldMaster)
 		}
 		cluster.LogPrintf(LvlInfo, "Change master on slave %s", sl.URL)
 		logs, err = sl.StopSlave()

@@ -19,5 +19,29 @@
             <td>
             </td>
         </tr>
+        <tr>
+            <td colspan=2>
+                Waiting Rejoin
+            </td>
+            <td>
+              {{ selectedCluster.waitingRejoin }}
+            </td>
+        </tr>
+        <tr>
+            <td colspan=2>
+                Waiting Switchover
+            </td>
+            <td>
+              {{ selectedCluster.waitingSwitchover }}
+            </td>
+        </tr>
+        <tr>
+            <td colspan=2>
+                Waiting Failover
+            </td>
+            <td>
+              {{ selectedCluster.waitingFailover }}
+            </td>
+        </tr>
     </table>
 </md-card>

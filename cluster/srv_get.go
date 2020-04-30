@@ -459,6 +459,9 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 }
 
 func (server *ServerMonitor) GetSlowLogTable() {
+	if server.ClusterGroup.IsInFailover() {
+		return
+	}
 	if !server.HasLogsInSystemTables() {
 		return
 	}

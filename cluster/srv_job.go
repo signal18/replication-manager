@@ -41,7 +41,7 @@ func (server *ServerMonitor) JobRun() {
 }
 
 func (server *ServerMonitor) JobsCreateTable() error {
-	if server.IsDown() {
+	if server.IsDown() || server.ClusterGroup.IsInFailover() {
 		return nil
 	}
 	server.ExecQueryNoBinLog("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
@@ -55,6 +55,10 @@ func (server *ServerMonitor) JobsCreateTable() error {
 }
 
 func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost string) (int64, error) {
+	if server.ClusterGroup.IsInFailover() {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Cancel job %s during failover", task)
+		return 0, errors.New("In failover can't insert job")
+	}
 	server.JobsCreateTable()
 	conn, err := sqlx.Connect("mysql", server.DSN)
 	if err != nil {
@@ -798,7 +802,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 		return err
 	}
 	defer client.Close()
-
+	server.ClusterGroup.LogPrintf(LvlErr, "%s", server.Datadir+"/init/init/dbjobs")
 	out, err2 := client.ScriptFile(server.Datadir + "/init/init/dbjobs").SmartOutput()
 	if err2 != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err2)

@@ -666,7 +666,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.CheckDisks()
 		}
 		if server.HasLogsInSystemTables() {
-			server.GetSlowLogTable()
+			go server.GetSlowLogTable()
 		}
 
 	} // End not PG
@@ -881,7 +881,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 	return nil
 }
 
-func (server *ServerMonitor) log() {
+func (server *ServerMonitor) LogReplPostion() {
 	server.Refresh()
 	server.ClusterGroup.LogPrintf(LvlInfo, "Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.GTIDBinlogPos.Sprint())
 	return
@@ -893,7 +893,7 @@ func (server *ServerMonitor) Close() {
 }
 
 func (server *ServerMonitor) writeState() error {
-	server.log()
+	server.LogReplPostion()
 	f, err := os.Create("/tmp/repmgr.state")
 	if err != nil {
 		return err

@@ -14,6 +14,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/signal18/replication-manager/cluster/nbc"
 )
 
 func (cluster *Cluster) WaitFailoverEndState() {
@@ -34,6 +36,7 @@ func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
 	cluster.LogPrintf(LvlInfo, "Waiting failover end")
 	defer wg.Done()
 	exitloop := 0
+	cluster.failoverCond = nbc.New()
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
@@ -58,6 +61,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 	exitloop := 0
+	cluster.switchoverCond = nbc.New()
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
@@ -82,8 +86,9 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	exitloop := 0
-
+	cluster.rejoinCond = nbc.New()
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
+
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 
 		select {
