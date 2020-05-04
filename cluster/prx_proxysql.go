@@ -56,6 +56,7 @@ func (cluster *Cluster) AddQueryRulesProxysql(proxy *Proxy, rules []proxysql.Que
 	err = psql.AddQueryRules(rules)
 	return err
 }
+
 func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	if !cluster.Conf.ProxysqlBootstrap || !cluster.Conf.ProxysqlOn {
 		return
@@ -79,7 +80,9 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 				cluster.LogPrintf(LvlErr, "ProxySQL could not add server %s as offline (%s)", s.URL, err)
 			}
 		} else {
-			err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port)
+			//weight string, max_replication_lag string, max_connections string, compression string
+
+			err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)))
 			if err != nil {
 				cluster.LogPrintf(LvlWarn, "ProxySQL could not add server %s (%s)", s.URL, err)
 			}
@@ -271,6 +274,22 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 	proxy.QueryRules, err = psql.GetQueryRulesRuntime()
 	if err != nil {
 		cluster.sme.AddState("WARN0092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0092"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
+	}
+	proxy.Variables, err = psql.GetVariables()
+	if err != nil {
+		cluster.sme.AddState("WARN0098", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0098"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
+	}
+	if proxy.ClusterGroup.Conf.ProxysqlBootstrapVariables {
+		if proxy.Variables["MYSQL-MULTIPLEXING"] == "TRUE" && !proxy.ClusterGroup.Conf.ProxysqlMultiplexing {
+			psql.SetMySQLVariable("MYSQL-MULTIPLEXING", "FALSE")
+			psql.LoadMySQLVariablesToRuntime()
+			psql.SaveMySQLVariablesToDisk()
+		}
+		if proxy.Variables["MYSQL-MULTIPLEXING"] == "FALSE" && proxy.ClusterGroup.Conf.ProxysqlMultiplexing {
+			psql.SetMySQLVariable("MYSQL-MULTIPLEXING", "TRUE")
+			psql.LoadMySQLVariablesToRuntime()
+			psql.SaveMySQLVariablesToDisk()
+		}
 	}
 	return nil
 }

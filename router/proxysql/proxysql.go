@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
 type ProxySQL struct {
@@ -85,19 +86,19 @@ func GetStatsQueryDigest(db *sqlx.DB) ([]StatsQueryDigest, string, error) {
 }
 
 func (psql *ProxySQL) AddHostgroups(clustername string) error {
-	sql := fmt.Sprintf("INSERT INTO mysql_replication_hostgroups(writer_hostgroup, reader_hostgroup, comment) VALUES (%s,%s,'%s')", psql.WriterHG, psql.ReaderHG, clustername)
+	sql := fmt.Sprintf("REPLACE INTO mysql_replication_hostgroups(writer_hostgroup, reader_hostgroup, comment) VALUES (%s,%s,'%s')", psql.WriterHG, psql.ReaderHG, clustername)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
-func (psql *ProxySQL) AddServerAsReader(host string, port string) error {
-	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostgroup_id,hostname, port) VALUES('%s','%s','%s')", psql.ReaderHG, host, port)
+func (psql *ProxySQL) AddServerAsReader(host string, port string, weight string, max_replication_lag string, max_connections string, compression string) error {
+	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id,hostname, port,weight,max_replication_lag,max_connections) VALUES('%s','%s','%s','%s','%s','%s','%s')", psql.ReaderHG, host, port, weight, max_replication_lag, max_connections, compression)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
 func (psql *ProxySQL) AddServerAsWriter(host string, port string) error {
-	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostgroup_id,hostname, port) VALUES('%s','%s','%s')", psql.WriterHG, host, port)
+	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id,hostname, port) VALUES('%s','%s','%s')", psql.WriterHG, host, port)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
@@ -109,7 +110,7 @@ func (psql *ProxySQL) AddShardServer(host string, port string) error {
 	return err
 }
 func (psql *ProxySQL) AddOfflineServer(host string, port string) error {
-	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostgroup_id, hostname, port) VALUES('666', '%s','%s')", host, port)
+	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id, hostname, port) VALUES('666', '%s','%s')", host, port)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
@@ -265,6 +266,31 @@ func (psql *ProxySQL) LoadQueryRulesToRuntime() error {
 	return err
 }
 
+func (psql *ProxySQL) GetVariables() (map[string]string, error) {
+	vars := make(map[string]string)
+	query := "SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM runtime_global_variables"
+
+	rows, err := psql.Connection.Queryx(query)
+	if err != nil {
+		return vars, err
+	}
+	for rows.Next() {
+		var v dbhelper.Variable
+		err = rows.Scan(&v.Variable_name, &v.Value)
+		if err != nil {
+			return vars, err
+		}
+		vars[v.Variable_name] = v.Value
+	}
+	return vars, err
+}
+
+func (psql *ProxySQL) SetMySQLVariable(variable string, value string) error {
+	sql := fmt.Sprintf("UPDATE  global_variables SET Variable_value='%s'  WHERE Variable_name='%s' ", value, variable)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
 func (psql *ProxySQL) LoadUsersToRuntime() error {
 	query := "LOAD MYSQL USERS TO RUNTIME"
 	_, err := psql.Connection.Exec(query)
@@ -278,5 +304,15 @@ func (psql *ProxySQL) LoadServersToRuntime() error {
 
 func (psql *ProxySQL) SaveServersToDisk() error {
 	_, err := psql.Connection.Exec("SAVE PROXYSQL SERVERS TO DISK")
+	return err
+}
+
+func (psql *ProxySQL) LoadMySQLVariablesToRuntime() error {
+	_, err := psql.Connection.Exec("LOAD MYSQL VARIABLES TO RUNTIME")
+	return err
+}
+
+func (psql *ProxySQL) SaveMySQLVariablesToDisk() error {
+	_, err := psql.Connection.Exec("SAVE MYSQL VARIABLES TO DISK")
 	return err
 }

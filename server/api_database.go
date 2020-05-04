@@ -242,7 +242,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerResetMaster)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reset-slave-all", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerResetSlaveAll)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reset-pfs-queries", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerResetPFSQueries)),
@@ -770,6 +773,29 @@ func (repman *ReplicationManager) handlerMuxServerStopSlave(w http.ResponseWrite
 	}
 }
 
+func (repman *ReplicationManager) handlerMuxServerResetSlaveAll(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			node.ResetSlave()
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
 func (repman *ReplicationManager) handlerMuxServerResetMaster(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1230,7 +1256,7 @@ func (repman *ReplicationManager) handlerMuxServersIsSlaveStatus(w http.Response
 			return
 		}*/
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXReadOnMaster)) {
+		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {
@@ -1255,7 +1281,7 @@ func (repman *ReplicationManager) handlerMuxServersPortIsSlaveStatus(w http.Resp
 				return
 			}*/
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXReadOnMaster)) {
+		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {

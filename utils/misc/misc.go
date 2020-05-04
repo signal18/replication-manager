@@ -137,3 +137,10 @@ func ExtractKey(s string, r map[string]string) string {
 func Unbracket(mystring string) string {
 	return strings.Replace(strings.Replace(mystring, "[", "", -1), "]", "", -1)
 }
+
+func Bool2Int(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}

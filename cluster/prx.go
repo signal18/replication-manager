@@ -57,6 +57,7 @@ type Proxy struct {
 	FailCount       int                  `json:"failCount"`
 	SlapOSDatadir   string               `json:"slaposDatadir"`
 	Process         *os.Process          `json:"process"`
+	Variables       map[string]string    `json:"-"`
 }
 
 type Backend struct {

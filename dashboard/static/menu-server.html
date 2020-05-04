@@ -159,7 +159,12 @@
                             Reset master
                         </md-button>
                     </md-menu-item>
-
+                    <md-menu-item ng-click="dbresetslaveall(server.id)">
+                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-replication']==false">
+                            <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                            Reset slave
+                        </md-button>
+                    </md-menu-item>
             </md-menu>
         </md-menu-item>
     </md-menu-content>

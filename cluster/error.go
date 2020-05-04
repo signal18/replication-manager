@@ -145,4 +145,5 @@ var clusterError = map[string]string{
 	"WARN0095": "Restic init repo issue: %s\n%s\n%s",
 	"WARN0096": "Restart database server via job request %s",
 	"WARN0097": "Stop database server via job request %s",
+	"WARN0098": "ProxySQL could not load global variables from runtime (%s)",
 }

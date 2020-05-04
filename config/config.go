@@ -88,7 +88,10 @@ type Config struct {
 	Timeout                                   int    `mapstructure:"db-servers-connect-timeout" toml:"db-servers-connect-timeout" json:"dbServersConnectTimeout"`
 	ReadTimeout                               int    `mapstructure:"db-servers-read-timeout" toml:"db-servers-read-timeout" json:"dbServersReadTimeout"`
 	DBServersLocality                         string `mapstructure:"db-servers-locality" toml:"db-servers-locality" json:"dbServersLocality"`
-	PRXReadOnMaster                           bool   `mapstructure:"proxy-servers-read-on-master" toml:"proxy-servers-read-on-master" json:"proxyServersReadOnMaster"`
+	PRXServersReadOnMaster                    bool   `mapstructure:"proxy-servers-read-on-master" toml:"proxy-servers-read-on-master" json:"proxyServersReadOnMaster"`
+	PRXServersBackendCompression              bool   `mapstructure:"proxy-servers-backend-compression" toml:"proxy-servers-backend-compression" json:"proxyServersBackendCompression"`
+	PRXServersBackendMaxReplicationLag        int    `mapstructure:"proxy-servers-backend-max-replication-lag" toml:"proxy-servers-backend--max-replication-lag" json:"proxyServersBackendMaxReplicationLag"`
+	PRXServersBackendMaxConnections           int    `mapstructure:"proxy-servers-backend-max-connections" toml:"proxy-servers-backend--max-connections" json:"proxyServersBackendMaxConnections"`
 	ClusterHead                               string `mapstructure:"cluster-head" toml:"cluster-head" json:"clusterHead"`
 	MasterConnectRetry                        int    `mapstructure:"replication-master-connect-retry" toml:"replication-master-connect-retry" json:"replicationMasterConnectRetry"`
 	RplUser                                   string `mapstructure:"replication-credential" toml:"replication-credential" json:"replicationCredential"`
@@ -232,11 +235,13 @@ type Config struct {
 	ProxysqlPassword                          string `mapstructure:"proxysql-password" toml:"proxysql-password" json:"proxysqlPassword"`
 	ProxysqlWriterHostgroup                   string `mapstructure:"proxysql-writer-hostgroup" toml:"proxysql-writer-hostgroup" json:"proxysqlWriterHostgroup"`
 	ProxysqlReaderHostgroup                   string `mapstructure:"proxysql-reader-hostgroup" toml:"proxysql-reader-hostgroup" json:"proxysqlReaderHostgroup"`
-	ProxysqlCopyGrants                        bool   `mapstructure:"proxysql-copy-grants" toml:"proxysql-copy-grants" json:"proxysqlCopyGrants"`
+	ProxysqlCopyGrants                        bool   `mapstructure:"proxysql-bootstrap-users" toml:"proxysql-bootstarp-users" json:"proxysqlBootstrapyUsers"`
 	ProxysqlBootstrap                         bool   `mapstructure:"proxysql-bootstrap" toml:"proxysql-bootstrap" json:"proxysqlBootstrap"`
+	ProxysqlBootstrapVariables                bool   `mapstructure:"proxysql-bootstrap-variables" toml:"proxysql-bootstrap-variables" json:"proxysqlBootstrapVariables"`
 	ProxysqlBootstrapHG                       bool   `mapstructure:"proxysql-bootstrap-hostgroups" toml:"proxysql-bootstrap-hostgroups" json:"proxysqlBootstrapHostgroups"`
 	ProxysqlBootstrapQueryRules               bool   `mapstructure:"proxysql-bootstrap-query-rules" toml:"proxysql-bootstrap-query-rules" json:"proxysqlBootstrapQueryRules"`
 	ProxysqlMasterIsReader                    bool   `mapstructure:"proxysql-master-is-reader" toml:"proxysql-master-is-reader" json:"proxysqlMasterIsReader"`
+	ProxysqlMultiplexing                      bool   `mapstructure:"proxysql-multiplexing" toml:"proxysql-multiplexing" json:"proxysqlMultiplexing"`
 	ProxysqlBinaryPath                        string `mapstructure:"proxysql-binary-path" toml:"proxysql-binary-path" json:"proxysqlBinaryPath"`
 	MysqlRouterOn                             bool   `mapstructure:"mysqlrouter" toml:"mysqlrouter" json:"mysqlrouter"`
 	MysqlRouterHosts                          string `mapstructure:"mysqlrouter-servers" toml:"mysqlrouter-servers" json:"mysqlrouterServers"`

@@ -194,8 +194,6 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.IgnoreSrv, "db-servers-ignored-hosts", "", "Database list of hosts to ignore in election")
 	monitorCmd.Flags().StringVar(&conf.IgnoreSrvRO, "db-servers-ignored-readonly", "", "Database list of hosts to ignore set readonly")
 
-	monitorCmd.Flags().BoolVar(&conf.PRXReadOnMaster, "proxy-servers-read-on-master", false, "Should RO route via proxies point to master")
-
 	monitorCmd.Flags().Int64Var(&conf.SwitchWaitKill, "switchover-wait-kill", 5000, "Switchover wait this many milliseconds before killing threads on demoted master")
 	monitorCmd.Flags().IntVar(&conf.SwitchWaitWrite, "switchover-wait-write-query", 10, "Switchover is canceled if a write query is running for this time")
 	monitorCmd.Flags().Int64Var(&conf.SwitchWaitTrx, "switchover-wait-trx", 10, "Switchover is cancel after this timeout in second if can't aquire FTWRL")
@@ -316,6 +314,11 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.MailSMTPPassword, "mail-smtp-password", "", "SMTP password")
 	}
 
+	monitorCmd.Flags().BoolVar(&conf.PRXServersReadOnMaster, "proxy-servers-read-on-master", false, "Should RO route via proxies point to master")
+	monitorCmd.Flags().BoolVar(&conf.PRXServersBackendCompression, "proxy-servers-backend-compression", false, "Proxy communicate with backends with compression")
+	monitorCmd.Flags().IntVar(&conf.PRXServersBackendMaxReplicationLag, "proxy-servers-backend-max-replication-lag", 30, "Max lag to send query to read  backends ")
+	monitorCmd.Flags().IntVar(&conf.PRXServersBackendMaxConnections, "proxy-servers-backend-max-connections", 1000, "Max connections on backends ")
+
 	monitorCmd.Flags().BoolVar(&conf.ExtProxyOn, "extproxy", false, "External proxy can be used to specify a route manage with external scripts")
 	monitorCmd.Flags().StringVar(&conf.ExtProxyVIP, "extproxy-address", "", "Network address when route is manage via external script,  host:[port] format")
 
@@ -384,8 +387,11 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.ProxysqlWriterHostgroup, "proxysql-writer-hostgroup", "0", "ProxySQL writer hostgroup")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlUser, "proxysql-user", "admin", "ProxySQL admin user")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlPassword, "proxysql-password", "admin", "ProxySQL admin password")
-		monitorCmd.Flags().BoolVar(&conf.ProxysqlCopyGrants, "proxysql-copy-grants", true, "Copy grants from master")
+		monitorCmd.Flags().BoolVar(&conf.ProxysqlCopyGrants, "proxysql-bootstrap-users", true, "Copy users from master")
+		monitorCmd.Flags().BoolVar(&conf.ProxysqlMultiplexing, "proxysql-multiplexing", false, "Multiplexing")
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlBootstrap, "proxysql-bootstrap", false, "Bootstrap ProxySQL backend servers and hostgroup")
+		monitorCmd.Flags().BoolVar(&conf.ProxysqlBootstrapVariables, "proxysql-bootstrap-variables", false, "Bootstrap ProxySQL backend servers and hostgroup")
+
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlBootstrapHG, "proxysql-bootstrap-hostgroups", false, "Bootstrap ProxySQL hostgroups")
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlBootstrapQueryRules, "proxysql-bootstrap-query-rules", false, "Bootstrap Query rules into ProxySQL")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "proxysql binary location")
@@ -636,6 +642,8 @@ func initRepmgrFlags(cmd *cobra.Command) {
 func initDeprecated() {
 	//not needed use Alias in server.go
 
+	monitorCmd.Flags().BoolVar(&conf.ProxysqlCopyGrants, "proxysql-copy-grants", true, "Deprecate copy grants from master")
+	monitorCmd.Flags().MarkDeprecated("proxysql-copy-grants", "Deprecated for proxysql-bootstrap-users")
 	monitorCmd.Flags().StringVar(&conf.BackupMyDumperPath, "mydumper-path", "/usr/bin/mydumper", "Deprecate Path to mydumper binary")
 	monitorCmd.Flags().MarkDeprecated("mydumper-path", "Deprecated for backup-mydumper-path")
 	monitorCmd.Flags().StringVar(&conf.BackupMyLoaderPath, "myloader-path", "/usr/bin/myloader", "Deprecate Path to myloader binary")

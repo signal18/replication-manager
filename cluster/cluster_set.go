@@ -198,16 +198,17 @@ func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 		cluster.LogPrintf(LvlInfo, "Disable Db Jobs SSH Execution ")
 		cluster.scheduler.Remove(cluster.idSchedulerDbsjobsSsh)
 	}
-
-	var err error
-	cluster.LogPrintf(LvlInfo, "Schedule Sla rotate at: %s", cluster.Conf.SchedulerJobsSSHCron)
-	cluster.idSchedulerDbsjobsSsh, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerJobsSSHCron, func() {
-		for _, s := range cluster.Servers {
-			s.JobRunViaSSH()
+	if cluster.Conf.SchedulerJobsSSH {
+		var err error
+		cluster.LogPrintf(LvlInfo, "Schedule Sla rotate at: %s", cluster.Conf.SchedulerJobsSSHCron)
+		cluster.idSchedulerDbsjobsSsh, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerJobsSSHCron, func() {
+			for _, s := range cluster.Servers {
+				s.JobRunViaSSH()
+			}
+		})
+		if err == nil {
+			cluster.Schedule["dbjobsssh"] = cluster.scheduler.Entry(cluster.idSchedulerDbsjobsSsh)
 		}
-	})
-	if err == nil {
-		cluster.Schedule["dbjobsssh"] = cluster.scheduler.Entry(cluster.idSchedulerDbsjobsSsh)
 	}
 }
 

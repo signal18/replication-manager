@@ -1037,6 +1037,9 @@ function (
       $scope.dbresetmaster = function (server) {
         if (confirm("Confirm reset master this may break replication when done on master, server-id : " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-master');
       };
+      $scope.dbresetslaveall = function (server) {
+        if (confirm("Confirm reset master this may break replication when done on master, server-id : " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-slave-all');
+      };
 
       $scope.dboptimize = function (server) {
         if (confirm("Confirm optimize for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/optimize');
