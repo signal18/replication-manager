@@ -116,6 +116,12 @@ func (cluster *Cluster) SwitchSchedulerBackupLogical() {
 
 func (cluster *Cluster) SwitchSchedulerBackupPhysical() {
 	cluster.Conf.SchedulerBackupPhysical = !cluster.Conf.SchedulerBackupPhysical
+	cluster.SetSchedulerBackupPhysical()
+}
+
+func (cluster *Cluster) SwitchSchedulerDbJobsSsh() {
+	cluster.Conf.SchedulerJobsSSH = !cluster.Conf.SchedulerJobsSSH
+	cluster.SetSchedulerDbJobsSsh()
 }
 
 func (cluster *Cluster) SwitchSchedulerDatabaseLogs() {

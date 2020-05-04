@@ -11,9 +11,12 @@ import (
 )
 
 func (cluster *Cluster) RollingReprov() error {
-	master := cluster.GetMaster()
+	masterID := cluster.GetMaster().Id
 	for _, slave := range cluster.slaves {
 		if !slave.IsDown() {
+			if !slave.IsMaintenance {
+				slave.SwitchMaintenance()
+			}
 			err := cluster.UnprovisionDatabaseService(slave)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
@@ -35,10 +38,20 @@ func (cluster *Cluster) RollingReprov() error {
 				return err
 			}
 
+			slave.WaitSyncToMaster(cluster.master)
+			slave.SwitchMaintenance()
 		}
 	}
 	cluster.SwitchoverWaitTest()
+	master := cluster.GetServerFromName(masterID)
+	if cluster.master.DSN == master.DSN {
+		cluster.LogPrintf(LvlErr, "Cancel rolling restart master is the same after Switchover")
+		return nil
+	}
 	if !master.IsDown() {
+		if !master.IsMaintenance {
+			master.SwitchMaintenance()
+		}
 		err := cluster.UnprovisionDatabaseService(master)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
@@ -59,6 +72,8 @@ func (cluster *Cluster) RollingReprov() error {
 			cluster.LogPrintf(LvlErr, "Cancel rolling reprov %s", err)
 			return err
 		}
+		master.WaitSyncToMaster(cluster.master)
+		master.SwitchMaintenance()
 		cluster.SwitchOver()
 	}
 	return nil
@@ -74,6 +89,9 @@ func (cluster *Cluster) RollingRestart() error {
 		if !slave.IsDown() {
 			//slave.SetMaintenance()
 			//proxy.
+			if !slave.IsMaintenance {
+				slave.SwitchMaintenance()
+			}
 			err := cluster.StopDatabaseService(slave)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.DSN, err)
@@ -93,6 +111,7 @@ func (cluster *Cluster) RollingRestart() error {
 			}
 		}
 		slave.WaitSyncToMaster(cluster.master)
+		slave.SwitchMaintenance()
 	}
 	cluster.SwitchoverWaitTest()
 	master := cluster.GetServerFromName(masterID)
@@ -102,6 +121,9 @@ func (cluster *Cluster) RollingRestart() error {
 	}
 	if master.IsDown() {
 		return errors.New("Cancel roolling restart master down")
+	}
+	if !master.IsMaintenance {
+		master.SwitchMaintenance()
 	}
 	err := cluster.StopDatabaseService(master)
 	if err != nil {
@@ -119,7 +141,7 @@ func (cluster *Cluster) RollingRestart() error {
 		return err
 	}
 	master.WaitSyncToMaster(cluster.master)
-
+	master.SwitchMaintenance()
 	cluster.SwitchOver()
 
 	return nil

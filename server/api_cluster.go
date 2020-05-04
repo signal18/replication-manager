@@ -912,6 +912,8 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchSchedulerBackupPhysical()
 		case "scheduler-db-servers-logs":
 			mycluster.SwitchSchedulerDatabaseLogs()
+		case "scheduler-db-servers-dbjobs":
+			mycluster.SwitchSchedulerDbJobsSsh()
 		case "scheduler-db-servers-logs-table-rotate":
 			mycluster.SwitchSchedulerDatabaseLogsTableRotate()
 		case "scheduler-rolling-restart":

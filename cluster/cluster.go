@@ -144,6 +144,7 @@ type Cluster struct {
 	idSchedulerLogRotateTable     cron.EntryID                `json:"-"`
 	idSchedulerSLARotate          cron.EntryID                `json:"-"`
 	idSchedulerRollingRestart     cron.EntryID                `json:"-"`
+	idSchedulerDbsjobsSsh         cron.EntryID                `json:"-"`
 	idSchedulerRollingReprov      cron.EntryID                `json:"-"`
 	WaitingRejoin                 int                         `json:"waitingRejoin"`
 	WaitingSwitchover             int                         `json:"waitingSwitchover"`
@@ -346,7 +347,8 @@ func (cluster *Cluster) initScheduler() {
 		cluster.SetSchedulerRollingRestart()
 		cluster.SetSchedulerRollingReprov()
 		cluster.SetSchedulerSlaRotate()
-
+		cluster.SetSchedulerRollingRestart()
+		cluster.SetSchedulerDbJobsSsh()
 		cluster.scheduler.Start()
 	}
 
