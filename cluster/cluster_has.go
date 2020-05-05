@@ -92,7 +92,7 @@ func (cluster *Cluster) IsInPreferedHosts(server *ServerMonitor) bool {
 }
 
 func (cluster *Cluster) IsInCaptureMode() bool {
-	if !cluster.Conf.MonitorCapture {
+	if !cluster.Conf.MonitorCapture || cluster.IsNotMonitoring {
 		return false
 	}
 	for _, server := range cluster.Servers {
