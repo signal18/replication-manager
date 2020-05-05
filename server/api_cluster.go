@@ -914,7 +914,7 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchSchedulerBackupPhysical()
 		case "scheduler-db-servers-logs":
 			mycluster.SwitchSchedulerDatabaseLogs()
-		case "scheduler-db-servers-dbjobs":
+		case "scheduler-db-servers-jobs-ssh":
 			mycluster.SwitchSchedulerDbJobsSsh()
 		case "scheduler-db-servers-logs-table-rotate":
 			mycluster.SwitchSchedulerDatabaseLogsTableRotate()
@@ -1090,6 +1090,8 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetSchedulerRollingRestartCron(vars["settingValue"])
 		case "scheduler-sla-rotate-cron":
 			mycluster.SetSchedulerSlaRotateCron(vars["settingValue"])
+		case "scheduler-jobs-ssh-cron":
+			mycluster.SetSchedulerJobsSshCron(vars["settingValue"])
 		}
 	} else {
 		http.Error(w, "No cluster", 500)

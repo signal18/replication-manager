@@ -1303,6 +1303,30 @@ function (
       if (confirm("Confirm save RollingReprov scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-rolling-reprov-cron/'+value);
     };
 
+    $scope.saveJobsSshCron = function (selectedJobsSshHour,selectedJobsSshMin,selectedJobsSshSec,selectedJobsSshDay,selectedJobsSshMonth,selectedJobsSshWeek,selectedJobsSshHourTo,selectedJobsSshMinTo,selectedJobsSshSecTo,selectedJobsSshDayTo,selectedJobsSshMonthTo,selectedJobsSshWeekTo,selectedJobsSshHourPer,selectedJobsSshMinPer,selectedJobsSshSecPer) {
+      value= selectedJobsSshSec;
+      if (selectedJobsSshSecTo !== undefined )   value += '-' + selectedJobsSshSecTo;
+      if (selectedJobsSshSecPer !== undefined )   value += '/' + selectedJobsSshSecPer;
+
+      value += ' ' + selectedJobsSshMin;
+      if (selectedJobsSshMinTo !== undefined )   value += '-' + selectedJobsSshMinTo;
+      if (selectedJobsSshMinPer !== undefined )   value += '/' + selectedJobsSshMinPer;
+
+      value += ' ' + selectedJobsSshHour;
+      if (selectedJobsSshHourTo !== undefined )   value += '-' + selectedJobsSshHourTo;
+      if (selectedJobsSshHourPer !== undefined )   value += '-' + selectedJobsSshHourPer;
+
+      value += ' ' + selectedJobsSshDay;
+      if (selectedJobsSshDayTo !== undefined )   value += '-' + selectedJobsSshDayTo;
+      value += ' ' + selectedJobsSshMonth;
+      if (selectedJobsSshMonthTo !== undefined )   value += '-' + selectedJobsSshMonthTo;
+
+      value += ' ' + selectedJobsSshWeek;
+      if (selectedJobsSshWeekTo !== undefined )   value += '-' + selectedJobsSshWeekTo;
+
+      if (confirm("Confirm save JobsSsh scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-jobs-ssh-cron/'+value);
+    };
+
     $scope.saveSlaRotateCron = function (selectedSlaRotateHour,selectedSlaRotateMin,selectedSlaRotateSec,selectedSlaRotateDay,selectedSlaRotateMonth,selectedSlaRotateWeek,selectedSlaRotateHourTo,selectedSlaRotateMinTo,selectedSlaRotateSecTo,selectedSlaRotateDayTo,selectedSlaRotateMonthTo,selectedSlaRotateWeekTo,selectedSlaRotateHourPer,selectedSlaRotateMinPer,selectedSlaRotateSecPer) {
       value= selectedSlaRotateSec;
       if (selectedSlaRotateSecTo !== undefined )   value += '-' + selectedSlaRotateSecTo;

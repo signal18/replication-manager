@@ -845,6 +845,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_NAME%%":                                  server.Name,
 		"%%ENV:SVC_CONF_ENV_SST_METHOD%%":                   server.ClusterGroup.Conf.MultiMasterWsrepSSTMethod,
 		"%%ENV:SVC_CONF_ENV_DOMAIN_ID%%":                    server.ClusterGroup.Conf.ProvDomain,
+		"%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%":            server.SSTPort,
 	}
 
 	//	size = ` + collector.ProvDisk + `

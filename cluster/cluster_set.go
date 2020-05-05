@@ -821,6 +821,12 @@ func (cluster *Cluster) SetSchedulerRollingReprovCron(value string) error {
 	return nil
 }
 
+func (cluster *Cluster) SetSchedulerJobsSshCron(value string) error {
+	cluster.Conf.SchedulerJobsSSHCron = value
+	cluster.SetSchedulerDbJobsSsh()
+	return nil
+}
+
 func (cluster *Cluster) SetDbServerHosts(value string) error {
 	cluster.Conf.Hosts = value
 	cluster.hostList = strings.Split(value, ",")
