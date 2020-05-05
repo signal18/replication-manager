@@ -59,7 +59,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 
 				} else {
 					server.ClusterGroup.rejoinCond.Send <- true
-					return errors.New("No crash")
+					return errors.New("No Autoseed")
 				}
 			}
 			if server.ClusterGroup.Conf.AutorejoinBackupBinlog == true {

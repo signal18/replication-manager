@@ -883,6 +883,8 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchFailoverEventScheduler()
 		case "autorejoin":
 			mycluster.SwitchRejoin()
+		case "autoseed":
+			mycluster.SwitchAutoseed()
 		case "autorejoin-backup-binlog":
 			mycluster.SwitchRejoinBackupBinlog()
 		case "autorejoin-flashback":
@@ -939,6 +941,16 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchMonitoringCapture()
 		case "proxysql-copy-grants":
 			mycluster.SwitchProxysqlCopyGrants()
+		case "proxysql-bootstrap-users":
+			mycluster.SwitchProxysqlCopyGrants()
+		case "proxysql-bootstrap-variables":
+			mycluster.SwitchProxysqlBootstrapVariables()
+		case "proxysql-bootstrap-hostgroups":
+			mycluster.SwitchProxysqlBootstrapHostgroups()
+		case "proxysql-bootstrap-servers":
+			mycluster.SwitchProxysqlBootstrapServers()
+		case "proxysql-bootstrap-query-rules":
+			mycluster.SwitchProxysqlBootstrapQueryRules()
 		case "proxysql-bootstrap":
 			mycluster.SwitchProxysqlBootstrap()
 		case "database-hearbeat":

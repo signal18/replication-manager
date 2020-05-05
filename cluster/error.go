@@ -146,4 +146,5 @@ var clusterError = map[string]string{
 	"WARN0096": "Restart database server via job request %s",
 	"WARN0097": "Stop database server via job request %s",
 	"WARN0098": "ProxySQL could not load global variables from runtime (%s)",
+	"WARN0099": "MariaDB version as replication issue https://jira.mariadb.org/browse/MDEV-20821",
 }

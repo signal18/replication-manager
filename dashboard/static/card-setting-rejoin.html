@@ -105,6 +105,19 @@
             </md-switch>
             </td>
         </tr>
-
+        <tr>
+            <th>Auto seed from backup standalone server</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.autoseed"
+                           ng-click="switchsettings('autoseed')"
+                           aria-label="Auto seed with backup">
+                    <span ng-if="selectedCluster.config.autoseed" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.autoseed" class="label label-warning">Off</span>
+            </td>
+            </md-switch>
+            </td>
+        </tr>
     </table>
 </md-card>

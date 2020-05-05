@@ -377,14 +377,18 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 	wg.Wait()
 	if err := dumpCmd.Wait(); err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "MyLoader: %s", err)
+		return
 	}
 	server.ClusterGroup.LogPrintf(LvlInfo, "Finish logical restaure %s for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
+	server.Refresh()
 	if server.IsSlave {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Parsing mydumper metadata ")
 		meta, err := server.JobMyLoaderParseMeta(server.ClusterGroup.master.GetBackupDirectory())
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "MyLoader metadata parsing: %s", err)
 		}
 		if server.IsMariaDB() && server.HaveMariaDBGTID {
+			server.ClusterGroup.LogPrintf(LvlInfo, "Starting slave with mydumper metadata")
 			server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='" + meta.BinLogUuid + "'")
 			server.StartSlave()
 		}

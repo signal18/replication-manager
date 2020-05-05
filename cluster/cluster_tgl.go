@@ -65,6 +65,10 @@ func (cluster *Cluster) SwitchRejoin() {
 	cluster.Conf.Autorejoin = !cluster.Conf.Autorejoin
 }
 
+func (cluster *Cluster) SwitchAutoseed() {
+	cluster.Conf.Autoseed = !cluster.Conf.Autoseed
+}
+
 func (cluster *Cluster) SwitchRejoinDump() {
 	cluster.Conf.AutorejoinMysqldump = !cluster.Conf.AutorejoinMysqldump
 }
@@ -170,6 +174,20 @@ func (cluster *Cluster) SwitchProxysqlBootstrap() {
 
 func (cluster *Cluster) SwitchProxysqlCopyGrants() {
 	cluster.Conf.ProxysqlCopyGrants = !cluster.Conf.ProxysqlCopyGrants
+}
+
+func (cluster *Cluster) SwitchProxysqlBootstrapVariables() {
+	cluster.Conf.ProxysqlBootstrapVariables = !cluster.Conf.ProxysqlBootstrapVariables
+}
+
+func (cluster *Cluster) SwitchProxysqlBootstrapServers() {
+	cluster.Conf.ProxysqlBootstrap = !cluster.Conf.ProxysqlBootstrap
+}
+func (cluster *Cluster) SwitchProxysqlBootstrapHostgroups() {
+	cluster.Conf.ProxysqlBootstrapHG = !cluster.Conf.ProxysqlBootstrapHG
+}
+func (cluster *Cluster) SwitchProxysqlBootstrapQueryRules() {
+	cluster.Conf.ProxysqlBootstrapQueryRules = !cluster.Conf.ProxysqlBootstrapQueryRules
 }
 
 func (cluster *Cluster) SwitchMonitoringSchemaChange() {
