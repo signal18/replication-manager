@@ -1031,14 +1031,17 @@ function (
       $scope.dbstartslave = function (server) {
         if (confirm("Confirm start slave on server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/start-slave');
       };
+
       $scope.dbstopslave = function (server) {
-        if (confirm("Confirm start slave on server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/stop-slave');
+        if (confirm("Confirm stop slave on server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/stop-slave');
       };
+
       $scope.dbresetmaster = function (server) {
         if (confirm("Confirm reset master this may break replication when done on master, server-id : " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-master');
       };
+
       $scope.dbresetslaveall = function (server) {
-        if (confirm("Confirm reset master this may break replication when done on master, server-id : " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-slave-all');
+        if (confirm("Confirm reset slave this will break replication on, server-id : " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-slave-all');
       };
 
       $scope.dboptimize = function (server) {

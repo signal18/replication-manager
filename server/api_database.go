@@ -785,6 +785,7 @@ func (repman *ReplicationManager) handlerMuxServerResetSlaveAll(w http.ResponseW
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
+			node.StopSlave()
 			node.ResetSlave()
 		} else {
 			http.Error(w, "Server Not Found", 500)
