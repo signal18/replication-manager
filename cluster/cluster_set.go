@@ -695,7 +695,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			cluster.newServerList()
 			wg := new(sync.WaitGroup)
 			wg.Add(1)
-			cluster.TopologyDiscover(wg)
+			go cluster.TopologyDiscover(wg)
 			wg.Wait()
 			cluster.sme.RemoveFailoverState()
 			cluster.Conf.ProxysqlOn = true

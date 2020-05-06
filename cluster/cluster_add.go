@@ -24,7 +24,8 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 	cluster.sme.SetFailoverState()
 	cluster.newServerList()
 	wg := new(sync.WaitGroup)
-	cluster.TopologyDiscover(wg)
+	wg.Add(1)
+	go cluster.TopologyDiscover(wg)
 	wg.Wait()
 	cluster.sme.RemoveFailoverState()
 	return nil

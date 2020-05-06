@@ -92,7 +92,7 @@ func (psql *ProxySQL) AddHostgroups(clustername string) error {
 }
 
 func (psql *ProxySQL) AddServerAsReader(host string, port string, weight string, max_replication_lag string, max_connections string, compression string) error {
-	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id,hostname, port,weight,max_replication_lag,max_connections) VALUES('%s','%s','%s','%s','%s','%s','%s')", psql.ReaderHG, host, port, weight, max_replication_lag, max_connections, compression)
+	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id,hostname, port,weight,max_replication_lag,max_connections,compression) VALUES('%s','%s','%s','%s','%s','%s','%s')", psql.ReaderHG, host, port, weight, max_replication_lag, max_connections, compression)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
