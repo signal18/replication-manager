@@ -1447,19 +1447,19 @@ function (
       $scope.changemaxdelay = function (delay) {
           if (confirm("Confirm change delay  "+delay.toString()))   httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/failover-max-slave-delay/' + delay);
       };
+      $scope.changeproxiesmaxconnections = function (delay) {
+          if (confirm("Confirm change backends max connections  "+delay.toString()))   httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/proxy-servers-backend-max-replication-lag/' + delay);
+      };
+      $scope.changeproxiesmaxdelay = function (delay) {
+          if (confirm("Confirm change delay  "+delay.toString()))   httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/proxy-servers-backend-max-replication-lag/' + delay);
+      };
 
-  /*    $scope.$watch('settings.maxdelay', function (newVal, oldVal) {
-        if (typeof newVal != 'undefined') {
-           httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/failover-max-slave-delay/' + newVal);
-        }
-      });
-*/
+
       $scope.setsettings = function (setting, value) {
         httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
       };
 
       $scope.openCluster = function (cluster) {
-    //    $scope.refreshInterval = 2000;
         $scope.selectedClusterName = cluster;
       };
 

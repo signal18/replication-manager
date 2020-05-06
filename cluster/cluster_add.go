@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/proxysql"
@@ -22,7 +23,9 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 	}
 	cluster.sme.SetFailoverState()
 	cluster.newServerList()
-	cluster.TopologyDiscover()
+	wg := new(sync.WaitGroup)
+	cluster.TopologyDiscover(wg)
+	wg.Wait()
 	cluster.sme.RemoveFailoverState()
 	return nil
 }

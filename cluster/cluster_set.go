@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -692,7 +693,10 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 
 			cluster.sme.SetFailoverState()
 			cluster.newServerList()
-			cluster.TopologyDiscover()
+			wg := new(sync.WaitGroup)
+			wg.Add(1)
+			cluster.TopologyDiscover(wg)
+			wg.Wait()
 			cluster.sme.RemoveFailoverState()
 			cluster.Conf.ProxysqlOn = true
 			cluster.Conf.ProxysqlHosts = ""
@@ -794,6 +798,24 @@ func (cluster *Cluster) SetSchedulerDbServersOptimizeCron(value string) error {
 func (cluster *Cluster) SetSchedulerDbServersLogsCron(value string) error {
 	cluster.Conf.BackupDatabaseLogCron = value
 	cluster.SetSchedulerBackupLogs()
+	return nil
+}
+
+func (cluster *Cluster) SetProxyServersBackendMaxConnections(value string) error {
+	numvalue, err := strconv.Atoi(value)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.PRXServersBackendMaxConnections = numvalue
+	return nil
+}
+
+func (cluster *Cluster) SetProxyServersBackendMaxReplicationLag(value string) error {
+	numvalue, err := strconv.Atoi(value)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.PRXServersBackendMaxReplicationLag = numvalue
 	return nil
 }
 

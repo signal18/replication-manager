@@ -168,6 +168,18 @@ func (cluster *Cluster) SwitchFailoverEventStatus() {
 	cluster.Conf.FailEventStatus = !cluster.Conf.FailEventStatus
 }
 
+func (cluster *Cluster) SwitchProxyServersBackendCompression() {
+	cluster.Conf.PRXServersBackendCompression = !cluster.Conf.PRXServersBackendCompression
+}
+
+func (cluster *Cluster) SwitchProxyServersReadOnMaster() {
+	cluster.Conf.PRXServersReadOnMaster = !cluster.Conf.PRXServersReadOnMaster
+}
+
+func (cluster *Cluster) SwitchProxySQL() {
+	cluster.Conf.ProxysqlOn = !cluster.Conf.ProxysqlOn
+}
+
 func (cluster *Cluster) SwitchProxysqlBootstrap() {
 	cluster.Conf.ProxysqlBootstrap = !cluster.Conf.ProxysqlBootstrap
 }

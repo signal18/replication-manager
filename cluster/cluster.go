@@ -357,7 +357,7 @@ func (cluster *Cluster) initScheduler() {
 func (cluster *Cluster) Run() {
 
 	interval := time.Second
-
+	wg := new(sync.WaitGroup)
 	for cluster.exit == false {
 		cluster.ServerIdList = cluster.GetDBServerIdList()
 		cluster.ProxyIdList = cluster.GetProxyServerIdList()
@@ -392,20 +392,26 @@ func (cluster *Cluster) Run() {
 					}
 				}
 			}
-			cluster.TopologyDiscover()
-			cluster.IsFailable = cluster.GetStatus()
+			wg.Add(1)
+			go cluster.TopologyDiscover(wg)
+			wg.Add(1)
+
+			// Heartbeat switchover or failover controller runs only on active repman
+			go cluster.Heartbeat(wg)
 			if cluster.runOnceAfterTopology {
+
 				if cluster.GetMaster() != nil {
 					cluster.initProxies()
 					cluster.runOnceAfterTopology = false
 				}
 			} else {
-				cluster.refreshProxies()
+				wg.Add(1)
+				go cluster.refreshProxies(wg)
 				if cluster.sme.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.sme.IsInSchemaMonitor() {
 					go cluster.MonitorSchema()
 				}
 				if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
-					go cluster.InjectTraffic()
+					cluster.InjectProxiesTraffic()
 				}
 				if cluster.sme.GetHeartbeats()%30 == 0 {
 					cluster.MonitorQueryRules()
@@ -423,11 +429,10 @@ func (cluster *Cluster) Run() {
 					cluster.sme.PreserveState("WARN0094")
 				}
 			}
-
 			// split brain management
-			cluster.Heartbeat()
+			wg.Wait()
 
-			// switchover or failover controller runs only on active repman
+			cluster.IsFailable = cluster.GetStatus()
 			// CheckFailed trigger failover code if passing all false positiv and constraints
 			cluster.CheckFailed()
 			cluster.StateProcessing()
@@ -577,7 +582,10 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Conf = conf
 	cluster.sme.SetFailoverState()
 	cluster.newServerList()
-	cluster.TopologyDiscover()
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	cluster.TopologyDiscover(wg)
+	wg.Wait()
 	cluster.sme.RemoveFailoverState()
 }
 
@@ -598,7 +606,12 @@ func (cluster *Cluster) FailoverForce() error {
 	//if err != nil {
 	//	return err
 	//}
-	err = cluster.TopologyDiscover()
+
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	err = cluster.TopologyDiscover(wg)
+	wg.Wait()
+
 	if err != nil {
 		for _, s := range cluster.sme.GetStates() {
 			cluster.LogPrint(s)

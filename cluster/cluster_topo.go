@@ -98,7 +98,8 @@ func (cluster *Cluster) AddChildServers() error {
 
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
-func (cluster *Cluster) TopologyDiscover() error {
+func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
+	defer wcg.Done()
 	cluster.AddChildServers()
 	//monitor ignored server fist so that their replication position get oldest
 	wg := new(sync.WaitGroup)

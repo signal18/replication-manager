@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -332,7 +333,7 @@ func (cluster *Cluster) newProxy(p *Proxy) (*Proxy, error) {
 	return proxy, nil
 }
 
-func (cluster *Cluster) InjectTraffic() {
+func (cluster *Cluster) InjectProxiesTraffic() {
 	var definer string
 	// Found server from ServerId
 	if cluster.GetMaster() != nil {
@@ -431,7 +432,8 @@ func (cluster *Cluster) backendStateChangeProxies() {
 }
 
 // Used to monitor proxies call by main monitor loop
-func (cluster *Cluster) refreshProxies() {
+func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
+	defer wcg.Done()
 
 	for _, pr := range cluster.Proxies {
 		var err error

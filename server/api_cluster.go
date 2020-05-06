@@ -914,7 +914,7 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchSchedulerBackupPhysical()
 		case "scheduler-db-servers-logs":
 			mycluster.SwitchSchedulerDatabaseLogs()
-		case "scheduler-db-servers-jobs-ssh":
+		case "scheduler-jobs-ssh":
 			mycluster.SwitchSchedulerDbJobsSsh()
 		case "scheduler-db-servers-logs-table-rotate":
 			mycluster.SwitchSchedulerDatabaseLogsTableRotate()
@@ -929,6 +929,7 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 		case "graphite-embedded":
 			mycluster.SwitchGraphiteEmbedded()
 		case "shardproxy-copy-grants":
+			mycluster.SwitchProxysqlCopyGrants()
 		case "monitoring-save-config":
 			mycluster.SwitchMonitoringSaveConfig()
 		case "monitoring-queries":
@@ -953,6 +954,12 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchProxysqlBootstrapQueryRules()
 		case "proxysql-bootstrap":
 			mycluster.SwitchProxysqlBootstrap()
+		case "proxysql":
+			mycluster.SwitchProxySQL()
+		case "proxy-servers-read-on-master":
+			mycluster.SwitchProxyServersReadOnMaster()
+		case "proxy-servers-backend-compression":
+			mycluster.SwitchProxyServersBackendCompression()
 		case "database-hearbeat":
 			mycluster.SwitchTraffic()
 		case "test":
@@ -1092,6 +1099,11 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetSchedulerSlaRotateCron(vars["settingValue"])
 		case "scheduler-jobs-ssh-cron":
 			mycluster.SetSchedulerJobsSshCron(vars["settingValue"])
+		case "proxy-servers-backend-max-connections":
+			mycluster.SetProxyServersBackendMaxConnections(vars["settingValue"])
+		case "proxy-servers-backend-max-replication-lag":
+			mycluster.SetProxyServersBackendMaxReplicationLag(vars["settingValue"])
+
 		}
 	} else {
 		http.Error(w, "No cluster", 500)

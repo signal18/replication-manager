@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -472,7 +473,10 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			server.Refresh()
 		}
 	}
-	err = cluster.TopologyDiscover()
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	err = cluster.TopologyDiscover(wg)
+	wg.Wait()
 	if err == nil {
 		return errors.New("Environment already has an existing master/slave setup")
 	}
@@ -706,7 +710,9 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 	}
 	cluster.sme.RemoveFailoverState()
 	// speed up topology discovery
-	cluster.TopologyDiscover()
+	wg.Add(1)
+	cluster.TopologyDiscover(wg)
+	wg.Wait()
 
 	//bootstrapChan <- true
 	return nil

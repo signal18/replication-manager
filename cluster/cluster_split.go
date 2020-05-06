@@ -18,13 +18,16 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/utils/state"
 )
 
 //Heartbeat call from main cluster loop
-func (cluster *Cluster) Heartbeat() {
+func (cluster *Cluster) Heartbeat(wg *sync.WaitGroup) {
+
+	defer wg.Done()
 	if cluster.Conf.Arbitration {
 		if cluster.IsSplitBrain {
 			err := cluster.SetArbitratorReport()
