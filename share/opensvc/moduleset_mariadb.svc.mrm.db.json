@@ -1812,8 +1812,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_network.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# NETWORK\\n# ------- \\n\\n[mysqld]\\n\\nport=%%ENV:SERVER_PORT%%\\nmax_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%M \\nmax_user_connections = 450\\nthread_cache_size = 128\\nback_log = 128 \\nskip_name_resolve = 1\\nmax_allowed_packet = 512M\\nquery_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%M \"}",
-                    "var_updated": "2020-05-07 11:13:12",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_network.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# NETWORK\\n# ------- \\n\\n[mysqld]\\n\\nport=%%ENV:SERVER_PORT%%\\nmax_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%% \\nmax_user_connections = 450\\nthread_cache_size = 128\\nback_log = 128 \\nskip_name_resolve = 1\\nmax_allowed_packet = 512M\\nquery_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%M \"}",
+                    "var_updated": "2020-05-07 18:09:32",
                     "var_name": "db_cnf_default_network",
                     "id": 5915
                 },
