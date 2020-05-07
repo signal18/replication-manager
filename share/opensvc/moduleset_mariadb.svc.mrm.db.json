@@ -4118,8 +4118,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_with_chraset_utf8bm4ci.cnf\",\"target\":\"../with_chraset_utf8bm4ci.cnf\"}",
-                    "var_updated": "2020-04-03 18:08:58",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_with_charset_utf8bm4ci.cnf\",\"target\":\"../with_charset_utf8bm4ci.cnf\"}",
+                    "var_updated": "2020-05-07 16:41:52",
                     "var_name": "db_link_charsetmb4ci",
                     "id": 6124
                 }
@@ -4142,8 +4142,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_with_chraset_utf8bm4cs.cnf\",\"target\":\"../with_chraset_utf8bm4cs.cnf\"}",
-                    "var_updated": "2020-04-03 18:20:26",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_with_charset_utf8bm4cs.cnf\",\"target\":\"../with_charset_utf8bm4cs.cnf\"}",
+                    "var_updated": "2020-05-07 16:42:04",
                     "var_name": "db_link_charsetmb4cs",
                     "id": 6125
                 }
@@ -4166,8 +4166,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_with_chraset_utf8cs.cnf\",\"target\":\"../with_chraset_utf8cs.cnf\"}",
-                    "var_updated": "2020-04-03 18:21:39",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_with_charset_utf8cs.cnf\",\"target\":\"../with_charset_utf8cs.cnf\"}",
+                    "var_updated": "2020-05-07 16:42:35",
                     "var_name": "db_link_charsetutf8cs",
                     "id": 6126
                 }
@@ -4190,8 +4190,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_with_chraset_utf8ci.cnf\",\"target\":\"../with_chraset_utf8ci.cnf\"}",
-                    "var_updated": "2020-04-03 18:22:48",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_with_charset_utf8ci.cnf\",\"target\":\"../with_charset_utf8ci.cnf\"}",
+                    "var_updated": "2020-05-07 16:42:21",
                     "var_name": "db_link_charsetutf8cs",
                     "id": 6127
                 }
