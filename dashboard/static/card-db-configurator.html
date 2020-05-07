@@ -6,18 +6,82 @@
          </tr>
 
      </table>
-       <div style="padding: 0px 20px 10px 4px;">
-         <b><u>Available</u></b><br>
-         <span  ng-click="cladddbtag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingDBTags"
-                                                    class="label label-danger">{{ tag.name }} <i class="fa fa-plus-circle" ng-click="cladddbtag(tag.name)"></i></span> </div>
 
+         <div layout="column" layout-gt-xs="row">
+             <div flex-gt-xs="25" class="col-lg-25">
+         <div style="padding: 0px 20px 10px 4px;">
+         <b><u>Replication</u></b><br></div>
+
+         <span  ng-if="tag.category=='replication'" ng-click="cladddbtag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingDBTags"
+                                                    class="label label-danger">{{ tag.name }} <i class="fa fa-plus-circle" ng-click="cladddbtag(tag.name)"></i></span>
+           <div style="padding: 0px 20px 10px 4px;">
+          <b><u>Logs</u></b></div>
+          <span  ng-if="tag.category=='log'" ng-click="cladddbtag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingDBTags"
+                                                     class="label label-danger">{{ tag.name }} <i class="fa fa-plus-circle" ng-click="cladddbtag(tag.name)"></i></span>
+           <div style="padding: 0px 20px 10px 4px;">
+          <b><u>Engines</u></b></div>
+          <span  ng-if="tag.category=='engine'" ng-click="cladddbtag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingDBTags"
+                                                     class="label label-danger">{{ tag.name }} <i class="fa fa-plus-circle" ng-click="cladddbtag(tag.name)"></i></span>
+          </div>
+          <div flex-gt-xs="25" class="col-lg-25">
+          <div style="padding: 0px 20px 10px 4px;">
+          <b><u>Optimizer</u></b></div>
+          <span  ng-if="tag.category=='optimizer'" ng-click="cladddbtag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingDBTags"
+                                                     class="label label-danger">{{ tag.name }} <i class="fa fa-plus-circle" ng-click="cladddbtag(tag.name)"></i></span>
+           </div>
+          <div flex-gt-xs="25" class="col-lg-25">
+          <div style="padding: 0px 20px 10px 4px;">
+
+          <b><u>Disk</u></b></div>
+          <span  ng-if="tag.category=='disk'" ng-click="cladddbtag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingDBTags"
+                                                     class="label label-danger">{{ tag.name }} <i class="fa fa-plus-circle" ng-click="cladddbtag(tag.name)"></i></span>
+  <div style="padding: 0px 20px 10px 4px;">
+          <b><u>Network</u></b></div>
+          <span  ng-if="tag.category=='network'" ng-click="cladddbtag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingDBTags"
+                                                     class="label label-danger">{{ tag.name }} <i class="fa fa-plus-circle" ng-click="cladddbtag(tag.name)"></i></span>
+           </div>
+
+           <div flex-gt-xs="25" class="col-lg-25">
+  <div style="padding: 0px 20px 10px 4px;">
+          <b><u>Security</u></b></div>
+          <span  ng-if="tag.category=='security'" ng-click="cladddbtag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingDBTags"
+                                                     class="label label-danger">{{ tag.name }} <i class="fa fa-plus-circle" ng-click="cladddbtag(tag.name)"></i></span>
+  <div style="padding: 0px 20px 10px 4px;">
+          <b><u>Charsets</u></b></div>
+          <span  ng-if="tag.category=='charset'" ng-click="cladddbtag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingDBTags"
+                                                     class="label label-danger">{{ tag.name }} <i class="fa fa-plus-circle" ng-click="cladddbtag(tag.name)"></i></span>
+  <div style="padding: 0px 20px 10px 4px;">
+          <b><u>System</u></b></div>
+          <span  ng-if="tag.category=='system'" ng-click="cladddbtag(tag.name)" style="display:inline-block;margin: 2px;" ng-repeat="tag in missingDBTags"
+                                                     class="label label-danger">{{ tag.name }} <i class="fa fa-plus-circle" ng-click="cladddbtag(tag.name)"></i></span>
+
+      </div></div>
 
  <BR>
+   <div layout="column" layout-gt-xs="row">
+       <div flex-gt-xs="50" class="col-lg-50">
      <div style="padding: 0px 20px 10px 4px;">
-       <b><u>Using</u></b><br>
-       <span ng-click="cldropdbtag(tag)" style="display:inline-block;;margin: 2px;" ng-repeat="tag in selectedCluster.dbServersTags"
-                                                    class="label label-success">{{ tag }} <i class="fa fa-minus-circle" ng-click="cldropdbtag(tag)"></i></span></div>
+       <b><u>Using</u></b>
+     </div>
+         <span ng-click="cldropdbtag(tag)" style="display:inline-block;;margin: 2px;" ng-repeat="tag in selectedCluster.dbServersTags"
+                                                    class="label label-success">{{ tag }} <i class="fa fa-minus-circle" ng-click="cldropdbtag(tag)"></i></span>
+         </div>
+          <div flex-gt-xs="50" class="col-lg-50">
+            <div style="padding: 0px 20px 10px 4px;">
+              <b><u>Connections</u></b>
+            </div>
+             <table><tr><td><ng-gauge type="arch" value="selectedCluster.config.provDbMaxConnections" thick="5" size="120"   min="1" max="25600"  cap="round" append="MB" label="Connections" />
+  </td><td>
+            <span  ng-click="clsetdbconns(selectedCluster.config.provDbMaxConnections,200)" style="display:inline-block;margin: 2px;"
+                                                        class="label label-success">200 <i class="fa fa-plus-circle" ng-click="clsetdbconns(selectedCluster.config.provDbMaxConnections,200)"></i></span>
+          <BR>
+           <span  ng-click="clsetdbconns(selectedCluster.config.provDbMaxConnections,-200)" style="display:inline-block;margin: 2px;"
+                                                    class="label label-danger">200 <i class="fa fa-minus-circle" ng-click="clsetdbconns(selectedCluster.config.provDbMaxConnections,-200)"></i></span>
+          </td><tr></table>
+          </div>
+       </div>
        <b><u>Ressources</u></b><br>
+
  <table><tr><td>
    <ng-gauge type="arch" value="selectedCluster.config.provDbMemory" thick="5" size="120"   min="1" max="25600"  cap="round" append="MB" label="Memory" />
  </td><td>
@@ -55,4 +119,3 @@
 
      </tr></table>
  </md-card>
- 

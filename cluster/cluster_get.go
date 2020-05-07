@@ -558,8 +558,9 @@ func (cluster *Cluster) GetDBModuleTags() []Tag {
 	for _, value := range cluster.DBModule.Filtersets {
 		var t Tag
 		t.Id = value.ID
-		s := strings.SplitAfter(value.Name, ".")
+		s := strings.Split(value.Name, ".")
 		t.Name = s[len(s)-1]
+		t.Category = s[len(s)-2]
 		tags = append(tags, t)
 	}
 	return tags
@@ -579,6 +580,10 @@ func (cluster *Cluster) GetProxyModuleTags() []Tag {
 		tags = append(tags, t)
 	}
 	return tags
+}
+
+func (cluster *Cluster) GetConfigMaxConnections() string {
+	return strconv.Itoa(cluster.Conf.ProvMaxConnections)
 }
 
 // GetConfigInnoDBBPSize configure 80% of the ConfigMemory in Megabyte

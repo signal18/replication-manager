@@ -496,10 +496,12 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.ProvMemSharedPct, "prov-db-memory-shared-pct", "threads:16,innodb:60,myisam:10,aria:10,rocksdb:1,tokudb:1,s3:1,archive:1,querycache:0", "% memory shared per buffer")
 	monitorCmd.Flags().StringVar(&conf.ProvMemThreadedPct, "prov-db-memory-threaded-pct", "tmp:70,join:20,sort:10", "% memory allocted per threads")
 	monitorCmd.Flags().StringVar(&conf.ProvDisk, "prov-db-disk-size", "20", "Disk in g for micro service VM")
+	monitorCmd.Flags().IntVar(&conf.ProvMaxConnections, "prov-db-max-connections", 1000, "Max database connections")
 	monitorCmd.Flags().StringVar(&conf.ProvProxTags, "prov-proxy-tags", "masterslave,docker,linux,noreadwritesplit", "playbook configuration tags wsrep,multimaster,masterslave")
 	monitorCmd.Flags().StringVar(&conf.ProvProxDisk, "prov-proxy-disk-size", "20", "Disk in g for micro service VM")
 	monitorCmd.Flags().StringVar(&conf.ProvProxCores, "prov-proxy-cpu-cores", "1", "Cpu cores ")
 	monitorCmd.Flags().StringVar(&conf.ProvProxMem, "prov-proxy-memory", "1", "Memory usage in giga bytes")
+
 	monitorCmd.Flags().StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "http://gsx2json.com/api?id=130326CF_SPaz-flQzCRPE-w7FjzqU1NqbsM7MpIQ_oU&sheet=1&columns=false", "URL to json service plan list")
 	monitorCmd.Flags().StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
 	monitorCmd.Flags().BoolVar(&conf.Test, "test", true, "Enable non regression tests")

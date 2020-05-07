@@ -183,8 +183,9 @@ type Alerts struct {
 }
 
 type Tag struct {
-	Id   uint   `json:"id"`
-	Name string `json:"name"`
+	Id       uint   `json:"id"`
+	Name     string `json:"name"`
+	Category string `json:"category"`
 }
 
 const (

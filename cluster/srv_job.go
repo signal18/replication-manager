@@ -282,7 +282,7 @@ func (server *ServerMonitor) ErrorLogWatcher() {
 	for line := range server.ErrorLogTailer.Lines {
 		var log s18log.HttpMessage
 		itext := strings.Index(line.Text, "]")
-		if itext != -1 {
+		if itext != -1 && len(line.Text) > itext+2 {
 			log.Text = line.Text[itext+2:]
 		} else {
 			log.Text = line.Text

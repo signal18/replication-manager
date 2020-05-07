@@ -309,6 +309,7 @@ type Config struct {
 	ProvMemSharedPct                          string `mapstructure:"prov-db-memory-shared-pct" toml:"prov-db-memory-shared-pct" json:"provDbMemorySharedPct"`
 	ProvMemThreadedPct                        string `mapstructure:"prov-db-memory-threaded-pct" toml:"prov-db-memory-threaded-pct" json:"provDbMemoryThreadedPct"`
 	ProvIops                                  string `mapstructure:"prov-db-disk-iops" toml:"prov-db-disk-iops" json:"provDbDiskIops"`
+	ProvMaxConnections                        int    `mapstructure:"prov-db-max-connections" toml:"prov-db-max-connections" json:"provDbMaxConnections"`
 	ProvCores                                 string `mapstructure:"prov-db-cpu-cores" toml:"prov-db-cpu-cores" json:"provDbCpuCores"`
 	ProvTags                                  string `mapstructure:"prov-db-tags" toml:"prov-db-tags" json:"provDbTags"`
 	ProvDomain                                string `mapstructure:"prov-db-domain" toml:"prov-db-domain" json:"provDbDomain"`

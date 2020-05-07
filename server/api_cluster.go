@@ -991,6 +991,8 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		setting := vars["settingName"]
 		mycluster.LogPrintf("INFO", "API receive set setting %s", setting)
 		switch setting {
+		case "replication-credential":
+			mycluster.SetReplicationCredential(vars["settingValue"])
 		case "failover-max-slave-delay":
 			val, _ := strconv.ParseInt(vars["settingValue"], 10, 64)
 			mycluster.SetRplMaxDelay(val)
@@ -1015,14 +1017,10 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetDbServerHosts(vars["settingValue"])
 		case "db-servers-credential":
 			mycluster.SetDbServersCredential(vars["settingValue"])
-		case "proxysql-servers-credential":
-			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxySqlproxy)
-		case "maxscale-servers-credential":
-			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxyMaxscale)
-		case "shardproxy-servers-credential":
-			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxySpider)
-		case "replication-credential":
-			mycluster.SetReplicationCredential(vars["settingValue"])
+		case "prov-service-plan":
+			mycluster.SetServicePlan(vars["settingValue"])
+		case "prov-net-cni-cluster":
+			mycluster.SetProvNetCniCluster(vars["settingValue"])
 		case "prov-db-disk-size":
 			mycluster.SetDBDiskSize(vars["settingValue"])
 		case "prov-db-cpu-cores":
@@ -1031,34 +1029,18 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetDBMemorySize(vars["settingValue"])
 		case "prov-db-disk-iops":
 			mycluster.SetDBDiskIOPS(vars["settingValue"])
-		case "prov-proxy-disk-size":
-			mycluster.SetProxyDiskSize(vars["settingValue"])
-		case "prov-proxy-cpu-cores":
-			mycluster.SetProxyCores(vars["settingValue"])
-		case "prov-proxy-memory":
-			mycluster.SetProxyMemorySize(vars["settingValue"])
-		case "prov-service-plan":
-			mycluster.SetServicePlan(vars["settingValue"])
-		case "prov-net-cni-cluster":
-			mycluster.SetProvNetCniCluster(vars["settingValue"])
+		case "prov-db-max-connections":
+			mycluster.SetDBMaxConnections(vars["settingValue"])
 		case "prov-db-agents":
 			mycluster.SetProvDbAgents(vars["settingValue"])
 		case "prov-proxy-agents":
 			mycluster.SetProvProxyAgents(vars["settingValue"])
 		case "prov-orchestrator":
 			mycluster.SetProvOrchestrator(vars["settingValue"])
-		case "prov-db-image":
-			mycluster.SetProvDBImage(vars["settingValue"])
-		case "prov-proxy-docker-proxysql-img":
-			mycluster.SetProvProxySQLImage(vars["settingValue"])
-		case "prov-proxy-docker-maxscale-img":
-			mycluster.SetProvMaxscaleImage(vars["settingValue"])
-		case "prov-proxy-docker-haproxy-img":
-			mycluster.SetProvHaproxyImage(vars["settingValue"])
-		case "prov-proxy-docker-shardproxy-img":
-			mycluster.SetProvShardproxyImage(vars["settingValue"])
 		case "prov-sphinx-img":
 			mycluster.SetProvSphinxImage(vars["settingValue"])
+		case "prov-db-image":
+			mycluster.SetProvDBImage(vars["settingValue"])
 		case "prov-db-disk-type":
 			mycluster.SetProvDbDiskType(vars["settingValue"])
 		case "prov-db-disk-fs":
@@ -1069,6 +1051,30 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetProvDbDiskDevice(vars["settingValue"])
 		case "prov-db-service-type":
 			mycluster.SetProvDbServiceType(vars["settingValue"])
+		case "proxysql-servers-credential":
+			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxySqlproxy)
+		case "proxy-servers-backend-max-connections":
+			mycluster.SetProxyServersBackendMaxConnections(vars["settingValue"])
+		case "proxy-servers-backend-max-replication-lag":
+			mycluster.SetProxyServersBackendMaxReplicationLag(vars["settingValue"])
+		case "maxscale-servers-credential":
+			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxyMaxscale)
+		case "shardproxy-servers-credential":
+			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxySpider)
+		case "prov-proxy-disk-size":
+			mycluster.SetProxyDiskSize(vars["settingValue"])
+		case "prov-proxy-cpu-cores":
+			mycluster.SetProxyCores(vars["settingValue"])
+		case "prov-proxy-memory":
+			mycluster.SetProxyMemorySize(vars["settingValue"])
+		case "prov-proxy-docker-proxysql-img":
+			mycluster.SetProvProxySQLImage(vars["settingValue"])
+		case "prov-proxy-docker-maxscale-img":
+			mycluster.SetProvMaxscaleImage(vars["settingValue"])
+		case "prov-proxy-docker-haproxy-img":
+			mycluster.SetProvHaproxyImage(vars["settingValue"])
+		case "prov-proxy-docker-shardproxy-img":
+			mycluster.SetProvShardproxyImage(vars["settingValue"])
 		case "prov-proxy-disk-type":
 			mycluster.SetProvProxyDiskType(vars["settingValue"])
 		case "prov-proxy-disk-fs":
@@ -1099,10 +1105,6 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetSchedulerSlaRotateCron(vars["settingValue"])
 		case "scheduler-jobs-ssh-cron":
 			mycluster.SetSchedulerJobsSshCron(vars["settingValue"])
-		case "proxy-servers-backend-max-connections":
-			mycluster.SetProxyServersBackendMaxConnections(vars["settingValue"])
-		case "proxy-servers-backend-max-replication-lag":
-			mycluster.SetProxyServersBackendMaxReplicationLag(vars["settingValue"])
 
 		}
 	} else {

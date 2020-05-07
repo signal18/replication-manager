@@ -1363,6 +1363,10 @@ function (
         value= Number(base)+add;
         if (confirm("Confirm add tag "+value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-memory/'+value.toString());
       };
+      $scope.clsetdbconns = function (base,add) {
+        value= Number(base)+add;
+        if (confirm("Confirm add tag "+value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-max-connections/'+value.toString());
+      };
 
       $scope.saveDBImage = function (image) {
         if (confirm("Confirm change database OCI image: "+image)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-image/'+image);

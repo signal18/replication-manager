@@ -225,16 +225,28 @@ func (cluster *Cluster) SetDBDiskSize(value string) {
 	cluster.Conf.ProvDisk = value
 	cluster.SetDBReprovCookie()
 }
+
 func (cluster *Cluster) SetDBCores(value string) {
 	cluster.Conf.ProvCores = value
 	cluster.SetDBRestartCookie()
 }
+
 func (cluster *Cluster) SetDBMemorySize(value string) {
 	cluster.Conf.ProvMem = value
 	cluster.SetDBRestartCookie()
 }
+
 func (cluster *Cluster) SetDBDiskIOPS(value string) {
 	cluster.Conf.ProvIops = value
+	cluster.SetDBRestartCookie()
+}
+
+func (cluster *Cluster) SetDBMaxConnections(value string) {
+	valueNum, err := strconv.Atoi(value)
+	if err != nil {
+		cluster.Conf.ProvMaxConnections = 1000
+	}
+	cluster.Conf.ProvMaxConnections = valueNum
 	cluster.SetDBRestartCookie()
 }
 

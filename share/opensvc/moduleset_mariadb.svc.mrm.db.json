@@ -1378,6 +1378,44 @@
                 }
             ],
             "fset_name": "mariadb.engine.s3"
+        },
+        {
+            "fset_stats": false,
+            "id": 357,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "mroonga",
+                        "f_table": "v_tags",
+                        "id": 317
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.engine.mroonga"
+        },
+        {
+            "fset_stats": false,
+            "id": 358,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "utctime",
+                        "f_table": "v_tags",
+                        "id": 318
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.utctime"
         }
     ],
     "rulesets": [
@@ -1774,8 +1812,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_network.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# NETWORK\\n# ------- \\n\\n[mysqld]\\n\\nport=%%ENV:SERVER_PORT%%\\nmax_connections = 500\\nmax_user_connections = 450\\nthread_cache_size = 128\\nback_log = 128 \\nskip_name_resolve = 1\\nmax_allowed_packet = 512M\\nquery_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%M \"}",
-                    "var_updated": "2020-04-11 15:46:26",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_network.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# NETWORK\\n# ------- \\n\\n[mysqld]\\n\\nport=%%ENV:SERVER_PORT%%\\nmax_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%M \\nmax_user_connections = 450\\nthread_cache_size = 128\\nback_log = 128 \\nskip_name_resolve = 1\\nmax_allowed_packet = 512M\\nquery_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%M \"}",
+                    "var_updated": "2020-05-07 11:13:12",
                     "var_name": "db_cnf_default_network",
                     "id": 5915
                 },
@@ -2658,6 +2696,22 @@
                     "var_updated": "2020-05-05 18:50:52",
                     "var_name": "db_cnf_script_dbjobs_new",
                     "id": 6168
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_mroonga.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nplugin-load-add=ha_mroonga.so\"}",
+                    "var_updated": "2020-05-07 10:46:28",
+                    "var_name": "db_cnf_engine_mroonga",
+                    "id": 6169
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_opt_utctime.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ndefault_time_zone = '+00:00'\"}",
+                    "var_updated": "2020-05-07 10:58:44",
+                    "var_name": "db_cnf_opt_utctime",
+                    "id": 6170
                 }
             ],
             "ruleset_public": false,
@@ -2733,7 +2787,9 @@
                 "mariadb.svc.mrm.db.cnf.generic.nomrr",
                 "mariadb.svc.mrm.db.cnf.generic.noouterjoincache",
                 "mariadb.svc.mrm.db.cnf.generic.withsubquerycache",
-                "mariadb.svc.mrm.db.cnf.generic.engines3"
+                "mariadb.svc.mrm.db.cnf.generic.engines3",
+                "mariadb.svc.mrm.db.cnf.generic.withutctime",
+                "mariadb.svc.mrm.db.cnf.generic.enginemroonga"
             ],
             "publications": [
                 "replication-manager"
@@ -4540,6 +4596,54 @@
             "responsibles": [
                 "replication-manager"
             ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.utctime",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withutctime",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/55_with_opt_utctime.cnf\",\"target\":\"../with_opt_utctime.cnf\"}",
+                    "var_updated": "2020-05-07 11:06:07",
+                    "var_name": "db_link_withutctime",
+                    "id": 6171
+                }
+            ],
+            "ruleset_public": true,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1104,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.engine.mroonga",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.enginemroonga",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/55_engine_mroonga.cnf\",\"target\":\"../engine_mroonga.cnf\"}",
+                    "var_updated": "2020-05-07 11:09:40",
+                    "var_name": "db_link_mroonga",
+                    "id": 6172
+                }
+            ],
+            "ruleset_public": true,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1105,
+            "responsibles": [
+                "replication-manager"
+            ]
         }
     ]
-} 
+}
