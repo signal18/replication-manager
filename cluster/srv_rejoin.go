@@ -52,11 +52,14 @@ func (server *ServerMonitor) RejoinMaster() error {
 			crash := server.ClusterGroup.getCrashFromJoiner(server.URL)
 			if crash == nil {
 				server.ClusterGroup.SetState("ERR00066", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00066"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
-				if server.ClusterGroup.oldMaster.URL == server.URL {
-					server.RejoinMasterSST()
-					server.ClusterGroup.rejoinCond.Send <- true
-					return nil
-				} else if server.ClusterGroup.Conf.Autoseed {
+				if server.ClusterGroup.oldMaster != nil {
+					if server.ClusterGroup.oldMaster.URL == server.URL {
+						server.RejoinMasterSST()
+						server.ClusterGroup.rejoinCond.Send <- true
+						return nil
+					}
+				}
+				if server.ClusterGroup.Conf.Autoseed {
 					server.ReseedMasterSST()
 					server.ClusterGroup.rejoinCond.Send <- true
 					return nil
