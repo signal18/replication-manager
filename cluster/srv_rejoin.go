@@ -52,11 +52,14 @@ func (server *ServerMonitor) RejoinMaster() error {
 			crash := server.ClusterGroup.getCrashFromJoiner(server.URL)
 			if crash == nil {
 				server.ClusterGroup.SetState("ERR00066", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00066"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
-				if server.ClusterGroup.Conf.Autoseed {
+				if server.ClusterGroup.oldMaster.URL == server.URL {
 					server.RejoinMasterSST()
 					server.ClusterGroup.rejoinCond.Send <- true
 					return nil
-
+				} else if server.ClusterGroup.Conf.Autoseed {
+					server.ReseedMasterSST()
+					server.ClusterGroup.rejoinCond.Send <- true
+					return nil
 				} else {
 					server.ClusterGroup.rejoinCond.Send <- true
 					return errors.New("No Autoseed")
@@ -114,10 +117,10 @@ func (server *ServerMonitor) RejoinPreviousSnapshot() error {
 
 func (server *ServerMonitor) RejoinMasterSST() error {
 	if server.ClusterGroup.Conf.AutorejoinMysqldump == true {
-		server.ClusterGroup.LogPrintf("INFO", "Rejoin dump restore %s", server.URL)
+		server.ClusterGroup.LogPrintf("INFO", "Rejoin flashback dump restore %s", server.URL)
 		err := server.RejoinMasterDump()
 		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "mysqldump restore failed %s", err)
+			server.ClusterGroup.LogPrintf("ERROR", "mysqldump flashback restore failed %s", err)
 			return errors.New("Dump from master failed")
 		}
 	} else if server.ClusterGroup.Conf.AutorejoinLogicalBackup {
@@ -127,7 +130,7 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 	} else if server.ClusterGroup.Conf.AutorejoinZFSFlashback {
 		server.RejoinPreviousSnapshot()
 	} else if server.ClusterGroup.Conf.RejoinScript != "" {
-		server.ClusterGroup.LogPrintf("INFO", "Calling rejoin script")
+		server.ClusterGroup.LogPrintf("INFO", "Calling rejoin flashback script")
 		var out []byte
 		out, err := exec.Command(server.ClusterGroup.Conf.RejoinScript, misc.Unbracket(server.Host), misc.Unbracket(server.ClusterGroup.master.Host)).CombinedOutput()
 		if err != nil {
@@ -136,7 +139,35 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoin script complete %s", string(out))
 	} else {
 		server.ClusterGroup.LogPrintf("INFO", "No SST rejoin method found")
-		return errors.New("No SST rejoin method found")
+		return errors.New("No SST rejoin flashback method found")
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) ReseedMasterSST() error {
+	if server.ClusterGroup.Conf.AutorejoinMysqldump == true {
+		server.ClusterGroup.LogPrintf("INFO", "Rejoin dump restore %s", server.URL)
+		err := server.RejoinMasterDump()
+		if err != nil {
+			server.ClusterGroup.LogPrintf("ERROR", "mysqldump restore failed %s", err)
+			return errors.New("Dump from master failed")
+		}
+	} else if server.ClusterGroup.Conf.AutorejoinLogicalBackup {
+		server.JobReseedLogicalBackup()
+	} else if server.ClusterGroup.Conf.AutorejoinPhysicalBackup {
+		server.JobReseedPhysicalBackup()
+	} else if server.ClusterGroup.Conf.RejoinScript != "" {
+		server.ClusterGroup.LogPrintf("INFO", "Calling rejoin script")
+		var out []byte
+		out, err := exec.Command(server.ClusterGroup.Conf.RejoinScript, misc.Unbracket(server.Host), misc.Unbracket(server.ClusterGroup.master.Host)).CombinedOutput()
+		if err != nil {
+			server.ClusterGroup.LogPrintf("ERROR", "%s", err)
+		}
+		server.ClusterGroup.LogPrintf("INFO", "Rejoin script complete %s", string(out))
+	} else {
+		server.ClusterGroup.LogPrintf("INFO", "No SST reseed method found")
+		return errors.New("No SST reseed method found")
 	}
 
 	return nil

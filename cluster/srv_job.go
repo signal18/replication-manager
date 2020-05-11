@@ -107,7 +107,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 			return jobid, err
 		} else {
 	*/
-	port, err := server.ClusterGroup.SSTRunReceiverToFile(server.GetBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream", ConstJobCreateFile)
+	port, err := server.ClusterGroup.SSTRunReceiverToFile(server.GetMyBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream", ConstJobCreateFile)
 	if err != nil {
 		return 0, nil
 	}
@@ -358,7 +358,7 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 func (server *ServerMonitor) JobReseedMyLoader() {
 
 	threads := strconv.Itoa(server.ClusterGroup.Conf.BackupLogicalLoadThreads)
-	dumpCmd := exec.Command(server.ClusterGroup.GetMyLoaderPath(), "--overwrite-tables", "--directory="+server.ClusterGroup.master.GetBackupDirectory(), "--verbose=3", "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+	dumpCmd := exec.Command(server.ClusterGroup.GetMyLoaderPath(), "--overwrite-tables", "--directory="+server.ClusterGroup.master.GetMasterBackupDirectory(), "--verbose=3", "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 	server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
 
 	stdoutIn, _ := dumpCmd.StdoutPipe()
@@ -383,7 +383,7 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 	server.Refresh()
 	if server.IsSlave {
 		server.ClusterGroup.LogPrintf(LvlInfo, "Parsing mydumper metadata ")
-		meta, err := server.JobMyLoaderParseMeta(server.ClusterGroup.master.GetBackupDirectory())
+		meta, err := server.JobMyLoaderParseMeta(server.ClusterGroup.master.GetMasterBackupDirectory())
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "MyLoader metadata parsing: %s", err)
 		}
@@ -537,9 +537,24 @@ func (server *ServerMonitor) JobHandler(JobId int64) error {
 	return nil
 }
 
-func (server *ServerMonitor) GetBackupDirectory() string {
+func (server *ServerMonitor) GetMyBackupDirectory() string {
 
 	s3dir := server.ClusterGroup.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + server.ClusterGroup.Name + "/" + server.Host + "_" + server.Port
+
+	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
+		err := os.MkdirAll(s3dir, os.ModePerm)
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Create backup path failed: %s", s3dir, err)
+		}
+	}
+
+	return s3dir + "/"
+
+}
+
+func (server *ServerMonitor) GetMasterBackupDirectory() string {
+
+	s3dir := server.ClusterGroup.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + server.ClusterGroup.Name + "/" + server.ClusterGroup.master.Host + "_" + server.ClusterGroup.master.Port
 
 	if _, err := os.Stat(s3dir); os.IsNotExist(err) {
 		err := os.MkdirAll(s3dir, os.ModePerm)
@@ -594,7 +609,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 
-		f, err := os.Create(server.GetBackupDirectory() + "mysqldump.sql.gz")
+		f, err := os.Create(server.GetMyBackupDirectory() + "mysqldump.sql.gz")
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Error backup request: %s", err)
 			return err
@@ -643,7 +658,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		conf.Threads = server.ClusterGroup.Conf.BackupLogicalDumpThreads
 		conf.FileSize = 1000
 		conf.StatementSize = dumplingext.UnspecifiedSize
-		conf.OutputDirPath = server.GetBackupDirectory()
+		conf.OutputDirPath = server.GetMyBackupDirectory()
 		conf.Consistency = "flush"
 		conf.NoViews = true
 		conf.StatusAddr = ":8281"
@@ -660,7 +675,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		//  --no-schemas     --regex '^(?!(mysql))'
 
 		threads := strconv.Itoa(server.ClusterGroup.Conf.BackupLogicalDumpThreads)
-		dumpCmd := exec.Command(server.ClusterGroup.GetMyDumperPath(), "--outputdir="+server.GetBackupDirectory(), "--chunk-filesize=1000", "--compress", "--less-locking", "--verbose=3", "--triggers", "--routines", "--events", "--trx-consistency-only", "--kill-long-queries", "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+		dumpCmd := exec.Command(server.ClusterGroup.GetMyDumperPath(), "--outputdir="+server.GetMyBackupDirectory(), "--chunk-filesize=1000", "--compress", "--less-locking", "--verbose=3", "--triggers", "--routines", "--events", "--trx-consistency-only", "--kill-long-queries", "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
 		server.ClusterGroup.LogPrintf(LvlInfo, "%s", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
 		/*	pr, pw := io.Pipe()
 			defer pw.Close()
@@ -731,7 +746,7 @@ func (server *ServerMonitor) BackupRestic() error {
 	var errStdout, errStderr error
 
 	if server.ClusterGroup.Conf.BackupRestic {
-		resticcmd := exec.Command(server.ClusterGroup.Conf.BackupResticBinaryPath, "backup", server.GetBackupDirectory())
+		resticcmd := exec.Command(server.ClusterGroup.Conf.BackupResticBinaryPath, "backup", server.GetMyBackupDirectory())
 
 		stdoutIn, _ := resticcmd.StdoutPipe()
 		stderrIn, _ := resticcmd.StderrPipe()
