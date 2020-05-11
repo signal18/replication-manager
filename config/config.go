@@ -228,6 +228,7 @@ type Config struct {
 	HaproxyReadBindIp                         string `mapstructure:"haproxy-ip-read-bind" toml:"haproxy-ip-read-bind" json:"haproxyIpReadBind"`
 	HaproxyBinaryPath                         string `mapstructure:"haproxy-binary-path" toml:"haproxy-binary-path" json:"haproxyBinaryPath"`
 	ProxysqlOn                                bool   `mapstructure:"proxysql" toml:"proxysql" json:"proxysql"`
+	ProxysqlSaveToDisk                        bool   `mapstructure:"proxysql-save-to-disk" toml:"proxysql-save-to-disk" json:"proxysqlSaveToDisk"`
 	ProxysqlHosts                             string `mapstructure:"proxysql-servers" toml:"proxysql-servers" json:"proxysqlServers"`
 	ProxysqlPort                              string `mapstructure:"proxysql-port" toml:"proxysql-port" json:"proxysqlPort"`
 	ProxysqlAdminPort                         string `mapstructure:"proxysql-admin-port" toml:"proxysql-admin-port" json:"proxysqlAdminPort"`

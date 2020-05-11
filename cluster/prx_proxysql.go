@@ -99,8 +99,9 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
 	}
-	psql.SaveServersToDisk()
-
+	if proxy.ClusterGroup.Conf.ProxysqlSaveToDisk {
+		psql.SaveServersToDisk()
+	}
 }
 
 func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
@@ -115,24 +116,31 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 		if s.State == stateUnconn || s.IsIgnored() {
 			err = psql.SetOffline(misc.Unbracket(s.Host), s.Port)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "ProxySQL could not set server %s offline (%s)", s.URL, err)
+				cluster.LogPrintf(LvlErr, "Failover ProxySQL could not set server %s offline (%s)", s.URL, err)
+			} else {
+				cluster.LogPrintf(LvlInfo, "Failover ProxySQL set server %s offline (%s)", s.URL, err)
 			}
 		}
 		if s.IsMaster() {
 			err = psql.ReplaceWriter(misc.Unbracket(s.Host), s.Port, misc.Unbracket(cluster.oldMaster.Host), cluster.oldMaster.Port, cluster.Conf.ProxysqlMasterIsReader)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "ProxySQL could not set server %s Master (%s)", s.URL, err)
+				cluster.LogPrintf(LvlErr, "Failover ProxySQL could not set server %s Master (%s)", s.URL, err)
+			} else {
+				cluster.LogPrintf(LvlInfo, "Failover ProxySQL set server %s master (%s)", s.URL, err)
 			}
 		}
 	}
 	err = psql.LoadServersToRuntime()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
+		cluster.LogPrintf(LvlErr, "Failover ProxySQL could not load servers to runtime (%s)", err)
 	}
-	err = psql.SaveServersToDisk()
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not save servers to disk (%s)", err)
+	if proxy.ClusterGroup.Conf.ProxysqlSaveToDisk {
+		err = psql.SaveServersToDisk()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Failover ProxySQL could not save servers to disk (%s)", err)
+		}
 	}
+
 }
 
 func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
@@ -197,7 +205,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 		}
 		// if ProxySQL and replication-manager states differ, resolve the conflict
 		if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave && !s.IsIgnored() {
-			cluster.LogPrintf(LvlDbg, "ProxySQL setting online rejoining server %s", s.URL)
+			cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting online rejoining server %s", s.URL)
 			err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
 			if err != nil {
 				cluster.sme.AddState("ERR00069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00069"], s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
@@ -207,7 +215,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 
 		// if server is Standalone, set offline in ProxySQL
 		if s.State == stateUnconn && bke.PrxStatus == "ONLINE" {
-			cluster.LogPrintf(LvlDbg, "ProxySQL setting offline standalone server %s", s.URL)
+			cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting offline standalone server %s", s.URL)
 			err = psql.SetOffline(misc.Unbracket(s.Host), s.Port)
 			if err != nil {
 				cluster.sme.AddState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
@@ -219,6 +227,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 			// the appropriate HostGroup
 		} else if s.PrevState == stateUnconn || s.PrevState == stateFailed {
 			if s.State == stateMaster {
+				cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting writer standalone server %s", s.URL)
 				err = psql.SetWriter(misc.Unbracket(s.Host), s.Port)
 				if err != nil {
 					cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
@@ -226,6 +235,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 				updated = true
 			} else if s.IsSlave && !s.IsIgnored() {
 				err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
+				cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting reader standalone server %s", s.URL)
 				if err != nil {
 					cluster.sme.AddState("ERR00072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00072"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 				}
@@ -283,12 +293,17 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 		if proxy.Variables["MYSQL-MULTIPLEXING"] == "TRUE" && !proxy.ClusterGroup.Conf.ProxysqlMultiplexing {
 			psql.SetMySQLVariable("MYSQL-MULTIPLEXING", "FALSE")
 			psql.LoadMySQLVariablesToRuntime()
-			psql.SaveMySQLVariablesToDisk()
+			if proxy.ClusterGroup.Conf.ProxysqlSaveToDisk {
+				psql.SaveMySQLVariablesToDisk()
+			}
 		}
 		if proxy.Variables["MYSQL-MULTIPLEXING"] == "FALSE" && proxy.ClusterGroup.Conf.ProxysqlMultiplexing {
+
 			psql.SetMySQLVariable("MYSQL-MULTIPLEXING", "TRUE")
 			psql.LoadMySQLVariablesToRuntime()
-			psql.SaveMySQLVariablesToDisk()
+			if proxy.ClusterGroup.Conf.ProxysqlSaveToDisk {
+				psql.SaveMySQLVariablesToDisk()
+			}
 		}
 	}
 	return nil

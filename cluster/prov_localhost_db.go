@@ -28,6 +28,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	cluster.DropDBTag("docker")
 	cluster.DropDBTag("threadpool")
 	cluster.AddDBTag("pkg")
+
 	out := &bytes.Buffer{}
 	path := server.Datadir + "/var"
 	//os.RemoveAll(path)

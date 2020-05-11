@@ -122,32 +122,37 @@ func (psql *ProxySQL) SetOffline(host string, port string) error {
 }
 
 func (psql *ProxySQL) SetOfflineSoft(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE mysql_servers SET status='OFFLINE_SOFT', hostgroup_id='%s' WHERE hostname='%s' AND port='%s'", psql.ReaderHG, host, port)
+	sql := fmt.Sprintf("UPDATE mysql_servers SET status='OFFLINE_SOFT', hostgroup_id='%s' WHERE hostname='%s' AND port='%s' AND hostgroup in ('%s','%s')", psql.ReaderHG, host, port, psql.ReaderHG, psql.WriterHG)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
 func (psql *ProxySQL) SetOnline(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE' WHERE hostname='%s' AND port='%s'", host, port)
+	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE' WHERE hostname='%s' AND port='%s' AND hostgroup in ('%s','%s') ", host, port, psql.ReaderHG, psql.WriterHG)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
 func (psql *ProxySQL) SetWriter(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s' AND port='%s'", psql.WriterHG, host, port)
+	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s' AND port='%s' AND hostgroup in ('%s','%s')", psql.WriterHG, host, port, psql.ReaderHG, psql.WriterHG)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
 func (psql *ProxySQL) DeleteAllWriters() error {
-	sql := fmt.Sprintf("DELETE FROM mysql_servers WHERE hostgroup_id='%s'", psql.WriterHG)
+	sql := fmt.Sprintf("DELETE FROM mysql_servers WHERE hostgroup_id='%s'  AND hostgroup in ('%s','%s')", psql.WriterHG, psql.ReaderHG, psql.WriterHG)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
 func (psql *ProxySQL) SetReader(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s' AND port='%s'", psql.ReaderHG, host, port)
+	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE', hostgroup_id='%s' WHERE  hostname='%s' AND port='%s' AND hostgroup in ('%s','%s')", psql.ReaderHG, host, port, psql.ReaderHG, psql.WriterHG)
 	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
+func (psql *ProxySQL) Truncate() error {
+	_, err := psql.Connection.Exec("DELETE FROM mysql_servers WHERE hostgroup in ('%s','%s')", psql.ReaderHG, psql.WriterHG)
 	return err
 }
 
@@ -214,11 +219,6 @@ func (psql *ProxySQL) GetHostsRuntime() (string, error) {
 	var h string
 	err := psql.Connection.Get(&h, "SELECT GROUP_CONCAT(host) AS hostlist FROM (SELECT hostname || ':' || port AS host FROM runtime_mysql_servers)")
 	return h, err
-}
-
-func (psql *ProxySQL) Truncate() error {
-	_, err := psql.Connection.Exec("DELETE FROM mysql_servers")
-	return err
 }
 
 func (psql *ProxySQL) AddUser(User string, Password string) error {
