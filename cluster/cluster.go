@@ -403,6 +403,7 @@ func (cluster *Cluster) Run() {
 
 				if cluster.GetMaster() != nil {
 					cluster.initProxies()
+					cluster.ResticFetchRepo()
 					cluster.runOnceAfterTopology = false
 				}
 			} else {

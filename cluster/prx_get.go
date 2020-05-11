@@ -82,7 +82,7 @@ func (proxy *Proxy) GetProxyConfig() string {
 		Path    string `json:"path"`
 		Content string `json:"fmt"`
 	}
-
+	os.RemoveAll(proxy.Datadir + "/init")
 	// Extract files
 	for _, rule := range proxy.ClusterGroup.ProxyModule.Rulesets {
 

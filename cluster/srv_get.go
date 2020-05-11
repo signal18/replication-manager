@@ -624,6 +624,7 @@ func (server *ServerMonitor) GetMyConfig() string {
 	}
 
 	// Extract files
+	os.RemoveAll(server.Datadir + "/init")
 	for _, rule := range server.ClusterGroup.DBModule.Rulesets {
 		if strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
 

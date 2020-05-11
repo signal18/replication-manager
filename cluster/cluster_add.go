@@ -33,9 +33,12 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 
 func (cluster *Cluster) AddDBTag(tag string) {
 	cluster.DBTags = append(cluster.DBTags, tag)
+	if !cluster.HaveDBTag(tag) {
+		cluster.SetDBRestartCookie()
+	}
 	cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
 	cluster.SetClusterVariablesFromConfig()
-	cluster.SetDBRestartCookie()
+
 }
 
 func (cluster *Cluster) AddProxyTag(tag string) {

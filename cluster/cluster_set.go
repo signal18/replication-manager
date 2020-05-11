@@ -557,7 +557,9 @@ func (cluster *Cluster) DropDBTag(dtag string) {
 	cluster.DBTags = newtags
 	cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
 	cluster.SetClusterVariablesFromConfig()
-	cluster.SetDBRestartCookie()
+	if len(cluster.DBTags) != len(newtags) {
+		cluster.SetDBRestartCookie()
+	}
 }
 
 func (cluster *Cluster) DropProxyTag(dtag string) {
