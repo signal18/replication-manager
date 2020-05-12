@@ -854,6 +854,7 @@ function (
     };
 
     $scope.$on('$destroy', function() {
+      $timeout.cancel( $scope.promise);
       $scope.cancel();
     });
 
