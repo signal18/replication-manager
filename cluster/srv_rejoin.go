@@ -40,6 +40,7 @@ func (server *ServerMonitor) RejoinLoop() error {
 func (server *ServerMonitor) RejoinMaster() error {
 	// Check if master exists in topology before rejoining.
 	if server.ClusterGroup.sme.IsInFailover() {
+		server.ClusterGroup.rejoinCond.Send <- true
 		return nil
 	}
 	if server.ClusterGroup.Conf.LogLevel > 2 {
@@ -494,13 +495,10 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				}
 			}
 		}
-
 	}
-
 	// In case of state change, reintroduce the server in the slave list
 	if server.PrevState == stateFailed || server.PrevState == stateUnconn || server.PrevState == stateSuspect {
 		server.ClusterGroup.LogPrintf(LvlInfo, "Set stateSlave from rejoin slave %s", server.URL)
-
 		server.State = stateSlave
 		server.FailCount = 0
 		if server.PrevState != stateSuspect {

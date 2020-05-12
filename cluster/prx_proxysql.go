@@ -118,7 +118,7 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Failover ProxySQL could not set server %s offline (%s)", s.URL, err)
 			} else {
-				cluster.LogPrintf(LvlInfo, "Failover ProxySQL set server %s offline (%s)", s.URL, err)
+				cluster.LogPrintf(LvlInfo, "Failover ProxySQL set server %s offline", s.URL)
 			}
 		}
 		if s.IsMaster() {
@@ -126,7 +126,7 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Failover ProxySQL could not set server %s Master (%s)", s.URL, err)
 			} else {
-				cluster.LogPrintf(LvlInfo, "Failover ProxySQL set server %s master (%s)", s.URL, err)
+				cluster.LogPrintf(LvlInfo, "Failover ProxySQL set server %s master", s.URL)
 			}
 		}
 	}

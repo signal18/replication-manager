@@ -11,6 +11,8 @@ import (
 )
 
 func (cluster *Cluster) RollingReprov() error {
+
+	cluster.LogPrintf(LvlInfo, "Rolling reprovisionning")
 	masterID := cluster.GetMaster().Id
 	for _, slave := range cluster.slaves {
 		if !slave.IsDown() {
@@ -80,6 +82,7 @@ func (cluster *Cluster) RollingReprov() error {
 }
 
 func (cluster *Cluster) RollingRestart() error {
+	cluster.LogPrintf(LvlInfo, "Rolling restart")
 	masterID := cluster.GetMaster().Id
 	saveFailoverMode := cluster.Conf.FailSync
 	cluster.SetFailSync(false)

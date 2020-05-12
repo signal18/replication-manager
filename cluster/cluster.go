@@ -358,8 +358,9 @@ func (cluster *Cluster) initScheduler() {
 func (cluster *Cluster) Run() {
 
 	interval := time.Second
-	wg := new(sync.WaitGroup)
+
 	for cluster.exit == false {
+
 		cluster.ServerIdList = cluster.GetDBServerIdList()
 		cluster.ProxyIdList = cluster.GetProxyServerIdList()
 		cluster.Uptime = cluster.GetStateMachine().GetUptime()
@@ -393,12 +394,13 @@ func (cluster *Cluster) Run() {
 					}
 				}
 			}
+			wg := new(sync.WaitGroup)
 			wg.Add(1)
 			go cluster.TopologyDiscover(wg)
 			wg.Add(1)
-
-			// Heartbeat switchover or failover controller runs only on active repman
 			go cluster.Heartbeat(wg)
+			// Heartbeat switchover or failover controller runs only on active repman
+
 			if cluster.runOnceAfterTopology {
 
 				if cluster.GetMaster() != nil {
@@ -431,7 +433,7 @@ func (cluster *Cluster) Run() {
 					cluster.sme.PreserveState("WARN0094")
 				}
 			}
-			// split brain management
+
 			wg.Wait()
 
 			cluster.IsFailable = cluster.GetStatus()
@@ -449,8 +451,8 @@ func (cluster *Cluster) Run() {
 			cluster.WaitingRejoin = cluster.rejoinCond.Len()
 			cluster.WaitingFailover = cluster.failoverCond.Len()
 			cluster.WaitingSwitchover = cluster.switchoverCond.Len()
-
 			time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
+
 		}
 	}
 }
@@ -507,6 +509,7 @@ func (cluster *Cluster) StateProcessing() {
 		if cluster.sme.GetHeartbeats()%60 == 0 {
 			cluster.Save()
 		}
+
 	}
 }
 func (cluster *Cluster) Stop() {

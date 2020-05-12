@@ -1416,6 +1416,44 @@
                 }
             ],
             "fset_name": "mariadb.optimizer.utctime"
+        },
+        {
+            "fset_stats": false,
+            "id": 359,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "nohandshake",
+                        "f_table": "v_tags",
+                        "id": 319
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.charset.nohandshake"
+        },
+        {
+            "fset_stats": false,
+            "id": 360,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "readcommitted",
+                        "f_table": "v_tags",
+                        "id": 320
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.readcommitted"
         }
     ],
     "rulesets": [
@@ -2712,6 +2750,22 @@
                     "var_updated": "2020-05-07 10:58:44",
                     "var_name": "db_cnf_opt_utctime",
                     "id": 6170
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_charset_handshake.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nskip_character_set_client_handshake\"}",
+                    "var_updated": "2020-05-12 14:40:07",
+                    "var_name": "db_cnf_charset_no_handshake",
+                    "id": 6173
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_opt_readcommitted.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ntx_isolation=READ-COMMITTED \"}",
+                    "var_updated": "2020-05-12 15:09:05",
+                    "var_name": "db_cnf_opt_with_readcommitted",
+                    "id": 6175
                 }
             ],
             "ruleset_public": false,
@@ -2761,6 +2815,7 @@
                 "mariadb.svc.mrm.db.cnf.generic.withlogtable",
                 "mariadb.svc.mrm.db.cnf.generic.withdiskmonitor",
                 "mariadb.svc.mrm.db.cnf.generic.withssl",
+                "mariadb.svc.mrm.db.cnf.generic.nohandshake",
                 "mariadb.svc.mrm.db.cnf.generic.withgtidstrict",
                 "mariadb.svc.mrm.db.cnf.generic.withlocalinfile",
                 "mariadb.svc.mrm.db.cnf.generic.noicp",
@@ -2789,7 +2844,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.withsubquerycache",
                 "mariadb.svc.mrm.db.cnf.generic.engines3",
                 "mariadb.svc.mrm.db.cnf.generic.withutctime",
-                "mariadb.svc.mrm.db.cnf.generic.enginemroonga"
+                "mariadb.svc.mrm.db.cnf.generic.enginemroonga",
+                "mariadb.svc.mrm.db.cnf.generic.withreadcommitted"
             ],
             "publications": [
                 "replication-manager"
@@ -3944,6 +4000,30 @@
             ]
         },
         {
+            "fset_name": "mariadb.charset.nohandshake",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nohandshake",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/55_no_charset_handshake.cnf\",\"target\":\"../no_charset_handshake.cnf\"}",
+                    "var_updated": "2020-05-12 14:49:56",
+                    "var_name": "db_link_nohandshake",
+                    "id": 6174
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1073,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
             "fset_name": "mariadb.replication.gtidstrict",
             "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withgtidstrict",
             "variables": [
@@ -4641,6 +4721,30 @@
                 "replication-manager"
             ],
             "id": 1105,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.readcommitted",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withreadcommitted",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/10_with_opt_readcommitted.cnf\",\"target\":\"../with_opt_readcommitted.cnf\"}",
+                    "var_updated": "2020-05-12 15:15:23",
+                    "var_name": "db_link_readcommitted",
+                    "id": 6176
+                }
+            ],
+            "ruleset_public": true,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1106,
             "responsibles": [
                 "replication-manager"
             ]

@@ -58,7 +58,7 @@ func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
 }
 
 func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
-
+	cluster.LogPrintf(LvlInfo, "Waiting switchover end")
 	defer wg.Done()
 	exitloop := 0
 	cluster.switchoverCond = nbc.New()
@@ -84,7 +84,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 	defer wg.Done()
-
+	cluster.LogPrintf(LvlInfo, "Waiting Rejoin")
 	exitloop := 0
 	cluster.rejoinCond = nbc.New()
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
@@ -186,6 +186,7 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 
 func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 	exitloop := 0
+	cluster.LogPrintf(LvlInfo, "Waiting database start on %s", server.URL)
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
@@ -212,6 +213,7 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) WaitDatabaseSuspect(server *ServerMonitor) error {
+	cluster.LogPrintf(LvlInfo, "Wait state suspect on %s", server.URL)
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
@@ -239,6 +241,7 @@ func (cluster *Cluster) WaitDatabaseSuspect(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) WaitDatabaseFailed(server *ServerMonitor) error {
+	cluster.LogPrintf(LvlInfo, "Wait state failed on %s", server.URL)
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
