@@ -268,7 +268,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		cluster.LogPrintf(LvlInfo, "Post-failover script complete", string(out))
 	}
-	cluster.failoverProxies()
+
 	if cluster.Conf.MultiMaster == false {
 		cluster.LogPrintf(LvlInfo, "Resetting slave on new master and set read/write mode on")
 		if cluster.master.DBVersion.IsMySQLOrPercona() {
@@ -288,6 +288,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not set new master as read-write")
 	}
+	cluster.LogPrintf(LvlInfo, "Failover proxies")
+	cluster.failoverProxies()
+	cluster.LogPrintf(LvlInfo, "Waiting %ds for unmanaged proxy to monitor route change", cluster.Conf.SwitchSlaveWaitRouteChange)
+	time.Sleep(time.Duration(cluster.Conf.SwitchSlaveWaitRouteChange) * time.Second)
 	if cluster.Conf.FailEventScheduler {
 		cluster.LogPrintf(LvlInfo, "Enable Event Scheduler on the new master")
 		logs, err := dbhelper.SetEventScheduler(cluster.master.Conn, true, cluster.master.DBVersion)

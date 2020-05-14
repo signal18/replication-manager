@@ -114,6 +114,7 @@ type Config struct {
 	SwitchSync                                bool   `mapstructure:"switchover-at-sync" toml:"switchover-at-sync" json:"switchoverAtSync"`
 	SwitchMaxDelay                            int64  `mapstructure:"switchover-max-slave-delay" toml:"switchover-max-slave-delay" json:"switchoverMaxSlaveDelay"`
 	SwitchSlaveWaitCatch                      bool   `mapstructure:"switchover-slave-wait-catch" toml:"switchover-slave-wait-catch" json:"switchoverSlaveWaitCatch"`
+	SwitchSlaveWaitRouteChange                int    `mapstructure:"switchover-wait-route-change" toml:"switchover-wait-route-change" json:"switchoverWaitRouteChange"`
 	SwitchDecreaseMaxConn                     bool   `mapstructure:"switchover-decrease-max-conn" toml:"switchover-decrease-max-conn" json:"switchoverDecreaseMaxConn"`
 	SwitchDecreaseMaxConnValue                int64  `mapstructure:"switchover-decrease-max-conn-value" toml:"switchover-decrease-max-conn-value" json:"switchoverDecreaseMaxConnValue"`
 	FailLimit                                 int    `mapstructure:"failover-limit" toml:"failover-limit" json:"failoverLimit"`
