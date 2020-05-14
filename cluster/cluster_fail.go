@@ -315,6 +315,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		// ********
 		// Phase 4: Demote old master to slave
 		// ********
+		cluster.LogPrintf(LvlInfo, "Killing new connections on old master showing before update route")
+		dbhelper.KillThreads(cluster.oldMaster.Conn, cluster.oldMaster.DBVersion)
 		cluster.LogPrintf(LvlInfo, "Switching old master as a slave")
 		logs, err := dbhelper.UnlockTables(cluster.oldMaster.Conn)
 		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not unlock tables on old master %s", err)
