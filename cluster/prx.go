@@ -407,7 +407,7 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint64) {
 	// Found server from ServerId
 	for _, pr := range cluster.Proxies {
 		if cluster.Conf.HaproxyOn && pr.Type == config.ConstProxyHaproxy {
-			cluster.initHaproxy(nil, pr)
+			cluster.initHaproxy(pr)
 		}
 		if cluster.Conf.MxsOn && pr.Type == config.ConstProxyMaxscale {
 			//intsrvid, _ := strconv.Atoi(serverid)
@@ -484,7 +484,7 @@ func (cluster *Cluster) failoverProxies() {
 	for _, pr := range cluster.Proxies {
 		cluster.LogPrintf(LvlInfo, "Failover Proxy Type: %s Host: %s Port: %s", pr.Type, pr.Host, pr.Port)
 		if cluster.Conf.HaproxyOn && pr.Type == config.ConstProxyHaproxy {
-			cluster.initHaproxy(nil, pr)
+			cluster.initHaproxy(pr)
 		}
 		if cluster.Conf.MxsOn && pr.Type == config.ConstProxyMaxscale {
 			cluster.initMaxscale(nil, pr)
@@ -503,7 +503,7 @@ func (cluster *Cluster) initProxies() {
 	for _, pr := range cluster.Proxies {
 		cluster.LogPrintf(LvlInfo, "New proxy monitored: %s %s:%s", pr.Type, pr.Host, pr.Port)
 		if cluster.Conf.HaproxyOn && pr.Type == config.ConstProxyHaproxy {
-			cluster.initHaproxy(nil, pr)
+			cluster.initHaproxy(pr)
 		}
 		if cluster.Conf.MxsOn && pr.Type == config.ConstProxyMaxscale {
 			cluster.initMaxscale(nil, pr)

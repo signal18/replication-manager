@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"hash/crc64"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -24,31 +23,37 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
-	haproxyconfigPath := cluster.Conf.WorkingDir
+func (cluster *Cluster) initHaproxy(proxy *Proxy) {
+
+	haproxydatadir := proxy.Datadir + "/var"
+
+	if _, err := os.Stat(haproxydatadir); os.IsNotExist(err) {
+		proxy.GetProxyConfig()
+		os.Symlink(proxy.Datadir+"/init/data", haproxydatadir)
+	}
 	haproxytemplateFile := "haproxy_config.template"
-	haproxyconfigFile := cluster.Name + "-haproxy.cfg"
+	haproxyconfigFile := "haproxy.cfg"
 	haproxyjsonFile := "vamp_router.json"
-	haproxypidFile := cluster.Name + "-haproxy-private.pid"
-	haproxysockFile := cluster.Name + "-haproxy.stats.sock"
+	haproxypidFile := "haproxy.pid"
+	haproxysockFile := "haproxy.stats.sock"
 	haproxyerrorPagesDir := "error_pages"
 	//	haproxymaxWorkDirSize := 50 // this value is based on (max socket path size - md5 hash length - pre and postfixes)
 
 	haRuntime := haproxy.Runtime{
 		Binary:   cluster.Conf.HaproxyBinaryPath,
-		SockFile: filepath.Join(cluster.Conf.WorkingDir, "/", haproxysockFile),
+		SockFile: filepath.Join(haproxydatadir, "/", haproxysockFile),
 	}
 	haConfig := haproxy.Config{
 		TemplateFile:  filepath.Join(cluster.Conf.ShareDir, haproxytemplateFile),
-		ConfigFile:    filepath.Join(haproxyconfigPath, haproxyconfigFile),
-		JsonFile:      filepath.Join(haproxyconfigPath, haproxyjsonFile),
-		ErrorPagesDir: filepath.Join(haproxyconfigPath, haproxyerrorPagesDir, "/"),
-		PidFile:       filepath.Join(cluster.Conf.WorkingDir, "/", haproxypidFile),
-		SockFile:      filepath.Join(cluster.Conf.WorkingDir, "/", haproxysockFile),
-		WorkingDir:    filepath.Join(cluster.Conf.WorkingDir + "/"),
+		ConfigFile:    filepath.Join(haproxydatadir, "/", haproxyconfigFile),
+		JsonFile:      filepath.Join(haproxydatadir, "/", haproxyjsonFile),
+		ErrorPagesDir: filepath.Join(haproxydatadir, "/", haproxyerrorPagesDir, "/"),
+		PidFile:       filepath.Join(haproxydatadir, "/", haproxypidFile),
+		SockFile:      filepath.Join(haproxydatadir, "/", haproxysockFile),
+		WorkingDir:    filepath.Join(haproxydatadir + "/"),
 	}
 
-	cluster.LogPrintf(LvlInfo, "Haproxy loading haproxy config at %s", haproxyconfigPath)
+	cluster.LogPrintf(LvlInfo, "Haproxy loading haproxy config at %s", haproxydatadir)
 	err := haConfig.GetConfigFromDisk()
 	if err != nil {
 		cluster.LogPrintf(LvlInfo, "Haproxy did not find an haproxy config...initializing new config")
@@ -111,29 +116,22 @@ func (cluster *Cluster) initHaproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 			}
 		}
 	}
-	if cluster.Conf.Enterprise {
-		/*cf, err := ioutil.ReadFile(cluster.WorkingDir + "-haproxy.cfg") // just pass the file name
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Haproxy can't log generated config for provisioning %s", err)
-		}
-		cluster.OpenSVCProvisionReloadHaproxyConf(string(cf))*/
-		//cluster.OpenSVCProvisionReloadHaproxyConf("test")
-	} else {
-		err = haConfig.Render()
-		if err != nil {
-			log.Fatal("Could not render initial haproxy config, exiting...")
-			os.Exit(1)
-		}
 
-		if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
-			cluster.LogPrintf(LvlWarn, "Haproxy pidfile exists at %s, proceeding with reload config...", haConfig.PidFile)
-		}
-		err = haRuntime.Reload(&haConfig)
-		if err != nil {
-			log.Fatal("Error while reloading haproxy: " + err.Error())
-			os.Exit(1)
-		}
+	err = haConfig.Render()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Could not render initial haproxy config, exiting...")
 	}
+	if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
+		cluster.LogPrintf(LvlInfo, "Haproxy reload config on pid %s", haConfig.PidFile)
+	} else {
+		cluster.LogPrintf(LvlInfo, "Haproxy reload config err %s", err.Error())
+	}
+
+	err = haRuntime.Reload(&haConfig)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can't Reloadhaproxy config %s"+err.Error())
+	}
+
 }
 
 func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
