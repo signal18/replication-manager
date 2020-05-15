@@ -824,6 +824,15 @@ func (cluster *Cluster) SetProxyServersBackendMaxConnections(value string) error
 	return nil
 }
 
+func (cluster *Cluster) SetSwitchoverWaitRouteChange(value string) error {
+	numvalue, err := strconv.Atoi(value)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.SwitchSlaveWaitRouteChange = numvalue
+	return nil
+}
+
 func (cluster *Cluster) SetProxyServersBackendMaxReplicationLag(value string) error {
 	numvalue, err := strconv.Atoi(value)
 	if err != nil {

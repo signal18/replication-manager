@@ -1460,7 +1460,9 @@ function (
       $scope.changeproxiesmaxdelay = function (delay) {
           if (confirm("Confirm change delay  "+delay.toString()))   httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/proxy-servers-backend-max-replication-lag/' + delay);
       };
-
+      $scope.changeswitchoverwaitroutechange = function (delay) {
+          if (confirm("Confirm change wait change route detection "+delay.toString()))   httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/switchover-wait-route-change/' + delay);
+      };
 
       $scope.setsettings = function (setting, value) {
         httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);

@@ -75,5 +75,18 @@
 
             </td>
         </tr>
+        <tr>
+            <th>Switchover wait unmanaged proxy monitor detection</th>
+        </tr>
+        <tr>
+            <td>
+                <md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-value="selectedCluster.config.switchoverWaitRouteChange" md-discrete flex
+                           ng-model="selectedSwitchoverWaitRouteChange" ng-change="changeswitchoverwaitroutechange(selectedSwitchoverWaitRouteChange)" step="1" min="0" max="10" aria-label="<!-- WARNING:  -->ait">
+                </md-slider>
+
+                <span class="label label-primary">{{selectedCluster.config.switchoverWaitRouteChange}}</span>
+
+            </td>
+        </tr>
     </table>
 </md-card>

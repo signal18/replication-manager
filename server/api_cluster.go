@@ -996,6 +996,8 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		case "failover-max-slave-delay":
 			val, _ := strconv.ParseInt(vars["settingValue"], 10, 64)
 			mycluster.SetRplMaxDelay(val)
+		case "switchover-wait-route-change":
+			mycluster.SetSwitchoverWaitRouteChange(vars["settingValue"])
 		case "failover-limit":
 			val, _ := strconv.Atoi(vars["settingValue"])
 			mycluster.SetFailLimit(val)
