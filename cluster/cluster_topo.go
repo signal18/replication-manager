@@ -170,7 +170,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					cluster.master = cluster.Servers[k]
 					cluster.master.State = stateMaster
 
-					if cluster.master.IsReadOnly() {
+					if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
 						cluster.master.SetReadWrite()
 						cluster.LogPrintf(LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
 					}

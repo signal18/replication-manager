@@ -832,3 +832,13 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 
 	return nil
 }
+
+func (server *ServerMonitor) JobCopyBinlog(binlogfile string) error {
+	if !server.IsMaster() {
+		return errors.New("Copy only master binlog")
+	}
+	if server.ClusterGroup.IsInFailover() {
+		return errors.New("Cancel dbjob via ssh during failover")
+	}
+	return nil
+}

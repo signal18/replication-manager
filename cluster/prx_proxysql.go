@@ -121,7 +121,7 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 				cluster.LogPrintf(LvlInfo, "Failover ProxySQL set server %s offline", s.URL)
 			}
 		}
-		if s.IsMaster() {
+		if s.IsMaster() && !s.IsRelay {
 			err = psql.ReplaceWriter(misc.Unbracket(s.Host), s.Port, misc.Unbracket(cluster.oldMaster.Host), cluster.oldMaster.Port, cluster.Conf.ProxysqlMasterIsReader)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Failover ProxySQL could not set server %s Master (%s)", s.URL, err)

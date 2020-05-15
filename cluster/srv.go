@@ -67,6 +67,7 @@ type ServerMonitor struct {
 	FailSuspectHeartbeat        int64                        `json:"failSuspectHeartbeat"`
 	ClusterGroup                *Cluster                     `json:"-"` //avoid recusive json
 	BinaryLogFile               string                       `json:"binaryLogFile"`
+	BinaryLogFilePrevious       string                       `json:"binaryLogFilePrevious"`
 	BinaryLogPos                string                       `json:"binaryLogPos"`
 	FailoverMasterLogFile       string                       `json:"failoverMasterLogFile"`
 	FailoverMasterLogPos        string                       `json:"failoverMasterLogPos"`
@@ -640,6 +641,10 @@ func (server *ServerMonitor) Refresh() error {
 		// binary log might be closed for that server
 	} else {
 		server.BinaryLogFile = server.MasterStatus.File
+		if server.BinaryLogFilePrevious != "" && server.BinaryLogFilePrevious != server.BinaryLogFile {
+			server.JobCopyBinlog(server.BinaryLogFilePrevious)
+		}
+		server.BinaryLogFilePrevious = server.BinaryLogFile
 		server.BinaryLogPos = strconv.FormatUint(uint64(server.MasterStatus.Position), 10)
 	}
 
