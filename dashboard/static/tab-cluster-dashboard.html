@@ -1,9 +1,8 @@
 <md-content ng-if="selectedCluster" class="md-padding">
     <div ng-include src="'static/toolbar-cluster.html'"></div>
     <div ng-include src="'static/dashboard/failed-connection-to-backend.html'"></div>
+    <div ng-include src="'static/dashboard/cluster-infos.html'"></div>
     <div ng-if="serverListTabular" ng-include src="'static/dashboard/server-list-tab.html'"></div>
-    <div ng-include ng-if="!serverListTabular" src="'static/dashboard/cluster-status.html'"></div>
     <div ng-if="!serverListTabular" ng-include src="'static/dashboard/server-list.html'"></div>
-    <div ng-include src="'static/dashboard/settings-enterprise.html'"></div>
     <div ng-include src="'static/dashboard/settings-test-config.html'"></div>
 </md-content>

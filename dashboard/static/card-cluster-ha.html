@@ -1,0 +1,38 @@
+<md-card ng-if="servers">
+    <table  md-table class="tabletable-condensed fixed table">
+
+      <col style="width: 5%;">
+      <col style="width: 15%;">
+     <col style="width: 70%;">
+        <tr md-row>
+
+          <th style="text-align:left;">
+            <md-button style="min-width:20px;margin: 2px 2px 2px 2px;padding: 0 2px 0 2px;" ng-disabled="selectedCluster.apiUsers[user].grants['cluster-switchover']==false" class="md-raised" ng-if="master.state !='Failed'" ng-click="switch(false)"
+                         aria-label="Switchover"><i class="fa fa-toggle-on" aria-hidden="true"></i></md-button>
+            <md-button style="min-width:20px;margin: 2px 2px 2px 2px;padding: 0 2px 0 2px;" ng-disabled="selectedCluster.apiUsers[user].grants['cluster-failover']==false"  class="md-raised md-warn" ng-if="master.state =='Failed'" ng-click="switch(true)"
+                         aria-label="Failover"><i class="fa fa-toggle-on" aria-hidden="true"></i></md-button>
+          </th>
+            <th>HA</th>
+            <th style="text-align:right;"> <span class="label label-success">{{selectedCluster.topology}}</span></th>
+
+        </tr>
+        <tr>
+            <td colspan=2 width="20%">Failover</td>
+            <td  >
+                <table width="100%"><tr><td>Cheks</td><td>Count</td><td>Last Time</td></tr>
+                <td>{{selectedCluster.monitorSpin}}</td><td>{{selectedCluster.failoverCounter}} / {{selectedCluster.config.failoverLimit}}</td><td>{{selectedCluster.failoverLastTime}}</td>
+                </tr></table>
+            </td>
+        </tr>
+
+        <tr>
+        <td colspan=2>SLA</td>
+        <td >
+            <table><tr><td>Master Up</td><td>Slaves Catch</td><td>Slaves Sync</td></tr>
+            <td>{{selectedCluster.uptime}} %</td><td>{{selectedCluster.uptimeFailable}} %</td><td>{{selectedCluster.uptimeSemisync}} %</td>
+            </tr></table>
+        </td>
+      </tr>
+
+    </table>
+</md-card>

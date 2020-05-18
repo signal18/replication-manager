@@ -190,6 +190,25 @@ func (cluster *Cluster) GetRejoinBackupBinlog() bool {
 	return cluster.Conf.AutorejoinBackupBinlog
 }
 
+func (cluster *Cluster) GetQps() int64 {
+	qps := int64(0)
+	for _, server := range cluster.Servers {
+		qps += server.QPS
+	}
+	return qps
+}
+
+func (cluster *Cluster) GetConnections() int {
+	allconns := 0
+	for _, server := range cluster.Servers {
+		if conns, ok := server.Status["THREADS_RUNNING"]; ok {
+			numconns, _ := strconv.Atoi(conns)
+			allconns += numconns
+		}
+	}
+	return allconns
+}
+
 func (cluster *Cluster) GetRejoinSemisync() bool {
 	return cluster.Conf.AutorejoinSemisync
 }

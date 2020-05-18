@@ -970,6 +970,9 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchProvDockerDaemonPrivate()
 		case "backup-restic":
 			mycluster.SwitchBackupRestic()
+		case "backup-binlogs":
+			mycluster.SwitchBackupBinlogs()
+
 		}
 
 	} else {
@@ -1107,6 +1110,8 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetSchedulerSlaRotateCron(vars["settingValue"])
 		case "scheduler-jobs-ssh-cron":
 			mycluster.SetSchedulerJobsSshCron(vars["settingValue"])
+		case "backup-binlogs-keep":
+			mycluster.SetBackupBinlogsKeep(vars["settingValue"])
 
 		}
 	} else {

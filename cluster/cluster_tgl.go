@@ -21,6 +21,9 @@ func (cluster *Cluster) SwitchProvDockerDaemonPrivate() {
 func (cluster *Cluster) SwitchBackupRestic() {
 	cluster.Conf.BackupRestic = !cluster.Conf.BackupRestic
 }
+func (cluster *Cluster) SwitchBackupBinlogs() {
+	cluster.Conf.BackupBinlogs = !cluster.Conf.BackupBinlogs
+}
 
 func (cluster *Cluster) SwitchInteractive() {
 	if cluster.Conf.Interactive == true {

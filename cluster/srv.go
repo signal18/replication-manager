@@ -642,7 +642,8 @@ func (server *ServerMonitor) Refresh() error {
 	} else {
 		server.BinaryLogFile = server.MasterStatus.File
 		if server.BinaryLogFilePrevious != "" && server.BinaryLogFilePrevious != server.BinaryLogFile {
-			server.JobCopyBinlog(server.BinaryLogFilePrevious)
+			server.JobBackupBinlog(server.BinaryLogFilePrevious)
+			go server.JobBackupBinlogPurge(server.BinaryLogFilePrevious)
 		}
 		server.BinaryLogFilePrevious = server.BinaryLogFile
 		server.BinaryLogPos = strconv.FormatUint(uint64(server.MasterStatus.Position), 10)

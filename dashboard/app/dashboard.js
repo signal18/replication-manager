@@ -1454,6 +1454,9 @@ function (
       $scope.changemaxdelay = function (delay) {
           if (confirm("Confirm change delay  "+delay.toString()))   httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/failover-max-slave-delay/' + delay);
       };
+      $scope.changebackupbinlogskeep = function (delay) {
+          if (confirm("Confirm change keep binlogs files "+delay.toString()))   httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-binlogs-keep/' + delay);
+      };
       $scope.changeproxiesmaxconnections = function (delay) {
           if (confirm("Confirm change backends max connections  "+delay.toString()))   httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/proxy-servers-backend-max-replication-lag/' + delay);
       };

@@ -16,9 +16,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -828,17 +830,79 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err2)
 		return err
 	}
-	server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", out)
-
+	//	server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", out)
+	res := new(JobResult)
+	val := reflect.ValueOf(res).Elem()
+	for i := 0; i < val.NumField(); i++ {
+		if strings.Contains(strings.ToLower(string(out)), strings.ToLower("no "+val.Type().Field(i).Name)) {
+			val.Field(i).SetBool(false)
+		} else {
+			val.Field(i).SetBool(true)
+		}
+	}
+	server.ClusterGroup.JobResults[server.URL] = res
 	return nil
 }
 
-func (server *ServerMonitor) JobCopyBinlog(binlogfile string) error {
+func (server *ServerMonitor) JobBackupBinlog(binlogfile string) error {
 	if !server.IsMaster() {
 		return errors.New("Copy only master binlog")
 	}
 	if server.ClusterGroup.IsInFailover() {
-		return errors.New("Cancel dbjob via ssh during failover")
+		return errors.New("Cancel job copy binlog during failover")
+	}
+	if !server.ClusterGroup.Conf.BackupBinlogs {
+		return errors.New("Copy binlog not enable")
+	}
+
+	cmdrun := exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory()+"/", binlogfile)
+	server.ClusterGroup.LogPrintf(LvlInfo, "%s", strings.Replace(cmdrun.String(), server.ClusterGroup.dbPass, "XXXX", 1))
+
+	var outrun bytes.Buffer
+	cmdrun.Stdout = &outrun
+	var outrunerr bytes.Buffer
+	cmdrun.Stderr = &outrunerr
+
+	cmdrunErr := cmdrun.Run()
+	if cmdrunErr != nil {
+		server.ClusterGroup.LogPrintf("ERROR", "Failed to backup binlogs of %s,%s", server.URL, cmdrunErr.Error())
+		server.ClusterGroup.LogPrintf("ERROR", "%s %s", server.ClusterGroup.GetMysqlBinlogPath(), cmdrun.Args)
+		server.ClusterGroup.LogPrint(cmdrun.Stderr)
+		server.ClusterGroup.LogPrint(cmdrun.Stdout)
+		return cmdrunErr
+	}
+
+	// Get
+
+	return nil
+}
+
+func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
+	binlogfilestart, _ := strconv.Atoi(strings.Split(binlogfile, ".")[1])
+	prefix := strings.Split(binlogfile, ".")[0]
+	binlogfilestop := binlogfilestart - server.ClusterGroup.Conf.BackupBinlogsKeep
+	keeping := make(map[string]int)
+	for binlogfilestop < binlogfilestart {
+		if binlogfilestop > 0 {
+			filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestop)
+			if _, err := os.Stat(server.GetMyBackupDirectory() + "/" + filename); os.IsNotExist(err) {
+				server.ClusterGroup.LogPrintf(LvlInfo, "Backup master missing binlog of %s,%s", server.URL, filename)
+				server.JobBackupBinlog(filename)
+			}
+			keeping[filename] = binlogfilestop
+		}
+		binlogfilestop++
+	}
+	files, err := ioutil.ReadDir(server.GetMyBackupDirectory())
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Failed to read backup directory  of %s,%s", server.URL, err.Error())
+	}
+
+	for _, file := range files {
+		_, ok := keeping[file.Name()]
+		if strings.HasPrefix(file.Name(), prefix) && !ok {
+			fmt.Println(LvlInfo, "Purging binlog file %s", file.Name())
+		}
 	}
 	return nil
 }

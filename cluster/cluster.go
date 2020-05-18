@@ -75,7 +75,10 @@ type Cluster struct {
 	MonitorSpin                   string                      `json:"monitorSpin"`
 	DBTableSize                   int64                       `json:"dbTableSize"`
 	DBIndexSize                   int64                       `json:"dbIndexSize"`
+	Connections                   int                         `json:"connections"`
+	QPS                           int64                       `json:"qps"`
 	Log                           s18log.HttpLog              `json:"log"`
+	JobResults                    map[string]*JobResult       `json:"JobResults"`
 	Grants                        map[string]string           `json:"-"`
 	tlog                          *s18log.TermLog             `json:"-"`
 	htlog                         *s18log.HttpLog             `json:"-"`
@@ -188,6 +191,22 @@ type Tag struct {
 	Category string `json:"category"`
 }
 
+type JobResult struct {
+	Xtrabackup            bool `json:"xtrabackup"`
+	Mariabackup           bool `json:"mariabackup"`
+	Zfssnapback           bool `json:"zfssnapback"`
+	Optimize              bool `json:"optimize"`
+	Reseedxtrabackup      bool `json:"reseedxtrabackup"`
+	Reseedmariabackup     bool `json:"reseedmariabackup"`
+	Reseedmysqldump       bool `json:"reseedmysqldump"`
+	Flashbackxtrabackup   bool `json:"flashbackxtrabackup"`
+	Flashbackmariadbackup bool `json:"flashbackmariadbackup"`
+	Flashbackmysqldump    bool `json:"flashbackmysqldump"`
+	Stop                  bool `json:"stop"`
+	Start                 bool `json:"start"`
+	Restart               bool `json:"restart"`
+}
+
 const (
 	stateClusterStart string = "Running starting"
 	stateClusterDown  string = "Running cluster down"
@@ -247,7 +266,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 
 	cluster.QueryRules = make(map[uint32]config.QueryRule)
 	cluster.Schedule = make(map[string]cron.Entry)
-
+	cluster.JobResults = make(map[string]*JobResult)
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.sme = new(state.StateMachine)
 	cluster.sme.Init()
@@ -451,6 +470,8 @@ func (cluster *Cluster) Run() {
 			cluster.WaitingRejoin = cluster.rejoinCond.Len()
 			cluster.WaitingFailover = cluster.failoverCond.Len()
 			cluster.WaitingSwitchover = cluster.switchoverCond.Len()
+			cluster.QPS = cluster.GetQps()
+			cluster.Connections = cluster.GetConnections()
 			time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
 
 		}
