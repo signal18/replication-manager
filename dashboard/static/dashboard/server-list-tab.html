@@ -1,5 +1,4 @@
-<div>
-  <md-grid-list   md-cols-xs="1" md-cols-sm="2" md-cols-md="3" md-cols-gt-md="3" md-row-height-gt-md="3:4" md-row-height="3:4" md-gutter="0px" md-gutter-gt-sm="0px">
+  <md-grid-list   md-cols-xs="1" md-cols-sm="2" md-cols-md="3" md-cols-gt-md="3" md-row-height-gt-md="2:3" md-row-height="2:3" md-gutter="0px" md-gutter-gt-sm="0px">
 
       <md-grid-tile    ng-repeat="server in servers track by server.id"   ng-class="{'active':server.state=='Master','danger': server.state=='SlaveErr','warning': server.state=='SlaveLate'  }" >
 
@@ -172,5 +171,3 @@
 </div>
 </md-grid-tile>
 </md-grid-list>
-<div ng-include src="'static/dashboard/server-log.html'"></div>
-</div>
