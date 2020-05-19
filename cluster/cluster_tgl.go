@@ -155,10 +155,6 @@ func (cluster *Cluster) SwitchSchedulerRollingReprov() {
 	cluster.SetSchedulerRollingReprov()
 }
 
-func (cluster *Cluster) SwitchMonitoringSaveConfig() {
-	cluster.Conf.ConfRewrite = !cluster.Conf.ConfRewrite
-}
-
 func (cluster *Cluster) SwitchGraphiteEmbedded() {
 	cluster.Conf.GraphiteEmbedded = !cluster.Conf.GraphiteEmbedded
 }
@@ -205,12 +201,28 @@ func (cluster *Cluster) SwitchProxysqlBootstrapQueryRules() {
 	cluster.Conf.ProxysqlBootstrapQueryRules = !cluster.Conf.ProxysqlBootstrapQueryRules
 }
 
+func (cluster *Cluster) SwitchMonitoringSaveConfig() {
+	cluster.Conf.ConfRewrite = !cluster.Conf.ConfRewrite
+}
 func (cluster *Cluster) SwitchMonitoringSchemaChange() {
 	cluster.Conf.MonitorSchemaChange = !cluster.Conf.MonitorSchemaChange
 }
 
 func (cluster *Cluster) SwitchMonitoringCapture() {
 	cluster.Conf.MonitorCapture = !cluster.Conf.MonitorCapture
+	// delete cluster config
+}
+
+func (cluster *Cluster) SwitchMonitoringInnoDBStatus() {
+	cluster.Conf.MonitorInnoDBStatus = !cluster.Conf.MonitorInnoDBStatus
+}
+
+func (cluster *Cluster) SwitchMonitoringVariableDiff() {
+	cluster.Conf.MonitorVariableDiff = !cluster.Conf.MonitorVariableDiff
+}
+
+func (cluster *Cluster) SwitchMonitoringProcesslist() {
+	cluster.Conf.MonitorProcessList = !cluster.Conf.MonitorProcessList
 }
 
 func (cluster *Cluster) SwitchMonitoringScheduler() {

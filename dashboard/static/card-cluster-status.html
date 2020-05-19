@@ -31,7 +31,7 @@
                 Status
             </td>
             <td><div>
-              <span style="display:inline-block;margin: 2px;" ng-if="!selectedCluster.Conf.testInjectTraffic" class="label label-success">PrxTraffic</span>
+              <span style="display:inline-block;margin: 2px;" ng-if="selectedCluster.config.testInjectTraffic" class="label label-success">PrxTraffic</span>
               <span style="display:inline-block;margin: 2px;" ng-if="selectedCluster.isProvision" class="label label-success">IsProvision</span>
               <span style="display:inline-block;margin: 2px;" ng-if="!selectedCluster.isProvision" class="label label-warning">NeedProvision</span>
               <span style="display:inline-block;margin: 2px;" ng-if="selectedCluster.isNeedDatabasesRollingRestart" class="label label-warning">NeedRollingRestart</span>

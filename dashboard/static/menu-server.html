@@ -98,7 +98,12 @@
                             Reseed Physical From Backup
                         </md-button>
                     </md-menu-item>
-
+                    <md-menu-item ng-click="flushlogs(server.id)">
+                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false">
+                            <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                            Flush logs
+                      </md-button>
+                    </md-menu-item>
                 </md-menu-content>
             </md-menu>
         </md-menu-item>

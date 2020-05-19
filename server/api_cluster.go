@@ -930,16 +930,7 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchGraphiteEmbedded()
 		case "shardproxy-copy-grants":
 			mycluster.SwitchProxysqlCopyGrants()
-		case "monitoring-save-config":
-			mycluster.SwitchMonitoringSaveConfig()
-		case "monitoring-queries":
-			mycluster.SwitchMonitoringQueries()
-		case "monitoring-scheduler":
-			mycluster.SwitchMonitoringScheduler()
-		case "monitoring-schema-change":
-			mycluster.SwitchMonitoringSchemaChange()
-		case "monitoring-capture":
-			mycluster.SwitchMonitoringCapture()
+
 		case "proxysql-copy-grants":
 			mycluster.SwitchProxysqlCopyGrants()
 		case "proxysql-bootstrap-users":
@@ -960,7 +951,7 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchProxyServersReadOnMaster()
 		case "proxy-servers-backend-compression":
 			mycluster.SwitchProxyServersBackendCompression()
-		case "database-hearbeat":
+		case "database-heartbeat":
 			mycluster.SwitchTraffic()
 		case "test":
 			mycluster.SwitchTestMode()
@@ -972,7 +963,22 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchBackupRestic()
 		case "backup-binlogs":
 			mycluster.SwitchBackupBinlogs()
-
+		case "monitoring-save-config":
+			mycluster.SwitchMonitoringSaveConfig()
+		case "monitoring-queries":
+			mycluster.SwitchMonitoringQueries()
+		case "monitoring-scheduler":
+			mycluster.SwitchMonitoringScheduler()
+		case "monitoring-schema-change":
+			mycluster.SwitchMonitoringSchemaChange()
+		case "monitoring-capture":
+			mycluster.SwitchMonitoringCapture()
+		case "monitoring-innodb-status":
+			mycluster.SwitchMonitoringInnoDBStatus()
+		case "monitoring-variable-diff":
+			mycluster.SwitchMonitoringVariableDiff()
+		case "monitoring-processlist":
+			mycluster.SwitchMonitoringProcesslist()
 		}
 
 	} else {

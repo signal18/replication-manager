@@ -246,6 +246,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerResetSlaveAll)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/flush-logs", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerFlushLogs)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reset-pfs-queries", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerResetPFSQueries)),
@@ -787,6 +791,28 @@ func (repman *ReplicationManager) handlerMuxServerResetSlaveAll(w http.ResponseW
 		if node != nil {
 			node.StopSlave()
 			node.ResetSlave()
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+func (repman *ReplicationManager) handlerMuxServerFlushLogs(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			node.FlushLogs()
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

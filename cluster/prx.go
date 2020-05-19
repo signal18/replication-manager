@@ -457,7 +457,9 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 		if err == nil {
 			pr.FailCount = 0
 			pr.State = stateProxyRunning
-			pr.DelWaitStartCookie()
+			if pr.HasWaitStartCookie() {
+				pr.DelWaitStartCookie()
+			}
 		} else {
 			pr.FailCount++
 			if pr.FailCount >= pr.ClusterGroup.Conf.MaxFail {
@@ -466,6 +468,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 				}
 				pr.State = stateFailed
 				pr.DelWaitStopCookie()
+				pr.DelRestartCookie()
 			} else {
 				pr.State = stateSuspect
 			}

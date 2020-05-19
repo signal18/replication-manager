@@ -976,6 +976,9 @@ function (
       $scope.dbreseedxtrabackup = function (server) {
         if (confirm("Confirm reseed with xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
       };
+      $scope.flushlogs  = function (server) {
+        if (confirm("Confirm flush logs for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/flush-logs');
+      };
       $scope.dbreseedmysqldump = function (server) {
         if (confirm("Confirm reseed with mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/logicalbackup');
       };
@@ -1052,7 +1055,7 @@ function (
       };
 
       $scope.toggletraffic = function () {
-        if (confirm("Confirm toggle traffic")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/database-hearbeat');
+        if (confirm("Confirm toggle traffic")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/database-heartbeat');
       };
 
 

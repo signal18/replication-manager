@@ -405,6 +405,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	// For orchestrator to trigger a start via tracking state URL
 	if server.PrevState == stateFailed {
 		server.DelWaitStartCookie()
+		server.DelRestartCookie()
 	}
 	// Reset FailCount
 	if (server.State != stateFailed && server.State != stateErrorAuth && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
@@ -952,6 +953,10 @@ func (server *ServerMonitor) StopSlaveSQLThread() (string, error) {
 
 func (server *ServerMonitor) ResetSlave() (string, error) {
 	return dbhelper.ResetSlave(server.Conn, true, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+}
+
+func (server *ServerMonitor) FlushLogs() (string, error) {
+	return dbhelper.FlushLogs(server.Conn)
 }
 
 func (server *ServerMonitor) FlushTables() (string, error) {

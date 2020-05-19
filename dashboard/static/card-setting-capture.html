@@ -1,5 +1,18 @@
 <md-card>
     <table ng-if="settings" class="table">
+      <th>Monitoring Save Config</th>
+    </tr>
+    <tr>
+      <td>
+              Monitoring Save Config
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringSaveConfig"
+                         ng-click="switchsettings('monitoring-save-config')" aria-label="Monitoring save cpfig">
+                  <span ng-if="selectedCluster.config.monitoringSaveConfig" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.monitoringSaveConfig" class="label label-warning">Off</span>
+          </td>
+          </md-switch>
+          </td>
+    </tr>
         <tr>
             <th>Capture</th>
         </tr>
@@ -22,6 +35,56 @@
             <td>
               <input type="text" name="selectedMonitoringCaptureTrigger" value="selectedCluster.config.monitoringCaptureTrigger"   id="selectedMonitoringCaptureTrigger" maxlength="120" size="80" ng-model="selectedCluster.config.monitoringCaptureTrigger"  />
             </td>
-        </tr>
+          </tr>
+          <tr>
+              <th>Monitoring Schema</th>
+            </tr>
+            <tr>
+              <td>
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringSchemaChange"
+                                 ng-click="switchsettings('monitoring-schema-change')" aria-label="Monitoring schema change">
+                          <span ng-if="selectedCluster.config.monitoringSchemaChange" class="label label-primary">On</span><span
+                              ng-if="!selectedCluster.config.monitoringSchemaChange" class="label label-warning">Off</span>
+                  </td>
+                  </md-switch>
+                  </td>
+            </tr>  <tr>
+           <th>Monitoring InnoDB Status</th>
+           </tr>
+            <tr>
+              <td>
+
+                      <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringInnoDBStatus"
+                                 ng-click="switchsettings('monitoring-innodb-status')" aria-label="Monitoring innodb status">
+                          <span ng-if="selectedCluster.config.monitoringInnoDBStatus" class="label label-primary">On</span><span
+                              ng-if="!selectedCluster.config.monitoringInnoDBStatus" class="label label-warning">Off</span>
+                  </td>
+                  </md-switch>
+                  </td>
+            <tr><th>Monitoring Variable Diff</th></tr>
+             <tr>
+               <td>
+
+                       <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.MonitoringVariableDiff"
+                                  ng-click="switchsettings('monitoring-variable-diff')" aria-label="Monitoring innodb status">
+                           <span ng-if="selectedCluster.config.MonitoringVariableDiff" class="label label-primary">On</span><span
+                               ng-if="!selectedCluster.config.MonitoringVariableDiff" class="label label-warning">Off</span>
+                   </td>
+                   </md-switch>
+                   </td>
+             </tr>
+             <tr><th>Monitoring Processlist</th></tr>
+              <tr>
+                <td>
+
+                        <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringProcesslist"
+                                   ng-click="switchsettings('monitoring-processlist')" aria-label="Monitoring innodb status">
+                            <span ng-if="selectedCluster.config.monitoringProcesslist" class="label label-primary">On</span><span
+                                ng-if="!selectedCluster.config.monitoringProcesslist" class="label label-warning">Off</span>
+                    </td>
+                    </md-switch>
+                    </td>
+              </tr>
+
     </table>
 </md-card>
