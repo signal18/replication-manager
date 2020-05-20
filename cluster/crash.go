@@ -11,6 +11,8 @@ package cluster
 import (
 	"encoding/json"
 	"io/ioutil"
+	"os"
+	"strings"
 
 	"github.com/signal18/replication-manager/utils/gtid"
 )
@@ -75,6 +77,30 @@ func (crash *Crash) Save(path string) error {
 	err := ioutil.WriteFile(path, saveJson, 0644)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func (crash *Crash) Purge(path string, keep int) error {
+	drop := make(map[string]int)
+
+	files, err := ioutil.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	i := 0
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), "failover") {
+			i++
+			drop[file.Name()] = i
+		}
+	}
+	for key, value := range drop {
+
+		if value < len(drop)-keep {
+			os.Remove(path + "/" + key)
+		}
+
 	}
 	return nil
 }

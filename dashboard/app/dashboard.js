@@ -1134,6 +1134,10 @@ function (
       $scope.cldropproxytag = function (tag) {
         if (confirm("Confirm drop tag "+tag)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/drop-proxy-tag/'+tag);
       };
+      $scope.configreload = function () {
+        if (confirm("Confirm reload config")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/reload');
+      };
+
 
 
       $scope.clsetdbcore = function (base,add) {

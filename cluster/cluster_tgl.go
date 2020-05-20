@@ -6,6 +6,8 @@
 
 package cluster
 
+import "os"
+
 func (cluster *Cluster) SwitchServerMaintenance(serverid uint64) {
 	server := cluster.GetServerFromId(serverid)
 	server.SwitchMaintenance()
@@ -203,6 +205,10 @@ func (cluster *Cluster) SwitchProxysqlBootstrapQueryRules() {
 
 func (cluster *Cluster) SwitchMonitoringSaveConfig() {
 	cluster.Conf.ConfRewrite = !cluster.Conf.ConfRewrite
+	if !cluster.Conf.ConfRewrite {
+		os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/config.toml")
+
+	}
 }
 func (cluster *Cluster) SwitchMonitoringSchemaChange() {
 	cluster.Conf.MonitorSchemaChange = !cluster.Conf.MonitorSchemaChange

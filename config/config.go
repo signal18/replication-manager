@@ -59,6 +59,7 @@ type Config struct {
 	MonitorLongQueryLogLength                 int    `mapstructure:"monitoring-long-query-log-length" toml:"monitoring-long-query-log-length" json:"monitoringLongQueryLogLength"`
 	MonitorErrorLogLength                     int    `mapstructure:"monitoring-erreur-log-length" toml:"monitoring-erreur-log-length" json:"monitoringErreurLogLength"`
 	MonitorCapture                            bool   `mapstructure:"monitoring-capture" toml:"monitoring-capture" json:"monitoringCapture"`
+	MonitorCaptureFileKeep                    int    `mapstructure:"monitoring-capture-file-keep" toml:"monitoring-capture-file-keep" json:"monitoringCaptureFileKeep"`
 	MonitorDiskUsage                          bool   `mapstructure:"monitoring-disk-usage" toml:"monitoring-disk-usage" json:"monitoringDiskUsage"`
 	MonitorDiskUsagePct                       int    `mapstructure:"monitoring-disk-usage-pct" toml:"monitoring-disk-usage-pct" json:"monitoringDiskUsagePct"`
 	MonitorCaptureTrigger                     string `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
@@ -137,6 +138,7 @@ type Config struct {
 	CheckFalsePositiveMaxscaleTimeout         int    `mapstructure:"failover-falsepositive-maxscale-timeout" toml:"failover-falsepositive-maxscale-timeout" json:"failoverFalsePositiveMaxscaleTimeout"`
 	CheckFalsePositiveExternal                bool   `mapstructure:"failover-falsepositive-external" toml:"failover-falsepositive-external" json:"failoverFalsePositiveExternal"`
 	CheckFalsePositiveExternalPort            int    `mapstructure:"failover-falsepositive-external-port" toml:"failover-falsepositive-external-port" json:"failoverFalsePositiveExternalPort"`
+	FailoverLogFileKeep                       int    `mapstructure:"failover-log-file-keep" toml:"failover-log-file-keep" json:"failoverLogFileKeep"`
 	Autorejoin                                bool   `mapstructure:"autorejoin" toml:"autorejoin" json:"autorejoin"`
 	Autoseed                                  bool   `mapstructure:"autoseed" toml:"autoseed" json:"autoseed"`
 	AutorejoinFlashback                       bool   `mapstructure:"autorejoin-flashback" toml:"autorejoin-flashback" json:"autorejoinFlashback"`

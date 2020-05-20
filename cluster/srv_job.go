@@ -902,7 +902,32 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		_, ok := keeping[file.Name()]
 		if strings.HasPrefix(file.Name(), prefix) && !ok {
 			fmt.Println(LvlInfo, "Purging binlog file %s", file.Name())
+			os.Remove(server.GetMyBackupDirectory() + "/" + file.Name())
 		}
+	}
+	return nil
+}
+
+func (server *ServerMonitor) JobCapturePurge(path string, keep int) error {
+	drop := make(map[string]int)
+
+	files, err := ioutil.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	i := 0
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), "capture") {
+			i++
+			drop[file.Name()] = i
+		}
+	}
+	for key, value := range drop {
+
+		if value < len(drop)-keep {
+			os.Remove(path + "/" + key)
+		}
+
 	}
 	return nil
 }

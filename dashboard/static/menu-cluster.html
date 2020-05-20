@@ -205,6 +205,26 @@
         </md-menu-content>
      </md-menu>
   </md-menu-item>
+
+<md-menu-item>
+   <md-menu>
+      <md-button ng-click="$mdMenu.open($event)">
+         <span md-menu-align-target>
+           Config
+         </span>
+         <md-icon class="fas fa-arrow-right"></md-icon>
+      </md-button>
+      <md-menu-content>
+        <md-menu-item ng-click="configreload()">
+        <md-button ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false">
+          <md-icon md-menu-align-target class="fas fa-bug"></md-icon>
+         Reload
+        </md-button>
+        </md-menu-item>
+    </md-menu-content>
+  </md-menu>
+  </md-menu-item>
+
   <md-menu-item>
      <md-menu>
         <md-button ng-click="$mdMenu.open($event)">

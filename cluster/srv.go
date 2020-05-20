@@ -1053,6 +1053,7 @@ func (server *ServerMonitor) Capture() error {
 	}
 
 	go server.CaptureLoop(server.ClusterGroup.GetStateMachine().GetHeartbeats())
+	go server.JobCapturePurge(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name, server.ClusterGroup.Conf.MonitorCaptureFileKeep)
 	return nil
 }
 
@@ -1089,7 +1090,7 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "CaptureLoop", LvlErr, "Failed Slave Status for server %s: %s ", server.URL, err)
 
 		saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
-		err := ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/"+server.Name+"_capture_"+t.Format("20060102150405")+".json", saveJSON, 0644)
+		err := ioutil.WriteFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/capture_"+server.Name+"_"+t.Format("20060102150405")+".json", saveJSON, 0644)
 		if err != nil {
 			return
 		}
