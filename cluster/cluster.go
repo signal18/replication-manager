@@ -914,7 +914,7 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 		}
 		cluster.LogPrintf(LvlInfo, "Arbitration failed master script complete: %s", string(out))
 	} else {
-		cluster.LogPrintf(LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", cluster.GetMaster().DSN, realmaster.DSN)
+		cluster.LogPrintf(LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", cluster.GetMaster().URL, realmaster.URL)
 		logs, err := cluster.GetMaster().SetReplicationGTIDCurrentPosFromServer(realmaster)
 		cluster.LogSQL(logs, err, realmaster.URL, "Arbitration", LvlErr, "Failed in GTID rejoin lost master to winner master %s", err)
 

@@ -26,7 +26,7 @@ func (cluster *Cluster) RollingReprov() error {
 			}
 			err = cluster.WaitDatabaseFailed(slave)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not transit suspect %s %s", slave.DSN, err)
+				cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not transit suspect %s %s", slave.URL, err)
 				return err
 			}
 			err = cluster.InitDatabaseService(slave)
@@ -61,7 +61,7 @@ func (cluster *Cluster) RollingReprov() error {
 		}
 		err = cluster.WaitDatabaseFailed(master)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not transit suspect %s %s", master.DSN, err)
+			cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not transit suspect %s %s", master.URL, err)
 			return err
 		}
 		err = cluster.InitDatabaseService(master)
@@ -97,19 +97,19 @@ func (cluster *Cluster) RollingRestart() error {
 			}
 			err := cluster.StopDatabaseService(slave)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.DSN, err)
+				cluster.LogPrintf(LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
 				return err
 			}
 
 			err = cluster.WaitDatabaseFailed(slave)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not transit suspect %s %s", slave.DSN, err)
+				cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not transit suspect %s %s", slave.URL, err)
 				return err
 			}
 
 			err = cluster.StartDatabaseWaitRejoin(slave)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.DSN, err)
+				cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
 				return err
 			}
 		}
@@ -130,17 +130,17 @@ func (cluster *Cluster) RollingRestart() error {
 	}
 	err := cluster.StopDatabaseService(master)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Cancel rolling restart old master stop failed %s %s", master.DSN, err)
+		cluster.LogPrintf(LvlErr, "Cancel rolling restart old master stop failed %s %s", master.URL, err)
 		return err
 	}
 	err = cluster.WaitDatabaseFailed(master)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Cancel rolling restart old master does not transit suspect %s %s", master.DSN, err)
+		cluster.LogPrintf(LvlErr, "Cancel rolling restart old master does not transit suspect %s %s", master.URL, err)
 		return err
 	}
 	err = cluster.StartDatabaseWaitRejoin(master)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Cancel rolling restart old master does not restart %s %s", master.DSN, err)
+		cluster.LogPrintf(LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
 		return err
 	}
 	master.WaitSyncToMaster(cluster.master)

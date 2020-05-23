@@ -309,7 +309,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.ClusterGroup.sme.CopyOldStateFromUnknowServer(server.URL)
 		}
 		// server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s %s", server.URL, err)
-		// server.ClusterGroup.LogPrintf(LvlErr, "Failure detection handling for server %s %s", server.DSN, err)
+		// server.ClusterGroup.LogPrintf(LvlErr, "Failure detection handling for server %s %s", server.URL, err)
 
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			//	server.ClusterGroup.LogPrintf(LvlDbg, "Driver Error %s %d ", server.URL, driverErr.Number)
