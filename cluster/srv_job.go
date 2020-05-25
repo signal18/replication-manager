@@ -866,7 +866,6 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string) error {
 	cmdrunErr := cmdrun.Run()
 	if cmdrunErr != nil {
 		server.ClusterGroup.LogPrintf("ERROR", "Failed to backup binlogs of %s,%s", server.URL, cmdrunErr.Error())
-		server.ClusterGroup.LogPrintf("ERROR", "%s %s", server.ClusterGroup.GetMysqlBinlogPath(), cmdrun.Args)
 		server.ClusterGroup.LogPrint(cmdrun.Stderr)
 		server.ClusterGroup.LogPrint(cmdrun.Stdout)
 		return cmdrunErr
