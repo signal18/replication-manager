@@ -888,8 +888,10 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		if binlogfilestop > 0 {
 			filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestop)
 			if _, err := os.Stat(server.GetMyBackupDirectory() + "/" + filename); os.IsNotExist(err) {
-				server.ClusterGroup.LogPrintf(LvlInfo, "Backup master missing binlog of %s,%s", server.URL, filename)
-				server.JobBackupBinlog(filename)
+				if _, ok := server.BinaryLogFiles[filename]; ok {
+					server.ClusterGroup.LogPrintf(LvlInfo, "Backup master missing binlog of %s,%s", server.URL, filename)
+					server.JobBackupBinlog(filename)
+				}
 			}
 			keeping[filename] = binlogfilestop
 		}
@@ -897,13 +899,13 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	}
 	files, err := ioutil.ReadDir(server.GetMyBackupDirectory())
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Failed to read backup directory  of %s,%s", server.URL, err.Error())
+		server.ClusterGroup.LogPrintf(LvlErr, "Failed to read backup directory of %s,%s", server.URL, err.Error())
 	}
 
 	for _, file := range files {
 		_, ok := keeping[file.Name()]
 		if strings.HasPrefix(file.Name(), prefix) && !ok {
-			fmt.Println(LvlInfo, "Purging binlog file %s", file.Name())
+			server.ClusterGroup.LogPrintf(LvlInfo, "Purging binlog file %s", file.Name())
 			os.Remove(server.GetMyBackupDirectory() + "/" + file.Name())
 		}
 	}

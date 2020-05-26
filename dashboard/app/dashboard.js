@@ -934,7 +934,12 @@ function (
       $scope.rolling = function (fail) {
           if (confirm("Confirm rolling restart")) httpGetWithoutResponse(getClusterUrl() + '/actions/rolling');
       };
-
+      $scope.cancelrollingrestart = function (fail) {
+          if (confirm("Confirm cancel rolling restart")) httpGetWithoutResponse(getClusterUrl() + '/actions/cancel-rolling-restart');
+      };
+      $scope.cancelrollingreprov = function (fail) {
+          if (confirm("Confirm cancel rolling reprovision")) httpGetWithoutResponse(getClusterUrl() + '/actions/cancel-rolling-reprov');
+      };
       $scope.rotationkeys = function () {
         if (confirm("Confirm rotation certificates")) httpGetWithoutResponse(getClusterUrl() + '/actions/rotatekeys');
       };

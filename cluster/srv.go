@@ -160,6 +160,7 @@ type ServerMonitor struct {
 	CrcTable                    *crc64.Table                 `json:"-"`
 	TLSConfigUsed               string                       `json:"tlsConfigUsed"` //used to track TLS config during key rotation
 	SSTPort                     string                       `json:"sstPort"`       //used to send data to dbjobs
+	BinaryLogFiles              map[string]uint              `json:"binaryLogFiles"`
 }
 
 type serverList []*ServerMonitor
@@ -643,8 +644,12 @@ func (server *ServerMonitor) Refresh() error {
 	} else {
 		server.BinaryLogFile = server.MasterStatus.File
 		if server.BinaryLogFilePrevious != "" && server.BinaryLogFilePrevious != server.BinaryLogFile {
-			server.JobBackupBinlog(server.BinaryLogFilePrevious)
-			go server.JobBackupBinlogPurge(server.BinaryLogFilePrevious)
+			server.BinaryLogFiles, logs, err = dbhelper.GetBinaryLogs(server.Conn, server.DBVersion)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get binary log files %s %s", server.URL, err)
+			if server.BinaryLogFilePrevious != "" {
+				server.JobBackupBinlog(server.BinaryLogFilePrevious)
+				go server.JobBackupBinlogPurge(server.BinaryLogFilePrevious)
+			}
 		}
 		server.BinaryLogFilePrevious = server.BinaryLogFile
 		server.BinaryLogPos = strconv.FormatUint(uint64(server.MasterStatus.Position), 10)

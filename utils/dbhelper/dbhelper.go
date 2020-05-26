@@ -247,6 +247,11 @@ type Variable struct {
 	Value         string `json:"value"`
 }
 
+type Binarylogs struct {
+	Log_name  string `json:"logName"`
+	File_size uint   `json:"fileSize"`
+}
+
 type Explain struct {
 	Id            uint           `db:"id" json:"id"`
 	Select_type   sql.NullString `db:"select_type" json:"selectType"`
@@ -345,6 +350,30 @@ func GetQueryResponseTime(db *sqlx.DB, version *MySQLVersion) ([]ResponseTime, s
 		return nil, stmt, fmt.Errorf("ERROR: Could not get query response time: %s", err)
 	}
 	return pl, stmt, nil
+}
+
+func GetBinaryLogs(db *sqlx.DB, version *MySQLVersion) (map[string]uint, string, error) {
+
+	vars := make(map[string]uint)
+	query := "SHOW BINARY LOGS"
+	if version.IsPPostgreSQL() {
+		return nil, query, fmt.Errorf("ERROR: QUERY_RESPONSE_TIME not available on PostgeSQL")
+	}
+	rows, err := db.Queryx(query)
+
+	if err != nil {
+		return nil, query, errors.New("Could not get status variables")
+	}
+
+	for rows.Next() {
+		var v Binarylogs
+		err := rows.Scan(&v.Log_name, &v.File_size)
+		if err != nil {
+			return nil, query, errors.New("Could not get binary logs")
+		}
+		vars[v.Log_name] = v.File_size
+	}
+	return vars, query, nil
 }
 
 func GetProcesslistTable(db *sqlx.DB, version *MySQLVersion) ([]Processlist, string, error) {

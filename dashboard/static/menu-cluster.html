@@ -151,7 +151,18 @@
     Rotate Keys
       </md-button>
     </md-menu-item>
-
+    <md-menu-item ng-if="master.State !='Failed'" ng-click="cancelrollingrestart()">
+      <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-rolling']==false">
+        <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
+    Cancel Rolling Restart
+      </md-button>
+    </md-menu-item>
+    <md-menu-item ng-if="master.State !='Failed'" ng-click="cancelrollingreprov()">
+      <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-rolling']==false">
+        <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
+    Cancel Rolling Reprov
+      </md-button>
+    </md-menu-item>
 
 
   <md-menu-item ng-if="server.id==master.id" ng-click="backupphysical()">
