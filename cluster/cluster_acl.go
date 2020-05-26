@@ -478,6 +478,12 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/rolling") {
 			return true
 		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/cancel-rolling-restart") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/cancel-rolling-reprov") {
+			return true
+		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigFlag] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/drop-db-tag") {

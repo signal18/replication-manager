@@ -7,6 +7,7 @@
 package cluster
 
 func (cluster *Cluster) CancelRollingRestart() error {
+	cluster.LogPrintf(LvlInfo, "API receive cancel rolling restart")
 	for _, pr := range cluster.Proxies {
 		pr.DelRestartCookie()
 	}
@@ -17,6 +18,7 @@ func (cluster *Cluster) CancelRollingRestart() error {
 }
 
 func (cluster *Cluster) CancelRollingReprov() error {
+	cluster.LogPrintf(LvlInfo, "API receive cancel rolling re-provision")
 	for _, pr := range cluster.Proxies {
 		pr.DelReprovisionCookie()
 	}

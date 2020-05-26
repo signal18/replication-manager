@@ -138,11 +138,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServicesUnprovision)),
 	))
-	router.Handle("/api/clusters/{clusterName}/services/actions/cancel-rolling-restart", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/cancel-rolling-restart", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServicesCancelRollingRestart)),
 	))
-	router.Handle("/api/clusters/{clusterName}/services/actions/cancel-rolling-reprov", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/cancel-rolling-reprov", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServicesCancelRollingReprov)),
 	))
