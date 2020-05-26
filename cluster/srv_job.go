@@ -877,6 +877,9 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string) error {
 }
 
 func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
+	if !server.IsMaster() {
+		return errors.New("Purge only master binlog")
+	}
 	binlogfilestart, _ := strconv.Atoi(strings.Split(binlogfile, ".")[1])
 	prefix := strings.Split(binlogfile, ".")[0]
 	binlogfilestop := binlogfilestart - server.ClusterGroup.Conf.BackupBinlogsKeep
