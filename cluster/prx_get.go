@@ -258,7 +258,7 @@ protocol=MySQLBackend
 		confhaproxywrite += `
     server server` + strconv.Itoa(i) + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
 		confproxysql += `
-    { address="` + misc.Unbracket(db.Host) + `" , port=` + db.Port + ` , hostgroup=0, max_connections=1024 }`
+    { address="` + misc.Unbracket(db.Host) + `" , port=` + db.Port + ` , hostgroup=` + strconv.Itoa(proxy.ReaderHostgroup) + `, max_connections=1024 }`
 
 		confmaxscaleserverlist += "server" + strconv.Itoa(i)
 
