@@ -1,23 +1,26 @@
-<md-card ng-if="settings.config.test && selectedCluster">
+<md-card ng-if="settings.config.test">
     <table class="table">
         <tr>
-            <td>
-                <labelfor
-                ="test" action="/runonetest" >
-                <p class="sectionheader">Tests</p>
+            <th colspan=3>
+              Tests
+            </th>
+        </tr>
+        <tr>
+          <td  colspan=2>
+                <labelfor="test" action="/runonetest" >
                 </label>
                 <md-select name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()">
                     <md-option ng-selected="{{element == settings.tests}}"
                                ng-repeat="element in settings.tests" value="{{element}}">{{element}}</md-option>
                 </md-select>
-
-                <md-button type="button" class="btn btn-primary" ng-click="test()">Run Tests</md-button>
-                <md-button type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</md-button>
-
-
-            </td>
-            <td>
-            </td>
+          </td> <td>
+              <md-button type="button" class="btn btn-primary" ng-click="test()">Run Tests</md-button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan=3>
+              <md-button type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</md-button>
+          </td>
         </tr>
         <tr>
             <td colspan=2>

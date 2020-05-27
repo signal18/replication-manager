@@ -830,7 +830,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err2)
 		return err
 	}
-	//	server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", out)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", out)
 	res := new(JobResult)
 	val := reflect.ValueOf(res).Elem()
 	for i := 0; i < val.NumField(); i++ {
@@ -840,6 +840,9 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 			val.Field(i).SetBool(true)
 		}
 	}
+	//server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", res)
+	//server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", val)
+
 	server.ClusterGroup.JobResults[server.URL] = res
 	return nil
 }

@@ -78,7 +78,7 @@ type Cluster struct {
 	Connections                   int                         `json:"connections"`
 	QPS                           int64                       `json:"qps"`
 	Log                           s18log.HttpLog              `json:"log"`
-	JobResults                    map[string]*JobResult       `json:"JobResults"`
+	JobResults                    map[string]*JobResult       `json:"jobResults"`
 	Grants                        map[string]string           `json:"-"`
 	tlog                          *s18log.TermLog             `json:"-"`
 	htlog                         *s18log.HttpLog             `json:"-"`

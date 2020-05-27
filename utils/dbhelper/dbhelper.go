@@ -592,6 +592,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 		}
 	}
 	_, err := db.Exec(cm)
+	cm = strings.Replace(cm, opt.Password, "XXX", -1)
 	if err != nil {
 		return cm, fmt.Errorf("Change master statement %s failed, reason: %s", cm, err)
 	}
