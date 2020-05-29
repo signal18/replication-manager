@@ -153,7 +153,7 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 }
 
 func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) (string, error) {
-
+	server.StopSlave()
 	if server.IsMariaDB() {
 		return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:        master.Host,

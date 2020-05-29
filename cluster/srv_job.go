@@ -830,7 +830,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err2)
 		return err
 	}
-	server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", out)
+
 	res := new(JobResult)
 	val := reflect.ValueOf(res).Elem()
 	for i := 0; i < val.NumField(); i++ {
@@ -838,6 +838,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 			val.Field(i).SetBool(false)
 		} else {
 			val.Field(i).SetBool(true)
+			server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", out)
 		}
 	}
 	//server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", res)
@@ -936,5 +937,57 @@ func (server *ServerMonitor) JobCapturePurge(path string, keep int) error {
 		}
 
 	}
+	return nil
+}
+
+func (cluster *Cluster) JobRejoiMysqldumpFromnMaster(source *ServerMonitor, dest *ServerMonitor) error {
+	cluster.LogPrintf(LvlInfo, "Rejoining via master mysqldump ")
+	dest.StopSlave()
+	usegtid := ""
+
+	if dest.HasGTIDReplication() {
+
+		usegtid = "--gtid"
+	}
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--master-data=1", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass, "--verbose")
+	stderrIn, _ := dumpCmd.StderrPipe()
+
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.dbUser, `--password=`+cluster.dbPass, `--batch`, `--init-command=reset master;set sql_log_bin=0;`)
+	stderrOut, _ := clientCmd.StderrPipe()
+
+	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
+	cluster.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.dbPass, "XXXX", -1))
+	var err error
+	clientCmd.Stdin, err = dumpCmd.StdoutPipe()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Failed opening pipe: %s", err)
+		return err
+	}
+	if err := dumpCmd.Start(); err != nil {
+		cluster.LogPrintf(LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(dumpCmd.String(), cluster.dbPass, "XXXX", -1))
+		return err
+	}
+	if err := clientCmd.Run(); err != nil {
+		cluster.LogPrintf(LvlErr, "Can't start mysql client:%s at %s", err, strings.Replace(clientCmd.String(), cluster.dbPass, "XXXX", -1))
+		return err
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		source.copyLogs(stderrIn)
+	}()
+	go func() {
+		defer wg.Done()
+		dest.copyLogs(stderrOut)
+	}()
+
+	wg.Wait()
+
+	dumpCmd.Wait()
+
+	cluster.LogPrintf(LvlInfo, "Start slave after dump on %s", dest.URL)
+	dest.StartSlave()
 	return nil
 }

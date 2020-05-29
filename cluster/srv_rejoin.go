@@ -321,7 +321,7 @@ func (server *ServerMonitor) RejoinMasterDump() error {
 		return err3
 	}
 	// dump here
-	go server.ClusterGroup.RejoinMysqldump(server.ClusterGroup.master, server)
+	go server.ClusterGroup.JobRejoiMysqldumpFromnMaster(server.ClusterGroup.master, server)
 
 	return nil
 }
@@ -618,38 +618,6 @@ func (cluster *Cluster) RejoinClone(source *ServerMonitor, dest *ServerMonitor) 
 	} else {
 		return errors.New("Version does not support cloning Master")
 	}
-	return nil
-}
-
-func (cluster *Cluster) RejoinMysqldump(source *ServerMonitor, dest *ServerMonitor) error {
-	cluster.LogPrintf(LvlInfo, "Rejoining via master mysqldump ")
-	usegtid := ""
-
-	if dest.HasGTIDReplication() {
-
-		usegtid = "--gtid"
-	}
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), "--host="+misc.Unbracket(dest.Host), "--port="+dest.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass)
-	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
-	cluster.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.Path, cluster.dbPass, "XXXX", -1))
-	var err error
-	clientCmd.Stdin, err = dumpCmd.StdoutPipe()
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "Failed opening pipe: %s", err)
-		return err
-	}
-	if err := dumpCmd.Start(); err != nil {
-		cluster.LogPrintf(LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(dumpCmd.Path, cluster.dbPass, "XXXX", -1))
-		return err
-	}
-	if err := clientCmd.Run(); err != nil {
-		cluster.LogPrintf(LvlErr, "Can't start mysql client:%s at %s", err, strings.Replace(clientCmd.Path, cluster.dbPass, "XXXX", -1))
-		return err
-	}
-	dumpCmd.Wait()
-	cluster.LogPrintf(LvlInfo, "Start slave after dump")
-	dest.StartSlave()
 	return nil
 }
 
