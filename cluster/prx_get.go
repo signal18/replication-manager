@@ -184,6 +184,12 @@ func (proxy *Proxy) GetBindAddress() string {
 	}
 	return "0.0.0.0"
 }
+func (proxy *Proxy) GetBindAddressExtraIPV6() string {
+	if proxy.HostIPV6 != "" {
+		return proxy.HostIPV6 + ":" + proxy.Port + ";"
+	}
+	return ""
+}
 
 func (proxy *Proxy) GetDatadir() string {
 	if proxy.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
@@ -201,6 +207,7 @@ func (proxy *Proxy) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":     proxy.ClusterGroup.dbPass,
 		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":         proxy.ClusterGroup.dbUser,
 		"%%ENV:SERVER_IP%%":                            misc.Unbracket(proxy.GetBindAddress()),
+		"%%ENV:EXTRA_BIND_SERVER_IPV6%%":               proxy.GetBindAddressExtraIPV6(),
 		"%%ENV:SERVER_PORT%%":                          proxy.Port,
 		"%%ENV:SVC_NAMESPACE%%":                        proxy.ClusterGroup.Name,
 		"%%ENV:SVC_NAME%%":                             proxy.Name,

@@ -34,6 +34,7 @@ type Proxy struct {
 	ServiceName     string               `json:"serviceName"`
 	Type            string               `json:"type"`
 	Host            string               `json:"host"`
+	HostIPV6        string               `json:"hostIPV6"`
 	Port            string               `json:"port"`
 	TunnelPort      int                  `json:"tunnelPort"`
 	TunnelWritePort int                  `json:"tunnelWritePort"`
@@ -199,12 +200,15 @@ func (cluster *Cluster) newProxyList() error {
 	}
 	if cluster.Conf.ProxysqlOn {
 		slapospartitions := strings.Split(cluster.Conf.SlapOSProxySQLPartitions, ",")
-
+		ipv6hosts := strings.Split(cluster.Conf.ProxysqlHostsIPV6, ",")
 		for k, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
 
 			prx := new(Proxy)
 			if k < len(slapospartitions) {
 				prx.SlapOSDatadir = slapospartitions[k]
+			}
+			if k < len(ipv6hosts) {
+				prx.HostIPV6 = ipv6hosts[k]
 			}
 			prx.Type = config.ConstProxySqlproxy
 			prx.Port = cluster.Conf.ProxysqlAdminPort

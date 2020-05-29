@@ -382,6 +382,7 @@ func init() {
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
 		monitorCmd.Flags().BoolVar(&conf.ProxysqlSaveToDisk, "proxysql-save-to-disk", false, "Save proxysql change to sqllight")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlHosts, "proxysql-servers", "", "ProxySQL hosts")
+		monitorCmd.Flags().StringVar(&conf.ProxysqlHostsIPV6, "proxysql-servers-ipv6", "", "ProxySQL hosts extra IPV6 bind")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlPort, "proxysql-port", "3306", "ProxySQL read/write proxy port")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6032", "ProxySQL admin interface port")
 		monitorCmd.Flags().StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-reader-hostgroup", "1", "ProxySQL reader hostgroup")

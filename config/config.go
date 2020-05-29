@@ -233,6 +233,7 @@ type Config struct {
 	ProxysqlOn                                bool   `mapstructure:"proxysql" toml:"proxysql" json:"proxysql"`
 	ProxysqlSaveToDisk                        bool   `mapstructure:"proxysql-save-to-disk" toml:"proxysql-save-to-disk" json:"proxysqlSaveToDisk"`
 	ProxysqlHosts                             string `mapstructure:"proxysql-servers" toml:"proxysql-servers" json:"proxysqlServers"`
+	ProxysqlHostsIPV6                         string `mapstructure:"proxysql-servers-ipv6" toml:"proxysql-servers-ipv6" json:"proxysqlServers-ipv6"`
 	ProxysqlPort                              string `mapstructure:"proxysql-port" toml:"proxysql-port" json:"proxysqlPort"`
 	ProxysqlAdminPort                         string `mapstructure:"proxysql-admin-port" toml:"proxysql-admin-port" json:"proxysqlAdminPort"`
 	ProxysqlUser                              string `mapstructure:"proxysql-user" toml:"proxysql-user" json:"proxysqlUser"`
