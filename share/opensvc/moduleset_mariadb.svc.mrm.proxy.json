@@ -185,6 +185,44 @@
         },
         {
             "fset_stats": false,
+            "id": 321,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "nonetworkcompress",
+                        "f_table": "v_tags",
+                        "id": 321
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "proxy.backend.nonetworkcompress"
+        },
+        {
+            "fset_stats": false,
+            "id": 322,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "readonmaster",
+                        "f_table": "v_tags",
+                        "id": 285
+                    },
+                    "f_order": 1,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "proxy.route.readonmaster"
+        },
+        {
+            "fset_stats": false,
             "id": 325,
             "filters": [
                 {
@@ -201,6 +239,25 @@
                 }
             ],
             "fset_name": "proxy.route.readwritesplit"
+        },
+        {
+            "fset_stats": false,
+            "id": 361,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "ssl",
+                        "f_table": "v_tags",
+                        "id": 234
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "proxy.frontend.ssl"
         }
     ],
     "rulesets": [
@@ -510,7 +567,10 @@
                 "mariadb.svc.mrm.proxy.cnf.multimaster",
                 "mariadb.svc.mrm.proxy.cnf.sphinx",
                 "mariadb.svc.mrm.proxy.cnf.proxysql.readwritesplit",
-                "mariadb.svc.mrm.proxy.cnf.proxysql.default"
+                "mariadb.svc.mrm.proxy.cnf.proxysql.default",
+                "mariadb.svc.mrm.proxy.cnf.readonmaster",
+                "mariadb.svc.mrm.proxy.cnf.usessl",
+                "mariadb.svc.mrm.proxy.cnf.nonetworkcompress"
             ],
             "publications": [
                 "replication-manager"
@@ -697,8 +757,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/proxysql.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"admin_variables=\\n{\\n\\tadmin_credentials=\\\"admin:%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%;external:%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%\\\"\\n\\tmysql_ifaces=\\\"%%ENV:EXTRA_BIND_SERVER_IPV6%%%%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_ADMIN%%;/%%ENV:SVC_CONF_ENV_DATADIR%%/proxysql_admin.sock\\\"\\n\\n}\\n\\nmysql_variables=\\n{\\n\\tthreads=4\\n\\tmax_connections=2048\\n\\tdefault_query_delay=0\\n\\tdefault_query_timeout=36000000\\n\\thave_compress=true\\n\\tpoll_timeout=2000\\n\\tinterfaces=\\\"%%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_RW%%;%%ENV:SVC_CONF_ENV_DATADIR%%/proxysql.sock\\\"\\n\\tdefault_schema=\\\"information_schema\\\"\\n\\tstacksize=1048576\\n\\tserver_version=\\\"5.5.30\\\"\\n\\tconnect_timeout_server=3000\\n\\tmonitor_history=600000\\n\\tmonitor_connect_interval=60000\\n        monitor_ping_interval=4000\\n\\tmonitor_read_only_interval=1500\\n\\tmonitor_read_only_timeout=500\\n        monitor_username=\\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\\"\\n        monitor_password=\\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\"\\n\\tping_interval_server_msec=20000\\n\\tping_timeout_server=1000\\n\\tcommands_stats=true\\n\\tsessions_sort=true\\n\\tconnect_retries_on_failure=10\\n        monitor_writer_is_also_reader=%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%\\n}\\n\\n\\n# defines all the MySQL servers\\nmysql_servers =\\n(\\n%%ENV:SERVERS_PROXYSQL%%\\n)\\n\\nmysql_users:\\n(\\n { username = \\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\\" , password = \\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\" , default_hostgroup = 0 , active = 1 }\\n)\\n#defines MySQL Query Rules\\nmysql_query_rules:\\n(\\n          {\\n              rule_id=1\\n              active=1\\n              match_digest=\\\"^SELECT .* FOR UPDATE$\\\"\\n              destination_hostgroup=0\\n              apply=1\\n          },\\n          {\\n              rule_id=2\\n              active=1\\n              match_digest=\\\"^SELECT\\\"\\n              destination_hostgroup=1\\n              apply=1\\n          },\\n          {\\n              rule_id=3\\n              active=1\\n              match_pattern=\\\"^SELECT @@.*\\\"\\n              destination_hostgroup=0\\n              apply=1\\n          },\\n          {\\n              rule_id=4\\n              active=1\\n              match_pattern=\\\"^SHOW.*VARIABLES\\\"\\n              destination_hostgroup=0\\n              apply=1\\n          }\\n)\\nmysql_replication_hostgroups=\\n(\\n        {\\n                writer_hostgroup=0\\n                reader_hostgroup=1\\n                comment=\\\"test repl 1\\\"\\n       }\\n)\\n\\n\\n\"}",
-                    "var_updated": "2020-05-29 11:01:39",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/proxysql.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"admin_variables=\\n{\\n\\tadmin_credentials=\\\"admin:%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%;external:%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%\\\"\\n\\tmysql_ifaces=\\\"%%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_ADMIN%%;/%%ENV:SVC_CONF_ENV_DATADIR%%/proxysql_admin.sock\\\"\\n\\n}\\n\\nmysql_variables=\\n{\\n\\tthreads=4\\n\\tmax_connections=2048\\n\\tdefault_query_delay=0\\n\\tdefault_query_timeout=36000000\\n\\thave_compress=%%ENV:SVC_CONF_ENV_PROXY_USE_COMPRESS%%\\n\\tpoll_timeout=2000\\n        have_ssl=%%ENV:SVC_CONF_ENV_PROXY_USE_SSL%%\\n\\tinterfaces=\\\"%%ENV:EXTRA_BIND_SERVER_IPV6%%%%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_RW%%;%%ENV:SVC_CONF_ENV_DATADIR%%/proxysql.sock\\\"\\n\\tdefault_schema=\\\"information_schema\\\"\\n\\tstacksize=1048576\\n\\tserver_version=\\\"5.5.30\\\"\\n\\tconnect_timeout_server=3000\\n\\tmonitor_history=600000\\n\\tmonitor_connect_interval=60000\\n        monitor_ping_interval=4000\\n\\tmonitor_read_only_interval=1500\\n\\tmonitor_read_only_timeout=500\\n        monitor_username=\\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\\"\\n        monitor_password=\\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\"\\n\\tping_interval_server_msec=20000\\n\\tping_timeout_server=1000\\n\\tcommands_stats=true\\n\\tsessions_sort=true\\n\\tconnect_retries_on_failure=10\\n        monitor_writer_is_also_reader=%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%\\n}\\n\\n\\n# defines all the MySQL servers\\nmysql_servers =\\n(\\n%%ENV:SERVERS_PROXYSQL%%\\n)\\n\\nmysql_users:\\n(\\n { username = \\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\\" , password = \\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\" , default_hostgroup = 0 , active = 1 }\\n)\\n#defines MySQL Query Rules\\nmysql_query_rules:\\n(\\n          {\\n              rule_id=1\\n              active=1\\n              match_digest=\\\"^SELECT .* FOR UPDATE$\\\"\\n              destination_hostgroup=0\\n              apply=1\\n          },\\n          {\\n              rule_id=2\\n              active=1\\n              match_digest=\\\"^SELECT\\\"\\n              destination_hostgroup=1\\n              apply=1\\n          },\\n          {\\n              rule_id=3\\n              active=1\\n              match_pattern=\\\"^SELECT @@.*\\\"\\n              destination_hostgroup=0\\n              apply=1\\n          },\\n          {\\n              rule_id=4\\n              active=1\\n              match_pattern=\\\"^SHOW.*VARIABLES\\\"\\n              destination_hostgroup=0\\n              apply=1\\n          }\\n)\\nmysql_replication_hostgroups=\\n(\\n        {\\n                writer_hostgroup=0\\n                reader_hostgroup=1\\n                comment=\\\"test repl 1\\\"\\n       }\\n)\\n\\n\\n\"}",
+                    "var_updated": "2020-05-29 11:34:17",
                     "var_name": "proxy_cnf_proxysql",
                     "id": 6101
                 }
@@ -721,8 +781,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/proxysql.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"admin_variables=\\n{\\n\\tadmin_credentials=\\\"admin:%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%;external:%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%\\\"\\n\\tmysql_ifaces=\\\"%%ENV:EXTRA_BIND_SERVER_IPV6%%%%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_ADMIN%%;%%ENV:SVC_CONF_ENV_DATADIR%%/proxysql_admin.sock\\\"\\n\\n}\\n\\nmysql_variables=\\n{\\n\\tthreads=4\\n\\tmax_connections=2048\\n\\tdefault_query_delay=0\\n\\tdefault_query_timeout=36000000\\n\\thave_compress=true\\n\\tpoll_timeout=2000\\n\\tinterfaces=\\\"%%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_RW%%;%%ENV:SVC_CONF_ENV_DATADIR%%/proxysql.sock\\\"\\n\\tdefault_schema=\\\"information_schema\\\"\\n\\tstacksize=1048576\\n\\tserver_version=\\\"5.5.30\\\"\\n\\tconnect_timeout_server=3000\\n\\tmonitor_history=600000\\n\\tmonitor_connect_interval=60000\\n        monitor_ping_interval=4000\\n\\tmonitor_read_only_interval=1500\\n\\tmonitor_read_only_timeout=500\\n        monitor_username=\\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\\"\\n        monitor_password=\\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\"\\n\\tping_interval_server_msec=20000\\n\\tping_timeout_server=1000\\n\\tcommands_stats=true\\n\\tsessions_sort=true\\n\\tconnect_retries_on_failure=10\\n        monitor_writer_is_also_reader=%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%\\n}\\n\\n\\n# defines all the MySQL servers\\nmysql_servers =\\n(\\n%%ENV:SERVERS_PROXYSQL%%\\n)\\n\\nmysql_users:\\n(\\n { username = \\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\\" , password = \\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\" , default_hostgroup = 0 , active = 1 }\\n)\\n#defines MySQL Query Rules\\n\\nmysql_replication_hostgroups=\\n(\\n        {\\n                writer_hostgroup=0\\n                reader_hostgroup=1\\n                comment=\\\"test repl 1\\\"\\n       }\\n)\"}",
-                    "var_updated": "2020-05-29 11:01:04",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/proxysql.cnf\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"admin_variables=\\n{\\n\\tadmin_credentials=\\\"admin:%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%;external:%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%\\\"\\n\\tmysql_ifaces=\\\"%%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_ADMIN%%;%%ENV:SVC_CONF_ENV_DATADIR%%/proxysql_admin.sock\\\"\\n\\n}\\n\\nmysql_variables=\\n{\\n\\tthreads=4\\n\\tmax_connections=2048\\n\\tdefault_query_delay=0\\n\\tdefault_query_timeout=36000000\\n\\thave_compress=%%ENV:SVC_CONF_ENV_PROXY_USE_COMPRESS%%\\n        have_ssl=%%ENV:SVC_CONF_ENV_PROXY_USE_SSL%%\\n\\tpoll_timeout=2000\\n\\tinterfaces=\\\"%%ENV:EXTRA_BIND_SERVER_IPV6%%%%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_RW%%;%%ENV:SVC_CONF_ENV_DATADIR%%/proxysql.sock\\\"\\n\\tdefault_schema=\\\"information_schema\\\"\\n\\tstacksize=1048576\\n\\tserver_version=\\\"5.5.30\\\"\\n\\tconnect_timeout_server=3000\\n\\tmonitor_history=600000\\n\\tmonitor_connect_interval=60000\\n        monitor_ping_interval=4000\\n\\tmonitor_read_only_interval=1500\\n\\tmonitor_read_only_timeout=500\\n        monitor_username=\\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\\"\\n        monitor_password=\\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\"\\n\\tping_interval_server_msec=20000\\n\\tping_timeout_server=1000\\n\\tcommands_stats=true\\n\\tsessions_sort=true\\n\\tconnect_retries_on_failure=10\\n        monitor_writer_is_also_reader=%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%\\n}\\n\\n\\n# defines all the MySQL servers\\nmysql_servers =\\n(\\n%%ENV:SERVERS_PROXYSQL%%\\n)\\n\\nmysql_users:\\n(\\n { username = \\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\\" , password = \\\"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\\" , default_hostgroup = 0 , active = 1 }\\n)\\n#defines MySQL Query Rules\\n\\nmysql_replication_hostgroups=\\n(\\n        {\\n                writer_hostgroup=0\\n                reader_hostgroup=1\\n                comment=\\\"test repl 1\\\"\\n       }\\n)\"}",
+                    "var_updated": "2020-05-29 11:34:01",
                     "var_name": "proxy_cnf_proxysql",
                     "id": 6103
                 }
@@ -734,6 +794,78 @@
                 "replication-manager"
             ],
             "id": 1068,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "proxy.route.readonmaster",
+            "ruleset_name": "mariadb.svc.mrm.proxy.cnf.readonmaster",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "raw",
+                    "var_value": "",
+                    "var_updated": "2020-05-29 12:28:02",
+                    "var_name": "readonmaster",
+                    "id": 6178
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1070,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "proxy.frontend.ssl",
+            "ruleset_name": "mariadb.svc.mrm.proxy.cnf.usessl",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "raw",
+                    "var_value": "",
+                    "var_updated": "2020-05-29 12:28:43",
+                    "var_name": "usessl",
+                    "id": 6179
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1107,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "proxy.backend.nonetworkcompress",
+            "ruleset_name": "mariadb.svc.mrm.proxy.cnf.nonetworkcompress",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "raw",
+                    "var_value": "",
+                    "var_updated": "2020-05-29 12:29:39",
+                    "var_name": "nonetworkcompress",
+                    "id": 6180
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1108,
             "responsibles": [
                 "replication-manager"
             ]

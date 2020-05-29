@@ -186,9 +186,22 @@ func (proxy *Proxy) GetBindAddress() string {
 }
 func (proxy *Proxy) GetBindAddressExtraIPV6() string {
 	if proxy.HostIPV6 != "" {
-		return proxy.HostIPV6 + ":" + proxy.Port + ";"
+		return proxy.HostIPV6 + ":" + strconv.Itoa(proxy.WritePort) + ";"
 	}
 	return ""
+}
+func (proxy *Proxy) GetUseSSL() string {
+	if proxy.IsFilterInTags("ssl") {
+		return "true"
+	}
+	return "false"
+}
+func (proxy *Proxy) GetUseCompression() string {
+	if proxy.IsFilterInTags("nonetworkcompress") {
+		return "false"
+	}
+	return "true"
+
 }
 
 func (proxy *Proxy) GetDatadir() string {
@@ -208,6 +221,8 @@ func (proxy *Proxy) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":         proxy.ClusterGroup.dbUser,
 		"%%ENV:SERVER_IP%%":                            misc.Unbracket(proxy.GetBindAddress()),
 		"%%ENV:EXTRA_BIND_SERVER_IPV6%%":               proxy.GetBindAddressExtraIPV6(),
+		"%%ENV:SVC_CONF_ENV_PROXY_USE_SSL%%":           proxy.GetUseSSL(),
+		"%%ENV:SVC_CONF_ENV_PROXY_USE_COMPRESS%%":      proxy.GetUseCompression(),
 		"%%ENV:SERVER_PORT%%":                          proxy.Port,
 		"%%ENV:SVC_NAMESPACE%%":                        proxy.ClusterGroup.Name,
 		"%%ENV:SVC_NAME%%":                             proxy.Name,
