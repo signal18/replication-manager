@@ -351,6 +351,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Mode:        "POSITIONAL",
 				SSL:         cluster.Conf.ReplicationSSL,
 				Channel:     cluster.Conf.MasterConn,
+				IsDelayed:   cluster.oldMaster.IsDelayed,
+				Delay:       strconv.Itoa(cluster.oldMaster.ClusterGroup.Conf.HostsDelayedTime),
 				PostgressDB: cluster.master.PostgressDB,
 			}, cluster.oldMaster.DBVersion)
 			cluster.LogSQL(logs, changeMasterErr, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Change master failed on old master, reason:%s ", changeMasterErr)
@@ -371,6 +373,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Mode:        "MASTER_AUTO_POSITION",
 				SSL:         cluster.Conf.ReplicationSSL,
 				Channel:     cluster.Conf.MasterConn,
+				IsDelayed:   cluster.oldMaster.IsDelayed,
+				Delay:       strconv.Itoa(cluster.oldMaster.ClusterGroup.Conf.HostsDelayedTime),
 				PostgressDB: cluster.master.PostgressDB,
 			}, cluster.oldMaster.DBVersion)
 			cluster.LogSQL(logs, changeMasterErr, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Change master failed on old master %s", logs)
@@ -391,6 +395,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Mode:        "SLAVE_POS",
 					SSL:         cluster.Conf.ReplicationSSL,
 					Channel:     cluster.Conf.MasterConn,
+					IsDelayed:   cluster.oldMaster.IsDelayed,
+					Delay:       strconv.Itoa(cluster.oldMaster.ClusterGroup.Conf.HostsDelayedTime),
 					PostgressDB: cluster.master.PostgressDB,
 				}, cluster.oldMaster.DBVersion)
 			} else {
@@ -404,6 +410,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Mode:        "CURRENT_POS",
 					SSL:         cluster.Conf.ReplicationSSL,
 					Channel:     cluster.Conf.MasterConn,
+					IsDelayed:   cluster.oldMaster.IsDelayed,
+					Delay:       strconv.Itoa(cluster.oldMaster.ClusterGroup.Conf.HostsDelayedTime),
 					PostgressDB: cluster.master.PostgressDB,
 				}, cluster.oldMaster.DBVersion)
 			}
@@ -424,6 +432,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Mode:        "SLAVE_POS",
 					SSL:         cluster.Conf.ReplicationSSL,
 					Channel:     cluster.Conf.MasterConn,
+					IsDelayed:   cluster.oldMaster.IsDelayed,
+					Delay:       strconv.Itoa(cluster.oldMaster.ClusterGroup.Conf.HostsDelayedTime),
 					PostgressDB: relaymaster.PostgressDB,
 				}, cluster.oldMaster.DBVersion)
 			} else {
@@ -439,6 +449,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Logpos:      crash.FailoverMasterLogPos,
 					SSL:         cluster.Conf.ReplicationSSL,
 					Channel:     cluster.Conf.MasterConn,
+					IsDelayed:   cluster.oldMaster.IsDelayed,
+					Delay:       strconv.Itoa(cluster.oldMaster.ClusterGroup.Conf.HostsDelayedTime),
 					PostgressDB: relaymaster.PostgressDB,
 				}, cluster.oldMaster.DBVersion)
 			}
@@ -530,6 +542,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Mode:        "POSITIONAL",
 					SSL:         cluster.Conf.ReplicationSSL,
 					Channel:     cluster.Conf.MasterConn,
+					IsDelayed:   sl.IsDelayed,
+					Delay:       strconv.Itoa(sl.ClusterGroup.Conf.HostsDelayedTime),
 					PostgressDB: cluster.master.PostgressDB,
 				}, sl.DBVersion)
 			} else {
@@ -548,6 +562,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Mode:        "MASTER_AUTO_POSITION",
 				SSL:         cluster.Conf.ReplicationSSL,
 				Channel:     cluster.Conf.MasterConn,
+				IsDelayed:   sl.IsDelayed,
+				Delay:       strconv.Itoa(sl.ClusterGroup.Conf.HostsDelayedTime),
 				PostgressDB: cluster.master.PostgressDB,
 			}, sl.DBVersion)
 		} else if cluster.Conf.MxsBinlogOn == false {
@@ -563,6 +579,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				Mode:        "SLAVE_POS",
 				SSL:         cluster.Conf.ReplicationSSL,
 				Channel:     cluster.Conf.MasterConn,
+				IsDelayed:   sl.IsDelayed,
+				Delay:       strconv.Itoa(sl.ClusterGroup.Conf.HostsDelayedTime),
 				PostgressDB: cluster.master.PostgressDB,
 			}, sl.DBVersion)
 		} else { // We deduct we are in maxscale binlog server , but can have support for GTID or not
@@ -579,6 +597,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 					Mode:        "SLAVE_POS",
 					SSL:         cluster.Conf.ReplicationSSL,
 					Channel:     cluster.Conf.MasterConn,
+					IsDelayed:   sl.IsDelayed,
+					Delay:       strconv.Itoa(sl.ClusterGroup.Conf.HostsDelayedTime),
 					PostgressDB: cluster.master.PostgressDB,
 				}, sl.DBVersion)
 			} else {

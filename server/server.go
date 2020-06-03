@@ -76,6 +76,7 @@ type ReplicationManager struct {
 	currentCluster       *cluster.Cluster
 	isStarted            bool
 	Confs                map[string]config.Config
+	ForcedConfs          map[string]config.Config
 	sync.Mutex
 }
 
@@ -138,11 +139,11 @@ type Heartbeat struct {
 }
 
 var confs = make(map[string]config.Config)
-var currentClusterName string
 var cfgGroup string
 var cfgGroupIndex int
 
 func (repman *ReplicationManager) InitConfig(conf config.Config) {
+	var currentClusterName string
 	// call after init if configuration file is provide
 	viper.SetConfigType("toml")
 	if conf.ConfigFile != "" {
@@ -317,6 +318,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 					cf2.Unmarshal(&def)
 					cf2.Unmarshal(&clusterconf)
 				}
+				repman.ForcedConfs[gl] = clusterconf
 				if clusterconf.ConfRewrite {
 					cf3 := viper.Sub("saved-" + gl)
 					if cf3 == nil {

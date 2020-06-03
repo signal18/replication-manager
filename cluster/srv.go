@@ -109,6 +109,7 @@ type ServerMonitor struct {
 	IsVirtualMaster             bool                         `json:"isVirtualMaster"`
 	IsMaintenance               bool                         `json:"isMaintenance"`
 	IsCompute                   bool                         `json:"isCompute"` //Used to idenfied spider compute nide
+	IsDelayed                   bool                         `json:"isDelayed"`
 	Ignored                     bool                         `json:"ignored"`
 	Prefered                    bool                         `json:"prefered"`
 	InCaptureMode               bool                         `json:"inCaptureMode"`
@@ -239,7 +240,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	// consider all nodes are maxscale to avoid sending command until discoverd
 	server.IsRelay = false
 	server.IsMaxscale = true
-
+	server.IsDelayed = server.IsInDelayedHost()
 	server.State = stateSuspect
 	server.PrevState = stateSuspect
 	server.Datadir = server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Host + "_" + server.Port

@@ -12,9 +12,20 @@ package cluster
 import (
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
+
+func (server *ServerMonitor) IsInDelayedHost() bool {
+	delayedhosts := strings.Split(server.ClusterGroup.Conf.HostsDelayed, ",")
+	for _, url := range delayedhosts {
+		if server.URL == url || server.Name == url {
+			return true
+		}
+	}
+	return false
+}
 
 func (server *ServerMonitor) IsSlaveOfReplicationSource(name string) bool {
 	if server.Replications != nil {

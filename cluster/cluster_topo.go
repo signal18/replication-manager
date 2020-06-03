@@ -52,6 +52,7 @@ func (cluster *Cluster) newServerList() error {
 	if cluster.Conf.Hosts != "" {
 		slapospartitions := strings.Split(cluster.Conf.SlapOSDBPartitions, ",")
 		sstports := strings.Split(cluster.Conf.SchedulerReceiverPorts, ",")
+
 		for k, url := range cluster.hostList {
 			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, false, cluster.GetDomain())
 			if err != nil {
@@ -60,6 +61,7 @@ func (cluster *Cluster) newServerList() error {
 			if k < len(slapospartitions) {
 				cluster.Servers[k].SlapOSDatadir = slapospartitions[k]
 			}
+
 			cluster.Servers[k].SSTPort = sstports[k%len(sstports)]
 			if cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)

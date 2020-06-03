@@ -165,6 +165,8 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 			Mode:        "SLAVE_POS",
 			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
 			Channel:     server.ClusterGroup.Conf.MasterConn,
+			IsDelayed:   server.IsDelayed,
+			Delay:       strconv.Itoa(server.ClusterGroup.Conf.HostsDelayedTime),
 			PostgressDB: server.PostgressDB,
 		}, server.DBVersion)
 	}
@@ -178,6 +180,8 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 		Mode:        "MASTER_AUTO_POSITION",
 		SSL:         server.ClusterGroup.Conf.ReplicationSSL,
 		Channel:     server.ClusterGroup.Conf.MasterConn,
+		IsDelayed:   server.IsDelayed,
+		Delay:       strconv.Itoa(server.ClusterGroup.Conf.HostsDelayedTime),
 		PostgressDB: server.PostgressDB,
 	}, server.DBVersion)
 }
@@ -198,6 +202,8 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 			Mode:        "",
 			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
 			Channel:     server.ClusterGroup.Conf.MasterConn,
+			IsDelayed:   server.IsDelayed,
+			Delay:       strconv.Itoa(server.ClusterGroup.Conf.HostsDelayedTime),
 			PostgressDB: server.PostgressDB,
 		}, server.DBVersion)
 	} else {
@@ -211,6 +217,8 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 			Mode:        "CURRENT_POS",
 			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
 			Channel:     server.ClusterGroup.Conf.MasterConn,
+			IsDelayed:   server.IsDelayed,
+			Delay:       strconv.Itoa(server.ClusterGroup.Conf.HostsDelayedTime),
 			PostgressDB: server.PostgressDB,
 		}, server.DBVersion)
 	}

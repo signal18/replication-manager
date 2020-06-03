@@ -79,6 +79,8 @@ type Config struct {
 	LogFailedElection                         bool   `mapstructure:"log-failed-election"  toml:"log-failed-election" json:"logFailedElection"`
 	User                                      string `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
+	HostsDelayed                              string `mapstructure:"replication-delayed-hosts", toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
+	HostsDelayedTime                          int    `mapstructure:"replication-delayed-time", toml:"replication-delayed-time" json:"replicationDelayedTime"`
 	DBServersTLSUseGeneratedCertificate       bool   `mapstructure:"db-servers-tls-use-generated-cert" toml:"db-servers-tls-use-generated-cert" json:"dbServersUseGeneratedCert"`
 	HostsTLSCA                                string `mapstructure:"db-servers-tls-ca-cert" toml:"db-servers-tls-ca-cert" json:"dbServersTlsCaCert"`
 	HostsTLSKEY                               string `mapstructure:"db-servers-tls-client-key" toml:"db-servers-tls-client-key" json:"dbServersTlsClientKey"`

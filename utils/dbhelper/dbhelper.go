@@ -548,6 +548,8 @@ type ChangeMasterOpt struct {
 
 	Channel     string
 	PostgressDB string
+	IsDelayed   bool
+	Delay       string
 	//	SSLCa     string
 	//	SSLCert   string
 	//	SSLKey    string
@@ -568,6 +570,9 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 			cm += " '" + opt.Channel + "'"
 		}
 		cm += " TO master_host='" + misc.Unbracket(opt.Host) + "', master_port=" + opt.Port + ", master_user='" + opt.User + "', master_password='" + opt.Password + "', master_connect_retry=" + opt.Retry + ", master_heartbeat_period=" + opt.Heartbeat
+		if opt.IsDelayed {
+			cm += " ,master_delay=" + opt.Delay
+		}
 		switch opt.Mode {
 		case "SLAVE_POS":
 			cm += ", MASTER_USE_GTID=SLAVE_POS"

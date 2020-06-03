@@ -226,6 +226,8 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			Logpos:      crash.NewMasterLogPos,
 			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
 			Channel:     server.ClusterGroup.Conf.MasterConn,
+			IsDelayed:   server.IsDelayed,
+			Delay:       strconv.Itoa(server.ClusterGroup.Conf.HostsDelayedTime),
 			PostgressDB: server.PostgressDB,
 		}, server.DBVersion)
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Change master positional failed in Rejoin old Master in sync %s", err)
@@ -466,9 +468,10 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 								Logpos:      myparentss.ReadMasterLogPos.String,
 								Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 								Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-								Mode:        "POSITIONAL",
-								SSL:         server.ClusterGroup.Conf.ReplicationSSL,
 								Channel:     server.ClusterGroup.Conf.MasterConn,
+								IsDelayed:   server.IsDelayed,
+								Delay:       strconv.Itoa(server.ClusterGroup.Conf.HostsDelayedTime),
+								SSL:         server.ClusterGroup.Conf.ReplicationSSL,
 								PostgressDB: server.PostgressDB,
 							}, server.DBVersion)
 
