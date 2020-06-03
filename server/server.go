@@ -143,6 +143,7 @@ var cfgGroup string
 var cfgGroupIndex int
 
 func (repman *ReplicationManager) InitConfig(conf config.Config) {
+	repman.ForcedConfs = make(map[string]config.Config)
 	var currentClusterName string
 	// call after init if configuration file is provide
 	viper.SetConfigType("toml")
@@ -318,6 +319,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 					cf2.Unmarshal(&def)
 					cf2.Unmarshal(&clusterconf)
 				}
+
 				repman.ForcedConfs[gl] = clusterconf
 				if clusterconf.ConfRewrite {
 					cf3 := viper.Sub("saved-" + gl)
@@ -633,6 +635,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 
 func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead string) error {
 	var myconf = make(map[string]config.Config)
+
 	myconf[clusterName] = repman.Conf
 	repman.Lock()
 	repman.ClusterList = append(repman.ClusterList, clusterName)
