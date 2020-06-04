@@ -1164,3 +1164,78 @@ func (server *ServerMonitor) Shutdown() error {
 	}
 	return nil
 }
+
+func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gitd string) error {
+	logs := ""
+	var err error
+	hasMyGTID := server.HasMySQLGTID()
+	//mariadb
+
+	if server.State != stateFailed && server.ClusterGroup.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
+		master.Refresh()
+		_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + master.CurrentGtid.Sprint() + "\"")
+		if err != nil {
+			return err
+		}
+		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:        master.Host,
+			Port:        master.Port,
+			User:        server.ClusterGroup.rplUser,
+			Password:    server.ClusterGroup.rplPass,
+			Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+			Mode:        master_use_gitd,
+			Channel:     server.ClusterGroup.Conf.MasterConn,
+			IsDelayed:   server.IsDelayed,
+			Delay:       strconv.Itoa(server.ClusterGroup.Conf.HostsDelayedTime),
+			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
+			PostgressDB: server.PostgressDB,
+		}, server.DBVersion)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Replication bootstrapped with %s as master", master.URL)
+	} else if hasMyGTID && server.ClusterGroup.Conf.ForceSlaveNoGtid == false {
+
+		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:        master.Host,
+			Port:        master.Port,
+			User:        server.ClusterGroup.rplUser,
+			Password:    server.ClusterGroup.rplPass,
+			Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+			Mode:        "MASTER_AUTO_POSITION",
+			IsDelayed:   server.IsDelayed,
+			Delay:       strconv.Itoa(server.ClusterGroup.Conf.HostsDelayedTime),
+			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
+			Channel:     server.ClusterGroup.Conf.MasterConn,
+			PostgressDB: server.PostgressDB,
+		}, server.DBVersion)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Replication bootstrapped with MySQL GTID replication style and %s as master", master.URL)
+
+	} else {
+		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:        master.Host,
+			Port:        master.Port,
+			User:        server.ClusterGroup.rplUser,
+			Password:    server.ClusterGroup.rplPass,
+			Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+			Mode:        "POSITIONAL",
+			Logfile:     master.BinaryLogFile,
+			Logpos:      master.BinaryLogPos,
+			Channel:     server.ClusterGroup.Conf.MasterConn,
+			IsDelayed:   server.IsDelayed,
+			Delay:       strconv.Itoa(server.ClusterGroup.Conf.HostsDelayedTime),
+			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
+			PostgressDB: server.PostgressDB,
+		}, server.DBVersion)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Replication bootstrapped with old replication style and %s as master", master.URL)
+
+	}
+	if err != nil {
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "BootstrapReplication", LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, master.URL, err)
+	}
+	_, err = server.Conn.Exec("START SLAVE '" + server.ClusterGroup.Conf.MasterConn + "'")
+	if err != nil {
+		err = errors.New(fmt.Sprintln("Can't start slave: ", err))
+	}
+	return err
+}

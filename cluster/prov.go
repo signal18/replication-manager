@@ -8,9 +8,7 @@ package cluster
 
 import (
 	"errors"
-	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -454,7 +452,6 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 
 	// default to master slave
 	var err error
-	logs := ""
 
 	if cluster.Conf.MultiMasterWsrep {
 		cluster.LogPrintf(LvlInfo, "Galera cluster ignoring replication setup")
@@ -498,10 +495,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 	if masterKey == -1 {
 		return errors.New("Preferred master could not be found in existing servers")
 	}
-	//	_, err = cluster.Servers[masterKey].Conn.Exec("RESET MASTER")
-	//	if err != nil {
-	//		cluster.LogPrintf(LvlInfo, "RESET MASTER failed on master"
-	//	}
+
 	// Assume master-slave if nothing else is declared
 	if cluster.Conf.MultiMasterRing == false && cluster.Conf.MultiMaster == false && cluster.Conf.MxsBinlogOn == false && cluster.Conf.MultiTierSlave == false {
 
@@ -514,72 +508,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				server.SetReadWrite()
 				continue
 			} else {
-				// A slave
-				hasMyGTID := server.HasMySQLGTID()
-				//mariadb
-				if server.State != stateFailed && cluster.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
-					cluster.Servers[masterKey].Refresh()
-					_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + cluster.Servers[masterKey].CurrentGtid.Sprint() + "\"")
-					if err != nil {
-						return err
-					}
-					logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-						Host:        cluster.Servers[masterKey].Host,
-						Port:        cluster.Servers[masterKey].Port,
-						User:        cluster.rplUser,
-						Password:    cluster.rplPass,
-						Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
-						Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-						Mode:        "SLAVE_POS",
-						Channel:     cluster.Conf.MasterConn,
-						PostgressDB: server.PostgressDB,
-					}, server.DBVersion)
-					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
-				} else if hasMyGTID && cluster.Conf.ForceSlaveNoGtid == false {
-
-					logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-						Host:        cluster.Servers[masterKey].Host,
-						Port:        cluster.Servers[masterKey].Port,
-						User:        cluster.rplUser,
-						Password:    cluster.rplPass,
-						Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
-						Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-						Mode:        "MASTER_AUTO_POSITION",
-						Channel:     cluster.Conf.MasterConn,
-						PostgressDB: server.PostgressDB,
-					}, server.DBVersion)
-					//  Missing  multi source cluster.Conf.MasterConn
-					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with MySQL GTID replication style and %s as master", cluster.Servers[masterKey].URL)
-
-				} else {
-					//*ss, errss := cluster.Servers[masterKey].GetSlaveStatus(cluster.Servers[masterKey].ReplicationSourceName)
-
-					logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-						Host:        cluster.Servers[masterKey].Host,
-						Port:        cluster.Servers[masterKey].Port,
-						User:        cluster.rplUser,
-						Password:    cluster.rplPass,
-						Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-						Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-						Mode:        "POSITIONAL",
-						Logfile:     cluster.Servers[masterKey].BinaryLogFile,
-						Logpos:      cluster.Servers[masterKey].BinaryLogPos,
-						Channel:     cluster.Conf.MasterConn,
-						PostgressDB: server.PostgressDB,
-					}, server.DBVersion)
-
-					//  Missing  multi source cluster.Conf.MasterConn
-					cluster.LogPrintf(LvlInfo, "Environment bootstrapped with old replication style and %s as master", cluster.Servers[masterKey].URL)
-
-				}
-				cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
-				if err != nil {
-
-				} else if !server.IsDown() {
-					logs, err = server.StartSlave()
-					cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, cluster.Servers[masterKey].URL, err)
-				}
-
+				err = server.ChangeMasterTo(cluster.Servers[masterKey], "SLAVE_POS")
 				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
 					server.SetReadOnly()
 				}
@@ -604,30 +533,18 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				dbhelper.ResetAllSlaves(server.Conn, server.DBVersion)
 
 				if relaykey == key {
-					stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.Conf.MasterConn, cluster.Servers[masterKey].Host, cluster.Servers[masterKey].Port, cluster.rplUser, cluster.rplPass, cluster.Conf.MasterConnectRetry, 1)
-					_, err := server.Conn.Exec(stmt)
+					err = server.ChangeMasterTo(cluster.Servers[masterKey], "CURRENT_POS")
 					if err != nil {
 						cluster.sme.RemoveFailoverState()
-						return errors.New(fmt.Sprintln(stmt, err))
-					}
-					_, err = server.Conn.Exec("START SLAVE '" + cluster.Conf.MasterConn + "'")
-					if err != nil {
-						cluster.sme.RemoveFailoverState()
-						return errors.New(fmt.Sprintln("Can't start slave: ", err))
-					}
-				} else {
-					stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.Conf.MasterConn, cluster.Servers[relaykey].Host, cluster.Servers[relaykey].Port, cluster.rplUser, cluster.rplPass, cluster.Conf.MasterConnectRetry, 1)
-					_, err := server.Conn.Exec(stmt)
-					if err != nil {
-						cluster.sme.RemoveFailoverState()
-						return errors.New(fmt.Sprintln(stmt, err))
-					}
-					_, err = server.Conn.Exec("START SLAVE '" + cluster.Conf.MasterConn + "'")
-					if err != nil {
-						cluster.sme.RemoveFailoverState()
-						return errors.New(fmt.Sprintln("Can't start slave: ", err))
+						return err
 					}
 
+				} else {
+					err = server.ChangeMasterTo(cluster.Servers[relaykey], "CURRENT_POS")
+					if err != nil {
+						cluster.sme.RemoveFailoverState()
+						return err
+					}
 				}
 				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
 					server.SetReadOnly()
@@ -643,35 +560,20 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				continue
 			}
 			if key == 0 {
-
-				stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.Conf.MasterConn, cluster.Servers[1].Host, cluster.Servers[1].Port, cluster.rplUser, cluster.rplPass, cluster.Conf.MasterConnectRetry, 1)
-				_, err := server.Conn.Exec(stmt)
+				err = server.ChangeMasterTo(cluster.Servers[1], "CURRENT_POS")
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
-					return errors.New(fmt.Sprintln(stmt, err))
-				}
-				_, err = server.Conn.Exec("START SLAVE '" + cluster.Conf.MasterConn + "'")
-				if err != nil {
-					cluster.sme.RemoveFailoverState()
-					return errors.New(fmt.Sprintln("Can't start slave: ", err))
+					return err
 				}
 				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
 					server.SetReadOnly()
 				}
 			}
 			if key == 1 {
-
-				stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=current_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.Conf.MasterConn, cluster.Servers[0].Host, cluster.Servers[0].Port, cluster.rplUser, cluster.rplPass, cluster.Conf.MasterConnectRetry, 1)
-				_, err := server.Conn.Exec(stmt)
+				err = server.ChangeMasterTo(cluster.Servers[0], "CURRENT_POS")
 				if err != nil {
 					cluster.sme.RemoveFailoverState()
-
-					return errors.New(fmt.Sprintln("ERROR:", stmt, err))
-				}
-				_, err = server.Conn.Exec("START SLAVE '" + cluster.Conf.MasterConn + "'")
-				if err != nil {
-					cluster.sme.RemoveFailoverState()
-					return errors.New(fmt.Sprintln("Can't start slave: ", err))
+					return err
 				}
 			}
 			if !server.ClusterGroup.IsInIgnoredReadonly(server) {
@@ -686,24 +588,12 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				continue
 			}
 			i := (len(cluster.Servers) + key - 1) % len(cluster.Servers)
-			_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + cluster.Servers[i].CurrentGtid.Sprint() + "\"")
+			err = server.ChangeMasterTo(cluster.Servers[i], "SLAVE_POS")
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Replication bootstrap failed for setting gtid %s", cluster.Servers[i].CurrentGtid.Sprint())
+				cluster.sme.RemoveFailoverState()
 				return err
 			}
-			stmt := fmt.Sprintf("CHANGE MASTER '%s' TO master_host='%s', master_port=%s, master_user='%s', master_password='%s', master_use_gtid=slave_pos, master_connect_retry=%d, master_heartbeat_period=%d", cluster.Servers[i].ReplicationSourceName, cluster.Servers[i].Host, cluster.Servers[i].Port, cluster.rplUser, cluster.rplPass, cluster.Conf.MasterConnectRetry, 1)
-			_, err := server.Conn.Exec(stmt)
-			if err != nil {
-				cluster.sme.RemoveFailoverState()
-				cluster.LogPrintf(LvlErr, "Bootstrap Relication error %s %s", stmt, err)
 
-				return errors.New(fmt.Sprintln(stmt, err))
-			}
-			_, err = server.Conn.Exec("START SLAVE '" + cluster.Conf.MasterConn + "'")
-			if err != nil {
-				cluster.sme.RemoveFailoverState()
-				return errors.New(fmt.Sprintln("Can't start slave: ", err))
-			}
 			cluster.vmaster = cluster.Servers[0]
 
 		}

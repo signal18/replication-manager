@@ -80,10 +80,13 @@ func (cluster *Cluster) initHaproxy(proxy *Proxy) {
 		// log.Printf("Found exiting leader removing")
 	}
 
-	p, _ := strconv.Atoi(cluster.GetMaster().Port)
-	s := haproxy.ServerDetail{Name: "leader", Host: cluster.GetMaster().Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
-	if err = haConfig.AddServer("service_write", &s); err != nil {
-		//	log.Printf("Failed to add server to service_write ")
+	if cluster.GetMaster() != nil {
+
+		p, _ := strconv.Atoi(cluster.GetMaster().Port)
+		s := haproxy.ServerDetail{Name: "leader", Host: cluster.GetMaster().Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
+		if err = haConfig.AddServer("service_write", &s); err != nil {
+			//	log.Printf("Failed to add server to service_write ")
+		}
 	}
 
 	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: "service_read", BindPort: cluster.Conf.HaproxyReadPort, BindIp: cluster.Conf.HaproxyReadBindIp}
@@ -122,9 +125,9 @@ func (cluster *Cluster) initHaproxy(proxy *Proxy) {
 		cluster.LogPrintf(LvlErr, "Could not render initial haproxy config, exiting...")
 	}
 	if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
-		cluster.LogPrintf(LvlInfo, "Haproxy reload config on pid %s", haConfig.PidFile)
-	} else {
 		cluster.LogPrintf(LvlInfo, "Haproxy reload config err %s", err.Error())
+	} else {
+		cluster.LogPrintf(LvlInfo, "Haproxy reload config on pid %s", haConfig.PidFile)
 	}
 
 	err = haRuntime.Reload(&haConfig)
