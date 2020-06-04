@@ -258,7 +258,13 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 					cluster.sme.AddState("ERR00057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00057"], user.User), ErrFrom: "MON", ServerUrl: proxy.Name})
 				} else {
 					if u.Password != "" {
-						uniUsers[u.User+":"+u.Password] = u
+
+						if u.User != cluster.dbUser {
+							uniUsers[u.User+":"+u.Password] = u
+						} else if cluster.Conf.MonitorWriteHeartbeatCredential == "" {
+							//  load the repman DB user in proxy beacause we don't have an extra user to query master
+							uniUsers[u.User+":"+u.Password] = u
+						}
 					}
 				}
 			}
@@ -266,6 +272,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 			for _, user := range uniUsers {
 				if _, ok := myprxusermap[user.User+":"+user.Password]; !ok {
 					cluster.LogPrintf(LvlInfo, "Add ProxySQL user %s ", user.User)
+
 					err := psql.AddUser(user.User, user.Password)
 					if err != nil {
 						cluster.sme.AddState("ERR00054", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00054"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
