@@ -364,7 +364,7 @@ func GetBinaryLogs(db *sqlx.DB, version *MySQLVersion) (map[string]uint, string,
 	if err != nil {
 		return nil, query, errors.New("Could not get status variables")
 	}
-
+	defer rows.Close()
 	for rows.Next() {
 		var v Binarylogs
 		err := rows.Scan(&v.Log_name, &v.File_size)
@@ -1381,6 +1381,7 @@ func GetStatus(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, err
 	if err != nil {
 		return nil, query, errors.New("Could not get status variables")
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var v Variable
 		err := rows.Scan(&v.Variable_name, &v.Value)
@@ -1502,6 +1503,7 @@ func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
 	if err != nil {
 		return vars, query, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var v chunk
 		err = rows.Scan(&v.ChunkId, &v.ChunkMinKey, &v.ChunkMaxKey, v.ChunkCheckSum)
@@ -1549,6 +1551,7 @@ func GetStatusAsInt(db *sqlx.DB, myver *MySQLVersion) (map[string]int64, string,
 	if err != nil {
 		return nil, query, errors.New("Could not get status variables as integers")
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var v Variable
 		rows.Scan(&v.Variable_name, &v.Value)
@@ -1570,6 +1573,7 @@ func GetVariables(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, 
 	if err != nil {
 		return vars, query, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var v Variable
 		err = rows.Scan(&v.Variable_name, &v.Value)
@@ -1589,6 +1593,7 @@ func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 	if err != nil {
 		return vars, query, err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var v Variable
 		err = rows.Scan(&v.Variable_name, &v.Value)
@@ -1612,6 +1617,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 	if err != nil {
 		return nil, nil, query, errors.New("Could not get table list")
 	}
+	defer databases.Close()
 	logs += query
 	for databases.Next() {
 		var schema string
@@ -1631,6 +1637,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 		if err != nil {
 			return nil, nil, logs, errors.New("Could not get table list")
 		}
+		defer rows.Close()
 		crc64Table := crc64.MakeTable(0xC96C5795D7870F42)
 		for rows.Next() {
 			var v Table
@@ -1684,6 +1691,7 @@ func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, string, error
 	if err != nil {
 		return nil, query, errors.New("Could not get DB user list")
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var g Grant
 		err = rows.Scan(&g.User, &g.Host, &g.Password, &g.Hash)
@@ -1702,6 +1710,7 @@ func GetProxySQLUsers(db *sqlx.DB) (map[string]Grant, string, error) {
 	if err != nil {
 		return nil, query, errors.New("Could not get proxySQL user list")
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var g Grant
 		err = rows.Scan(&g.User, &g.Password)
@@ -1730,6 +1739,7 @@ func GetSchemasMap(db *sqlx.DB) (map[string]string, string, error) {
 	if err != nil {
 		return nil, query, errors.New("Could not get schema list")
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var schema string
 		err = rows.Scan(&schema)
@@ -2250,6 +2260,10 @@ func GetSpiderTableToSync(db *sqlx.DB) (map[string]SpiderTableNoSync, error) {
 		  select  group_concat( distinct concat(db_name, '.',table_name)) as tbl_src ,concat( coalesce(st.tgt_db_name,s.db) ,'.', tgt_table_name ) as tbl_dest, concat(coalesce(st.host,s.host ),':',coalesce(st.port,s.port)) as srv_sync  from (select * from mysql.spider_tables where link_status=1) st left join mysql.servers s on st.server=s.server_name group by tbl_dest, srv_sync
 		) sync ON  usync.tbl_src_link= sync.tbl_src and usync.tbl_dest=sync.tbl_dest
 		`)
+	if err != nil {
+		return vars, err
+	}
+	defer rows.Close()
 	for rows.Next() {
 		var v SpiderTableNoSync
 		rows.Scan(&v.Tbl_src, &v.Tbl_src_link, &v.Tbl_dest, &v.Srv_dsync, &v.Srv_sync)

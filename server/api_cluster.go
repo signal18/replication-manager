@@ -600,8 +600,8 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 
 		}
 		err := mycluster.BootstrapReplication(true)
-		mycluster.LogPrintf("ERROR", "Error bootstraping replication %", err)
 		if err != nil {
+			mycluster.LogPrintf("ERROR", "Error bootstraping replication %s", err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
