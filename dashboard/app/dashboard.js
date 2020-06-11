@@ -1062,8 +1062,9 @@ function (
       $scope.toggletraffic = function () {
         if (confirm("Confirm toggle traffic")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/database-heartbeat');
       };
-
-
+      $scope.configDiscover= function () {
+        if (confirm("Confirm discover config")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/discovery');
+      };
       $scope.resetfail = function () {
         if (confirm("Reset Failover counter?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-failover-counter');
       };

@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -958,4 +959,328 @@ func (cluster *Cluster) LoadPrxModules() {
 		cluster.LogPrintf(LvlErr, "Failed unmarshal file %s %s", file, err)
 	}
 
+}
+
+func (cluster *Cluster) ConfigDiscovery() error {
+
+	if cluster.master == nil {
+		return errors.New("No master in topology")
+	}
+	innodbmem, err := strconv.ParseUint(cluster.master.Variables["INNODB_BUFFER_POOL_SIZE"], 10, 64)
+	if err != nil {
+		return err
+	}
+	totalmem := innodbmem
+	myisammem, err := strconv.ParseUint(cluster.master.Variables["KEY_BUFFER_SIZE"], 10, 64)
+	if err != nil {
+		return err
+	}
+	totalmem += myisammem
+	qcmem, err := strconv.ParseUint(cluster.master.Variables["QUERY_CACHE_SIZE"], 10, 64)
+	if err != nil {
+		return err
+	}
+	if qcmem == 0 {
+		cluster.AddDBTag("noquerycache")
+	}
+	totalmem += qcmem
+	ariamem := uint64(0)
+	if _, ok := cluster.master.Variables["ARIA_PAGECACHE_BUFFER_SIZE"]; ok {
+		ariamem, err = strconv.ParseUint(cluster.master.Variables["ARIA_PAGECACHE_BUFFER_SIZE"], 10, 64)
+		if err != nil {
+			return err
+		}
+		totalmem += ariamem
+	}
+	tokumem := uint64(0)
+	if _, ok := cluster.master.Variables["TOKUDB_CACHE_SIZE"]; ok {
+		cluster.AddDBTag("tokudb")
+		tokumem, err = strconv.ParseUint(cluster.master.Variables["TOKUDB_CACHE_SIZE"], 10, 64)
+		if err != nil {
+			return err
+		}
+		totalmem += tokumem
+	}
+	s3mem := uint64(0)
+	if _, ok := cluster.master.Variables["S3_PAGECACHE_BUFFER_SIZE"]; ok {
+		cluster.AddDBTag("s3")
+		tokumem, err = strconv.ParseUint(cluster.master.Variables["S3_PAGECACHE_BUFFER_SIZE"], 10, 64)
+		if err != nil {
+			return err
+		}
+		totalmem += s3mem
+	}
+
+	rocksmem := uint64(0)
+	if _, ok := cluster.master.Variables["ROCKSDB_BLOCK_CACHE_SIZE"]; ok {
+		cluster.AddDBTag("myrocks")
+		tokumem, err = strconv.ParseUint(cluster.master.Variables["ROCKSDB_BLOCK_CACHE_SIZE"], 10, 64)
+		if err != nil {
+			return err
+		}
+		totalmem += rocksmem
+	}
+
+	sharedmempcts, _ := cluster.Conf.GetMemoryPctShared()
+	totalmem = totalmem + totalmem*uint64(sharedmempcts["threads"])/100
+	cluster.SetDBMemorySize(strconv.FormatUint((totalmem / 1024 / 1024), 10))
+	cluster.SetDBCores(cluster.master.Variables["THREAD_POOL_SIZE"])
+
+	if cluster.master.Variables["INNODB_DOUBLEWRITE"] == "OFF" {
+		cluster.AddDBTag("nodoublewrite")
+	}
+	if cluster.master.Variables["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" && cluster.master.Variables["SYNC_BINLOG"] != "1" {
+		cluster.AddDBTag("nodurable")
+	}
+	if cluster.master.Variables["INNODB_FLUSH_METHOD"] != "O_DIRECT" {
+		cluster.AddDBTag("noodirect")
+	}
+	if cluster.master.Variables["LOG_BIN_COMPRESS"] == "ON" {
+		cluster.AddDBTag("compressbinlog")
+	}
+	if cluster.master.Variables["INNODB_DEFRAGMENT"] == "ON" {
+		cluster.AddDBTag("autodefrag")
+	}
+	if cluster.master.Variables["INNODB_COMPRESSION_DEFAULT"] == "ON" {
+		cluster.AddDBTag("compresstable")
+	}
+
+	if cluster.master.HasInstallPlugin("BLACKHOLE") {
+		cluster.AddDBTag("blackhole")
+	}
+	if cluster.master.HasInstallPlugin("QUERY_RESPONSE_TIME") {
+		cluster.AddDBTag("userstats")
+	}
+	if cluster.master.HasInstallPlugin("SQL_ERROR_LOG") {
+		cluster.AddDBTag("sqlerror")
+	}
+	if cluster.master.HasInstallPlugin("METADATA_LOCK_INFO") {
+		cluster.AddDBTag("metadatalocks")
+	}
+	if cluster.master.HasInstallPlugin("SERVER_AUDIT") {
+		cluster.AddDBTag("audit")
+	}
+	if cluster.master.Variables["SLOW_QUERY_LOG"] == "ON" {
+		cluster.AddDBTag("slow")
+	}
+	if cluster.master.Variables["GENERAL_LOG"] == "ON" {
+		cluster.AddDBTag("general")
+	}
+	if cluster.master.Variables["PERFORMANCE_SCHEMA"] == "ON" {
+		cluster.AddDBTag("pfs")
+	}
+	if cluster.master.Variables["LOG_OUTPUT"] == "TABLE" {
+		cluster.AddDBTag("logtotable")
+	}
+
+	if cluster.master.HasInstallPlugin("CONNECT") {
+		cluster.AddDBTag("connect")
+	}
+	if cluster.master.HasInstallPlugin("SPIDER") {
+		cluster.AddDBTag("spider")
+	}
+	if cluster.master.HasInstallPlugin("SPHINX") {
+		cluster.AddDBTag("sphinx")
+	}
+	if cluster.master.HasInstallPlugin("MROONGA") {
+		cluster.AddDBTag("mroonga")
+	}
+	if cluster.master.HasWsrep() {
+		cluster.AddDBTag("wsrep")
+	}
+	//missing in compliance
+	if cluster.master.HasInstallPlugin("ARCHIVE") {
+		cluster.AddDBTag("archive")
+	}
+
+	if cluster.master.HasInstallPlugin("CRACKLIB_PASSWORD_CHECK") {
+		cluster.AddDBTag("pwdcheckcracklib")
+	}
+	if cluster.master.HasInstallPlugin("SIMPLE_PASSWORD_CHECK") {
+		cluster.AddDBTag("pwdchecksimple")
+	}
+
+	if cluster.master.Variables["LOCAL_INFILE"] == "ON" {
+		cluster.AddDBTag("localinfile")
+	}
+	if cluster.master.Variables["SKIP_NAME_RESOLVE"] == "OFF" {
+		cluster.AddDBTag("resolvdns")
+	}
+	if cluster.master.Variables["READ_ONLY"] == "ON" {
+		cluster.AddDBTag("readonly")
+	}
+	if cluster.master.Variables["HAVE_SSL"] == "YES" {
+		cluster.AddDBTag("ssl")
+	}
+
+	if cluster.master.Variables["BINLOG_FORMAT"] == "STATEMENT" {
+		cluster.AddDBTag("statement")
+	}
+	if cluster.master.Variables["BINLOG_FORMAT"] == "ROW" {
+		cluster.AddDBTag("row")
+	}
+	if cluster.master.Variables["LOG_BIN"] == "OFF" {
+		cluster.AddDBTag("nobinlog")
+	}
+	if cluster.master.Variables["LOG_BIN"] == "OFF" {
+		cluster.AddDBTag("nobinlog")
+	}
+	if cluster.master.Variables["LOG_SLAVE_UPDATES"] == "OFF" {
+		cluster.AddDBTag("nologslaveupdates")
+	}
+	if cluster.master.Variables["RPL_SEMI_SYNC_MASTER_ENABLED"] == "ON" {
+		cluster.AddDBTag("semisync")
+	}
+	if cluster.master.Variables["GTID_STRICT_MODE"] == "ON" {
+		cluster.AddDBTag("gtidstrict")
+	}
+	if strings.Contains(cluster.master.Variables["SLAVE_TYPE_COVERSIONS"], "ALL_NON_LOSSY") || strings.Contains(cluster.master.Variables["SLAVE_TYPE_COVERSIONS"], "ALL_LOSSY") {
+		cluster.AddDBTag("lossyconv")
+	}
+	if cluster.master.Variables["SLAVE_EXEC_MODE"] == "IDEMPOTENT" {
+		cluster.AddDBTag("idempotent")
+	}
+
+	//missing in compliance
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "SUBQUERY_CACHE=ON") {
+		cluster.AddDBTag("subquerycache")
+	}
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "SEMIJOIN_WITH_CACHE=ON") {
+		cluster.AddDBTag("semijoincache")
+	}
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "FIRSTMATCH=ON") {
+		cluster.AddDBTag("firstmatch")
+	}
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "EXTENDED_KEYS=ON") {
+		cluster.AddDBTag("extendedkeys")
+	}
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "LOOSESCAN=ON") {
+		cluster.AddDBTag("loosescan")
+	}
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "INDEX_CONDITION_PUSHDOWN=OFF") {
+		cluster.AddDBTag("noicp")
+	}
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "IN_TO_EXISTS=OFF") {
+		cluster.AddDBTag("nointoexists")
+	}
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "DERIVED_MERGE=OFF") {
+		cluster.AddDBTag("noderivedmerge")
+	}
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "DERIVED_WITH_KEYS=OFF") {
+		cluster.AddDBTag("noderivedwithkeys")
+	}
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "MRR=OFF") {
+		cluster.AddDBTag("nomrr")
+	}
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "OUTER_JOIN_WITH_CACHE=OFF") {
+		cluster.AddDBTag("noouterjoincache")
+	}
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "SEMI_JOIN_WITH_CACHE=OFF") {
+		cluster.AddDBTag("nosemijoincache")
+	}
+	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "TABLE_ELIMINATION=OFF") {
+		cluster.AddDBTag("notableelimination")
+	}
+	if strings.Contains(cluster.master.Variables["SQL_MODE"], "ORACLE") {
+		cluster.AddDBTag("sqlmodeoracle")
+	}
+	if cluster.master.Variables["SQL_MODE"] == "" {
+		cluster.AddDBTag("sqlmodeunstrict")
+	}
+	//index_merge=on
+	//index_merge_union=on,
+	//index_merge_sort_union=on
+	//index_merge_intersection=on
+	//index_merge_sort_intersection=off
+	//engine_condition_pushdown=on
+	//materialization=on
+	//semijoin=on
+	//partial_match_rowid_merge=on
+	//partial_match_table_scan=on,
+	//mrr_cost_based=off
+	//mrr_sort_keys=on,
+	//join_cache_incremental=on,
+	//join_cache_hashed=on,
+	//join_cache_bka=on,
+	//optimize_join_buffer_size=on,
+	//orderby_uses_equalities=on
+	//condition_pushdown_for_derived=on
+	//split_materialized=on//
+	//condition_pushdown_for_subquery=on,
+	//rowid_filter=on
+	//condition_pushdown_from_having=on
+
+	if cluster.master.Variables["TX_ISOLATION"] == "READ-COMMITTED" {
+		cluster.AddDBTag("readcommitted")
+	}
+	//missing
+	if cluster.master.Variables["TX_ISOLATION"] == "READ-UNCOMMITTED" {
+		cluster.AddDBTag("readuncommitted")
+	}
+	if cluster.master.Variables["TX_ISOLATION"] == "REPEATABLE-READ" {
+		cluster.AddDBTag("reapeatableread")
+	}
+	if cluster.master.Variables["TX_ISOLATION"] == "SERIALIZED" {
+		cluster.AddDBTag("serialized")
+	}
+
+	if cluster.master.Variables["JOIN_CACHE_LEVEL"] == "8" {
+		cluster.AddDBTag("hashjoin")
+	}
+	if cluster.master.Variables["JOIN_CACHE_LEVEL"] == "6" {
+		cluster.AddDBTag("mrrjoin")
+	}
+	if cluster.master.Variables["JOIN_CACHE_LEVEL"] == "2" {
+		cluster.AddDBTag("nestedjoin")
+	}
+	if cluster.master.Variables["LOWER_CASE_TABLE_NAMES"] == "1" {
+		cluster.AddDBTag("lowercasetable")
+	}
+	if cluster.master.Variables["USER_STAT_TABLES"] == "PREFERABLY_FOR_QUERIES" {
+		cluster.AddDBTag("eits")
+	}
+
+	if cluster.master.Variables["CHARACTER_SET_SERVER"] == "UTF8MB4" {
+		if strings.Contains(cluster.master.Variables["COLLATION_SERVER"], "_ci") {
+			cluster.AddDBTag("bm4ci")
+		} else {
+			cluster.AddDBTag("bm4cs")
+		}
+	}
+	if cluster.master.Variables["CHARACTER_SET_SERVER"] == "UTF8" {
+		if strings.Contains(cluster.master.Variables["COLLATION_SERVER"], "_ci") {
+			cluster.AddDBTag("utf8ci")
+		} else {
+			cluster.AddDBTag("utf8cs")
+		}
+	}
+
+	//slave_parallel_mode = optimistic
+	/*
+
+		tmpmem, err := strconv.ParseUint(cluster.master.Variables["TMP_TABLE_SIZE"], 10, 64)
+		if err != nil {
+			return err
+		}
+			qttmp, err := strconv.ParseUint(cluster.master.Variables["MAX_TMP_TABLES"], 10, 64)
+			if err != nil {
+				return err
+			}
+			tmpmem = tmpmem * qttmp
+			totalmem += tmpmem
+
+			cores, err := strconv.ParseUint(cluster.master.Variables["THREAD_POOL_SIZE"], 10, 64)
+			if err != nil {
+				return err
+			}
+
+			joinmem, err := strconv.ParseUint(cluster.master.Variables["JOIN_BUFFER_SPACE_LIMIT"], 10, 64)
+			joinmem = joinmem * cores
+
+			sortmem, err := strconv.ParseUint(cluster.master.Variables["SORT_BUFFER_SIZE"], 10, 64)
+	*/
+	//
+	//	containermem = containermem * int64(sharedmempcts["innodb"]) / 100
+
+	return nil
 }

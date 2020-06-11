@@ -1,10 +1,10 @@
-
 package graphite
 
 import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -24,7 +24,7 @@ import (
 	_ "net/http/pprof"
 )
 
-var log = logrus.New()
+//var log = logrus.New()
 
 // Graphite is a struct that defines the relevant properties of a graphite
 // connection
@@ -211,13 +211,12 @@ func httpServe(addr string) (func(), error) {
 	return func() { listener.Close() }, nil
 }
 
-func RunCarbon(ShareDir string, DataDir string, GraphiteCarbonPort int, GraphiteCarbonLinkPort int, GraphiteCarbonPicklePort int, GraphiteCarbonPprofPort int, GraphiteCarbonServerPort int) {
+func RunCarbon(ShareDir string, DataDir string, GraphiteCarbonPort int, GraphiteCarbonLinkPort int, GraphiteCarbonPicklePort int, GraphiteCarbonPprofPort int, GraphiteCarbonServerPort int) error {
 	var err error
 
 	input, err := ioutil.ReadFile(ShareDir + "/carbon.conf.template")
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		return err
 	}
 
 	output := bytes.Replace(input, []byte("{{.schemas}}"), []byte(ShareDir+"/schemas.conf"), -1)
@@ -238,7 +237,7 @@ func RunCarbon(ShareDir string, DataDir string, GraphiteCarbonPort int, Graphite
 	app := carbon.New(DataDir + "/carbon.conf")
 
 	if err = app.ParseConfig(); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	app.Config.Common.Logfile = DataDir + "/carbon.log"
@@ -304,4 +303,5 @@ func RunCarbon(ShareDir string, DataDir string, GraphiteCarbonPort int, Graphite
 	app.Loop()
 
 	logrus.Info("stopped")
+	return nil
 }

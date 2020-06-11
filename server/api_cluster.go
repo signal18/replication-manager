@@ -100,6 +100,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterResetFailoverControl)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/discover", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettingsDiscover)),
+	))
 
 	router.Handle("/api/clusters/{clusterName}/actions/add/{clusterShardingName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -701,6 +705,24 @@ func (repman *ReplicationManager) handlerMuxServicesCancelRollingReprov(w http.R
 		}
 		mycluster.CancelRollingReprov()
 	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+}
+
+func (repman *ReplicationManager) handlerMuxSetSettingsDiscover(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		mycluster.ConfigDiscovery()
+	} else {
+
 		http.Error(w, "No cluster", 500)
 		return
 	}
