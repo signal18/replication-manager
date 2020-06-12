@@ -120,12 +120,6 @@
   Set Sharding Proxy Credentials
     </md-button>
   </md-menu-item>
-  <md-menu-item ng-if="master.State !='Failed'" ng-click="configDiscover()">
-    <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false">
-      <md-icon md-menu-align-target class="fas fa-address-card"></md-icon>
-  Config Discover
-    </md-button>
-  </md-menu-item>
   </md-menu-content>
 </md-menu>
 </md-menu-item>
@@ -237,6 +231,12 @@
           <md-icon md-menu-align-target class="fas fa-bug"></md-icon>
          Reload
         </md-button>
+        </md-menu-item>
+        <md-menu-item ng-if="master.State !='Failed'" ng-click="configDiscover()">
+          <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false">
+            <md-icon md-menu-align-target class="fas fa-address-card"></md-icon>
+         Discover
+          </md-button>
         </md-menu-item>
     </md-menu-content>
   </md-menu>

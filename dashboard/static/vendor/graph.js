@@ -12,6 +12,8 @@ var dashboards =
       {
         "alias": "Avg QPS",  // display name for this metric
         "target": "perSecond(mysql.*.mysql_global_status_queries)",  // enter your graphite barebone target expression here
+        "renderer": "area",
+        "interpolation": "linear",
         "description": "",  // enter your metric description here
         "summary": "avg",  // available options: [sum|min|max|avg|last|<function>]
         "summary_formatter": d3.format(",f") // customize your summary format function. see d3 formatting docs for more options
