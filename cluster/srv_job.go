@@ -608,9 +608,22 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
 		usegtid := "--gtid"
+		events := ""
+		dumpslave := ""
+		if server.IsMaster() {
+			dumpslave = "--master-data=1"
+		} else {
+			dumpslave = "--dump-slave=1"
+		}
+		if server.HasEventScheduler() {
+			events = "--events=true"
+		} else {
+			events = "--events=false"
+		}
+		//dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), dumpslave, "--opt", "--hex-blob", events, "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass, "--all-databases")
+		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), "--hex-blob", "--apply-slave-statements", "--single-transaction", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass, "--verbose", "--all-databases", dumpslave, usegtid, events)
 
-		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
-
+		server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", -1))
 		f, err := os.Create(server.GetMyBackupDirectory() + "mysqldump.sql.gz")
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Error backup request: %s", err)
@@ -940,16 +953,29 @@ func (server *ServerMonitor) JobCapturePurge(path string, keep int) error {
 	return nil
 }
 
-func (cluster *Cluster) JobRejoiMysqldumpFromnMaster(source *ServerMonitor, dest *ServerMonitor) error {
-	cluster.LogPrintf(LvlInfo, "Rejoining via master mysqldump ")
+func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest *ServerMonitor) error {
+	cluster.LogPrintf(LvlInfo, "Rejoining from direct mysqldump from %s", source.URL)
 	dest.StopSlave()
 	usegtid := ""
 
 	if dest.HasGTIDReplication() {
-
-		usegtid = "--gtid"
+		usegtid = "--gtid=true"
+	} else {
+		usegtid = "--gtid=false"
 	}
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), "--opt", "--hex-blob", "--events", "--disable-keys", "--master-data=1", "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass, "--verbose")
+	events := ""
+	if source.HasEventScheduler() {
+		events = "--events=true"
+	} else {
+		events = "--events=false"
+	}
+	dumpslave := ""
+	if source.IsMaster() {
+		dumpslave = "--master-data=1"
+	} else {
+		dumpslave = "--dump-slave=1"
+	}
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), "--opt", "--hex-blob", events, "--disable-keys", dumpslave, "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass, "--verbose")
 	stderrIn, _ := dumpCmd.StderrPipe()
 
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.dbUser, `--password=`+cluster.dbPass, `--batch`, `--init-command=reset master;set sql_log_bin=0;`)

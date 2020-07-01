@@ -531,7 +531,7 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 				node.JobReseedLogicalBackup()
 			}
 			if vars["backupMethod"] == "logicalmaster" {
-				node.RejoinMasterDump()
+				node.RejoinDirectDump()
 			}
 			if vars["backupMethod"] == "physicalbackup" {
 				node.JobReseedPhysicalBackup()

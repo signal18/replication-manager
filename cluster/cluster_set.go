@@ -68,7 +68,12 @@ func (cluster *Cluster) SetSchedulerBackupLogical() {
 		var err error
 		cluster.LogPrintf(LvlInfo, "Schedule logical backup time at: %s", cluster.Conf.BackupLogicalCron)
 		cluster.idSchedulerLogicalBackup, err = cluster.scheduler.AddFunc(cluster.Conf.BackupLogicalCron, func() {
-			cluster.master.JobBackupLogical()
+			mysrv := cluster.GetBackupServer()
+			if mysrv != nil {
+				mysrv.JobBackupLogical()
+			} else {
+				cluster.master.JobBackupLogical()
+			}
 		})
 		if err == nil {
 			cluster.Schedule["backuplogical"] = cluster.scheduler.Entry(cluster.idSchedulerPhysicalBackup)

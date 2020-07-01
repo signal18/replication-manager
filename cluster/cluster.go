@@ -471,8 +471,10 @@ func (cluster *Cluster) Run() {
 			cluster.WaitingRejoin = cluster.rejoinCond.Len()
 			cluster.WaitingFailover = cluster.failoverCond.Len()
 			cluster.WaitingSwitchover = cluster.switchoverCond.Len()
-			cluster.QPS = cluster.GetQps()
-			cluster.Connections = cluster.GetConnections()
+			if len(cluster.Servers) > 0 {
+				cluster.QPS = cluster.GetQps()
+				cluster.Connections = cluster.GetConnections()
+			}
 			time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
 
 		}
@@ -483,38 +485,50 @@ func (cluster *Cluster) StateProcessing() {
 	if !cluster.sme.IsInFailover() {
 		// trigger action on resolving states
 		cstates := cluster.sme.GetResolvedStates()
+		mybcksrv := cluster.GetBackupServer()
+		master := cluster.GetMaster()
 		for _, s := range cstates {
+			servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
 			if s.ErrKey == "WARN0074" {
 				cluster.LogPrintf(LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
-				servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
-				m := cluster.GetMaster()
-				if m != nil {
-					go cluster.SSTRunSender(m.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed)
+				if master != nil {
+					if mybcksrv != nil {
+						go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed)
+					} else {
+						go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed)
+					}
 				} else {
-					cluster.LogPrintf(LvlErr, "No master backup for physical backup reseeding %s", s.ServerUrl)
+					cluster.LogPrintf(LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
 				}
 			}
 			if s.ErrKey == "WARN0075" {
 				cluster.LogPrintf(LvlInfo, "Sending master logical backup to reseed %s", s.ServerUrl)
-				servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
-				m := cluster.GetMaster()
-				if m != nil {
-					go cluster.SSTRunSender(m.GetMasterBackupDirectory()+"mysqldump.sql.gz", servertoreseed)
+				if master != nil {
+					if mybcksrv != nil {
+						go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed)
+					} else {
+						go cluster.SSTRunSender(master.GetMasterBackupDirectory()+"mysqldump.sql.gz", servertoreseed)
+					}
 				} else {
-					cluster.LogPrintf(LvlErr, "No master backup for logical backup reseeding %s", s.ServerUrl)
+					cluster.LogPrintf(LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
 				}
 			}
 			if s.ErrKey == "WARN0076" {
 				cluster.LogPrintf(LvlInfo, "Sending server physical backup to flashback reseed %s", s.ServerUrl)
-				servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
-
-				go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed)
-
+				if mybcksrv != nil {
+					go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed)
+				} else {
+					go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed)
+				}
 			}
 			if s.ErrKey == "WARN0077" {
+
 				cluster.LogPrintf(LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
-				servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
-				go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed)
+				if mybcksrv != nil {
+					go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed)
+				} else {
+					go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed)
+				}
 			}
 			//		cluster.statecloseChan <- s
 		}

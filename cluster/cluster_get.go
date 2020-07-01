@@ -385,6 +385,15 @@ func (cluster *Cluster) GetFailedServer() *ServerMonitor {
 	return nil
 }
 
+func (cluster *Cluster) GetBackupServer() *ServerMonitor {
+	for _, server := range cluster.Servers {
+		if server.State != stateFailed && server.PreferedBackup {
+			return server
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) GetFirstWorkingSlave() *ServerMonitor {
 	for _, server := range cluster.slaves {
 		if !server.IsDown() && !server.IsReplicationBroken() {

@@ -112,6 +112,7 @@ type ServerMonitor struct {
 	IsDelayed                   bool                         `json:"isDelayed"`
 	Ignored                     bool                         `json:"ignored"`
 	Prefered                    bool                         `json:"prefered"`
+	PreferedBackup              bool                         `json:"preferedBackup"`
 	InCaptureMode               bool                         `json:"inCaptureMode"`
 	LongQueryTimeSaved          string                       `json:"longQueryTimeSaved"`
 	LongQueryTime               string                       `json:"longQueryTime"`
@@ -199,6 +200,7 @@ const (
 func (cluster *Cluster) newServerMonitor(url string, user string, pass string, compute bool, domain string) (*ServerMonitor, error) {
 	var err error
 	server := new(ServerMonitor)
+	server.QPS = 0
 	server.IsCompute = compute
 	server.Domain = domain
 	server.TLSConfigUsed = ConstTLSCurrentConfig
@@ -269,6 +271,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	go server.ErrorLogWatcher()
 	go server.SlowLogWatcher()
 	server.SetIgnored(cluster.IsInIgnoredHosts(server))
+	server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
 	if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
 		server.Conn, err = sqlx.Open("postgres", server.DSN)

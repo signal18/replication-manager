@@ -71,6 +71,16 @@ func (cluster *Cluster) IsInIgnoredHosts(server *ServerMonitor) bool {
 	return false
 }
 
+func (cluster *Cluster) IsInPreferedBackupHosts(server *ServerMonitor) bool {
+	ihosts := strings.Split(cluster.Conf.BackupServers, ",")
+	for _, ihost := range ihosts {
+		if server.URL == ihost || server.Name == ihost {
+			return true
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) IsInIgnoredReadonly(server *ServerMonitor) bool {
 	ihosts := strings.Split(cluster.Conf.IgnoreSrvRO, ",")
 	for _, ihost := range ihosts {
@@ -92,7 +102,7 @@ func (cluster *Cluster) IsInPreferedHosts(server *ServerMonitor) bool {
 }
 
 func (cluster *Cluster) IsInCaptureMode() bool {
-	if !cluster.Conf.MonitorCapture || cluster.IsNotMonitoring {
+	if !cluster.Conf.MonitorCapture || cluster.IsNotMonitoring || len(cluster.Servers) > 0 {
 		return false
 	}
 	for _, server := range cluster.Servers {

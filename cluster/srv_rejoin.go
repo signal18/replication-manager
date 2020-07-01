@@ -122,7 +122,7 @@ func (server *ServerMonitor) RejoinPreviousSnapshot() error {
 func (server *ServerMonitor) RejoinMasterSST() error {
 	if server.ClusterGroup.Conf.AutorejoinMysqldump == true {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoin flashback dump restore %s", server.URL)
-		err := server.RejoinMasterDump()
+		err := server.RejoinDirectDump()
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "mysqldump flashback restore failed %s", err)
 			return errors.New("Dump from master failed")
@@ -152,7 +152,7 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 func (server *ServerMonitor) ReseedMasterSST() error {
 	if server.ClusterGroup.Conf.AutorejoinMysqldump == true {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoin dump restore %s", server.URL)
-		err := server.RejoinMasterDump()
+		err := server.RejoinDirectDump()
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "mysqldump restore failed %s", err)
 			return errors.New("Dump from master failed")
@@ -293,8 +293,9 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	return nil
 }
 
-func (server *ServerMonitor) RejoinMasterDump() error {
+func (server *ServerMonitor) RejoinDirectDump() error {
 	var err3 error
+
 	realmaster := server.ClusterGroup.master
 	if server.ClusterGroup.Conf.MxsBinlogOn || server.ClusterGroup.Conf.MultiTierSlave {
 		realmaster = server.ClusterGroup.GetRelayServer()
@@ -323,8 +324,12 @@ func (server *ServerMonitor) RejoinMasterDump() error {
 		return err3
 	}
 	// dump here
-	go server.ClusterGroup.JobRejoiMysqldumpFromnMaster(server.ClusterGroup.master, server)
-
+	backupserver := server.ClusterGroup.GetBackupServer()
+	if backupserver == nil {
+		go server.ClusterGroup.JobRejoinMysqldumpFromSource(server.ClusterGroup.master, server)
+	} else {
+		go server.ClusterGroup.JobRejoinMysqldumpFromSource(backupserver, server)
+	}
 	return nil
 }
 

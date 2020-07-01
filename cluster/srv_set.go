@@ -33,6 +33,10 @@ func (server *ServerMonitor) SetPrefered(pref bool) {
 	server.Prefered = pref
 }
 
+func (server *ServerMonitor) SetPreferedBackup(pref bool) {
+	server.PreferedBackup = pref
+}
+
 func (server *ServerMonitor) SetReadOnly() (string, error) {
 	logs := ""
 	if !server.IsReadOnly() {
