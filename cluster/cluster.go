@@ -623,6 +623,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Conf = conf
 	cluster.sme.SetFailoverState()
 	cluster.newServerList()
+	cluster.newProxyList()
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	cluster.TopologyDiscover(wg)
