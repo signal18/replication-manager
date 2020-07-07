@@ -1353,10 +1353,12 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		/*	if !repman.IsValidClusterACL(r, mycluster) {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}*/
+		if repman.Conf.APISecureConfig {
+			if !repman.IsValidClusterACL(r, mycluster) {
+				http.Error(w, "No valid ACL", 403)
+				return
+			}
+		}
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {

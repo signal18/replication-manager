@@ -395,6 +395,7 @@ type Config struct {
 	APIUsersExternal                          string `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
 	APIUsersACLAllow                          string `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
 	APIUsersACLDiscard                        string `mapstructure:"api-credentials-acl-discard" toml:"api-credentials-acl-discard" json:"apiCredentialsACLDiscard"`
+	APISecureConfig                           bool   `mapstructure:"api-credentials-secure-config" toml:"api-credentials-secure-config" json:"apiCredentialsSecureConfig"`
 	APIPort                                   string `mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                                   string `mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
 	APIHttpsBind                              bool   `mapstructure:"api-https-bind" toml:"api-secure" json:"apiHttpsBind"`

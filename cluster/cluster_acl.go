@@ -214,6 +214,11 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantProxyConfigFlag] {
+		if strings.Contains(URL, "/config") {
+			return true
+		}
+	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBLogs] {
 		if strings.Contains(URL, "/processlist") {
 			return true
