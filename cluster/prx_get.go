@@ -219,7 +219,7 @@ func (proxy *Proxy) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":               string(proxy.Id[2:10]),
 		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":     proxy.ClusterGroup.dbPass,
 		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":         proxy.ClusterGroup.dbUser,
-		"%%ENV:SERVER_IP%%":                            misc.Unbracket(proxy.GetBindAddress()),
+		"%%ENV:SERVER_IP%%":                            proxy.GetBindAddress(),
 		"%%ENV:EXTRA_BIND_SERVER_IPV6%%":               proxy.GetBindAddressExtraIPV6(),
 		"%%ENV:SVC_CONF_ENV_PROXY_USE_SSL%%":           proxy.GetUseSSL(),
 		"%%ENV:SVC_CONF_ENV_PROXY_USE_COMPRESS%%":      proxy.GetUseCompression(),
