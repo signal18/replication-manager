@@ -202,6 +202,7 @@ type Config struct {
 	MdbsProxyOn                               bool   `mapstructure:"shardproxy" toml:"shardproxy" json:"shardproxy"`
 	MdbsProxyHosts                            string `mapstructure:"shardproxy-servers" toml:"shardproxy-servers" json:"shardproxyServers"`
 	MdbsProxyUser                             string `mapstructure:"shardproxy-user" toml:"shardproxy-user" json:"shardproxyUser"`
+	MdbsHostsIPV6                             string `mapstructure:"shardproxy-servers-ipv6" toml:"shardproxy-servers-ipv6" json:"shardproxyServers-ipv6"`
 	MdbsProxyCopyGrants                       bool   `mapstructure:"shardproxy-copy-grants" toml:"shardproxy-copy-grants" json:"shardproxyCopyGrants"`
 	MdbsProxyLoadSystem                       bool   `mapstructure:"shardproxy-load-system" toml:"shardproxy-load-system" json:"shardproxyLoadSystem"`
 	MdbsUniversalTables                       string `mapstructure:"shardproxy-universal-tables" toml:"shardproxy-universal-tables" json:"shardproxyUniversalTables"`
@@ -299,6 +300,7 @@ type Config struct {
 	SlapOSProxySQLPartitions                  string `mapstructure:"slapos-proxysql-partitions" toml:"slapos-proxysql-partitions" json:"slaposProxysqlPartitions"`
 	SlapOSHaProxyPartitions                   string `mapstructure:"slapos-haproxy-partitions" toml:"slapos-haproxy-partitions" json:"slaposHaproxyPartitions"`
 	SlapOSMaxscalePartitions                  string `mapstructure:"slapos-maxscale-partitions" toml:"slapos-maxscale-partitions" json:"slaposMaxscalePartitions"`
+	SlapOSShardProxyPartitions                string `mapstructure:"slapos-shardproxy-partitions" toml:"slapos-shardproxy-partitions" json:"slaposShardproxyPartitions"`
 	ProvHost                                  string `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
 	ProvOpensvcP12Certificate                 string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificat" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`

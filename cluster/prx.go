@@ -246,8 +246,16 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 	if cluster.Conf.MdbsProxyHosts != "" && cluster.Conf.MdbsProxyOn {
-		for _, proxyHost := range strings.Split(cluster.Conf.MdbsProxyHosts, ",") {
+		slapospartitions := strings.Split(cluster.Conf.SlapOSShardProxyPartitions, ",")
+		ipv6hosts := strings.Split(cluster.Conf.MdbsHostsIPV6, ",")
+		for k, proxyHost := range strings.Split(cluster.Conf.MdbsProxyHosts, ",") {
 			prx := new(Proxy)
+			if k < len(slapospartitions) {
+				prx.SlapOSDatadir = slapospartitions[k]
+			}
+			if k < len(ipv6hosts) {
+				prx.HostIPV6 = ipv6hosts[k]
+			}
 			prx.Type = config.ConstProxySpider
 			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
 			prx.User, prx.Pass = misc.SplitPair(cluster.Conf.MdbsProxyUser)

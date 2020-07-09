@@ -367,6 +367,7 @@ func init() {
 		monitorCmd.Flags().BoolVar(&conf.MdbsProxyLoadSystem, "shardproxy-load-system", true, "Load Spider system tables")
 		monitorCmd.Flags().StringVar(&conf.MdbsUniversalTables, "shardproxy-universal-tables", "replication_manager_schema.bench", "MariaDB spider proxy table list that are federarated to all master")
 		monitorCmd.Flags().StringVar(&conf.MdbsIgnoreTables, "shardproxy-ignore-tables", "", "MariaDB spider proxy master table list that are ignored")
+		monitorCmd.Flags().StringVar(&conf.MdbsHostsIPV6, "shardproxy-servers-ipv6", "", "ipv6 bind address ")
 	}
 	if WithHaproxy == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HaProxy on same host")
@@ -533,6 +534,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.SlapOSProxySQLPartitions, "slapos-proxysql-partitions", "", "List proxysql slapos partitions path")
 	monitorCmd.Flags().StringVar(&conf.SlapOSHaProxyPartitions, "slapos-haproxy-partitions", "", "List haproxy slapos partitions path")
 	monitorCmd.Flags().StringVar(&conf.SlapOSMaxscalePartitions, "slapos-maxscale-partitions", "", "List maxscale slapos partitions path")
+	monitorCmd.Flags().StringVar(&conf.SlapOSShardProxyPartitions, "slapos-shardproxy-partitions", "", "List spider slapos partitions path")
 
 	if WithProvisioning == "ON" {
 		monitorCmd.Flags().StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
