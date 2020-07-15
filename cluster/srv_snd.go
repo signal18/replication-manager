@@ -112,6 +112,7 @@ func (server *ServerMonitor) SendAlert() error {
 			Destination: server.ClusterGroup.Conf.MailSMTPAddr,
 			User:        server.ClusterGroup.Conf.MailSMTPUser,
 			Password:    server.ClusterGroup.Conf.MailSMTPPassword,
+			TlsVerify:   server.ClusterGroup.Conf.MailSMTPTLSSkipVerify,
 		}
 		err := a.Email()
 		if err != nil {

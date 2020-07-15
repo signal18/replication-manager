@@ -32,7 +32,7 @@ func (cluster *Cluster) failoverMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy
 }
 
 func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
-	// cluster.LogPrintf(LvlInfo, "Init MdbShardProxy %s %s", proxy.Host, proxy.Port)
+	cluster.LogPrintf(LvlInfo, "Init MdbShardProxy %s %s", proxy.Host, proxy.Port)
 	cluster.ShardProxyBootstrap(proxy)
 	if cluster.Conf.MdbsProxyLoadSystem {
 		cluster.ShardProxyCreateSystemTable(proxy)
@@ -662,6 +662,7 @@ func (cluster *Cluster) ShardProxyBootstrap(proxy *Proxy) error {
 	} else {
 		proxy.ShardProxy, err = cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass, true, "")
 	}
+	proxy.ShardProxy.SlapOSDatadir = proxy.SlapOSDatadir
 	return err
 }
 

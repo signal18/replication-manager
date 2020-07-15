@@ -12,6 +12,7 @@
 package alert
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/smtp"
 	"strings"
@@ -28,6 +29,7 @@ type Alert struct {
 	Destination string
 	User        string
 	Password    string
+	TlsVerify   bool
 }
 
 func (a *Alert) Email() error {
@@ -41,9 +43,18 @@ New server state change from %s is %s.`, a.Origin, a.PrevState, a.State)
 	e.Text = []byte(text)
 	var err error
 	if a.User == "" {
-		err = e.Send(a.Destination, nil)
+		if a.TlsVerify {
+			err = e.SendWithTLS(a.Destination, nil, &tls.Config{InsecureSkipVerify: true})
+		} else {
+			err = e.Send(a.Destination, nil)
+		}
 	} else {
-		err = e.Send(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]))
+		if a.TlsVerify {
+			err = e.SendWithTLS(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]), &tls.Config{InsecureSkipVerify: true})
+		} else {
+			err = e.Send(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]))
+		}
 	}
+
 	return err
 }

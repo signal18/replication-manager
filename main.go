@@ -317,6 +317,7 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.MailSMTPAddr, "mail-smtp-addr", "localhost:25", "Alert email SMTP server address, in host:[port] format")
 		monitorCmd.Flags().StringVar(&conf.MailSMTPUser, "mail-smtp-user", "", "SMTP user")
 		monitorCmd.Flags().StringVar(&conf.MailSMTPPassword, "mail-smtp-password", "", "SMTP password")
+		monitorCmd.Flags().BoolVar(&conf.MailSMTPTLSSkipVerify, "mail-smtp-tls-skip-verify", false, "Use TLS with skip verify")
 	}
 
 	monitorCmd.Flags().BoolVar(&conf.PRXServersReadOnMaster, "proxy-servers-read-on-master", false, "Should RO route via proxies point to master")

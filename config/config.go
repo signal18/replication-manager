@@ -193,6 +193,7 @@ type Config struct {
 	MailSMTPAddr                              string `mapstructure:"mail-smtp-addr" toml:"mail-smtp-addr" json:"mailSmtpAddr"`
 	MailSMTPUser                              string `mapstructure:"mail-smtp-user" toml:"mail-smtp-user" json:"mailSmtpUser"`
 	MailSMTPPassword                          string `mapstructure:"mail-smtp-password" toml:"mail-smtp-password" json:"mailSmtpPassword"`
+	MailSMTPTLSSkipVerify                     bool   `mapstructure:"mail-smtp-tls-skip-verify" toml:"mail-smtp-tls-skip-verify" json:"mailSmtpTlsSkipVerify"`
 	SlackURL                                  string `mapstructure:"alert-slack-url" toml:"alert-slack-url" json:"alertSlackUrl"`
 	SlackChannel                              string `mapstructure:"alert-slack-channel" toml:"alert-slack-channel" json:"alertSlackChannel"`
 	SlackUser                                 string `mapstructure:"alert-slack-user" toml:"alert-slack-user" json:"alertSlackUser"`

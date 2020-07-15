@@ -76,7 +76,11 @@ func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
 func (proxy *Proxy) GetProxyConfig() string {
 
 	if proxy.Type == config.ConstProxySpider {
-		proxy.ShardProxy.GetMyConfig()
+		if proxy.ShardProxy == nil {
+			proxy.ClusterGroup.LogPrintf(LvlErr, "Can't get a shard proxy config not yet monitored")
+		} else {
+			proxy.ShardProxy.GetMyConfig()
+		}
 	}
 	type File struct {
 		Path    string `json:"path"`
