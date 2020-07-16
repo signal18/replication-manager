@@ -77,10 +77,11 @@ func (proxy *Proxy) GetProxyConfig() string {
 
 	if proxy.Type == config.ConstProxySpider {
 		if proxy.ShardProxy == nil {
-			proxy.ClusterGroup.LogPrintf(LvlErr, "Can't get a shard proxy config not yet monitored")
+			proxy.ClusterGroup.LogPrintf(LvlErr, "Can't get shard proxy config no master available")
 		} else {
-			proxy.ShardProxy.GetMyConfig()
+			return proxy.ShardProxy.GetMyConfig()
 		}
+
 	}
 	type File struct {
 		Path    string `json:"path"`
