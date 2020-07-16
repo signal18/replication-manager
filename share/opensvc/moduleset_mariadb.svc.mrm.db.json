@@ -2078,8 +2078,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_innodbpagecompression.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb-10.1]\\ninnodb_compression_default=1\\ninnodb_compression_algorithm=bzip2\\ninnodb_use_fallocate = 1\\ninnodb_use_trim = 1\\ninnodb_mtflush_threads = 16\\n\"}",
-                    "var_updated": "2020-03-25 11:10:08",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_innodbpagecompression.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\ninnodb_compression_default=1\\ninnodb_compression_algorithm=bzip2\\nloose_innodb_use_fallocate = 1\\nloose_innodb_use_trim = 1\\nloose_innodb_mtflush_threads = 16\\n\"}",
+                    "var_updated": "2020-06-08 17:05:46",
                     "var_name": "db_cnf_disk_with_innodbpagecompression",
                     "id": 5934
                 },
@@ -2566,8 +2566,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_monitor.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nplugin_load_add =\\\"disk.so\\\"\"}",
-                    "var_updated": "2020-03-25 11:11:28",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_monitor.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nplugin_load_add =\\\"disks.so\\\"\"}",
+                    "var_updated": "2020-07-16 16:37:50",
                     "var_name": "db_cnf_disk_with_monitor",
                     "id": 6104
                 },
