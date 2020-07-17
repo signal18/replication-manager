@@ -1,0 +1,86 @@
+# config.toml
+# Example replication-manager configuration file
+
+# change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+# replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
+
+[backup1]
+title = "backup1"
+db-servers-hosts = "127.0.0.1:3331,127.0.0.1:3332"
+db-servers-prefered-master = "127.0.0.1:3331"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+
+backup-logical-type ="mydumper"
+
+[backup2]
+title = "backup2"
+db-servers-hosts = "127.0.0.1:3333,127.0.0.1:3334"
+db-servers-prefered-master = "127.0.0.1:3333"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+mysqldump-path = "/usr/local/bin/mysqldump"
+backup-logical-type ="mysqldump"
+
+[backupserver]
+title = "backupserver"
+db-servers-hosts = "127.0.0.1:3333,127.0.0.1:3334"
+db-servers-backup-hosts ="127.0.0.1:3334"
+db-servers-prefered-master = "127.0.0.1:3333"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+mysqldump-path = "/usr/local/bin/mysqldump"
+backup-logical-type ="mysqldump"
+
+[backup3]
+title = "backup2"
+db-servers-hosts = "127.0.0.1:3335,127.0.0.1:3336"
+db-servers-prefered-master = "127.0.0.1:3335"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+
+backup-logical-type ="dumpling"
+
+
+[Default]
+
+
+prov-orchestrator = "local"
+prov-db-tags = "innodb,noquerycache,slow,pfs,pkg,linux,smallredolog,logtotable"
+
+backup-mydumper-path = "/usr/local/bin/mydumper"
+backup-myloader-path = "/usr/local/bin/myloader"
+backup-mysqlbinlog-path = "/usr/local/bin/mysqlbinlog"
+backup-mysqldump-path = "/usr/local/bin/mysqldump"
+
+backup-streaming = false
+backup-streaming-aws-access-key-id = "admin"
+backup-streaming-aws-access-secret = "xxxx"
+backup-streaming-endpoint= "https://s3.signal18.io/"
+backup-streaming-region= "fr-1"
+backup-streaming-bucket= "repman"
+
+
+backup-restic = true
+backup-restic-aws =  false
+backup-physical-type = "mariabackup"
+backup-restic-aws-access-secret = "xxxx"
+backup-restic-password = "xxxx"
+backup-restic-binary-path = "/usr/local/bin/restic"
+
+monitoring-scheduler = true
+scheduler-db-servers-logical-backup  = true
+scheduler-db-servers-logical-backup-cron= "0 0 1 * * 6"
+scheduler-db-servers-logs   =  false
+scheduler-db-servers-logs-cron = "0 0 * * * *"
+scheduler-db-servers-logs-table-keep = 4
+scheduler-db-servers-logs-table-rotate  = false
+scheduler-db-servers-logs-table-rotate-cron = "0 0 0/6 * * *"
+scheduler-db-servers-optimize  = true
+scheduler-db-servers-optimize-cron = "0 0 3 1 * 5"
+scheduler-db-servers-physical-backup = true
+scheduler-db-servers-physical-backup-cron = "0 0 0 * * *"

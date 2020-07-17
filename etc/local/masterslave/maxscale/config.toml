@@ -1,0 +1,35 @@
+# config.toml
+# Example replication-manager configuration file
+
+# change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+# replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
+
+
+[ClusterTestMaxscale]
+title = "ClusterTestMaxscale"
+db-servers-hosts = "127.0.0.1:5055,127.0.0.1:5056"
+db-servers-prefered-master = "127.0.0.1:5055"
+db-servers-credential = "skysql:skyvodka"
+replication-credential = "skysql:skyvodka"
+failover-mode = "manual"
+maxscale = true
+maxscale-monitor = false
+maxscale-maxinfo-port = 3307
+maxscale-get-info-method = "maxadmin"
+maxscale-servers = "127.0.0.1"
+maxscale-port = 3307
+maxscale-user = "admin"
+maxscale-pass = "mariadb"
+maxscale-write-port = 4007
+maxscale-read-port = 4008
+maxscale-read-write-port = 4006
+maxscale-binlog = false
+maxscale-binlog-port = 3305
+
+
+[Default]
+prov-orchestrator = "local"
+db-servers-binary-path= "/usr/local/mysql/bin/"
+verbose = true
+http-server = true
+http-bind-address = "0.0.0.0"

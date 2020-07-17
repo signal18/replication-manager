@@ -1,0 +1,6 @@
+[cluster1]
+title = "cluster1"
+db-servers-hosts = "[2001:67c:1254:e:89::5df3]:2099,[2001:67c:1254:e:89::5df3]:2199"
+db-servers-prefered-master = "[2001:67c:1254:e:89::5df3]:2099"
+db-servers-credential = "repman:dahiyzjgrubw"
+replication-credential = "repman:dahiyzjgrubw"

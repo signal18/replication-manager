@@ -655,6 +655,9 @@ func (cluster *Cluster) RunQueryWithLog(server *ServerMonitor, query string) err
 func (cluster *Cluster) ShardProxyBootstrap(proxy *Proxy) error {
 
 	var err error
+	if proxy.ShardProxy != nil {
+		return nil
+	}
 	if cluster.Conf.ProvNetCNI {
 		host := strings.Split(proxy.Host, ".")[0]
 		if cluster.Conf.ClusterHead != "" {

@@ -1,0 +1,27 @@
+## config.toml
+## Example replication-manager configuration file
+
+## change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+## replication-manager-osc  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
+
+[Cluster_Haproxy_MasterSlave]
+title = "ClusterTestMasterSlave"
+
+db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"
+db-servers-prefered-master = "127.0.0.1:3310"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+
+replication-credential = "root:mariadb"
+
+haproxy = true
+haproxy-write-port = 3303
+haproxy-read-port = 3302
+
+[Default]
+prov-orchestrator = "local"
+db-servers-binary-path= "/usr/local/mysql/bin/"
+haproxy-binary-path= "/usr/local/bin/haproxy"
+verbose = true
+http-server = true
+http-bind-address = "0.0.0.0"

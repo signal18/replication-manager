@@ -1,0 +1,44 @@
+# config.toml
+# Example replication-manager configuration file
+
+# change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+# replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
+
+
+[Cluster_Test_MasterSlaveSlave]
+title = "ClusterTestMasterSlaveSlave"
+db-servers-hosts = "127.0.0.1:3317,127.0.0.1:3318,127.0.0.1:3319"
+db-servers-prefered-master = "127.0.0.1:3317"
+db-servers-credential = "root:test"
+db-servers-connect-timeout = 1
+
+replication-credential = "root:test"
+
+haproxy=true
+haproxy-write-port=3307
+haproxy-read-port=3306
+
+force-slave-heartbeat= true
+force-slave-heartbeat-retry = 5
+force-slave-heartbeat-time = 3
+force-slave-gtid-mode = true
+force-slave-semisync = true
+force-slave-failover-readonly-state = true
+force-binlog-row = true
+force-binlog-annotate = true
+force-binlog-slowqueries = true
+force-binlog-checksum = true
+force-binlog-compress = true
+force-inmemory-binlog-cache-size = false
+force-disk-relaylog-size-limit = false
+force-disk-relaylog-size-limit-size = 1000000000
+force-sync-binlog = true
+force-sync-innodb = true
+
+[Default]
+prov-orchestrator = "local"
+db-servers-binary-path= "/usr/local/mysql/bin/"
+haproxy-binary-path= "/usr/local/bin/haproxy"
+verbose = true
+http-server = true
+http-bind-address = "0.0.0.0"
