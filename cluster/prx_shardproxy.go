@@ -130,10 +130,11 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *Proxy) {
 
 func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) error {
 	if proxy.ShardProxy == nil {
-		return errors.New("No database monitor yet initialize")
+		return errors.New("Sharding proxy no database monitor yet initialize")
 	}
 	err := proxy.ShardProxy.Refresh()
 	if err != nil {
+
 		return err
 	}
 	proxy.Version = proxy.ShardProxy.Variables["VERSION"]

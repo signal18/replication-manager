@@ -1,7 +1,7 @@
 [Default]
 prov-orchestrator = "local"
-prov-db-binary-basedir= "/usr/local/bin"
-prov-db-client-basedir= "/usr/local/bin"
+prov-db-binary-basedir= "/usr/local/mysql/bin"
+prov-db-client-basedir= "/usr/local/mysql/bin"
 haproxy-binary-path= "/usr/local/bin/haproxy"
 sysbench-binary-path = "/usr/local/bin/sysbench"
 backup-mydumper-path = "/usr/local/bin/mydumper"

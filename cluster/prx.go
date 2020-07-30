@@ -476,7 +476,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 			pr.FailCount++
 			if pr.FailCount >= pr.ClusterGroup.Conf.MaxFail {
 				if pr.FailCount == pr.ClusterGroup.Conf.MaxFail {
-					pr.ClusterGroup.LogPrintf("INFO", "Declaring %s proxy as failed %s:%s", pr.Type, pr.Host, pr.Port)
+					pr.ClusterGroup.LogPrintf("INFO", "Declaring %s proxy as failed %s:%s %s", pr.Type, pr.Host, pr.Port, err)
 				}
 				pr.State = stateFailed
 				pr.DelWaitStopCookie()

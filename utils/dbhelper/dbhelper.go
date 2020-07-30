@@ -1785,7 +1785,7 @@ func MariaDBFlushTablesNoLogTimeout(db *sqlx.DB, timeout string) (string, error)
 }
 
 func FlushTablesWithReadLock(db *sqlx.DB, myver *MySQLVersion) (string, error) {
-	query := "FLUSH TABLES WITH READ LOCK"
+	query := "FLUSH NO_WRITE_TO_BINLOG TABLES WITH READ LOCK"
 	_, err := db.Exec(query)
 	return query, err
 }
