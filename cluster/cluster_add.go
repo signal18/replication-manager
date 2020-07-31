@@ -85,7 +85,7 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 		}
 	case config.ConstProxySpider:
 		if user != "" || password != "" {
-			cluster.Conf.MdbsProxyUser = user + ":" + password
+			cluster.Conf.MdbsProxyCredential = user + ":" + password
 		}
 		cluster.Conf.MdbsProxyOn = true
 		if cluster.Conf.MdbsProxyHosts != "" {

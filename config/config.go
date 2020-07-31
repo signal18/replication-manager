@@ -202,7 +202,7 @@ type Config struct {
 	ExtProxyVIP                               string `mapstructure:"extproxy-address" toml:"extproxy-address" json:"extproxyAddress"`
 	MdbsProxyOn                               bool   `mapstructure:"shardproxy" toml:"shardproxy" json:"shardproxy"`
 	MdbsProxyHosts                            string `mapstructure:"shardproxy-servers" toml:"shardproxy-servers" json:"shardproxyServers"`
-	MdbsProxyUser                             string `mapstructure:"shardproxy-user" toml:"shardproxy-user" json:"shardproxyUser"`
+	MdbsProxyCredential                       string `mapstructure:"shardproxy-credential" toml:"shardproxy-credential" json:"shardproxyCredential"`
 	MdbsHostsIPV6                             string `mapstructure:"shardproxy-servers-ipv6" toml:"shardproxy-servers-ipv6" json:"shardproxyServers-ipv6"`
 	MdbsProxyCopyGrants                       bool   `mapstructure:"shardproxy-copy-grants" toml:"shardproxy-copy-grants" json:"shardproxyCopyGrants"`
 	MdbsProxyLoadSystem                       bool   `mapstructure:"shardproxy-load-system" toml:"shardproxy-load-system" json:"shardproxyLoadSystem"`

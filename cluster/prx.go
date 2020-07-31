@@ -258,7 +258,7 @@ func (cluster *Cluster) newProxyList() error {
 			}
 			prx.Type = config.ConstProxySpider
 			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
-			prx.User, prx.Pass = misc.SplitPair(cluster.Conf.MdbsProxyUser)
+			prx.User, prx.Pass = misc.SplitPair(cluster.Conf.MdbsProxyCredential)
 			prx.ReadPort, _ = strconv.Atoi(prx.Port)
 			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
 			prx.Name = proxyHost

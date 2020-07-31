@@ -517,7 +517,7 @@ func (cluster *Cluster) SetDbServersCredential(credential string) {
 func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype string) {
 	switch proxytype {
 	case config.ConstProxySpider:
-		cluster.Conf.MdbsProxyUser = credential
+		cluster.Conf.MdbsProxyCredential = credential
 	case config.ConstProxySqlproxy:
 		cluster.Conf.ProxysqlUser, cluster.Conf.ProxysqlPassword = misc.SplitPair(credential)
 	case config.ConstProxyMaxscale:

@@ -363,7 +363,7 @@ func init() {
 	if WithMariadbshardproxy == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.MdbsProxyOn, "shardproxy", false, "MariaDB Spider proxy")
 		monitorCmd.Flags().StringVar(&conf.MdbsProxyHosts, "shardproxy-servers", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")
-		monitorCmd.Flags().StringVar(&conf.MdbsProxyUser, "shardproxy-credential", "root:mariadb", "MariaDB spider proxy credential")
+		monitorCmd.Flags().StringVar(&conf.MdbsProxyCredential, "shardproxy-credential", "root:mariadb", "MariaDB spider proxy credential")
 		monitorCmd.Flags().BoolVar(&conf.MdbsProxyCopyGrants, "shardproxy-copy-grants", true, "Copy grants from shards master")
 		monitorCmd.Flags().BoolVar(&conf.MdbsProxyLoadSystem, "shardproxy-load-system", true, "Load Spider system tables")
 		monitorCmd.Flags().StringVar(&conf.MdbsUniversalTables, "shardproxy-universal-tables", "replication_manager_schema.bench", "MariaDB spider proxy table list that are federarated to all master")
