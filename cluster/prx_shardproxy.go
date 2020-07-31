@@ -20,6 +20,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -56,13 +57,13 @@ func (cluster *Cluster) failoverMdbShardBackends(proxy *Proxy) {
 		}
 		checksum64 := crc64.Checksum([]byte(s+"_"+cluster.GetName()), crcTable)
 
-		query := "CREATE OR REPLACE SERVER RW" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + cluster.master.Host + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
+		query := "CREATE OR REPLACE SERVER RW" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + misc.Unbracket(cluster.master.Host) + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
 		_, err = proxy.ShardProxy.Conn.Exec(query)
 		if err != nil {
 			cluster.LogPrintf("ERROR: query %s %s", query, err)
 		}
 		for _, slave := range cluster.slaves {
-			query := "CREATE OR REPLACE SERVER RO" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + slave.Host + "', DATABASE '" + s + "', USER '" + slave.User + "', PASSWORD '" + slave.Pass + "', PORT " + slave.Port + ")"
+			query := "CREATE OR REPLACE SERVER RO" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + misc.Unbracket(slave.Host) + "', DATABASE '" + s + "', USER '" + slave.User + "', PASSWORD '" + slave.Pass + "', PORT " + slave.Port + ")"
 			_, err = proxy.ShardProxy.Conn.Exec(query)
 			if err != nil {
 				cluster.LogPrintf("ERROR: query %s %s", query, err)
@@ -102,14 +103,14 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *Proxy) {
 		}
 		checksum64 := crc64.Checksum([]byte(s+"_"+cluster.GetName()), crcTable)
 
-		query := "CREATE SERVER IF NOT EXISTS RW" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + cluster.master.Host + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
+		query := "CREATE SERVER IF NOT EXISTS RW" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + misc.Unbracket(cluster.master.Host) + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
 		_, err = proxy.ShardProxy.Conn.Exec(query)
 		if err != nil {
 			cluster.LogPrintf("ERROR: query %s %s", query, err)
 		}
 		for _, slave := range cluster.slaves {
 
-			query := "CREATE SERVER IF NOT EXISTS RO" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + slave.Host + "', DATABASE '" + s + "', USER '" + slave.User + "', PASSWORD '" + slave.Pass + "', PORT " + slave.Port + ")"
+			query := "CREATE SERVER IF NOT EXISTS RO" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + misc.Unbracket(slave.Host) + "', DATABASE '" + s + "', USER '" + slave.User + "', PASSWORD '" + slave.Pass + "', PORT " + slave.Port + ")"
 			_, err = proxy.ShardProxy.Conn.Exec(query)
 			if err != nil {
 				cluster.LogPrintf("ERROR: query %s %s", query, err)
@@ -321,7 +322,7 @@ func (cluster *Cluster) ShardSetUniversalTable(proxy *Proxy, schema string, tabl
 				return err
 			}
 
-			query := "CREATE OR REPLACE SERVER local_" + schema + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + pr.Host + "', DATABASE '" + schema + "', USER '" + pr.User + "', PASSWORD '" + pr.Pass + "', PORT " + pr.Port + ")"
+			query := "CREATE OR REPLACE SERVER local_" + schema + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + misc.Unbracket(pr.Host) + "', DATABASE '" + schema + "', USER '" + pr.User + "', PASSWORD '" + pr.Pass + "', PORT " + pr.Port + ")"
 			err = cluster.RunQueryWithLog(pr.ShardProxy, query)
 			if err != nil {
 				return err
@@ -428,7 +429,7 @@ func (cluster *Cluster) ShardProxyMoveTable(proxy *Proxy, schema string, table s
 				return err
 			}
 
-			query := "CREATE OR REPLACE SERVER local_" + schema + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + pr.Host + "', DATABASE '" + schema + "', USER '" + pr.User + "', PASSWORD '" + pr.Pass + "', PORT " + pr.Port + ")"
+			query := "CREATE OR REPLACE SERVER local_" + schema + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + misc.Unbracket(pr.Host) + "', DATABASE '" + schema + "', USER '" + pr.User + "', PASSWORD '" + pr.Pass + "', PORT " + pr.Port + ")"
 			err = cluster.RunQueryWithLog(pr.ShardProxy, query)
 			if err != nil {
 				return err
