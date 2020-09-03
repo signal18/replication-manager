@@ -997,7 +997,7 @@ func (server *ServerMonitor) KillQuery(id string) (string, error) {
 func (server *ServerMonitor) ExecQueryNoBinLog(query string) error {
 	Conn, err := server.GetNewDBConn()
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Error connection in exec query no log %s", err)
+		server.ClusterGroup.LogPrintf(LvlErr, "Error connection in exec query no log %s %s", query, err)
 		return err
 	}
 	defer Conn.Close()
