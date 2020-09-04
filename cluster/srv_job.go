@@ -470,6 +470,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 		server.JobsCreateTable()
 		return err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var task DBTask
 		rows.Scan(&task.task, &task.ct)
