@@ -559,6 +559,7 @@ func (cluster *Cluster) GetTableDLLNoFK(schema string, table string, srv *Server
 		cluster.LogPrintf(LvlErr, "Contraint fetch failed %s %s", query, err)
 		return "", err
 	}
+	defer rows.Close()
 	var fk string
 	for rows.Next() {
 
