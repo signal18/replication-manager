@@ -29,6 +29,13 @@ func (server *ServerMonitor) SetFailed() {
 	server.State = stateFailed
 }
 
+func (server *ServerMonitor) SetMaster() {
+	server.State = stateMaster
+	for _, s := range server.ClusterGroup.Servers {
+		s.HaveNoMasterOnStart = false
+	}
+}
+
 func (server *ServerMonitor) SetPrefered(pref bool) {
 	server.Prefered = pref
 }

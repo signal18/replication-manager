@@ -656,7 +656,7 @@ func (server *ServerMonitor) GetMyConfig() string {
 					if fpath[len(fpath)-1:] != "/" && (server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
 						content := misc.ExtractKey(f.Content, server.GetEnv())
 
-						if server.IsFilterInTags("docker") {
+						if server.IsFilterInTags("docker") && server.ClusterGroup.Conf.ProvOrchestrator != config.ConstOrchestratorLocalhost {
 							if server.IsFilterInTags("wsrep") {
 								//if galera don't cusomized system files
 								if strings.Contains(content, "./.system") {
@@ -669,6 +669,7 @@ func (server *ServerMonitor) GetMyConfig() string {
 						if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 							content = strings.Replace(content, "includedir ..", "includedir "+server.Datadir+"/init", -1)
 							content = strings.Replace(content, "../etc/mysql", server.Datadir+"/init/etc/mysql", -1)
+
 						} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
 							content = strings.Replace(content, "includedir ..", "includedir "+server.SlapOSDatadir+"/", -1)
 							content = strings.Replace(content, "../etc/mysql", server.SlapOSDatadir+"/etc/mysql", -1)

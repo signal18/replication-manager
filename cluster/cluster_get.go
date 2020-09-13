@@ -348,24 +348,27 @@ func (cluster *Cluster) GetProxyFromURL(url string) *Proxy {
 	return nil
 }
 
-func (cluster *Cluster) GetMasterFromReplication(s *ServerMonitor) (*ServerMonitor, error) {
+func (cluster *Cluster) GetMasterFromReplication(slave *ServerMonitor) (*ServerMonitor, error) {
 
 	for _, server := range cluster.Servers {
-		if server.ServerID == s.ServerID {
+		if server.ServerID == slave.ServerID {
 			//Ignoring same ServerID
 			continue
 		}
-		if len(s.Replications) > 0 {
+		if len(slave.Replications) > 0 {
 
 			if cluster.Conf.LogLevel > 2 {
-				cluster.LogPrintf(LvlDbg, "GetMasterFromReplication server  %d  lookup if server %s is the one : %d", s.GetReplicationServerID(), server.URL, server.ServerID)
+				cluster.LogPrintf(LvlDbg, "GetMasterFromReplication server  %d  lookup if server %s is the one : %d", slave.GetReplicationServerID(), server.URL, server.ServerID)
 			}
-			if s.IsIOThreadRunning() && s.IsSQLThreadRunning() {
-				if s.GetReplicationServerID() == server.ServerID {
+			if slave.IsIOThreadRunning() && slave.IsSQLThreadRunning() {
+				if slave.GetReplicationServerID() == server.ServerID {
 					return server, nil
 				}
 			} else {
-				if s.GetReplicationMasterHost() == server.Host && s.GetReplicationMasterPort() == server.Port {
+				if cluster.Conf.LogLevel > 2 {
+					cluster.LogPrintf(LvlDbg, "GetMasterFromReplication slave host  %s:%s if  equal server  %s:%s", slave.GetReplicationMasterHost(), slave.GetReplicationMasterPort(), server.Host, server.Port)
+				}
+				if slave.GetReplicationMasterHost() == server.Host && slave.GetReplicationMasterPort() == server.Port {
 					return server, nil
 				}
 			}

@@ -100,6 +100,7 @@ type ServerMonitor struct {
 	HavePFS                     bool                         `json:"havePFS"`
 	HaveWsrep                   bool                         `json:"haveWsrep"`
 	HaveReadOnly                bool                         `json:"haveReadOnly"`
+	HaveNoMasterOnStart         bool                         `json:"haveNoMasterOnStart"`
 	IsWsrepSync                 bool                         `json:"isWsrepSync"`
 	IsWsrepDonor                bool                         `json:"isWsrepDonor"`
 	IsWsrepPrimary              bool                         `json:"isWsrepPrimary"`

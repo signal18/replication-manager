@@ -420,8 +420,11 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	}
 	if server.ClusterGroup.master != nil && mycurrentmaster != nil {
 
+		//Found slave to rejoin
 		server.ClusterGroup.SetState("ERR00067", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00067"], server.URL, server.PrevState, ss.SlaveIORunning.String, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
-
+		if server.ClusterGroup.master.IsDown() && server.ClusterGroup.Conf.FailRestartUnsafe == false {
+			server.HaveNoMasterOnStart = true
+		}
 		if mycurrentmaster.IsMaxscale == false && server.ClusterGroup.Conf.MultiTierSlave == false && server.ClusterGroup.Conf.ReplicationNoRelay {
 
 			if server.HasGTIDReplication() {

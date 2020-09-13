@@ -31,6 +31,18 @@
             </td>
         </tr>
         <tr>
+            <th>Failover unsafe fisrt slave</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.failoverRestartUnsafe"
+                           ng-click="switchsettings('failover-restart-unsafe')" aria-label="Failover Restart Unsafe">
+                    <span ng-if="selectedCluster.config.failoverRestartUnsafe"  class="label label-primary">On</span>
+                    <span ng-if="!selectedCluster.config.failoverRestartUnsafe"  class="label label-warning">Off</span>
+                </md-switch>
+            </td>
+        </tr>
+        <tr>
             <th>Failover Using Pseudo GTID</th>
         </tr>
         <tr>

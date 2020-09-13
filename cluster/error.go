@@ -91,6 +91,7 @@ var clusterError = map[string]string{
 	"ERR00081": "Connection use no TLS keys on %s",
 	"ERR00082": "Error fetch agents forom orchestrator %s",
 	"ERR00083": "Different cluster uuid found on %s:%s %s:%s",
+	"ERR00084": "Cluster have no master when slave %s was started",
 	"WARN0022": "Rejoining standalone server %s to master %s",
 	"WARN0023": "Number of failed master ping has been reached",
 	"WARN0045": "Provision task is in queue",

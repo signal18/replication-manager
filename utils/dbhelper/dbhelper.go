@@ -1668,6 +1668,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 			tblList = append(tblList, v)
 			vars[v.Table_schema+"."+v.Table_name] = v
 		}
+		rows.Close()
 	}
 	return vars, tblList, logs, nil
 }

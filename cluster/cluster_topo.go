@@ -170,8 +170,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					cluster.Servers[k].RejoinMaster()
 				} else {
 					cluster.master = cluster.Servers[k]
-					cluster.master.State = stateMaster
-
+					cluster.master.SetMaster()
 					if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
 						cluster.master.SetReadWrite()
 						cluster.LogPrintf(LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
@@ -262,7 +261,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				if cluster.Conf.MultiMaster == false && s.State == stateUnconn {
 					if s.ServerID == sid {
 						cluster.master = cluster.Servers[k]
-						cluster.master.State = stateMaster
+						cluster.master.SetMaster()
 						cluster.master.SetReadWrite()
 						if cluster.Conf.LogLevel > 2 {
 							cluster.LogPrintf(LvlDbg, "Server %s was autodetected as a master", s.URL)
@@ -274,7 +273,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					if s.IsReadWrite() {
 						cluster.master = cluster.Servers[k]
 						if cluster.Conf.MultiMaster == true {
-							cluster.master.State = stateMaster
+							cluster.master.SetMaster()
 						} else {
 							cluster.vmaster = cluster.Servers[k]
 						}

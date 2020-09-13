@@ -122,7 +122,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	cluster.oldMaster = cluster.master
 	cluster.master = cluster.Servers[skey]
-	cluster.master.State = stateMaster
+	cluster.master.SetMaster()
 	if cluster.Conf.MultiMaster == false {
 		cluster.slaves[key].delete(&cluster.slaves)
 	}
@@ -669,28 +669,28 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 
 		/* If server is in the ignore list, do not elect it in switchover */
 		if sl.IsIgnored() {
-			cluster.sme.AddState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.sme.AddState("ERR00037", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 		//Need comment//
 		if sl.IsRelay {
-			cluster.sme.AddState("ERR00036", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.sme.AddState("ERR00036", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 		if cluster.Conf.MultiMaster == true && sl.State == stateMaster {
-			cluster.sme.AddState("ERR00035", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.sme.AddState("ERR00035", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 
 		// The tests below should run only in case of a switchover as they require the master to be up.
 
 		if cluster.isSlaveElectableForSwitchover(sl, forcingLog) == false {
-			cluster.sme.AddState("ERR00034", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00034"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.sme.AddState("ERR00034", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00034"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 		/* binlog + ping  */
 		if cluster.isSlaveElectable(sl, forcingLog) == false {
-			cluster.sme.AddState("ERR00039", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00039"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.sme.AddState("ERR00039", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00039"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 
@@ -701,10 +701,15 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 			}
 			return i
 		}
+		if sl.HaveNoMasterOnStart == true && cluster.Conf.FailRestartUnsafe == false {
+			cluster.sme.AddState("ERR00084", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00084"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			continue
+		}
 		ss, errss := sl.GetSlaveStatus(sl.ReplicationSourceName)
 		// not a slave
 		if errss != nil && cluster.Conf.FailRestartUnsafe == false {
-			cluster.sme.AddState("ERR00033", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			//Skip slave in election %s have no master log file, slave might have failed
+			cluster.sme.AddState("ERR00033", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 		// Fake position if none as new slave
@@ -796,6 +801,10 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		if cluster.Conf.MultiMaster == true && sl.State == stateMaster {
 			cluster.sme.AddState("ERR00035", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			trackposList[i].Ignoredmultimaster = true
+			continue
+		}
+		if sl.HaveNoMasterOnStart == true && cluster.Conf.FailRestartUnsafe == false {
+			cluster.sme.AddState("ERR00084", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00084"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 		if cluster.GetTopology() == topoMultiMasterWsrep && cluster.vmaster != nil {

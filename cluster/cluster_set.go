@@ -551,36 +551,6 @@ func (cluster *Cluster) SetProxiesReprovCookie() {
 	}
 }
 
-func (cluster *Cluster) DropDBTag(dtag string) {
-	var newtags []string
-	for _, tag := range cluster.DBTags {
-		//	cluster.LogPrintf(LvlInfo, "%s %s", tag, dtag)
-		if dtag != tag {
-			newtags = append(newtags, tag)
-		}
-	}
-	cluster.DBTags = newtags
-	cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
-	cluster.SetClusterVariablesFromConfig()
-	if len(cluster.DBTags) != len(newtags) {
-		cluster.SetDBRestartCookie()
-	}
-}
-
-func (cluster *Cluster) DropProxyTag(dtag string) {
-	var newtags []string
-	for _, tag := range cluster.ProxyTags {
-		//	cluster.LogPrintf(LvlInfo, "%s %s", tag, dtag)
-		if dtag != tag {
-			newtags = append(newtags, tag)
-		}
-	}
-	cluster.ProxyTags = newtags
-	cluster.Conf.ProvProxTags = strings.Join(cluster.ProxyTags, ",")
-	cluster.SetClusterVariablesFromConfig()
-	cluster.SetProxiesRestartCookie()
-}
-
 func (cluster *Cluster) SetReplicationCredential(credential string) {
 	cluster.Conf.RplUser = credential
 	cluster.SetClusterVariablesFromConfig()
@@ -590,6 +560,7 @@ func (cluster *Cluster) SetReplicationCredential(credential string) {
 func (cluster *Cluster) SetUnDiscovered() {
 	cluster.sme.UnDiscovered()
 }
+
 func (cluster *Cluster) SetActiveStatus(status string) {
 	cluster.Status = status
 	if cluster.Conf.MonitorScheduler {

@@ -331,12 +331,16 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.LoadPrxModules()
 	cluster.ConfigDBTags = cluster.GetDBModuleTags()
 	cluster.ConfigPrxTags = cluster.GetProxyModuleTags()
-	// Reload SLA and crashes
 
+	switch cluster.Conf.ProvOrchestrator {
+	case config.ConstOrchestratorLocalhost:
+		cluster.DropDBTag("docker")
+		cluster.DropDBTag("threadpool")
+		cluster.AddDBTag("pkg")
+	}
 	cluster.initOrchetratorNodes()
 	return nil
 }
-
 func (cluster *Cluster) initOrchetratorNodes() {
 
 	cluster.LogPrintf(LvlInfo, "Loading nodes form orchestrator %s", cluster.Conf.ProvOrchestrator)
