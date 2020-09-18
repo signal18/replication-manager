@@ -49,8 +49,9 @@ func (cluster *Cluster) initHaproxy(proxy *Proxy) {
 		JsonFile:      filepath.Join(haproxydatadir, "/", haproxyjsonFile),
 		ErrorPagesDir: filepath.Join(haproxydatadir, "/", haproxyerrorPagesDir, "/"),
 		PidFile:       filepath.Join(haproxydatadir, "/", haproxypidFile),
-		SockFile:      filepath.Join(haproxydatadir, "/", haproxysockFile),
-		WorkingDir:    filepath.Join(haproxydatadir + "/"),
+		//	SockFile:      filepath.Join(haproxydatadir, "/", haproxysockFile),
+		SockFile:   "/tmp/haproxy" + proxy.Id + ".sock",
+		WorkingDir: filepath.Join(haproxydatadir + "/"),
 	}
 
 	cluster.LogPrintf(LvlInfo, "Haproxy loading haproxy config at %s", haproxydatadir)
