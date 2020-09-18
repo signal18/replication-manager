@@ -21,6 +21,16 @@ import (
 
 func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonitor) error {
 	cluster.LocalhostStopDatabaseService(server)
+	cmd := exec.Command("rm", "-rf", server.Datadir)
+	out := &bytes.Buffer{}
+	cmd.Stdout = out
+	err := cmd.Run()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.errorChan <- err
+		return err
+	}
+	cluster.LogPrintf(LvlInfo, "Remove datadir done: %s", out.Bytes())
 	cluster.errorChan <- nil
 	return nil
 }
@@ -43,18 +53,19 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 
 	out := &bytes.Buffer{}
 	path := server.Datadir + "/var"
-	//os.RemoveAll(path)
+	/*
+		//os.RemoveAll(path)
 
-	cmd := exec.Command("rm", "-rf", path)
+		cmd := exec.Command("rm", "-rf", path)
 
-	cmd.Stdout = out
-	err := cmd.Run()
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s", err)
-		cluster.errorChan <- err
-		return err
-	}
-	cluster.LogPrintf(LvlInfo, "Remove datadir done: %s", out.Bytes())
+		cmd.Stdout = out
+		err := cmd.Run()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "%s", err)
+			cluster.errorChan <- err
+			return err
+		}
+	cluster.LogPrintf(LvlInfo, "Remove datadir done: %s", out.Bytes())*/
 	server.GetMyConfig()
 	os.Symlink(server.Datadir+"/init/data", path)
 
@@ -80,6 +91,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	cluster.LogPrintf(LvlInfo, "copy datadir done: %s", out.Bytes())
 	*/
 	var sysCmd *exec.Cmd
+	err := errors.New("No database version found")
 	version := cluster.LocalhostProvisionGetVersionFromMysqld(server)
 	if version == "" {
 		cluster.errorChan <- err
