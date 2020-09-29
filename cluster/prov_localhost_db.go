@@ -205,10 +205,13 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 				haveerror = true
 				cluster.LogPrintf(LvlErr, " %s %s ", "set sql_log_bin=0", err)
 			}
+
 			_, err = conn.Exec("delete from mysql.user where password=''")
 			if err != nil {
-				haveerror = true
-				cluster.LogPrintf(LvlErr, " %s %s ", "delete from mysql.user where password=''", err)
+				//	haveerror = true
+				// don't trigger error for mysql 5.7 and mariadb 10.4 that does not have password column
+
+				cluster.LogPrintf(LvlWarn, " %s %s ", "delete from mysql.user where password=''", err)
 			}
 			grants := "grant all on *.* to '" + server.User + "'@'localhost' identified by '" + server.Pass + "'"
 			_, err = conn.Exec(grants)

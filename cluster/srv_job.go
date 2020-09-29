@@ -623,7 +623,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 			events = "--events=false"
 		}
 		//dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), dumpslave, "--opt", "--hex-blob", events, "--disable-keys", "--apply-slave-statements", usegtid, "--single-transaction", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass, "--all-databases")
-		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), "--hex-blob", "--apply-slave-statements", "--single-transaction", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass, "--verbose", "--all-databases", dumpslave, usegtid, events)
+		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), "--hex-blob", "--apply-slave-statements", "--single-transaction", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass, "--verbose", "--all-databases", "--add-drop-database", dumpslave, usegtid, events)
 
 		server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", -1))
 		f, err := os.Create(server.GetMyBackupDirectory() + "mysqldump.sql.gz")
@@ -977,10 +977,10 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	} else {
 		dumpslave = "--dump-slave=1"
 	}
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), "--opt", "--hex-blob", events, "--disable-keys", dumpslave, "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass, "--verbose")
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), "--opt", "--hex-blob", events, "--disable-keys", dumpslave, "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass, "--add-drop-database", "--verbose")
 	stderrIn, _ := dumpCmd.StderrPipe()
-
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.dbUser, `--password=`+cluster.dbPass, `--batch`, `--init-command=reset master;set sql_log_bin=0;`)
+	// do not quote parameters
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.dbUser, `--password=`+cluster.dbPass, `--batch`, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`)
 	stderrOut, _ := clientCmd.StderrPipe()
 
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")

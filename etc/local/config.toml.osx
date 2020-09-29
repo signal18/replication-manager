@@ -1,14 +1,24 @@
 [Default]
 prov-orchestrator = "local"
-prov-db-binary-basedir= "/usr/local/bin"
-prov-db-client-basedir= "/usr/local/bin"
+
+#mariadb
+#prov-db-binary-basedir= "/usr/local/bin"
+#prov-db-client-basedir= "/usr/local/bin"
+#backup-mysqlclient-path ="/usr/local/bin/mysql"
+#backup-mysqlbinlog-path = "/usr/local/bin/mysqlbinlog"
+
+#mysql
+prov-db-binary-basedir= "/usr/local/mysql/bin"
+prov-db-client-basedir= "/usr/local/mysql/bin"
+backup-mysqlclient-path ="/usr/local/mysql/bin/mysql"
+backup-mysqlbinlog-path = "/usr/local/bin/mysql/mysqlbinlog"
+
+
 haproxy-binary-path= "/usr/local/bin/haproxy"
 sysbench-binary-path = "/usr/local/bin/sysbench"
 backup-mydumper-path = "/usr/local/bin/mydumper"
 backup-myloader-path = "/usr/local/bin/myloader"
-backup-mysqlbinlog-path = "/usr/local/bin/mysqlbinlog"
 backup-mysqldump-path = "/usr/local/bin/mysqldump"
-backup-mysqlclient-path ="/usr/local/bin/mysql"
 
 
 #include="etc/local/binlogserver"
