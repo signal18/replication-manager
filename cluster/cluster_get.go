@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/cron"
@@ -767,7 +768,11 @@ func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 		Rows []config.ServicePlan `json:"rows"`
 	}
 	var m Message
-	response, err := http.Get(cluster.Conf.ProvServicePlanRegistry)
+
+	client := http.Client{
+		Timeout: 300 * time.Millisecond,
+	}
+	response, err := client.Get(cluster.Conf.ProvServicePlanRegistry)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "GetServicePlans: %s", err)
 		return nil
