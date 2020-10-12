@@ -566,11 +566,11 @@
                 "mariadb.svc.mrm.proxy.cnf.wsrep",
                 "mariadb.svc.mrm.proxy.cnf.multimaster",
                 "mariadb.svc.mrm.proxy.cnf.sphinx",
-                "mariadb.svc.mrm.proxy.cnf.proxysql.readwritesplit",
                 "mariadb.svc.mrm.proxy.cnf.proxysql.default",
+                "mariadb.svc.mrm.proxy.cnf.proxysql.readwritesplit",
+                "mariadb.svc.mrm.proxy.cnf.nonetworkcompress",
                 "mariadb.svc.mrm.proxy.cnf.readonmaster",
-                "mariadb.svc.mrm.proxy.cnf.usessl",
-                "mariadb.svc.mrm.proxy.cnf.nonetworkcompress"
+                "mariadb.svc.mrm.proxy.cnf.usessl"
             ],
             "publications": [
                 "replication-manager"
@@ -585,10 +585,10 @@
             "ruleset_name": "mariadb.svc.mrm.proxy.cnf.haproxy",
             "variables": [
                 {
-                    "var_author": "replication-manager replication-manager@signal18.io",
+                    "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/haproxy.cfg\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"global\\n\\n daemon\\n maxconn 4096\\n stats socket /run/admin.sock level admin\\n log /dev/log local0 debug\\n external-check\\n \\ndefaults\\n   log global\\n   mode http\\n   option dontlognull\\n   option redispatch\\n   option clitcpka\\n   option srvtcpka\\n   retries 3\\n   maxconn 500000\\n   timeout http-request 5s\\n   timeout connect 5000ms\\n   timeout client 50000s\\n   timeout server 50000s\\n\\nlisten stats\\n   bind 0.0.0.0:1988\\n   mode http\\n   stats enable\\n   stats uri /\\n   stats refresh 2s\\n   stats realm Haproxy\\\\ Stats\\n   stats show-legends\\n\\nfrontend my_write_frontend\\n    bind 0.0.0.0:%%ENV:SVC_CONF_ENV_PORT_RW%%\\n    option tcplog \\n    mode tcp\\n    default_backend service_write\\n\\nfrontend my_read_frontend\\n    bind 0.0.0.0:%%ENV:SVC_CONF_ENV_PORT_R_LB%%\\n    option tcplog \\n    mode tcp\\n    default_backend service_read\\n\\nbackend service_write\\n    mode tcp\\n    balance leastconn \\n    option external-check\\n    external-check path \\\"/usr/bin:/bin\\\"\\n    external-check command /usr/bin/checkmaster\\n\\n   %%ENV:SERVERS_HAPROXY_WRITE%%\\n\\nbackend service_read\\n    mode tcp\\n    balance leastconn \\n    option external-check\\n    external-check path \\\"/usr/bin:/bin\\\"\\n    external-check command /usr/bin/checkslave\\n\\n    %%ENV:SERVERS_HAPROXY_READ%%\\n\"}",
-                    "var_updated": "2018-04-09 15:30:19",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/haproxy_check.cfg\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"global\\n\\n daemon\\n maxconn 4096\\n stats socket /run/admin.sock level admin\\n log /dev/log local0 debug\\n external-check\\n \\ndefaults\\n   log global\\n   mode http\\n   option dontlognull\\n   option redispatch\\n   option clitcpka\\n   option srvtcpka\\n   retries 3\\n   maxconn 500000\\n   timeout http-request 5s\\n   timeout connect 5000ms\\n   timeout client 50000s\\n   timeout server 50000s\\n\\nlisten stats\\n   bind 0.0.0.0:1988\\n   mode http\\n   stats enable\\n   stats uri /\\n   stats refresh 2s\\n   stats realm Haproxy\\\\ Stats\\n   stats show-legends\\n\\nfrontend my_write_frontend\\n    bind 0.0.0.0:%%ENV:SVC_CONF_ENV_PORT_RW%%\\n    option tcplog \\n    mode tcp\\n    default_backend service_write\\n\\nfrontend my_read_frontend\\n    bind 0.0.0.0:%%ENV:SVC_CONF_ENV_PORT_R_LB%%\\n    option tcplog \\n    mode tcp\\n    default_backend service_read\\n\\nbackend service_write\\n    mode tcp\\n    balance leastconn \\n    option external-check\\n    external-check path \\\"/usr/bin:/bin\\\"\\n    external-check command /usr/bin/checkmaster\\n\\n   %%ENV:SERVERS_HAPROXY_WRITE%%\\n\\nbackend service_read\\n    mode tcp\\n    balance leastconn \\n    option external-check\\n    external-check path \\\"/usr/bin:/bin\\\"\\n    external-check command /usr/bin/checkslave\\n\\n    %%ENV:SERVERS_HAPROXY_READ%%\\n\"}",
+                    "var_updated": "2020-10-10 15:04:09",
                     "var_name": "proxy_cnf_haproxy",
                     "id": 6004
                 },
@@ -607,6 +607,14 @@
                     "var_updated": "2018-04-09 15:30:19",
                     "var_name": "proxy_cnf_checkmaster",
                     "id": 6006
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/haproxy.cfg\",\"mode\":\"%%ENV:BINDED_DIR_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"global\\n\\n daemon\\n maxconn 4096\\n stats socket /run/admin.sock level admin\\n stats socket tcp@%%ENV:SERVER_IP%%:%%ENV:SVC_CONF_ENV_PORT_ADMIN%% level admin\\n\\n\\n log /dev/log local0 debug\\n external-check\\n \\ndefaults\\n   log global\\n   mode http\\n   option dontlognull\\n   option redispatch\\n   option clitcpka\\n   option srvtcpka\\n   retries 3\\n   maxconn 500000\\n   timeout http-request 5s\\n   timeout connect 5000ms\\n   timeout client 50000s\\n   timeout server 50000s\\n\\nlisten stats\\n   bind 0.0.0.0:1988\\n   mode http\\n   stats enable\\n   stats uri /\\n   stats refresh 2s\\n   stats realm Haproxy\\\\ Stats\\n   stats show-legends\\n\\nfrontend my_write_frontend\\n    bind 0.0.0.0:%%ENV:SVC_CONF_ENV_PORT_RW%%\\n    option tcplog \\n    mode tcp\\n    default_backend service_write\\n\\nfrontend my_read_frontend\\n    bind 0.0.0.0:%%ENV:SVC_CONF_ENV_PORT_R_LB%%\\n    option tcplog \\n    mode tcp\\n    default_backend service_read\\n\\nbackend service_write\\n    mode tcp\\n    balance leastconn \\n \\n   %%ENV:SERVERS_HAPROXY_WRITE%%\\n\\nbackend service_read\\n    mode tcp\\n    balance leastconn \\n     \\n    %%ENV:SERVERS_HAPROXY_READ%%\"}",
+                    "var_updated": "2020-10-10 15:09:06",
+                    "var_name": "proxy_cnf_haproxy_runtime_api",
+                    "id": 6190
                 }
             ],
             "ruleset_public": false,

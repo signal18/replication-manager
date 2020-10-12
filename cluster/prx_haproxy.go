@@ -7,42 +7,44 @@
 package cluster
 
 import (
+	"bytes"
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"hash/crc64"
 	"io"
-	"net/http"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/signal18/replication-manager/router/haproxy"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) initHaproxy(proxy *Proxy) {
-
 	haproxydatadir := proxy.Datadir + "/var"
 
 	if _, err := os.Stat(haproxydatadir); os.IsNotExist(err) {
 		proxy.GetProxyConfig()
 		os.Symlink(proxy.Datadir+"/init/data", haproxydatadir)
 	}
+	//haproxysockFile := "haproxy.stats.sock"
+
 	haproxytemplateFile := "haproxy_config.template"
 	haproxyconfigFile := "haproxy.cfg"
 	haproxyjsonFile := "vamp_router.json"
 	haproxypidFile := "haproxy.pid"
-	haproxysockFile := "haproxy.stats.sock"
 	haproxyerrorPagesDir := "error_pages"
 	//	haproxymaxWorkDirSize := 50 // this value is based on (max socket path size - md5 hash length - pre and postfixes)
 
 	haRuntime := haproxy.Runtime{
 		Binary:   cluster.Conf.HaproxyBinaryPath,
-		SockFile: filepath.Join(haproxydatadir, "/", haproxysockFile),
+		SockFile: filepath.Join(proxy.Datadir+"/var", "/haproxy.stats.sock"),
+		Port:     proxy.Port,
+		Host:     proxy.Host,
 	}
+
 	haConfig := haproxy.Config{
 		TemplateFile:  filepath.Join(cluster.Conf.ShareDir, haproxytemplateFile),
 		ConfigFile:    filepath.Join(haproxydatadir, "/", haproxyconfigFile),
@@ -51,6 +53,9 @@ func (cluster *Cluster) initHaproxy(proxy *Proxy) {
 		PidFile:       filepath.Join(haproxydatadir, "/", haproxypidFile),
 		//	SockFile:      filepath.Join(haproxydatadir, "/", haproxysockFile),
 		SockFile:   "/tmp/haproxy" + proxy.Id + ".sock",
+		ApiPort:    proxy.Port,
+		StatPort:   strconv.Itoa(proxy.ClusterGroup.Conf.HaproxyStatPort),
+		Host:       proxy.Host,
 		WorkingDir: filepath.Join(haproxydatadir + "/"),
 	}
 
@@ -109,12 +114,12 @@ func (cluster *Cluster) initHaproxy(proxy *Proxy) {
 	}
 
 	//var checksum64 string
-	crcHost := crc64.MakeTable(crc64.ECMA)
+	//	crcHost := crc64.MakeTable(crc64.ECMA)
 	for _, server := range cluster.Servers {
 		if server.IsMaintenance == false {
 			p, _ := strconv.Atoi(server.Port)
-			checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(server.Host+":"+server.Port), crcHost))
-			s := haproxy.ServerDetail{Name: checksum64, Host: server.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
+			//		checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(server.Host+":"+server.Port), crcHost))
+			s := haproxy.ServerDetail{Name: server.Id, Host: server.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
 			if err := haConfig.AddServer("service_read", &s); err != nil {
 				cluster.LogPrintf(LvlErr, "Failed to add server in Haproxy for service_read")
 			}
@@ -139,28 +144,53 @@ func (cluster *Cluster) initHaproxy(proxy *Proxy) {
 }
 
 func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
-	url := "http://" + proxy.Host + ":" + proxy.Port + "/stats;csv"
-	client := &http.Client{
-		Timeout: time.Duration(2 * time.Second),
-	}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
-		return err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
-		return err
-	}
-	defer resp.Body.Close()
-	/*	moncsv, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Could not read body from peer response")
-			return err
 
-		}*/
-	reader := csv.NewReader(resp.Body)
+	// if proxy.ClusterGroup.Conf.HaproxyStatHttp {
+
+	/*
+		url := "http://" + proxy.Host + ":" + proxy.Port + "/stats;csv"
+		client := &http.Client{
+			Timeout: time.Duration(2 * time.Second),
+		}
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
+			return err
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
+			return err
+		}
+		defer resp.Body.Close()
+		reader := csv.NewReader(resp.Body)
+
+	*/
+	//tcpAddr, err := net.ResolveTCPAddr("tcp4", proxy.Host+":"+proxy.Port)
+	//cluster.LogPrintf(LvlErr, "haproxy entering  refresh: ")
+
+	haproxydatadir := proxy.Datadir + "/var"
+	haproxysockFile := "haproxy.stats.sock"
+
+	haRuntime := haproxy.Runtime{
+		Binary:   cluster.Conf.HaproxyBinaryPath,
+		SockFile: filepath.Join(haproxydatadir, "/", haproxysockFile),
+		Port:     proxy.Port,
+		Host:     proxy.Host,
+	}
+
+	result, err := haRuntime.ApiCmd("show stat")
+
+	if err != nil {
+		cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
+		return err
+	}
+
+	//cluster.LogPrintf(LvlInfo, "Stats: %s", result)
+	r := ioutil.NopCloser(bytes.NewReader([]byte(result)))
+	defer r.Close()
+	reader := csv.NewReader(r)
 
 	proxy.BackendsWrite = nil
 	proxy.BackendsRead = nil
@@ -193,7 +223,17 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 					PrxByteOut:     line[9],
 					PrxLatency:     line[61], //ttime: average session time in ms over the 1024 last requests
 				})
+
+				if !srv.IsMaster() {
+					master := cluster.GetMaster()
+					if master != nil {
+						cluster.LogPrintf(LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s", proxy.Host+":"+proxy.Port, master.URL)
+						haRuntime.SetMaster(master.Host, master.Port)
+					}
+				}
+
 			}
+
 		}
 		if strings.Contains(strings.ToLower(line[0]), "read") {
 			srv := cluster.GetServerFromURL(line[73])
@@ -210,8 +250,39 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 					PrxByteOut:     line[9],
 					PrxLatency:     line[61],
 				})
+				if (srv.State == stateSlaveErr || srv.State == stateRelayErr || srv.State == stateSlaveLate || srv.State == stateRelayLate || srv.IsIgnored()) && line[17] == "UP" {
+					cluster.LogPrintf(LvlInfo, "Detecting broken resplication and UP state in haproxy %s drain  server %s", proxy.Host+":"+proxy.Port, srv.URL)
+					haRuntime.SetDrain(srv.Id, "service_read")
+				}
+				if (srv.State == stateSlave || srv.State == stateRelay) && line[17] == "DRAIN" {
+					cluster.LogPrintf(LvlInfo, "Detecting valid resplication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL)
+					haRuntime.SetReady(srv.Id, "service_read")
+				}
 			}
 		}
 	}
+
 	return nil
+}
+
+func (cluster *Cluster) setMaintenanceHaproxy(pr *Proxy, server *ServerMonitor) {
+	haRuntime := haproxy.Runtime{
+		Binary:   cluster.Conf.HaproxyBinaryPath,
+		SockFile: filepath.Join(pr.Datadir+"/var", "/haproxy.stats.sock"),
+		Port:     pr.Port,
+		Host:     pr.Host,
+	}
+
+	if server.IsMaintenance {
+		haRuntime.SetMaintenance(server.Id, "service_read")
+	} else {
+		haRuntime.SetReady(server.Id, "service_read")
+	}
+	if server.IsMaster() {
+		if server.IsMaintenance {
+			haRuntime.SetMaintenance("leader", "service_read")
+		} else {
+			haRuntime.SetReady("leader", "service_read")
+		}
+	}
 }

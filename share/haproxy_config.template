@@ -4,7 +4,7 @@ global
  daemon
  maxconn 4096
  stats socket {{.SockFile}} level admin
-
+ stats socket ipv4@{{.Host}}:{{.ApiPort}} level admin
 
  ###
  #
@@ -34,7 +34,7 @@ global
    timeout server 50000s
 
 listen stats
-   bind :1988
+   bind :{{.StatPort}}
    mode http
    stats enable
    stats uri /

@@ -280,11 +280,20 @@ address="` + misc.Unbracket(db.Host) + `
 port=` + db.Port + `
 protocol=MySQLBackend
 `
+		if proxy.ClusterGroup.Conf.HaproxyMode == "runtimeapi" {
+			confhaproxyread += `
+    server ` + db.Id + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
+			if db.IsMaster() {
+				confhaproxywrite += `
+    server leader ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
+			}
+		} else {
 
-		confhaproxyread += `
+			confhaproxyread += `
     server server` + strconv.Itoa(i) + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
-		confhaproxywrite += `
+			confhaproxywrite += `
     server server` + strconv.Itoa(i) + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
+		}
 		confproxysql += `
     { address="` + misc.Unbracket(db.Host) + `" , port=` + db.Port + ` , hostgroup=` + strconv.Itoa(proxy.ReaderHostgroup) + `, max_connections=1024 }`
 

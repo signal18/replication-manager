@@ -160,7 +160,7 @@ func (cluster *Cluster) newProxyList() error {
 				prx.SlapOSDatadir = slapospartitions[k]
 			}
 			prx.Type = config.ConstProxyHaproxy
-			prx.Port = strconv.Itoa(cluster.Conf.HaproxyStatPort)
+			prx.Port = strconv.Itoa(cluster.Conf.HaproxyAPIPort)
 			prx.ReadPort = cluster.Conf.HaproxyReadPort
 			prx.WritePort = cluster.Conf.HaproxyWritePort
 			prx.ReadWritePort = cluster.Conf.HaproxyWritePort
@@ -418,19 +418,22 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 func (cluster *Cluster) SetProxyServerMaintenance(serverid uint64) {
 	// Found server from ServerId
 	for _, pr := range cluster.Proxies {
+		server := cluster.GetServerFromId(serverid)
 		if cluster.Conf.HaproxyOn && pr.Type == config.ConstProxyHaproxy {
-			cluster.initHaproxy(pr)
+			if cluster.Conf.HaproxyMode == "runtimeapi" {
+				cluster.setMaintenanceHaproxy(pr, server)
+			}
+			if cluster.Conf.HaproxyMode == "standby" {
+				cluster.initHaproxy(pr)
+			}
 		}
 		if cluster.Conf.MxsOn && pr.Type == config.ConstProxyMaxscale {
-			//intsrvid, _ := strconv.Atoi(serverid)
-			server := cluster.GetServerFromId(serverid)
 			if cluster.GetMaster() != nil {
 				cluster.setMaintenanceMaxscale(pr, server)
 			}
 		}
 		if cluster.Conf.ProxysqlOn && pr.Type == config.ConstProxySqlproxy {
 			if cluster.GetMaster() != nil {
-				server := cluster.GetServerFromId(serverid)
 				cluster.setMaintenanceProxysql(pr, server)
 			}
 		}
@@ -453,9 +456,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 			err = cluster.refreshMaxscale(pr)
 		}
 		if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
-			//	if cluster.GetStateMachine().GetHeartbeats()%20 == 0 {
 			err = cluster.refreshMdbsproxy(nil, pr)
-			//	}
 		}
 		if cluster.Conf.ProxysqlOn && pr.Type == config.ConstProxySqlproxy {
 			err = cluster.refreshProxysql(pr)
@@ -499,7 +500,12 @@ func (cluster *Cluster) failoverProxies() {
 	for _, pr := range cluster.Proxies {
 		cluster.LogPrintf(LvlInfo, "Failover Proxy Type: %s Host: %s Port: %s", pr.Type, pr.Host, pr.Port)
 		if cluster.Conf.HaproxyOn && pr.Type == config.ConstProxyHaproxy {
-			cluster.initHaproxy(pr)
+			if cluster.Conf.HaproxyMode == "runtimeapi" {
+				cluster.refreshHaproxy(pr)
+			}
+			if cluster.Conf.HaproxyMode == "standby" {
+				cluster.initHaproxy(pr)
+			}
 		}
 		if cluster.Conf.MxsOn && pr.Type == config.ConstProxyMaxscale {
 			cluster.initMaxscale(nil, pr)
@@ -533,7 +539,6 @@ func (cluster *Cluster) initProxies() {
 			cluster.initMyProxy(pr)
 		}
 	}
-
 	cluster.initConsul()
 }
 

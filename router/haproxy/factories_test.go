@@ -20,7 +20,7 @@ func TestFactories_CompileSocketName(t *testing.T) {
 
 	for _, base := range illegal_names {
 		if len(compileSocketName(dir, base)) > MAX_SOCKET_LENGTH {
-			t.Errorf("Failed to create socketPath with less than %s characters", MAX_SOCKET_LENGTH)
+			t.Errorf("Failed to create socketPath with less than %d characters", MAX_SOCKET_LENGTH)
 		}
 	}
 }

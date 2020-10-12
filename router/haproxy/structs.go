@@ -84,6 +84,8 @@ type ServerDetail struct {
 type Runtime struct {
 	Binary   string
 	SockFile string
+	Host     string
+	Port     string
 }
 
 // Main configuration object for load balancers. This contains all variables and is passed to
@@ -100,6 +102,9 @@ type Config struct {
 	JsonFile      string        `json:"-"`
 	WorkingDir    string        `json:"-"`
 	ErrorPagesDir string        `json:"-"`
+	Host          string        `json:"host"`
+	ApiPort       string        `json:"apiPort"`
+	StatPort      string        `json:"statPort"`
 }
 
 // Defines a single haproxy "backend".

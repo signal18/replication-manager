@@ -228,10 +228,14 @@ type Config struct {
 	MyproxyUser                               string `mapstructure:"myproxy-user" toml:"myproxy-user" json:"myproxyUser"`
 	MyproxyPassword                           string `mapstructure:"myproxy-password" toml:"myproxy-password" json:"myproxyPassword"`
 	HaproxyOn                                 bool   `mapstructure:"haproxy" toml:"haproxy" json:"haproxy"`
+	HaproxyUser                               string `mapstructure:"haproxy-user" toml:"haproxy-user" json:"haproxylUser"`
+	HaproxyPassword                           string `mapstructure:"haproxy-password" toml:"haproxy-password" json:"haproxyPassword"`
+	HaproxyMode                               string `mapstructure:"haproxy-mode" toml:"haproxy-mode" json:"haproxyMode"`
 	HaproxyHosts                              string `mapstructure:"haproxy-servers" toml:"haproxy-servers" json:"haproxyServers"`
 	HaproxyWritePort                          int    `mapstructure:"haproxy-write-port" toml:"haproxy-write-port" json:"haproxyWritePort"`
 	HaproxyReadPort                           int    `mapstructure:"haproxy-read-port" toml:"haproxy-read-port" json:"haproxyReadPort"`
 	HaproxyStatPort                           int    `mapstructure:"haproxy-stat-port" toml:"haproxy-stat-port" json:"haproxyStatPort"`
+	HaproxyAPIPort                            int    `mapstructure:"haproxy-api-port" toml:"haproxy-api-port" json:"haproxyAPIPort"`
 	HaproxyWriteBindIp                        string `mapstructure:"haproxy-ip-write-bind" toml:"haproxy-ip-write-bind" json:"haproxyIpWriteBind"`
 	HaproxyReadBindIp                         string `mapstructure:"haproxy-ip-read-bind" toml:"haproxy-ip-read-bind" json:"haproxyIpReadBind"`
 	HaproxyBinaryPath                         string `mapstructure:"haproxy-binary-path" toml:"haproxy-binary-path" json:"haproxyBinaryPath"`
