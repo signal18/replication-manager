@@ -74,7 +74,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.0
 	github.com/iu0v1/gelada v1.2.2
 	github.com/jacobsa/fuse v0.0.0-20180417054321-cd3959611bcb
-	github.com/jmoiron/sqlx v0.0.0-20180124204410-05cef0741ade
+	github.com/jmoiron/sqlx v1.2.0
 	github.com/jordan-wright/email v0.0.0-20160301001728-a62870b0c368
 	github.com/juju/errors v0.0.0-20170703010042-c7d06af17c68
 	github.com/kahing/goofys v0.23.1
