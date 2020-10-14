@@ -5,6 +5,10 @@ echo '{"name": "mariadb", "image": "mariadb", "tags":' >> share/repo/repos.json
 wget -q https://registry.hub.docker.com/v1/repositories/mariadb/tags -O - >> share/repo/repos.json
 echo '},' >> share/repo/repos.json
 
+echo '{"name": "mariadb", "image": "mariadb/columnstore", "tags":' >> share/repo/repos.json
+wget -q  https://registry.hub.docker.com/v1/repositories/mariadb/columnstore/tags -O - >> share/repo/repos.json
+echo '},' >> share/repo/repos.json
+
 echo '{"name": "mysql", "image": "mysql", "tags":' >> share/repo/repos.json
 wget -q https://registry.hub.docker.com/v1/repositories/mysql/tags -O - >> share/repo/repos.json
 echo '},' >> share/repo/repos.json

@@ -2,16 +2,16 @@
 prov-orchestrator = "local"
 
 #mariadb
-#prov-db-binary-basedir= "/usr/local/bin"
-#prov-db-client-basedir= "/usr/local/bin"
-#backup-mysqlclient-path ="/usr/local/bin/mysql"
-#backup-mysqlbinlog-path = "/usr/local/bin/mysqlbinlog"
+prov-db-binary-basedir= "/usr/local/bin"
+prov-db-client-basedir= "/usr/local/bin"
+backup-mysqlclient-path ="/usr/local/bin/mysql"
+backup-mysqlbinlog-path = "/usr/local/bin/mysqlbinlog"
 
 #mysql
-prov-db-binary-basedir= "/usr/local/mysql/bin"
-prov-db-client-basedir= "/usr/local/mysql/bin"
-backup-mysqlclient-path ="/usr/local/mysql/bin/mysql"
-backup-mysqlbinlog-path = "/usr/local/bin/mysql/mysqlbinlog"
+#prov-db-binary-basedir= "/usr/local/mysql/bin"
+#prov-db-client-basedir= "/usr/local/mysql/bin"
+#backup-mysqlclient-path ="/usr/local/mysql/bin/mysql"
+#backup-mysqlbinlog-path = "/usr/local/bin/mysql/mysqlbinlog"
 
 
 haproxy-binary-path= "/usr/local/bin/haproxy"
