@@ -210,7 +210,7 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 			Password:    server.ClusterGroup.rplPass,
 			Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 			Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-			Mode:        "",
+			Mode:        "MASTER_AUTO_POSITION",
 			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
 			Channel:     server.ClusterGroup.Conf.MasterConn,
 			IsDelayed:   server.IsDelayed,

@@ -1484,8 +1484,8 @@ function (
         httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
       };
 
-      $scope.openCluster = function (cluster) {
-        $scope.selectedClusterName = cluster;
+      $scope.openCluster = function (clusterName) {
+        $scope.selectedClusterName = clusterName;
       };
 
       $scope.back = function () {
