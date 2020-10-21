@@ -67,7 +67,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 		}
 	cluster.LogPrintf(LvlInfo, "Remove datadir done: %s", out.Bytes())*/
 	server.GetMyConfig()
-	os.Symlink(server.Datadir+"/init/data", path)
+	///	os.Symlink(server.Datadir+"/init/data", path)
 
 	/*cmd = exec.Command("cp", "-rp", cluster.Conf.ShareDir+"/tests/data"+cluster.Conf.ProvDatadirVersion, path)
 
@@ -79,19 +79,19 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 		return err
 	}
 	cluster.LogPrintf(LvlInfo, "Copy fresh datadir done: %s", out.Bytes())
-
-	cmd = exec.Command("cp", "-rp", server.Datadir+"/init/data/.system", path+"/")
+	*/
+	cmd := exec.Command("cp", "-rp", server.Datadir+"/init/data/.system", path+"/")
 	cmd.Stdout = out
-	err = cmd.Run()
+	err := cmd.Run()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "cp -rp %s %s failed %s ", server.Datadir+"/init/data/.system", path, err)
 		cluster.LogPrintf(LvlInfo, "init fresh datadir err: %s", out.Bytes())
 		return err
 	}
 	cluster.LogPrintf(LvlInfo, "copy datadir done: %s", out.Bytes())
-	*/
+
 	var sysCmd *exec.Cmd
-	err := errors.New("No database version found")
+	err = errors.New("No database version found")
 	version := cluster.LocalhostProvisionGetVersionFromMysqld(server)
 	if version == "" {
 		cluster.errorChan <- err

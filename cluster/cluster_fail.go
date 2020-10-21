@@ -190,7 +190,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	cluster.LogPrintf(LvlDbg, "master_log_file=%s", ms.MasterLogFile.String)
 	cluster.LogPrintf(LvlDbg, "master_log_pos=%s", ms.ReadMasterLogPos.String)
-	cluster.LogPrintf(LvlDbg, "Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
+	cluster.LogPrintf(LvlDbg, "Candidate semisync %t", cluster.master.SemiSyncSlaveStatus)
 	//		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
 	//		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
 	crash.FailoverMasterLogFile = ms.MasterLogFile.String
@@ -333,11 +333,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not set old master gtid_slave_pos , reason: %s", err)
 			one_shoot_slave_pos = true
 		}
-		hasMyGTID := cluster.oldMaster.HasMySQLGTID()
+
 		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not check old master GTID status: %s", err)
 		var changeMasterErr error
 		// Do positional switch if we are not MariaDB and no using GTID
-		if cluster.oldMaster.DBVersion.IsMariaDB() == false && hasMyGTID == false {
+		if cluster.oldMaster.HasMariaDBGTID() == false && cluster.oldMaster.HasMySQLGTID() == false {
 			cluster.LogPrintf(LvlInfo, "Doing positional switch of old Master")
 			logs, changeMasterErr = dbhelper.ChangeMaster(cluster.oldMaster.Conn, dbhelper.ChangeMasterOpt{
 				Host:        cluster.master.Host,
@@ -360,7 +360,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			logs, err = cluster.oldMaster.StartSlave()
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Start slave failed on old master,%s reason:  %s ", cluster.oldMaster.URL, err)
 
-		} else if hasMyGTID == true {
+		} else if cluster.oldMaster.HasMySQLGTID() == true {
 			// We can do MySQL 5.7 style failover
 			cluster.LogPrintf(LvlInfo, "Doing MySQL GTID switch of the old master")
 			logs, changeMasterErr = dbhelper.ChangeMaster(cluster.oldMaster.Conn, dbhelper.ChangeMasterOpt{
@@ -419,6 +419,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			logs, err = cluster.oldMaster.StartSlave()
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Start slave failed on old master,%s reason:  %s ", cluster.oldMaster.URL, err)
 		} else {
+			// Is Maxscale
 			// Don't start slave until the relay as been point to new master
 			cluster.LogPrintf(LvlInfo, "Pointing old master to relay server")
 			if relaymaster.MxsHaveGtid {
@@ -503,12 +504,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				cluster.LogSQL(logs, err, sl.URL, "MasterFailover", LvlErr, "Could not set gtid_slave_pos on slave %s, %s", sl.URL, err)
 			}
 		}
-		hasMyGTID := cluster.master.HasMySQLGTID()
 
 		var changeMasterErr error
 
 		// Not MariaDB and not using MySQL GTID, 2.0 stop doing any thing until pseudo GTID
-		if sl.DBVersion.IsMariaDB() == false && hasMyGTID == false {
+		if sl.HasMariaDBGTID() == false && cluster.master.HasMySQLGTID() == false {
 
 			if cluster.Conf.AutorejoinSlavePositionalHeartbeat == true {
 
@@ -551,7 +551,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 			// do nothing stay connected to dead master proceed with relay fix later
 
-		} else if cluster.oldMaster.DBVersion.IsMySQLOrPerconaGreater57() && hasMyGTID == true {
+		} else if cluster.oldMaster.DBVersion.IsMySQLOrPerconaGreater57() && cluster.master.HasMySQLGTID() == true {
 			logs, changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:        cluster.master.Host,
 				Port:        cluster.master.Port,

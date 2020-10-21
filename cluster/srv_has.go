@@ -167,6 +167,9 @@ func (server *ServerMonitor) HasMySQLGTID() bool {
 	if !(server.DBVersion.IsMySQL() || server.DBVersion.IsPercona()) {
 		return false
 	}
+	if server.ClusterGroup.Conf.ForceSlaveNoGtid {
+		return false
+	}
 	val := server.Variables["ENFORCE_GTID_CONSISTENCY"]
 	if val == "ON" {
 		return true
@@ -175,7 +178,23 @@ func (server *ServerMonitor) HasMySQLGTID() bool {
 	if val == "ON" {
 		return true
 	}
+
 	return false
+}
+
+func (server *ServerMonitor) HasMariaDBGTID() bool {
+
+	if !(server.DBVersion.IsMariaDB()) {
+		return false
+	}
+	if server.DBVersion.Major < 10 {
+		return false
+	}
+	if server.ClusterGroup.Conf.ForceSlaveNoGtid {
+		return false
+	}
+
+	return true
 }
 
 func (server *ServerMonitor) HasInstallPlugin(name string) bool {

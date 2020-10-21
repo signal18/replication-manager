@@ -8,6 +8,10 @@ package cluster
 
 import "os"
 
+func (cluster *Cluster) SwitchForceSlaveNoGtid() {
+	cluster.Conf.ForceSlaveNoGtid = !cluster.Conf.ForceSlaveNoGtid
+}
+
 func (cluster *Cluster) SwitchServerMaintenance(serverid uint64) {
 	server := cluster.GetServerFromId(serverid)
 	server.SwitchMaintenance()

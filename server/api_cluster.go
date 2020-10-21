@@ -941,6 +941,8 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchFailoverRestartUnsafe()
 		case "failover-at-sync":
 			mycluster.SwitchFailSync()
+		case "force-slave-no-gtid-mode":
+			mycluster.SwitchForceSlaveNoGtid()
 		case "failover-event-status":
 			mycluster.SwitchFailoverEventStatus()
 		case "failover-event-scheduler":
