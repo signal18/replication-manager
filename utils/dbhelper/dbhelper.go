@@ -586,7 +586,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 				cm += ", MASTER_USE_GTID=NO"
 			}
 		case "MASTER_AUTO_POSITION":
-			cm += ", MASTER_AUTO_POSITION = 1"
+			cm += ", MASTER_AUTO_POSITION=1"
 		}
 		if opt.SSL {
 			cm += ", MASTER_SSL=1"

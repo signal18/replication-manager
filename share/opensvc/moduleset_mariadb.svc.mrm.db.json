@@ -1587,6 +1587,158 @@
                 }
             ],
             "fset_name": "mariadb.engine.mcs"
+        },
+        {
+            "fset_stats": false,
+            "id": 369,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "nointosubquery",
+                        "f_table": "v_tags",
+                        "id": 329
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.nointosubquery"
+        },
+        {
+            "fset_stats": false,
+            "id": 370,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "nobloomfilter",
+                        "f_table": "v_tags",
+                        "id": 330
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.nobloomfilter"
+        },
+        {
+            "fset_stats": false,
+            "id": 371,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "nodcp",
+                        "f_table": "v_tags",
+                        "id": 331
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.nodcp"
+        },
+        {
+            "fset_stats": false,
+            "id": 372,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "noecp",
+                        "f_table": "v_tags",
+                        "id": 332
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.noecp"
+        },
+        {
+            "fset_stats": false,
+            "id": 373,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "noscp",
+                        "f_table": "v_tags",
+                        "id": 333
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.noscp"
+        },
+        {
+            "fset_stats": false,
+            "id": 374,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "nohcp",
+                        "f_table": "v_tags",
+                        "id": 334
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.nohcp"
+        },
+        {
+            "fset_stats": false,
+            "id": 375,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "nolateralderived",
+                        "f_table": "v_tags",
+                        "id": 335
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.nolateralderived"
+        },
+        {
+            "fset_stats": false,
+            "id": 376,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "imsi",
+                        "f_table": "v_tags",
+                        "id": 336
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.imsi"
         }
     ],
     "rulesets": [
@@ -1967,8 +2119,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_optimizer.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#[mariadb 10.4]\\n#max_prepared_stmt_count=200000\\n\\n[mariadb]\\noptimizer_search_depth = 0\\njoin_cache_level = 6\\noptimizer_switch ='extended_keys=off'\\noptimizer_switch ='index_condition_pushdown=on'\\noptimizer_switch ='engine_condition_pushdown=on'\\noptimizer_switch ='derived_merge=on'\\noptimizer_switch ='derived_with_keys=on'\\noptimizer_switch ='firstmatch=off'\\noptimizer_switch ='loosescan=off'\\noptimizer_switch ='materialization=on'\\noptimizer_switch ='in_to_exists=on'\\noptimizer_switch ='semijoin=on'\\noptimizer_switch ='partial_match_rowid_merge=on'\\noptimizer_switch ='partial_match_table_scan=on'\\noptimizer_switch ='subquery_cache=off'\\noptimizer_switch ='mrr=on'\\noptimizer_switch ='mrr_cost_based=off'\\noptimizer_switch ='mrr_sort_keys=on'\\noptimizer_switch ='outer_join_with_cache=on'\\noptimizer_switch ='semijoin_with_cache=off'\\noptimizer_switch ='join_cache_incremental=on'\\noptimizer_switch ='join_cache_hashed=on'\\noptimizer_switch ='join_cache_bka=on'\\noptimizer_switch ='optimize_join_buffer_size=on'\\noptimizer_switch ='table_elimination=on'\\n#10.3.18, 10.4.8\\n#optimizer_switch ='in_predicate_conversion=on'\\nloose_eq_range_index_dive_limit=10\\n\\n[MariaDB 10.1.16] \\noptimizer_switch='orderby_uses_equalities=on'\\n\\n\\n\\n\\n\"}",
-                    "var_updated": "2020-03-11 11:44:50",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_optimizer.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#[mariadb 10.4]\\n#max_prepared_stmt_count=200000\\n\\n[mariadb]\\noptimizer_search_depth = 0\\njoin_cache_level = 6\\noptimizer_switch ='extended_keys=off'\\noptimizer_switch ='index_condition_pushdown=on'\\noptimizer_switch ='engine_condition_pushdown=on'\\noptimizer_switch ='derived_merge=on'\\noptimizer_switch ='derived_with_keys=on'\\noptimizer_switch ='firstmatch=off'\\noptimizer_switch ='loosescan=off'\\noptimizer_switch ='materialization=on'\\noptimizer_switch ='in_to_exists=on'\\noptimizer_switch ='semijoin=on'\\noptimizer_switch ='partial_match_rowid_merge=on'\\noptimizer_switch ='partial_match_table_scan=on'\\noptimizer_switch ='subquery_cache=off'\\noptimizer_switch ='mrr=on'\\noptimizer_switch ='mrr_cost_based=off'\\noptimizer_switch ='mrr_sort_keys=on'\\noptimizer_switch ='outer_join_with_cache=on'\\noptimizer_switch ='semijoin_with_cache=off'\\noptimizer_switch ='join_cache_incremental=on'\\noptimizer_switch ='join_cache_hashed=on'\\noptimizer_switch ='join_cache_bka=on'\\noptimizer_switch ='optimize_join_buffer_size=on'\\noptimizer_switch ='table_elimination=on'\\n#10.3.18, 10.4.8\\n#optimizer_switch ='in_predicate_conversion=on'\\nloose_eq_range_index_dive_limit=10\\nloose_in_predicate_conversion_threshold=1000\\n\\n[MariaDB 10.1.16] \\noptimizer_switch='orderby_uses_equalities=on'\\n\\n\\n\\n\\n\"}",
+                    "var_updated": "2020-10-22 14:15:43",
                     "var_name": "db_cnf_default_optimizer",
                     "id": 5913
                 },
@@ -2647,8 +2799,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_icp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\noptimizer_switch ='index_condition_pushdown=off'\"}",
-                    "var_updated": "2020-03-25 11:14:23",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_icp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# 5.3 https://mariadb.com/kb/en/index-condition-pushdown/\\n[mariadb]\\noptimizer_switch ='index_condition_pushdown=off'\"}",
+                    "var_updated": "2020-10-22 12:29:23",
                     "var_name": "db_cnf_opt_no_icp",
                     "id": 6112
                 },
@@ -2955,6 +3107,70 @@
                     "var_updated": "2020-10-14 17:46:29",
                     "var_name": "db_cnf_engine_mcs",
                     "id": 6193
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_opt_imsi.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# 10.3 https://mariadb.com/kb/en/index_merge-sort_intersection/\\n[mariadb]\\noptimizer_switch='index_merge_sort_intersection=on'\"}",
+                    "var_updated": "2020-10-22 12:09:36",
+                    "var_name": "db_cnf_opt_with_imsi",
+                    "id": 6197
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_lateralderived.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# 10.3.0 https://mariadb.com/kb/en/lateral-derived-optimization/\\n[mariadb]\\noptimizer_switch='split_materialized=off'\\n\"}",
+                    "var_updated": "2020-10-22 12:37:03",
+                    "var_name": "db_cnf_opt_no_lateral_derived",
+                    "id": 6198
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_hcp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# 10.4.3\\n[mariadb]\\noptimizer_switch='condition_pushdown_from_having=off'\"}",
+                    "var_updated": "2020-10-22 12:39:37",
+                    "var_name": "db_cnf_opt_no_hcp",
+                    "id": 6199
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_scp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# 10.4.0 https://mariadb.com/kb/en/condition-pushdown-into-in-subqueries/\\n[mariadb]\\noptimizer_switch='condition_pushdown_for_subquery=off'\"}",
+                    "var_updated": "2020-10-22 12:40:15",
+                    "var_name": "db_cnf_opt_no_scp",
+                    "id": 6200
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_ecp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# 5.3.0 https://mariadb.com/kb/en/index-condition-pushdown/\\n[mariadb]\\noptimizer_switch='engine_condition_pushdown=off'\\n\"}",
+                    "var_updated": "2020-10-22 12:39:53",
+                    "var_name": "db_cnf_opt_no_ecp",
+                    "id": 6201
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_dcp.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# 10.2.2\\n[mariadb]\\noptimizer_switch='condition_pushdown_for_derived=off'\"}",
+                    "var_updated": "2020-10-22 12:40:03",
+                    "var_name": "db_cnf_opt_no_dcp",
+                    "id": 6202
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_bloomfilter.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# 10.4.3 https://mariadb.com/kb/en/rowid-filtering-optimization/\\n[mariadb]\\noptimizer_switch='rowid_filter=off'\"}",
+                    "var_updated": "2020-10-22 13:39:49",
+                    "var_name": "db_cnf_opt_no_bloomfilter",
+                    "id": 6203
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_intosubquery.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# 10.3.18 https://mariadb.com/kb/en/conversion-of-big-in-predicates-into-subqueries/\\n[mariadb]\\nloose_in_predicate_conversion_threshold=0\"}",
+                    "var_updated": "2020-10-22 14:45:40",
+                    "var_name": "db_cnf_no_intosubquery",
+                    "id": 6204
                 }
             ],
             "ruleset_public": false,
@@ -3041,7 +3257,15 @@
                 "mariadb.svc.mrm.db.cnf.generic.withrepstatement",
                 "mariadb.svc.mrm.db.cnf.generic.enginemcs",
                 "mariadb.svc.mrm.db.cnf.generic.withed25519",
-                "mariadb.svc.mrm.db.cnf.generic.withsequence"
+                "mariadb.svc.mrm.db.cnf.generic.withsequence",
+                "mariadb.svc.mrm.db.cnf.generic.noecp",
+                "mariadb.svc.mrm.db.cnf.generic.noscp",
+                "mariadb.svc.mrm.db.cnf.generic.nohcp",
+                "mariadb.svc.mrm.db.cnf.generic.nodcp",
+                "mariadb.svc.mrm.db.cnf.generic.nointosubquery",
+                "mariadb.svc.mrm.db.cnf.generic.nolateralderived",
+                "mariadb.svc.mrm.db.cnf.generic.withimsi",
+                "mariadb.svc.mrm.db.cnf.generic.nobloomfilter"
             ],
             "publications": [
                 "replication-manager"
@@ -5111,6 +5335,198 @@
                 "replication-manager"
             ],
             "id": 1116,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.noecp",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noecp",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/55_no_opt_ecp.cnf\",\"target\":\"../no_opt_ecp.cnf\"}",
+                    "var_updated": "2020-10-22 15:01:22",
+                    "var_name": "db_link_noecp",
+                    "id": 6205
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1117,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.noscp",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noscp",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/55_no_opt_scp.cnf\",\"target\":\"../no_opt_scp.cnf\"}",
+                    "var_updated": "2020-10-22 15:02:02",
+                    "var_name": "db_link_noscp",
+                    "id": 6206
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1118,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.nohcp",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nohcp",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/55_no_opt_hcp.cnf\",\"target\":\"../no_opt_hcp.cnf\"}",
+                    "var_updated": "2020-10-22 15:05:28",
+                    "var_name": "db_link_nohcp",
+                    "id": 6207
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1119,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.nodcp",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nodcp",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/55_no_opt_dcp.cnf\",\"target\":\"../no_opt_dcp.cnf\"}",
+                    "var_updated": "2020-10-22 15:07:08",
+                    "var_name": "db_link_nodcp",
+                    "id": 6208
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1120,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.nointosubquery",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nointosubquery",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/55_no_opt_intosubquery.cnf\",\"target\":\"../no_opt_intosubquery.cnf\"}",
+                    "var_updated": "2020-10-22 15:10:00",
+                    "var_name": "db_link_nointosubquery",
+                    "id": 6209
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1121,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.nolateralderived",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nolateralderived",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/55_no_opt_lateralderived.cnf\",\"target\":\"../no_opt_lateralderived.cnf\"}",
+                    "var_updated": "2020-10-22 15:12:06",
+                    "var_name": "db_link_nolateralderived",
+                    "id": 6210
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1122,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.imsi",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withimsi",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/55_with_opt_imsi.cnf\",\"target\":\"../with_opt_imsi.cnf\"}",
+                    "var_updated": "2020-10-22 15:16:06",
+                    "var_name": "db_link_withimsi",
+                    "id": 6211
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1123,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.nobloomfilter",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nobloomfilter",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/55_no_opt_bloomfilter.cnf\",\"target\":\"../no_opt_bloomfilter.cnf\"}",
+                    "var_updated": "2020-10-22 15:20:26",
+                    "var_name": "db_link_nobloomfilter",
+                    "id": 6212
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1124,
             "responsibles": [
                 "replication-manager"
             ]
