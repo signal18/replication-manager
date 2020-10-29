@@ -70,13 +70,24 @@
             <div style="padding: 0px 20px 10px 4px;">
               <b><u>Connections</u></b>
             </div>
-             <table><tr><td><ng-gauge type="arch" value="selectedCluster.config.provDbMaxConnections" thick="5" size="120"   min="1" max="25600"  cap="round" append="" label="Connections" />
+             <table><tr><td><ng-gauge type="arch" value="selectedCluster.config.provDbMaxConnections" thick="5" size="120"   min="200" max="10000"  cap="round"  label="Connections" />
   </td><td>
-            <span  ng-click="clsetdbconns(selectedCluster.config.provDbMaxConnections,200)" style="display:inline-block;margin: 2px;"
+
+            <span  ng-click="clsetdbconns(selectedCluster.config.provDbExpireLogDays,200)" style="display:inline-block;margin: 2px;"
                                                         class="label label-success">200 <i class="fa fa-plus-circle" ng-click="clsetdbconns(selectedCluster.config.provDbMaxConnections,200)"></i></span>
           <BR>
-           <span  ng-click="clsetdbconns(selectedCluster.config.provDbMaxConnections,-200)" style="display:inline-block;margin: 2px;"
+           <span  ng-click="clsetdbconns(selectedCluster.config.provDbExpireLogDays,-200)" style="display:inline-block;margin: 2px;"
                                                     class="label label-danger">200 <i class="fa fa-minus-circle" ng-click="clsetdbconns(selectedCluster.config.provDbMaxConnections,-200)"></i></span>
+                                                  </td><td>
+                                                    </td><td>
+                                                      <ng-gauge type="arch" value="selectedCluster.config.provDbExpireLogDays" thick="5" size="120"   min="0" max="90"  cap="round"  label="Expire Binlog Days" />
+                                                    </td><td>
+                                                              <span  ng-click="clsetdbexpirelogdays(selectedCluster.config.provDbExpireLogDays,1)" style="display:inline-block;margin: 2px;"
+                                                                                                        class="label label-success">1 <i class="fa fa-plus-circle" ng-click="clsetdbexpirelogdays(selectedCluster.config.provDbExpireLogDays,1)"></i></span>
+                                                          <BR>
+                                                           <span  ng-click="clsetdbexpirelogdays(selectedCluster.config.provDbExpireLogDays,-1)" style="display:inline-block;margin: 2px;"
+                                                                                                    class="label label-danger">1 <i class="fa fa-minus-circle" ng-click="clsetdbexpirelogdays(selectedCluster.config.provDbExpireLogDays,-1)"></i></span>
+
           </td><tr></table>
           </div>
        </div>

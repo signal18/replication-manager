@@ -619,6 +619,11 @@ func (server *ServerMonitor) Refresh() error {
 			if server.ClusterGroup.sme.GetHeartbeats()%30 == 0 {
 				server.CheckPrivileges()
 			}
+			if server.ClusterGroup.Conf.FailEventScheduler && server.IsMaster() && !server.HasEventScheduler() {
+				server.ClusterGroup.LogPrintf(LvlInfo, "Enable Event Scheduler on master")
+				logs, err := server.SetEventScheduler(true)
+				server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Could not enable event scheduler on the  master")
+			}
 
 		} // end not postgress
 

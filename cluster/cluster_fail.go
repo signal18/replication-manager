@@ -150,7 +150,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		if cluster.Conf.FailEventScheduler {
 			cluster.LogPrintf(LvlInfo, "Disable Event Scheduler on old master")
-			logs, err := dbhelper.SetEventScheduler(cluster.oldMaster.Conn, false, cluster.oldMaster.DBVersion)
+			logs, err := cluster.oldMaster.SetEventScheduler(false)
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not disable event scheduler on old master")
 		}
 		cluster.oldMaster.freeze()
@@ -295,7 +295,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	time.Sleep(time.Duration(cluster.Conf.SwitchSlaveWaitRouteChange) * time.Second)
 	if cluster.Conf.FailEventScheduler {
 		cluster.LogPrintf(LvlInfo, "Enable Event Scheduler on the new master")
-		logs, err := dbhelper.SetEventScheduler(cluster.master.Conn, true, cluster.master.DBVersion)
+		logs, err := cluster.master.SetEventScheduler(true)
 		cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlErr, "Could not enable event scheduler on the new master")
 	}
 	if cluster.Conf.FailEventStatus {
@@ -1118,7 +1118,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		if cluster.Conf.FailEventScheduler {
 
 			cluster.LogPrintf(LvlInfo, "Disable Event Scheduler on old master")
-			logs, err := dbhelper.SetEventScheduler(cluster.oldMaster.Conn, false, cluster.oldMaster.DBVersion)
+			logs, err := cluster.oldMaster.SetEventScheduler(false)
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not disable event scheduler on old master")
 		}
 		cluster.oldMaster.freeze()
@@ -1194,7 +1194,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	}
 	if cluster.Conf.FailEventScheduler {
 		cluster.LogPrintf(LvlInfo, "Enable Event Scheduler on the new master")
-		logs, err := dbhelper.SetEventScheduler(cluster.vmaster.Conn, true, cluster.vmaster.DBVersion)
+		logs, err := cluster.vmaster.SetEventScheduler(true)
 		cluster.LogSQL(logs, err, cluster.vmaster.URL, "MasterFailover", LvlErr, "Could not enable event scheduler on the new master")
 	}
 	if cluster.Conf.FailEventStatus {

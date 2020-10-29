@@ -60,6 +60,7 @@ func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 }
 
 func (cluster *Cluster) SetSchedulerBackupLogical() {
+
 	if cluster.HasSchedulerEntry("backuplogical") {
 		cluster.scheduler.Remove(cluster.idSchedulerLogicalBackup)
 		cluster.LogPrintf(LvlInfo, "Disable database logical backup ")
@@ -252,6 +253,15 @@ func (cluster *Cluster) SetDBMaxConnections(value string) {
 		cluster.Conf.ProvMaxConnections = 1000
 	}
 	cluster.Conf.ProvMaxConnections = valueNum
+	cluster.SetDBRestartCookie()
+}
+
+func (cluster *Cluster) SetDBExpireLogDays(value string) {
+	valueNum, err := strconv.Atoi(value)
+	if err != nil {
+		cluster.Conf.ProvExpireLogDays = 5
+	}
+	cluster.Conf.ProvExpireLogDays = valueNum
 	cluster.SetDBRestartCookie()
 }
 

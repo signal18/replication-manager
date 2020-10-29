@@ -25,6 +25,11 @@ func (server *ServerMonitor) SetIgnored(ignored bool) {
 	server.Ignored = ignored
 }
 
+func (server *ServerMonitor) SetEventScheduler(value bool) (string, error) {
+	logs, err := dbhelper.SetEventScheduler(server.Conn, value, server.DBVersion)
+	return logs, err
+}
+
 func (server *ServerMonitor) SetFailed() {
 	server.State = stateFailed
 }

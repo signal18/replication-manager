@@ -842,6 +842,8 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_INSTANCES%%": server.ClusterGroup.GetConfigInnoDBBPInstances(),
 		"%%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_SIZE%%":      server.ClusterGroup.GetConfigInnoDBBPSize(),
 		"%%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%":       server.ClusterGroup.GetConfigInnoDBLogFileSize(),
+		"%%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%":              server.ClusterGroup.GetConfigExpireLogDays(),
+		"%%ENV:SVC_CONF_ENV_RELAY_SPACE_LIMIT%%":            server.ClusterGroup.GetConfigRelaySpaceLimit(),
 		"%%ENV:SVC_NAMESPACE%%":                             server.ClusterGroup.Name,
 		"%%ENV:SVC_NAME%%":                                  server.Name,
 		"%%ENV:SVC_CONF_ENV_SST_METHOD%%":                   server.ClusterGroup.Conf.MultiMasterWsrepSSTMethod,

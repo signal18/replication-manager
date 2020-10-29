@@ -1108,6 +1108,8 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetDBDiskIOPS(vars["settingValue"])
 		case "prov-db-max-connections":
 			mycluster.SetDBMaxConnections(vars["settingValue"])
+		case "prov-db-expire-log-days":
+			mycluster.SetDBExpireLogDays(vars["settingValue"])
 		case "prov-db-agents":
 			mycluster.SetProvDbAgents(vars["settingValue"])
 		case "prov-proxy-agents":

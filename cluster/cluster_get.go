@@ -390,6 +390,9 @@ func (cluster *Cluster) GetFailedServer() *ServerMonitor {
 }
 
 func (cluster *Cluster) GetBackupServer() *ServerMonitor {
+	if !cluster.IsDiscovered() {
+		return nil
+	}
 	for _, server := range cluster.Servers {
 		if server.State != stateFailed && server.PreferedBackup {
 			return server
@@ -617,6 +620,14 @@ func (cluster *Cluster) GetProxyModuleTags() []Tag {
 
 func (cluster *Cluster) GetConfigMaxConnections() string {
 	return strconv.Itoa(cluster.Conf.ProvMaxConnections)
+}
+
+func (cluster *Cluster) GetConfigExpireLogDays() string {
+	return strconv.Itoa(cluster.Conf.ProvExpireLogDays)
+}
+
+func (cluster *Cluster) GetConfigRelaySpaceLimit() string {
+	return strconv.Itoa(10 * 1024 * 1024)
 }
 
 // GetConfigInnoDBBPSize configure 80% of the ConfigMemory in Megabyte
