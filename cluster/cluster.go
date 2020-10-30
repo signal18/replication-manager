@@ -463,8 +463,9 @@ func (cluster *Cluster) Run() {
 			cluster.IsFailable = cluster.GetStatus()
 			// CheckFailed trigger failover code if passing all false positiv and constraints
 			cluster.CheckFailed()
-			cluster.StateProcessing()
+
 			cluster.Topology = cluster.GetTopology()
+			cluster.StateProcessing()
 			cluster.IsProvision = cluster.IsProvisioned()
 			cluster.IsNeedProxiesRestart = cluster.HasRequestProxiesRestart()
 			cluster.IsNeedProxiesReprov = cluster.HasRequestProxiesReprov()

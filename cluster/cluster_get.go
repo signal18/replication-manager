@@ -390,7 +390,7 @@ func (cluster *Cluster) GetFailedServer() *ServerMonitor {
 }
 
 func (cluster *Cluster) GetBackupServer() *ServerMonitor {
-	if !cluster.IsDiscovered() {
+	if !cluster.IsDiscovered() || len(cluster.Servers) < 1 {
 		return nil
 	}
 	for _, server := range cluster.Servers {
