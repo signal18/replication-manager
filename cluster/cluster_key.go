@@ -7,13 +7,18 @@
 package cluster
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"math/big"
 	"os"
@@ -175,7 +180,7 @@ func (cluster *Cluster) createKeys() error {
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
-		IsCA: false,
+		IsCA:                  false,
 	}
 	for _, h := range cluster.Servers {
 		leafTemplate.DNSNames = append(leafTemplate.DNSNames, h.Host)
@@ -208,7 +213,7 @@ func (cluster *Cluster) createKeys() error {
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,
-		IsCA: false,
+		IsCA:                  false,
 	}
 
 	derBytes, err = x509.CreateCertificate(rand.Reader, &clientTemplate, &rootTemplate, &clientKey.PublicKey, rootKey)
@@ -307,4 +312,43 @@ func (cluster *Cluster) GeneratePassword() (string, error) {
 		password[i] = charset[n.Int64()]
 	}
 	return string(password), nil
+}
+
+func (cluster *Cluster) CBCEncrypter() {
+	// Load your secret key from a safe place and reuse it across multiple
+	// NewCipher calls. (Obviously don't use this example key for anything
+	// real.) If you want to convert a passphrase to a key, use a suitable
+	// package like bcrypt or scrypt.
+	key, _ := hex.DecodeString("6368616e676520746869732070617373")
+	plaintext := []byte("exampleplaintext")
+
+	// CBC mode works on blocks so plaintexts may need to be padded to the
+	// next whole block. For an example of such padding, see
+	// https://tools.ietf.org/html/rfc5246#section-6.2.3.2. Here we'll
+	// assume that the plaintext is already of the correct length.
+	if len(plaintext)%aes.BlockSize != 0 {
+		panic("plaintext is not a multiple of the block size")
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err)
+	}
+
+	// The IV needs to be unique, but not secure. Therefore it's common to
+	// include it at the beginning of the ciphertext.
+	ciphertext := make([]byte, aes.BlockSize+len(plaintext))
+	iv := ciphertext[:aes.BlockSize]
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		panic(err)
+	}
+
+	mode := cipher.NewCBCEncrypter(block, iv)
+	mode.CryptBlocks(ciphertext[aes.BlockSize:], plaintext)
+
+	// It's important to remember that ciphertexts must be authenticated
+	// (i.e. by using crypto/hmac) as well as being encrypted in order to
+	// be secure.
+
+	fmt.Printf("%x\n", ciphertext)
 }

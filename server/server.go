@@ -210,7 +210,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 				err := viper.MergeInConfig()
 				if err != nil {
-					log.Println(err)
+					log.Fatal("Config error in " + conf.ClusterConfigPath + "/" + f.Name() + ":" + err.Error())
 				}
 			}
 		}
@@ -227,13 +227,13 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			if f.IsDir() && f.Name() != "graphite" {
 				viper.SetConfigName(f.Name())
 				if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/config.toml"); os.IsNotExist(err) {
-					log.Warning("No  config file " + conf.WorkingDir + "/" + f.Name() + "/config.toml")
+					log.Warning("No monitoring saved config found " + conf.WorkingDir + "/" + f.Name() + "/config.toml")
 				} else {
-					log.Infof("Adding working directory config file %s ", conf.WorkingDir+"/"+f.Name()+"/config.toml")
+					log.Infof("Parsing saved config from working directory %s ", conf.WorkingDir+"/"+f.Name()+"/config.toml")
 					viper.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/config.toml")
 					err := viper.MergeInConfig()
 					if err != nil {
-						log.Println(err)
+						log.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/config.toml" + ":" + err.Error())
 					}
 				}
 			}
