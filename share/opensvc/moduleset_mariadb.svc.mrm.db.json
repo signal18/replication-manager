@@ -1802,6 +1802,25 @@
             "id": 379,
             "filters": [],
             "fset_name": "mariadb.disk.relayspacelimit"
+        },
+        {
+            "fset_stats": false,
+            "id": 385,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "noadaptatiiveflush",
+                        "f_table": "v_tags",
+                        "id": 343
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.disk.noadaptatiiveflush"
         }
     ],
     "rulesets": [
@@ -1815,10 +1834,7 @@
                 "mariadb.svc.env",
                 "mariadb.svc.mrm.db.cnf.docker",
                 "mariadb.svc.mrm.db.cnf.package",
-                "mariadb.svc.mrm.db.cnf.generic",
-                "mariadb.svc.mrm.db.cnf.generic.withrepoptimize",
-                "mariadb.svc.mrm.db.cnf.generic.withrepserialize",
-                "mariadb.svc.mrm.db.cnf.generic.withrepminimal"
+                "mariadb.svc.mrm.db.cnf.generic"
             ],
             "publications": [
                 "replication-manager"
@@ -2217,8 +2233,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_innodb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# INNODB\\n# ------ \\n[mysqld-5.5]\\ninnodb_file_format = barracuda\\n[mysqld-5.6]\\ninnodb_file_format = barracuda\\n[mysqld-5.7]\\ninnodb_file_format = barracuda \\n#deprecated in 5.8\\n\\n[mariadb]\\n#innodb_buffer_pool_populate=0 \\n[mariadb 5.5]\\ninnodb_file_format = barracuda\\n[mariadb 10.0]\\ninnodb_file_format = barracuda\\n \\n[mariadb 10.1]\\ninnodb_force_primary_key = 1\\ninnodb_default_row_format=dynamic\\n#innodb_defragment = 1\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.2]\\ninnodb_lock_schedule_algorithm=fcfs\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.3]\\ninnodb-page-cleaners= %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld]\\ntransaction-isolation = READ-COMMITTED\\ndefault_storage_engine = InnoDB\\ninnodb_adaptive_hash_index = 0\\ninnodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%M\\ninnodb_buffer_pool_instances = %%ENV:IBPINSTANCES%%\\ninnodb_file_per_table= 1\\ninnodb_read_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_write_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_io_capacity = %%ENV:CHECKPOINTIOPS%%\\ninnodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%\\ninnodb_max_dirty_pages_pct = 10\\ninnodb_flush_neighbors = 1\\ninnodb_log_file_size = 1024M\\n# Crash 10.2.14\\ninnodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%M\\ninnodb_log_files_in_group = 1\\ninnodb_thread_concurrency = 0\\ninnodb_flush_method = O_DIRECT\\n\\n#innodb_undo_tablespaces = 4\\ninnodb_autoinc_lock_mode = 2\\ninnodb_stats_on_metadata = 0\\ninnodb_buffer_pool_dump_at_shutdown = 1\\ninnodb_buffer_pool_load_at_startup = 1\\ninnodb_open_files = 16384\\ninnodb_purge_threads = 4\\ninnodb_concurrency_tickets = 5000\\ninnodb_print_all_deadlocks = 1  \\n# innodb_monitor_enable = all // cost perf  \\n\\n[mariadb 10.4]\\ninnodb_large_prefix = 1\\ninnodb_file_format = barracuda\\ninnodb_default_row_format=dynamic\\n\"}",
-                    "var_updated": "2020-10-22 18:57:54",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_innodb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# INNODB\\n# ------ \\n[mysqld-5.5]\\ninnodb_file_format = barracuda\\n[mysqld-5.6]\\ninnodb_file_format = barracuda\\n[mysqld-5.7]\\ninnodb_file_format = barracuda \\n#deprecated in 5.8\\n\\n[mariadb]\\n#innodb_buffer_pool_populate=0 \\n[mariadb 5.5]\\ninnodb_file_format = barracuda\\n[mariadb 10.0]\\ninnodb_file_format = barracuda\\n \\n[mariadb 10.1]\\ninnodb_force_primary_key = 1\\ninnodb_default_row_format=dynamic\\n#innodb_defragment = 1\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.2]\\ninnodb_lock_schedule_algorithm=fcfs\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.3]\\ninnodb-page-cleaners= %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld]\\ntransaction-isolation = READ-COMMITTED\\ndefault_storage_engine = InnoDB\\ninnodb_adaptive_hash_index = 0\\ninnodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%M\\ninnodb_buffer_pool_instances = %%ENV:IBPINSTANCES%%\\ninnodb_file_per_table= 1\\ninnodb_read_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_write_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_io_capacity = %%ENV:CHECKPOINTIOPS%%\\ninnodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%\\ninnodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%\\ninnodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%\\ninnodb_flush_neighbors = 1\\ninnodb_log_file_size =  = %%ENV:SVC_CONF_ENV_INNODB_LOG_FILE_SIZE%%M\\n# innodb_log_buffer_size change Crash 10.2.14\\ninnodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%M\\ninnodb_log_files_in_group = 1\\ninnodb_thread_concurrency = 0\\ninnodb_flush_method = O_DIRECT\\n\\n#innodb_undo_tablespaces = 4\\ninnodb_autoinc_lock_mode = 2\\ninnodb_stats_on_metadata = 0\\ninnodb_buffer_pool_dump_at_shutdown = 1\\ninnodb_buffer_pool_load_at_startup = 1\\ninnodb_open_files = 16384\\ninnodb_purge_threads = 4\\ninnodb_concurrency_tickets = 5000\\ninnodb_print_all_deadlocks = 1  \\n# innodb_monitor_enable = all // cost perf  \\n\\n[mariadb 10.4]\\ninnodb_large_prefix = 1\\ninnodb_file_format = barracuda\\ninnodb_default_row_format=dynamic\\n\"}",
+                    "var_updated": "2020-11-05 14:00:24",
                     "var_name": "db_cnf_engine_innodb",
                     "id": 5917
                 },
@@ -3293,6 +3309,14 @@
                     "var_updated": "2020-10-28 18:46:37",
                     "var_name": "db_cnf_rep_parallelserialize",
                     "id": 6226
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_disk_adaptativeflush.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.5\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-system-variables/#innodb_adaptive_flushing\\n# mariadb_mdev: https://jira.mariadb.org/browse/MDEV-24109\\n# mariadb_advice: >10.5.7 \\n# mysql_version: 5.5\\n# mysql_documentation: https://dev.mysql.com/doc/refman/8.0/en/innodb-buffer-pool-flushing.html\\n\\n[mariadb]\\ninnodb_adaptive_flushing = 0\"}",
+                    "var_updated": "2020-11-05 11:06:25",
+                    "var_name": "db_cnf_disk_no_adaptativeflush",
+                    "id": 6227
                 }
             ],
             "ruleset_public": false,
@@ -3393,7 +3417,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.withrelayspacelimit",
                 "mariadb.svc.mrm.db.cnf.generic.withrepoptimize",
                 "mariadb.svc.mrm.db.cnf.generic.withrepserialize",
-                "mariadb.svc.mrm.db.cnf.generic.withrepminimal"
+                "mariadb.svc.mrm.db.cnf.generic.withrepminimal",
+                "mariadb.svc.mrm.db.cnf.generic.noadaptativeflush"
             ],
             "publications": [
                 "replication-manager"
@@ -4179,7 +4204,7 @@
                     "var_author": "admin Manager",
                     "var_class": "symlink",
                     "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_no_disk_odirect.cnf\",\"target\":\"../no_disk_odirect.cnf\"}",
-                    "var_updated": "2020-03-25 11:25:20",
+                    "var_updated": "2020-11-05 14:04:26",
                     "var_name": "db_link_noodirect",
                     "id": 6069
                 }
@@ -5799,6 +5824,30 @@
                 "replication-manager"
             ],
             "id": 1130,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.disk.noadaptatiiveflush",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noadaptativeflush",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/50_no_disk_adaptativeflush.cnf\",\"target\":\"../no_disk_adaptativeflush.cnf\"}",
+                    "var_updated": "2020-11-05 14:05:19",
+                    "var_name": "db_link_noadaptativeflush",
+                    "id": 6228
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1131,
             "responsibles": [
                 "replication-manager"
             ]

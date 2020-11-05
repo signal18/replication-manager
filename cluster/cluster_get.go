@@ -711,31 +711,6 @@ func (cluster *Cluster) GetConfigRocksDBCacheSize() string {
 	return s10
 }
 
-// GetConfigInnoDBBPSize configure 20% of the ConfigMemory in Megabyte
-func (cluster *Cluster) GetConfigInnoDBLogFileSize() string {
-	if cluster.HaveDBTag("smallredolog") {
-		return "16"
-	}
-	value, err := strconv.ParseInt(cluster.Conf.ProvMem, 10, 64)
-	if err != nil {
-		return "128"
-	}
-	value = value * 20 / 100
-	s10 := strconv.FormatInt(value, 10)
-	return s10
-}
-
-// GetConfigInnoDBBPInstances configure BP/8G of the ConfigMemory in Megabyte
-func (cluster *Cluster) GetConfigInnoDBBPInstances() string {
-	value, err := strconv.ParseInt(cluster.GetConfigInnoDBBPSize(), 10, 64)
-	if err != nil {
-		return "1"
-	}
-	value = value/8000 + 1
-	s10 := strconv.FormatInt(value, 10)
-	return s10
-}
-
 func (cluster *Cluster) GetConfigMyISAMKeyBufferSegements() string {
 	value, err := strconv.ParseInt(cluster.GetConfigMyISAMKeyBufferSize(), 10, 64)
 	if err != nil {
@@ -749,7 +724,7 @@ func (cluster *Cluster) GetConfigMyISAMKeyBufferSegements() string {
 func (cluster *Cluster) GetConfigInnoDBIOCapacity() string {
 	value, err := strconv.ParseInt(cluster.Conf.ProvIops, 10, 64)
 	if err != nil {
-		return "1"
+		return "100"
 	}
 	value = value / 3
 	s10 := strconv.FormatInt(value, 10)
@@ -759,8 +734,73 @@ func (cluster *Cluster) GetConfigInnoDBIOCapacity() string {
 func (cluster *Cluster) GetConfigInnoDBIOCapacityMax() string {
 	value, err := strconv.ParseInt(cluster.Conf.ProvIops, 10, 64)
 	if err != nil {
+		return "200"
+	}
+	s10 := strconv.FormatInt(value, 10)
+	return s10
+}
+
+func (cluster *Cluster) GetConfigInnoDBMaxDirtyPagePct() string {
+	/*	mem, err := strconv.ParseInt(cluster.GetConfigInnoDBBPSize(), 10, 64)
+		if err != nil {
+			return "20"
+		}
+		//Compute the ration of memory compare to  a G
+		//	value := mem/1000
+
+	*/
+	var value int64
+	value = 40
+	s10 := strconv.FormatInt(value, 10)
+	return s10
+}
+
+func (cluster *Cluster) GetConfigInnoDBMaxDirtyPagePctLwm() string {
+	var value int64
+	value = 20
+	s10 := strconv.FormatInt(value, 10)
+	return s10
+}
+
+func (cluster *Cluster) GetConfigInnoDBLogFileSize() string {
+	//result in MB
+	var valuemin int64
+	var valuemax int64
+	valuemin = 1024
+	valuemax = 20 * 1024
+	value, err := strconv.ParseInt(cluster.GetConfigInnoDBBPSize(), 10, 64)
+	if err != nil {
+		return "1024"
+	}
+	value = value / 10
+	if value < valuemin {
+		value = valuemin
+	}
+	if value > valuemax {
+		value = valuemax
+	}
+	if cluster.HaveDBTag("smallredolog") {
+		return "128"
+	}
+	s10 := strconv.FormatInt(value, 10)
+	return s10
+}
+
+func (cluster *Cluster) GetConfigInnoDBLogBufferSize() string {
+	//result in MB
+	var value int64
+	value = 16
+	s10 := strconv.FormatInt(value, 10)
+	return s10
+}
+
+// GetConfigInnoDBBPInstances configure BP/8G of the ConfigMemory in Megabyte
+func (cluster *Cluster) GetConfigInnoDBBPInstances() string {
+	value, err := strconv.ParseInt(cluster.GetConfigInnoDBBPSize(), 10, 64)
+	if err != nil {
 		return "1"
 	}
+	value = value/8000 + 1
 	s10 := strconv.FormatInt(value, 10)
 	return s10
 }
