@@ -239,7 +239,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			}
 		}
 	} else {
-		log.Warning("No monitoring-save-config variable in default section")
+		log.Warning("No monitoring-save-config variable in default section config change lost on restart")
 	}
 
 	m := viper.AllKeys()
