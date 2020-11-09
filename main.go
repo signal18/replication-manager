@@ -383,6 +383,8 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.HaproxyBinaryPath, "haproxy-binary-path", "/usr/sbin/haproxy", "HaProxy binary location")
 		monitorCmd.Flags().StringVar(&conf.HaproxyReadBindIp, "haproxy-ip-read-bind", "0.0.0.0", "HaProxy input bind address for read")
 		monitorCmd.Flags().StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "HaProxy input bind address for write")
+		monitorCmd.Flags().StringVar(&conf.HaproxyAPIReadBackend, "haproxy-api-read-backend", "service_read", "HaProxy API backend name used for read")
+		monitorCmd.Flags().StringVar(&conf.HaproxyAPIWriteBackend, "haproxy-api-write-backend", "service_write", "HaProxy API backend name used for write")
 	}
 	monitorCmd.Flags().BoolVar(&conf.MyproxyOn, "myproxy", false, "Use Internal Proxy")
 	monitorCmd.Flags().IntVar(&conf.MyproxyPort, "myproxy-port", 4000, "Internal proxy read/write port")

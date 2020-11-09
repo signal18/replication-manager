@@ -234,6 +234,8 @@ func (proxy *Proxy) GetEnv() map[string]string {
 		"%%ENV:SVC_NAME%%":                             proxy.Name,
 		"%%ENV:SERVERS_HAPROXY_WRITE%%":                proxy.GetConfigProxyModule("%%ENV:SERVERS_HAPROXY_WRITE%%"),
 		"%%ENV:SERVERS_HAPROXY_READ%%":                 proxy.GetConfigProxyModule("%%ENV:SERVERS_HAPROXY_READ%%"),
+		"%%ENV:SERVERS_HAPROXY_WRITE_BACKEND%%":        proxy.ClusterGroup.Conf.HaproxyAPIWriteBackend,
+		"%%ENV:SERVERS_HAPROXY_READ_BACKEND%%":         proxy.ClusterGroup.Conf.HaproxyAPIReadBackend,
 		"%%ENV:SERVERS_PROXYSQL%%":                     proxy.GetConfigProxyModule("%%ENV:SERVERS_PROXYSQL%%"),
 		"%%ENV:SERVERS%%":                              proxy.GetConfigProxyModule("%%ENV:SERVERS%%"),
 		"%%ENV:SERVERS_LIST%%":                         proxy.GetConfigProxyModule("%%ENV:SERVERS_LIST%%"),
