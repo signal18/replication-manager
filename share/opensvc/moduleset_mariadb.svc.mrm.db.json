@@ -1802,6 +1802,25 @@
             "id": 379,
             "filters": [],
             "fset_name": "mariadb.disk.relayspacelimit"
+        },
+        {
+            "fset_stats": false,
+            "id": 385,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "noadaptatiiveflush",
+                        "f_table": "v_tags",
+                        "id": 343
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.disk.noadaptatiiveflush"
         }
     ],
     "rulesets": [
@@ -5810,7 +5829,7 @@
             ]
         },
         {
-            "fset_name": null,
+            "fset_name": "mariadb.disk.noadaptatiiveflush",
             "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noadaptativeflush",
             "variables": [
                 {
