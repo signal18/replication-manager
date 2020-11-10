@@ -1499,7 +1499,7 @@ function (
         }
         $scope.menuOpened = false;
 
-        $scope.selectedCluster = undefined;
+    //    $scope.selectedCluster = undefined;
         $mdSidenav('right').close();
       };
 
