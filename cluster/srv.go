@@ -669,7 +669,7 @@ func (server *ServerMonitor) Refresh() error {
 	if !server.DBVersion.IsPPostgreSQL() {
 		server.BinlogDumpThreads, logs, err = dbhelper.GetBinlogDumpThreads(server.Conn, server.DBVersion)
 		if err != nil {
-			if strings.Contains(err.Error(), "Errcode: 28 ") {
+			if strings.Contains(err.Error(), "Errcode: 28 ") || strings.Contains(err.Error(), "errno: 28 ") {
 				// No space left on device
 				server.IsFull = true
 				server.ClusterGroup.SetState("WARN0100", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0100"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})
