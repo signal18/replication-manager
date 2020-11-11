@@ -667,6 +667,11 @@ func (server *ServerMonitor) Refresh() error {
 
 	if !server.DBVersion.IsPPostgreSQL() {
 		server.BinlogDumpThreads, logs, err = dbhelper.GetBinlogDumpThreads(server.Conn, server.DBVersion)
+		if strings.Contains(err.Error(), "Errcode: 28 ") {
+			// No space left on device
+			server.ClusterGroup.SetState("ERR00085", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00085"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})
+			return err
+		}
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get binoDumpthreads status %s %s", server.URL, err)
 		if err != nil {
 			server.ClusterGroup.SetState("ERR00014", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})
