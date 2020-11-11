@@ -92,7 +92,6 @@ var clusterError = map[string]string{
 	"ERR00082": "Error fetch agents forom orchestrator %s",
 	"ERR00083": "Different cluster uuid found on %s:%s %s:%s",
 	"ERR00084": "Cluster have no master when slave %s was started",
-	"ERR00085": "No space left on device pn %s",
 	"WARN0022": "Rejoining standalone server %s to master %s",
 	"WARN0023": "Number of failed master ping has been reached",
 	"WARN0045": "Provision task is in queue",
@@ -149,4 +148,5 @@ var clusterError = map[string]string{
 	"WARN0097": "Stop database server via job request %s",
 	"WARN0098": "ProxySQL could not load global variables from runtime (%s)",
 	"WARN0099": "MariaDB version as replication issue https://jira.mariadb.org/browse/MDEV-20821",
+	"WARN0100": "No space left on device pn %s",
 }

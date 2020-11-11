@@ -43,6 +43,7 @@ type Config struct {
 	TunnelKeyPath                             string `mapstructure:"monitoring-tunnel-key-path" toml:"monitoring-tunnel-key-path" json:"monitoringTunnelKeyPath"`
 	MonitorAddress                            string `mapstructure:"monitoring-address" toml:"monitoring-address" json:"monitoringAddress"`
 	MonitorWriteHeartbeat                     bool   `mapstructure:"monitoring-write-heartbeat" toml:"monitoring-write-heartbeat" json:"monitoringWriteHeartbeat"`
+	MonitorPause                              bool   `mapstructure:"monitoring-pause" toml:"monitoring-pause" json:"monitoringPause"`
 	MonitorWriteHeartbeatCredential           string `mapstructure:"monitoring-write-heartbeat-credential" toml:"monitoring-write-heartbeat-credential" json:"monitoringWriteHeartbeatCredential"`
 	MonitorVariableDiff                       bool   `mapstructure:"monitoring-variable-diff" toml:"monitoring-variable-diff" json:"monitoringVariableDiff"`
 	MonitorSchemaChange                       bool   `mapstructure:"monitoring-schema-change" toml:"monitoring-schema-change" json:"monitoringSchemaChange"`

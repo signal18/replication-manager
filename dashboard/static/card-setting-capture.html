@@ -6,9 +6,20 @@
       <td>
               Monitoring Save Config
               <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringSaveConfig"
-                         ng-click="switchsettings('monitoring-save-config')" aria-label="Monitoring save cpfig">
+                         ng-click="switchsettings('monitoring-save-config')" aria-label="Monitoring save config">
                   <span ng-if="selectedCluster.config.monitoringSaveConfig" class="label label-primary">On</span><span
                       ng-if="!selectedCluster.config.monitoringSaveConfig" class="label label-warning">Off</span>
+          </td>
+          </md-switch>
+          </td>
+    </tr>
+    <tr>
+      <td>
+              Monitoring Pause
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringPause"
+                         ng-click="switchsettings('monitoring-pause')" aria-label="Monitoring Pause">
+                  <span ng-if="selectedCluster.config.monitoringPause" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.monitoringPause" class="label label-warning">Off</span>
           </td>
           </md-switch>
           </td>

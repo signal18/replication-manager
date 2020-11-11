@@ -111,6 +111,7 @@ type ServerMonitor struct {
 	IsMaintenance               bool                         `json:"isMaintenance"`
 	IsCompute                   bool                         `json:"isCompute"` //Used to idenfied spider compute nide
 	IsDelayed                   bool                         `json:"isDelayed"`
+	IsFull                      bool                         `json:"isFull"`
 	Ignored                     bool                         `json:"ignored"`
 	Prefered                    bool                         `json:"prefered"`
 	PreferedBackup              bool                         `json:"preferedBackup"`
@@ -670,10 +671,12 @@ func (server *ServerMonitor) Refresh() error {
 		if err != nil {
 			if strings.Contains(err.Error(), "Errcode: 28 ") {
 				// No space left on device
-				server.ClusterGroup.SetState("ERR00085", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00085"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})
-				return err
+				server.IsFull = true
+				server.ClusterGroup.SetState("WARN0100", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0100"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})
+				return nil
 			}
 		}
+		server.IsFull = false
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get binoDumpthreads status %s %s", server.URL, err)
 		if err != nil {
 			server.ClusterGroup.SetState("ERR00014", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})

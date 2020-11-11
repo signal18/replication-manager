@@ -384,105 +384,107 @@ func (cluster *Cluster) Run() {
 	interval := time.Second
 
 	for cluster.exit == false {
-
-		cluster.ServerIdList = cluster.GetDBServerIdList()
-		cluster.ProxyIdList = cluster.GetProxyServerIdList()
-		cluster.Uptime = cluster.GetStateMachine().GetUptime()
-		cluster.UptimeFailable = cluster.GetStateMachine().GetUptimeFailable()
-		cluster.UptimeSemiSync = cluster.GetStateMachine().GetUptimeSemiSync()
-		cluster.IsNotMonitoring = cluster.sme.IsInFailover()
-		cluster.IsCapturing = cluster.IsInCaptureMode()
-		cluster.MonitorSpin = fmt.Sprintf("%d ", cluster.GetStateMachine().GetHeartbeats())
-		select {
-		case sig := <-cluster.switchoverChan:
-			if sig {
-				if cluster.Status == "A" {
-					cluster.LogPrintf(LvlInfo, "Signaling Switchover...")
-					cluster.MasterFailover(false)
-					cluster.switchoverCond.Send <- true
-				} else {
-					cluster.LogPrintf(LvlInfo, "Not in active mode, cancel switchover %s", cluster.Status)
-				}
-			}
-
-		default:
-			if cluster.Conf.LogLevel > 2 {
-				cluster.LogPrintf(LvlDbg, "Monitoring server loop")
-				for k, v := range cluster.Servers {
-					cluster.LogPrintf(LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
-				}
-				if cluster.master != nil {
-					cluster.LogPrintf(LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.master.State, cluster.master.PrevState)
-					for k, v := range cluster.slaves {
-						cluster.LogPrintf(LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+		if !cluster.Conf.MonitorPause {
+			cluster.ServerIdList = cluster.GetDBServerIdList()
+			cluster.ProxyIdList = cluster.GetProxyServerIdList()
+			cluster.Uptime = cluster.GetStateMachine().GetUptime()
+			cluster.UptimeFailable = cluster.GetStateMachine().GetUptimeFailable()
+			cluster.UptimeSemiSync = cluster.GetStateMachine().GetUptimeSemiSync()
+			cluster.IsNotMonitoring = cluster.sme.IsInFailover()
+			cluster.IsCapturing = cluster.IsInCaptureMode()
+			cluster.MonitorSpin = fmt.Sprintf("%d ", cluster.GetStateMachine().GetHeartbeats())
+			select {
+			case sig := <-cluster.switchoverChan:
+				if sig {
+					if cluster.Status == "A" {
+						cluster.LogPrintf(LvlInfo, "Signaling Switchover...")
+						cluster.MasterFailover(false)
+						cluster.switchoverCond.Send <- true
+					} else {
+						cluster.LogPrintf(LvlInfo, "Not in active mode, cancel switchover %s", cluster.Status)
 					}
 				}
-			}
-			wg := new(sync.WaitGroup)
-			wg.Add(1)
-			go cluster.TopologyDiscover(wg)
-			wg.Add(1)
-			go cluster.Heartbeat(wg)
-			// Heartbeat switchover or failover controller runs only on active repman
 
-			if cluster.runOnceAfterTopology {
-
-				if cluster.GetMaster() != nil {
-					cluster.initProxies()
-					cluster.ResticFetchRepo()
-					cluster.runOnceAfterTopology = false
+			default:
+				if cluster.Conf.LogLevel > 2 {
+					cluster.LogPrintf(LvlDbg, "Monitoring server loop")
+					for k, v := range cluster.Servers {
+						cluster.LogPrintf(LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+					}
+					if cluster.master != nil {
+						cluster.LogPrintf(LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.master.State, cluster.master.PrevState)
+						for k, v := range cluster.slaves {
+							cluster.LogPrintf(LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+						}
+					}
 				}
-			} else {
+				wg := new(sync.WaitGroup)
 				wg.Add(1)
-				go cluster.refreshProxies(wg)
-				if cluster.sme.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.sme.IsInSchemaMonitor() {
-					go cluster.MonitorSchema()
-				}
-				if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
-					cluster.InjectProxiesTraffic()
-				}
-				if cluster.sme.GetHeartbeats()%30 == 0 {
-					cluster.MonitorQueryRules()
-					cluster.MonitorVariablesDiff()
-					cluster.ResticFetchRepo()
+				go cluster.TopologyDiscover(wg)
+				wg.Add(1)
+				go cluster.Heartbeat(wg)
+				// Heartbeat switchover or failover controller runs only on active repman
 
+				if cluster.runOnceAfterTopology {
+
+					if cluster.GetMaster() != nil {
+						cluster.initProxies()
+						cluster.ResticFetchRepo()
+						cluster.runOnceAfterTopology = false
+					}
 				} else {
-					cluster.sme.PreserveState("WARN0093")
-					cluster.sme.PreserveState("WARN0084")
-					cluster.sme.PreserveState("WARN0095")
+					wg.Add(1)
+					go cluster.refreshProxies(wg)
+					if cluster.sme.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.sme.IsInSchemaMonitor() {
+						go cluster.MonitorSchema()
+					}
+					if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
+						cluster.InjectProxiesTraffic()
+					}
+					if cluster.sme.GetHeartbeats()%30 == 0 {
+						cluster.MonitorQueryRules()
+						cluster.MonitorVariablesDiff()
+						cluster.ResticFetchRepo()
+
+					} else {
+						cluster.sme.PreserveState("WARN0093")
+						cluster.sme.PreserveState("WARN0084")
+						cluster.sme.PreserveState("WARN0095")
+					}
+					if cluster.sme.GetHeartbeats()%36000 == 0 {
+						cluster.ResticPurgeRepo()
+					} else {
+						cluster.sme.PreserveState("WARN0094")
+					}
 				}
-				if cluster.sme.GetHeartbeats()%36000 == 0 {
-					cluster.ResticPurgeRepo()
-				} else {
-					cluster.sme.PreserveState("WARN0094")
+
+				wg.Wait()
+
+				cluster.IsFailable = cluster.GetStatus()
+				// CheckFailed trigger failover code if passing all false positiv and constraints
+				cluster.CheckFailed()
+
+				cluster.Topology = cluster.GetTopology()
+				cluster.StateProcessing()
+				cluster.IsProvision = cluster.IsProvisioned()
+				cluster.IsNeedProxiesRestart = cluster.HasRequestProxiesRestart()
+				cluster.IsNeedProxiesReprov = cluster.HasRequestProxiesReprov()
+				cluster.IsNeedDatabasesRollingRestart = cluster.HasRequestDBRollingRestart()
+				cluster.IsNeedDatabasesRollingReprov = cluster.HasRequestDBRollingReprov()
+				cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
+				cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()
+				cluster.WaitingRejoin = cluster.rejoinCond.Len()
+				cluster.WaitingFailover = cluster.failoverCond.Len()
+				cluster.WaitingSwitchover = cluster.switchoverCond.Len()
+				if len(cluster.Servers) > 0 {
+					cluster.QPS = cluster.GetQps()
+					cluster.Connections = cluster.GetConnections()
 				}
+
 			}
-
-			wg.Wait()
-
-			cluster.IsFailable = cluster.GetStatus()
-			// CheckFailed trigger failover code if passing all false positiv and constraints
-			cluster.CheckFailed()
-
-			cluster.Topology = cluster.GetTopology()
-			cluster.StateProcessing()
-			cluster.IsProvision = cluster.IsProvisioned()
-			cluster.IsNeedProxiesRestart = cluster.HasRequestProxiesRestart()
-			cluster.IsNeedProxiesReprov = cluster.HasRequestProxiesReprov()
-			cluster.IsNeedDatabasesRollingRestart = cluster.HasRequestDBRollingRestart()
-			cluster.IsNeedDatabasesRollingReprov = cluster.HasRequestDBRollingReprov()
-			cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
-			cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()
-			cluster.WaitingRejoin = cluster.rejoinCond.Len()
-			cluster.WaitingFailover = cluster.failoverCond.Len()
-			cluster.WaitingSwitchover = cluster.switchoverCond.Len()
-			if len(cluster.Servers) > 0 {
-				cluster.QPS = cluster.GetQps()
-				cluster.Connections = cluster.GetConnections()
-			}
-			time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
-
 		}
+		time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
+
 	}
 }
 

@@ -1029,6 +1029,8 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchBackupRestic()
 		case "backup-binlogs":
 			mycluster.SwitchBackupBinlogs()
+		case "monitoring-pause":
+			mycluster.SwitchMonitoringPause()
 		case "monitoring-save-config":
 			mycluster.SwitchMonitoringSaveConfig()
 		case "monitoring-queries":
