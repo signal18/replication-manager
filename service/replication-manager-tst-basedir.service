@@ -5,5 +5,10 @@ Description=MariaDB replication-manager test including provisioning of local db 
 Type=simple
 ExecStart=/usr/local/replication-manager/bin/replication-manager-tst monitor
 
+Restart=on-failure
+
+# Configures the time to wait before service is stopped forcefully.
+TimeoutStopSec=10
+
 [Install]
 WantedBy=multi-user.target

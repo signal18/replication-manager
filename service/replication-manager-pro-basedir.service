@@ -5,5 +5,10 @@ Description=MariaDB replication-manager pro including provisioning and testing
 Type=simple
 ExecStart=/usr/local/replication-manager/bin/replication-manager-pro monitor
 
+Restart=on-failure
+
+# Configures the time to wait before service is stopped forcefully.
+TimeoutStopSec=10
+
 [Install]
 WantedBy=multi-user.target

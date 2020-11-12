@@ -17,6 +17,7 @@
      <tr valign="middle">
         <th   ng-click="openCluster(cluster.name)" colspan=2><img ng-click="openCluster(cluster.name)" width=32px src="static/img/database-Schema.png"/>   {{cluster.name}}</th>
      </tr>
+      <tr><td>Is Monitored</td><td><i ng-if="!cluster.config.monitoringPause"  class="fas fa-lightbulb" style="color:green"/><i  ng-if="cluster.config.monitoringPause"  class="fas fa-lightbulb" style="color:red"/></td>    </tr>
      <tr> <td>Topology</td><td>{{cluster.topology}}</td>    </tr>
      <tr><td>Orchestrator</td><td><span class="label label-info">{{cluster.config.provOrchestrator}}</span></td>    </tr>
 
