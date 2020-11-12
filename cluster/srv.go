@@ -808,7 +808,19 @@ func (server *ServerMonitor) Refresh() error {
 	if !server.DBVersion.IsPPostgreSQL() {
 		if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 && !server.DBVersion.IsPPostgreSQL() {
 			server.Plugins, logs, err = dbhelper.GetPlugins(server.Conn, server.DBVersion)
-			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get plugins  %s %s", server.URL, err)
+			server.BinlogDumpThreads, logs, err = dbhelper.GetBinlogDumpThreads(server.Conn, server.DBVersion)
+			if err != nil {
+				if strings.Contains(err.Error(), "Errcode: 28 ") || strings.Contains(err.Error(), "errno: 28 ") {
+					// No space left on device
+					server.IsFull = true
+					server.ClusterGroup.SetState("WARN0100", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0100"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})
+					return nil
+				} else {
+					server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get plugins  %s %s", server.URL, err)
+				}
+			}
+			server.IsFull = false
+
 			server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
 			server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")
 			server.HaveDiskMonitor = server.HasInstallPlugin("DISK")

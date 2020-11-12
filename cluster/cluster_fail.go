@@ -672,6 +672,9 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 			cluster.sme.AddState("ERR00037", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
+		if sl.IsFull {
+			continue
+		}
 		//Need comment//
 		if sl.IsRelay {
 			cluster.sme.AddState("ERR00036", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
@@ -796,6 +799,9 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		//Need comment//
 		if sl.IsRelay {
 			cluster.sme.AddState("ERR00036", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+			continue
+		}
+		if sl.IsFull {
 			continue
 		}
 		if cluster.Conf.MultiMaster == true && sl.State == stateMaster {
