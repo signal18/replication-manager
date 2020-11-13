@@ -321,9 +321,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						}
 
 					}
-					if !sl.HasBinlog() {
-						cluster.SetState("ERR00013", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
-					}
+
 				}
 				if sl.GetReplicationDelay() <= cluster.Conf.FailMaxDelay && sl.IsSQLThreadRunning() {
 					cluster.master.RplMasterStatus = true
