@@ -275,11 +275,11 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SetIgnored(cluster.IsInIgnoredHosts(server))
 	server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
-	if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
+	/*if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
 		server.Conn, err = sqlx.Open("postgres", server.DSN)
 	} else {
 		server.Conn, err = sqlx.Open("mysql", server.DSN)
-	}
+	}*/
 	return server, err
 }
 

@@ -244,7 +244,6 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.termlength = termlength
 	cluster.Name = cfgGroup
 	cluster.WorkingDir = conf.WorkingDir + "/" + cluster.Name
-
 	cluster.runUUID = runUUID
 	cluster.repmgrHostname = repmgrHostname
 	cluster.repmgrVersion = repmgrVersion
@@ -261,17 +260,13 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.FSType = conf.GetFSType()
 	cluster.DiskType = conf.GetDiskType()
 	cluster.VMType = conf.GetVMType()
-	//	prx_config_ressources,prx_config_flags
-
 	cluster.Grants = conf.GetGrantType()
-
 	cluster.QueryRules = make(map[uint32]config.QueryRule)
 	cluster.Schedule = make(map[string]cron.Entry)
 	cluster.JobResults = make(map[string]*JobResult)
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.sme = new(state.StateMachine)
 	cluster.sme.Init()
-
 	cluster.Conf = conf
 	if cluster.Conf.Interactive {
 		cluster.LogPrintf(LvlInfo, "Failover in interactive mode")
@@ -318,7 +313,6 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.LoadAPIUsers()
 	// createKeys do nothing yet
 	cluster.createKeys()
-	cluster.initScheduler()
 	cluster.GetPersitentState()
 
 	cluster.newServerList()
@@ -338,7 +332,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		cluster.DropDBTag("threadpool")
 		cluster.AddDBTag("pkg")
 	}
-	cluster.initOrchetratorNodes()
+
 	return nil
 }
 func (cluster *Cluster) initOrchetratorNodes() {
@@ -380,7 +374,8 @@ func (cluster *Cluster) initScheduler() {
 }
 
 func (cluster *Cluster) Run() {
-
+	cluster.initScheduler()
+	cluster.initOrchetratorNodes()
 	interval := time.Second
 
 	for cluster.exit == false {
