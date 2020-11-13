@@ -209,7 +209,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.CrcTable = crc64.MakeTable(crc64.ECMA)
 	server.ClusterGroup = cluster
 	server.DBVersion = dbhelper.NewMySQLVersion("Unknowed-0.0.0", "")
-	server.CheckVersion()
 	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
 	server.ClusterGroup = cluster
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
@@ -536,6 +535,7 @@ func (server *ServerMonitor) Refresh() error {
 	if err != nil {
 		return err
 	}
+	server.CheckVersion()
 
 	if server.ClusterGroup.Conf.MxsBinlogOn {
 		mxsversion, _ := dbhelper.GetMaxscaleVersion(server.Conn)
