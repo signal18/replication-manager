@@ -874,7 +874,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string) error {
 		return errors.New("Copy binlog not enable")
 	}
 
-	cmdrun := exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory()+"/", binlogfile)
+	cmdrun := exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory()+"/"+binlogfile)
 	server.ClusterGroup.LogPrintf(LvlInfo, "%s", strings.Replace(cmdrun.String(), server.ClusterGroup.dbPass, "XXXX", 1))
 
 	var outrun bytes.Buffer
