@@ -802,7 +802,10 @@ func (repman *ReplicationManager) InitServicePlans() error {
 	if repman.Conf.ProvServicePlanRegistry == "" {
 		return nil
 	}
-	response, err := http.Get(repman.Conf.ProvServicePlanRegistry)
+	client := http.Client{
+		Timeout: 3 * time.Second,
+	}
+	response, err := client.Get(repman.Conf.ProvServicePlanRegistry)
 	if err != nil {
 		log.Errorf("GetServicePlans: %s", err)
 		return err
