@@ -32,6 +32,22 @@ func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {
 	return server.FullProcessList
 }
 
+func (server *ServerMonitor) GetProcessListReplicationLongQuery() string {
+	if !server.ClusterGroup.Conf.MonitorProcessList {
+		return ""
+	}
+	for _, q := range server.FullProcessList {
+		if strings.HasPrefix(q.Command, "Slave_worker") && q.State.Valid && !strings.HasPrefix(q.State.String, "Waiting") {
+			if q.Time.Valid && server.ClusterGroup.Conf.FailMaxDelay != -1 && q.Time.Float64 > float64(server.ClusterGroup.Conf.FailMaxDelay) {
+				if q.Info.Valid {
+					return q.Info.String
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func (server *ServerMonitor) GetSchemas() ([]string, string, error) {
 	return dbhelper.GetSchemas(server.Conn)
 }
