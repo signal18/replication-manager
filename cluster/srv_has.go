@@ -27,6 +27,34 @@ func (server *ServerMonitor) IsInDelayedHost() bool {
 	return false
 }
 
+func (server *ServerMonitor) IsMysqlDumpUValidOption(option string) bool {
+	if strings.Contains(strings.ToLower(option), "system") && strings.Contains(strings.ToLower(option), "all") {
+		if server.IsMySQL() {
+			return false
+		}
+		if server.IsMariaDB() {
+			if server.DBVersion.Major == 10 && server.DBVersion.Minor == 2 && server.DBVersion.Release >= 36 {
+				return true
+			}
+			if server.DBVersion.Major == 10 && server.DBVersion.Minor == 3 && server.DBVersion.Release >= 27 {
+				return true
+			}
+			if server.DBVersion.Major == 10 && server.DBVersion.Minor == 4 && server.DBVersion.Release >= 17 {
+				return true
+			}
+			if server.DBVersion.Major == 10 && server.DBVersion.Minor == 5 && server.DBVersion.Release >= 8 {
+				return true
+			}
+			if server.DBVersion.Major > 10 || (server.DBVersion.Major == 10 && server.DBVersion.Minor > 5) {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+	//BackupMysqldumpOptions
+}
+
 func (server *ServerMonitor) IsSlaveOfReplicationSource(name string) bool {
 	if server.Replications != nil {
 		for _, ss := range server.Replications {

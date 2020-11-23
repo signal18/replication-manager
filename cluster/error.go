@@ -89,7 +89,7 @@ var clusterError = map[string]string{
 	"ERR00079": "Disk %s usage high on %s",
 	"ERR00080": "Connection use old TLS keys on %s",
 	"ERR00081": "Connection use no TLS keys on %s",
-	"ERR00082": "Error fetch agents forom orchestrator %s",
+	"ERR00082": "Could not get agents from orchestrator %s",
 	"ERR00083": "Different cluster uuid found on %s:%s %s:%s",
 	"ERR00084": "Cluster have no master when slave %s was started",
 	"WARN0022": "Rejoining standalone server %s to master %s",
