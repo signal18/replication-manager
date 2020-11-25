@@ -59,14 +59,14 @@ func (cluster *Cluster) GetMysqlclientPath() string {
 
 func (cluster *Cluster) GetDomain() string {
 	if cluster.Conf.ProvNetCNI {
-		return "." + cluster.Name + ".svc." + cluster.Conf.ProvNetCNICluster
+		return "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 	}
 	return ""
 }
 
 func (cluster *Cluster) GetDomainHeadCluster() string {
 	if cluster.Conf.ProvNetCNI {
-		return "." + cluster.Conf.ClusterHead + ".svc." + cluster.Conf.ProvNetCNICluster
+		return "." + cluster.Conf.ClusterHead + ".svc." + cluster.Conf.ProvOrchestratorCluster
 	}
 	return ""
 }

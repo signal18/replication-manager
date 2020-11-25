@@ -1100,6 +1100,8 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.SetServicePlan(vars["settingValue"])
 		case "prov-net-cni-cluster":
 			mycluster.SetProvNetCniCluster(vars["settingValue"])
+		case "prov-orchestrator-cluster":
+			mycluster.SetProvOrchestratorCluster(vars["settingValue"])
 		case "prov-db-disk-size":
 			mycluster.SetDBDiskSize(vars["settingValue"])
 		case "prov-db-cpu-cores":

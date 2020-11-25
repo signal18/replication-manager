@@ -536,6 +536,7 @@ func init() {
 	if WithOpenSVC == "ON" {
 		monitorCmd.Flags().StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "opensvc,kube,onpremise,local", "seprated list of orchestrator ")
 		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestrator", "opensvc", "onpremise|opensvc|kube|slapos|local")
+		monitorCmd.Flags().StringVar(&conf.ProvOrchestratorCluster, "prov-orchestrator-cluster", "local", "The orchestrated cluster used in FQDNS")
 	} else {
 		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestrator", "onpremise", "onpremise|opensvc|kube|slapos|local")
 		monitorCmd.Flags().StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "onpremise,local", "seprated list of orchestrator ")

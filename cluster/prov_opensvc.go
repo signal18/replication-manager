@@ -173,7 +173,7 @@ tags = sm sm.container sm.container.pod` + pod + ` pod` + pod + `
 	if collector.ProvNetCNI {
 		net = net + `type = cni
 netns = container#00` + pod + `
-network = repman
+network =  ` + cluster.Conf.ProvNetCNICluster + `
 `
 		// if proxy
 		// expose = port/tcp

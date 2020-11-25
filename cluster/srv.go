@@ -214,9 +214,9 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	if cluster.Conf.ProvNetCNI {
 		/*	if server.IsCompute && cluster.Conf.ClusterHead != "" {
-				url = server.Name + "." + cluster.Conf.ClusterHead + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
+				url = server.Name + "." + cluster.Conf.ClusterHead + ".svc." + server.ClusterGroup.Conf.ProvOrchestratorCluster + ":3306"
 			} else {
-				url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvNetCNICluster + ":3306"
+				url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvOrchestratorCluster + ":3306"
 			}*/
 		url = server.Name + server.Domain + ":3306"
 	}

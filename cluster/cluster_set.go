@@ -762,6 +762,12 @@ func (cluster *Cluster) SetProvNetCniCluster(value string) error {
 	return nil
 }
 
+func (cluster *Cluster) SetProvOrchestratorCluster(value string) error {
+	cluster.Conf.ProvOrchestratorCluster = value
+	cluster.SetProxiesReprovCookie()
+	return nil
+}
+
 func (cluster *Cluster) SetProvDbAgents(value string) error {
 	cluster.Conf.ProvAgents = value
 	return nil
