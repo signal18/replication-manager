@@ -10,6 +10,7 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -79,6 +80,10 @@ func (server *ServerMonitor) SetLongQueryTime(queryTime string) (string, error) 
 }
 
 func (server *ServerMonitor) SetReadWrite() error {
+	if server.ClusterGroup.Conf.Arbitration && server.ClusterGroup.IsFailedArbitrator {
+		server.ClusterGroup.LogPrintf(LvlErr, "Cancel ReadWrite on %s caused by arbitration failed ", server.URL)
+		return errors.New("Arbitration is Failed")
+	}
 	if server.IsReadOnly() {
 		logs, err := dbhelper.SetReadOnly(server.Conn, false)
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set Read Write on %s : %s", server.URL, err)

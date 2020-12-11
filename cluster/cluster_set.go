@@ -601,7 +601,7 @@ func (cluster *Cluster) SetState(key string, s state.State) {
 }
 
 func (cl *Cluster) SetArbitratorReport() error {
-	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker) * time.Second * 4)
+	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
 
 	cl.IsLostMajority = cl.LostMajority()
 	// SplitBrain
@@ -624,7 +624,7 @@ func (cl *Cluster) SetArbitratorReport() error {
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: timeout}
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cl.Conf.ArbitrationReadTimout)*time.Millisecond)
 	defer cancel()
 	resp, err := client.Do(req.WithContext(ctx))
 	if err != nil {

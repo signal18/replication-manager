@@ -981,6 +981,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	stderrIn, _ := dumpCmd.StderrPipe()
 	// do not quote parameters
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.dbUser, `--password=`+cluster.dbPass, `--batch`, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`)
+
 	stderrOut, _ := clientCmd.StderrPipe()
 
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
