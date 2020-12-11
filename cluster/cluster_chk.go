@@ -39,16 +39,19 @@ func (cluster *Cluster) CheckFailed() {
 									if cluster.isAutomaticFailover() {
 										if cluster.isMasterFailed() {
 											if cluster.isNotFirstSlave() {
+												if cluster.isArbitratorAlive() {
 
-												// False Positive
-												if cluster.isExternalOk() == false {
-													if cluster.isOneSlaveHeartbeatIncreasing() == false {
-														if cluster.isMaxscaleSupectRunning() == false {
-															cluster.MasterFailover(true)
-															cluster.failoverCond.Send <- true
+													// False Positive
+													if cluster.isExternalOk() == false {
+														if cluster.isOneSlaveHeartbeatIncreasing() == false {
+															if cluster.isMaxscaleSupectRunning() == false {
+																cluster.MasterFailover(true)
+																cluster.failoverCond.Send <- true
+															}
 														}
 													}
 												}
+
 											}
 										}
 									}
@@ -335,6 +338,17 @@ func (cluster *Cluster) isExternalOk() bool {
 		return true
 	}
 	return false
+}
+
+func (cluster *Cluster) isArbitratorAlive() bool {
+	if !cluster.Conf.Arbitration {
+		return true
+	}
+	if cluster.IsFailedArbitrator {
+		cluster.sme.AddState("ERR00055", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00055"], cluster.Conf.ArbitrationSasHosts), ErrFrom: "CHECK"})
+		return false
+	}
+	return true
 }
 
 func (cluster *Cluster) isNotFirstSlave() bool {

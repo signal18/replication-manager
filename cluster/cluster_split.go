@@ -53,7 +53,8 @@ func (cluster *Cluster) Heartbeat(wg *sync.WaitGroup) {
 }
 
 func (cl *Cluster) ArbitratorElection() error {
-	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker) * time.Second * 4)
+	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
+
 	url := "http://" + cl.Conf.ArbitrationSasHosts + "/arbitrator"
 	if cl.IsSplitBrainBck != cl.IsSplitBrain {
 		cl.LogPrintf("INFO", "Arbitrator: External check requested")
