@@ -1305,6 +1305,25 @@
         },
         {
             "fset_stats": false,
+            "id": 351,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "subquerycache",
+                        "f_table": "v_tags",
+                        "id": 311
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.subquerycache"
+        },
+        {
+            "fset_stats": false,
             "id": 352,
             "filters": [
                 {
@@ -1840,6 +1859,63 @@
                 }
             ],
             "fset_name": "mariadb.optimizer.histograms"
+        },
+        {
+            "fset_stats": false,
+            "id": 387,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "readdirty",
+                        "f_table": "v_tags",
+                        "id": 345
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.readdirty"
+        },
+        {
+            "fset_stats": false,
+            "id": 388,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "readsnapshot",
+                        "f_table": "v_tags",
+                        "id": 346
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.readsnapshot"
+        },
+        {
+            "fset_stats": false,
+            "id": 389,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "readserialized",
+                        "f_table": "v_tags",
+                        "id": 347
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.readserialized"
         }
     ],
     "rulesets": [
@@ -3148,8 +3224,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_opt_readcommitted.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ntransaction-isolation = READ-COMMITTED \"}",
-                    "var_updated": "2020-05-14 19:06:06",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_opt_readcommitted.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_documentation: https://mariadb.com/kb/en/set-transaction/\\n# mariadb_command: SET GLOBAL TRANSACTION ISOLATION LEVEL READ COMMITTED;\\n# mysql_command: SET GLOBAL TRANSACTION ISOLATION LEVEL READ COMMITTED;\\n\\n[mysqld]\\ntransaction-isolation = READ-COMMITTED \"}",
+                    "var_updated": "2020-12-08 10:28:48",
                     "var_name": "db_cnf_opt_with_readcommitted",
                     "id": 6175
                 },
@@ -3344,109 +3420,136 @@
                     "var_updated": "2020-11-25 09:32:08",
                     "var_name": "db_cnf_opt_with_histograms",
                     "id": 6229
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_opt_readsnapshot.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_documentation: https://mariadb.com/kb/en/set-transaction/\\n# mariadb_command: SET GLOBAL TRANSACTION ISOLATION LEVEL REPEATABLE READ;\\n# mysql_command: SET GLOBAL TRANSACTION ISOLATION LEVEL REPEATABLE READ;\\n\\n[mysqld]\\ntransaction-isolation = REPEATABLE-READ\"}",
+                    "var_updated": "2020-12-08 10:33:56",
+                    "var_name": "db_cnf_opt_with_readsnapshot",
+                    "id": 6231
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_opt_readserialized.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_documentation: https://mariadb.com/kb/en/set-transaction/\\n# mariadb_command: SET GLOBAL TRANSACTION ISOLATION LEVEL SERIALIZABLE;\\n# mysql_command: SET GLOBAL TRANSACTION ISOLATION LEVEL SERIALIZABLE;\\n\\n[mysqld]\\ntransaction-isolation = SERIALIZABLE\"}",
+                    "var_updated": "2020-12-08 10:32:46",
+                    "var_name": "db_cnf_opt_with_readserialized",
+                    "id": 6232
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_opt_readdirty.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_documentation: https://mariadb.com/kb/en/set-transaction/\\n# mariadb_command: SET GLOBAL TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;\\n# mysql_command: SET GLOBAL TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;\\n\\n[mysqld]\\ntransaction-isolation = READ-UNCOMMITTED\"}",
+                    "var_updated": "2020-12-08 10:28:58",
+                    "var_name": "db_cnf_opt_with_readdirty",
+                    "id": 6233
                 }
             ],
             "ruleset_public": false,
             "ruleset_type": "explicit",
             "rulesets": [
-                "mariadb.svc.mrm.db.cnf.generic.withrepsemisync",
+                "mariadb.svc.mrm.db.cnf.generic.disk_withinnodbpagecompression",
+                "mariadb.svc.mrm.db.cnf.generic.withlogaudit",
                 "mariadb.svc.mrm.db.cnf.generic.engineinnodb",
-                "mariadb.svc.mrm.db.cnf.generic.withthreadpool",
-                "mariadb.svc.mrm.db.cnf.generic.noquerycache",
-                "mariadb.svc.mrm.db.cnf.generic.withinnodbpagecompression",
-                "mariadb.svc.mrm.db.cnf.generic.enginespider",
-                "mariadb.svc.mrm.db.cnf.generic.enginetokudb",
-                "mariadb.svc.mrm.db.cnf.generic.enginerocksdb",
+                "mariadb.svc.mrm.db.cnf.generic.net_noquerycache",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withsemisync",
                 "mariadb.svc.mrm.db.cnf.generic.withloggeneral",
                 "mariadb.svc.mrm.db.cnf.generic.withlogmetadatalock",
-                "mariadb.svc.mrm.db.cnf.generic.withlogaudit",
                 "mariadb.svc.mrm.db.cnf.generic.withlogsqlerror",
-                "mariadb.svc.mrm.db.cnf.generic.withrepmultidomains",
-                "mariadb.svc.mrm.db.cnf.generic.withrepmysqlgtid",
-                "mariadb.svc.mrm.db.cnf.generic.nologslaveupdates",
-                "mariadb.svc.mrm.db.cnf.generic.withsmallredolog",
-                "mariadb.svc.mrm.db.cnf.generic.withrepwsrep",
-                "mariadb.svc.mrm.db.cnf.generic.noautocommit",
+                "mariadb.svc.mrm.db.cnf.generic.enginerocksdb",
+                "mariadb.svc.mrm.db.cnf.generic.enginespider",
+                "mariadb.svc.mrm.db.cnf.generic.ent_withthreadpool",
+                "mariadb.svc.mrm.db.cnf.generic.enginetokudb",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withmultidomains",
+                "mariadb.svc.mrm.db.cnf.generic.rep_nologslaveupdates",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withmysqlgtid",
+                "mariadb.svc.mrm.db.cnf.generic.disk_withsmallredolog",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withwsrep",
+                "mariadb.svc.mrm.db.cnf.generic.opt_noautocommit",
                 "mariadb.svc.mrm.db.cnf.generic.withlogpfs",
                 "mariadb.svc.mrm.db.cnf.generic.enginesphinx",
-                "mariadb.svc.mrm.db.cnf.generic.withcompressbinlog",
-                "mariadb.svc.mrm.db.cnf.generic.nodoublewrite",
-                "mariadb.svc.mrm.db.cnf.generic.withlowercasetable",
-                "mariadb.svc.mrm.db.cnf.generic.nodurable",
-                "mariadb.svc.mrm.db.cnf.generic.withsqlmodeoracle",
-                "mariadb.svc.mrm.db.cnf.generic.withsqlmodeunstrict",
+                "mariadb.svc.mrm.db.cnf.generic.disk_withcompressbinlog",
+                "mariadb.svc.mrm.db.cnf.generic.disk_nodoublewrite",
+                "mariadb.svc.mrm.db.cnf.generic.disk_withlowercasetable",
+                "mariadb.svc.mrm.db.cnf.generic.disk_nodurable",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withsqlmodeoracle",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withsqlmodeunstrict",
                 "mariadb.svc.mrm.db.cnf.generic.withloguserstats",
-                "mariadb.svc.mrm.db.cnf.generic.withreadonly",
-                "mariadb.svc.mrm.db.cnf.generic.witheits",
-                "mariadb.svc.mrm.db.cnf.generic.noodirect",
-                "mariadb.svc.mrm.db.cnf.generic.withdefrag",
-                "mariadb.svc.mrm.db.cnf.generic.engineblackhole",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withreadonly",
+                "mariadb.svc.mrm.db.cnf.generic.opt_witheits",
+                "mariadb.svc.mrm.db.cnf.generic.disk_noodirect",
+                "mariadb.svc.mrm.db.cnf.generic.disk_withdefrag",
+                "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdsimple",
+                "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdcracklib",
                 "mariadb.svc.mrm.db.cnf.generic.engineoqgraph",
                 "mariadb.svc.mrm.db.cnf.generic.engineconnect",
-                "mariadb.svc.mrm.db.cnf.generic.withcheckpwdsimple",
-                "mariadb.svc.mrm.db.cnf.generic.withcheckpwdcracklib",
-                "mariadb.svc.mrm.db.cnf.generic.withssd",
-                "mariadb.svc.mrm.db.cnf.generic.withzfs",
-                "mariadb.svc.mrm.db.cnf.generic.withkeyfileencrypt",
-                "mariadb.svc.mrm.db.cnf.generic.withresolvdns",
-                "mariadb.svc.mrm.db.cnf.generic.withproxyprotocol",
+                "mariadb.svc.mrm.db.cnf.generic.engineblackhole",
+                "mariadb.svc.mrm.db.cnf.generic.disk_withssd",
+                "mariadb.svc.mrm.db.cnf.generic.disk_withzfs",
+                "mariadb.svc.mrm.db.cnf.generic.sec_withkeyfileencrypt",
+                "mariadb.svc.mrm.db.cnf.generic.net_withproxyprotocol",
+                "mariadb.svc.mrm.db.cnf.generic.net_withresolvdns",
                 "mariadb.svc.mrm.db.cnf.generic.withlogtable",
-                "mariadb.svc.mrm.db.cnf.generic.withdiskmonitor",
-                "mariadb.svc.mrm.db.cnf.generic.withssl",
-                "mariadb.svc.mrm.db.cnf.generic.nohandshake",
-                "mariadb.svc.mrm.db.cnf.generic.withgtidstrict",
-                "mariadb.svc.mrm.db.cnf.generic.withlocalinfile",
-                "mariadb.svc.mrm.db.cnf.generic.noicp",
-                "mariadb.svc.mrm.db.cnf.generic.nobinlog",
-                "mariadb.svc.mrm.db.cnf.generic.noslavestart",
-                "mariadb.svc.mrm.db.cnf.generic.nodeadlockdetect",
-                "mariadb.svc.mrm.db.cnf.generic.withnetbind",
+                "mariadb.svc.mrm.db.cnf.generic.disk_withdiskmonitor",
+                "mariadb.svc.mrm.db.cnf.generic.sec_withssl",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withgtidstrict",
+                "mariadb.svc.mrm.db.cnf.generic.sec_withlocalinfile",
+                "mariadb.svc.mrm.db.cnf.generic.opt_noicp",
+                "mariadb.svc.mrm.db.cnf.generic.rep_nobinlog",
+                "mariadb.svc.mrm.db.cnf.generic.rep_noslavestart",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nodeadlockdetect",
+                "mariadb.svc.mrm.db.cnf.generic.net_withnetbind",
                 "mariadb.svc.mrm.db.cnf.generic.withcharsetmb4ci",
                 "mariadb.svc.mrm.db.cnf.generic.withcharsetmb4cs",
                 "mariadb.svc.mrm.db.cnf.generic.withcharsetutf8cs",
                 "mariadb.svc.mrm.db.cnf.generic.withcharsetutf8ci",
-                "mariadb.svc.mrm.db.cnf.generic.withhashjoin",
-                "mariadb.svc.mrm.db.cnf.generic.withnestedjoin",
-                "mariadb.svc.mrm.db.cnf.generic.withfirstmatch",
-                "mariadb.svc.mrm.db.cnf.generic.withsemijoincache",
-                "mariadb.svc.mrm.db.cnf.generic.withloosescan",
-                "mariadb.svc.mrm.db.cnf.generic.withextendedkeys",
-                "mariadb.svc.mrm.db.cnf.generic.noderivedmerge",
-                "mariadb.svc.mrm.db.cnf.generic.notableelimination",
-                "mariadb.svc.mrm.db.cnf.generic.nosemijoin",
-                "mariadb.svc.mrm.db.cnf.generic.noderivedwithkeys",
-                "mariadb.svc.mrm.db.cnf.generic.nointoexists",
-                "mariadb.svc.mrm.db.cnf.generic.nomaterialization",
-                "mariadb.svc.mrm.db.cnf.generic.nomrr",
-                "mariadb.svc.mrm.db.cnf.generic.noouterjoincache",
-                "mariadb.svc.mrm.db.cnf.generic.withsubquerycache",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withnestedjoin",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withhashjoin",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withextendedkeys",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withsubquerycache",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withfirstmatch",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withloosescan",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withsemijoincache",
+                "mariadb.svc.mrm.db.cnf.generic.opt_noderivedmerge",
+                "mariadb.svc.mrm.db.cnf.generic.opt_noderivedwithkeys",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nointoexists",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nomaterialization",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nomrr",
+                "mariadb.svc.mrm.db.cnf.generic.opt_noouterjoincache",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nosemijoin",
+                "mariadb.svc.mrm.db.cnf.generic.opt_notableelimination",
                 "mariadb.svc.mrm.db.cnf.generic.engines3",
-                "mariadb.svc.mrm.db.cnf.generic.withutctime",
                 "mariadb.svc.mrm.db.cnf.generic.enginemroonga",
-                "mariadb.svc.mrm.db.cnf.generic.withreadcommitted",
-                "mariadb.svc.mrm.db.cnf.generic.withreplossyconv",
-                "mariadb.svc.mrm.db.cnf.generic.withrepidempotent",
-                "mariadb.svc.mrm.db.cnf.generic.withreprow",
-                "mariadb.svc.mrm.db.cnf.generic.withrepstatement",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withutctime",
+                "mariadb.svc.mrm.db.cnf.generic.charset_nohandshake",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withreadcommitted",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withstatement",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withidempotent",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withrow",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withlossyconv",
                 "mariadb.svc.mrm.db.cnf.generic.enginemcs",
-                "mariadb.svc.mrm.db.cnf.generic.withed25519",
-                "mariadb.svc.mrm.db.cnf.generic.withsequence",
-                "mariadb.svc.mrm.db.cnf.generic.noecp",
-                "mariadb.svc.mrm.db.cnf.generic.noscp",
-                "mariadb.svc.mrm.db.cnf.generic.nohcp",
-                "mariadb.svc.mrm.db.cnf.generic.nodcp",
-                "mariadb.svc.mrm.db.cnf.generic.nointosubquery",
-                "mariadb.svc.mrm.db.cnf.generic.nolateralderived",
-                "mariadb.svc.mrm.db.cnf.generic.withimsi",
-                "mariadb.svc.mrm.db.cnf.generic.nobloomfilter",
-                "mariadb.svc.mrm.db.cnf.generic.withreptrustfunctioncreators",
-                "mariadb.svc.mrm.db.cnf.generic.nobind",
-                "mariadb.svc.mrm.db.cnf.generic.withrelayspacelimit",
-                "mariadb.svc.mrm.db.cnf.generic.withrepoptimize",
-                "mariadb.svc.mrm.db.cnf.generic.withrepserialize",
-                "mariadb.svc.mrm.db.cnf.generic.withrepminimal",
-                "mariadb.svc.mrm.db.cnf.generic.noadaptativeflush",
-                "mariadb.svc.mrm.db.cnf.generic.with_opt_histograms"
+                "mariadb.svc.mrm.db.cnf.generic.sec_withed25519",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withsequence",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nodcp",
+                "mariadb.svc.mrm.db.cnf.generic.opt_noecp",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nohcp",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nointosubquery",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nolateralderived",
+                "mariadb.svc.mrm.db.cnf.generic.opt_noscp",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nobloomfilter",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withimsi",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withtrustfunctioncreators",
+                "mariadb.svc.mrm.db.cnf.generic.net_nobind",
+                "mariadb.svc.mrm.db.cnf.generic.disk_withrelayspacelimit",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withoptimize",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withserialize",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withminimal",
+                "mariadb.svc.mrm.db.cnf.generic.disk_noadaptativeflush",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withhistograms",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withreaddirty",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withreadserialized",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withreadsnapshot"
             ],
             "publications": [
                 "replication-manager"
@@ -3458,7 +3561,7 @@
         },
         {
             "fset_name": "mariadb.replication.semisync",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withrepsemisync",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withsemisync",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -3506,7 +3609,7 @@
         },
         {
             "fset_name": "mariadb.network.threadpool",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withthreadpool",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.ent_withthreadpool",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -3530,7 +3633,7 @@
         },
         {
             "fset_name": "mariadb.network.noquerycache",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noquerycache",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.net_noquerycache",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -3554,7 +3657,7 @@
         },
         {
             "fset_name": "mariadb.disk.compresstables",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withinnodbpagecompression",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_withinnodbpagecompression",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -3746,7 +3849,7 @@
         },
         {
             "fset_name": "mariadb.replication.multidomains",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withrepmultidomains",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withmultidomains",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -3770,7 +3873,7 @@
         },
         {
             "fset_name": "mysql.replication.mysqlgtid",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withrepmysqlgtid",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withmysqlgtid",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -3794,7 +3897,7 @@
         },
         {
             "fset_name": "mariadb.replication.nologslaveupdates",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nologslaveupdates",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_nologslaveupdates",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -3807,7 +3910,13 @@
             ],
             "ruleset_public": false,
             "ruleset_type": "contextual",
-            "rulesets": [],
+            "rulesets": [
+                "mariadb.svc.mrm.db.cnf.generic.opt_withextendedkeys",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withfirstmatch",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withloosescan",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withsemijoincache",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withsubquerycache"
+            ],
             "publications": [
                 "replication-manager"
             ],
@@ -3818,7 +3927,7 @@
         },
         {
             "fset_name": "mariadb.disk.smallredolog",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withsmallredolog",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_withsmallredolog",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -3842,7 +3951,7 @@
         },
         {
             "fset_name": "mariadb.replication.wsrep",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withrepwsrep",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withwsrep",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -3866,7 +3975,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.noautocommit",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noautocommit",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_noautocommit",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4010,7 +4119,7 @@
         },
         {
             "fset_name": "mariadb.disk.compressbinlog",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withcompressbinlog",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_withcompressbinlog",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4034,7 +4143,7 @@
         },
         {
             "fset_name": "mariadb.disk.nodoublewrite",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nodoublewrite",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_nodoublewrite",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4058,7 +4167,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.lowercasetable",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withlowercasetable",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_withlowercasetable",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4082,7 +4191,7 @@
         },
         {
             "fset_name": "mariadb.disk.nodurable",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nodurable",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_nodurable",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4106,7 +4215,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.sqlmodeoracle",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withsqlmodeoracle",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withsqlmodeoracle",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4130,7 +4239,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.sqlmodeunstrict",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withsqlmodeunstrict",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withsqlmodeunstrict",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4178,7 +4287,7 @@
         },
         {
             "fset_name": "mariadb.security.readonly",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withreadonly",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withreadonly",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4202,7 +4311,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.eits",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.witheits",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_witheits",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4226,7 +4335,7 @@
         },
         {
             "fset_name": "mariadb.disk.noodirect",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noodirect",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_noodirect",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4250,7 +4359,7 @@
         },
         {
             "fset_name": "mariadb.disk.autodefrag",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withdefrag",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_withdefrag",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4346,7 +4455,7 @@
         },
         {
             "fset_name": "mariadb.security.pwdchecksimple",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withcheckpwdsimple",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdsimple",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4370,7 +4479,7 @@
         },
         {
             "fset_name": "mariadb.security.pwdcheckcracklib",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withcheckpwdcracklib",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdcracklib",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4394,7 +4503,7 @@
         },
         {
             "fset_name": "mariadb.disk.ssd",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withssd",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_withssd",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4418,7 +4527,7 @@
         },
         {
             "fset_name": "mariadb.disk.zfs",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withzfs",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_withzfs",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4458,7 +4567,7 @@
         },
         {
             "fset_name": "mariadb.security.keyfileencrypt",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withkeyfileencrypt",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.sec_withkeyfileencrypt",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4482,7 +4591,7 @@
         },
         {
             "fset_name": "mariadb.network.resolvdns",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withresolvdns",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.net_withresolvdns",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4506,7 +4615,7 @@
         },
         {
             "fset_name": "mariadb.network.proxyprotocol",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withproxyprotocol",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.net_withproxyprotocol",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4554,7 +4663,7 @@
         },
         {
             "fset_name": "mariadb.disk.diskmonitor",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withdiskmonitor",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_withdiskmonitor",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4578,7 +4687,7 @@
         },
         {
             "fset_name": "mariadb.security.ssl",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withssl",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.sec_withssl",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4602,7 +4711,7 @@
         },
         {
             "fset_name": "mariadb.charset.nohandshake",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nohandshake",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.charset_nohandshake",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4626,7 +4735,7 @@
         },
         {
             "fset_name": "mariadb.replication.gtidstrict",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withgtidstrict",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withgtidstrict",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4650,7 +4759,7 @@
         },
         {
             "fset_name": "mariadb.security.localinfile",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withlocalinfile",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.sec_withlocalinfile",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4674,7 +4783,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.noicp",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noicp",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_noicp",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4698,7 +4807,7 @@
         },
         {
             "fset_name": "mariadb.replication.nobinlog",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nobinlog",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_nobinlog",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4722,7 +4831,7 @@
         },
         {
             "fset_name": "mariadb.replication.noslavestart",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noslavestart",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_noslavestart",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4746,7 +4855,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.nodeadlockdetect",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nodeadlockdetect",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_nodeadlockdetect",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4770,7 +4879,7 @@
         },
         {
             "fset_name": "mariadb.network.bind",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withnetbind",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.net_withnetbind",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4890,7 +4999,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.hashjoin",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withhashjoin",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withhashjoin",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4914,7 +5023,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.nestedjoin",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withnestedjoin",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withnestedjoin",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4938,7 +5047,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.firstmatch",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withfirstmatch",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withfirstmatch",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4962,7 +5071,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.semijoincache",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withsemijoincache",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withsemijoincache",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -4986,7 +5095,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.loosescan",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withloosescan",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withloosescan",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5010,7 +5119,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.extendedkeys",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withextendedkeys",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withextendedkeys",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5034,7 +5143,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.noderivedmerge",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noderivedmerge",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_noderivedmerge",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5058,7 +5167,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.notableelimination",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.notableelimination",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_notableelimination",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5082,7 +5191,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.semijoincache",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nosemijoin",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_nosemijoin",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5106,7 +5215,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.noderivedwithkeys",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noderivedwithkeys",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_noderivedwithkeys",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5130,7 +5239,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.nointoexists",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nointoexists",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_nointoexists",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5154,7 +5263,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.notableelimination",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nomaterialization",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_nomaterialization",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5178,7 +5287,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.nomrr",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nomrr",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_nomrr",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5192,11 +5301,11 @@
             "ruleset_public": false,
             "ruleset_type": "contextual",
             "rulesets": [
-                "mariadb.svc.mrm.db.cnf.generic.withfirstmatch",
-                "mariadb.svc.mrm.db.cnf.generic.withsemijoincache",
-                "mariadb.svc.mrm.db.cnf.generic.withloosescan",
-                "mariadb.svc.mrm.db.cnf.generic.withextendedkeys",
-                "mariadb.svc.mrm.db.cnf.generic.withsubquerycache"
+                "mariadb.svc.mrm.db.cnf.generic.opt_withextendedkeys",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withfirstmatch",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withsubquerycache",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withloosescan",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withsemijoincache"
             ],
             "publications": [
                 "replication-manager"
@@ -5208,7 +5317,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.noouterjoincache",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noouterjoincache",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_noouterjoincache",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5231,8 +5340,8 @@
             ]
         },
         {
-            "fset_name": null,
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withsubquerycache",
+            "fset_name": "mariadb.optimizer.subquerycache",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withsubquerycache",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5280,7 +5389,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.utctime",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withutctime",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withutctime",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5328,13 +5437,13 @@
         },
         {
             "fset_name": "mariadb.optimizer.readcommitted",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withreadcommitted",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withreadcommitted",
             "variables": [
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/10_with_opt_readcommitted.cnf\",\"target\":\"../with_opt_readcommitted.cnf\"}",
-                    "var_updated": "2020-05-12 15:15:23",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/40_with_opt_readcommitted.cnf\",\"target\":\"../with_opt_readcommitted.cnf\"}",
+                    "var_updated": "2020-12-08 11:09:49",
                     "var_name": "db_link_readcommitted",
                     "id": 6176
                 }
@@ -5352,7 +5461,7 @@
         },
         {
             "fset_name": "mariadb.replication.lossyconv",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withreplossyconv",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withlossyconv",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5376,7 +5485,7 @@
         },
         {
             "fset_name": "mariadb.replication.idempotent",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withrepidempotent",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withidempotent",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5400,7 +5509,7 @@
         },
         {
             "fset_name": "mariadb.replication.row",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withreprow",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withrow",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5424,7 +5533,7 @@
         },
         {
             "fset_name": "mariadb.replication.statement",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withrepstatement",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withstatement",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5438,7 +5547,7 @@
             "ruleset_public": false,
             "ruleset_type": "contextual",
             "rulesets": [
-                "mariadb.svc.mrm.db.cnf.generic.withrepidempotent"
+                "mariadb.svc.mrm.db.cnf.generic.rep_withidempotent"
             ],
             "publications": [
                 "replication-manager"
@@ -5474,7 +5583,7 @@
         },
         {
             "fset_name": "mariadb.security.ed25519",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withed25519",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.sec_withed25519",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5498,7 +5607,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.sequence",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withsequence",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withsequence",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5522,7 +5631,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.noecp",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noecp",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_noecp",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5546,7 +5655,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.noscp",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noscp",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_noscp",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5570,7 +5679,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.nohcp",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nohcp",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_nohcp",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5594,7 +5703,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.nodcp",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nodcp",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_nodcp",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5618,7 +5727,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.nointosubquery",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nointosubquery",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_nointosubquery",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5642,7 +5751,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.nolateralderived",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nolateralderived",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_nolateralderived",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5666,7 +5775,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.imsi",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withimsi",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withimsi",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5690,7 +5799,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.nobloomfilter",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nobloomfilter",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_nobloomfilter",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5714,7 +5823,7 @@
         },
         {
             "fset_name": "mariadb.replication.trustfunctioncreators",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withreptrustfunctioncreators",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withtrustfunctioncreators",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5738,7 +5847,7 @@
         },
         {
             "fset_name": "mariadb.network.nobind",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.nobind",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.net_nobind",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5762,7 +5871,7 @@
         },
         {
             "fset_name": "mariadb.disk.relayspacelimit",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withrelayspacelimit",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_withrelayspacelimit",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5786,7 +5895,7 @@
         },
         {
             "fset_name": null,
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withrepoptimize",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withoptimize",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5810,7 +5919,7 @@
         },
         {
             "fset_name": null,
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withrepserialize",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withserialize",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5834,7 +5943,7 @@
         },
         {
             "fset_name": null,
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.withrepminimal",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withminimal",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5858,7 +5967,7 @@
         },
         {
             "fset_name": "mariadb.disk.noadaptatiiveflush",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.noadaptativeflush",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_noadaptativeflush",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5882,7 +5991,7 @@
         },
         {
             "fset_name": "mariadb.optimizer.histograms",
-            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.with_opt_histograms",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withhistograms",
             "variables": [
                 {
                     "var_author": "admin Manager",
@@ -5900,6 +6009,78 @@
                 "replication-manager"
             ],
             "id": 1132,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.readsnapshot",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withreadsnapshot",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/60_with_opt_readsnapshot.cnf\",\"target\":\"../with_opt_readsnapshot.cnf\"}",
+                    "var_updated": "2020-12-08 10:37:18",
+                    "var_name": "db_link_readsnapshot",
+                    "id": 6234
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1133,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.readdirty",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withreaddirty",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/10_with_opt_readdirty.cnf\",\"target\":\"../with_opt_readdirty.cnf\"}",
+                    "var_updated": "2020-12-08 09:08:18",
+                    "var_name": "db_link_readdirty",
+                    "id": 6235
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1134,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.readserialized",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withreadserialized",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/rc.d/20_with_opt_readserialized.cnf\",\"target\":\"../with_opt_readserialized.cnf\"}",
+                    "var_updated": "2020-12-08 10:36:59",
+                    "var_name": "db_link_readserialized",
+                    "id": 6236
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1135,
             "responsibles": [
                 "replication-manager"
             ]
