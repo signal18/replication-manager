@@ -66,7 +66,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 			return err
 		}
 	cluster.LogPrintf(LvlInfo, "Remove datadir done: %s", out.Bytes())*/
-	server.GetMyConfig()
+	server.GetDatabaseConfig()
 	///	os.Symlink(server.Datadir+"/init/data", path)
 
 	/*cmd = exec.Command("cp", "-rp", cluster.Conf.ShareDir+"/tests/data"+cluster.Conf.ProvDatadirVersion, path)
@@ -280,7 +280,7 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 }
 
 func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) error {
-	server.GetMyConfig()
+	server.GetDatabaseConfig()
 	if server.Id == "" {
 		_, err := os.Stat(server.Id)
 		if err != nil {

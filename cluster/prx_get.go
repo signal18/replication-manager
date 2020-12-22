@@ -79,9 +79,9 @@ func (proxy *Proxy) GetProxyConfig() string {
 		if proxy.ShardProxy == nil {
 			proxy.ClusterGroup.LogPrintf(LvlErr, "Can't get shard proxy config start monitoring")
 			proxy.ClusterGroup.ShardProxyBootstrap(proxy)
-			return proxy.ShardProxy.GetMyConfig()
+			return proxy.ShardProxy.GetDatabaseConfig()
 		} else {
-			return proxy.ShardProxy.GetMyConfig()
+			return proxy.ShardProxy.GetDatabaseConfig()
 		}
 	}
 	type File struct {

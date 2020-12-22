@@ -550,6 +550,15 @@ func (cluster *Cluster) SetDBReprovCookie() {
 	}
 }
 
+func (cluster *Cluster) SetDBDynamicConfig() {
+	for _, srv := range cluster.Servers {
+		//conf:=
+		srv.GetDatabaseConfig()
+		srv.GetDatabaseDynamicConfig()
+	}
+}
+
+
 func (cluster *Cluster) SetProxiesRestartCookie() {
 	for _, prx := range cluster.Proxies {
 		prx.SetRestartCookie()

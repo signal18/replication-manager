@@ -104,7 +104,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettingsDiscover)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/settings/actions/apply-dynamic-config", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterApplyDynamicConfig)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/add/{clusterShardingName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterShardingAdd)),
@@ -1530,6 +1533,20 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			return
 		}
 		go mycluster.RunSysbench()
+	}
+	return
+}
+
+func (repman *ReplicationManager) handlerMuxClusterApplyDynamicConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		go mycluster.SetDBDynamicConfig()
 	}
 	return
 }

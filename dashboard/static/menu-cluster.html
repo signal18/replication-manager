@@ -235,9 +235,15 @@
         <md-menu-item ng-if="master.State !='Failed'" ng-click="configDiscover()">
           <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false">
             <md-icon md-menu-align-target class="fas fa-address-card"></md-icon>
-         Discover
+         Database discover config
           </md-button>
         </md-menu-item>
+        <md-menu-item ng-if="master.State !='Failed'" ng-click="configApplyDynamic()">
+        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false">
+          <md-icon md-menu-align-target class="fas fa-address-card"></md-icon>
+       Database apply dynamic config
+        </md-button>
+      </md-menu-item>
     </md-menu-content>
   </md-menu>
   </md-menu-item>

@@ -83,6 +83,10 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 			//weight string, max_replication_lag string, max_connections string, compression string
 
 			if s.State == stateMaster {
+				err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port)
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "ProxySQL could not add writer %s (%s) ", s.URL, err)
+				}
 				if cluster.Conf.ProxysqlMasterIsReader {
 					err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)))
 					if err != nil {
@@ -99,19 +103,6 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 				cluster.LogPrintf(LvlWarn, "ProxySQL init backend  %s with state %s ", s.URL, s.State)
 			}
 
-			if s.State == stateMaster {
-				if cluster.Conf.ProxysqlMasterIsReader {
-					err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port)
-					if err != nil {
-						cluster.LogPrintf(LvlErr, "ProxySQL could not add writer %s (%s) ", s.URL, err)
-					}
-				} else {
-					err = psql.SetWriter(misc.Unbracket(s.Host), s.Port)
-					if err != nil {
-						cluster.LogPrintf(LvlErr, "ProxySQL could not set writer %s (%s) ", s.URL, err)
-					}
-				}
-			}
 		}
 	}
 	err = psql.LoadServersToRuntime()

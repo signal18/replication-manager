@@ -10,11 +10,13 @@
 package cluster
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -639,7 +641,7 @@ func (server *ServerMonitor) GetDatabaseClientBasedir() string {
 	return "/usr/bin/mysql"
 }
 
-func (server *ServerMonitor) GetMyConfig() string {
+func (server *ServerMonitor) GetDatabaseConfig() string {
 	type File struct {
 		Path    string `json:"path"`
 		Content string `json:"fmt"`
@@ -746,4 +748,44 @@ func (server *ServerMonitor) GetMyConfig() string {
 	server.ClusterGroup.TarGz(server.Datadir+"/config.tar.gz", server.Datadir+"/init")
 
 	return ""
+}
+
+func (server *ServerMonitor) GetDatabaseDynamicConfig() string {
+	mydynamicconf := ""
+	// processing symlink
+	type Link struct {
+		Symlink string `json:"symlink"`
+		Target  string `json:"target"`
+	}
+	for _, rule := range server.ClusterGroup.DBModule.Rulesets {
+		if strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf.generic") {
+			for _, variable := range rule.Variables {
+				if variable.Class == "symlink" {
+					if server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
+						var f Link
+						json.Unmarshal([]byte(variable.Value), &f)
+						fpath := server.Datadir + "/init/etc/mysql/rc.d/"
+						//	server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s , %s", fpath, f.Target)
+						file, err := os.Open(fpath + f.Target)
+						if err == nil {
+							r, _ := regexp.Compile("mariadb_command")
+							scanner := bufio.NewScanner(file)
+							for scanner.Scan() {
+								//		server.ClusterGroup.LogPrintf(LvlInfo, "content: %s", scanner.Text())
+								if r.MatchString(scanner.Text()) {
+									sqlcmd := strings.Split(scanner.Text(), ":")[1]
+									server.ClusterGroup.LogPrintf(LvlInfo, "Found dynamic config: %s", sqlcmd)
+								}
+							}
+							file.Close()
+						} else {
+							server.ClusterGroup.LogPrintf(LvlInfo, "Error in dynamic config: %s", err)
+
+						}
+					}
+				}
+			}
+		}
+	}
+	return mydynamicconf
 }

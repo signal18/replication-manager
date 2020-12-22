@@ -1063,7 +1063,10 @@ function (
         if (confirm("Confirm toggle traffic")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/database-heartbeat');
       };
       $scope.configDiscover= function () {
-        if (confirm("Confirm discover config")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/discover');
+        if (confirm("Confirm database discover config")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/discover');
+      };
+      $scope.configApplyDynamic= function () {
+        if (confirm("Confirm database apply config")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/apply-dynamic-config');
       };
       $scope.resetfail = function () {
         if (confirm("Reset Failover counter?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-failover-counter');
