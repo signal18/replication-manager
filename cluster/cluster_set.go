@@ -554,7 +554,7 @@ func (cluster *Cluster) SetDBDynamicConfig() {
 	for _, srv := range cluster.Servers {
 		//conf:=
 		srv.GetDatabaseConfig()
-		srv.GetDatabaseDynamicConfig()
+		srv.ExecScriptSQL(strings.Split(srv.GetDatabaseDynamicConfig(),";"))
 	}
 }
 

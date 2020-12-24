@@ -1042,6 +1042,17 @@ func (server *ServerMonitor) ExecQueryNoBinLog(query string) error {
 	return err
 }
 
+func (server *ServerMonitor) ExecScriptSQL(queries []string) error {
+	for _, query := range queries {
+		_, err := server.Conn.Exec(query)
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Apply config: %s %s", query, err)
+		}
+		server.ClusterGroup.LogPrintf(LvlInfo, "Apply dynamic config: %s", query)
+	}
+	return nil
+}
+
 func (server *ServerMonitor) InstallPlugin(name string) error {
 	val, ok := server.Plugins[name]
 

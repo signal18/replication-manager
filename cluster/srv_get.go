@@ -587,7 +587,7 @@ func (server *ServerMonitor) GetTablePK(schema string, table string) (string, er
 func (server *ServerMonitor) IsFilterInTags(filter string) bool {
 	tags := server.ClusterGroup.GetDatabaseTags()
 	for _, tag := range tags {
-		if strings.Contains(filter, tag) {
+		if strings.HasSuffix(filter, tag) {
 			//	fmt.Println(server.ClusterGroup.Conf.ProvTags + " vs tag: " + tag + "  against " + filter)
 			return true
 		}
@@ -773,14 +773,12 @@ func (server *ServerMonitor) GetDatabaseDynamicConfig() string {
 							for scanner.Scan() {
 								//		server.ClusterGroup.LogPrintf(LvlInfo, "content: %s", scanner.Text())
 								if r.MatchString(scanner.Text()) {
-									sqlcmd := strings.Split(scanner.Text(), ":")[1]
-									server.ClusterGroup.LogPrintf(LvlInfo, "Found dynamic config: %s", sqlcmd)
+									mydynamicconf = mydynamicconf + strings.Split(scanner.Text(), ":")[1]
 								}
 							}
 							file.Close()
 						} else {
 							server.ClusterGroup.LogPrintf(LvlInfo, "Error in dynamic config: %s", err)
-
 						}
 					}
 				}
