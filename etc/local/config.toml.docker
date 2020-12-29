@@ -17,8 +17,7 @@ backup-myloader-path = "/usr/bin/myloader"
 backup-mysqldump-path = "/usr/bin/mysqldump"
 
 include="/etc/replication-manager/cluster.d"
-include="/etc/replication-manager/local/masterslave/haproxy"
-
+#include="/etc/replication-manager/local/masterslave/haproxy"
 #include="/etc/replication-manager/local/binlogserver"
 #include="/etc/replication-manager/local/features/apisecure"
 #include="/etc/replication-manager/local/features/arbitrator"
