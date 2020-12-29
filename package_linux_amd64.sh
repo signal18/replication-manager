@@ -60,12 +60,12 @@ cp -r share/* "$builddir"/package/usr/share/replication-manager/
 rm -rf "$builddir"/package/usr/share/replication-manager/opensvc/*.tar.gz
 
 
-for flavor in min osc tst pro osc-cgo
+for flavor in arm osc tst pro osc-cgo
 do
     echo "# Building packages replication-manager-$flavor"
     case $flavor in
-        min)
-            extra_desc="Minimal version"
+        arm)
+            extra_desc="Arm version"
             ;;
         osc)
             extra_desc="Open source version"
