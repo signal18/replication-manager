@@ -1,9 +1,0 @@
-[Unit]
-Description=MariaDB replication-manager minimal distribution
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/replication-manager-min monitor
-
-[Install]
-WantedBy=multi-user.target

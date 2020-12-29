@@ -19,15 +19,15 @@
 . /etc/rc.d/init.d/functions
 
 RETVAL=0
-PROCNAME=replication-manager-min
+PROCNAME=replication-manager-arm
 
 # See how we were called.
 case "$1" in
   start)
-        echo -n "Starting replication-manager minimal: "
-        /usr/bin/replication-manager-min monitor  > /dev/null 2>&1 &
+        echo -n "Starting replication-manager arm: "
+        /usr/bin/replication-manager-arm monitor  > /dev/null 2>&1 &
         sleep 1
-        pkill -0 -f "/usr/bin/replication-manager-min monitor"
+        pkill -0 -f "/usr/bin/replication-manager-arm monitor"
         RETVAL=$?
         if [ $RETVAL -eq 0 ]
         then
@@ -39,8 +39,8 @@ case "$1" in
         echo
         ;;
   stop)
-        echo -n "Stopping replication-manager minimal: "
-        kill $(pidof replication-manager-min)
+        echo -n "Stopping replication-manager armimal: "
+        kill $(pidof replication-manager-arm)
         RETVAL=$?
         if [ $RETVAL -eq 0 ]
         then
