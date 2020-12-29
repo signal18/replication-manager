@@ -319,13 +319,14 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 		if driverErr, ok := err.(*mysql.MySQLError); ok {
 			//	server.ClusterGroup.LogPrintf(LvlDbg, "Driver Error %s %d ", server.URL, driverErr.Number)
-			server.ClusterGroup.LogPrintf(LvlErr, "Driver Error %s %d ", server.URL, driverErr.Number)
 
 			// access denied
 			if driverErr.Number == 1045 {
 				server.State = stateErrorAuth
 				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "SRV"})
 				return
+			} else {
+				server.ClusterGroup.LogPrintf(LvlErr, "Driver Error %s %d ", server.URL, driverErr.Number)
 			}
 		}
 		if err != sql.ErrNoRows {

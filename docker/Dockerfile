@@ -13,6 +13,7 @@ RUN make osc cli
 FROM alpine:3
 
 RUN mkdir -p \
+        /etc/replication-manager/cluster.d \
         /etc/replication-manager \
         /var/lib/replication-manager
 

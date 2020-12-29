@@ -48,6 +48,7 @@ FROM alpine:3
 
 RUN mkdir -p \
         /etc/replication-manager \
+        /etc/replication-manager/cluster.d \
         /var/lib/replication-manager
 
 RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
