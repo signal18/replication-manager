@@ -6,6 +6,7 @@
 
 
 [ClusterTestMaxscale]
+prov-orchestrator = "local"
 title = "ClusterTestMaxscale"
 db-servers-hosts = "127.0.0.1:5055,127.0.0.1:5056"
 db-servers-prefered-master = "127.0.0.1:5055"
@@ -25,11 +26,3 @@ maxscale-read-port = 4008
 maxscale-read-write-port = 4006
 maxscale-binlog = false
 maxscale-binlog-port = 3305
-
-
-[Default]
-prov-orchestrator = "local"
-db-servers-binary-path= "/usr/local/mysql/bin/"
-verbose = true
-http-server = true
-http-bind-address = "0.0.0.0"

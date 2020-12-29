@@ -13,12 +13,14 @@ RUN make osc cli
 FROM alpine:3
 
 RUN mkdir -p \
-        /etc/replication-manager/cluster.d \
         /etc/replication-manager \
+        /etc/replication-manager/cluster.d \
         /var/lib/replication-manager
 
 RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 
+COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local /etc/replication-manager/local
+COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/config.toml.docker /etc/replication-manager/config.toml
 COPY --from=builder /go/src/github.com/signal18/replication-manager/share /usr/share/replication-manager/
 COPY --from=builder /go/src/github.com/signal18/replication-manager/dashboard /usr/share/replication-manager/dashboard
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-osc /usr/bin/replication-manager

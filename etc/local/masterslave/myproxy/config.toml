@@ -6,6 +6,7 @@
 
 [Cluster_Haproxy_MasterSlave]
 title = "ClusterTestMasterSlave"
+prov-orchestrator = "local"
 
 db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"
 db-servers-prefered-master = "127.0.0.1:3310"
@@ -18,12 +19,3 @@ myproxy = true
 myproxy-port = 4000
 myproxy-user = "admin"
 myproxy-password = "repman"
-
-prov-orchestrator = "localhost"
-
-[Default]
-prov-orchestrator = "local"
-db-servers-binary-path= "/usr/local/mysql/bin/"
-
-http-server = true
-http-bind-address = "0.0.0.0"

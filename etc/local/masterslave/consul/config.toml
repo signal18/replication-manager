@@ -6,18 +6,11 @@
 
 [ClusterTestConsul]
 title = "ClusterTestConsul"
+
+prov-orchestrator = "local"
 db-servers-hosts = "127.0.0.1:3331,127.0.0.1:3332"
 db-servers-prefered-master = "127.0.0.1:3331"
 db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
 registry-consul = true
-
-
-[Default]
-prov-orchestrator = "local"
-db-servers-binary-path= "/usr/local/mysql/bin/"
-log-file = "/var/log/replication-manager.log"
-verbose = true
-http-server = true
-http-bind-address = "0.0.0.0"

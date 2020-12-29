@@ -1,0 +1,43 @@
+[Default]
+verbose = true
+http-server = true
+http-bind-address = "0.0.0.0"
+monitoring-save-config = true
+
+prov-db-binary-basedir= "/usr/bin"
+prov-db-client-basedir= "/usr/bin"
+backup-mysqlclient-path ="/usr/bin/mysql"
+backup-mysqlbinlog-path = "/usr/bin/mysqlbinlog"
+haproxy-binary-path= "/usr/sbin/haproxy"
+proxysql-binary-path="/usr/bin/proxysql"
+backup-restic-binary-path="/usr/bin/restic"
+sysbench-binary-path = "/usr/bin/sysbench"
+backup-mydumper-path = "/usr/bin/mydumper"
+backup-myloader-path = "/usr/bin/myloader"
+backup-mysqldump-path = "/usr/bin/mysqldump"
+
+include="/etc/replication-manager/cluster.d"
+include="/etc/replication-manager/local/masterslave/haproxy"
+
+#include="/etc/replication-manager/local/binlogserver"
+#include="/etc/replication-manager/local/features/apisecure"
+#include="/etc/replication-manager/local/features/arbitrator"
+#include="/etc/replication-manager/local/features/backup"
+#include="/etc/replication-manager/local/features/backup-s3"
+#include="/etc/replication-manager/local/features/compat1local0"
+#include="/etc/replication-manager/local/features/enforce"
+#include="/etc/replication-manager/local/features/graphite"
+#include="/etc/replication-manager/local/features/ipv6"
+#include="/etc/replication-manager/local/features/scheduler"
+#include="/etc/replication-manager/local/masterslave"
+#include="/etc/replication-manager/local/masterslave/consul"
+#include="/etc/replication-manager/local/masterslave/maxscale"
+#include="/etc/replication-manager/local/masterslave/myproxy"
+#include="/etc/replication-manager/local/masterslave/shardproxy"
+#include="/etc/replication-manager/local/masterslaveslave"
+#include="/etc/replication-manager/local/multimaster"
+#include="/etc/replication-manager/local/multimasterring"
+#include="/etc/replication-manager/local/multisource"
+#include="/etc/replication-manager/local/multitiersalve"
+#include="/etc/replication-manager/local/mutlitiercluster"
+#include="/etc/replication-manager/local/postgres"
