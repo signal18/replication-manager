@@ -1,0 +1,9 @@
+[Unit]
+Description=MariaDB replication-manager armimal distribution
+
+[Service]
+Type=simple
+ExecStart=/usr/local/replication-manager/bin/replication-manager-arm monitor
+
+[Install]
+WantedBy=multi-user.target

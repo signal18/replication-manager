@@ -31,8 +31,8 @@ useradd  -g  $MRMGROUP $MRMUSER  > /dev/null 2>&1
 chown -R $MRMUSER:$MRMGROUP $MRMDATADIR
 
 
-CMD=$MRMBASEDIR/replication-manager-min
-PIDFILE=$MRMDATADIR/replication-manager-min.pid
+CMD=$MRMBASEDIR/replication-manager-arm
+PIDFILE=$MRMDATADIR/replication-manager-arm.pid
 
 
 start()
@@ -47,7 +47,7 @@ start()
   fi
 su $MRMUSER <<EOF
 nohup $CMD monitor  < /dev/null > $MRMDATADIR/out.log 2>&1 &
-pidof -s replication-manager-min >  $PIDFILE
+pidof -s replication-manager-arm >  $PIDFILE
 EOF
 }
 
