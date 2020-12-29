@@ -14,6 +14,12 @@ db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
 
-proxysql=true
-proxysql-write-port=3303
+proxysql = true
+proxysql-bootstrap = true 
+proxysql-bootstrap-hostgroups = true 
+proxysql-port=3303
+proxysql-admin-port = 6032
 proxysql-servers="127.0.0.1"
+proxysql-multiplexing = false
+proxysql-password = "admin"
+proxysql-user "admin"
