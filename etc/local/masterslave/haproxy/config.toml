@@ -4,8 +4,8 @@
 ## change the service file  in /etc/systemd/system/replication-manager.service to looks like :
 ## replication-manager-osc  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
 
-[Cluster_Haproxy_MasterSlave]
-title = "ClusterTestMasterSlave"
+[MasterSlaveHaproxy]
+title = "MasterSlaveHaproxy"
 
 prov-orchestrator = "local"
 db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"

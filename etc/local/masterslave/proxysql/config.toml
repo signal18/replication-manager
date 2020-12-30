@@ -4,8 +4,8 @@
 ## change the service file  in /etc/systemd/system/replication-manager.service to looks like :
 ## replication-manager-osc  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
 
-[Cluster_Haproxy_MasterSlave]
-title = "ClusterTestMasterSlave"
+[MasterSlaveProxysql]
+title = "MasterSlaveProxysql"
 
 prov-orchestrator = "local"
 db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"
@@ -15,8 +15,8 @@ db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
 
 proxysql = true
-proxysql-bootstrap = true 
-proxysql-bootstrap-hostgroups = true 
+proxysql-bootstrap = true
+proxysql-bootstrap-hostgroups = true
 proxysql-port=3303
 proxysql-admin-port = 6032
 proxysql-servers="127.0.0.1"
