@@ -22,4 +22,4 @@ proxysql-admin-port = 6032
 proxysql-servers="127.0.0.1"
 proxysql-multiplexing = false
 proxysql-password = "admin"
-proxysql-user "admin"
+proxysql-user = "admin"
