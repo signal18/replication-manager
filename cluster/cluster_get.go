@@ -825,7 +825,7 @@ func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 	}
 	response, err := client.Get(cluster.Conf.ProvServicePlanRegistry)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "GetServicePlans: %s", err)
+		cluster.LogPrintf(LvlErr, "GetServicePlans: %s %s", cluster.Conf.ProvServicePlanRegistry, err)
 		return nil
 	}
 	defer response.Body.Close()

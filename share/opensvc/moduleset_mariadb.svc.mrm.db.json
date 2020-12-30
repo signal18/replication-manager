@@ -2465,8 +2465,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_net_threadpool.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# THREAD POOL\\n# ----------- \\n\\n[mariadb]\\n\\nthread_handling = pool-of-threads\\nextra_port = 3307\\nextra_max_connections = 10\"}",
-                    "var_updated": "2020-03-25 11:13:47",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_net_threadpool.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# THREAD POOL\\n# ----------- \\n\\n# mariadb_command: EXECUTE IMMEDIATE IF(@@thread_handling='pool-of-threads', \\\"SELECT 'Unchanged thread_handling'\\\",\\\"SET GLOBAL thread_handling = 'pool-of-threads'\\\")\\n# mariadb_default: EXECUTE IMMEDIATE IF(@@thread_handling='one-thread-per-connection', \\\"SELECT 'Unchanged thread_handling'\\\",\\\"SET GLOBAL thread_handling = 'one-thread-per-connection'\\\")\\n\\n[mariadb]\\n\\nthread_handling = pool-of-threads\\nextra_port = 3307\\nextra_max_connections = 10\"}",
+                    "var_updated": "2020-12-30 18:08:58",
                     "var_name": "db_cnf_net_with_threadpool",
                     "id": 5908
                 },
@@ -2481,16 +2481,16 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_memory.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL join_buffer_space_limit = 1*1024*1024*1024;SET GLOBAL join_cache_level = 6;SET GLOBAL mrr_buffer_size = 16*1024*1024;SET GLOBAL open_files_limit = 65000;SET GLOBAL tmp_table_size = 256*1024*1024;SET GLOBAL max_heap_table_size = 256*1024*1024;SET GLOBAL table_open_cache = 1024;SET GLOBAL table_definition_cache = 1024;SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL sort_buffer_size = 1*1024*1024;SET GLOBAL read_buffer_size = 256*1024;SET GLOBAL join_buffer_size = 128*1024*1024;\\n\\n# mysql_command: SET GLOBAL mrr_buffer_size = 16*1024*1024;SET GLOBAL open_files_limit = 65000;SET GLOBAL tmp_table_size = 256*1024*1024;SET GLOBAL max_heap_table_size = 256*1024*1024;SET GLOBAL table_open_cache = 1024;SET GLOBAL table_definition_cache = 1024;SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL sort_buffer_size = 1*1024*1024;SET GLOBAL read_buffer_size = 256*1024;SET GLOBAL join_buffer_size = 128*1024*1024;\\n\\n[mariadb]\\njoin_buffer_space_limit = 1G\\njoin_cache_level = 6\\nmrr_buffer_size = 16M\\n\\n[mysqld]\\n# SQL \\n# --- \\n\\nopen_files_limit = 65000\\ntmp_table_size = 256M\\nmax_heap_table_size = 256M\\ntable_open_cache = 1024\\ntable_definition_cache = 1024\\nmax_allowed_packet = 512M\\nsort_buffer_size = 1M\\nread_buffer_size = 256K\\njoin_buffer_size = 128M\\n\\n\"}",
-                    "var_updated": "2020-12-23 09:11:17",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_memory.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL join_buffer_space_limit = 1*1024*1024*1024;SET GLOBAL join_cache_level = 6;SET GLOBAL mrr_buffer_size = 16*1024*1024;EXECUTE IMMEDIATE IF(@@open_files_limit=65000, \\\"Unchanged open_files_limit\\\", \\\"SET GLOBAL open_files_limit = 65000\\\");SET GLOBAL tmp_table_size = 256*1024*1024;SET GLOBAL max_heap_table_size = 256*1024*1024;SET GLOBAL table_open_cache = 1024;SET GLOBAL table_definition_cache = 1024;SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL sort_buffer_size = 1*1024*1024;SET GLOBAL read_buffer_size = 256*1024;SET GLOBAL join_buffer_size = 128*1024*1024;\\n\\n# mysql_command: SET GLOBAL mrr_buffer_size = 16*1024*1024;SET GLOBAL open_files_limit = 65000;SET GLOBAL tmp_table_size = 256*1024*1024;SET GLOBAL max_heap_table_size = 256*1024*1024;SET GLOBAL table_open_cache = 1024;SET GLOBAL table_definition_cache = 1024;SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL sort_buffer_size = 1*1024*1024;SET GLOBAL read_buffer_size = 256*1024;SET GLOBAL join_buffer_size = 128*1024*1024;\\n\\n[mariadb]\\njoin_buffer_space_limit = 1G\\njoin_cache_level = 6\\nmrr_buffer_size = 16M\\n\\n[mysqld]\\n# SQL \\n# --- \\n\\nopen_files_limit = 65000\\ntmp_table_size = 256M\\nmax_heap_table_size = 256M\\ntable_open_cache = 1024\\ntable_definition_cache = 1024\\nmax_allowed_packet = 512M\\nsort_buffer_size = 1M\\nread_buffer_size = 256K\\njoin_buffer_size = 128M\\n\\n\"}",
+                    "var_updated": "2020-12-30 11:47:09",
                     "var_name": "db_cnf_default_memory",
                     "id": 5910
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_security.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# SECURITY\\n# --------\\n\\n# mariadb_command:SET GLOBAL sysdate_is_now = 1;SET GLOBAL connect_timeout = 10;SET GLOBAL sql_mode = 'NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER';SET GLOBAL local_infile = 0;SET GLOBAL max_connect_errors = 1000000;\\n\\n# mysql_command:SET GLOBAL sysdate_is_now = 1;SET GLOBAL connect_timeout = 10;SET GLOBAL sql_mode = 'NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER';SET GLOBAL local_infile = 0;SET GLOBAL max_connect_errors = 1000000;\\n\\n[mysqld]\\n# Disabling symbolic-links is recommended to prevent assorted security risks\\n# symbolic-links = 0\\nsysdate_is_now = 1\\nconnect_timeout = 10\\n\\nsql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES\\nlocal_infile = 0\\nmax_connect_errors = 1000000\\n# pam_use_cleartext_plugin = ON \\n# secure_auth = 1\\nskip_show_database = 1\\n\\n[mysqld-5.5]\\nsql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER\\n[mysqld-5.6]\\nsql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER\\n[mysqld-5.7]\\nsql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER\\n[mysqld-8.0]\\n# NO_AUTO_CREATE_USER deprecated, load data infile to upload directory\\ndefault-authentication-plugin = mysql_native_password\\nsecure-file-priv = \\\"\\\"\\ndefault_authentication_plugin=mysql_native_password\\n\\n[mariadb]\\nsql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER\\n\"}",
-                    "var_updated": "2020-12-24 12:04:27",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_security.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# SECURITY\\n# --------\\n\\n# mariadb_command: SET GLOBAL connect_timeout = 10;SET GLOBAL sql_mode = 'NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER';SET GLOBAL local_infile = 0;SET GLOBAL max_connect_errors = 1000000;\\n\\n# mysql_command:SET GLOBAL sysdate_is_now = 1;SET GLOBAL connect_timeout = 10;SET GLOBAL sql_mode = 'NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER';SET GLOBAL local_infile = 0;SET GLOBAL max_connect_errors = 1000000;\\n\\n[mysqld]\\n# Disabling symbolic-links is recommended to prevent assorted security risks\\n# symbolic-links = 0\\nsysdate_is_now = 1\\nconnect_timeout = 10\\n\\nsql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES\\nlocal_infile = 0\\nmax_connect_errors = 1000000\\n# pam_use_cleartext_plugin = ON \\n# secure_auth = 1\\nskip_show_database = 1\\n\\n[mysqld-5.5]\\nsql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER\\n[mysqld-5.6]\\nsql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER\\n[mysqld-5.7]\\nsql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER\\n[mysqld-8.0]\\n# NO_AUTO_CREATE_USER deprecated, load data infile to upload directory\\ndefault-authentication-plugin = mysql_native_password\\nsecure-file-priv = \\\"\\\"\\ndefault_authentication_plugin=mysql_native_password\\n\\n[mariadb]\\nsql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES,NO_AUTO_CREATE_USER\\n\"}",
+                    "var_updated": "2020-12-30 13:03:16",
                     "var_name": "db_cnf_default_security",
                     "id": 5911
                 },
@@ -2513,16 +2513,16 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_net_querycache.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# QUERY CACHE\\n# -----------\\n\\n[mysqld]\\n#query_cache_limit = 2M\\n\\nloose_query_cache_size = 0\\nloose_query_cache_type = 0\"}",
-                    "var_updated": "2020-04-11 14:58:45",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_net_querycache.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# QUERY CACHE\\n# -----------\\n\\n# mariadb_command: SET GLOBAL query_cache_size = 0\\n# mysql_command: SET GLOBAL query_cache_size = 0\\n\\n[mysqld]\\n#query_cache_limit = 2M\\n\\nloose_query_cache_size = 0\\nloose_query_cache_type = 0\"}",
+                    "var_updated": "2020-12-30 17:25:45",
                     "var_name": "db_cnf_net_no_querycache",
                     "id": 5914
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_network.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# NETWORK\\n# ------- \\n\\n# mariadb_command: SET GLOBAL max_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%;SET GLOBAL max_user_connections = 450;SET GLOBAL thread_cache_size = 128;SET GLOBAL back_log = 128;SET GLOBAL skip_name_resolve = 1;SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL query_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%*1024*1024;\\n\\n# mysql_command: SET GLOBAL max_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%;SET GLOBAL max_user_connections = 450;SET GLOBAL thread_cache_size = 128;SET GLOBAL back_log = 128;SET GLOBAL skip_name_resolve = 1;SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL query_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%*1024*1024;\\n\\n[mysqld]\\n\\nport=%%ENV:SERVER_PORT%%\\nmax_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%% \\nmax_user_connections = 450\\nthread_cache_size = 128\\nback_log = 128 \\nskip_name_resolve = 1\\nmax_allowed_packet = 512M\\nquery_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%M \"}",
-                    "var_updated": "2020-12-30 00:17:13",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_network.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# NETWORK\\n# ------- \\n\\n# mariadb_command: SET GLOBAL max_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%;SET GLOBAL max_user_connections = 450;SET GLOBAL thread_cache_size = 128;EXECUTE IMMEDIATE IF(@@back_log=128,\\\"SELECT 'Unchanged back_log'\\\", \\\"SET GLOBAL back_log = 128\\\");EXECUTE IMMEDIATE IF(@@skip_name_resolve=1,\\\"SELECT 'Unchanged skip_name_resolve'\\\", \\\"SET GLOBAL skip_name_resolve = 1\\\");SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL query_cache_size = %%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%*1024*1024;\\n\\n# mysql_command: SET GLOBAL max_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%;SET GLOBAL max_user_connections = 450;SET GLOBAL thread_cache_size = 128;SET GLOBAL back_log = 128;SET GLOBAL skip_name_resolve = 1;SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL query_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%*1024*1024;\\n\\n[mysqld]\\n\\nport=%%ENV:SERVER_PORT%%\\nmax_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%% \\nmax_user_connections = 450\\nthread_cache_size = 128\\nback_log = 128 \\nskip_name_resolve = 1\\nmax_allowed_packet = 512M\\nquery_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%M \"}",
+                    "var_updated": "2020-12-30 12:06:00",
                     "var_name": "db_cnf_default_network",
                     "id": 5915
                 },
@@ -2537,8 +2537,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_innodb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# INNODB\\n# ------\\n# mariadb_command: SET GLOBAL innodb_adaptive_hash_index=0; SET GLOBAL innodb_buffer_pool_instances=%%ENV:IBPINSTANCES%%;SET GLOBAL innodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%*1024*1024;SET GLOBAL innodb_read_io_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL  innodb_write_io_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL innodb_io_capacity = %%ENV:CHECKPOINTIOPS%%;SET GLOBAL innodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%;SET GLOBAL innodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%;SET GLOBAL innodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%;SET GLOBAL innodb_flush_neighbors = 1;SET GLOBAL innodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%*1024*1024;SET GLOBAL innodb_thread_concurrency = 0;SET GLOBAL innodb_autoinc_lock_mode = 2;SET GLOBAL innodb_stats_on_metadata = 0;SET GLOBAL innodb_buffer_pool_dump_at_shutdown = 1;SET GLOBAL innodb_buffer_pool_load_at_startup = 1;SET GLOBAL innodb_open_files = 16384;SET GLOBAL innodb_purge_threads = 4;SET GLOBAL innodb_concurrency_tickets = 5000;SET GLOBAL innodb_print_all_deadlocks = 1;SET GLOBAL innodb_large_prefix = 1;SET GLOBAL innodb_file_format = barracuda;SET GLOBAL innodb_default_row_format=dynamic;\\n \\n[mysqld-5.5]\\ninnodb_file_format = barracuda\\n[mysqld-5.6]\\ninnodb_file_format = barracuda\\n[mysqld-5.7]\\ninnodb_file_format = barracuda \\n#deprecated in 5.8\\n\\n[mariadb]\\n#innodb_buffer_pool_populate=0 \\n[mariadb 5.5]\\ninnodb_file_format = barracuda\\n[mariadb 10.0]\\ninnodb_file_format = barracuda\\n \\n[mariadb 10.1]\\ninnodb_force_primary_key = 1\\ninnodb_default_row_format=dynamic\\n#innodb_defragment = 1\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.2]\\ninnodb_lock_schedule_algorithm=fcfs\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.3]\\ninnodb-page-cleaners= %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld]\\ntransaction-isolation = READ-COMMITTED\\ndefault_storage_engine = InnoDB\\ninnodb_adaptive_hash_index = 0\\ninnodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%M\\ninnodb_buffer_pool_instances = %%ENV:IBPINSTANCES%%\\ninnodb_file_per_table= 1\\ninnodb_read_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_write_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_io_capacity = %%ENV:CHECKPOINTIOPS%%\\ninnodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%\\ninnodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%\\ninnodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%\\ninnodb_flush_neighbors = 1\\ninnodb_log_file_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_FILE_SIZE%%M\\n# innodb_log_buffer_size change Crash 10.2.14\\ninnodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%M\\ninnodb_log_files_in_group = 1\\ninnodb_thread_concurrency = 0\\ninnodb_flush_method = O_DIRECT\\n\\n#innodb_undo_tablespaces = 4\\ninnodb_autoinc_lock_mode = 2\\ninnodb_stats_on_metadata = 0\\ninnodb_buffer_pool_dump_at_shutdown = 1\\ninnodb_buffer_pool_load_at_startup = 1\\ninnodb_open_files = 16384\\ninnodb_purge_threads = 4\\ninnodb_concurrency_tickets = 5000\\ninnodb_print_all_deadlocks = 1  \\n# innodb_monitor_enable = all // cost perf  \\n\\n[mariadb 10.4]\\ninnodb_large_prefix = 1\\ninnodb_file_format = barracuda\\ninnodb_default_row_format=dynamic\\n\"}",
-                    "var_updated": "2020-12-22 15:00:25",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_innodb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# INNODB\\n# ------\\n# mariadb_command: SET GLOBAL innodb_adaptive_hash_index=0;SET GLOBAL innodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%*1024*1024;SET GLOBAL innodb_io_capacity = %%ENV:CHECKPOINTIOPS%%;SET GLOBAL innodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%;SET GLOBAL innodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%;SET GLOBAL innodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%;SET GLOBAL innodb_flush_neighbors = 1;EXECUTE IMMEDIATE IF(@@innodb_buffer_pool_instances=%%ENV:IBPINSTANCES%%,\\\"SELECT 'Unchanged innodb_buffer_pool_instances'\\\", \\\"SET GLOBAL innodb_buffer_pool_instances =%%ENV:IBPINSTANCES%%\\\"); EXECUTE IMMEDIATE IF(@@innodb_read_io_threads=%%ENV:NODES_CPU_CORES%%,\\\"SELECT 'Unchanged innodb_read_io_threads'\\\", \\\"SET GLOBAL innodb_read_io_threads = %%ENV:NODES_CPU_CORES%%\\\");EXECUTE IMMEDIATE IF(@@innodb_write_io_threads=%%ENV:NODES_CPU_CORES%%,\\\"SELECT 'Unchanged innodb_write_io_threads'\\\", \\\"SET GLOBAL innodb_write_io_threads = %%ENV:NODES_CPU_CORES%%\\\");EXECUTE IMMEDIATE  IF(@@innodb_log_buffer_size=%%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%*1024*1024,\\\"SELECT 'Unchanged innodb_log_buffer_size'\\\", \\\"SET GLOBAL innodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%*1024*1024\\\");SET GLOBAL innodb_thread_concurrency = 0;EXECUTE IMMEDIATE  IF(@@innodb_autoinc_lock_mode=2,\\\"SELECT 'Unchanged innodb_autoinc_lock_mode'\\\", \\\"SET GLOBAL innodb_autoinc_lock_mode=2\\\");SET GLOBAL innodb_stats_on_metadata = 0;SET GLOBAL innodb_buffer_pool_dump_at_shutdown = 1;EXECUTE IMMEDIATE  IF(@@innodb_buffer_pool_load_at_startup=1,\\\"SELECT 'Unchanged innodb_buffer_pool_load_at_startup'\\\", \\\"SET GLOBAL innodb_buffer_pool_load_at_startup=1\\\");EXECUTE IMMEDIATE  IF(@@innodb_open_files=16384,\\\"SELECT 'Unchanged innodb_open_files'\\\", \\\"SET GLOBAL innodb_open_files=16384\\\");EXECUTE IMMEDIATE  IF(@@innodb_purge_threads=%%ENV:NODES_CPU_CORES%%,\\\"SELECT 'Unchanged innodb_purge_threads'\\\", \\\"SET GLOBAL innodb_purge_threads = %%ENV:NODES_CPU_CORES%%\\\");SET GLOBAL innodb_concurrency_tickets = 5000;SET GLOBAL innodb_print_all_deadlocks = 1; EXECUTE IMMEDIATE  IF(@@innodb_large_prefix=1 OR @@innodb_large_prefix IS NULL,\\\"SELECT 'Unchanged innodb_large_prefix'\\\", \\\"SET GLOBAL innodb_large_prefix = 1\\\"); EXECUTE IMMEDIATE  IF(@@innodb_file_format='barracuda' OR @@innodb_file_format IS NULL,\\\"SELECT 'Unchanged barracuda'\\\", \\\"SET GLOBAL innodb_file_format='barracuda'\\\");SET GLOBAL innodb_default_row_format=dynamic;\\n \\n[mysqld-5.5]\\ninnodb_file_format = barracuda\\n[mysqld-5.6]\\ninnodb_file_format = barracuda\\n[mysqld-5.7]\\ninnodb_file_format = barracuda \\n#deprecated in 5.8\\n\\n[mariadb]\\n#innodb_buffer_pool_populate=0 \\n[mariadb 5.5]\\ninnodb_file_format = barracuda\\n[mariadb 10.0]\\ninnodb_file_format = barracuda\\n \\n[mariadb 10.1]\\ninnodb_force_primary_key = 1\\ninnodb_default_row_format=dynamic\\n#innodb_defragment = 1\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.2]\\ninnodb_lock_schedule_algorithm=fcfs\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.3]\\ninnodb-page-cleaners= %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld]\\ntransaction-isolation = READ-COMMITTED\\ndefault_storage_engine = InnoDB\\ninnodb_adaptive_hash_index = 0\\ninnodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%M\\ninnodb_buffer_pool_instances = %%ENV:IBPINSTANCES%%\\ninnodb_file_per_table= 1\\ninnodb_read_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_write_io_threads = %%ENV:NODES_CPU_CORES%%\\ninnodb_io_capacity = %%ENV:CHECKPOINTIOPS%%\\ninnodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%\\ninnodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%\\ninnodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%\\ninnodb_flush_neighbors = 1\\ninnodb_log_file_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_FILE_SIZE%%M\\n# innodb_log_buffer_size change Crash 10.2.14\\ninnodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%M\\ninnodb_log_files_in_group = 1\\ninnodb_thread_concurrency = 0\\ninnodb_flush_method = O_DIRECT\\n\\n#innodb_undo_tablespaces = 4\\ninnodb_autoinc_lock_mode = 2\\ninnodb_stats_on_metadata = 0\\ninnodb_buffer_pool_dump_at_shutdown = 1\\ninnodb_buffer_pool_load_at_startup = 1\\ninnodb_open_files = 16384\\ninnodb_purge_threads = 4\\ninnodb_concurrency_tickets = 5000\\ninnodb_print_all_deadlocks = 1  \\n# innodb_monitor_enable = all // cost perf  \\n\\n[mariadb 10.4]\\ninnodb_large_prefix = 1\\ninnodb_file_format = barracuda\\ninnodb_default_row_format=dynamic\\n\"}",
+                    "var_updated": "2020-12-30 12:54:15",
                     "var_name": "db_cnf_engine_innodb",
                     "id": 5917
                 },
@@ -2681,16 +2681,16 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_log_audit.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"### MariaDB Audit Plugin ###\\n# mariadb_command: SET GLOBAL server_audit  = FORCE_PLUS_PERMANENT;SET GLOBAL server_audit_events = 'CONNECT,QUERY,TABLE,QUERY_DDL,QUERY_DML_NO_SELECT';SET GLOBAL server_audit_logging = ON ;SET GLOBAL server_audit_output_type = SYSLOG;SET GLOBAL server_audit_query_log_limit = 1024;SET GLOBAL server_audit_syslog_facility = LOG_USER ;SET GLOBAL server_audit_syslog_ident = mysql-server_auditing;\\n\\n[mysqld]\\nserver_audit  = FORCE_PLUS_PERMANENT\\nserver_audit_events = CONNECT,QUERY,TABLE,QUERY_DDL,QUERY_DML_NO_SELECT\\nserver_audit_logging = ON\\n# server_audit_excl_users = exclude,users,here\\n# server_audit_file_rotate_now = OFF\\n# server_audit_file_rotate_size = 100000\\n# server_audit_file_rotations  = 9\\n# server_audit_incl_users = include,users,here\\nserver_audit_output_type = SYSLOG\\nserver_audit_query_log_limit = 1024\\nserver_audit_syslog_facility = LOG_USER\\nserver_audit_syslog_ident = mysql-server_auditing\\n#server_audit_syslog_infod =\\nserver_audit_syslog_priority = LOG_INFO\"}",
-                    "var_updated": "2020-12-24 12:15:38",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_log_audit.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"### MariaDB Audit Plugin ###\\n# mariadb_command: SET GLOBAL server_audit  = FORCE_PLUS_PERMANENT;SET GLOBAL server_audit_events = 'CONNECT,QUERY,TABLE,QUERY_DDL,QUERY_DML_NO_SELECT';SET GLOBAL server_audit_logging = ON ;SET GLOBAL server_audit_output_type = SYSLOG;SET GLOBAL server_audit_query_log_limit = 1024;SET GLOBAL server_audit_syslog_facility = LOG_USER ;SET GLOBAL server_audit_syslog_ident = mysql-server_auditing\\n# mariadb_default: SET GLOBAL server_audit_logging = 0\\n\\n[mysqld]\\nserver_audit  = FORCE_PLUS_PERMANENT\\nserver_audit_events = CONNECT,QUERY,TABLE,QUERY_DDL,QUERY_DML_NO_SELECT\\nserver_audit_logging = ON\\n# server_audit_excl_users = exclude,users,here\\n# server_audit_file_rotate_now = OFF\\n# server_audit_file_rotate_size = 100000\\n# server_audit_file_rotations  = 9\\n# server_audit_incl_users = include,users,here\\nserver_audit_output_type = SYSLOG\\nserver_audit_query_log_limit = 1024\\nserver_audit_syslog_facility = LOG_USER\\nserver_audit_syslog_ident = mysql-server_auditing\\n#server_audit_syslog_infod =\\nserver_audit_syslog_priority = LOG_INFO\"}",
+                    "var_updated": "2020-12-30 17:56:16",
                     "var_name": "db_cnf_log_with_audit",
                     "id": 5935
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_aria.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# ARIA\\n# ----\\n\\n# mariadb_command: SET GLOBAL aria_pagecache_buffer_size = %%ENV:SVC_CONF_ENV_ARIA_CACHE_SIZE%%*1024*1024;SET GLOBAL aria_group_commit = hard;SET GLOBAL aria_pagecache_file_hash_size = 1024;\\n\\n[mariadb]\\n\\naria_pagecache_buffer_size = %%ENV:SVC_CONF_ENV_ARIA_CACHE_SIZE%%M\\naria_group_commit = hard\\n#aria_used_for_temp_tables = 1\\naria_pagecache_file_hash_size = 1024\\n#aria_block_size=1024\"}",
-                    "var_updated": "2020-12-23 17:50:43",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_aria.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# ARIA\\n# ----\\n\\n# mariadb_command: EXECUTE IMMEDIATE IF(@@aria_pagecache_buffer_size= %%ENV:SVC_CONF_ENV_ARIA_CACHE_SIZE%%*1024*1024,\\\"SELECT 'Unchanged aria_pagecache_buffer_size'\\\",  \\\"SET GLOBAL aria_pagecache_buffer_size = %%ENV:SVC_CONF_ENV_ARIA_CACHE_SIZE%%*1024*1024\\\");SET GLOBAL aria_group_commit = hard;EXECUTE IMMEDIATE IF(@@aria_pagecache_file_hash_size=1024,\\\"SELECT 'Unchanged aria_pagecache_file_hash_size'\\\",\\\"SET GLOBAL aria_pagecache_file_hash_size = 1024\\\");\\n\\n[mariadb]\\n\\naria_pagecache_buffer_size = %%ENV:SVC_CONF_ENV_ARIA_CACHE_SIZE%%M\\naria_group_commit = hard\\n#aria_used_for_temp_tables = 1\\naria_pagecache_file_hash_size = 1024\\n#aria_block_size=1024\"}",
+                    "var_updated": "2020-12-30 12:58:46",
                     "var_name": "db_cnf_engine_aria",
                     "id": 5936
                 },
@@ -2721,32 +2721,32 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_log_general.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL general_log=1;\\n# mysql_command: SET GLOBAL general_log=1;\\n\\n[mysqld]\\ngeneral_log=1\\n\\n\"}",
-                    "var_updated": "2020-12-24 12:16:16",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_log_general.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL general_log=1\\n# mariadb_default: SET GLOBAL general_log=0\\n\\n# mysql_command: SET GLOBAL general_log=1\\n# mysql_default: SET GLOBAL general_log=0\\n\\n[mysqld]\\ngeneral_log=1\\n\\n\"}",
+                    "var_updated": "2020-12-30 17:35:07",
                     "var_name": "db_cnf_log_with_general",
                     "id": 5940
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_log_sqlerror.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'sql_errlog';SET GLOBAL sql_error_log_rotate=1;\\n\\n[mariadb]\\nplugin_load_add =\\\"sql_errlog.so\\\"\\nloose_sql_error_log_rotate = 1\"}",
-                    "var_updated": "2020-12-23 18:09:38",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_log_sqlerror.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'sql_errlog';SET GLOBAL sql_error_log_rotate=1\\n# mariadb_default: SET GLOBAL sql_error_log_rotate=0\\n\\n[mariadb]\\nplugin_load_add =\\\"sql_errlog.so\\\"\\nloose_sql_error_log_rotate = 1\"}",
+                    "var_updated": "2020-12-30 17:57:04",
                     "var_name": "db_cnf_log_with_sqlerror",
                     "id": 5941
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_disk_doublewrite.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.0\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-doublewrite-buffer/\\n# mariadb_command: set global innodb_doublewrite=0;\\n# mariadb_command_since: \\n# mysql_version: 5.0\\n# mysql_command: set global innodb_doublewrite=0;\\n# mysql_command_since: \\n# mariadb_command: SET GLOBAL innodb_doublewrite = 0;\\n# mysql_command: SET GLOBAL innodb_doublewrite = 0;\\n\\n[mysqld]\\ninnodb_doublewrite=0\\ninnodb_checksum_algorithm = none\"}",
-                    "var_updated": "2020-12-23 17:38:00",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_disk_doublewrite.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.0\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-doublewrite-buffer/\\n# mariadb_command: set global innodb_doublewrite=0\\n# mariadb_default: set global innodb_doublewrite=1\\n\\n# mariadb_command_since: \\n# mysql_version: 5.0\\n# mysql_command: set global innodb_doublewrite=0\\n# mysql_default: set global innodb_doublewrite=1\\n# mysql_command_since: \\n# mariadb_command: SET GLOBAL innodb_doublewrite = 0;\\n# mysql_command: SET GLOBAL innodb_doublewrite = 0;\\n\\n[mysqld]\\ninnodb_doublewrite=0\\ninnodb_checksum_algorithm = none\"}",
+                    "var_updated": "2020-12-30 17:49:21",
                     "var_name": "db_cnf_disk_no_doublewrite",
                     "id": 5942
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_replication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# REPLICATION\\n# -----------  \\n\\n# mariadb_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;SET GLOBAL relay_log_space_limit = 1*1024*1024*1024;SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1; SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%';SET GLOBAL log_slave_updates = ON;SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL loose_binlog_row_query_log_events = 1;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';SET GLOBAL replicate_annotate_row_events = 1;SET GLOBAL binlog_annotate_row_events = 1;SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_max_queued =2*1024*1024;\\n\\n# mysql_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;SET GLOBAL relay_log_space_limit = 1*1024*1024*1024;SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1;SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%';SET GLOBAL log_slave_updates = ON;SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL loose_binlog_row_query_log_events = 1;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';SET GLOBAL replicate_annotate_row_events = 1;SET GLOBAL binlog_annotate_row_events = 1;SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_max_queued =2*1024*1024;\\n\\n[mysqld]\\nserver_id = %%ENV:SVC_CONF_ENV_SERVER_ID%%\\nrelay_log_space_limit = 1G\\nbinlog_format = MIXED\\nbinlog_checksum = 1\\nbinlog_cache_size = 1M\\nbinlog_stmt_cache_size = 1M\\nexpire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%% \\nsync_binlog = 1\\nreport_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\nlog_slave_updates = ON\\nlog_bin_trust_function_creators = ON\\nloose_binlog_row_query_log_events = 1\\n\\n[mariadb]\\nloose_slave_type_conversions = 'ALL_NON_LOSSY'\\nloose_replicate_annotate_row_events = 1\\nloose_binlog_annotate_row_events = 1\\n#loose_gtid-strict-mode = 1\\nloose_gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%\\nloose_slave_parallel_mode = conservative\\nloose_slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_max_queued =2M\\n\\n\"}",
-                    "var_updated": "2020-12-24 12:39:33",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_replication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# REPLICATION\\n# -----------  \\n\\n# mariadb_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;EXECUTE IMMEDIATE IF(@@relay_log_space_limit=1*1024*1024*1024,\\\"SELECT 'Unchanged relay_log_space_limit'\\\" ,\\\"SET GLOBAL relay_log_space_limit = 1*1024*1024*1024\\\");SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1; SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;EXECUTE IMMEDIATE IF(@@report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%',\\\"SELECT 'Unchanged report_host'\\\", \\\"SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\\");EXECUTE IMMEDIATE IF(@@log_slave_updates=1,\\\"SELECT 'Unchanged log_slave_updates'\\\",\\\"SET GLOBAL log_slave_updates = ON\\\");SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';EXECUTE IMMEDIATE IF(@@replicate_annotate_row_events=1,\\\"SELECT 'Unchanged replicate_annotate_row_events'\\\", \\\"SET GLOBAL replicate_annotate_row_events = 1\\\");EXECUTE IMMEDIATE IF(@@binlog_annotate_row_events=1,\\\"SELECT 'Unchanged binlog_annotate_row_events'\\\", \\\"SET GLOBAL binlog_annotate_row_events = 1\\\");SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;STOP SLAVE; SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;START SLAVE;SET GLOBAL slave_parallel_max_queued =2*1024*1024;\\n\\n# mysql_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;SET GLOBAL relay_log_space_limit = 1*1024*1024*1024;SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1;SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%';SET GLOBAL log_slave_updates = ON;SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL loose_binlog_row_query_log_events = 1;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';SET GLOBAL replicate_annotate_row_events = 1;SET GLOBAL binlog_annotate_row_events = 1;SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_max_queued =2*1024*1024;\\n\\n[mysqld]\\nserver_id = %%ENV:SVC_CONF_ENV_SERVER_ID%%\\nrelay_log_space_limit = 1G\\nbinlog_format = MIXED\\nbinlog_checksum = 1\\nbinlog_cache_size = 1M\\nbinlog_stmt_cache_size = 1M\\nexpire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%% \\nsync_binlog = 1\\nreport_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\nlog_slave_updates = ON\\nlog_bin_trust_function_creators = ON\\nloose_binlog_row_query_log_events = 1\\n\\n[mariadb]\\nloose_slave_type_conversions = 'ALL_NON_LOSSY'\\nloose_replicate_annotate_row_events = 1\\nloose_binlog_annotate_row_events = 1\\n#loose_gtid-strict-mode = 1\\nloose_gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%\\nloose_slave_parallel_mode = conservative\\nloose_slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_max_queued =2M\\n\\n\"}",
+                    "var_updated": "2020-12-30 13:20:43",
                     "var_name": "db_cnf_default_replication",
                     "id": 5943
                 },
@@ -2841,8 +2841,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_disk_durable.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL innodb_flush_log_at_trx_commit = 0;\\n# mysql_command: SET GLOBAL innodb_flush_log_at_trx_commit = 0;\\n\\n[mysqld]\\nloose_innodb_flush_log_at_trx_commit = 0\"}",
-                    "var_updated": "2020-12-23 17:38:25",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_disk_durable.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL innodb_flush_log_at_trx_commit = 0;\\n# mysql_command: SET GLOBAL innodb_flush_log_at_trx_commit = 0;\\n# mariadb_default: SET GLOBAL innodb_flush_log_at_trx_commit = 1;\\n# mysql_default: SET GLOBAL innodb_flush_log_at_trx_commit = 1;\\n\\n[mysqld]\\nloose_innodb_flush_log_at_trx_commit = 0\"}",
+                    "var_updated": "2020-12-30 17:47:30",
                     "var_name": "db_cnf_disk_no_durable",
                     "id": 5955
                 },
@@ -3001,8 +3001,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_log_userstats.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nuserstat = 1\"}",
-                    "var_updated": "2020-03-25 11:13:06",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_log_userstats.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL userstat=1\\n# mariadb_default: SET GLOBAL userstat=0\\n\\n[mariadb]\\nuserstat = 1\"}",
+                    "var_updated": "2020-12-30 17:57:41",
                     "var_name": "db_cnf_log_with_userstats",
                     "id": 6026
                 },
@@ -3049,16 +3049,16 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_ssd.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL innodb_flush_neighbors = 0;SET GLOBAL loose_innodb_change_buffering=none;\\n# mysql_command: SET GLOBAL innodb_flush_neighbors = 0;SET GLOBAL loose_innodb_change_buffering=none;\\n\\n[mysqld]\\nloose_innodb_flush_neighbors = 0\\nloose_innodb_change_buffering=none\"}",
-                    "var_updated": "2020-12-23 17:47:26",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_ssd.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL innodb_flush_neighbors = 0;SET GLOBAL innodb_change_buffering=none\\n# mysql_command: SET GLOBAL innodb_flush_neighbors = 0;SET GLOBAL innodb_change_buffering=none\\n# mariadb_default: SET GLOBAL innodb_flush_neighbors = 1;SET GLOBAL innodb_change_buffering=all\\n# mysql_default: SET GLOBAL innodb_flush_neighbors = 1;SET GLOBAL innodb_change_buffering=all\\n\\n[mysqld]\\nloose_innodb_flush_neighbors = 0\\nloose_innodb_change_buffering=none\"}",
+                    "var_updated": "2020-12-30 17:41:04",
                     "var_name": "db_cnf_disk_with_ssd",
                     "id": 6038
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_autocommit.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nautocommit=0\"}",
-                    "var_updated": "2020-03-25 11:19:48",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_autocommit.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mysql_command: SET GLOBAL autocommit=0\\n# mysql_default: SET GLOBAL autocommit=1\\n\\n# mariadb_command: SET GLOBAL autocommit=0\\n# mariadb_default: SET GLOBAL autocommit=1\\n\\n\\n[mysqld]\\nautocommit=0\"}",
+                    "var_updated": "2020-12-30 18:10:45",
                     "var_name": "db_cnf_opt_no_autocommit",
                     "id": 6059
                 },
@@ -3073,8 +3073,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_defrag.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.1.1  \\n# mariadb_documentation: https://mariadb.com/kb/en/defragmenting-innodb-tablespaces/\\n# mariadb_command: SET GLOBAL innodb_defragment = ON;SET GLOBAL innodb_defragment_fill_factor = 0.9;SET GLOBAL innodb_defragment_fill_factor_n_recs = 20;SET GLOBAL innodb_defragment_frequency = 40;SET GLOBAL innodb_defragment_n_pages = 7;SET GLOBAL innodb_defragment_stats_accuracy = 0;\\n\\n\\n[mariadb]\\nloose_innodb_defragment = ON\\nloose_innodb_defragment_fill_factor = 0.9\\nloose_innodb_defragment_fill_factor_n_recs = 20\\nloose_innodb_defragment_frequency = 40\\nloose_innodb_defragment_n_pages = 7\\nloose_innodb_defragment_stats_accuracy = 0\"}",
-                    "var_updated": "2020-12-23 17:41:28",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_defrag.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.1.1  \\n# mariadb_documentation: https://mariadb.com/kb/en/defragmenting-innodb-tablespaces/\\n# mariadb_command: SET GLOBAL innodb_defragment = ON;SET GLOBAL innodb_defragment_fill_factor = 0.9;SET GLOBAL innodb_defragment_fill_factor_n_recs = 20;SET GLOBAL innodb_defragment_frequency = 40;SET GLOBAL innodb_defragment_n_pages = 7;SET GLOBAL innodb_defragment_stats_accuracy = 0\\nmariadb_default: SET GLOBAL innodb_defragment = 0;\\n\\n\\n[mariadb]\\nloose_innodb_defragment = ON\\nloose_innodb_defragment_fill_factor = 0.9\\nloose_innodb_defragment_fill_factor_n_recs = 20\\nloose_innodb_defragment_frequency = 40\\nloose_innodb_defragment_n_pages = 7\\nloose_innodb_defragment_stats_accuracy = 0\"}",
+                    "var_updated": "2020-12-30 17:46:00",
                     "var_name": "db_cnf_disk_with_defrag",
                     "id": 6073
                 },
@@ -3089,8 +3089,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_connect.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'connect';\\n\\n[mariadb]\\nplugin_load_add=CONNECT\\n\"}",
-                    "var_updated": "2020-12-23 17:49:16",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_connect.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'connect'\\n\\n[mariadb]\\nplugin_load_add=CONNECT\\n\"}",
+                    "var_updated": "2020-12-30 17:53:38",
                     "var_name": "db_cnf_engine_connect",
                     "id": 6076
                 },
@@ -3113,8 +3113,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_blackhole.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'blackhole';\\n\\n[mysqld]\\nplugin_load_add=BLACKHOLE\"}",
-                    "var_updated": "2020-12-23 17:48:45",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_blackhole.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'blackhole'\\n\\n[mysqld]\\nplugin_load_add=BLACKHOLE\"}",
+                    "var_updated": "2020-12-30 17:53:33",
                     "var_name": "db_cnf_engine_blackhole",
                     "id": 6079
                 },
@@ -3129,8 +3129,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_net_proxyprotocol.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\nloose_proxy_protocol_networks = *\"}",
-                    "var_updated": "2020-03-25 11:13:29",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_net_proxyprotocol.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: set global proxy_protocol_networks='*'\\n# mariadb_default: set global proxy_protocol_networks=''\\n\\n[mariadb]\\nloose_proxy_protocol_networks = *\"}",
+                    "var_updated": "2020-12-30 17:30:09",
                     "var_name": "db_cnf_net_with_proxyprotocol",
                     "id": 6091
                 },
@@ -3145,16 +3145,16 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_disk_aio.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_GID%%\",\"gid\":\"%%ENV:MYSQL_UID%%\",\"fmt\":\"# mariadb_version: 5.0\\n# mysql_version: 5.0\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-system-variables/#innodb_use_native_aio\\n# mariadb_command: SET GLOBAL innodb_use_native_aio = 0;\\n# mysql_command: SET GLOBAL innodb_use_native_aio = 0;\\n\\n[mysqld]\\ninnodb_use_native_aio = 0\"}",
-                    "var_updated": "2020-12-23 17:36:38",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_disk_aio.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_GID%%\",\"gid\":\"%%ENV:MYSQL_UID%%\",\"fmt\":\"# mariadb_version: 5.0\\n# mysql_version: 5.0\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-system-variables/#innodb_use_native_aio\\n# mariadb_command: SET GLOBAL innodb_use_native_aio = 0\\n# mariadb_default: SET GLOBAL innodb_use_native_aio = 1\\n# mysql_command: SET GLOBAL innodb_use_native_aio = 0\\n# mysql_default: SET GLOBAL innodb_use_native_aio = 1\\n\\n[mysqld]\\ninnodb_use_native_aio = 0\"}",
+                    "var_updated": "2020-12-30 17:51:31",
                     "var_name": "db_cnf_disk_no_aio",
                     "id": 6098
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_log_totable.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL log_output='TABLE';\\n# mysql_command: SET GLOBAL log_output='TABLE';\\n\\n[mysqld]\\nlog_output=TABLE\"}",
-                    "var_updated": "2020-12-24 12:19:24",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_log_totable.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL log_output='TABLE'\\n# mariadb_default SET GLOBAL log_output='FILE'\\n\\n# mysql_command: SET GLOBAL log_output='TABLE'\\n# mysql_default SET GLOBAL log_output='FILE'\\n\\n[mysqld]\\nlog_output=TABLE\"}",
+                    "var_updated": "2020-12-30 17:57:32",
                     "var_name": "db_cnf_log_with_table",
                     "id": 6099
                 },
@@ -3217,8 +3217,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_net_bind.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nbind-address=%%ENV:SERVER_IP%%\"}",
-                    "var_updated": "2020-04-02 17:11:41",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_net_bind.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\n# mariadb_command: EXECUTE IMMEDIATE IF(@@bind_address='%%ENV:SERVER_IP%%',\\\"SELECT 'Unchanged bind_address'\\\", \\\"set global bind_address = '%%ENV:SERVER_IP%%'\\\")\\n# mariadb_default: set global bind_address ='0.0.0.0'\\n\\nbind-address=%%ENV:SERVER_IP%%\"}",
+                    "var_updated": "2020-12-30 17:31:04",
                     "var_name": "db_cnf_net_with_bind",
                     "id": 6121
                 },
@@ -3577,8 +3577,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_net_bind.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# Can't be used with docker overlay\\n[mysqld]\\nbind-address = 0.0.0.0\"}",
-                    "var_updated": "2020-10-28 08:51:14",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_net_bind.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: EXECUTE IMMEDIATE IF(@@bind_address='0.0.0.0',\\\"SELECT 'Unchanged bind_address'\\\", \\\"set global bind_address = '0.0.0.0'\\\")\\n# Can't be used with docker overlay\\n[mysqld]\\nbind-address = 0.0.0.0\"}",
+                    "var_updated": "2020-12-30 17:24:31",
                     "var_name": "db_cnf_net_no_bind",
                     "id": 6216
                 },
@@ -3617,8 +3617,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_disk_adaptativeflush.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.5\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-system-variables/#innodb_adaptive_flushing\\n# mariadb_mdev: https://jira.mariadb.org/browse/MDEV-24109\\n# mariadb_advice: >10.5.7 \\n# mysql_version: 5.5\\n# mysql_documentation: https://dev.mysql.com/doc/refman/8.0/en/innodb-buffer-pool-flushing.html\\n# mariadb_command: SET GLOBAL innodb_adaptive_flushing = 0;\\n# mysql_command: SET GLOBAL innodb_adaptive_flushing = 0;\\n\\n[mariadb]\\ninnodb_adaptive_flushing = 0\"}",
-                    "var_updated": "2020-12-24 11:54:53",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_disk_adaptativeflush.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.5\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-system-variables/#innodb_adaptive_flushing\\n# mariadb_mdev: https://jira.mariadb.org/browse/MDEV-24109\\n# mariadb_advice: >10.5.7 \\n# mysql_version: 5.5\\n# mysql_documentation: https://dev.mysql.com/doc/refman/8.0/en/innodb-buffer-pool-flushing.html\\n# mariadb_command: SET GLOBAL innodb_adaptive_flushing = 0\\n# mariadb_default: SET GLOBAL innodb_adaptive_flushing = 1\\n\\n# mysql_command: SET GLOBAL innodb_adaptive_flushing = 0\\n# mysql_default: SET GLOBAL innodb_adaptive_flushing = 1\\n\\n[mariadb]\\ninnodb_adaptive_flushing = 0\"}",
+                    "var_updated": "2020-12-30 17:53:04",
                     "var_name": "db_cnf_disk_no_adaptativeflush",
                     "id": 6227
                 },
@@ -3665,40 +3665,40 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_log_warnings.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL  log_warnings = 1;\\n\\n[mariadb]\\nlog_warnings = 1\"}",
-                    "var_updated": "2020-12-23 14:25:20",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_log_warnings.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL log_warnings = 1\\n# mariadb_default: ET GLOBAL log_warnings = 2\\n\\n[mariadb]\\nlog_warnings = 1\"}",
+                    "var_updated": "2020-12-30 17:34:55",
                     "var_name": "db_cnf_log_no_warnings",
                     "id": 6239
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_log_slowddlqueries.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL log_slow_admin_statements = 0;\\n\\n[mariadb]\\nlog_slow_admin_statements = 0\"}",
-                    "var_updated": "2020-12-23 14:41:40",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_log_slowddlqueries.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL log_slow_admin_statements = 0\\n# mariadb_default: SET GLOBAL log_slow_admin_statements = 1\\n\\n[mariadb]\\nlog_slow_admin_statements = 0\"}",
+                    "var_updated": "2020-12-30 17:37:40",
                     "var_name": "db_cnf_log_no_slowddlqueries",
                     "id": 6240
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_log_slowslavequeries.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL log_slow_slave_statements = 0;\\n# mysql_command: SET GLOBAL log_slow_slave_statements = 0;\\n\\n[mysqld]\\nlog_slow_slave_statements = 0\"}",
-                    "var_updated": "2020-12-23 14:32:07",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_log_slowslavequeries.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL log_slow_slave_statements = 0\\n# mysql_command: SET GLOBAL log_slow_slave_statements = 0\\n# mariadb_default: SET GLOBAL log_slow_slave_statements = 1\\n# mysql_default: SET GLOBAL log_slow_slave_statements = 1\\n\\n[mysqld]\\nlog_slow_slave_statements = 0\"}",
+                    "var_updated": "2020-12-30 17:36:10",
                     "var_name": "db_cnf_log_no_slowslavequeries",
                     "id": 6241
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_log_slowqueries.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL slow_query_log = 0;\\n# mysql_command: SET GLOBAL slow_query_log = 0;\\n\\n[mysqld]\\nslow_query_log = 0\"}",
-                    "var_updated": "2020-12-23 14:33:13",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_log_slowqueries.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL slow_query_log = 0\\n# mysql_command: SET GLOBAL slow_query_log = 0\\n# mariadb_default: SET GLOBAL slow_query_log = 1\\n# mysql_default: SET GLOBAL slow_query_log = 1\\n\\n[mysqld]\\nslow_query_log = 0\"}",
+                    "var_updated": "2020-12-30 17:37:06",
                     "var_name": "db_cnf_log_no_slowqueries",
                     "id": 6242
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_log_deadlocks.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL innodb_print_all_deadlocks = 0;\\n# mysql_command: SET GLOBAL innodb_print_all_deadlocks = 0;\\n\\n[mysqld]\\ninnodb_print_all_deadlocks=0\"}",
-                    "var_updated": "2020-12-23 14:36:23",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_log_deadlocks.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL innodb_print_all_deadlocks = 0\\n# mysql_command: SET GLOBAL innodb_print_all_deadlocks = 0\\n# mariadb_default: SET GLOBAL innodb_print_all_deadlocks = 1\\n# mysql_default: SET GLOBAL innodb_print_all_deadlocks = 1\\n\\n[mysqld]\\ninnodb_print_all_deadlocks=0\"}",
+                    "var_updated": "2020-12-30 17:38:29",
                     "var_name": "db_cnf_log_no_deadlocks",
                     "id": 6243
                 },
