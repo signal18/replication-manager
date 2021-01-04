@@ -750,7 +750,7 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 	return ""
 }
 
-func (server *ServerMonitor) GetDatabaseDynamicConfig() string {
+func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string) string {
 	mydynamicconf := ""
 	// processing symlink
 	type Link struct {
@@ -762,23 +762,26 @@ func (server *ServerMonitor) GetDatabaseDynamicConfig() string {
 			for _, variable := range rule.Variables {
 				if variable.Class == "symlink" {
 					if server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
-						var f Link
-						json.Unmarshal([]byte(variable.Value), &f)
-						fpath := server.Datadir + "/init/etc/mysql/rc.d/"
-						//	server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s , %s", fpath, f.Target)
-						file, err := os.Open(fpath + f.Target)
-						if err == nil {
-							r, _ := regexp.Compile("mariadb_command")
-							scanner := bufio.NewScanner(file)
-							for scanner.Scan() {
-								//		server.ClusterGroup.LogPrintf(LvlInfo, "content: %s", scanner.Text())
-								if r.MatchString(scanner.Text()) {
-									mydynamicconf = mydynamicconf + strings.Split(scanner.Text(), ":")[1]
+						if filter == "" || strings.Contains(rule.Filter, filter) {
+							var f Link
+							json.Unmarshal([]byte(variable.Value), &f)
+							fpath := server.Datadir + "/init/etc/mysql/rc.d/"
+							//	server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s , %s", fpath, f.Target)
+							file, err := os.Open(fpath + f.Target)
+							if err == nil {
+								r, _ := regexp.Compile("mariadb_command")
+								scanner := bufio.NewScanner(file)
+								for scanner.Scan() {
+									//		server.ClusterGroup.LogPrintf(LvlInfo, "content: %s", scanner.Text())
+									if r.MatchString(scanner.Text()) {
+										mydynamicconf = mydynamicconf + strings.Split(scanner.Text(), ":")[1]
+									}
 								}
+								file.Close()
+
+							} else {
+								server.ClusterGroup.LogPrintf(LvlInfo, "Error in dynamic config: %s", err)
 							}
-							file.Close()
-						} else {
-							server.ClusterGroup.LogPrintf(LvlInfo, "Error in dynamic config: %s", err)
 						}
 					}
 				}

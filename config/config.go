@@ -893,3 +893,42 @@ func (conf *Config) GetDockerRepos(file string) ([]DockerRepo, error) {
 
 	return repos.Repos, nil
 }
+
+type Tarball struct {
+	Name            string `json:"name"`
+	Checksum        string `json:"checksum,omitempty"`
+	OperatingSystem string `json:"OS"`
+	Url             string `json:"url"`
+	Flavor          string `json:"flavor"`
+	Minimal         bool   `json:"minimal"`
+	Size            int64  `json:"size"`
+	ShortVersion    string `json:"short_version"`
+	Version         string `json:"version"`
+	UpdatedBy       string `json:"updated_by,omitempty"`
+	Notes           string `json:"notes,omitempty"`
+	DateAdded       string `json:"date_added,omitempty"`
+}
+
+type Tarballs struct {
+	Tarballs []Tarball `json:"tarballs"`
+}
+
+func (conf *Config) GetTarballs(file string) ([]Tarball, error) {
+
+	var tarballs Tarballs
+	jsonFile, err := os.Open(file)
+	if err != nil {
+		return tarballs.Tarballs, err
+	}
+
+	defer jsonFile.Close()
+
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+
+	err = json.Unmarshal([]byte(byteValue), &tarballs)
+	if err != nil {
+		return tarballs.Tarballs, err
+	}
+
+	return tarballs.Tarballs, nil
+}

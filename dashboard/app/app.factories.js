@@ -9,13 +9,7 @@ app.factory('Cluster', function ($resource) {
 });
 
 app.factory('Clusters', function ($resource) {
-    return $resource('api/clusters',
-        {
-            'query': {
-                method: 'GET',
-                isArray: false
-            }
-        });
+    return $resource('api/clusters');
 });
 
 app.factory('Servers', function ($resource) {
@@ -31,13 +25,7 @@ app.factory('Backups', function ($resource) {
 });
 
 app.factory('Certificates', function ($resource) {
-    return $resource('api/clusters/:clusterName/certificates', {clusterName: '@clusters'},
-        {
-            'query': {
-                method: 'GET',
-                isArray: false
-            }
-        });
+    return $resource('api/clusters/:clusterName/certificates', {clusterName: '@clusters'});
 });
 
 app.factory('QueryRules', function ($resource) {

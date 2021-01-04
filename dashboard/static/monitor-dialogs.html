@@ -68,7 +68,7 @@
             <h2 class="md-title">Database Server Credential</h2>
             <form>
                 User: <input type="text" ng-model="$parent.dlgClusterUser"><BR>
-                Password: <input type="password" ng-model="$parent.dlgClusterPassword">
+                Password: <input type="password" ng-model="$parent.dlgClusterPassword" autocomplete="current-password">
             </form>
             <md-button ng-click="cancelClusterCredentialDialog()" class="md-primary">
                 Cancel
@@ -85,7 +85,7 @@
             <h2 class="md-title">Proxy Server Credential</h2>
             <form>
                 User: <input type="text" ng-model="$parent.dlgProxyClusterUser"><BR>
-                Password: <input type="password" ng-model="$parent.dlgProxyClusterPassword">
+                Password: <input type="password" ng-model="$parent.dlgProxyClusterPassword" autocomplete="current-password">
             </form>
             <md-button ng-click="cancelClusterProxyCredentialDialog()" class="md-primary">
                 Cancel
@@ -102,7 +102,7 @@
             <h2 class="md-title">Replication Credential</h2>
             <form>
                 User: <input type="text" ng-model="$parent.dlgRplUser"><BR>
-                Password: <input type="password" ng-model="$parent.dlgRplPassword">
+                Password: <input type="password" ng-model="$parent.dlgRplPassword" autocomplete="current-password">
             </form>
             <md-button ng-click="cancelRplCredentialDialog()" class="md-primary">
                 Cancel

@@ -8,14 +8,14 @@ app.factory('BearerAuthInterceptor', ['$q', '$location', '$localStorage', functi
             return config || $q.when(config);
         },
         response: function(response) {
-            if (response.status === 401) {
+            if (response.status === 401 || response.status === 404 || response.status === 503 ) {
                 $location.path('login');
             }
             return response || $q.when(response);
         },
         responseError: function (response) {
             console.log(response);
-            if (response.status === 401) {
+            if (response.status === 401 || response.status === 404 || response.status === 503) {
                 $localStorage.currentUser = '';
                 $location.path('login');
             }

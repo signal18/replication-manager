@@ -63,6 +63,7 @@ type ReplicationManager struct {
 	ServiceOrchestrators []config.ConfigVariableType `json:"serviceOrchestrators"`
 	ServiceAcl           []config.Grant              `json:"serviceAcl"`
 	ServiceRepos         []config.DockerRepo         `json:"serviceRepos"`
+	ServiceTarballs      []config.Tarball            `json:"serviceTarballs"`
 	ServiceFS            map[string]bool             `json:"serviceFS"`
 	ServiceVM            map[string]bool             `json:"serviceVM"`
 	ServiceDisk          map[string]string           `json:"serviceDisk"`
@@ -486,6 +487,11 @@ func (repman *ReplicationManager) Run() error {
 	if err != nil {
 		log.WithError(err).Errorf("Initialization docker repo failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
 	}
+	repman.ServiceTarballs, err = repman.Conf.GetTarballs(repman.Conf.ShareDir + "/repo/tarballs.json")
+	if err != nil {
+		log.WithError(err).Errorf("Initialization tarballs repo failed: %s %s", repman.Conf.ShareDir+"/repo/tarballs.json", err)
+	}
+
 	repman.ServiceVM = repman.Conf.GetVMType()
 	repman.ServiceFS = repman.Conf.GetFSType()
 	repman.ServiceDisk = repman.Conf.GetDiskType()

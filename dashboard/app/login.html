@@ -13,7 +13,7 @@
 
 
                 <div class="form-group has-feedback">
-                    <input type="password" name="password" value="" placeholder="Password" class="form-control" id="password" size="30" ng-model="user.password" required />            <span class="glyphicon glyphicon-lock form-control-feedback"></span>
+                    <input type="password" autocomplete="current-password" name="password" value="" placeholder="Password" class="form-control" id="password" size="30" ng-model="user.password" required />            <span class="glyphicon glyphicon-lock form-control-feedback"></span>
                     <span class="text-danger" ng-show="login_form.password.$touched && login_form.password.$invalid">The Password is required.</span>
                 </div>
 

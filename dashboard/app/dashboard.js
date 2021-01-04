@@ -264,7 +264,7 @@ function (
 
       //  $scope.selectedPlan = "";
       // get list of clusters
-      if ($scope.selectedClusterName==undefined && $scope.selectedServer==undefined ) {
+      if ($scope.selectedClusterName === undefined && $scope.selectedServer === undefined ) {
         Clusters.query({}, function (data) {
           if (data) {
             $scope.clusters = data;
@@ -288,7 +288,7 @@ function (
             $scope.selectedPlan = $scope.plans[12];
             $scope.selectedOrchestrator= $scope.orchestrators[3];
             $scope.selectedPlanName =  $scope.selectedPlan.plan;
-            if ($scope.newUserAcls == undefined)  {
+            if ($scope.newUserAcls === undefined)  {
             //  alert(data.config.httpRefreshInterval);
                 $scope.refreshInterval = 	$scope.settings.config.httpRefreshInterval;
             }
@@ -322,7 +322,7 @@ function (
           $scope.reserror = true;
         });
       } // fetch server most of  the time
-      if ($scope.selectedClusterName && $scope.selectedServer==undefined ) {
+      if ($scope.selectedClusterName && $scope.selectedServer === undefined ) {
         Cluster.query({clusterName: $scope.selectedClusterName}, function (data) {
           $scope.selectedCluster = data;
           function isInTags(array,array2, test){
@@ -833,10 +833,11 @@ function (
       $scope.startPromise();
     };
 
-    $scope.$on('$destroy', function() {
+/*     $scope.$on('$destroy', function() {
       $timeout.cancel( $scope.promise);
       $scope.cancel();
     });
+*/
 
     $scope.calculateInterval = function(number) {
       $scope.refreshInterval += Number(number);
@@ -853,12 +854,12 @@ function (
       }
     };
 
-    $scope.cancel = function () {
+/*    $scope.cancel = function () {
       $timeout.cancel($scope.promise);
         $scope.promise = undefined;
     };
 
-
+*/
 
 
     var httpGetWithoutResponse = function (url) {
