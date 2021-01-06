@@ -539,15 +539,15 @@ const (
 )
 
 type ServicePlan struct {
-	Id           int    `json:"id"`
+	Id           int    `json:"id,string"`
 	Plan         string `json:"plan"`
-	DbMemory     int    `json:"dbmemory"`
-	DbCores      int    `json:"dbcores"`
-	DbDataSize   int    `json:"dbdatasize"`
-	DbSystemSize int    `json:"dbSystemSize"`
-	DbIops       int    `json:"dbiops"`
-	PrxDataSize  int    `json:"prxdatasize"`
-	PrxCores     int    `json:"prxcores"`
+	DbMemory     int    `json:"dbmemory,string"`
+	DbCores      int    `json:"dbcores,string"`
+	DbDataSize   int    `json:"dbdatasize,string"`
+	DbSystemSize int    `json:"dbSystemSize,string"`
+	DbIops       int    `json:"dbiops,string"`
+	PrxDataSize  int    `json:"prxdatasize,string"`
+	PrxCores     int    `json:"prxcores,string"`
 }
 
 type DockerTag struct {

@@ -7,7 +7,9 @@
 package server
 
 import (
+	"encoding/csv"
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"log/syslog"
 	"net"
@@ -800,18 +802,11 @@ func (repman *ReplicationManager) Stop() {
 	}
 }
 
-func (repman *ReplicationManager) InitServicePlans() error {
-	type Message struct {
-		Rows []config.ServicePlan `json:"rows"`
-	}
-	var m Message
-	if repman.Conf.ProvServicePlanRegistry == "" {
-		return nil
-	}
+func (repman *ReplicationManager) DownloadFile(url string, file string) error {
 	client := http.Client{
 		Timeout: 3 * time.Second,
 	}
-	response, err := client.Get(repman.Conf.ProvServicePlanRegistry)
+	response, err := client.Get(url)
 	if err != nil {
 		log.Errorf("GetServicePlans: %s", err)
 		return err
@@ -822,18 +817,119 @@ func (repman *ReplicationManager) InitServicePlans() error {
 		log.Errorf("GetServicePlans: %s", err)
 		return err
 	}
-	err = json.Unmarshal(contents, &m)
+
+	err = ioutil.WriteFile(file, contents, 0644)
+	if err != nil {
+		log.Errorf("GetServicePlans: %s", err)
+		return err
+	}
+	return nil
+}
+
+func (repman *ReplicationManager) ConvertCSVtoJSON(sourcefile string, destfile string, separator string) error {
+	file, err := os.Open(sourcefile)
+	if err != nil {
+		log.Errorf("failed opening file because: %s", err.Error())
+		return err
+	}
+	defer file.Close()
+
+	r := csv.NewReader(file)
+	r.TrimLeadingSpace = false
+	r.Comma = []rune(separator)[0]
+	rows, err := r.ReadAll()
+	if err != nil {
+		log.Fatal(err)
+	}
+	var res interface{}
+	if len(rows) > 1 {
+		header := rows[0]
+		rows = rows[1:]
+		objs := make([]map[string]string, len(rows))
+		for y, row := range rows {
+			obj := map[string]string{}
+			for x, cell := range row {
+				obj[header[x]] = cell
+			}
+			objs[y] = obj
+		}
+		res = objs
+	} else {
+		res = []map[string]string{}
+	}
+	output, err := json.Marshal(res)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fileout, err := os.OpenFile(destfile, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+
+	}
+	defer fileout.Close()
+	fileout.Truncate(0)
+	fileout.Write(output)
+	fileout.Write([]byte("\n"))
+
+	return nil
+}
+
+func (repman *ReplicationManager) CopyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	if err != nil {
+		return err
+	}
+	return out.Close()
+}
+
+func (repman *ReplicationManager) InitServicePlans() error {
+	if repman.Conf.ProvServicePlanRegistry == "" {
+		return nil
+	}
+
+	err := repman.DownloadFile(repman.Conf.ProvServicePlanRegistry, repman.Conf.WorkingDir+"/serviceplan.csv")
+	if err != nil {
+		log.Errorf("GetServicePlans download csv  %s", err)
+		// copy from share if not downloadable
+		if _, err := os.Stat(repman.Conf.WorkingDir + "/serviceplan.csv"); os.IsNotExist(err) {
+			repman.CopyFile(repman.Conf.ShareDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.csv")
+		}
+	}
+	err = repman.ConvertCSVtoJSON(repman.Conf.WorkingDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.json", ",")
+	if err != nil {
+		log.Errorf("GetServicePlans ConvertCSVtoJSON %s", err)
+		return err
+	}
+
+	file, err := ioutil.ReadFile(repman.Conf.WorkingDir + "/serviceplan.json")
+	if err != nil {
+		log.Errorf("failed opening file because: %s", err.Error())
+		return err
+	}
+
+	type Message struct {
+		Rows []config.ServicePlan `json:"rows"`
+	}
+	var m Message
+	err = json.Unmarshal([]byte(file), &m.Rows)
 	if err != nil {
 		log.Errorf("GetServicePlans  %s", err)
 		return err
 	}
 	repman.ServicePlans = m.Rows
-	/*r := make([]config.ServicePlan, 0, len(m.Rows))
-	for _, value := range m.Rows {
-		r = append(r, value)
-	}*/
-	//	repman.ServicePlans = r
-	/*sort.Sort(QueryRuleSorter(r))*/
+
 	return nil
 }
 
