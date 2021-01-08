@@ -765,7 +765,7 @@ func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string) string {
 						if filter == "" || strings.Contains(rule.Filter, filter) {
 							var f Link
 							json.Unmarshal([]byte(variable.Value), &f)
-							fpath := server.Datadir + "/init/etc/mysql/rc.d/"
+							fpath := server.Datadir + "/init/etc/mysql/conf.d/"
 							//	server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s , %s", fpath, f.Target)
 							file, err := os.Open(fpath + f.Target)
 							if err == nil {

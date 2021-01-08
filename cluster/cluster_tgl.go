@@ -12,6 +12,10 @@ func (cluster *Cluster) SwitchForceSlaveNoGtid() {
 	cluster.Conf.ForceSlaveNoGtid = !cluster.Conf.ForceSlaveNoGtid
 }
 
+func (cluster *Cluster) SwitchDBDynamicConfig() {
+	cluster.Conf.ProvDBApplyDynamicConfig = !cluster.Conf.ProvDBApplyDynamicConfig
+}
+
 func (cluster *Cluster) SwitchMonitoringPause() {
 	cluster.Conf.MonitorPause = !cluster.Conf.MonitorPause
 }

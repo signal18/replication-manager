@@ -1043,15 +1043,29 @@ func (server *ServerMonitor) ExecQueryNoBinLog(query string) error {
 	return err
 }
 
-func (server *ServerMonitor) ExecScriptSQL(queries []string) error {
+func (server *ServerMonitor) ExecScriptSQL(queries []string) (error, bool) {
+	hasreadonlyvar := false
+	if server.State == stateFailed {
+		errmsg := "Can't execute script on failed server: " + server.URL
+		return errors.New(errmsg), hasreadonlyvar
+	}
 	for _, query := range queries {
+		if strings.Trim(query, " ") == "" {
+			continue
+		}
 		_, err := server.Conn.Exec(query)
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Apply config: %s %s", query, err)
+			if driverErr, ok := err.(*mysql.MySQLError); ok {
+				// access denied
+				if driverErr.Number == 1238 {
+					hasreadonlyvar = true
+				}
+			}
 		}
 		server.ClusterGroup.LogPrintf(LvlInfo, "Apply dynamic config: %s", query)
 	}
-	return nil
+	return nil, hasreadonlyvar
 }
 
 func (server *ServerMonitor) InstallPlugin(name string) error {

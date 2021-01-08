@@ -805,6 +805,31 @@ func (cluster *Cluster) GetConfigInnoDBBPInstances() string {
 	return s10
 }
 
+func (cluster *Cluster) GetConfigInnoDBWriteIoThreads() string {
+	iopsLatency, err := strconv.ParseFloat(cluster.Conf.ProvIopsLatency, 64)
+	if err != nil {
+		return "4"
+	}
+	iops, err := strconv.ParseFloat(cluster.Conf.ProvIops, 64)
+	if err != nil {
+		return "4"
+	}
+	nbthreads := int(iopsLatency * iops)
+	if nbthreads < 1 {
+		return "1"
+	}
+	strnbthreads := strconv.Itoa(nbthreads)
+	return strnbthreads
+}
+func (cluster *Cluster) GetConfigInnoDBReadIoThreads() string {
+
+	return cluster.Conf.ProvCores
+}
+
+func (cluster *Cluster) GetConfigInnoDBPurgeThreads() string {
+	return cluster.GetConfigInnoDBWriteIoThreads()
+}
+
 func (cluster *Cluster) GetQueryRules() []config.QueryRule {
 	r := make([]config.QueryRule, 0, len(cluster.QueryRules))
 	for _, value := range cluster.QueryRules {
