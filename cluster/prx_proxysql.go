@@ -267,8 +267,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 					dupUsers[user.User] = user.User
 					cluster.sme.AddState("ERR00057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00057"], user.User), ErrFrom: "MON", ServerUrl: proxy.Name})
 				} else {
-					if u.Password != "" {
-
+					if u.Password != "" && u.Password != "invalid" {
 						if u.User != cluster.dbUser {
 							uniUsers[u.User+":"+u.Password] = u
 						} else if cluster.Conf.MonitorWriteHeartbeatCredential == "" {

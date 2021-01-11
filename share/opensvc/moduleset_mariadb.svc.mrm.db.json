@@ -3717,6 +3717,14 @@
                     "var_updated": "2021-01-03 22:44:24",
                     "var_name": "db_cnf_repl_no_syncbinlog",
                     "id": 6258
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_rep_logslavestatement.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: EXECUTE IMMEDIATE IF(@@replicate_annotate_row_events=0,\\\"SELECT 'Unchanged replicate_annotate_row_events'\\\", \\\"SET GLOBAL replicate_annotate_row_events = 0\\\");EXECUTE IMMEDIATE IF(@@binlog_annotate_row_events=0,\\\"SELECT 'Unchanged binlog_annotate_row_events'\\\", \\\"SET GLOBAL binlog_annotate_row_events = 0\\\");\\n# mariadb_default: EXECUTE IMMEDIATE IF(@@replicate_annotate_row_events=1,\\\"SELECT 'Unchanged replicate_annotate_row_events'\\\", \\\"SET GLOBAL replicate_annotate_row_events = 1\\\");EXECUTE IMMEDIATE IF(@@binlog_annotate_row_events=1,\\\"SELECT 'Unchanged binlog_annotate_row_events'\\\", \\\"SET GLOBAL binlog_annotate_row_events = 1\\\");\\n\\n# mysql_command: SET GLOBAL binlog_row_query_log_events = 0;\\n# mysql_default: SET GLOBAL binlog_row_query_log_events = 1;\\n\\n[mysqld]\\nloose_binlog_row_query_log_events = 0\\n\\n[mariadb]\\nloose_replicate_annotate_row_events = 0\\nloose_binlog_annotate_row_events = 0\"}",
+                    "var_updated": "2021-01-11 13:51:12",
+                    "var_name": "db_cnf_rep_no_logslavestatement",
+                    "id": 6261
                 }
             ],
             "ruleset_public": false,

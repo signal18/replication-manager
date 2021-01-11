@@ -32,6 +32,24 @@ func (cluster *Cluster) CancelRollingReprov() error {
 
 func (cluster *Cluster) DropDBTag(dtag string) {
 	var newtags []string
+	if cluster.Conf.ProvDBApplyDynamicConfig {
+
+		for _, srv := range cluster.Servers {
+			cmd := "mariadb_default"
+			if !srv.IsMariaDB() {
+				cmd = "mysql_default"
+			}
+			srv.GetDatabaseConfig()
+			_, needrestart := srv.ExecScriptSQL(strings.Split(srv.GetDatabaseDynamicConfig(dtag, cmd), ";"))
+			if needrestart {
+				srv.SetRestartCookie()
+			}
+		}
+	} else {
+		if len(cluster.DBTags) != len(newtags) {
+			cluster.SetDBRestartCookie()
+		}
+	}
 	for _, tag := range cluster.DBTags {
 		//	cluster.LogPrintf(LvlInfo, "%s %s", tag, dtag)
 		if dtag != tag {
@@ -41,9 +59,7 @@ func (cluster *Cluster) DropDBTag(dtag string) {
 	cluster.DBTags = newtags
 	cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
 	cluster.SetClusterVariablesFromConfig()
-	if len(cluster.DBTags) != len(newtags) {
-		cluster.SetDBRestartCookie()
-	}
+
 }
 
 func (cluster *Cluster) DropProxyTag(dtag string) {

@@ -1026,6 +1026,8 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			mycluster.SwitchTestMode()
 		case "prov-net-cni":
 			mycluster.SwitchProvNetCNI()
+		case "prov-db-apply-dynamic-config":
+			mycluster.SwitchDBApplyDynamicConfig()
 		case "prov-docker-daemon-private":
 			mycluster.SwitchProvDockerDaemonPrivate()
 		case "backup-restic":

@@ -750,7 +750,7 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 	return ""
 }
 
-func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string) string {
+func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string, cmd string) string {
 	mydynamicconf := ""
 	// processing symlink
 	type Link struct {
@@ -762,6 +762,7 @@ func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string) string {
 			for _, variable := range rule.Variables {
 				if variable.Class == "symlink" {
 					if server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
+						//	server.ClusterGroup.LogPrintf(LvlInfo, "content %s %s", filter, rule.Filter)
 						if filter == "" || strings.Contains(rule.Filter, filter) {
 							var f Link
 							json.Unmarshal([]byte(variable.Value), &f)
@@ -769,7 +770,7 @@ func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string) string {
 							//	server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s , %s", fpath, f.Target)
 							file, err := os.Open(fpath + f.Target)
 							if err == nil {
-								r, _ := regexp.Compile("mariadb_command")
+								r, _ := regexp.Compile(cmd)
 								scanner := bufio.NewScanner(file)
 								for scanner.Scan() {
 									//		server.ClusterGroup.LogPrintf(LvlInfo, "content: %s", scanner.Text())
