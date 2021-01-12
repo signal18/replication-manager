@@ -206,7 +206,7 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 				cluster.LogPrintf(LvlErr, " %s %s ", "set sql_log_bin=0", err)
 			}
 
-			_, err = conn.Exec("delete from mysql.user where password=''")
+			_, err = conn.Exec("delete from mysql.user where password='' and user!='mariadb.sys'")
 			if err != nil {
 				//	haveerror = true
 				// don't trigger error for mysql 5.7 and mariadb 10.4 that does not have password column
