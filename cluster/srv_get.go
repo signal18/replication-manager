@@ -646,7 +646,7 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 		Path    string `json:"path"`
 		Content string `json:"fmt"`
 	}
-
+	server.ClusterGroup.LogPrintf(LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	// Extract files
 	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 		os.RemoveAll(server.Datadir + "/init/etc")
@@ -662,7 +662,9 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 					json.Unmarshal([]byte(variable.Value), &f)
 					fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir+"/init", -1)
 					dir := filepath.Dir(fpath)
-					server.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
+					if server.ClusterGroup.Conf.LogLevel > 2 {
+						server.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
+					}
 					// create directory
 					if _, err := os.Stat(dir); os.IsNotExist(err) {
 						err := os.MkdirAll(dir, os.FileMode(0775))
@@ -724,7 +726,9 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 						var f Link
 						json.Unmarshal([]byte(variable.Value), &f)
 						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir+"/init", -1)
-						server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+						if server.ClusterGroup.Conf.LogLevel > 2 {
+							server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+						}
 						os.Symlink(f.Target, fpath)
 						//	keys := strings.Split(variable.Value, " ")
 					}

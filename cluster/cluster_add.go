@@ -31,12 +31,19 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 	return nil
 }
 
-func (cluster *Cluster) AddDBTag(tag string) {
+func (cluster *Cluster) AddDBTagConfig(tag string) {
 	if !cluster.HaveDBTag(tag) {
 		cluster.DBTags = append(cluster.DBTags, tag)
 		cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
 		cluster.SetClusterVariablesFromConfig()
+	}
+}
 
+func (cluster *Cluster) AddDBTag(tag string) {
+
+	if !cluster.HaveDBTag(tag) {
+		cluster.LogPrintf(LvlInfo, "Adding database tag %s ", tag)
+		cluster.AddDBTagConfig(tag)
 		if cluster.Conf.ProvDBApplyDynamicConfig {
 			for _, srv := range cluster.Servers {
 				cmd := "mariadb_command"

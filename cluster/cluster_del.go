@@ -31,7 +31,8 @@ func (cluster *Cluster) CancelRollingReprov() error {
 }
 
 func (cluster *Cluster) DropDBTag(dtag string) {
-	var newtags []string
+
+	cluster.LogPrintf(LvlInfo, "Dropping database tag %s ", dtag)
 	if cluster.Conf.ProvDBApplyDynamicConfig {
 
 		for _, srv := range cluster.Servers {
@@ -45,21 +46,29 @@ func (cluster *Cluster) DropDBTag(dtag string) {
 				srv.SetRestartCookie()
 			}
 		}
-	} else {
-		if len(cluster.DBTags) != len(newtags) {
-			cluster.SetDBRestartCookie()
-		}
 	}
+	changed := cluster.DropDBTagConfig(dtag)
+	if changed && !cluster.Conf.ProvDBApplyDynamicConfig {
+		cluster.SetDBRestartCookie()
+	}
+
+}
+
+func (cluster *Cluster) DropDBTagConfig(dtag string) bool {
+	var newtags []string
+	changed := false
 	for _, tag := range cluster.DBTags {
-		//	cluster.LogPrintf(LvlInfo, "%s %s", tag, dtag)
 		if dtag != tag {
 			newtags = append(newtags, tag)
 		}
 	}
-	cluster.DBTags = newtags
-	cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
-	cluster.SetClusterVariablesFromConfig()
-
+	if len(cluster.DBTags) != len(newtags) {
+		changed = true
+		cluster.DBTags = newtags
+		cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
+		cluster.SetClusterVariablesFromConfig()
+	}
+	return changed
 }
 
 func (cluster *Cluster) DropProxyTag(dtag string) {

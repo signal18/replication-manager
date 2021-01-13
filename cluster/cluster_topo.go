@@ -133,7 +133,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// Check topology Cluster is down
 	cluster.TopologyClusterDown()
 	// Check topology Cluster all servers down
-	cluster.AllServersFailed()
+	cluster.IsDown = cluster.AllServersFailed()
 	cluster.CheckSameServerID()
 	// Spider shard discover
 	if cluster.Conf.Spider == true {
@@ -371,12 +371,10 @@ func (cluster *Cluster) AllServersFailed() bool {
 	for _, s := range cluster.Servers {
 		if s.IsFailed() == false {
 			return false
-			cluster.IsDown = false
 		}
 	}
 	//"ERR00077": "All databases state down",
 	cluster.SetState("ERR00077", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00077"]), ErrFrom: "TOPO"})
-	cluster.IsDown = true
 	return true
 }
 

@@ -328,9 +328,9 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 
 	switch cluster.Conf.ProvOrchestrator {
 	case config.ConstOrchestratorLocalhost:
-		cluster.DropDBTag("docker")
-		cluster.DropDBTag("threadpool")
-		cluster.AddDBTag("pkg")
+		cluster.DropDBTagConfig("docker")
+		cluster.DropDBTagConfig("threadpool")
+		cluster.AddDBTagConfig("pkg")
 	}
 
 	return nil
