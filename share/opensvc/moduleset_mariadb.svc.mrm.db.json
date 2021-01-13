@@ -2681,8 +2681,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_log_audit.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"### MariaDB Audit Plugin ###\\n# mariadb_command: INSTALL SONAME 'server_audit'; SET GLOBAL server_audit  = FORCE_PLUS_PERMANENT;SET GLOBAL server_audit_events = 'CONNECT,QUERY,TABLE,QUERY_DDL,QUERY_DML_NO_SELECT';SET GLOBAL server_audit_logging = ON ;SET GLOBAL server_audit_output_type = SYSLOG;SET GLOBAL server_audit_query_log_limit = 1024;SET GLOBAL server_audit_syslog_facility = LOG_USER ;SET GLOBAL server_audit_syslog_ident = mysql-server_auditing;\\n# mariadb_default: SET GLOBAL server_audit_logging = 0;\\n\\n[mysqld]\\nserver_audit  = FORCE_PLUS_PERMANENT\\nserver_audit_events = CONNECT,QUERY,TABLE,QUERY_DDL,QUERY_DML_NO_SELECT\\nserver_audit_logging = ON\\n# server_audit_excl_users = exclude,users,here\\n# server_audit_file_rotate_now = OFF\\n# server_audit_file_rotate_size = 100000\\n# server_audit_file_rotations  = 9\\n# server_audit_incl_users = include,users,here\\nserver_audit_output_type = SYSLOG\\nserver_audit_query_log_limit = 1024\\nserver_audit_syslog_facility = LOG_USER\\nserver_audit_syslog_ident = mysql-server_auditing\\n#server_audit_syslog_infod =\\nserver_audit_syslog_priority = LOG_INFO\"}",
-                    "var_updated": "2021-01-13 15:15:37",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_log_audit.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"### MariaDB Audit Plugin ###\\n# mariadb_command: INSTALL SONAME 'server_audit'; SET GLOBAL server_audit_events = 'CONNECT,QUERY,TABLE,QUERY_DDL,QUERY_DML_NO_SELECT';SET GLOBAL server_audit_logging = ON ;SET GLOBAL server_audit_output_type = SYSLOG;SET GLOBAL server_audit_query_log_limit = 1024;SET GLOBAL server_audit_syslog_facility = LOG_USER ;SET GLOBAL server_audit_syslog_ident = 'mysql-server_auditing';\\n# mariadb_default: SET GLOBAL server_audit_logging = 0;\\n\\n[mysqld]\\nplugin_load_add =\\\"server_audit.so\\\"\\nloose_server_audit  = FORCE_PLUS_PERMANENT\\nloose_server_audit_events = CONNECT,QUERY,TABLE,QUERY_DDL,QUERY_DML_NO_SELECT\\nloose_server_audit_logging = ON\\nloose_server_audit_output_type = SYSLOG\\nloose_server_audit_query_log_limit = 1024\\nloose_server_audit_syslog_facility = LOG_USER\\nloose_server_audit_syslog_ident = mysql-server_auditing\\nloose_server_audit_syslog_priority = LOG_INFO\\n\\n# server_audit_excl_users = exclude,users,here\\n# server_audit_incl_users = include,users,here\\n\\n# server_audit_file_rotate_now = OFF\\n# server_audit_file_rotate_size = 100000\\n# server_audit_file_rotations  = 9\\n#server_audit_syslog_infod =\"}",
+                    "var_updated": "2021-01-13 18:08:50",
                     "var_name": "db_cnf_log_with_audit",
                     "id": 5935
                 },
@@ -2985,8 +2985,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_opt_independentstatistics.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.0.1 \\n# mariadb_documentation: https://mariadb.com/kb/en/engine-independent-table-statistics/\\n# mariadb_command: SET GLOABL optimizer_use_condition_selectivity = 3; SET GLOBAL histogram_size = 255;SET GLOBAL use_stat_tables = 2;\\n# mariadb_default: SET GLOABL optimizer_use_condition_selectivity = 1;\\n\\n[mariadb]\\noptimizer_use_condition_selectivity = 3\\n# for histogram\\n# optimizer_use_condition_selectivity = 4 \\nhistogram_size = 255 \\nuse_stat_tables = 2\"}",
-                    "var_updated": "2021-01-03 21:44:08",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_opt_independentstatistics.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.0.1 \\n# mariadb_documentation: https://mariadb.com/kb/en/engine-independent-table-statistics/\\n# mariadb_command: SET GLOBAL optimizer_use_condition_selectivity = 3; SET GLOBAL histogram_size = 255;SET GLOBAL use_stat_tables = 2;\\n# mariadb_default: SET GLOBAL optimizer_use_condition_selectivity = 1;\\n\\n[mariadb]\\noptimizer_use_condition_selectivity = 3\\n# for histogram\\n# optimizer_use_condition_selectivity = 4 \\nhistogram_size = 255 \\nuse_stat_tables = 2\"}",
+                    "var_updated": "2021-01-13 18:27:20",
                     "var_name": "db_cnf_opt_with_independentstatistics",
                     "id": 6023
                 },
@@ -3209,8 +3209,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_deadlock_detect.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL innodb_deadlock_detect=0;\\n# mariadb_default: SET GLOBAL innodb_deadlock_detect=1;\\n# mariadb_documentation: https://fromdual.com/innodb-deadlock-detect-rather-hands-off\\n\\n# mysql_command: SET GLOBAL innodb_deadlock_detect=0;\\n# mysql_default: SET GLOBAL innodb_deadlock_detect=1;\\n\\n\\n[mysqld]\\ninnodb_deadlock_detect=0\"}",
-                    "var_updated": "2021-01-02 10:58:43",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_deadlockdetect.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL innodb_deadlock_detect=0;\\n# mariadb_default: SET GLOBAL innodb_deadlock_detect=1;\\n# mariadb_documentation: https://fromdual.com/innodb-deadlock-detect-rather-hands-off\\n\\n# mysql_command: SET GLOBAL innodb_deadlock_detect=0;\\n# mysql_default: SET GLOBAL innodb_deadlock_detect=1;\\n\\n\\n[mysqld]\\ninnodb_deadlock_detect=0\"}",
+                    "var_updated": "2021-01-13 18:33:31",
                     "var_name": "db_cnf_opt_no_deadlock_detect",
                     "id": 6119
                 },
@@ -3465,8 +3465,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_loosy.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOABL loose_slave_type_conversions='ALL_NON_LOSSY,ALL_LOSSY';\\n# mariadb_default: SET GLOABL loose_slave_type_conversions='ALL_NON_LOSSY';\\n\\n[mysqld]\\nloose_slave_type_conversions='ALL_NON_LOSSY,ALL_LOSSY'\"}",
-                    "var_updated": "2021-01-03 22:49:15",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_loosy.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL loose_slave_type_conversions='ALL_NON_LOSSY,ALL_LOSSY';\\n# mariadb_default: SET GLOBAL loose_slave_type_conversions='ALL_NON_LOSSY';\\n\\n[mysqld]\\nloose_slave_type_conversions='ALL_NON_LOSSY,ALL_LOSSY'\"}",
+                    "var_updated": "2021-01-13 18:26:15",
                     "var_name": "db_cnf_rep_lossy",
                     "id": 6184
                 },
