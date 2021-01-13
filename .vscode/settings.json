@@ -1,0 +1,6 @@
+{
+    "go.buildTags": "netgo server",
+    "go.buildFlags": [
+        "--ldflags -extldflags 'static' -w -s -X main.GoOS=linux -X main.GoArch=amd64 -X main.WithProvisioning=OFF -X main.WithOpenSVC=OFF -X main.WithHaproxy=ON -X main.WithMaxscale=ON  -X main.WithMariadbshardproxy=ON -X  main.WithProxysql=ON -X  main.WithSphinx=ON -X main.WithArbitration=OFF -X main.WithArbitrationClient=ON -X main.WithMonitoring=ON -X main.WithHttp=ON -X main.WithBackup=ON -X main.WithMail=ON -X main.WithEnforce=ON -X main.WithDeprecate=ON"
+    ]
+}
