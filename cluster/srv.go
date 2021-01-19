@@ -965,15 +965,24 @@ func (server *ServerMonitor) delete(sl *serverList) {
 }
 
 func (server *ServerMonitor) StopSlave() (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
 	return dbhelper.StopSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
 func (server *ServerMonitor) StartSlave() (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No databse connection")
+	}
 	return dbhelper.StartSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 
 }
 
 func (server *ServerMonitor) ResetMaster() (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
 	return dbhelper.ResetMaster(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
@@ -982,10 +991,16 @@ func (server *ServerMonitor) ResetPFSQueries() error {
 }
 
 func (server *ServerMonitor) StopSlaveIOThread() (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
 	return dbhelper.StopSlaveIOThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
 func (server *ServerMonitor) StopSlaveSQLThread() (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
 	return dbhelper.StopSlaveSQLThread(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
@@ -994,10 +1009,16 @@ func (server *ServerMonitor) ResetSlave() (string, error) {
 }
 
 func (server *ServerMonitor) FlushLogs() (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
 	return dbhelper.FlushLogs(server.Conn)
 }
 
 func (server *ServerMonitor) FlushTables() (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
 	return dbhelper.FlushTables(server.Conn)
 }
 
@@ -1214,6 +1235,9 @@ func (server *ServerMonitor) WaitInnoDBPurge() error {
 }
 
 func (server *ServerMonitor) Shutdown() error {
+	if server.Conn == nil {
+		return errors.New("No database connection pool")
+	}
 	_, err := server.Conn.Exec("SHUTDOWN")
 	if err != nil {
 		server.ClusterGroup.LogPrintf("TEST", "Shutdown failed %s", err)
