@@ -15,7 +15,11 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func connectSphinx(proxy *Proxy) (sphinx.SphinxSQL, error) {
+type SphinxProxy struct {
+	Proxy
+}
+
+func (proxy *SphinxProxy) Connect() (sphinx.SphinxSQL, error) {
 	sphinx := sphinx.SphinxSQL{
 		User:     proxy.User,
 		Password: proxy.Pass,
@@ -31,12 +35,14 @@ func connectSphinx(proxy *Proxy) (sphinx.SphinxSQL, error) {
 	return sphinx, nil
 }
 
-func (cluster *Cluster) initSphinx(proxy *Proxy) {
+func (proxy *SphinxProxy) Init() {
+	cluster := proxy.ClusterGroup
+
 	if cluster.Conf.SphinxOn == false {
 		return
 	}
 
-	sphinx, err := connectSphinx(proxy)
+	sphinx, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00058"], err), ErrFrom: "MON"})
 		return
@@ -45,12 +51,13 @@ func (cluster *Cluster) initSphinx(proxy *Proxy) {
 
 }
 
-func (cluster *Cluster) refreshSphinx(proxy *Proxy) error {
+func (proxy *SphinxProxy) Refresh() error {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.SphinxOn == false {
 		return nil
 	}
 
-	sphinx, err := connectSphinx(proxy)
+	sphinx, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00058"], err), ErrFrom: "MON"})
 		return err
@@ -79,7 +86,7 @@ func (cluster *Cluster) refreshSphinx(proxy *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) setMaintenanceSphinx(proxy *Proxy, host string, port string) {
+func (cluster *Cluster) setMaintenanceSphinx(proxy *SphinxProxy, host string, port string) {
 	if cluster.Conf.SphinxOn == false {
 		return
 	}

@@ -860,12 +860,12 @@ func (cluster *Cluster) MonitorSchema() {
 		}
 		t.Table_clusters = strings.Join(tableCluster, ",")
 		tables[t.Table_schema+"."+t.Table_name] = t
-		if haschanged {
-			for _, pr := range cluster.Proxies {
-				if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
+		if haschanged && cluster.Conf.MdbsProxyOn {
+			for _, pri := range cluster.Proxies {
+				if prx, ok := pri.(*MdbsProxy); ok {
 					if !(t.Table_schema == "replication_manager_schema" || strings.Contains(t.Table_name, "_copy") == true || strings.Contains(t.Table_name, "_back") == true || strings.Contains(t.Table_name, "_old") == true || strings.Contains(t.Table_name, "_reshard") == true) {
 						cluster.LogPrintf(LvlDbg, "blabla table %s %s %s", duplicates, t.Table_schema, t.Table_name)
-						cluster.ShardProxyCreateVTable(pr, t.Table_schema, t.Table_name, duplicates, false)
+						cluster.ShardProxyCreateVTable(prx, t.Table_schema, t.Table_name, duplicates, false)
 					}
 				}
 			}
@@ -881,8 +881,12 @@ func (cluster *Cluster) MonitorQueryRules() {
 	if !cluster.Conf.MonitorQueryRules {
 		return
 	}
-	for _, prx := range cluster.Proxies {
-		if cluster.Conf.ProxysqlOn && prx.Type == config.ConstProxySqlproxy {
+	// exit early
+	if !cluster.Conf.ProxysqlOn {
+		return
+	}
+	for _, pri := range cluster.Proxies {
+		if prx, ok := pri.(*ProxySQLProxy); ok {
 			qr := prx.QueryRules
 			for _, rule := range qr {
 				var myRule config.QueryRule

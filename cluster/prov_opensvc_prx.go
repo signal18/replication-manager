@@ -14,16 +14,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func (cluster *Cluster) OpenSVCStopProxyService(server *Proxy) error {
+func (cluster *Cluster) OpenSVCStopProxyService(server DatabaseProxy) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
-		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.Name)
+		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.GetName())
 		if err != nil {
 			return err
 		}
@@ -38,7 +37,7 @@ func (cluster *Cluster) OpenSVCStopProxyService(server *Proxy) error {
 			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
 			return err
 		}
-		err = svc.StopServiceV2(cluster.Name, server.ServiceName, agent.HostName)
+		err = svc.StopServiceV2(cluster.Name, server.GetServiceName(), agent.HostName)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
 			return err
@@ -47,10 +46,10 @@ func (cluster *Cluster) OpenSVCStopProxyService(server *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCStartProxyService(server *Proxy) error {
+func (cluster *Cluster) OpenSVCStartProxyService(server DatabaseProxy) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
-		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.Name)
+		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.GetName())
 		if err != nil {
 			return err
 		}
@@ -65,7 +64,7 @@ func (cluster *Cluster) OpenSVCStartProxyService(server *Proxy) error {
 			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
 			return err
 		}
-		err = svc.StartServiceV2(cluster.Name, server.ServiceName, agent.HostName)
+		err = svc.StartServiceV2(cluster.Name, server.GetServiceName(), agent.HostName)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
 			return err
@@ -74,9 +73,9 @@ func (cluster *Cluster) OpenSVCStartProxyService(server *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
+func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 	svc := cluster.OpenSVCConnect()
-	agent, err := cluster.FoundProxyAgent(prx)
+	agent, err := cluster.FoundProxyAgent(pri)
 	if err != nil {
 		cluster.errorChan <- err
 		return err
@@ -84,20 +83,20 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	// Unprovision if already in OpenSVC
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		var idsrv string
-		mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + prx.Name)
+		mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + pri.GetName())
 		if err == nil {
 			idsrv = mysrv.Svc_id
-			cluster.LogPrintf(LvlInfo, "Found existing service %s service %s", cluster.Name+"/"+prx.Name, idsrv)
+			cluster.LogPrintf(LvlInfo, "Found existing service %s service %s", cluster.Name+"/"+pri.GetName(), idsrv)
 
 		} else {
-			idsrv, err = svc.CreateService(cluster.Name+"/svc/"+prx.Name, "MariaDB")
+			idsrv, err = svc.CreateService(cluster.Name+"/svc/"+pri.GetName(), "MariaDB")
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Can't create OpenSVC proxy service")
 				cluster.errorChan <- err
 				return err
 			}
 		}
-		cluster.LogPrintf(LvlInfo, "Attaching internal id  %s to opensvc service id %s", cluster.Name+"/"+prx.Name, idsrv)
+		cluster.LogPrintf(LvlInfo, "Attaching internal id  %s to opensvc service id %s", cluster.Name+"/"+pri.GetName(), idsrv)
 
 		err = svc.DeteteServiceTags(idsrv)
 		if err != nil {
@@ -120,7 +119,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	for i, s := range cluster.Servers {
 		srvlist[i] = s.Host
 	}
-	if prx.Type == config.ConstProxyMaxscale {
+	if prx, ok := pri.(*MaxscaleProxy); ok {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
@@ -139,13 +138,13 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 					cluster.errorChan <- err
 					return err
 				}
-				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.Name, res)
+				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.GetName(), res)
 				if err != nil {
 					cluster.errorChan <- err
 					return err
 				}
 
-				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.Name)
+				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.GetName())
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
@@ -156,10 +155,9 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			}
 		}
 	}
-	if prx.Type == config.ConstProxySpider {
-
+	if prx, ok := pri.(*MdbsProxy); ok {
 		if strings.Contains(svc.ProvProxAgents, agent.Node_name) {
-			srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, true, cluster.GetDomain())
+			srv, _ := cluster.newServerMonitor(prx.GetHost()+":"+prx.GetPort(), prx.User, prx.Pass, true, cluster.GetDomain())
 			err := srv.Refresh()
 			if err == nil {
 				cluster.LogPrintf(LvlWarn, "Can connect to requested signal18 sharding proxy")
@@ -185,13 +183,13 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 					cluster.errorChan <- err
 					return err
 				}
-				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.Name, res)
+				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.GetName(), res)
 				if err != nil {
 					cluster.errorChan <- err
 					return err
 				}
 
-				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.Name)
+				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.GetName())
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
@@ -202,7 +200,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			}
 		}
 	}
-	if prx.Type == config.ConstProxyHaproxy {
+	if prx, ok := pri.(*HaproxyProxy); ok {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
@@ -221,13 +219,13 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 					cluster.errorChan <- err
 					return err
 				}
-				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.Name, res)
+				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.GetName(), res)
 				if err != nil {
 					cluster.errorChan <- err
 					return err
 				}
 
-				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.Name)
+				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.GetName())
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
@@ -238,7 +236,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			}
 		}
 	}
-	if prx.Type == config.ConstProxySphinx {
+	if prx, ok := pri.(*SphinxProxy); ok {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 		} else {
 			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
@@ -257,13 +255,13 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 					cluster.errorChan <- err
 					return err
 				}
-				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.Name, res)
+				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.GetName(), res)
 				if err != nil {
 					cluster.errorChan <- err
 					return err
 				}
 
-				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.Name)
+				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.GetName())
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
@@ -274,7 +272,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			}
 		}
 	}
-	if prx.Type == config.ConstProxySqlproxy {
+	if prx, ok := pri.(*ProxySQLProxy); ok {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
 			if err != nil {
@@ -293,13 +291,13 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 					cluster.errorChan <- err
 					return err
 				}
-				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.Name, res)
+				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.GetName(), res)
 				if err != nil {
 					cluster.errorChan <- err
 					return err
 				}
 
-				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.Name)
+				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.GetName())
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
@@ -314,10 +312,10 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.Host, pri DatabaseProxy) (string, error) {
 
 	svcsection := make(map[string]map[string]string)
-	svcsection["DEFAULT"] = prx.OpenSVCGetProxyDefaultSection()
+	svcsection["DEFAULT"] = pri.OpenSVCGetProxyDefaultSection()
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
 	if cluster.Conf.ProvProxDiskType != "volume" {
 		svcsection["disk#0000"] = cluster.OpenSVCGetDiskZpoolDockerPrivateSection()
@@ -337,21 +335,29 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.
 	}
 	svcsection["container#0001"] = cluster.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#0002"] = cluster.OpenSVCGetInitContainerSection()
-	switch prx.Type {
-	case config.ConstProxySpider:
+
+	if prx, ok := pri.(*MdbsProxy); ok {
 		svcsection["container#0003"] = cluster.OpenSVCGetShardproxyContainerSection(prx)
-	case config.ConstProxySphinx:
+	}
+
+	if prx, ok := pri.(*SphinxProxy); ok {
 		svcsection["container#0003"] = cluster.OpenSVCGetSphinxContainerSection(prx)
 		svcsection["task#01"] = cluster.OpenSVCGetSphinxTaskSection(prx)
-	case config.ConstProxyHaproxy:
-		svcsection["container#0003"] = cluster.OpenSVCGetHaproxyContainerSection(prx)
-	case config.ConstProxySqlproxy:
-		svcsection["container#0003"] = cluster.OpenSVCGetProxysqlContainerSection(prx)
-	case config.ConstProxyMaxscale:
-		svcsection["container#0003"] = cluster.OpenSVCGetMaxscaleContainerSection(prx)
-	default:
 	}
-	svcsection["env"] = cluster.OpenSVCGetProxyEnvSection(servers, agent, prx)
+
+	if prx, ok := pri.(*HaproxyProxy); ok {
+		svcsection["container#0003"] = cluster.OpenSVCGetHaproxyContainerSection(prx)
+	}
+
+	if prx, ok := pri.(*ProxySQLProxy); ok {
+		svcsection["container#0003"] = cluster.OpenSVCGetProxysqlContainerSection(prx)
+	}
+
+	if prx, ok := pri.(*MaxscaleProxy); ok {
+		svcsection["container#0003"] = cluster.OpenSVCGetMaxscaleContainerSection(prx)
+	}
+
+	svcsection["env"] = cluster.OpenSVCGetProxyEnvSection(servers, agent, pri)
 
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
 	if err != nil {
@@ -362,23 +368,23 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.
 
 }
 
-func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
+func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx DatabaseProxy) {
 	opensvc := cluster.OpenSVCConnect()
 	//agents := opensvc.GetNodes()
 	node, _ := cluster.FoundProxyAgent(prx)
 	for _, svc := range node.Svc {
-		if cluster.Name+"/svc/"+prx.Name == svc.Svc_name {
+		if cluster.Name+"/svc/"+prx.GetName() == svc.Svc_name {
 			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 			err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Can't unprovision proxy %s, %s", prx.Id, err)
+				cluster.LogPrintf(LvlErr, "Can't unprovision proxy %s, %s", prx.GetId(), err)
 			}
 		}
 	}
 	cluster.errorChan <- nil
 }
 
-func (cluster *Cluster) FoundProxyAgent(proxy *Proxy) (opensvc.Host, error) {
+func (cluster *Cluster) FoundProxyAgent(proxy DatabaseProxy) (opensvc.Host, error) {
 	svc := cluster.OpenSVCConnect()
 	agents, err := svc.GetNodes()
 	if err != nil {
@@ -395,14 +401,14 @@ func (cluster *Cluster) FoundProxyAgent(proxy *Proxy) (opensvc.Host, error) {
 		return agent, errors.New("Indice not found in proxies agent list")
 	}
 	for i, srv := range cluster.Proxies {
-		if srv.Id == proxy.Id {
+		if srv.GetId() == proxy.GetId() {
 			return clusteragents[i%len(clusteragents)], nil
 		}
 	}
 	return agent, errors.New("Indice not found in proxies agent list")
 }
 
-func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, agent opensvc.Host, prx *Proxy) map[string]string {
+func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, agent opensvc.Host, prx DatabaseProxy) map[string]string {
 
 	ips := strings.Split(cluster.Conf.ProvProxGateway, ".")
 	masks := strings.Split(cluster.Conf.ProvProxNetmask, ".")
@@ -420,8 +426,8 @@ func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, agent opensvc.
 	svcenv["nodes"] = agent.Node_name
 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
 	svcenv["size"] = cluster.Conf.ProvProxDisk + "b"
-	svcenv["ip_pod01"] = prx.Host
-	svcenv["port_pod01"] = prx.Port
+	svcenv["ip_pod01"] = prx.GetHost()
+	svcenv["port_pod01"] = prx.GetPort()
 	svcenv["mysql_root_password"] = cluster.dbPass
 	svcenv["mysql_root_user"] = cluster.dbUser
 	svcenv["network"] = network
@@ -438,28 +444,28 @@ func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, agent opensvc.
 	svcenv["vip_addr"] = cluster.Conf.ProvProxRouteAddr
 	svcenv["vip_port"] = cluster.Conf.ProvProxRoutePort
 	svcenv["vip_netmask"] = cluster.Conf.ProvProxRouteMask
-	svcenv["port_rw"] = strconv.Itoa(prx.WritePort)
-	svcenv["port_rw_split"] = strconv.Itoa(prx.ReadWritePort)
-	svcenv["port_r_lb"] = strconv.Itoa(prx.ReadPort)
+	svcenv["port_rw"] = strconv.Itoa(prx.GetWritePort())
+	svcenv["port_rw_split"] = strconv.Itoa(prx.GetReadWritePort())
+	svcenv["port_r_lb"] = strconv.Itoa(prx.GetReadPort())
 	svcenv["port_http"] = "80"
 	svcenv["backend_ips"] = servers
 	svcenv["port_binlog"] = strconv.Itoa(cluster.Conf.MxsBinlogPort)
-	svcenv["port_telnet"] = prx.Port
-	svcenv["port_admin"] = prx.Port
-	svcenv["user_admin"] = prx.User
+	svcenv["port_telnet"] = prx.GetPort()
+	svcenv["port_admin"] = prx.GetPort()
+	svcenv["user_admin"] = prx.GetUser()
 	svcenv["mrm_api_addr"] = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
 	svcenv["mrm_cluster_name"] = cluster.GetClusterName()
 
 	return svcenv
 }
 
-func (cluster *Cluster) GetProxiesEnv(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) string {
+func (cluster *Cluster) GetProxiesEnv(collector opensvc.Collector, servers string, agent opensvc.Host, prx DatabaseProxy) string {
 	i := 0
 	ipPods := ""
 	//if !cluster.Conf.ProvNetCNI {
-	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Host + `
+	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.GetHost() + `
 	`
-	portPods := `port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.Port + `
+	portPods := `port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + prx.GetPort() + `
 `
 	/*} else {
 		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = 0.0.0.0`
@@ -498,37 +504,26 @@ maxscale_maxinfo_port =` + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + `
 vip_addr = ` + cluster.Conf.ProvProxRouteAddr + `
 vip_port  = ` + cluster.Conf.ProvProxRoutePort + `
 vip_netmask =  ` + cluster.Conf.ProvProxRouteMask + `
-port_rw = ` + strconv.Itoa(prx.WritePort) + `
-port_rw_split =  ` + strconv.Itoa(prx.ReadWritePort) + `
-port_r_lb =  ` + strconv.Itoa(prx.ReadPort) + `
+port_rw = ` + strconv.Itoa(prx.GetWritePort()) + `
+port_rw_split =  ` + strconv.Itoa(prx.GetReadWritePort()) + `
+port_r_lb =  ` + strconv.Itoa(prx.GetReadPort()) + `
 port_http = 80
 base_dir = /srv/{namespace}-{svcname}
 backend_ips = ` + servers + `
 port_binlog = ` + strconv.Itoa(cluster.Conf.MxsBinlogPort) + `
-port_telnet = ` + prx.Port + `
-port_admin = ` + prx.Port + `
-user_admin = ` + prx.User + `
-password_admin = ` + prx.Pass + `
+port_telnet = ` + prx.GetPort() + `
+port_admin = ` + prx.GetPort() + `
+user_admin = ` + prx.GetUser() + `
+password_admin = ` + prx.GetPass() + `
 mrm_api_addr = ` + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + `
 mrm_cluster_name = ` + cluster.GetClusterName() + `
-proxysql_read_on_master =  ` + prx.ProxySQLReadOnMaster() + `
 `
-	return conf
-}
 
-func (proxy *Proxy) GetPRXEnv() map[string]string {
-	return map[string]string{
-		//	"%%ENV:NODES_CPU_CORES%%":                  server.ClusterGroup.Conf.ProvCores,
-		//	"%%ENV:SVC_CONF_ENV_MAX_CORES%%":           server.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":  string(proxy.Id[2:10]),
-		"%%ENV:SVC_CONF_ENV_SERVER_ID%%": string(proxy.Id[2:10]),
-		//		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%": server.ClusterGroup.dbPass,
-
-		"%%ENV:SERVER_IP%%":                            "0.0.0.0",
-		"%%ENV:SERVER_PORT%%":                          proxy.Port,
-		"%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%": proxy.ProxySQLReadOnMaster(),
+	if pr, ok := prx.(*ProxySQLProxy); ok {
+		conf += `proxysql_read_on_master =  ` + pr.ProxySQLReadOnMaster()
 	}
 
+	return conf
 }
 
 func (server *Proxy) OpenSVCGetProxyDefaultSection() map[string]string {

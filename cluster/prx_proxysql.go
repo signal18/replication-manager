@@ -3,15 +3,48 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"hash/crc64"
 	"strconv"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/proxysql"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {
+type ProxySQLProxy struct {
+	Proxy
+}
+
+func NewProxySQLProxy(clusterName string, proxyHost string, conf config.Config) *ProxySQLProxy {
+	prx := new(ProxySQLProxy)
+	prx.Name = proxyHost
+	prx.Host = proxyHost
+	prx.Type = config.ConstProxySqlproxy
+	prx.Port = conf.ProxysqlAdminPort
+	prx.ReadWritePort, _ = strconv.Atoi(conf.ProxysqlPort)
+	prx.User = conf.ProxysqlUser
+	prx.Pass = conf.ProxysqlPassword
+	prx.ReaderHostgroup, _ = strconv.Atoi(conf.ProxysqlReaderHostgroup)
+	prx.WriterHostgroup, _ = strconv.Atoi(conf.ProxysqlWriterHostgroup)
+	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
+	prx.ReadPort, _ = strconv.Atoi(conf.ProxysqlPort)
+
+	if conf.ProvNetCNI {
+		if conf.ClusterHead == "" {
+			prx.Host = prx.Host + "." + clusterName + ".svc." + conf.ProvOrchestratorCluster
+		} else {
+			prx.Host = prx.Host + "." + conf.ClusterHead + ".svc." + conf.ProvOrchestratorCluster
+		}
+	}
+
+	prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(clusterName+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+
+	return prx
+}
+
+func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 	psql := proxysql.ProxySQL{
 		User:     proxy.User,
 		Password: proxy.Pass,
@@ -29,25 +62,30 @@ func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {
 	return psql, nil
 }
 
-func (cluster *Cluster) AddShardProxy(proxysql *Proxy, shardproxy *Proxy) {
+func (cluster *Cluster) AddShardProxy(proxysql *ProxySQLProxy, shardproxy *MdbsProxy) {
+	proxysql.AddShardProxy(shardproxy)
+}
+
+func (proxy *ProxySQLProxy) AddShardProxy(shardproxy *MdbsProxy) {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
 		return
 	}
-	psql, err := connectProxysql(proxysql)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return
 	}
 	defer psql.Connection.Close()
 	psql.AddShardServer(misc.Unbracket(shardproxy.Host), shardproxy.Port)
-
 }
 
-func (cluster *Cluster) AddQueryRulesProxysql(proxy *Proxy, rules []proxysql.QueryRule) error {
+func (proxy *ProxySQLProxy) AddQueryRulesProxysql(rules []proxysql.QueryRule) error {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
 		return errors.New("No proxysql enable in config")
 	}
-	psql, err := connectProxysql(proxy)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return err
@@ -57,12 +95,13 @@ func (cluster *Cluster) AddQueryRulesProxysql(proxy *Proxy, rules []proxysql.Que
 	return err
 }
 
-func (cluster *Cluster) initProxysql(proxy *Proxy) {
+func (proxy *ProxySQLProxy) Init() {
+	cluster := proxy.ClusterGroup
 	if !cluster.Conf.ProxysqlBootstrap || !cluster.Conf.ProxysqlOn {
 		return
 	}
 
-	psql, err := connectProxysql(proxy)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return
@@ -114,8 +153,13 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	}
 }
 
-func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
-	psql, err := connectProxysql(proxy)
+func (cluster *Cluster) failoverProxysql(proxy *ProxySQLProxy) {
+	proxy.Failover()
+}
+
+func (proxy *ProxySQLProxy) Failover() {
+	cluster := proxy.ClusterGroup
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return
@@ -153,12 +197,13 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 
 }
 
-func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
+func (proxy *ProxySQLProxy) Refresh() error {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
 		return nil
 	}
 
-	psql, err := connectProxysql(proxy)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		cluster.sme.CopyOldStateFromUnknowServer(proxy.Name)
@@ -326,12 +371,17 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, s *ServerMonitor) {
+func (cluster *Cluster) setMaintenanceProxysql(proxy *ProxySQLProxy, s *ServerMonitor) {
+	proxy.SetMaintenance(s)
+}
+
+func (proxy *ProxySQLProxy) SetMaintenance(s *ServerMonitor) {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
 		return
 	}
 
-	psql, err := connectProxysql(proxy)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return

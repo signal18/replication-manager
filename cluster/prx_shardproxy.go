@@ -18,7 +18,6 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -26,13 +25,12 @@ import (
 
 var crcTable = crc64.MakeTable(crc64.ECMA)
 
-func (cluster *Cluster) failoverMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
-
-	cluster.failoverMdbShardBackends(proxy)
-
+type MdbsProxy struct {
+	Proxy
 }
 
-func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
+func (proxy *MdbsProxy) Init() {
+	cluster := proxy.ClusterGroup
 	cluster.LogPrintf(LvlInfo, "Init MdbShardProxy %s %s", proxy.Host, proxy.Port)
 	cluster.ShardProxyBootstrap(proxy)
 	if cluster.Conf.MdbsProxyLoadSystem {
@@ -42,7 +40,18 @@ func (cluster *Cluster) initMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) {
 	cluster.AddShardingHostGroup(proxy)
 }
 
-func (cluster *Cluster) failoverMdbShardBackends(proxy *Proxy) {
+func (proxy *MdbsProxy) GetProxyConfig() string {
+	if proxy.ShardProxy == nil {
+		proxy.ClusterGroup.LogPrintf(LvlErr, "Can't get shard proxy config start monitoring")
+		proxy.ClusterGroup.ShardProxyBootstrap(proxy)
+		return proxy.ShardProxy.GetDatabaseConfig()
+	} else {
+		return proxy.ShardProxy.GetDatabaseConfig()
+	}
+}
+
+func (proxy *MdbsProxy) Failover() {
+	cluster := proxy.ClusterGroup
 	if cluster.master == nil {
 		return
 	}
@@ -87,7 +96,7 @@ func (cluster *Cluster) failoverMdbShardBackends(proxy *Proxy) {
 	}
 }
 
-func (cluster *Cluster) CheckMdbShardServersSchema(proxy *Proxy) {
+func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MdbsProxy) {
 	if cluster.master == nil {
 		return
 	}
@@ -129,7 +138,7 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *Proxy) {
 
 }
 
-func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Proxy) error {
+func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *MdbsProxy) error {
 	if proxy.ShardProxy == nil {
 		return errors.New("Sharding proxy no database monitor yet initialize")
 	}
@@ -194,7 +203,7 @@ func (cluster *Cluster) ShardProxyGetHeadCluster() *Cluster {
 	return nil
 }
 
-func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, table string, duplicates []*ServerMonitor, withreshard bool) error {
+func (cluster *Cluster) ShardProxyCreateVTable(proxy *MdbsProxy, schema string, table string, duplicates []*ServerMonitor, withreshard bool) error {
 	checksum64 := crc64.Checksum([]byte(schema+"_"+cluster.GetName()), crcTable)
 	var err error
 	var ddl string
@@ -283,7 +292,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *Proxy, schema string, tabl
 	return nil
 }
 
-func (cluster *Cluster) ShardSetUniversalTable(proxy *Proxy, schema string, table string) error {
+func (cluster *Cluster) ShardSetUniversalTable(proxy *MdbsProxy, schema string, table string) error {
 	master := cluster.GetMaster()
 	if master == nil {
 		return errors.New("Universal table no valid master on current cluster")
@@ -315,8 +324,8 @@ func (cluster *Cluster) ShardSetUniversalTable(proxy *Proxy, schema string, tabl
 	cluster.Conf.MdbsUniversalTables = cluster.Conf.MdbsUniversalTables + "," + schema + "." + table + "_copy"
 	cluster.Conf.MdbsUniversalTables = cluster.Conf.MdbsUniversalTables + "," + schema + "." + table
 
-	for _, pr := range cluster.Proxies {
-		if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
+	for _, pri := range cluster.Proxies {
+		if pr, ok := pri.(*MdbsProxy); ok {
 			err := cluster.ShardProxyCreateVTable(pr, schema, table+"_copy", duplicates, false)
 			if err != nil {
 				return err
@@ -395,7 +404,7 @@ func (cluster *Cluster) ShardSetUniversalTable(proxy *Proxy, schema string, tabl
 	return nil
 }
 
-func (cluster *Cluster) ShardProxyMoveTable(proxy *Proxy, schema string, table string, destCluster *Cluster) error {
+func (cluster *Cluster) ShardProxyMoveTable(proxy *MdbsProxy, schema string, table string, destCluster *Cluster) error {
 	master := cluster.GetMaster()
 	if master == nil {
 		return errors.New("Move table no valid master on current cluster")
@@ -422,8 +431,8 @@ func (cluster *Cluster) ShardProxyMoveTable(proxy *Proxy, schema string, table s
 	var duplicates []*ServerMonitor
 	duplicates = append(duplicates, destmaster)
 
-	for _, pr := range cluster.Proxies {
-		if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
+	for _, pri := range cluster.Proxies {
+		if pr, ok := pri.(*MdbsProxy); ok {
 			err := destCluster.ShardProxyCreateVTable(pr, schema, table+"_copy", duplicates, false)
 			if err != nil {
 				return err
@@ -503,7 +512,7 @@ func (cluster *Cluster) ShardProxyMoveTable(proxy *Proxy, schema string, table s
 	return nil
 }
 
-func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, table string, clusters map[string]*Cluster) error {
+func (cluster *Cluster) ShardProxyReshardTable(proxy *MdbsProxy, schema string, table string, clusters map[string]*Cluster) error {
 
 	master := cluster.GetMaster()
 	if master == nil {
@@ -535,8 +544,8 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *Proxy, schema string, tabl
 		}
 	}
 
-	for _, pr := range cluster.Proxies {
-		if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
+	for _, pri := range cluster.Proxies {
+		if pr, ok := pri.(*MdbsProxy); ok {
 			err := cluster.ShardProxyCreateVTable(pr, schema, table+"_reshard", duplicates, false)
 			if err != nil {
 				return err
@@ -654,7 +663,7 @@ func (cluster *Cluster) RunQueryWithLog(server *ServerMonitor, query string) err
 	return nil
 }
 
-func (cluster *Cluster) ShardProxyBootstrap(proxy *Proxy) error {
+func (cluster *Cluster) ShardProxyBootstrap(proxy *MdbsProxy) error {
 
 	var err error
 	if proxy.ShardProxy != nil {
@@ -674,7 +683,7 @@ func (cluster *Cluster) ShardProxyBootstrap(proxy *Proxy) error {
 	return err
 }
 
-func (cluster *Cluster) ShardProxyCreateSystemTable(proxy *Proxy) error {
+func (cluster *Cluster) ShardProxyCreateSystemTable(proxy *MdbsProxy) error {
 
 	params := fmt.Sprintf("?timeout=60s")
 
@@ -950,6 +959,6 @@ func (cluster *Cluster) ShardProxyCreateSystemTable(proxy *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) MdbsproxyCopyTable(oldmaster *ServerMonitor, newmaster *ServerMonitor, proxy *Proxy) {
+func (cluster *Cluster) MdbsproxyCopyTable(oldmaster *ServerMonitor, newmaster *ServerMonitor, proxy *MdbsProxy) {
 
 }

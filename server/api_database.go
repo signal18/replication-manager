@@ -1374,7 +1374,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 
 		} else if proxy != nil {
 			proxy.GetProxyConfig()
-			data, err := ioutil.ReadFile(string(proxy.Datadir + "/config.tar.gz"))
+			data, err := ioutil.ReadFile(string(proxy.GetDatadir() + "/config.tar.gz"))
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
 				w.WriteHeader(404)

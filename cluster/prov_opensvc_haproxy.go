@@ -13,7 +13,7 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (cluster *Cluster) OpenSVCGetHaproxyContainerSection(server *Proxy) map[string]string {
+func (cluster *Cluster) OpenSVCGetHaproxyContainerSection(server *HaproxyProxy) map[string]string {
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
@@ -32,7 +32,7 @@ func (cluster *Cluster) OpenSVCGetHaproxyContainerSection(server *Proxy) map[str
 	return svccontainer
 }
 
-func (cluster *Cluster) GetHaproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+func (cluster *Cluster) GetHaproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *HaproxyProxy) (string, error) {
 
 	conf := `
 [DEFAULT]

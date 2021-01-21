@@ -330,17 +330,14 @@ func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
 	return nil
 }
 
-func (cluster *Cluster) GetProxyFromURL(url string) *Proxy {
-	if strings.Contains(url, ":") {
-		for _, proxy := range cluster.Proxies {
-			//	cluster.LogPrintf(LvlInfo, " search prx %s %s for url %s", proxy.Host, proxy.Port, url)
-			if proxy.Host+":"+proxy.Port == url {
+func (cluster *Cluster) GetProxyFromURL(url string) DatabaseProxy {
+	for _, proxy := range cluster.Proxies {
+		if strings.Contains(url, ":") {
+			if proxy.GetHost()+":"+proxy.GetPort() == url {
 				return proxy
 			}
-		}
-	} else {
-		for _, proxy := range cluster.Proxies {
-			if proxy.Host == url {
+		} else {
+			if proxy.GetHost() == url {
 				return proxy
 			}
 		}
@@ -427,7 +424,7 @@ func (cluster *Cluster) GetDBServerIdList() []string {
 func (cluster *Cluster) GetProxyServerIdList() []string {
 	ret := make([]string, len(cluster.Proxies))
 	for i, server := range cluster.Proxies {
-		ret[i] = server.Id
+		ret[i] = server.GetId()
 	}
 	return ret
 }
@@ -467,17 +464,6 @@ func (cluster *Cluster) GetDatabaseTags() []string {
 
 func (cluster *Cluster) GetProxyTags() []string {
 	return strings.Split(cluster.Conf.ProvProxTags, ",")
-}
-
-func (cluster *Cluster) GetLocalProxy(this *Proxy) Proxy {
-	// dirty: need to point LB to all DB  proxies, just pick the first one so far
-	var prx Proxy
-	for _, p := range cluster.Proxies {
-		if p != this && p.Type != config.ConstProxySphinx {
-			return *p
-		}
-	}
-	return prx
 }
 
 func (cluster *Cluster) GetCron() []cron.Entry {

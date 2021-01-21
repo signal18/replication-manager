@@ -13,7 +13,7 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (cluster *Cluster) OpenSVCGetSphinxContainerSection(server *Proxy) map[string]string {
+func (cluster *Cluster) OpenSVCGetSphinxContainerSection(server *SphinxProxy) map[string]string {
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
@@ -31,7 +31,7 @@ func (cluster *Cluster) OpenSVCGetSphinxContainerSection(server *Proxy) map[stri
 	return svccontainer
 }
 
-func (cluster *Cluster) OpenSVCGetSphinxTaskSection(server *Proxy) map[string]string {
+func (cluster *Cluster) OpenSVCGetSphinxTaskSection(server *SphinxProxy) map[string]string {
 	svccontainer := make(map[string]string)
 	svccontainer["schedule"] = cluster.Conf.ProvSphinxCron
 	svccontainer["command"] = "{env.base_dir}/{namespace}-{svcname}/pod01/init/reindex.sh"
@@ -40,7 +40,7 @@ func (cluster *Cluster) OpenSVCGetSphinxTaskSection(server *Proxy) map[string]st
 	return svccontainer
 }
 
-func (cluster *Cluster) GetSphinxTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+func (cluster *Cluster) GetSphinxTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *SphinxProxy) (string, error) {
 
 	conf := `
 [DEFAULT]

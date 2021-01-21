@@ -22,7 +22,12 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func (cluster *Cluster) initHaproxy(proxy *Proxy) {
+type HaproxyProxy struct {
+	Proxy
+}
+
+func (proxy *HaproxyProxy) Init() {
+	cluster := proxy.ClusterGroup
 	haproxydatadir := proxy.Datadir + "/var"
 
 	if _, err := os.Stat(haproxydatadir); os.IsNotExist(err) {
@@ -143,8 +148,8 @@ func (cluster *Cluster) initHaproxy(proxy *Proxy) {
 
 }
 
-func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
-
+func (proxy *HaproxyProxy) Refresh() error {
+	cluster := proxy.ClusterGroup
 	// if proxy.ClusterGroup.Conf.HaproxyStatHttp {
 
 	/*
@@ -266,6 +271,11 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 }
 
 func (cluster *Cluster) setMaintenanceHaproxy(pr *Proxy, server *ServerMonitor) {
+	pr.SetMaintenance(server)
+}
+
+func (pr *Proxy) SetMaintenance(server *ServerMonitor) {
+	cluster := pr.ClusterGroup
 	haRuntime := haproxy.Runtime{
 		Binary:   cluster.Conf.HaproxyBinaryPath,
 		SockFile: filepath.Join(pr.Datadir+"/var", "/haproxy.stats.sock"),
@@ -284,5 +294,15 @@ func (cluster *Cluster) setMaintenanceHaproxy(pr *Proxy, server *ServerMonitor) 
 		} else {
 			haRuntime.SetReady("leader", cluster.Conf.HaproxyAPIReadBackend)
 		}
+	}
+}
+
+func (prx *Proxy) Failover() {
+	cluster := prx.ClusterGroup
+	if cluster.Conf.HaproxyMode == "runtimeapi" {
+		prx.Refresh()
+	}
+	if cluster.Conf.HaproxyMode == "standby" {
+		prx.Init()
 	}
 }

@@ -15,7 +15,7 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (cluster *Cluster) OpenSVCGetShardproxyContainerSection(server *Proxy) map[string]string {
+func (cluster *Cluster) OpenSVCGetShardproxyContainerSection(server *MdbsProxy) map[string]string {
 
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
@@ -35,7 +35,7 @@ func (cluster *Cluster) OpenSVCGetShardproxyContainerSection(server *Proxy) map[
 	return svccontainer
 }
 
-func (cluster *Cluster) GetShardproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+func (cluster *Cluster) GetShardproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *MdbsProxy) (string, error) {
 
 	ipPods := ""
 

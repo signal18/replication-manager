@@ -6,19 +6,12 @@
 
 package cluster
 
-import (
-	"errors"
+func (cluster *Cluster) LocalhostProvisionProxyService(pri DatabaseProxy) error {
+	pri.GetProxyConfig()
 
-	"github.com/signal18/replication-manager/config"
-)
-
-func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
-	prx.GetProxyConfig()
-
-	switch prx.Type {
-	case config.ConstProxySpider:
+	if prx, ok := pri.(*MdbsProxy); ok {
 		cluster.LogPrintf(LvlInfo, "Bootstrap MariaDB Sharding Cluster")
-		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, true, "")
+		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.GetPort(), prx.User, prx.Pass, true, "")
 		err := srv.Refresh()
 		if err == nil {
 			cluster.LogPrintf(LvlWarn, "Can connect to requested signal18 sharding proxy")
@@ -35,73 +28,68 @@ func (cluster *Cluster) LocalhostProvisionProxyService(prx *Proxy) error {
 		}
 		srv.Close()
 		cluster.ShardProxyBootstrap(prx)
+	}
 
-	case config.ConstProxySqlproxy:
+	if prx, ok := pri.(*ProxySQLProxy); ok {
 		err := cluster.LocalhostProvisionProxySQLService(prx)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Bootstrap Proxysql Failed")
 			cluster.errorChan <- err
 			return err
 		}
-	case config.ConstProxyHaproxy:
+	}
+
+	if prx, ok := pri.(*HaproxyProxy); ok {
 		err := cluster.LocalhostProvisionHaProxyService(prx)
 		cluster.errorChan <- err
 		return err
 	}
+
 	cluster.errorChan <- nil
 	return nil
 }
 
-func (cluster *Cluster) LocalhostUnprovisionProxyService(prx *Proxy) error {
-	switch prx.Type {
-	case config.ConstProxySpider:
+func (cluster *Cluster) LocalhostUnprovisionProxyService(pri DatabaseProxy) error {
+	if prx, ok := pri.(*MdbsProxy); ok {
 		cluster.LocalhostUnprovisionDatabaseService(prx.ShardProxy)
-	case config.ConstProxySphinx:
+	}
 
-	case config.ConstProxyHaproxy:
+	if prx, ok := pri.(*HaproxyProxy); ok {
 		cluster.LocalhostUnprovisionHaProxyService(prx)
-	case config.ConstProxySqlproxy:
+	}
+
+	if prx, ok := pri.(*ProxySQLProxy); ok {
 		cluster.LocalhostUnprovisionProxySQLService(prx)
-	case config.ConstProxyMaxscale:
-
-	default:
 	}
+
 	cluster.errorChan <- nil
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStartProxyService(prx *Proxy) error {
-	switch prx.Type {
-	case config.ConstProxySpider:
+func (cluster *Cluster) LocalhostStartProxyService(pri DatabaseProxy) error {
+	if prx, ok := pri.(*MdbsProxy); ok {
 		prx.ShardProxy.Shutdown()
-	case config.ConstProxySphinx:
-
-	case config.ConstProxyHaproxy:
-		cluster.LocalhostStartHaProxyService(prx)
-	case config.ConstProxySqlproxy:
-		cluster.LocalhostStartProxySQLService(prx)
-	case config.ConstProxyMaxscale:
-
-	default:
 	}
+
+	if prx, ok := pri.(*HaproxyProxy); ok {
+		cluster.LocalhostStartHaProxyService(prx)
+	}
+
+	if prx, ok := pri.(*ProxySQLProxy); ok {
+		cluster.LocalhostStartProxySQLService(prx)
+	}
+
 	cluster.errorChan <- nil
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStopProxyService(prx *Proxy) error {
-	switch prx.Type {
-	case config.ConstProxySpider:
-
-	case config.ConstProxySphinx:
-
-	case config.ConstProxyHaproxy:
+func (cluster *Cluster) LocalhostStopProxyService(pri DatabaseProxy) error {
+	if prx, ok := pri.(*HaproxyProxy); ok {
 		cluster.LocalhostStartHaProxyService(prx)
-	case config.ConstProxySqlproxy:
-		cluster.LocalhostStartProxySQLService(prx)
-	case config.ConstProxyMaxscale:
-
-	default:
-		return errors.New("Can't stop proxy")
 	}
+	if prx, ok := pri.(*ProxySQLProxy); ok {
+		cluster.LocalhostStartProxySQLService(prx)
+	}
+
 	return nil
 }

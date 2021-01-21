@@ -13,14 +13,14 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (proxy *Proxy) ProxySQLReadOnMaster() string {
+func (proxy *ProxySQLProxy) ProxySQLReadOnMaster() string {
 	if proxy.IsFilterInTags("proxy.route.readonmaster") {
 		return "1"
 	}
 	return "0"
 }
 
-func (cluster *Cluster) OpenSVCGetProxysqlContainerSection(server *Proxy) map[string]string {
+func (cluster *Cluster) OpenSVCGetProxysqlContainerSection(server *ProxySQLProxy) map[string]string {
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
@@ -39,7 +39,7 @@ func (cluster *Cluster) OpenSVCGetProxysqlContainerSection(server *Proxy) map[st
 	return svccontainer
 }
 
-func (cluster *Cluster) GetProxysqlTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+func (cluster *Cluster) GetProxysqlTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *ProxySQLProxy) (string, error) {
 
 	conf := `
 [DEFAULT]

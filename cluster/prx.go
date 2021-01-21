@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/router/myproxy"
@@ -29,6 +30,7 @@ import (
 
 // Proxy defines a proxy
 type Proxy struct {
+	DatabaseProxy
 	Id              string               `json:"id"`
 	Name            string               `json:"name"`
 	ServiceName     string               `json:"serviceName"`
@@ -62,6 +64,130 @@ type Proxy struct {
 	Variables       map[string]string    `json:"-"`
 }
 
+func (p *Proxy) GetType() string {
+	return p.Type
+}
+
+func (p *Proxy) GetHost() string {
+	return p.Host
+}
+
+func (p *Proxy) GetPort() string {
+	return p.Port
+}
+
+func (p *Proxy) GetWritePort() int {
+	return p.WritePort
+}
+
+func (p *Proxy) GetId() string {
+	return p.Id
+}
+
+func (p *Proxy) GetState() string {
+	return p.State
+}
+
+func (p *Proxy) SetState(v string) {
+	p.State = v
+}
+
+func (p *Proxy) GetUser() string {
+	return p.User
+}
+
+func (p *Proxy) GetPass() string {
+	return p.Pass
+}
+
+func (p *Proxy) GetFailCount() int {
+	return p.FailCount
+}
+
+func (p *Proxy) SetFailCount(c int) {
+	p.FailCount = c
+}
+
+func (p *Proxy) SetCredential(credential string) {
+	p.User, p.Pass = misc.SplitPair(credential)
+}
+
+func (p *Proxy) GetPrevState() string {
+	return p.PrevState
+}
+
+func (p *Proxy) SetPrevState(state string) {
+	p.PrevState = state
+}
+
+type DatabaseProxy interface {
+	// Init oldmaster is only currently used by Maxscale
+	Init()
+	Refresh() error
+	Failover()
+	SetMaintenance(server *ServerMonitor)
+	GetType() string
+	DelRestartCookie()
+	DelReprovisionCookie()
+
+	SetProvisionCookie()
+	HasProvisionCookie() bool
+	IsRunning() bool
+	SetRestartCookie()
+	HasRestartCookie() bool
+	SetReprovCookie()
+	HasReprovCookie() bool
+
+	SetCredential(credential string)
+
+	GetFailCount() int
+	SetFailCount(c int)
+
+	GetName() string
+	GetHost() string
+	GetPort() string
+	GetWritePort() int
+	GetReadWritePort() int
+	GetReadPort() int
+	GetId() string
+	GetState() string
+	SetState(v string)
+	GetUser() string
+	GetPass() string
+	GetServiceName() string
+
+	GetPrevState() string
+	SetPrevState(state string)
+
+	GetCluster() (*sqlx.DB, error)
+
+	SetMaintenanceHaproxy(server *ServerMonitor)
+
+	IsFilterInTags(filter string) bool
+	HasWaitStartCookie() bool
+	HasWaitStopCookie() bool
+	IsDown() bool
+
+	DelProvisionCookie()
+	DelWaitStartCookie()
+	DelWaitStopCookie()
+	GetProxyConfig() string
+	// GetInitContainer(collector opensvc.Collector) string
+	GetBindAddress() string
+	GetBindAddressExtraIPV6() string
+	GetUseSSL() string
+	GetUseCompression() string
+	GetDatadir() string
+	GetEnv() map[string]string
+	GetConfigProxyModule(variable string) string
+
+	SendStats() error
+
+	OpenSVCGetProxyDefaultSection() map[string]string
+	SetWaitStartCookie()
+	SetWaitStopCookie()
+}
+
 type Backend struct {
 	Host           string `json:"host"`
 	Port           string `json:"port"`
@@ -76,7 +202,7 @@ type Backend struct {
 	PrxMaintenance bool   `json:"prxMaintenance"`
 }
 
-type proxyList []*Proxy
+type proxyList []DatabaseProxy
 
 func (cluster *Cluster) newProxyList() error {
 	nbproxies := 0
@@ -107,7 +233,7 @@ func (cluster *Cluster) newProxyList() error {
 	if cluster.Conf.MyproxyOn {
 		nbproxies++
 	}
-	cluster.Proxies = make([]*Proxy, nbproxies)
+	cluster.Proxies = make([]DatabaseProxy, nbproxies)
 
 	cluster.LogPrintf(LvlInfo, "Loading %d proxies", nbproxies)
 
@@ -117,7 +243,8 @@ func (cluster *Cluster) newProxyList() error {
 		slapospartitions := strings.Split(cluster.Conf.SlapOSHaProxyPartitions, ",")
 
 		for k, proxyHost := range strings.Split(cluster.Conf.MxsHost, ",") {
-			prx := new(Proxy)
+			// prx := new(Proxy)
+			prx := new(MaxscaleProxy)
 			prx.Type = config.ConstProxyMaxscale
 			if k < len(slapospartitions) {
 				prx.SlapOSDatadir = slapospartitions[k]
@@ -142,11 +269,11 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
 			prx.SetDataDir()
-			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
-
-			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
+			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
+			prx.State = stateSuspect
+			cluster.Proxies[ctproxy] = prx
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
 			ctproxy++
 		}
@@ -155,7 +282,7 @@ func (cluster *Cluster) newProxyList() error {
 		slapospartitions := strings.Split(cluster.Conf.SlapOSHaProxyPartitions, ",")
 
 		for k, proxyHost := range strings.Split(cluster.Conf.HaproxyHosts, ",") {
-			prx := new(Proxy)
+			prx := new(HaproxyProxy)
 			if k < len(slapospartitions) {
 				prx.SlapOSDatadir = slapospartitions[k]
 			}
@@ -172,10 +299,11 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
 			prx.SetDataDir()
-			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
-			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
+			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
+			prx.State = stateSuspect
+			cluster.Proxies[ctproxy] = prx
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
 
 			ctproxy++
@@ -185,7 +313,7 @@ func (cluster *Cluster) newProxyList() error {
 		prx := new(Proxy)
 		prx.Type = config.ConstProxyExternal
 		prx.Host, prx.Port = misc.SplitHostPort(cluster.Conf.ExtProxyVIP)
-		prx.WritePort, _ = strconv.Atoi(prx.Port)
+		prx.WritePort, _ = strconv.Atoi(prx.GetPort())
 		prx.ReadPort = prx.WritePort
 		prx.ReadWritePort = prx.WritePort
 		if prx.Name == "" {
@@ -194,7 +322,7 @@ func (cluster *Cluster) newProxyList() error {
 		prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 		prx.ClusterGroup = cluster
 		prx.SetDataDir()
-		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
+		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
 		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 		ctproxy++
 	}
@@ -203,44 +331,31 @@ func (cluster *Cluster) newProxyList() error {
 		ipv6hosts := strings.Split(cluster.Conf.ProxysqlHostsIPV6, ",")
 		for k, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
 
-			prx := new(Proxy)
+			// prx := new(Proxy)
+			// prx := new(ProxySQLProxy)
+			prx := NewProxySQLProxy(cluster.Name, proxyHost, cluster.Conf)
 			if k < len(slapospartitions) {
 				prx.SlapOSDatadir = slapospartitions[k]
 			}
 			if k < len(ipv6hosts) {
 				prx.HostIPV6 = ipv6hosts[k]
 			}
-			prx.Type = config.ConstProxySqlproxy
-			prx.Port = cluster.Conf.ProxysqlAdminPort
-			prx.ReadWritePort, _ = strconv.Atoi(cluster.Conf.ProxysqlPort)
-			prx.User = cluster.Conf.ProxysqlUser
-			prx.Pass = cluster.Conf.ProxysqlPassword
-			prx.ReaderHostgroup, _ = strconv.Atoi(cluster.Conf.ProxysqlReaderHostgroup)
-			prx.WriterHostgroup, _ = strconv.Atoi(cluster.Conf.ProxysqlWriterHostgroup)
-			prx.WritePort, _ = strconv.Atoi(cluster.Conf.ProxysqlPort)
-			prx.ReadPort, _ = strconv.Atoi(cluster.Conf.ProxysqlPort)
+
 			if cluster.key != nil {
 				p := crypto.Password{Key: cluster.key}
 				p.CipherText = prx.Pass
 				p.Decrypt()
 				prx.Pass = p.PlainText
 			}
-			prx.Name = proxyHost
-			prx.Host = proxyHost
-			if cluster.Conf.ProvNetCNI {
-				if cluster.Conf.ClusterHead == "" {
-					prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
-				} else {
-					prx.Host = prx.Host + "." + cluster.Conf.ClusterHead + ".svc." + cluster.Conf.ProvOrchestratorCluster
-				}
-			}
-			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+
 			prx.ClusterGroup = cluster
 			prx.SetDataDir()
-			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
-			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
+			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
+			// cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
+			prx.State = stateSuspect
+			cluster.Proxies[ctproxy] = prx
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
 			ctproxy++
 		}
@@ -249,7 +364,7 @@ func (cluster *Cluster) newProxyList() error {
 		slapospartitions := strings.Split(cluster.Conf.SlapOSShardProxyPartitions, ",")
 		ipv6hosts := strings.Split(cluster.Conf.MdbsHostsIPV6, ",")
 		for k, proxyHost := range strings.Split(cluster.Conf.MdbsProxyHosts, ",") {
-			prx := new(Proxy)
+			prx := new(MdbsProxy)
 			if k < len(slapospartitions) {
 				prx.SlapOSDatadir = slapospartitions[k]
 			}
@@ -259,8 +374,8 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Type = config.ConstProxySpider
 			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
 			prx.User, prx.Pass = misc.SplitPair(cluster.Conf.MdbsProxyCredential)
-			prx.ReadPort, _ = strconv.Atoi(prx.Port)
-			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
+			prx.ReadPort, _ = strconv.Atoi(prx.GetPort())
+			prx.ReadWritePort, _ = strconv.Atoi(prx.GetPort())
 			prx.Name = proxyHost
 			if cluster.Conf.ProvNetCNI {
 				if cluster.Conf.ClusterHead == "" {
@@ -270,30 +385,31 @@ func (cluster *Cluster) newProxyList() error {
 				}
 				prx.Port = "3306"
 			}
-			prx.WritePort, _ = strconv.Atoi(prx.Port)
+			prx.WritePort, _ = strconv.Atoi(prx.GetPort())
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
 			prx.SetDataDir()
-			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
-			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
+			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
+			prx.State = stateSuspect
+			cluster.Proxies[ctproxy] = prx
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
-			cluster.LogPrintf(LvlDbg, "New MdbShardProxy proxy created: %s %s", prx.Host, prx.Port)
+			cluster.LogPrintf(LvlDbg, "New MdbShardProxy proxy created: %s %s", prx.Host, prx.GetPort())
 			ctproxy++
 		}
 	}
 	if cluster.Conf.SphinxHosts != "" && cluster.Conf.SphinxOn {
 		for _, proxyHost := range strings.Split(cluster.Conf.SphinxHosts, ",") {
-			prx := new(Proxy)
+			prx := new(SphinxProxy)
 			prx.Type = config.ConstProxySphinx
 
 			prx.Port = cluster.Conf.SphinxQLPort
 			prx.User = ""
 			prx.Pass = ""
-			prx.ReadPort, _ = strconv.Atoi(prx.Port)
-			prx.WritePort, _ = strconv.Atoi(prx.Port)
-			prx.ReadWritePort, _ = strconv.Atoi(prx.Port)
+			prx.ReadPort, _ = strconv.Atoi(prx.GetPort())
+			prx.WritePort, _ = strconv.Atoi(prx.GetPort())
+			prx.ReadWritePort, _ = strconv.Atoi(prx.GetPort())
 			prx.Name = proxyHost
 			prx.Host = proxyHost
 			if cluster.Conf.ProvNetCNI {
@@ -302,12 +418,13 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
 			prx.SetDataDir()
-			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
-			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
+			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
+			prx.State = stateSuspect
+			cluster.Proxies[ctproxy] = prx
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.Port, err)
+				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
-			cluster.LogPrintf(LvlDbg, "New SphinxSearch proxy created: %s %s", prx.Host, prx.Port)
+			cluster.LogPrintf(LvlDbg, "New SphinxSearch proxy created: %s %s", prx.Host, prx.GetPort())
 			ctproxy++
 		}
 	}
@@ -330,7 +447,7 @@ func (cluster *Cluster) newProxyList() error {
 		}
 		prx.ClusterGroup = cluster
 		prx.SetDataDir()
-		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
+		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
 		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 		ctproxy++
 	}
@@ -338,6 +455,7 @@ func (cluster *Cluster) newProxyList() error {
 	return nil
 }
 
+// TODO: clarify why this happens
 func (cluster *Cluster) newProxy(p *Proxy) (*Proxy, error) {
 	proxy := new(Proxy)
 	proxy = p
@@ -350,15 +468,15 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 	// Found server from ServerId
 	if cluster.GetMaster() != nil {
 		for _, pr := range cluster.Proxies {
-			if pr.Type == config.ConstProxySphinx || pr.Type == config.ConstProxyMyProxy {
+			if pr.GetType() == config.ConstProxySphinx || pr.GetType() == config.ConstProxyMyProxy {
 				// Does not yet understand CREATE OR REPLACE VIEW
 				continue
 			}
-			db, err := cluster.GetClusterThisProxyConn(pr)
+			db, err := pr.GetCluster()
 			if err != nil {
 				cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 			} else {
-				if pr.Type == config.ConstProxyMyProxy {
+				if pr.GetType() == config.ConstProxyMyProxy {
 					definer = "DEFINER = root@localhost"
 				} else {
 					definer = ""
@@ -380,7 +498,7 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 	// Found server from ServerId
 	if cluster.GetMaster() != nil {
 		for _, pr := range cluster.Proxies {
-			db, err := cluster.GetClusterThisProxyConn(pr)
+			db, err := pr.GetCluster()
 			if err != nil {
 				if cluster.IsVerbose() {
 					cluster.LogPrintf(LvlErr, "Can't get a proxy connection: %s", err)
@@ -407,7 +525,7 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 			if cluster.IsVerbose() {
 				cluster.LogPrintf(LvlInfo, "Proxy compare master: %d %d", cluster.GetMaster().ServerID, uint(sid))
 			}
-			if cluster.GetMaster().ServerID == uint64(sid) || pr.Type == config.ConstProxySpider {
+			if cluster.GetMaster().ServerID == uint64(sid) || pr.GetType() == config.ConstProxySpider {
 				return true
 			}
 		}
@@ -419,22 +537,28 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint64) {
 	// Found server from ServerId
 	for _, pr := range cluster.Proxies {
 		server := cluster.GetServerFromId(serverid)
-		if cluster.Conf.HaproxyOn && pr.Type == config.ConstProxyHaproxy {
-			if cluster.Conf.HaproxyMode == "runtimeapi" {
-				cluster.setMaintenanceHaproxy(pr, server)
-			}
-			if cluster.Conf.HaproxyMode == "standby" {
-				cluster.initHaproxy(pr)
-			}
-		}
-		if cluster.Conf.MxsOn && pr.Type == config.ConstProxyMaxscale {
-			if cluster.GetMaster() != nil {
-				cluster.setMaintenanceMaxscale(pr, server)
+		if cluster.Conf.HaproxyOn {
+			if prx, ok := pr.(*HaproxyProxy); ok {
+				if cluster.Conf.HaproxyMode == "runtimeapi" {
+					prx.SetMaintenance(server)
+				}
+				if cluster.Conf.HaproxyMode == "standby" {
+					prx.Init()
+				}
 			}
 		}
-		if cluster.Conf.ProxysqlOn && pr.Type == config.ConstProxySqlproxy {
-			if cluster.GetMaster() != nil {
-				cluster.setMaintenanceProxysql(pr, server)
+		if cluster.Conf.MxsOn {
+			if prx, ok := pr.(*MaxscaleProxy); ok {
+				if cluster.GetMaster() != nil {
+					prx.SetMaintenance(server)
+				}
+			}
+		}
+		if cluster.Conf.ProxysqlOn {
+			if prx, ok := pr.(*ProxySQLProxy); ok {
+				if cluster.GetMaster() != nil {
+					prx.SetMaintenance(server)
+				}
 			}
 		}
 	}
@@ -452,45 +576,34 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 
 	for _, pr := range cluster.Proxies {
 		var err error
-		if cluster.Conf.MxsOn && pr.Type == config.ConstProxyMaxscale {
-			err = cluster.refreshMaxscale(pr)
-		}
-		if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
-			err = cluster.refreshMdbsproxy(nil, pr)
-		}
-		if cluster.Conf.ProxysqlOn && pr.Type == config.ConstProxySqlproxy {
-			err = cluster.refreshProxysql(pr)
-		}
-		if cluster.Conf.HaproxyOn && pr.Type == config.ConstProxyHaproxy {
-			err = cluster.refreshHaproxy(pr)
-		}
-		if cluster.Conf.SphinxOn && pr.Type == config.ConstProxySphinx {
-			err = cluster.refreshSphinx(pr)
-		}
+		err = pr.Refresh()
 		if err == nil {
-			pr.FailCount = 0
-			pr.State = stateProxyRunning
+			pr.SetFailCount(0)
+			pr.SetState(stateProxyRunning)
 			if pr.HasWaitStartCookie() {
 				pr.DelWaitStartCookie()
 			}
 		} else {
-			pr.FailCount++
-			if pr.FailCount >= pr.ClusterGroup.Conf.MaxFail {
-				if pr.FailCount == pr.ClusterGroup.Conf.MaxFail {
-					pr.ClusterGroup.LogPrintf("INFO", "Declaring %s proxy as failed %s:%s %s", pr.Type, pr.Host, pr.Port, err)
+			fc := pr.GetFailCount() + 1
+			// TODO: Can pr.ClusterGroup be different from cluster *Cluster? code doesn't imply it. if not change to
+			// cl, err := pr.GetCluster()
+			// cl.Conf.MaxFail
+			if fc >= cluster.Conf.MaxFail {
+				if fc == cluster.Conf.MaxFail {
+					cluster.LogPrintf("INFO", "Declaring %s proxy as failed %s:%s %s", pr.GetType(), pr.GetHost(), pr.GetPort(), err)
 				}
-				pr.State = stateFailed
+				pr.SetState(stateFailed)
 				pr.DelWaitStopCookie()
 				pr.DelRestartCookie()
 			} else {
-				pr.State = stateSuspect
+				pr.SetState(stateSuspect)
 			}
 		}
-		if pr.PrevState != pr.State {
-			pr.PrevState = pr.State
+		if pr.GetPrevState() != pr.GetState() {
+			pr.SetPrevState(pr.GetState())
 		}
 		if cluster.Conf.GraphiteMetrics {
-			cluster.SendProxyStats(pr)
+			pr.SendStats()
 		}
 	}
 
@@ -498,51 +611,28 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 
 func (cluster *Cluster) failoverProxies() {
 	for _, pr := range cluster.Proxies {
-		cluster.LogPrintf(LvlInfo, "Failover Proxy Type: %s Host: %s Port: %s", pr.Type, pr.Host, pr.Port)
-		if cluster.Conf.HaproxyOn && pr.Type == config.ConstProxyHaproxy {
-			if cluster.Conf.HaproxyMode == "runtimeapi" {
-				cluster.refreshHaproxy(pr)
-			}
-			if cluster.Conf.HaproxyMode == "standby" {
-				cluster.initHaproxy(pr)
-			}
-		}
-		if cluster.Conf.MxsOn && pr.Type == config.ConstProxyMaxscale {
-			cluster.initMaxscale(nil, pr)
-		}
-		if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
-			cluster.failoverMdbsproxy(nil, pr)
-		}
-		if cluster.Conf.ProxysqlOn && pr.Type == config.ConstProxySqlproxy {
-			cluster.failoverProxysql(pr)
-		}
+		cluster.LogPrintf(LvlInfo, "Failover Proxy Type: %s Host: %s Port: %s", pr.GetType(), pr.GetHost(), pr.GetPort())
+		pr.Failover()
 	}
 	cluster.initConsul()
 }
 
+// TODO: reduce to
+// for { pr.Init() }
 func (cluster *Cluster) initProxies() {
 	for _, pr := range cluster.Proxies {
-		cluster.LogPrintf(LvlInfo, "New proxy monitored: %s %s:%s", pr.Type, pr.Host, pr.Port)
-		if cluster.Conf.HaproxyOn && pr.Type == config.ConstProxyHaproxy {
-			cluster.initHaproxy(pr)
-		}
-		if cluster.Conf.MxsOn && pr.Type == config.ConstProxyMaxscale {
-			cluster.initMaxscale(nil, pr)
-		}
-		if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
-			cluster.initMdbsproxy(nil, pr)
-		}
-		if cluster.Conf.ProxysqlOn && pr.Type == config.ConstProxySqlproxy {
-			cluster.initProxysql(pr)
-		}
-		if cluster.Conf.MyproxyOn && pr.Type == config.ConstProxyMyProxy {
-			cluster.initMyProxy(pr)
-		}
+		cluster.LogPrintf(LvlInfo, "New proxy monitored: %s %s:%s", pr.GetType(), pr.GetHost(), pr.GetPort())
+		pr.Init()
 	}
 	cluster.initConsul()
 }
 
-func (cluster *Cluster) SendProxyStats(proxy *Proxy) error {
+func (cluster *Cluster) SendProxyStats(proxy DatabaseProxy) error {
+	return proxy.SendStats()
+}
+
+func (proxy *Proxy) SendStats() error {
+	cluster := proxy.ClusterGroup
 	graph, err := graphite.NewGraphite(cluster.Conf.GraphiteCarbonHost, cluster.Conf.GraphiteCarbonPort)
 	if err != nil {
 		return err

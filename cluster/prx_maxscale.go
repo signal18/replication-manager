@@ -16,7 +16,16 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func (cluster *Cluster) refreshMaxscale(proxy *Proxy) error {
+type MaxscaleProxy struct {
+	Proxy
+}
+
+func (cluster *Cluster) refreshMaxscale(proxy *MaxscaleProxy) error {
+	return proxy.refresh()
+}
+
+func (proxy *MaxscaleProxy) refresh() error {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.MxsOn == false {
 		return nil
 	}
@@ -83,7 +92,12 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
+func (cluster *Cluster) initMaxscale(proxy DatabaseProxy) {
+	proxy.Init()
+}
+
+func (proxy *MaxscaleProxy) Init() {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.MxsOn == false {
 		return
 	}
@@ -178,37 +192,15 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 				}
 			}
 		}
-		if oldmaster != nil {
-			err = m.ClearServer(oldmaster.MxsServerName, "master")
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
-			}
-
-			if oldmaster.State != stateSlave {
-				err = m.ClearServer(oldmaster.MxsServerName, "slave")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
-				}
-				err = m.ClearServer(oldmaster.MxsServerName, "running")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
-				}
-			} else {
-				err = m.SetServer(oldmaster.MxsServerName, "slave")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
-				}
-				err = m.SetServer(oldmaster.MxsServerName, "running")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
-				}
-
-			}
-		}
 	}
 }
 
-func (cluster *Cluster) setMaintenanceMaxscale(pr *Proxy, server *ServerMonitor) {
+func (cluster *Cluster) setMaintenanceMaxscale(pr DatabaseProxy, server *ServerMonitor) {
+	pr.SetMaintenance(server)
+}
+
+func (pr *MaxscaleProxy) SetMaintenance(server *ServerMonitor) {
+	cluster := pr.ClusterGroup
 	m := maxscale.MaxScale{Host: pr.Host, Port: pr.Port, User: pr.User, Pass: pr.Pass}
 	err := m.Connect()
 	if err != nil {
@@ -224,4 +216,9 @@ func (cluster *Cluster) setMaintenanceMaxscale(pr *Proxy, server *ServerMonitor)
 		m.Close()
 	}
 	m.Close()
+}
+
+// Failover for MaxScale simply calls Init
+func (prx *MaxscaleProxy) Failover() {
+	prx.Init()
 }
