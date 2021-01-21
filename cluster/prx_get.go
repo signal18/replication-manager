@@ -224,8 +224,7 @@ func (proxy *Proxy) GetEnv() map[string]string {
 }
 
 func (proxy *Proxy) GetBaseEnv() map[string]string {
-	var env map[string]string
-	env = map[string]string{
+	return map[string]string{
 		"%%ENV:NODES_CPU_CORES%%":                    proxy.ClusterGroup.Conf.ProvCores,
 		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":             proxy.ClusterGroup.Conf.ProvCores,
 		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":              string(proxy.Id[2:10]),
@@ -265,8 +264,6 @@ func (proxy *Proxy) GetBaseEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%":      proxy.ClusterGroup.GetClusterName(),
 		"%%ENV:SVC_CONF_ENV_DATADIR%%":               proxy.GetDatadir(),
 	}
-
-	return env
 }
 
 func (proxy *Proxy) GetConfigProxyModule(variable string) string {
