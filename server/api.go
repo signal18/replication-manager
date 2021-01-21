@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -221,7 +222,14 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			}
 
 			//create a token instance using the token string
+
+			specs := r.Header.Get("Accept")
 			resp := token{tokenString}
+			if strings.Contains(specs, "text/html") {
+				w.Write([]byte(tokenString))
+				return
+			}
+
 			repman.jsonResponse(resp, w)
 			return
 		}
