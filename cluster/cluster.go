@@ -337,7 +337,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 }
 func (cluster *Cluster) initOrchetratorNodes() {
 
-	cluster.LogPrintf(LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
+	//cluster.LogPrintf(LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
 	switch cluster.Conf.ProvOrchestrator {
 	case config.ConstOrchestratorOpenSVC:
 		cluster.Agents, _ = cluster.OpenSVCGetNodes()
@@ -375,7 +375,6 @@ func (cluster *Cluster) initScheduler() {
 
 func (cluster *Cluster) Run() {
 	cluster.initScheduler()
-	cluster.initOrchetratorNodes()
 	interval := time.Second
 
 	for cluster.exit == false {
@@ -421,12 +420,10 @@ func (cluster *Cluster) Run() {
 				// Heartbeat switchover or failover controller runs only on active repman
 
 				if cluster.runOnceAfterTopology {
-
-					if cluster.GetMaster() != nil {
-						cluster.initProxies()
-						cluster.ResticFetchRepo()
-						cluster.runOnceAfterTopology = false
-					}
+					cluster.initProxies()
+					cluster.initOrchetratorNodes()
+					cluster.ResticFetchRepo()
+					cluster.runOnceAfterTopology = false
 				} else {
 					wg.Add(1)
 					go cluster.refreshProxies(wg)
@@ -437,6 +434,7 @@ func (cluster *Cluster) Run() {
 						cluster.InjectProxiesTraffic()
 					}
 					if cluster.sme.GetHeartbeats()%30 == 0 {
+						cluster.initOrchetratorNodes()
 						cluster.MonitorQueryRules()
 						cluster.MonitorVariablesDiff()
 						cluster.ResticFetchRepo()
@@ -445,6 +443,7 @@ func (cluster *Cluster) Run() {
 						cluster.sme.PreserveState("WARN0093")
 						cluster.sme.PreserveState("WARN0084")
 						cluster.sme.PreserveState("WARN0095")
+						cluster.sme.PreserveState("ERR00082")
 					}
 					if cluster.sme.GetHeartbeats()%36000 == 0 {
 						cluster.ResticPurgeRepo()

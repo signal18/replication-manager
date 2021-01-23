@@ -29,7 +29,9 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
 		} else {
-			cluster.LogPrintf(LvlInfo, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
+			if cluster.GetLogLevel() > 2 {
+				cluster.LogPrintf(LvlInfo, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
+			}
 		}
 	}
 	svc.Host, svc.Port = misc.SplitHostPort(cluster.Conf.ProvHost)
@@ -69,7 +71,8 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvProxDockerShardproxyImg = cluster.Conf.ProvProxShardingImg
 	svc.ProvNetCNI = cluster.Conf.ProvNetCNI
 	svc.ProvProxTags = cluster.Conf.ProvProxTags
-	svc.Verbose = 1
+	svc.Verbose = cluster.GetLogLevel()
+	svc.ContextTimeoutSecond = 10
 
 	return svc
 }
@@ -78,11 +81,11 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 	svc := cluster.OpenSVCConnect()
 	hosts, err := svc.GetNodes()
 	if err != nil {
-		cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], err), ErrFrom: "TOPO"})
+		cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], err), ErrFrom: "OPENSVC"})
+		return nil, err
 	}
 	if hosts == nil {
-		cluster.LogPrintf(LvlErr, "Can't Get Opensvc Agent list")
-		return nil, errors.New("Can't Get Opensvc Agent list")
+		return nil, errors.New("Empty Opensvc Agent list")
 	}
 	agents := []Agent{}
 	for _, n := range hosts {

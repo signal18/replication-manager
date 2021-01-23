@@ -20,7 +20,7 @@ func (cluster *Cluster) OpenSVCGetShardproxyContainerSection(server *Proxy) map[
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
-		svccontainer["netns"] = "container#0001"
+		svccontainer["netns"] = "container#prx"
 		svccontainer["image"] = " {env.shardproxy_img}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {

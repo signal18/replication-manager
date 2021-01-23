@@ -68,7 +68,7 @@ func (cluster *Cluster) LocalhostStartHaProxyService(prx *Proxy) error {
 	prx.GetProxyConfig()
 	//init haproxy do start or reload
 	cluster.initHaproxy(prx)
-	/*mariadbdCmd := exec.Command(cluster.Conf.HaproxyBinaryPath+"/haproxy", "--config="+prx.Datadir+"/init/conf/haproxy.cnf", "--datadir="+prx.Datadir+"/var")
+	/*mariadbdCmd := exec.Command(cluster.Conf.HaproxyBinaryPath+"/haproxy", "--config="+prx.Datadir+"/init/etc/haproxy.cnf", "--datadir="+prx.Datadir+"/var")
 	cluster.LogPrintf(LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 
 	var out bytes.Buffer

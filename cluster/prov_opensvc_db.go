@@ -286,7 +286,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvType == "docker" || server.ClusterGroup.Conf.ProvType == "podman" {
 		svccontainer["tags"] = ""
-		svccontainer["netns"] = "container#0001"
+		svccontainer["netns"] = "container#01"
 		svccontainer["image"] = "{env.db_img}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvDiskType != "volume" {
@@ -369,7 +369,7 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection() map[string]string {
 		svccontainer["detach"] = "false"
 		svccontainer["type"] = "docker"
 		svccontainer["image"] = "busybox"
-		svccontainer["netns"] = "container#0001"
+		svccontainer["netns"] = "container#01"
 		svccontainer["rm"] = "true"
 		svccontainer["start_timeout"] = "30s"
 		svccontainer["optional"] = "true"
@@ -409,15 +409,15 @@ func (cluster *Cluster) OpenSVCGetNetSection() map[string]string {
 	svcnet := make(map[string]string)
 	if cluster.Conf.ProvNetCNI {
 		svcnet["type"] = "cni"
-		svcnet["netns"] = "container#0001"
+		svcnet["netns"] = "container#01"
 		svcnet["network"] = cluster.Conf.ProvNetCNICluster
 		return svcnet
 	} else if cluster.Conf.ProvType == "docker" {
 		svcnet["type"] = "docker"
-		svcnet["netns"] = "container#0001"
+		svcnet["netns"] = "container#01"
 	} else if cluster.Conf.ProvType == "podman" {
 		svcnet["type"] = "podman"
-		svcnet["netns"] = "container#0001"
+		svcnet["netns"] = "container#01"
 	}
 	svcnet["ipdev"] = cluster.Conf.ProvNetIface
 	svcnet["ipname"] = "{env.ip_pod01}"
@@ -432,7 +432,7 @@ func (cluster *Cluster) OpenSVCGetTaskJobsSection() map[string]string {
 	svctask["schedule"] = "@1"
 	svctask["command"] = "svcmgr -s {svcpath} docker exec -i {namespace}..{svcname}.container.2001 /bin/bash /docker-entrypoint-initdb.d/dbjobs"
 	svctask["user"] = "root"
-	svctask["run_requires"] = "fs#01(up,stdby up) container#0001(up,stdby up)"
+	svctask["run_requires"] = "fs#01(up,stdby up) container#01(up,stdby up)"
 	return svctask
 }
 
@@ -644,9 +644,9 @@ func (server *ServerMonitor) GenerateDBTemplateV2() (string, error) {
 		svcsection["volume#02"] = server.ClusterGroup.OpenSVCGetVolumeSystemSection()
 		svcsection["volume#03"] = server.ClusterGroup.OpenSVCGetVolumeTempSection()
 	}
-	svcsection["container#0001"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection()
-	svcsection["container#0002"] = server.ClusterGroup.OpenSVCGetInitContainerSection()
-	svcsection["container#0003"] = server.OpenSVCGetDBContainerSection()
+	svcsection["container#01"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection()
+	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetInitContainerSection()
+	svcsection["container#db"] = server.OpenSVCGetDBContainerSection()
 
 	svcsection["task#01"] = server.ClusterGroup.OpenSVCGetTaskJobsSection()
 	svcsection["env"] = server.OpenSVCGetDBEnvSection()
@@ -708,7 +708,7 @@ rollback = false
 schedule = @1
 command = svcmgr -s {svcpath} docker exec -i {namespace}..{svcname}.container.2001 /bin/bash /docker-entrypoint-initdb.d/dbjobs
 user = root
-run_requires = fs#01(up,stdby up) container#0001(up,stdby up)
+run_requires = fs#01(up,stdby up) container#01(up,stdby up)
 
 `
 	ips := strings.Split(collector.ProvNetGateway, ".")
@@ -757,11 +757,11 @@ func (server *ServerMonitor) GetInitContainer(collector opensvc.Collector) strin
 	var vm string
 	if collector.ProvMicroSrv == "docker" {
 		vm = vm + `
-[container#0002]
+[container#02]
 detach = false
 type = docker
 image = busybox
-netns = container#0001
+netns = container#01
 rm = true
 start_timeout = 30s
 volume_mounts = /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01:/data

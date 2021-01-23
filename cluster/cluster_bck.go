@@ -46,7 +46,7 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 		stderr := io.MultiWriter(os.Stderr, &stderrBuf)
 		resticcmd.Env = cluster.ResticGetEnv()
 		if err := resticcmd.Start(); err != nil {
-			cluster.LogPrintf(LvlErr, "Failed restic command : %s %s", resticcmd.Path, err)
+			cluster.SetState("WARN0096", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0096"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
 			return err
 		}
 		var wg sync.WaitGroup
@@ -104,7 +104,7 @@ func (cluster *Cluster) ResticInitRepo() error {
 
 		resticcmd.Env = cluster.ResticGetEnv()
 		if err := resticcmd.Start(); err != nil {
-			cluster.LogPrintf(LvlErr, "Failed restic command : %s %s", resticcmd.Path, err)
+			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
 			return err
 		}
 		var wg sync.WaitGroup
@@ -141,7 +141,7 @@ func (cluster *Cluster) ResticFetchRepo() error {
 
 		resticcmd.Env = cluster.ResticGetEnv()
 		if err := resticcmd.Start(); err != nil {
-			cluster.LogPrintf(LvlErr, "Failed restic command : %s %s", resticcmd.Path, err)
+			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
 			return err
 		}
 		var wg sync.WaitGroup

@@ -133,6 +133,7 @@ type Collector struct {
 	ProvProxTags                string
 	ProvCores                   string
 	Verbose                     int
+	ContextTimeoutSecond        int
 }
 
 //Imput template URI [system|docker].[zfs|xfs|ext4|btrfs].[none|zpool|lvm].[loopback|physical].[path-to-file|/dev/xx]
@@ -1071,7 +1072,7 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 		req.Header.Set("content-type", "application/json")
 		req.Header.Set("o-node", "*")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
 	defer cancel()
 
 	resp, err := client.Do(req.WithContext(ctx))
@@ -1083,7 +1084,7 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	if collector.Verbose > 0 {
+	if collector.Verbose > 2 {
 		log.Println("INFO ", string(body))
 	}
 	if collector.UseAPI {
