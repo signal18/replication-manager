@@ -53,6 +53,11 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 
 	out := &bytes.Buffer{}
 	path := server.Datadir + "/var"
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		nofile, _ := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0600)
+		nofile.Close()
+	}
+
 	/*
 		//os.RemoveAll(path)
 
@@ -80,7 +85,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	}
 	cluster.LogPrintf(LvlInfo, "Copy fresh datadir done: %s", out.Bytes())
 	*/
-	cmd := exec.Command("cp", "-rp", server.Datadir+"/init/data/.system", path+"/")
+	cmd := exec.Command("cp", "-rp", server.Datadir+"/init/data/.", path)
 	cmd.Stdout = out
 	err := cmd.Run()
 	if err != nil {
@@ -206,14 +211,14 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 				cluster.LogPrintf(LvlErr, " %s %s ", "set sql_log_bin=0", err)
 			}
 
-			_, err = conn.Exec("delete from mysql.user where password=''")
+			_, err = conn.Exec("delete from mysql.user where password='' and user!='mariadb.sys'")
 			if err != nil {
 				//	haveerror = true
 				// don't trigger error for mysql 5.7 and mariadb 10.4 that does not have password column
 
 				cluster.LogPrintf(LvlWarn, " %s %s ", "delete from mysql.user where password=''", err)
 			}
-			grants := "grant all on *.* to '" + server.User + "'@'localhost' identified by '" + server.Pass + "'"
+			grants := "grant all on *.* to '" + server.User + "'@'localhost' identified by '" + server.Pass + "' WITH GRANT OPTION"
 			_, err = conn.Exec(grants)
 			if err != nil {
 				haveerror = true

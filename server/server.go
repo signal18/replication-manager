@@ -88,6 +88,7 @@ const (
 	ConstMonitorStandby string = "S"
 )
 
+//Unused in server still used in client cmd line
 type Settings struct {
 	Enterprise          string   `json:"enterprise"`
 	Interactive         string   `json:"interactive"`

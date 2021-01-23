@@ -553,8 +553,12 @@ func (cluster *Cluster) SetDBReprovCookie() {
 func (cluster *Cluster) SetDBDynamicConfig() {
 	for _, srv := range cluster.Servers {
 		//conf:=
+		cmd := "mariadb_command"
+		if !srv.IsMariaDB() {
+			cmd = "mysql_command"
+		}
 		srv.GetDatabaseConfig()
-		srv.ExecScriptSQL(strings.Split(srv.GetDatabaseDynamicConfig(""), ";"))
+		srv.ExecScriptSQL(strings.Split(srv.GetDatabaseDynamicConfig("", cmd), ";"))
 	}
 }
 

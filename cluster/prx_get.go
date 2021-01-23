@@ -140,7 +140,9 @@ func (proxy *Proxy) GetProxyConfig() string {
 						var f Link
 						json.Unmarshal([]byte(variable.Value), &f)
 						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", proxy.Datadir+"/init", -1)
-						proxy.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+						if proxy.ClusterGroup.Conf.LogLevel > 2 {
+							proxy.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+						}
 						os.Symlink(f.Target, fpath)
 						//	keys := strings.Split(variable.Value, " ")
 					}

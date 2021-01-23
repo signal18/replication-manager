@@ -4,7 +4,17 @@
              <th>Database Configurator</th>
 
          </tr>
-
+           <tr>
+             <td>
+                     Apply Dynamic Config
+                     <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.provDBApplyDynamicConfig"
+                                ng-click="switchsettings('prov-db-apply-dynamic-config')" aria-label="Apply database dynamic config">
+                         <span ng-if="selectedCluster.config.provDBApplyDynamicConfig" class="label label-primary">On</span><span
+                             ng-if="!selectedCluster.config.provDBApplyDynamicConfig" class="label label-warning">Off</span>
+                 </td>
+                 </md-switch>
+                 </td>
+           </tr>
      </table>
 
          <div layout="column" layout-gt-xs="row">

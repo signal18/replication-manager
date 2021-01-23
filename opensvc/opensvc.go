@@ -1033,7 +1033,7 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
 	log.Println("INFO ", urlpost)
 
-	jsondata := `{"action": "create", "options": {"namespace": "` + cluster + `", "provision": true, "sync": true, "data": {"` + srv + `": ` + template + `}}}`
+	jsondata := `{"namespace": "` + cluster + `", "provision": true, "sync": true, "data": {"` + srv + `": ` + template + `}}`
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)

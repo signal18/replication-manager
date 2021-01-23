@@ -646,7 +646,7 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 		Path    string `json:"path"`
 		Content string `json:"fmt"`
 	}
-
+	server.ClusterGroup.LogPrintf(LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	// Extract files
 	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 		os.RemoveAll(server.Datadir + "/init/etc")
@@ -662,7 +662,9 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 					json.Unmarshal([]byte(variable.Value), &f)
 					fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir+"/init", -1)
 					dir := filepath.Dir(fpath)
-					server.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
+					if server.ClusterGroup.Conf.LogLevel > 2 {
+						server.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
+					}
 					// create directory
 					if _, err := os.Stat(dir); os.IsNotExist(err) {
 						err := os.MkdirAll(dir, os.FileMode(0775))
@@ -724,7 +726,9 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 						var f Link
 						json.Unmarshal([]byte(variable.Value), &f)
 						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir+"/init", -1)
-						server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+						if server.ClusterGroup.Conf.LogLevel > 2 {
+							server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+						}
 						os.Symlink(f.Target, fpath)
 						//	keys := strings.Split(variable.Value, " ")
 					}
@@ -750,7 +754,7 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 	return ""
 }
 
-func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string) string {
+func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string, cmd string) string {
 	mydynamicconf := ""
 	// processing symlink
 	type Link struct {
@@ -762,6 +766,7 @@ func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string) string {
 			for _, variable := range rule.Variables {
 				if variable.Class == "symlink" {
 					if server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
+						//	server.ClusterGroup.LogPrintf(LvlInfo, "content %s %s", filter, rule.Filter)
 						if filter == "" || strings.Contains(rule.Filter, filter) {
 							var f Link
 							json.Unmarshal([]byte(variable.Value), &f)
@@ -769,7 +774,7 @@ func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string) string {
 							//	server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s , %s", fpath, f.Target)
 							file, err := os.Open(fpath + f.Target)
 							if err == nil {
-								r, _ := regexp.Compile("mariadb_command")
+								r, _ := regexp.Compile(cmd)
 								scanner := bufio.NewScanner(file)
 								for scanner.Scan() {
 									//		server.ClusterGroup.LogPrintf(LvlInfo, "content: %s", scanner.Text())

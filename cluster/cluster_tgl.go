@@ -20,6 +20,10 @@ func (cluster *Cluster) SwitchMonitoringPause() {
 	cluster.Conf.MonitorPause = !cluster.Conf.MonitorPause
 }
 
+func (cluster *Cluster) SwitchDBApplyDynamicConfig() {
+	cluster.Conf.ProvDBApplyDynamicConfig = !cluster.Conf.ProvDBApplyDynamicConfig
+}
+
 func (cluster *Cluster) SwitchServerMaintenance(serverid uint64) {
 	server := cluster.GetServerFromId(serverid)
 	server.SwitchMaintenance()

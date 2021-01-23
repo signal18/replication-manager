@@ -31,13 +31,35 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 	return nil
 }
 
-func (cluster *Cluster) AddDBTag(tag string) {
+func (cluster *Cluster) AddDBTagConfig(tag string) {
 	if !cluster.HaveDBTag(tag) {
-		cluster.SetDBRestartCookie()
+		cluster.DBTags = append(cluster.DBTags, tag)
+		cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
+		cluster.SetClusterVariablesFromConfig()
 	}
-	cluster.DBTags = append(cluster.DBTags, tag)
-	cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
-	cluster.SetClusterVariablesFromConfig()
+}
+
+func (cluster *Cluster) AddDBTag(tag string) {
+
+	if !cluster.HaveDBTag(tag) {
+		cluster.LogPrintf(LvlInfo, "Adding database tag %s ", tag)
+		cluster.AddDBTagConfig(tag)
+		if cluster.Conf.ProvDBApplyDynamicConfig {
+			for _, srv := range cluster.Servers {
+				cmd := "mariadb_command"
+				if !srv.IsMariaDB() {
+					cmd = "mysql_command"
+				}
+				srv.GetDatabaseConfig()
+				_, needrestart := srv.ExecScriptSQL(strings.Split(srv.GetDatabaseDynamicConfig(tag, cmd), ";"))
+				if needrestart {
+					srv.SetRestartCookie()
+				}
+			}
+		} else {
+			cluster.SetDBRestartCookie()
+		}
+	}
 
 }
 

@@ -629,12 +629,13 @@ func (server *ServerMonitor) GenerateDBTemplateV2() (string, error) {
 		svcsection["disk#00"] = server.ClusterGroup.OpenSVCGetDiskLoopbackDockerPrivateSection()
 		svcsection["disk#01"] = server.ClusterGroup.OpenSVCGetDiskLoopbackPodSection()
 		svcsection["disk#0001"] = server.ClusterGroup.OpenSVCGetDiskLoopbackSnapshotPodSection()
-		svcsection["fs#00"] = server.ClusterGroup.OpenSVCGetFSDockerPrivateSection()
+		if server.ClusterGroup.Conf.ProvDockerDaemonPrivate {
+			svcsection["fs#00"] = server.ClusterGroup.OpenSVCGetFSDockerPrivateSection()
+		}
 		svcsection["fs#01"] = server.ClusterGroup.OpenSVCGetFSPodSection()
 		svcsection["fs#03"] = server.ClusterGroup.OpenSVCGetFSTmpSection()
 		svcsection["sync#01"] = server.OpenSVCGetZFSSnapshotSection()
 		svcsection["task#02"] = server.OpenSVCGetTaskZFSSnapshotSection()
-
 	} else {
 		if server.ClusterGroup.Conf.ProvDockerDaemonPrivate {
 			svcsection["volume#00"] = server.ClusterGroup.OpenSVCGetVolumeDockerSection()
