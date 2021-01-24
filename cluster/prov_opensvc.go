@@ -148,7 +148,7 @@ func (server *ServerMonitor) GetSnapshot(collector opensvc.Collector) string {
 		conf = `
 [sync#2]
 type = zfssnap
-dataset = {disk#1001.name}/pod01
+dataset = {disk#1001.name}
 recursive = true
 name = daily
 schedule = 00:01-02:00@120
@@ -158,7 +158,7 @@ sync_max_delay = 1440
 `
 		conf = conf + `[task2]
  schedule = @1
- command = {env.base_dir}/pod01/init/snapback
+ command = {env.base_dir}/init/snapback
  user = root
 
 `
@@ -170,23 +170,19 @@ func (cluster *Cluster) GetPodNetTemplate(collector opensvc.Collector, pod strin
 	var net string
 
 	net = net + `
-[ip#` + pod + `]
-tags = sm sm.container sm.container.pod` + pod + ` pod` + pod + `
+[ip#01]
 `
 	if collector.ProvNetCNI {
 		net = net + `type = cni
-netns = container#00` + pod + `
+netns = container#01
 network =  ` + cluster.Conf.ProvNetCNICluster + `
 `
-		// if proxy
-		// expose = port/tcp
-		// repman to get variable backend-network
 		return net
-		//expose = {env.port_pod01}/tcp:8000
+
 	} else if collector.ProvMicroSrv == "docker" {
 		net = net + `type = docker
 
-netns = container#00` + pod + `
+netns = container#01
 `
 
 	}
@@ -212,29 +208,29 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 	if collector.ProvFSMode == "loopback" {
 
 		disk = disk + "\n"
-		disk = disk + "[disk#" + pod + "]\n"
+		disk = disk + "[disk#01]\n"
 		disk = disk + "type = loop\n"
-		disk = disk + "file = " + collector.ProvFSPath + "/{namespace}-{svcname}_pod" + pod + ".dsk\n"
+		disk = disk + "file = " + collector.ProvFSPath + "/{namespace}-{svcname}.dsk\n"
 		disk = disk + "size = {env.size}g\n"
 		disk = disk + "standby = true\n"
 		disk = disk + "\n"
 
 		if collector.ProvFSPool == "lvm" {
 			disk = disk + "\n"
-			disk = disk + "[disk#10" + pod + "]\n"
-			disk = disk + "name = {namespace}-{svcname}_" + pod + "\n"
+			disk = disk + "[disk#1001]\n"
+			disk = disk + "name = {namespace}-{svcname}\n"
 			disk = disk + "type = lvm\n"
-			disk = disk + "pvs = {disk#" + pod + ".file}\n"
+			disk = disk + "pvs = {disk#01.file}\n"
 			disk = disk + "standby = true\n"
 			disk = disk + "\n"
 
 		}
 		if collector.ProvFSPool == "zpool" {
 			disk = disk + "\n"
-			disk = disk + "[disk#10" + pod + "]\n"
-			disk = disk + "name = zp{namespace}-{svcname}_pod" + pod + "\n"
+			disk = disk + "[disk#1001]\n"
+			disk = disk + "name = zp{namespace}-{svcname}\n"
 			disk = disk + "type = zpool\n"
-			disk = disk + "vdev  = {disk#" + pod + ".file}\n"
+			disk = disk + "vdev  = {disk#01.file}\n"
 			disk = disk + "standby = true\n"
 			disk = disk + "\n"
 
@@ -243,9 +239,9 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 
 	if collector.ProvFSType == "directory" {
 		fs = fs + "\n"
-		fs = fs + "[fs#" + pod + "]\n"
+		fs = fs + "[fs#01]\n"
 		fs = fs + "type = directory\n"
-		fs = fs + "path = {env.base_dir}/pod" + pod + "\n"
+		fs = fs + "path = {env.base_dir}\n"
 		fs = fs + "pre_provision = docker network create {env.subnet_name} --subnet {env.subnet_cidr}\n"
 		fs = fs + "\n"
 		fs = fs + "\n"
@@ -255,29 +251,29 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 			podpool = "10" + pod
 		}
 		fs = fs + "\n"
-		fs = fs + "[fs#" + pod + "]\n"
+		fs = fs + "[fs#01]\n"
 		fs = fs + "type = " + collector.ProvFSType + "\n"
 		if collector.ProvFSPool == "lvm" {
 			re := regexp.MustCompile("[0-9]+")
 			strlvsize := re.FindAllString(collector.ProvDisk, 1)
 			lvsize, _ := strconv.Atoi(strlvsize[0])
 			lvsize--
-			fs = fs + "dev = /dev/{namespace}-{svcname}_" + pod + "/pod" + pod + "\n"
-			fs = fs + "vg = {namespace}-{svcname}_" + pod + "\n"
+			fs = fs + "dev = /dev/{namespace}-{svcname}\n"
+			fs = fs + "vg = {namespace}-{svcname}\n"
 			fs = fs + "size = 100%FREE\n"
 		} else if collector.ProvFSPool == "zpool" {
 			if collector.ProvFSMode == "loopback" || collector.ProvFSMode == "physical" {
-				fs = fs + "dev = {disk#" + podpool + ".name}/pod" + pod + "\n"
+				fs = fs + "dev = {disk#" + podpool + ".name}\n"
 			} else if collector.ProvFSMode == "pool" {
-				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/{namespace}-{svcname}_pod" + pod + "\n"
+				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/{namespace}-{svcname\n"
 			}
-			fs = fs + "size = {env.size}g\n"
+			fs = fs + "size = {env.size}\n"
 			fs = fs + "mkfs_opt = -o recordsize=16K -o primarycache=metadata -o atime=off -o compression=" + cluster.Conf.ProvDiskFSCompress + " -o mountpoint=legacy\n"
 		} else { //no pool
 			fs = fs + "dev = {disk#" + podpool + ".file}\n"
-			fs = fs + "size = {env.size}g\n"
+			fs = fs + "size = {env.size}\n"
 		}
-		fs = fs + "mnt = {env.base_dir}/pod" + pod + "\n"
+		fs = fs + "mnt = {env.base_dir}\n"
 		fs = fs + "standby = true\n"
 	} // not a directory
 	//cluster.LogPrintf(LvlErr, "%s", disk+fs)
@@ -351,8 +347,8 @@ func (cluster *Cluster) GetPodPackageTemplate(collector opensvc.Collector, pod s
 
 	if collector.ProvMicroSrv == "package" {
 		vm = vm + `
-[app#` + pod + `]
-script = {env.base_dir}/pod` + pod + `/init/launcher
+[app#01]
+script = {env.base_dir}/init/launcher
 start = 50
 stop = 50
 check = 50

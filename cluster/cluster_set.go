@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -24,6 +25,34 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
+
+func (cluster *Cluster) SetStatus() {
+	if cluster.master == nil {
+		cluster.sme.SetMasterUpAndSync(false, false)
+	} else {
+		cluster.sme.SetMasterUpAndSync(cluster.master.SemiSyncMasterStatus, cluster.master.RplMasterStatus)
+	}
+	cluster.Uptime = cluster.GetStateMachine().GetUptime()
+	cluster.UptimeFailable = cluster.GetStateMachine().GetUptimeFailable()
+	cluster.UptimeSemiSync = cluster.GetStateMachine().GetUptimeSemiSync()
+	cluster.IsNotMonitoring = cluster.sme.IsInFailover()
+	cluster.IsCapturing = cluster.IsInCaptureMode()
+	cluster.MonitorSpin = fmt.Sprintf("%d ", cluster.GetStateMachine().GetHeartbeats())
+	cluster.IsProvision = cluster.IsProvisioned()
+	cluster.IsNeedProxiesRestart = cluster.HasRequestProxiesRestart()
+	cluster.IsNeedProxiesReprov = cluster.HasRequestProxiesReprov()
+	cluster.IsNeedDatabasesRollingRestart = cluster.HasRequestDBRollingRestart()
+	cluster.IsNeedDatabasesRollingReprov = cluster.HasRequestDBRollingReprov()
+	cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
+	cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()
+	cluster.WaitingRejoin = cluster.rejoinCond.Len()
+	cluster.WaitingFailover = cluster.failoverCond.Len()
+	cluster.WaitingSwitchover = cluster.switchoverCond.Len()
+	if len(cluster.Servers) > 0 {
+		cluster.QPS = cluster.GetQps()
+		cluster.Connections = cluster.GetConnections()
+	}
+}
 
 func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 	var err error

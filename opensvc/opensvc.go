@@ -1039,6 +1039,7 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
+		log.Println("Error ", err)
 		return err
 	}
 	req.Close = true
@@ -1046,6 +1047,7 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 	req.Header.Set("o-node", node)
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Println("Error ", err)
 		return err
 	}
 	defer resp.Body.Close()
@@ -1072,19 +1074,41 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 		req.Header.Set("content-type", "application/json")
 		req.Header.Set("o-node", "*")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
-	defer cancel()
+	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
 
-	resp, err := client.Do(req.WithContext(ctx))
+	defer cancel()
+	req = req.WithContext(ctx)
+	// Following can be use to cancel context timeout to trace API response time
+	/*	trace := &httptrace.ClientTrace{
+			DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
+				fmt.Printf("%v DNS Info: %+v\n", time.Now(), dnsInfo)
+			},
+			GotConn: func(connInfo httptrace.GotConnInfo) {
+				fmt.Printf("%v Got Conn: %+v\n", time.Now(), connInfo)
+			},
+		}
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+	*/
+
+	startConnect := time.Now()
+	resp, err := client.Do(req)
+	stopConnect := time.Now()
+	if collector.Verbose > 2 {
+		log.Printf("OpenSVC Connect took: %s\n", stopConnect.Sub(startConnect))
+	}
 	if err != nil {
+		log.Println("ERROR ", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
+	startRead := time.Now()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
+	endRead := time.Now()
 	if collector.Verbose > 2 {
+		log.Printf("OpenSVC Read response took: %s\n", endRead.Sub(startRead))
 		log.Println("INFO ", string(body))
 	}
 	if collector.UseAPI {
@@ -1132,6 +1156,7 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 
 	err = json.Unmarshal(body, &r)
 	if err != nil {
+		log.Println("ERROR ", err)
 		return nil, err
 	}
 	crcTable := crc64.MakeTable(crc64.ECMA)

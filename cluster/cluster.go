@@ -381,12 +381,7 @@ func (cluster *Cluster) Run() {
 		if !cluster.Conf.MonitorPause {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
-			cluster.Uptime = cluster.GetStateMachine().GetUptime()
-			cluster.UptimeFailable = cluster.GetStateMachine().GetUptimeFailable()
-			cluster.UptimeSemiSync = cluster.GetStateMachine().GetUptimeSemiSync()
-			cluster.IsNotMonitoring = cluster.sme.IsInFailover()
-			cluster.IsCapturing = cluster.IsInCaptureMode()
-			cluster.MonitorSpin = fmt.Sprintf("%d ", cluster.GetStateMachine().GetHeartbeats())
+
 			select {
 			case sig := <-cluster.switchoverChan:
 				if sig {
@@ -459,21 +454,8 @@ func (cluster *Cluster) Run() {
 				cluster.CheckFailed()
 
 				cluster.Topology = cluster.GetTopology()
+				cluster.SetStatus()
 				cluster.StateProcessing()
-				cluster.IsProvision = cluster.IsProvisioned()
-				cluster.IsNeedProxiesRestart = cluster.HasRequestProxiesRestart()
-				cluster.IsNeedProxiesReprov = cluster.HasRequestProxiesReprov()
-				cluster.IsNeedDatabasesRollingRestart = cluster.HasRequestDBRollingRestart()
-				cluster.IsNeedDatabasesRollingReprov = cluster.HasRequestDBRollingReprov()
-				cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
-				cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()
-				cluster.WaitingRejoin = cluster.rejoinCond.Len()
-				cluster.WaitingFailover = cluster.failoverCond.Len()
-				cluster.WaitingSwitchover = cluster.switchoverCond.Len()
-				if len(cluster.Servers) > 0 {
-					cluster.QPS = cluster.GetQps()
-					cluster.Connections = cluster.GetConnections()
-				}
 
 			}
 		}
@@ -549,6 +531,7 @@ func (cluster *Cluster) StateProcessing() {
 
 	}
 }
+
 func (cluster *Cluster) Stop() {
 	//	cluster.scheduler.Stop()
 	cluster.Save()

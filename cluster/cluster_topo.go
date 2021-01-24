@@ -339,7 +339,6 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			})
 		}
 
-		cluster.sme.SetMasterUpAndSync(cluster.master.SemiSyncMasterStatus, cluster.master.RplMasterStatus)
 	}
 
 	if cluster.HasAllDbUp() {
