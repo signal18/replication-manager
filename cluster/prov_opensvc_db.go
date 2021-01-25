@@ -21,17 +21,14 @@ import (
 )
 
 func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
-
+	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
+	if err != nil {
+		cluster.errorChan <- err
+		cluster.LogPrintf(LvlErr, "Can't OpenSVCFoundDatabaseAgent in service config %s", err)
+		return ""
+	}
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
-
 		svc := cluster.OpenSVCConnect()
-		agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
-		if err != nil {
-			cluster.errorChan <- err
-			cluster.LogPrintf(LvlErr, "Can't OpenSVCFoundDatabaseAgent in service config %s", err)
-			return ""
-		}
-
 		res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't create OpenSVC config template %s", err)
@@ -39,7 +36,7 @@ func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
 		}
 		return res
 	} else {
-		res, err := s.GenerateDBTemplateV2()
+		res, err := s.GenerateDBTemplateV2(agent.Node_name)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't create OpenSVC config template  %s", err)
 			return ""
@@ -51,13 +48,14 @@ func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
 
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	svc := cluster.OpenSVCConnect()
+	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
+	if err != nil {
+		cluster.errorChan <- err
+		return
+	}
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		var taglist []string
-		agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
-		if err != nil {
-			cluster.errorChan <- err
-			return
-		}
+
 		// Unprovision if already in OpenSVC
 		var idsrv string
 		mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + s.Name)
@@ -72,7 +70,6 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 				return
 			}
 		}
-
 		err = svc.DeteteServiceTags(idsrv)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't delete service tags")
@@ -111,12 +108,11 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 		}
 	} else {
 
-		res, err := s.GenerateDBTemplateV2()
+		res, err := s.GenerateDBTemplateV2(agent.Node_name)
 		if err != nil {
 			cluster.errorChan <- err
 			return
 		}
-
 		agent, err := s.ClusterGroup.GetDatabaseAgent(s)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not provision database:  %s ", err)
@@ -247,17 +243,15 @@ func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensv
 	return agent, errors.New("Indice not found in database node list")
 }
 
-func (server *ServerMonitor) OpenSVCGetDBDefaultSection() map[string]string {
+func (server *ServerMonitor) OpenSVCGetDBDefaultSection(agent string) map[string]string {
 	svcdefault := make(map[string]string)
-	svcdefault["nodes"] = "{env.nodes}"
+	svcdefault["nodes"] = agent
 	if server.ClusterGroup.Conf.ProvDiskPool == "zpool" && server.ClusterGroup.Conf.AutorejoinZFSFlashback && server.IsPrefered() {
 		svcdefault["cluster_type"] = "failover"
 		svcdefault["rollback"] = "true"
 		svcdefault["orchestrate"] = "start"
 	} else {
-		svcdefault["flex_primary"] = "{env.nodes[0]}"
 		svcdefault["rollback"] = "false"
-		svcdefault["topology"] = "flex"
 	}
 	svcdefault["app"] = server.ClusterGroup.Conf.ProvCodeApp
 	if server.ClusterGroup.Conf.ProvType == "docker" {
@@ -287,10 +281,12 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 	if server.ClusterGroup.Conf.ProvType == "docker" || server.ClusterGroup.Conf.ProvType == "podman" {
 		svccontainer["tags"] = ""
 		svccontainer["netns"] = "container#01"
-		svccontainer["image"] = "{env.db_img}"
+		svccontainer["rm"] = "true"
+		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 		svccontainer["run_args"] = "--ulimit nofile=262144:262144"
-		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}-data/data:/var/lib/mysql:rw {name}-system/data/.system:/var/lib/mysql/.system:rw {name}-temp/data/.system/tmp:/var/lib/mysql/.system/tmp:rw {name}-data/etc/mysql:/etc/mysql:rw {name}-data/init:/docker-entrypoint-initdb.d:rw`
+		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw`
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 
 		//Proceed with galera specific
@@ -314,7 +310,7 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 	}
 	svcenv["nodes"] = agent.HostName
 	svcenv["size"] = server.ClusterGroup.Conf.ProvDisk + "g"
-	svcenv["db_img"] = server.ClusterGroup.Conf.ProvDbImg
+	svcenv["docker_image"] = server.ClusterGroup.Conf.ProvDbImg
 	ips := strings.Split(server.ClusterGroup.Conf.ProvGateway, ".")
 	masks := strings.Split(server.ClusterGroup.Conf.ProvNetmask, ".")
 	for i, mask := range masks {
@@ -371,13 +367,16 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection() map[string]string {
 		svccontainer["start_timeout"] = "30s"
 		svccontainer["optional"] = "true"
 		if cluster.Conf.ProvDiskType != "volume" {
-			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01:/data"
+			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {env.base_dir}:/bootstrap"
 		} else {
-			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}-data:/data"
+			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}-data:/bootstrap"
 		}
-		svccontainer["command"] = "sh -c 'wget -qO- http://{env.mrm_api_addr}/api/clusters/{env.mrm_cluster_name}/servers/{env.ip_pod01}/{env.port_pod01}/config|tar xzvf - -C /data'"
+		svccontainer["command"] = "-c 'wget -q -O- http://" + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + "/static/configurator/opensvc/bootstrap | sh'"
 
 	}
+	svccontainer["secrets_environment"] = "env/REPLICATION_MANAGER_PASSWORD"
+	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_USER env/REPLICATION_MANAGER_API"
+	svccontainer["environment"] = "REPLICATION_MANAGER_CLUSTER_NAME={namespace} REPLICATION_MANAGER_HOST_NAME={fqdn} REPLICATION_MANAGER_CLUSTER_PORT=3306"
 	return svccontainer
 }
 
@@ -584,29 +583,21 @@ func (server *ServerMonitor) OpenSVCGetZFSSnapshotSection() map[string]string {
 	return svcsnap
 }
 
-func (cluster *Cluster) OpenSVCGetVolumeTempSection() map[string]string {
-	svcvol := make(map[string]string)
-	svcvol["name"] = "{name}-tmp"
-	svcvol["pool"] = cluster.Conf.ProvVolumeTemp
-	svcvol["size"] = cluster.Conf.ProvDiskTempSize + "m"
-	return svcvol
-}
-
 func (cluster *Cluster) OpenSVCGetVolumeDataSection() map[string]string {
 	svcvol := make(map[string]string)
-	svcvol["name"] = "{name}-data"
+	svcvol["name"] = "{name}"
 	svcvol["pool"] = cluster.Conf.ProvVolumeData
-	svcvol["size"] = cluster.Conf.ProvDisk + "g"
+	svcvol["size"] = "{env.size}"
 	return svcvol
 }
 
-func (cluster *Cluster) OpenSVCGetVolumeSystemSection() map[string]string {
+/*func (cluster *Cluster) OpenSVCGetVolumeSystemSection() map[string]string {
 	svcvol := make(map[string]string)
 	svcvol["name"] = "{name}-system"
 	svcvol["pool"] = cluster.Conf.ProvVolumeSystem
 	svcvol["size"] = cluster.Conf.ProvDiskSystemSize + "g"
 	return svcvol
-}
+}*/
 
 func (cluster *Cluster) OpenSVCGetVolumeDockerSection() map[string]string {
 	svcvol := make(map[string]string)
@@ -616,10 +607,10 @@ func (cluster *Cluster) OpenSVCGetVolumeDockerSection() map[string]string {
 	return svcvol
 }
 
-func (server *ServerMonitor) GenerateDBTemplateV2() (string, error) {
+func (server *ServerMonitor) GenerateDBTemplateV2(agent string) (string, error) {
 
 	svcsection := make(map[string]map[string]string)
-	svcsection["DEFAULT"] = server.OpenSVCGetDBDefaultSection()
+	svcsection["DEFAULT"] = server.OpenSVCGetDBDefaultSection(agent)
 	svcsection["ip#01"] = server.ClusterGroup.OpenSVCGetNetSection()
 	if server.ClusterGroup.Conf.ProvDiskType != "volume" {
 		if server.ClusterGroup.Conf.ProvDiskType != "pool" {
@@ -632,6 +623,7 @@ func (server *ServerMonitor) GenerateDBTemplateV2() (string, error) {
 		if server.ClusterGroup.Conf.ProvDockerDaemonPrivate {
 			svcsection["fs#00"] = server.ClusterGroup.OpenSVCGetFSDockerPrivateSection()
 		}
+
 		svcsection["fs#01"] = server.ClusterGroup.OpenSVCGetFSPodSection()
 		svcsection["fs#03"] = server.ClusterGroup.OpenSVCGetFSTmpSection()
 		if server.ClusterGroup.Conf.ProvDiskSnapshot {
@@ -643,8 +635,8 @@ func (server *ServerMonitor) GenerateDBTemplateV2() (string, error) {
 			svcsection["volume#00"] = server.ClusterGroup.OpenSVCGetVolumeDockerSection()
 		}
 		svcsection["volume#01"] = server.ClusterGroup.OpenSVCGetVolumeDataSection()
-		svcsection["volume#02"] = server.ClusterGroup.OpenSVCGetVolumeSystemSection()
-		svcsection["volume#03"] = server.ClusterGroup.OpenSVCGetVolumeTempSection()
+		//	svcsection["volume#02"] = server.ClusterGroup.OpenSVCGetVolumeSystemSection()
+		//	svcsection["volume#03"] = server.ClusterGroup.OpenSVCGetVolumeTempSection()
 	}
 	svcsection["container#01"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetInitContainerSection()
@@ -725,7 +717,7 @@ run_requires = fs#01(up,stdby up) container#01(up,stdby up)
 [env]
 nodes = ` + agent + `
 size = ` + collector.ProvDisk + `g
-db_img = ` + collector.ProvDockerImg + `
+docker_imgage = ` + collector.ProvDockerImg + `
 ` + ipPods + `
 ` + portPods + `
 mysql_root_password = ` + server.ClusterGroup.dbPass + `
@@ -790,13 +782,13 @@ tags = pod` + pod + `
 type = docker
 rm = true
 netns = container#01
-run_image = {env.db_img}
+run_image = {env.docker_image}
 run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
  -e MYSQL_INITDB_SKIP_TZINFO=yes
  -v /etc/localtime:/etc/localtime:ro
- -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw
- -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
- -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
+ -v {env.base_dir}/data:/var/lib/mysql:rw
+ -v {env.base_dir}/etc/mysql:/etc/mysql:rw
+ -v {env.base_dir}/init:/docker-entrypoint-initdb.d:rw
 
 `
 		if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {

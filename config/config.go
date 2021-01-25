@@ -342,8 +342,6 @@ type Config struct {
 	ProvDiskDockerSize                        string `mapstructure:"prov-db-disk-docker-size" toml:"prov-db-disk-docker-size" json:"provDbDiskDockerSize"`
 	ProvVolumeDocker                          string `mapstructure:"prov-db-volume-docker" toml:"prov-db-volume-docker" json:"provDbVolumeDocker"`
 	ProvVolumeData                            string `mapstructure:"prov-db-volume-data" toml:"prov-db-volume-data" json:"provDbVolumeData"`
-	ProvVolumeSystem                          string `mapstructure:"prov-db-volume-system" toml:"prov-db-volume-system" json:"provDbVolumeSystem"`
-	ProvVolumeTemp                            string `mapstructure:"prov-db-volume-temp" toml:"prov-db-volume-temp" json:"provDbVolumeTemp"`
 	ProvDiskFS                                string `mapstructure:"prov-db-disk-fs" toml:"prov-db-disk-fs" json:"provDbDiskFs"`
 	ProvDiskFSCompress                        string `mapstructure:"prov-db-disk-fs-compress" toml:"prov-db-disk-fs-compress" json:"provDbDiskFsCompress"`
 	ProvDiskPool                              string `mapstructure:"prov-db-disk-pool" toml:"prov-db-disk-pool" json:"provDbDiskPool"`

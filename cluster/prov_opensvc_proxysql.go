@@ -24,7 +24,7 @@ func (cluster *Cluster) OpenSVCGetProxysqlContainerSection(server *Proxy) map[st
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
-		svccontainer["netns"] = "container#0001"
+		svccontainer["netns"] = "container#01"
 		svccontainer["image"] = "{env.proxysql_img}"
 		svccontainer["rm"] = "true"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
@@ -32,7 +32,7 @@ func (cluster *Cluster) OpenSVCGetProxysqlContainerSection(server *Proxy) map[st
 			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/proxysql.cnf:/etc/proxysql.cnf:rw -v {env.base_dir}/pod01/data:/var/lib/proxysql:rw`
 		} else {
 			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
-			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/etc/proxysql.cnf:/etc/proxysql.cnf:rw {env.base_dir}/pod01/data:/var/lib/proxysql:rw`
+			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/etc/proxysql.cnf:/etc/proxysql.cnf:rw {name}/data:/var/lib/proxysql:rw`
 		}
 		svccontainer["run_command"] = "proxysql --initial -f -c /etc/proxysql.cnf"
 	}

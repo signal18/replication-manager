@@ -24,6 +24,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	log "github.com/sirupsen/logrus"
 )
 
 func (cluster *Cluster) SetStatus() {
@@ -642,7 +643,7 @@ func (cluster *Cluster) SetState(key string, s state.State) {
 }
 
 func (cl *Cluster) SetArbitratorReport() error {
-	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
+	//	timeout := time.Duration(time.Duration(cl.Conf.MonitoringTicker*1000-int64(cl.Conf.ArbitrationReadTimout)) * time.Millisecond)
 
 	cl.IsLostMajority = cl.LostMajority()
 	// SplitBrain
@@ -663,20 +664,25 @@ func (cl *Cluster) SetArbitratorReport() error {
 	}
 	req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: timeout}
+	client := &http.Client{}
+	//client := &http.Client{Timeout: timeout}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cl.Conf.ArbitrationReadTimout)*time.Millisecond)
 	defer cancel()
-	resp, err := client.Do(req.WithContext(ctx))
+	req = req.WithContext(ctx)
+	startConnect := time.Now()
+	resp, err := client.Do(req)
 	if err != nil {
 		cl.IsFailedArbitrator = true
 		return err
 	}
-	defer resp.Body.Close()
+	stopConnect := time.Now()
+	if cl.GetLogLevel() > 2 {
+		log.Printf(" Report abitrator connect took: %s\n", stopConnect.Sub(startConnect))
+	}
 	ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
 	cl.IsFailedArbitrator = false
 	return nil
-
 }
 
 func (cluster *Cluster) SetClusterHead(ClusterName string) {

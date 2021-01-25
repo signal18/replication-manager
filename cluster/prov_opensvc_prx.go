@@ -317,7 +317,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.Host, prx *Proxy) (string, error) {
 
 	svcsection := make(map[string]map[string]string)
-	svcsection["DEFAULT"] = prx.OpenSVCGetProxyDefaultSection()
+	svcsection["DEFAULT"] = prx.OpenSVCGetProxyDefaultSection(agent.Node_name)
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
 	if cluster.Conf.ProvProxDiskType != "volume" {
 		svcsection["disk#0000"] = cluster.OpenSVCGetDiskZpoolDockerPrivateSection()
@@ -333,7 +333,7 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.
 		if cluster.Conf.ProvDockerDaemonPrivate {
 			svcsection["volume#00"] = cluster.OpenSVCGetVolumeDockerSection()
 		}
-		svcsection["volume#01"] = cluster.OpenSVCGetVolumeDataSection()
+		svcsection["volume#01"] = cluster.OpenSVCGetProxyVolumeDataSection()
 	}
 	svcsection["container#0001"] = cluster.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#0002"] = cluster.OpenSVCGetInitContainerSection()
@@ -360,6 +360,14 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.
 	log.Println(svcsectionJson)
 	return string(svcsectionJson), nil
 
+}
+
+func (cluster *Cluster) OpenSVCGetProxyVolumeDataSection() map[string]string {
+	svcvol := make(map[string]string)
+	svcvol["name"] = "{name}"
+	svcvol["pool"] = cluster.Conf.ProvProxVolumeData
+	svcvol["size"] = "{env.size}"
+	return svcvol
 }
 
 func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx *Proxy) {
@@ -422,15 +430,12 @@ func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, agent opensvc.
 	svcenv["size"] = cluster.Conf.ProvProxDisk + "b"
 	svcenv["ip_pod01"] = prx.Host
 	svcenv["port_pod01"] = prx.Port
-	svcenv["mysql_root_password"] = cluster.dbPass
-	svcenv["mysql_root_user"] = cluster.dbUser
 	svcenv["network"] = network
 	svcenv["gateway"] = cluster.Conf.ProvProxGateway
 	svcenv["netmask"] = cluster.Conf.ProvProxNetmask
 	svcenv["sphinx_img"] = cluster.Conf.ProvSphinxImg
 	svcenv["sphinx_mem"] = cluster.Conf.ProvSphinxMem
 	svcenv["sphinx_max_children"] = cluster.Conf.ProvSphinxMaxChildren
-
 	svcenv["haproxy_img"] = cluster.Conf.ProvProxHaproxyImg
 	svcenv["proxysql_img"] = cluster.Conf.ProvProxProxysqlImg
 	svcenv["maxscale_img"] = cluster.Conf.ProvProxMaxscaleImg
@@ -463,16 +468,16 @@ func (cluster *Cluster) GetProxiesEnv(collector opensvc.Collector, servers strin
 `
 	/*} else {
 		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = 0.0.0.0`
-	}*/
+	}
 	ips := strings.Split(collector.ProvProxNetGateway, ".")
 	masks := strings.Split(collector.ProvProxNetMask, ".")
 	for i, mask := range masks {
-		if mask == "0" {
-			ips[i] = "0"
+			if mask == "0" {
+				ips[i] = "0"
+			}
 		}
-	}
-	network := strings.Join(ips, ".")
-
+		network := strings.Join(ips, ".")
+	*/
 	if cluster.Conf.ExtProxyVIP != "" && cluster.Conf.ProvProxRouteAddr == "" {
 		cluster.Conf.ProvProxRouteAddr, cluster.Conf.ProvProxRoutePort = misc.SplitHostPort(cluster.Conf.ExtProxyVIP)
 	}
@@ -483,11 +488,6 @@ nodes = ` + agent.Node_name + `
 size = ` + collector.ProvProxDisk + `
 ` + ipPods + `
 ` + portPods + `
-mysql_root_password = ` + cluster.dbPass + `
-mysql_root_user = ` + cluster.dbUser + `
-network = ` + network + `
-gateway =  ` + collector.ProvProxNetGateway + `
-netmask =  ` + collector.ProvProxNetMask + `
 sphinx_img = ` + cluster.Conf.ProvSphinxImg + `
 sphinx_mem = ` + cluster.Conf.ProvSphinxMem + `
 sphinx_max_children = ` + cluster.Conf.ProvSphinxMaxChildren + `
@@ -510,7 +510,6 @@ port_admin = ` + prx.Port + `
 user_admin = ` + prx.User + `
 password_admin = ` + prx.Pass + `
 mrm_api_addr = ` + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + `
-mrm_cluster_name = ` + cluster.GetClusterName() + `
 proxysql_read_on_master =  ` + prx.ProxySQLReadOnMaster() + `
 `
 	return conf
@@ -531,17 +530,16 @@ func (proxy *Proxy) GetPRXEnv() map[string]string {
 
 }
 
-func (server *Proxy) OpenSVCGetProxyDefaultSection() map[string]string {
+func (server *Proxy) OpenSVCGetProxyDefaultSection(agent string) map[string]string {
 	svcdefault := make(map[string]string)
-	svcdefault["nodes"] = "{env.nodes}"
+	svcdefault["nodes"] = agent
 	if server.ClusterGroup.Conf.ProvProxDiskPool == "zpool" && server.ClusterGroup.Conf.ProvProxAgentsFailover != "" {
 		svcdefault["cluster_type"] = "failover"
 		svcdefault["rollback"] = "true"
 		svcdefault["orchestrate"] = "start"
 	} else {
-		svcdefault["flex_primary"] = "{env.nodes[0]}"
+		svcdefault["flex_primary"] = agent
 		svcdefault["rollback"] = "false"
-		svcdefault["topology"] = "flex"
 	}
 	svcdefault["app"] = server.ClusterGroup.Conf.ProvCodeApp
 	if server.ClusterGroup.Conf.ProvProxType == "docker" {
