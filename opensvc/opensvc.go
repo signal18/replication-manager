@@ -962,7 +962,7 @@ func (collector *Collector) GetHttpClient() *http.Client {
 func (collector *Collector) StartServiceV2(cluster string, srv string, node string) error {
 
 	client := collector.GetHttpClient()
-	jsondata := `{"action": "service_action", "node": "` + node + `", "options": {"path": "` + srv + `", "action": "start", "options": {}}}`
+	jsondata := `{"path": "` + srv + `", "action": "start", "options": {}}`
 	b := bytes.NewBuffer([]byte(jsondata))
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
 	req, err := http.NewRequest("POST", urlpost, b)
@@ -985,7 +985,7 @@ func (collector *Collector) StartServiceV2(cluster string, srv string, node stri
 func (collector *Collector) StopServiceV2(cluster string, srv string, node string) error {
 
 	client := collector.GetHttpClient()
-	jsondata := `{"action": "service_action", "node": "` + node + `", "options": {"path": "` + srv + `", "action": "stop", "options": {}}}`
+	jsondata := `{"path": "` + srv + `", "action": "stop", "options": {}}`
 	b := bytes.NewBuffer([]byte(jsondata))
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
 	req, err := http.NewRequest("POST", urlpost, b)
@@ -1028,7 +1028,112 @@ func (collector *Collector) PurgeServiceV2(cluster string, srv string, node stri
 	return nil
 }
 
+func (collector *Collector) CreateConfigKeyValueV2(namespace string, service string, key string, value string) error {
+
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
+	log.Println("INFO ", urlpost)
+	jsondata := `{"path": "` + namespace + `/cfg/` + service + `", "key":"` + key + ` ", "value": {"` + value + `"}`
+	client := collector.GetHttpClient()
+	b := bytes.NewBuffer([]byte(jsondata))
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		log.Println("Error ", err)
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", "ANY")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("Info ", string(body))
+	return nil
+}
+
+func (collector *Collector) CreateSecretKeyValueV2(namespace string, service string, key string, value string) error {
+
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
+	log.Println("INFO ", urlpost)
+	jsondata := `{"path": "` + namespace + `/sec/` + service + `", "key":"` + key + ` ", "value": {"` + value + `"}`
+	client := collector.GetHttpClient()
+	b := bytes.NewBuffer([]byte(jsondata))
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		log.Println("Error ", err)
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", "ANY")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("Info ", string(body))
+	return nil
+}
+
+func (collector *Collector) CreateSecretV2(namespace string, service string) error {
+	template := "{}"
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
+	log.Println("INFO ", urlpost)
+	jsondata := `{"namespace": "` + namespace + `", "restore": true,  "data": {"` + namespace + `/sec/` + service + `": ` + template + `}}`
+	client := collector.GetHttpClient()
+	b := bytes.NewBuffer([]byte(jsondata))
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		log.Println("Error ", err)
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", "ANY")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("Info ", string(body))
+	return nil
+}
+
+func (collector *Collector) CreateConfigV2(namespace string, service string) error {
+	template := "{}"
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
+	log.Println("INFO ", urlpost)
+	jsondata := `{"namespace": "` + namespace + `", "restore": true,  "data": {"` + namespace + `/cfg/` + service + `": ` + template + `}}`
+	client := collector.GetHttpClient()
+	b := bytes.NewBuffer([]byte(jsondata))
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		log.Println("Error ", err)
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", "ANY")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Error ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("Info ", string(body))
+	return nil
+}
+
 // CreateTemplateV2 post a template to the collector
+
 func (collector *Collector) CreateTemplateV2(cluster string, srv string, node string, template string) error {
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"

@@ -115,7 +115,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(prx *Proxy) error {
 			svc.SetServiceTag(idtag, idsrv)
 		}
 	}
-
+	cluster.OpenSVCCreateMaps()
 	srvlist := make([]string, len(cluster.Servers))
 	for i, s := range cluster.Servers {
 		srvlist[i] = s.Host

@@ -107,12 +107,13 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 			cluster.LogPrintf(LvlErr, "Can't fetch task")
 		}
 	} else {
-
+		cluster.OpenSVCCreateMaps()
 		res, err := s.GenerateDBTemplateV2(agent.Node_name)
 		if err != nil {
 			cluster.errorChan <- err
 			return
 		}
+
 		agent, err := s.ClusterGroup.GetDatabaseAgent(s)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not provision database:  %s ", err)
@@ -124,6 +125,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not provision database:  %s ", err)
 		}
+
 	}
 	cluster.WaitDatabaseStart(s)
 
@@ -319,12 +321,12 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 		}
 	}
 
-	svcenv["ip_pod01"] = server.Host
+	/*svcenv["ip_pod01"] = server.Host
 	svcenv["port_pod01"] = server.Port
 	svcenv["mrm_api_addr"] = server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.HttpPort
 	svcenv["mrm_cluster_name"] = server.ClusterGroup.GetClusterName()
 	// not required for socket prov
-	/*
+
 			network := strings.Join(ips, ".")
 			svcenv["mysql_root_password"] = server.Pass
 			svcenv["mysql_root_user"] = server.User

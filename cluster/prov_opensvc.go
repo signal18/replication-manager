@@ -102,6 +102,43 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 	return agents, nil
 }
 
+func (cluster *Cluster) OpenSVCCreateMaps() error {
+	if cluster.Conf.ProvOpensvcUseCollectorAPI {
+		return errors.New("No support of Maps in Collector API")
+	}
+	svc := cluster.OpenSVCConnect()
+	err := svc.CreateSecretV2(cluster.Name, "env")
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not create secret: %s ", err)
+	}
+	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not add key to secret: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
+	}
+	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_SERVER_PASSWORD", cluster.GetDbPass())
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not add key to secret: %s %s ", "MYSQL_SERVER_PASSWORD", err)
+	}
+	err = svc.CreateConfigV2(cluster.Name, "env")
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not create config: %s ", err)
+	}
+	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_USER", "admin")
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_USER", err)
+	}
+	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_API", "https://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.APIPort+"/api")
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_API", err)
+	}
+	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_CLUSTER_NAME", cluster.GetClusterName())
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_CLUSTER_NAME", err)
+	}
+
+	return err
+}
+
 func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) error {
 	ct := 0
 	if idaction == 0 {
