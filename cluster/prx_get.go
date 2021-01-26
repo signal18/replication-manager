@@ -175,7 +175,7 @@ func (proxy *Proxy) GetInitContainer(collector opensvc.Collector) string {
 detach = false
 type = docker
 image = busybox
-netns = container#0001
+netns = container#01
 start_timeout = 30s
 rm = true
 volume_mounts = /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01:/data

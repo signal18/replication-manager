@@ -17,7 +17,7 @@ func (cluster *Cluster) OpenSVCGetMaxscaleContainerSection(server *Proxy) map[st
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
-		svccontainer["netns"] = "container#0001"
+		svccontainer["netns"] = "container#01"
 		svccontainer["image"] = "{env.maxscale_img}"
 		svccontainer["rm"] = "true"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType

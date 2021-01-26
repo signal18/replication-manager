@@ -358,7 +358,7 @@ func (cluster *Cluster) OpenSVCGetNamespaceContainerSection() map[string]string 
 	return svccontainer
 }
 
-func (cluster *Cluster) OpenSVCGetInitContainerSection() map[string]string {
+func (cluster *Cluster) OpenSVCGetInitContainerSection(port string) map[string]string {
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer["detach"] = "false"
@@ -378,7 +378,7 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection() map[string]string {
 	}
 	svccontainer["secrets_environment"] = "env/REPLICATION_MANAGER_PASSWORD"
 	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_USER env/REPLICATION_MANAGER_API"
-	svccontainer["environment"] = "REPLICATION_MANAGER_CLUSTER_NAME={namespace} REPLICATION_MANAGER_HOST_NAME={fqdn} REPLICATION_MANAGER_CLUSTER_PORT=3306"
+	svccontainer["environment"] = "REPLICATION_MANAGER_CLUSTER_NAME={namespace} REPLICATION_MANAGER_HOST_NAME={fqdn} REPLICATION_MANAGER_HOST_PORT=" + port
 	return svccontainer
 }
 
@@ -641,7 +641,7 @@ func (server *ServerMonitor) GenerateDBTemplateV2(agent string) (string, error) 
 		//	svcsection["volume#03"] = server.ClusterGroup.OpenSVCGetVolumeTempSection()
 	}
 	svcsection["container#01"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection()
-	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetInitContainerSection()
+	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetInitContainerSection(server.Port)
 	svcsection["container#db"] = server.OpenSVCGetDBContainerSection()
 
 	svcsection["task#01"] = server.ClusterGroup.OpenSVCGetTaskJobsSection()

@@ -335,20 +335,20 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.
 		}
 		svcsection["volume#01"] = cluster.OpenSVCGetProxyVolumeDataSection()
 	}
-	svcsection["container#0001"] = cluster.OpenSVCGetNamespaceContainerSection()
-	svcsection["container#0002"] = cluster.OpenSVCGetInitContainerSection()
+	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
+	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(prx.Port)
 	switch prx.Type {
 	case config.ConstProxySpider:
-		svcsection["container#0003"] = cluster.OpenSVCGetShardproxyContainerSection(prx)
+		svcsection["container#prx"] = cluster.OpenSVCGetShardproxyContainerSection(prx)
 	case config.ConstProxySphinx:
-		svcsection["container#0003"] = cluster.OpenSVCGetSphinxContainerSection(prx)
+		svcsection["container#prx"] = cluster.OpenSVCGetSphinxContainerSection(prx)
 		svcsection["task#01"] = cluster.OpenSVCGetSphinxTaskSection(prx)
 	case config.ConstProxyHaproxy:
-		svcsection["container#0003"] = cluster.OpenSVCGetHaproxyContainerSection(prx)
+		svcsection["container#prx"] = cluster.OpenSVCGetHaproxyContainerSection(prx)
 	case config.ConstProxySqlproxy:
-		svcsection["container#0003"] = cluster.OpenSVCGetProxysqlContainerSection(prx)
+		svcsection["container#prx"] = cluster.OpenSVCGetProxysqlContainerSection(prx)
 	case config.ConstProxyMaxscale:
-		svcsection["container#0003"] = cluster.OpenSVCGetMaxscaleContainerSection(prx)
+		svcsection["container#prx"] = cluster.OpenSVCGetMaxscaleContainerSection(prx)
 	default:
 	}
 	svcsection["env"] = cluster.OpenSVCGetProxyEnvSection(servers, agent, prx)
