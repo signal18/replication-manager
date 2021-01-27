@@ -675,6 +675,7 @@ func (cl *Cluster) SetArbitratorReport() error {
 		cl.IsFailedArbitrator = true
 		return err
 	}
+	defer client.CloseIdleConnections()
 	stopConnect := time.Now()
 	if cl.GetLogLevel() > 2 {
 		log.Printf(" Report abitrator connect took: %s\n", stopConnect.Sub(startConnect))

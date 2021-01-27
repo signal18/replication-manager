@@ -1197,6 +1197,7 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 
 	startConnect := time.Now()
 	resp, err := client.Do(req)
+
 	stopConnect := time.Now()
 	if collector.Verbose > 2 {
 		log.Printf("OpenSVC Connect took: %s\n", stopConnect.Sub(startConnect))
@@ -1205,6 +1206,8 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 		log.Println("ERROR ", err)
 		return nil, err
 	}
+
+	defer client.CloseIdleConnections()
 	defer resp.Body.Close()
 	startRead := time.Now()
 	body, err := ioutil.ReadAll(resp.Body)
