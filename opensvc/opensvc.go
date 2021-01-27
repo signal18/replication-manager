@@ -951,7 +951,7 @@ func (collector *Collector) GetHttpClient() *http.Client {
 		}
 	} else {
 
-		client.Transport = &http.Transport{
+		client.Transport = &http2.Transport{
 			TLSClientConfig: tlsConfig,
 		}
 	}
@@ -1032,7 +1032,7 @@ func (collector *Collector) CreateConfigKeyValueV2(namespace string, service str
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
 	log.Println("INFO ", urlpost)
-	jsondata := `{"path": "` + namespace + `/cfg/` + service + `", "key":"` + key + ` ", "value": {"` + value + `"}`
+	jsondata := `{"path": "` + namespace + `/cfg/` + service + `", "key":"` + key + ` ", "data": "` + value + `"}`
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)
@@ -1058,7 +1058,7 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
 	log.Println("INFO ", urlpost)
-	jsondata := `{"path": "` + namespace + `/sec/` + service + `", "key":"` + key + ` ", "value": {"` + value + `"}`
+	jsondata := `{"path": "` + namespace + `/sec/` + service + `", "key":"` + key + ` ", "data": "` + value + `"}`
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)
