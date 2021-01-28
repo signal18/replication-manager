@@ -371,11 +371,12 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection(port string) map[string]s
 		if cluster.Conf.ProvDiskType != "volume" {
 			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {env.base_dir}:/bootstrap"
 		} else {
-			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}-data:/bootstrap"
+			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}:/bootstrap"
 		}
 		svccontainer["command"] = "-c 'wget -q -O- http://" + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + "/static/configurator/opensvc/bootstrap | sh'"
 
 	}
+	svccontainer["entrypoint"] = "/sbin/sh"
 	svccontainer["secrets_environment"] = "env/REPLICATION_MANAGER_PASSWORD"
 	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_USER env/REPLICATION_MANAGER_API"
 	svccontainer["environment"] = "REPLICATION_MANAGER_CLUSTER_NAME={namespace} REPLICATION_MANAGER_HOST_NAME={fqdn} REPLICATION_MANAGER_HOST_PORT=" + port
