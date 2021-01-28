@@ -1081,10 +1081,16 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 }
 
 func (collector *Collector) CreateSecretV2(namespace string, service string) error {
-	template := "{}"
-	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
+
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_create"
 	log.Println("INFO ", urlpost)
-	jsondata := `{"namespace": "` + namespace + `", "restore": true,  "data": {"` + namespace + `/sec/` + service + `": ` + template + `}}`
+	// drop and repkace
+	//template := "{}"
+	//jsondata := `{"namespace": "` + namespace + `", "restore": true,  "data": {"` + namespace + `/sec/` + service + `": ` + template + `}}`
+
+	// just create or replace
+	jsondata := `{"path": "` + namespace + `/sec/` + service + `"}`
+
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)
@@ -1107,10 +1113,11 @@ func (collector *Collector) CreateSecretV2(namespace string, service string) err
 }
 
 func (collector *Collector) CreateConfigV2(namespace string, service string) error {
-	template := "{}"
-	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
+	//	template := "{}"
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create_object"
 	log.Println("INFO ", urlpost)
-	jsondata := `{"namespace": "` + namespace + `", "restore": true,  "data": {"` + namespace + `/cfg/` + service + `": ` + template + `}}`
+	//jsondata := `{"namespace": "` + namespace + `", "restore": true,  "data": {"` + namespace + `/cfg/` + service + `": ` + template + `}}`
+	jsondata := `{"path": "` + namespace + `/cfg/` + service + `"}`
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)
