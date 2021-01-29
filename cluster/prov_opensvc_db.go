@@ -36,7 +36,7 @@ func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
 		}
 		return res
 	} else {
-		res, err := s.GenerateDBTemplateV2(agent.Node_name)
+		res, err := s.GenerateDBTemplateV2()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't create OpenSVC config template  %s", err)
 			return ""
@@ -108,20 +108,14 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 		}
 	} else {
 		cluster.OpenSVCCreateMaps()
-		res, err := s.GenerateDBTemplateV2(agent.Node_name)
+		res, err := s.GenerateDBTemplateV2()
 		if err != nil {
 			cluster.errorChan <- err
 			return
 		}
 
-		agent, err := s.ClusterGroup.GetDatabaseAgent(s)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can not provision database:  %s ", err)
-			cluster.errorChan <- err
-			return
-		}
 		cluster.LogPrintf(LvlInfo, "%s", res)
-		err = svc.CreateTemplateV2(cluster.Name, s.ServiceName, agent.HostName, res)
+		err = svc.CreateTemplateV2(cluster.Name, s.ServiceName, s.Agent, res)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not provision database:  %s ", err)
 		}
@@ -146,12 +140,8 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 		}
 		svc.StopService(agent.Node_id, service.Svc_id)
 	} else {
-		agent, err := cluster.GetDatabaseAgent(server)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can not stop database:  %s ", err)
-			return err
-		}
-		err = svc.StopServiceV2(cluster.Name, server.ServiceName, agent.HostName)
+
+		err := svc.StopServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not stop database:  %s ", err)
 			return err
@@ -173,12 +163,8 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 		}
 		svc.StartService(agent.Node_id, service.Svc_id)
 	} else {
-		agent, err := cluster.GetDatabaseAgent(server)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can not stop database:  %s ", err)
-			return err
-		}
-		err = svc.StartServiceV2(cluster.Name, server.ServiceName, agent.HostName)
+
+		err := svc.StartServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not stop database:  %s ", err)
 			return err
@@ -203,12 +189,8 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 			}
 		}
 	} else {
-		agent, err := cluster.GetDatabaseAgent(server)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can not unprovision database:  %s ", err)
-			cluster.errorChan <- err
-		}
-		err = opensvc.PurgeServiceV2(cluster.Name, server.ServiceName, agent.HostName)
+
+		err := opensvc.PurgeServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not unprovision database:  %s ", err)
 			cluster.errorChan <- err
@@ -245,9 +227,9 @@ func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensv
 	return agent, errors.New("Indice not found in database node list")
 }
 
-func (server *ServerMonitor) OpenSVCGetDBDefaultSection(agent string) map[string]string {
+func (server *ServerMonitor) OpenSVCGetDBDefaultSection() map[string]string {
 	svcdefault := make(map[string]string)
-	svcdefault["nodes"] = agent
+	svcdefault["nodes"] = server.Agent
 	if server.ClusterGroup.Conf.ProvDiskPool == "zpool" && server.ClusterGroup.Conf.AutorejoinZFSFlashback && server.IsPrefered() {
 		svcdefault["cluster_type"] = "failover"
 		svcdefault["rollback"] = "true"
@@ -610,10 +592,10 @@ func (cluster *Cluster) OpenSVCGetVolumeDockerSection() map[string]string {
 	return svcvol
 }
 
-func (server *ServerMonitor) GenerateDBTemplateV2(agent string) (string, error) {
+func (server *ServerMonitor) GenerateDBTemplateV2() (string, error) {
 
 	svcsection := make(map[string]map[string]string)
-	svcsection["DEFAULT"] = server.OpenSVCGetDBDefaultSection(agent)
+	svcsection["DEFAULT"] = server.OpenSVCGetDBDefaultSection()
 	svcsection["ip#01"] = server.ClusterGroup.OpenSVCGetNetSection()
 	if server.ClusterGroup.Conf.ProvDiskType != "volume" {
 		if server.ClusterGroup.Conf.ProvDiskType != "pool" {

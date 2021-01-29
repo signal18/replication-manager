@@ -2125,6 +2125,25 @@
                 }
             ],
             "fset_name": "mariadb.replication.nosyncbinlog"
+        },
+        {
+            "fset_stats": false,
+            "id": 401,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "archive",
+                        "f_table": "v_tags",
+                        "id": 358
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.engine.archive"
         }
     ],
     "rulesets": [
@@ -2521,8 +2540,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_network.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# NETWORK\\n# ------- \\n\\n# mariadb_command: SET GLOBAL max_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%;SET GLOBAL max_user_connections = 450;SET GLOBAL thread_cache_size = 128;EXECUTE IMMEDIATE IF(@@back_log=128,\\\"SELECT 'Unchanged back_log'\\\", \\\"SET GLOBAL back_log = 128\\\");EXECUTE IMMEDIATE IF(@@skip_name_resolve=1,\\\"SELECT 'Unchanged skip_name_resolve'\\\", \\\"SET GLOBAL skip_name_resolve = 1\\\");SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL query_cache_size = %%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%*1024*1024;\\n\\n# mysql_command: SET GLOBAL max_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%;SET GLOBAL max_user_connections = 450;SET GLOBAL thread_cache_size = 128;SET GLOBAL back_log = 128;SET GLOBAL skip_name_resolve = 1;SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL query_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%*1024*1024;\\n\\n[mysqld]\\n\\nport=%%ENV:SERVER_PORT%%\\nmax_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%% \\nmax_user_connections = 450\\nthread_cache_size = 128\\nback_log = 128 \\nskip_name_resolve = 1\\nmax_allowed_packet = 512M\\nquery_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%M \"}",
-                    "var_updated": "2020-12-30 12:06:00",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_network.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# NETWORK\\n# ------- \\n\\n# mariadb_command: SET GLOBAL max_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%;SET GLOBAL max_user_connections = 450;SET GLOBAL thread_cache_size = 128;EXECUTE IMMEDIATE IF(@@back_log=128,\\\"SELECT 'Unchanged back_log'\\\", \\\"SET GLOBAL back_log = 128\\\");EXECUTE IMMEDIATE IF(@@skip_name_resolve=1,\\\"SELECT 'Unchanged skip_name_resolve'\\\", \\\"SET GLOBAL skip_name_resolve = 1\\\");SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL query_cache_size = %%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%*1024*1024;\\n\\n# mysql_command: SET GLOBAL max_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%;SET GLOBAL max_user_connections = 450;SET GLOBAL thread_cache_size = 128;SET GLOBAL back_log = 128;SET GLOBAL skip_name_resolve = 1;SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL query_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%*1024*1024;\\n\\n[mysqld]\\n\\nport=%%ENV:SERVER_PORT%%\\nmax_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%% \\nmax_user_connections = 450\\nthread_cache_size = 128\\nback_log = 128 \\nskip_name_resolve = 1\\nmax_allowed_packet = 512M\\nloose_query_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%M \"}",
+                    "var_updated": "2021-01-29 13:13:32",
                     "var_name": "db_cnf_default_network",
                     "id": 5915
                 },
@@ -2745,8 +2764,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_replication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# REPLICATION\\n# -----------  \\n\\n# mariadb_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;EXECUTE IMMEDIATE IF(@@relay_log_space_limit=1*1024*1024*1024,\\\"SELECT 'Unchanged relay_log_space_limit'\\\" ,\\\"SET GLOBAL relay_log_space_limit = 1*1024*1024*1024\\\");SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1; SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;EXECUTE IMMEDIATE IF(@@report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%',\\\"SELECT 'Unchanged report_host'\\\", \\\"SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\\");EXECUTE IMMEDIATE IF(@@log_slave_updates=1,\\\"SELECT 'Unchanged log_slave_updates'\\\",\\\"SET GLOBAL log_slave_updates = ON\\\");SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';EXECUTE IMMEDIATE IF(@@replicate_annotate_row_events=1,\\\"SELECT 'Unchanged replicate_annotate_row_events'\\\", \\\"SET GLOBAL replicate_annotate_row_events = 1\\\");EXECUTE IMMEDIATE IF(@@binlog_annotate_row_events=1,\\\"SELECT 'Unchanged binlog_annotate_row_events'\\\", \\\"SET GLOBAL binlog_annotate_row_events = 1\\\");SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;STOP SLAVE; SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;START SLAVE;SET GLOBAL slave_parallel_max_queued =2*1024*1024;\\n\\n# mysql_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;SET GLOBAL relay_log_space_limit = 1*1024*1024*1024;SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1;SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%';SET GLOBAL log_slave_updates = ON;SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL loose_binlog_row_query_log_events = 1;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';SET GLOBAL replicate_annotate_row_events = 1;SET GLOBAL binlog_annotate_row_events = 1;SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_max_queued =2*1024*1024;\\n\\n[mysqld]\\nserver_id = %%ENV:SVC_CONF_ENV_SERVER_ID%%\\nrelay_log_space_limit = 1G\\nbinlog_format = MIXED\\nbinlog_checksum = 1\\nbinlog_cache_size = 1M\\nbinlog_stmt_cache_size = 1M\\nexpire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%% \\nsync_binlog = 1\\nreport_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\nlog_slave_updates = ON\\nlog_bin_trust_function_creators = ON\\nloose_binlog_row_query_log_events = 1\\n\\n[mariadb]\\nloose_slave_type_conversions = 'ALL_NON_LOSSY'\\nloose_replicate_annotate_row_events = 1\\nloose_binlog_annotate_row_events = 1\\n#loose_gtid-strict-mode = 1\\nloose_gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%\\nloose_slave_parallel_mode = conservative\\nloose_slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_max_queued =2M\\n\\n\"}",
-                    "var_updated": "2020-12-30 13:20:43",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_replication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# REPLICATION\\n# -----------  \\n\\n# mariadb_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;EXECUTE IMMEDIATE IF(@@relay_log_space_limit=1*1024*1024*1024,\\\"SELECT 'Unchanged relay_log_space_limit'\\\" ,\\\"SET GLOBAL relay_log_space_limit = 1*1024*1024*1024\\\");SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1; SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;EXECUTE IMMEDIATE IF(@@report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%',\\\"SELECT 'Unchanged report_host'\\\", \\\"SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\\");EXECUTE IMMEDIATE IF(@@log_slave_updates=1,\\\"SELECT 'Unchanged log_slave_updates'\\\",\\\"SET GLOBAL log_slave_updates = ON\\\");SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';EXECUTE IMMEDIATE IF(@@replicate_annotate_row_events=1,\\\"SELECT 'Unchanged replicate_annotate_row_events'\\\", \\\"SET GLOBAL replicate_annotate_row_events = 1\\\");EXECUTE IMMEDIATE IF(@@binlog_annotate_row_events=1,\\\"SELECT 'Unchanged binlog_annotate_row_events'\\\", \\\"SET GLOBAL binlog_annotate_row_events = 1\\\");SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;STOP SLAVE; SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;START SLAVE;SET GLOBAL slave_parallel_max_queued =2*1024*1024;\\n\\n# mysql_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;SET GLOBAL relay_log_space_limit = 1*1024*1024*1024;SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1;SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%';SET GLOBAL log_slave_updates = ON;SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL loose_binlog_row_query_log_events = 1;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';SET GLOBAL replicate_annotate_row_events = 1;SET GLOBAL binlog_annotate_row_events = 1;SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_max_queued =2*1024*1024;\\n\\n[mysqld]\\nserver_id = %%ENV:SVC_CONF_ENV_SERVER_ID%%\\nrelay_log_space_limit = 1G\\nbinlog_format = MIXED\\nbinlog_checksum = 1\\nbinlog_cache_size = 1M\\nbinlog_stmt_cache_size = 1M\\nloose_expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%% \\nsync_binlog = 1\\nreport_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\nlog_slave_updates = ON\\nlog_bin_trust_function_creators = ON\\nloose_binlog_row_query_log_events = 1\\n\\n[mariadb]\\nloose_slave_type_conversions = 'ALL_NON_LOSSY'\\nloose_replicate_annotate_row_events = 1\\nloose_binlog_annotate_row_events = 1\\n#loose_gtid-strict-mode = 1\\nloose_gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%\\nloose_slave_parallel_mode = conservative\\nloose_slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_max_queued =2M\\n\\n\"}",
+                    "var_updated": "2021-01-29 13:16:49",
                     "var_name": "db_cnf_default_replication",
                     "id": 5943
                 },
@@ -3725,26 +3744,34 @@
                     "var_updated": "2021-01-11 13:51:12",
                     "var_name": "db_cnf_rep_no_logslavestatement",
                     "id": 6261
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_archive.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%% ENV:MYSQL_UID%%\",\"gid\":\"%% ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'ha_archive';\\n# mysql_command: INSTALL SONAME 'ha_archive';\\n# mariadb_documentation: https://mariadb.com/kb/en/archive/\\n\\n[mysqld]\\nplugin_load_add=BLACKHOLE\\n\\n[mysqld]\"}",
+                    "var_updated": "2021-01-28 15:32:05",
+                    "var_name": "db_cnf_engine_archive",
+                    "id": 6263
                 }
             ],
             "ruleset_public": false,
             "ruleset_type": "explicit",
             "rulesets": [
-                "mariadb.svc.mrm.db.cnf.generic.rep_withsemisync",
-                "mariadb.svc.mrm.db.cnf.generic.engineinnodb",
-                "mariadb.svc.mrm.db.cnf.generic.ent_withthreadpool",
-                "mariadb.svc.mrm.db.cnf.generic.net_noquerycache",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withinnodbpagecompression",
-                "mariadb.svc.mrm.db.cnf.generic.enginespider",
-                "mariadb.svc.mrm.db.cnf.generic.enginetokudb",
-                "mariadb.svc.mrm.db.cnf.generic.enginerocksdb",
+                "mariadb.svc.mrm.db.cnf.generic.withlogaudit",
+                "mariadb.svc.mrm.db.cnf.generic.engineinnodb",
+                "mariadb.svc.mrm.db.cnf.generic.net_noquerycache",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withsemisync",
                 "mariadb.svc.mrm.db.cnf.generic.withloggeneral",
                 "mariadb.svc.mrm.db.cnf.generic.withlogmetadatalock",
-                "mariadb.svc.mrm.db.cnf.generic.withlogaudit",
                 "mariadb.svc.mrm.db.cnf.generic.withlogsqlerror",
+                "mariadb.svc.mrm.db.cnf.generic.enginerocksdb",
+                "mariadb.svc.mrm.db.cnf.generic.enginespider",
+                "mariadb.svc.mrm.db.cnf.generic.ent_withthreadpool",
+                "mariadb.svc.mrm.db.cnf.generic.enginetokudb",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withmultidomains",
-                "mariadb.svc.mrm.db.cnf.generic.rep_withmysqlgtid",
                 "mariadb.svc.mrm.db.cnf.generic.rep_nologslaveupdates",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withmysqlgtid",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withsmallredolog",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withwsrep",
                 "mariadb.svc.mrm.db.cnf.generic.opt_noautocommit",
@@ -3761,20 +3788,19 @@
                 "mariadb.svc.mrm.db.cnf.generic.opt_witheits",
                 "mariadb.svc.mrm.db.cnf.generic.disk_noodirect",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withdefrag",
-                "mariadb.svc.mrm.db.cnf.generic.engineblackhole",
-                "mariadb.svc.mrm.db.cnf.generic.engineoqgraph",
-                "mariadb.svc.mrm.db.cnf.generic.engineconnect",
                 "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdsimple",
                 "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdcracklib",
+                "mariadb.svc.mrm.db.cnf.generic.engineoqgraph",
+                "mariadb.svc.mrm.db.cnf.generic.engineconnect",
+                "mariadb.svc.mrm.db.cnf.generic.engineblackhole",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withssd",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withzfs",
                 "mariadb.svc.mrm.db.cnf.generic.sec_withkeyfileencrypt",
-                "mariadb.svc.mrm.db.cnf.generic.net_withresolvdns",
                 "mariadb.svc.mrm.db.cnf.generic.net_withproxyprotocol",
+                "mariadb.svc.mrm.db.cnf.generic.net_withresolvdns",
                 "mariadb.svc.mrm.db.cnf.generic.withlogtable",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withdiskmonitor",
                 "mariadb.svc.mrm.db.cnf.generic.sec_withssl",
-                "mariadb.svc.mrm.db.cnf.generic.charset_nohandshake",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withgtidstrict",
                 "mariadb.svc.mrm.db.cnf.generic.sec_withlocalinfile",
                 "mariadb.svc.mrm.db.cnf.generic.opt_noicp",
@@ -3786,40 +3812,41 @@
                 "mariadb.svc.mrm.db.cnf.generic.withcharsetmb4cs",
                 "mariadb.svc.mrm.db.cnf.generic.withcharsetutf8cs",
                 "mariadb.svc.mrm.db.cnf.generic.withcharsetutf8ci",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withhashjoin",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withnestedjoin",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withfirstmatch",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withsemijoincache",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withloosescan",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withhashjoin",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withextendedkeys",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withsubquerycache",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withfirstmatch",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withloosescan",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withsemijoincache",
                 "mariadb.svc.mrm.db.cnf.generic.opt_noderivedmerge",
-                "mariadb.svc.mrm.db.cnf.generic.opt_notableelimination",
-                "mariadb.svc.mrm.db.cnf.generic.opt_nosemijoin",
                 "mariadb.svc.mrm.db.cnf.generic.opt_noderivedwithkeys",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nointoexists",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nomaterialization",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nomrr",
                 "mariadb.svc.mrm.db.cnf.generic.opt_noouterjoincache",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withsubquerycache",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nosemijoin",
+                "mariadb.svc.mrm.db.cnf.generic.opt_notableelimination",
                 "mariadb.svc.mrm.db.cnf.generic.engines3",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withutctime",
                 "mariadb.svc.mrm.db.cnf.generic.enginemroonga",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withutctime",
+                "mariadb.svc.mrm.db.cnf.generic.charset_nohandshake",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withreadcommitted",
-                "mariadb.svc.mrm.db.cnf.generic.rep_withlossyconv",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withstatement",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withidempotent",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withrow",
-                "mariadb.svc.mrm.db.cnf.generic.rep_withstatement",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withlossyconv",
                 "mariadb.svc.mrm.db.cnf.generic.enginemcs",
                 "mariadb.svc.mrm.db.cnf.generic.sec_withed25519",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withsequence",
-                "mariadb.svc.mrm.db.cnf.generic.opt_noecp",
-                "mariadb.svc.mrm.db.cnf.generic.opt_noscp",
-                "mariadb.svc.mrm.db.cnf.generic.opt_nohcp",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nodcp",
+                "mariadb.svc.mrm.db.cnf.generic.opt_noecp",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nohcp",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nointosubquery",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nolateralderived",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withimsi",
+                "mariadb.svc.mrm.db.cnf.generic.opt_noscp",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nobloomfilter",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withimsi",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withtrustfunctioncreators",
                 "mariadb.svc.mrm.db.cnf.generic.net_nobind",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withrelayspacelimit",
@@ -3828,17 +3855,18 @@
                 "mariadb.svc.mrm.db.cnf.generic.rep_withminimal",
                 "mariadb.svc.mrm.db.cnf.generic.disk_noadaptativeflush",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withhistograms",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withreadsnapshot",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withreaddirty",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withreadserialized",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withreadsnapshot",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withaggressive",
                 "mariadb.svc.mrm.db.cnf.generic.log_nodeadlocks",
-                "mariadb.svc.mrm.db.cnf.generic.log_noslowqueries",
                 "mariadb.svc.mrm.db.cnf.generic.log_noslowddlqueries",
+                "mariadb.svc.mrm.db.cnf.generic.log_noslowqueries",
                 "mariadb.svc.mrm.db.cnf.generic.log_noslowslavequeries",
                 "mariadb.svc.mrm.db.cnf.generic.log_nowarnings",
                 "mariadb.svc.mrm.db.cnf.generic.rep_nologslavestatement",
-                "mariadb.svc.mrm.db.cnf.generic.rep_nosyncbinlog"
+                "mariadb.svc.mrm.db.cnf.generic.rep_nosyncbinlog",
+                "mariadb.svc.mrm.db.cnf.generic.enginearchive"
             ],
             "publications": [
                 "replication-manager"
@@ -6550,6 +6578,30 @@
                 "replication-manager"
             ],
             "id": 1144,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.engine.archive",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.enginearchive",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/01_engine_archive.cnf\",\"target\":\"../engine_archive.cnf\"}",
+                    "var_updated": "2021-01-28 15:33:24",
+                    "var_name": "db_link_archive",
+                    "id": 6264
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1145,
             "responsibles": [
                 "replication-manager"
             ]

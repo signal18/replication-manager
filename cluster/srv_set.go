@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/go-sql-driver/mysql"
 
@@ -21,6 +22,19 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
+
+func (server *ServerMonitor) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string, SchedulerReceiverPorts string) {
+	slapospartitions := strings.Split(SlapOSDBPartitions, ",")
+	sstports := strings.Split(SchedulerReceiverPorts, ",")
+	agents := strings.Split(ProvAgents, ",")
+	if k < len(slapospartitions) {
+		server.SlapOSDatadir = slapospartitions[k]
+	}
+	if ProvAgents != "" {
+		server.Agent = agents[k%len(agents)]
+	}
+	server.SSTPort = sstports[k%len(sstports)]
+}
 
 func (server *ServerMonitor) SetIgnored(ignored bool) {
 	server.Ignored = ignored

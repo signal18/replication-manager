@@ -164,6 +164,7 @@ type ServerMonitor struct {
 	CrcTable                    *crc64.Table                 `json:"-"`
 	TLSConfigUsed               string                       `json:"tlsConfigUsed"` //used to track TLS config during key rotation
 	SSTPort                     string                       `json:"sstPort"`       //used to send data to dbjobs
+	Agent                       string                       `json:"agent"`         //used to provision service in orchestrator
 	BinaryLogFiles              map[string]uint              `json:"binaryLogFiles"`
 }
 

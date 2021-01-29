@@ -214,6 +214,7 @@ type Config struct {
 	MxsPort                                   string `mapstructure:"maxscale-port" toml:"maxscale-port" json:"maxscalePort"`
 	MxsUser                                   string `mapstructure:"maxscale-user" toml:"maxscale-user" json:"maxscaleUser"`
 	MxsPass                                   string `mapstructure:"maxscale-pass" toml:"maxscale-pass" json:"maxscalePass"`
+	MxsHostsIPV6                              string `mapstructure:"maxscale-servers-ipv6" toml:"maxscale-servers-ipv6" json:"maxscaleServers-ipv6"`
 	MxsWritePort                              int    `mapstructure:"maxscale-write-port" toml:"maxscale-write-port" json:"maxscaleWritePort"`
 	MxsReadPort                               int    `mapstructure:"maxscale-read-port" toml:"maxscale-read-port" json:"maxscaleReadPort"`
 	MxsReadWritePort                          int    `mapstructure:"maxscale-read-write-port" toml:"maxscale-read-write-port" json:"maxscaleReadWritePort"`
@@ -238,6 +239,7 @@ type Config struct {
 	HaproxyStatPort                           int    `mapstructure:"haproxy-stat-port" toml:"haproxy-stat-port" json:"haproxyStatPort"`
 	HaproxyAPIPort                            int    `mapstructure:"haproxy-api-port" toml:"haproxy-api-port" json:"haproxyAPIPort"`
 	HaproxyWriteBindIp                        string `mapstructure:"haproxy-ip-write-bind" toml:"haproxy-ip-write-bind" json:"haproxyIpWriteBind"`
+	HaproxyHostsIPV6                          string `mapstructure:"haproxy-servers-ipv6" toml:"haproxy-servers-ipv6" json:"haproxyServers-ipv6"`
 	HaproxyReadBindIp                         string `mapstructure:"haproxy-ip-read-bind" toml:"haproxy-ip-read-bind" json:"haproxyIpReadBind"`
 	HaproxyBinaryPath                         string `mapstructure:"haproxy-binary-path" toml:"haproxy-binary-path" json:"haproxyBinaryPath"`
 	HaproxyAPIReadBackend                     string `mapstructure:"haproxy-api-read-backend"  toml:"haproxy-api-read-backend" json:"haproxyAPIReadBackend"`
@@ -270,6 +272,7 @@ type Config struct {
 	MysqlRouterReadWritePort                  int    `mapstructure:"mysqlrouter-read-write-port" toml:"mysqlrouter-read-write-port" json:"mysqlrouterReadWritePort"`
 	SphinxOn                                  bool   `mapstructure:"sphinx" toml:"sphinx" json:"sphinx"`
 	SphinxHosts                               string `mapstructure:"sphinx-servers" toml:"sphinx-servers" json:"sphinxServers"`
+	SphinxHostsIPV6                           string `mapstructure:"sphinx-servers-ipv6" toml:"sphinx-servers-ipv6" json:"sphinxServers-ipv6"`
 	SphinxConfig                              string `mapstructure:"sphinx-config" toml:"sphinx-config" json:"sphinxConfig"`
 	SphinxQLPort                              string `mapstructure:"sphinx-sql-port" toml:"sphinx-sql-port" json:"sphinxSqlPort"`
 	SphinxPort                                string `mapstructure:"sphinx-port" toml:"sphinx-port" json:"sphinxPort"`
@@ -310,6 +313,7 @@ type Config struct {
 	SlapOSHaProxyPartitions                   string `mapstructure:"slapos-haproxy-partitions" toml:"slapos-haproxy-partitions" json:"slaposHaproxyPartitions"`
 	SlapOSMaxscalePartitions                  string `mapstructure:"slapos-maxscale-partitions" toml:"slapos-maxscale-partitions" json:"slaposMaxscalePartitions"`
 	SlapOSShardProxyPartitions                string `mapstructure:"slapos-shardproxy-partitions" toml:"slapos-shardproxy-partitions" json:"slaposShardproxyPartitions"`
+	SlapOSSphinxPartitions                    string `mapstructure:"slapos-sphinx-partitions" toml:"slapos-sphinx-partitions" json:"slaposSphinxPartitions"`
 	ProvHost                                  string `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
 	ProvOpensvcP12Certificate                 string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificat" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`

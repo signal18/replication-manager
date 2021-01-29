@@ -31,7 +31,6 @@ import (
 type Proxy struct {
 	Id              string               `json:"id"`
 	Name            string               `json:"name"`
-	ServiceName     string               `json:"serviceName"`
 	Type            string               `json:"type"`
 	Host            string               `json:"host"`
 	HostIPV6        string               `json:"hostIPV6"`
@@ -60,6 +59,8 @@ type Proxy struct {
 	SlapOSDatadir   string               `json:"slaposDatadir"`
 	Process         *os.Process          `json:"process"`
 	Variables       map[string]string    `json:"-"`
+	ServiceName     string               `json:"serviceName"`
+	Agent           string               `json:"agent"`
 }
 
 type Backend struct {
@@ -113,15 +114,13 @@ func (cluster *Cluster) newProxyList() error {
 
 	var ctproxy = 0
 	var err error
+
 	if cluster.Conf.MxsHost != "" && cluster.Conf.MxsOn {
-		slapospartitions := strings.Split(cluster.Conf.SlapOSHaProxyPartitions, ",")
 
 		for k, proxyHost := range strings.Split(cluster.Conf.MxsHost, ",") {
 			prx := new(Proxy)
 			prx.Type = config.ConstProxyMaxscale
-			if k < len(slapospartitions) {
-				prx.SlapOSDatadir = slapospartitions[k]
-			}
+			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSMaxscalePartitions, cluster.Conf.MxsHostsIPV6)
 			prx.Port = cluster.Conf.MxsPort
 			prx.User = cluster.Conf.MxsUser
 			prx.Pass = cluster.Conf.MxsPass
@@ -141,7 +140,9 @@ func (cluster *Cluster) newProxyList() error {
 			}
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
+
 			prx.SetDataDir()
+			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
@@ -152,13 +153,10 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 	if cluster.Conf.HaproxyOn {
-		slapospartitions := strings.Split(cluster.Conf.SlapOSHaProxyPartitions, ",")
 
 		for k, proxyHost := range strings.Split(cluster.Conf.HaproxyHosts, ",") {
 			prx := new(Proxy)
-			if k < len(slapospartitions) {
-				prx.SlapOSDatadir = slapospartitions[k]
-			}
+			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSHaProxyPartitions, cluster.Conf.HaproxyHostsIPV6)
 			prx.Type = config.ConstProxyHaproxy
 			prx.Port = strconv.Itoa(cluster.Conf.HaproxyAPIPort)
 			prx.ReadPort = cluster.Conf.HaproxyReadPort
@@ -172,6 +170,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
 			prx.SetDataDir()
+			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -194,22 +193,17 @@ func (cluster *Cluster) newProxyList() error {
 		prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 		prx.ClusterGroup = cluster
 		prx.SetDataDir()
+		prx.SetServiceName(cluster.Name, prx.Name)
 		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 		ctproxy++
 	}
 	if cluster.Conf.ProxysqlOn {
-		slapospartitions := strings.Split(cluster.Conf.SlapOSProxySQLPartitions, ",")
-		ipv6hosts := strings.Split(cluster.Conf.ProxysqlHostsIPV6, ",")
+
 		for k, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
 
 			prx := new(Proxy)
-			if k < len(slapospartitions) {
-				prx.SlapOSDatadir = slapospartitions[k]
-			}
-			if k < len(ipv6hosts) {
-				prx.HostIPV6 = ipv6hosts[k]
-			}
+			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSProxySQLPartitions, cluster.Conf.ProxysqlHostsIPV6)
 			prx.Type = config.ConstProxySqlproxy
 			prx.Port = cluster.Conf.ProxysqlAdminPort
 			prx.ReadWritePort, _ = strconv.Atoi(cluster.Conf.ProxysqlPort)
@@ -237,6 +231,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
 			prx.SetDataDir()
+			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -246,16 +241,9 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 	if cluster.Conf.MdbsProxyHosts != "" && cluster.Conf.MdbsProxyOn {
-		slapospartitions := strings.Split(cluster.Conf.SlapOSShardProxyPartitions, ",")
-		ipv6hosts := strings.Split(cluster.Conf.MdbsHostsIPV6, ",")
 		for k, proxyHost := range strings.Split(cluster.Conf.MdbsProxyHosts, ",") {
 			prx := new(Proxy)
-			if k < len(slapospartitions) {
-				prx.SlapOSDatadir = slapospartitions[k]
-			}
-			if k < len(ipv6hosts) {
-				prx.HostIPV6 = ipv6hosts[k]
-			}
+			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSShardProxyPartitions, cluster.Conf.MdbsHostsIPV6)
 			prx.Type = config.ConstProxySpider
 			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
 			prx.User, prx.Pass = misc.SplitPair(cluster.Conf.MdbsProxyCredential)
@@ -274,6 +262,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
 			prx.SetDataDir()
+			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -284,8 +273,9 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 	if cluster.Conf.SphinxHosts != "" && cluster.Conf.SphinxOn {
-		for _, proxyHost := range strings.Split(cluster.Conf.SphinxHosts, ",") {
+		for k, proxyHost := range strings.Split(cluster.Conf.SphinxHosts, ",") {
 			prx := new(Proxy)
+			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSSphinxPartitions, cluster.Conf.SphinxHostsIPV6)
 			prx.Type = config.ConstProxySphinx
 
 			prx.Port = cluster.Conf.SphinxQLPort
@@ -302,6 +292,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
 			prx.SetDataDir()
+			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 			cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 			if err != nil {
@@ -330,6 +321,7 @@ func (cluster *Cluster) newProxyList() error {
 		}
 		prx.ClusterGroup = cluster
 		prx.SetDataDir()
+		prx.SetServiceName(cluster.Name, prx.Name)
 		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.Port)
 		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
 		ctproxy++
