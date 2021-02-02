@@ -411,9 +411,9 @@ func (cluster *Cluster) OpenSVCGetNetSection() map[string]string {
 func (cluster *Cluster) OpenSVCGetTaskJobsSection() map[string]string {
 	svctask := make(map[string]string)
 	svctask["schedule"] = "@1"
-	svctask["command"] = "svcmgr -s {svcpath} docker exec -i {namespace}..{svcname}.container.2001 /bin/bash /docker-entrypoint-initdb.d/dbjobs"
+	svctask["command"] = "svcmgr -s {svcpath} docker exec -i {namespace}..{svcname}.container.db /bin/bash /docker-entrypoint-initdb.d/dbjobs"
 	svctask["user"] = "root"
-	svctask["run_requires"] = "fs#01(up,stdby up) container#01(up,stdby up)"
+	svctask["run_requires"] = "container#db(up,stdby up)"
 	return svctask
 }
 

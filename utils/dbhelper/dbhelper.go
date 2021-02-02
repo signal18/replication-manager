@@ -250,6 +250,7 @@ type Variable struct {
 type Binarylogs struct {
 	Log_name  string `json:"logName"`
 	File_size uint   `json:"fileSize"`
+	Encrypted string `json:"encrypted"` //mysql 8.0
 }
 
 type Explain struct {
@@ -362,14 +363,18 @@ func GetBinaryLogs(db *sqlx.DB, version *MySQLVersion) (map[string]uint, string,
 	rows, err := db.Queryx(query)
 
 	if err != nil {
-		return nil, query, errors.New("Could not get status variables")
+		return nil, query, errors.New("Could not get binary logs: " + err.Error())
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var v Binarylogs
-		err := rows.Scan(&v.Log_name, &v.File_size)
+		if version.IsMySQLOrPercona() && version.Major >= 8 {
+			err = rows.Scan(&v.Log_name, &v.File_size, &v.Encrypted)
+		} else {
+			err = rows.Scan(&v.Log_name, &v.File_size)
+		}
 		if err != nil {
-			return nil, query, errors.New("Could not get binary logs")
+			return nil, query, errors.New("Could not get binary logs: " + err.Error())
 		}
 		vars[v.Log_name] = v.File_size
 	}
