@@ -815,29 +815,45 @@ function (
           ]
         }
       };
-      $scope.$digest()
+//      $scope.$digest()
+   return null;
     };
     //end callServices
 
-    $scope.startPromise = function()  {
+  /*  $scope.startPromise = function()  {
       // https://github.com/angular/angular.js/issues/1522 $timeout replaced window.setTimeout
       promise =  window.setTimeout(function() {
         $scope.callServices();
         $scope.startPromise();
       }, $scope.refreshInterval);
     }
+    */
+
+
+
+    $scope.startPromise = function()  {
+
+          promise = $timeout(function() {
+            $timeout.cancel( $scope.promise);
+            $scope.callServices();
+            $scope.startPromise();
+          }, $scope.refreshInterval);
+        }
+
+
 
     $scope.start = function() {
       // Don't start if already defined
+
       if ( angular.isDefined( $scope.promise) ) return;
       $scope.startPromise();
     };
 
-/*     $scope.$on('$destroy', function() {
+  $scope.$on('$destroy', function() {
       $timeout.cancel( $scope.promise);
-      $scope.cancel();
+
     });
-*/
+
 
     $scope.calculateInterval = function(number) {
       $scope.refreshInterval += Number(number);
