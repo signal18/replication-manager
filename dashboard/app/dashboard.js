@@ -264,7 +264,9 @@ function (
 
       //  $scope.selectedPlan = "";
       // get list of clusters
-      if ($scope.selectedClusterName === undefined && $scope.selectedServer === undefined ) {
+    //  if ($scope.selectedClusterName === undefined && $scope.selectedServer === undefined ) {
+      if (!$scope.selectedClusterName && !$scope.selectedServer ) {
+
         Clusters.query({}, function (data) {
           if (data) {
             $scope.clusters = data;
@@ -322,7 +324,7 @@ function (
           $scope.reserror = true;
         });
       } // fetch server most of  the time
-      if ($scope.selectedClusterName && $scope.selectedServer === undefined ) {
+      if ($scope.selectedClusterName && !$scope.selectedServer ) {
         Cluster.query({clusterName: $scope.selectedClusterName}, function (data) {
           $scope.selectedCluster = data;
           function isInTags(array,array2, test){

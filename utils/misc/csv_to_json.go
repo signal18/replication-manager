@@ -9,10 +9,62 @@ package misc
 import (
 	"bytes"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+
+	"github.com/siddontang/go/log"
 )
+
+func ConvertCSVtoJSON(sourcefile string, destfile string, separator string) error {
+	file, err := os.Open(sourcefile)
+	if err != nil {
+		log.Errorf("failed opening file because: %s", err.Error())
+		return err
+	}
+	defer file.Close()
+
+	r := csv.NewReader(file)
+	r.TrimLeadingSpace = false
+	r.Comma = []rune(separator)[0]
+	rows, err := r.ReadAll()
+	if err != nil {
+		log.Fatal(err)
+	}
+	var res interface{}
+	if len(rows) > 1 {
+		header := rows[0]
+		rows = rows[1:]
+		objs := make([]map[string]string, len(rows))
+		for y, row := range rows {
+			obj := map[string]string{}
+			for x, cell := range row {
+				obj[header[x]] = cell
+			}
+			objs[y] = obj
+		}
+		res = objs
+	} else {
+		res = []map[string]string{}
+	}
+	output, err := json.Marshal(res)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fileout, err := os.OpenFile(destfile, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+
+	}
+	defer fileout.Close()
+	fileout.Truncate(0)
+	fileout.Write(output)
+	fileout.Write([]byte("\n"))
+
+	return nil
+}
 
 // parses the raw stats CSV output to a json string
 func CsvToJson(csvInput string) (string, error) {

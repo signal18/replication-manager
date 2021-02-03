@@ -12,6 +12,7 @@ package config
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -339,6 +340,8 @@ type Config struct {
 	ProvMaxConnections                        int    `mapstructure:"prov-db-max-connections" toml:"prov-db-max-connections" json:"provDbMaxConnections"`
 	ProvCores                                 string `mapstructure:"prov-db-cpu-cores" toml:"prov-db-cpu-cores" json:"provDbCpuCores"`
 	ProvTags                                  string `mapstructure:"prov-db-tags" toml:"prov-db-tags" json:"provDbTags"`
+	ProvBinaryInTarball                       bool   `mapstructure:"prov-db-binary-in-tarball" toml:"prov-db-binary-in-tarball" json:"provDbBinaryInTarball"`
+	ProvBinaryTarballName                     string `mapstructure:"prov-db-binary-tarball-name" toml:"prov-db-binary-tarball-name" json:"provDbBinaryTarballName"`
 	ProvDomain                                string `mapstructure:"prov-db-domain" toml:"prov-db-domain" json:"provDbDomain"`
 	ProvDisk                                  string `mapstructure:"prov-db-disk-size" toml:"prov-db-disk-size" json:"provDbDiskSize"`
 	ProvDiskSystemSize                        string `mapstructure:"prov-db-disk-system-size" toml:"prov-db-disk-system-size" json:"provDbDiskSystemSize"`
@@ -916,8 +919,8 @@ type Tarballs struct {
 	Tarballs []Tarball `json:"tarballs"`
 }
 
-func (conf *Config) GetTarballs(file string) ([]Tarball, error) {
-
+func (conf *Config) GetTarballs() ([]Tarball, error) {
+	file := conf.ShareDir + "/repo/tarballs.json"
 	var tarballs Tarballs
 	jsonFile, err := os.Open(file)
 	if err != nil {
@@ -934,4 +937,15 @@ func (conf *Config) GetTarballs(file string) ([]Tarball, error) {
 	}
 
 	return tarballs.Tarballs, nil
+}
+
+func (conf *Config) GetTarballUrl(name string) (string, error) {
+
+	tarballs, _ := conf.GetTarballs()
+	for _, tarball := range tarballs {
+		if tarball.Name == name {
+			return tarball.Url, nil
+		}
+	}
+	return "", errors.New("tarball not found in collection")
 }
