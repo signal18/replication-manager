@@ -194,7 +194,9 @@ func (cluster *Cluster) GetRejoinBackupBinlog() bool {
 func (cluster *Cluster) GetQps() int64 {
 	qps := int64(0)
 	for _, server := range cluster.Servers {
-		qps += server.QPS
+		if server != nil {
+			qps += server.QPS
+		}
 	}
 	return qps
 }
