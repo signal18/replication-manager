@@ -15,26 +15,7 @@
     </div>
 </div>
 
-<div class="hidden">
-    <div class="md-dialog-container" id="myNewServerDialog">
-        <md-dialog style="padding: 20px 20px 20px 20px;">
-            <h2 class="md-title">New Server</h2>
-            <form>
-                Host: <input type="text" ng-model="$parent.dlgServerName"><BR>
-                Port: <input type="text" ng-model="$parent.dlgServerPort">
-                Type:  <md-select  ng-model="$parent.selectedMonitor" ng-model-options="{trackBy: '$value.id'}">
-<md-option ng-value="monitor" ng-repeat="monitor in monitors">{{ monitor.name }}</md-option>
-</md-select>
-            </form>
-            <md-button ng-click="cancelNewServerDialog()" class="md-primary">
-                Cancel
-            </md-button>
-            <md-button ng-click="closeNewServerDialog()" class="md-primary">
-                Ok
-            </md-button>
-        </md-dialog>
-    </div>
-</div>
+
 <div class="hidden">
     <div class="md-dialog-container"  id="myNewClusterDialog">
         <md-dialog flex="50" style="padding: 20px 20px 20px 20px;">
@@ -62,118 +43,6 @@
         </md-dialog>
     </div>
 </div>
-<div class="hidden">
-    <div class="md-dialog-container" id="myClusterCredentialDialog">
-        <md-dialog style="padding: 20px 20px 20px 20px;">
-            <h2 class="md-title">Database Server Credential</h2>
-            <form>
-                User: <input type="text" ng-model="$parent.dlgClusterUser"><BR>
-                Password: <input type="password" ng-model="$parent.dlgClusterPassword" autocomplete="current-password">
-            </form>
-            <md-button ng-click="cancelClusterCredentialDialog()" class="md-primary">
-                Cancel
-            </md-button>
-            <md-button ng-click="closeClusterCredentialDialog()" class="md-primary">
-                Ok
-            </md-button>
-        </md-dialog>
-    </div>
-</div>
-<div class="hidden">
-    <div class="md-dialog-container" id="myClusterProxyCredentialDialog">
-        <md-dialog style="padding: 20px 20px 20px 20px;">
-            <h2 class="md-title">Proxy Server Credential</h2>
-            <form>
-                User: <input type="text" ng-model="$parent.dlgProxyClusterUser"><BR>
-                Password: <input type="password" ng-model="$parent.dlgProxyClusterPassword" autocomplete="current-password">
-            </form>
-            <md-button ng-click="cancelClusterProxyCredentialDialog()" class="md-primary">
-                Cancel
-            </md-button>
-            <md-button ng-click="closeClusterProxyCredentialDialog()" class="md-primary">
-                Ok
-            </md-button>
-        </md-dialog>
-    </div>
-</div>
-<div class="hidden">
-    <div class="md-dialog-container" id="myRplCredentialDialog">
-        <md-dialog style="padding: 20px 20px 20px 20px;">
-            <h2 class="md-title">Replication Credential</h2>
-            <form>
-                User: <input type="text" ng-model="$parent.dlgRplUser"><BR>
-                Password: <input type="password" ng-model="$parent.dlgRplPassword" autocomplete="current-password">
-            </form>
-            <md-button ng-click="cancelRplCredentialDialog()" class="md-primary">
-                Cancel
-            </md-button>
-            <md-button ng-click="closeRplCredentialDialog()" class="md-primary">
-                Ok
-            </md-button>
-        </md-dialog>
-    </div>
-</div>
-<div class="hidden">
-    <div class="md-dialog-container" id="myClusterDebugDialog">
-        <md-dialog style="padding: 20px 20px 20px 20px;">
-            <h2 class="md-title">JSON</h2>
-            <form>
-              <textarea name="message" rows="30" cols="150">
-                {{selectedCluster}}
-              </textarea>
-            </form>
-            <md-button ng-click="closeDebugClusterDialog()" class="md-primary">
-                Ok
-            </md-button>
-        </md-dialog>
-    </div>
-</div>
-<div class="hidden">
-    <div class="md-dialog-container" id="myServerDebugDialog">
-        <md-dialog style="padding: 20px 20px 20px 20px;">
-            <h2 class="md-title">JSON</h2>
-            <form>
-              <textarea name="message" rows="30" cols="150">
-                {{servers}}
-              </textarea>
-            </form>
-            <md-button ng-click="closeDebugServerDialog()" class="md-primary">
-                Ok
-            </md-button>
-        </md-dialog>
-    </div>
-</div>
-<div class="hidden">
-    <div class="md-dialog-container" id="myProxiesDebugDialog">
-        <md-dialog style="padding: 20px 20px 20px 20px;">
-            <h2 class="md-title">JSON</h2>
-            <form>
-              <textarea name="message" rows="30" cols="150">
-                {{proxies}}
-              </textarea>
-            </form>
-            <md-button ng-click="closeDebugServerDialog()" class="md-primary">
-                Ok
-            </md-button>
-        </md-dialog>
-    </div>
-</div>
-<div class="hidden">
-    <div class="md-dialog-container" id="myProcessListDialog">
-        <md-dialog style="padding: 20px 20px 20px 20px;">
-            <h2 class="md-title">JSON</h2>
-            <form>
-              <textarea name="message" rows="30" cols="150">
-                {{selectedCluster}}
-              </textarea>
-            </form>
-            <md-button ng-click="closeProcessListDialog" class="md-primary">
-                Ok
-            </md-button>
-        </md-dialog>
-    </div>
-</div>
-
 
 
 <div class="hidden" >
