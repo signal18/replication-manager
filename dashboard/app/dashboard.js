@@ -259,8 +259,8 @@ function (
 
 
     $scope.callServices = function () {
-      if (!AppService.hasAuthHeaders()) return;
-      if ($scope.menuOpened) return;
+      if (!AppService.hasAuthHeaders() || $scope.menuOpened == true) return;
+
 
       //  $scope.selectedPlan = "";
       // get list of clusters
@@ -851,9 +851,8 @@ function (
       $scope.startPromise();
     };
 
-  $scope.$on('$destroy', function() {
+    $scope.$on('$destroy', function() {
       $timeout.cancel( $scope.promise);
-
     });
 
 
@@ -1175,216 +1174,216 @@ function (
 
     $scope.saveLogicalBackupCron = function (selectedDbServersLogicalBackupHour,selectedDbServersLogicalBackupMin,selectedDbServersLogicalBackupSec,selectedDbServersLogicalBackupDay,selectedDbServersLogicalBackupMonth,selectedDbServersLogicalBackupWeek,selectedDbServersLogicalBackupHourTo,selectedDbServersLogicalBackupMinTo,selectedDbServersLogicalBackupSecTo,selectedDbServersLogicalBackupDayTo,selectedDbServersLogicalBackupMonthTo,selectedDbServersLogicalBackupWeekTo,selectedDbServersLogicalBackupHourPer,selectedDbServersLogicalBackupMinPer,selectedDbServersLogicalBackupSecPer) {
       value= selectedDbServersLogicalBackupSec;
-      if (selectedDbServersLogicalBackupSecTo !== undefined )   value += '-' + selectedDbServersLogicalBackupSecTo;
-      if (selectedDbServersLogicalBackupSecPer !== undefined )   value += '/' + selectedDbServersLogicalBackupSecPer;
+      if (selectedDbServersLogicalBackupSecTo)   value += '-' + selectedDbServersLogicalBackupSecTo;
+      if (selectedDbServersLogicalBackupSecPer)   value += '/' + selectedDbServersLogicalBackupSecPer;
 
       value += ' ' + selectedDbServersLogicalBackupMin;
-      if (selectedDbServersLogicalBackupMinTo !== undefined )   value += '-' + selectedDbServersLogicalBackupMinTo;
-      if (selectedDbServersLogicalBackupMinPer !== undefined )   value += '/' + selectedDbServersLogicalBackupMinPer;
+      if (selectedDbServersLogicalBackupMinTo)   value += '-' + selectedDbServersLogicalBackupMinTo;
+      if (selectedDbServersLogicalBackupMinPer)   value += '/' + selectedDbServersLogicalBackupMinPer;
 
       value += ' ' + selectedDbServersLogicalBackupHour;
-      if (selectedDbServersLogicalBackupHourTo !== undefined )   value += '-' + selectedDbServersLogicalBackupHourTo;
-      if (selectedDbServersLogicalBackupHourPer !== undefined )   value += '-' + selectedDbServersLogicalBackupHourPer;
+      if (selectedDbServersLogicalBackupHourTo)   value += '-' + selectedDbServersLogicalBackupHourTo;
+      if (selectedDbServersLogicalBackupHourPer)   value += '-' + selectedDbServersLogicalBackupHourPer;
 
       value += ' ' + selectedDbServersLogicalBackupDay;
-      if (selectedDbServersLogicalBackupDayTo !== undefined )   value += '-' + selectedDbServersLogicalBackupDayTo;
+      if (selectedDbServersLogicalBackupDayTo)   value += '-' + selectedDbServersLogicalBackupDayTo;
       value += ' ' + selectedDbServersLogicalBackupMonth;
-      if (selectedDbServersLogicalBackupMonthTo !== undefined )   value += '-' + selectedDbServersLogicalBackupMonthTo;
+      if (selectedDbServersLogicalBackupMonthTo)   value += '-' + selectedDbServersLogicalBackupMonthTo;
 
       value += ' ' + selectedDbServersLogicalBackupWeek;
-      if (selectedDbServersLogicalBackupWeekTo !== undefined )   value += '-' + selectedDbServersLogicalBackupWeekTo;
+      if (selectedDbServersLogicalBackupWeekTo)   value += '-' + selectedDbServersLogicalBackupWeekTo;
 
       if (confirm("Confirm save logical backup scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-logical-backups-cron/'+value);
     };
 
     $scope.savePhysicalBackupCron = function (selectedDbServersPhysicalBackupHour,selectedDbServersPhysicalBackupMin,selectedDbServersPhysicalBackupSec,selectedDbServersPhysicalBackupDay,selectedDbServersPhysicalBackupMonth,selectedDbServersPhysicalBackupWeek,selectedDbServersPhysicalBackupHourTo,selectedDbServersPhysicalBackupMinTo,selectedDbServersPhysicalBackupSecTo,selectedDbServersPhysicalBackupDayTo,selectedDbServersPhysicalBackupMonthTo,selectedDbServersPhysicalBackupWeekTo,selectedDbServersPhysicalBackupHourPer,selectedDbServersPhysicalBackupMinPer,selectedDbServersPhysicalBackupSecPer) {
       value= selectedDbServersPhysicalBackupSec;
-      if (selectedDbServersPhysicalBackupSecTo !== undefined )   value += '-' + selectedDbServersPhysicalBackupSecTo;
-      if (selectedDbServersPhysicalBackupSecPer !== undefined )   value += '/' + selectedDbServersPhysicalBackupSecPer;
+      if (selectedDbServersPhysicalBackupSecTo)   value += '-' + selectedDbServersPhysicalBackupSecTo;
+      if (selectedDbServersPhysicalBackupSecPer)   value += '/' + selectedDbServersPhysicalBackupSecPer;
 
       value += ' ' + selectedDbServersPhysicalBackupMin;
-      if (selectedDbServersPhysicalBackupMinTo !== undefined )   value += '-' + selectedDbServersPhysicalBackupMinTo;
-      if (selectedDbServersPhysicalBackupMinPer !== undefined )   value += '/' + selectedDbServersPhysicalBackupMinPer;
+      if (selectedDbServersPhysicalBackupMinTo)   value += '-' + selectedDbServersPhysicalBackupMinTo;
+      if (selectedDbServersPhysicalBackupMinPer)   value += '/' + selectedDbServersPhysicalBackupMinPer;
 
       value += ' ' + selectedDbServersPhysicalBackupHour;
-      if (selectedDbServersPhysicalBackupHourTo !== undefined )   value += '-' + selectedDbServersPhysicalBackupHourTo;
-      if (selectedDbServersPhysicalBackupHourPer !== undefined )   value += '-' + selectedDbServersPhysicalBackupHourPer;
+      if (selectedDbServersPhysicalBackupHourTo)   value += '-' + selectedDbServersPhysicalBackupHourTo;
+      if (selectedDbServersPhysicalBackupHourPer)   value += '-' + selectedDbServersPhysicalBackupHourPer;
 
       value += ' ' + selectedDbServersPhysicalBackupDay;
-      if (selectedDbServersPhysicalBackupDayTo !== undefined )   value += '-' + selectedDbServersPhysicalBackupDayTo;
+      if (selectedDbServersPhysicalBackupDayTo)   value += '-' + selectedDbServersPhysicalBackupDayTo;
       value += ' ' + selectedDbServersPhysicalBackupMonth;
-      if (selectedDbServersPhysicalBackupMonthTo !== undefined )   value += '-' + selectedDbServersPhysicalBackupMonthTo;
+      if (selectedDbServersPhysicalBackupMonthTo)   value += '-' + selectedDbServersPhysicalBackupMonthTo;
 
       value += ' ' + selectedDbServersPhysicalBackupWeek;
-      if (selectedDbServersPhysicalBackupWeekTo !== undefined )   value += '-' + selectedDbServersPhysicalBackupWeekTo;
+      if (selectedDbServersPhysicalBackupWeekTo)   value += '-' + selectedDbServersPhysicalBackupWeekTo;
 
       if (confirm("Confirm save Physical backup scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-physical-backups-cron/'+value);
     };
 
     $scope.saveOptimizeCron = function (selectedDbServersOptimizeHour,selectedDbServersOptimizeMin,selectedDbServersOptimizeSec,selectedDbServersOptimizeDay,selectedDbServersOptimizeMonth,selectedDbServersOptimizeWeek,selectedDbServersOptimizeHourTo,selectedDbServersOptimizeMinTo,selectedDbServersOptimizeSecTo,selectedDbServersOptimizeDayTo,selectedDbServersOptimizeMonthTo,selectedDbServersOptimizeWeekTo,selectedDbServersOptimizeHourPer,selectedDbServersOptimizeMinPer,selectedDbServersOptimizeSecPer) {
       value= selectedDbServersOptimizeSec;
-      if (selectedDbServersOptimizeSecTo !== undefined )   value += '-' + selectedDbServersOptimizeSecTo;
-      if (selectedDbServersOptimizeSecPer !== undefined )   value += '/' + selectedDbServersOptimizeSecPer;
+      if (selectedDbServersOptimizeSecTo)   value += '-' + selectedDbServersOptimizeSecTo;
+      if (selectedDbServersOptimizeSecPer)   value += '/' + selectedDbServersOptimizeSecPer;
 
       value += ' ' + selectedDbServersOptimizeMin;
-      if (selectedDbServersOptimizeMinTo !== undefined )   value += '-' + selectedDbServersOptimizeMinTo;
-      if (selectedDbServersOptimizeMinPer !== undefined )   value += '/' + selectedDbServersOptimizeMinPer;
+      if (selectedDbServersOptimizeMinTo)   value += '-' + selectedDbServersOptimizeMinTo;
+      if (selectedDbServersOptimizeMinPer)   value += '/' + selectedDbServersOptimizeMinPer;
 
       value += ' ' + selectedDbServersOptimizeHour;
-      if (selectedDbServersOptimizeHourTo !== undefined )   value += '-' + selectedDbServersOptimizeHourTo;
-      if (selectedDbServersOptimizeHourPer !== undefined )   value += '-' + selectedDbServersOptimizeHourPer;
+      if (selectedDbServersOptimizeHourTo)   value += '-' + selectedDbServersOptimizeHourTo;
+      if (selectedDbServersOptimizeHourPer)   value += '-' + selectedDbServersOptimizeHourPer;
 
       value += ' ' + selectedDbServersOptimizeDay;
-      if (selectedDbServersOptimizeDayTo !== undefined )   value += '-' + selectedDbServersOptimizeDayTo;
+      if (selectedDbServersOptimizeDayTo)   value += '-' + selectedDbServersOptimizeDayTo;
       value += ' ' + selectedDbServersOptimizeMonth;
-      if (selectedDbServersOptimizeMonthTo !== undefined )   value += '-' + selectedDbServersOptimizeMonthTo;
+      if (selectedDbServersOptimizeMonthTo)   value += '-' + selectedDbServersOptimizeMonthTo;
 
       value += ' ' + selectedDbServersOptimizeWeek;
-      if (selectedDbServersOptimizeWeekTo !== undefined )   value += '-' + selectedDbServersOptimizeWeekTo;
+      if (selectedDbServersOptimizeWeekTo)   value += '-' + selectedDbServersOptimizeWeekTo;
 
       if (confirm("Confirm save Optimize backup scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-optimize-cron/'+value);
     };
 
     $scope.saveLogsCron = function (selectedDbServersLogsHour,selectedDbServersLogsMin,selectedDbServersLogsSec,selectedDbServersLogsDay,selectedDbServersLogsMonth,selectedDbServersLogsWeek,selectedDbServersLogsHourTo,selectedDbServersLogsMinTo,selectedDbServersLogsSecTo,selectedDbServersLogsDayTo,selectedDbServersLogsMonthTo,selectedDbServersLogsWeekTo,selectedDbServersLogsHourPer,selectedDbServersLogsMinPer,selectedDbServersLogsSecPer) {
       value= selectedDbServersLogsSec;
-      if (selectedDbServersLogsSecTo !== undefined )   value += '-' + selectedDbServersLogsSecTo;
-      if (selectedDbServersLogsSecPer !== undefined )   value += '/' + selectedDbServersLogsSecPer;
+      if (selectedDbServersLogsSecTo)   value += '-' + selectedDbServersLogsSecTo;
+      if (selectedDbServersLogsSecPer)   value += '/' + selectedDbServersLogsSecPer;
 
       value += ' ' + selectedDbServersLogsMin;
-      if (selectedDbServersLogsMinTo !== undefined )   value += '-' + selectedDbServersLogsMinTo;
-      if (selectedDbServersLogsMinPer !== undefined )   value += '/' + selectedDbServersLogsMinPer;
+      if (selectedDbServersLogsMinTo)   value += '-' + selectedDbServersLogsMinTo;
+      if (selectedDbServersLogsMinPer)   value += '/' + selectedDbServersLogsMinPer;
 
       value += ' ' + selectedDbServersLogsHour;
-      if (selectedDbServersLogsHourTo !== undefined )   value += '-' + selectedDbServersLogsHourTo;
-      if (selectedDbServersLogsHourPer !== undefined )   value += '-' + selectedDbServersLogsHourPer;
+      if (selectedDbServersLogsHourTo)   value += '-' + selectedDbServersLogsHourTo;
+      if (selectedDbServersLogsHourPer)   value += '-' + selectedDbServersLogsHourPer;
 
       value += ' ' + selectedDbServersLogsDay;
-      if (selectedDbServersLogsDayTo !== undefined )   value += '-' + selectedDbServersLogsDayTo;
+      if (selectedDbServersLogsDayTo)   value += '-' + selectedDbServersLogsDayTo;
       value += ' ' + selectedDbServersLogsMonth;
-      if (selectedDbServersLogsMonthTo !== undefined )   value += '-' + selectedDbServersLogsMonthTo;
+      if (selectedDbServersLogsMonthTo)   value += '-' + selectedDbServersLogsMonthTo;
 
       value += ' ' + selectedDbServersLogsWeek;
-      if (selectedDbServersLogsWeekTo !== undefined )   value += '-' + selectedDbServersLogsWeekTo;
+      if (selectedDbServersLogsWeekTo)   value += '-' + selectedDbServersLogsWeekTo;
 
       if (confirm("Confirm save logs scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-logs-cron/'+value);
     };
 
     $scope.saveLogsTableRotateCron = function (selectedDbServersLogsTableRotateHour,selectedDbServersLogsTableRotateMin,selectedDbServersLogsTableRotateSec,selectedDbServersLogsTableRotateDay,selectedDbServersLogsTableRotateMonth,selectedDbServersLogsTableRotateWeek,selectedDbServersLogsTableRotateHourTo,selectedDbServersLogsTableRotateMinTo,selectedDbServersLogsTableRotateSecTo,selectedDbServersLogsTableRotateDayTo,selectedDbServersLogsTableRotateMonthTo,selectedDbServersLogsTableRotateWeekTo,selectedDbServersLogsTableRotateHourPer,selectedDbServersLogsTableRotateMinPer,selectedDbServersLogsTableRotateSecPer) {
       value= selectedDbServersLogsTableRotateSec;
-      if (selectedDbServersLogsTableRotateSecTo !== undefined )   value += '-' + selectedDbServersLogsTableRotateSecTo;
-      if (selectedDbServersLogsTableRotateSecPer !== undefined )   value += '/' + selectedDbServersLogsTableRotateSecPer;
+      if (selectedDbServersLogsTableRotateSecTo)   value += '-' + selectedDbServersLogsTableRotateSecTo;
+      if (selectedDbServersLogsTableRotateSecPer)   value += '/' + selectedDbServersLogsTableRotateSecPer;
 
       value += ' ' + selectedDbServersLogsTableRotateMin;
-      if (selectedDbServersLogsTableRotateMinTo !== undefined )   value += '-' + selectedDbServersLogsTableRotateMinTo;
-      if (selectedDbServersLogsTableRotateMinPer !== undefined )   value += '/' + selectedDbServersLogsTableRotateMinPer;
+      if (selectedDbServersLogsTableRotateMinTo)   value += '-' + selectedDbServersLogsTableRotateMinTo;
+      if (selectedDbServersLogsTableRotateMinPer)   value += '/' + selectedDbServersLogsTableRotateMinPer;
 
       value += ' ' + selectedDbServersLogsTableRotateHour;
-      if (selectedDbServersLogsTableRotateHourTo !== undefined )   value += '-' + selectedDbServersLogsTableRotateHourTo;
-      if (selectedDbServersLogsTableRotateHourPer !== undefined )   value += '-' + selectedDbServersLogsTableRotateHourPer;
+      if (selectedDbServersLogsTableRotateHourTo)   value += '-' + selectedDbServersLogsTableRotateHourTo;
+      if (selectedDbServersLogsTableRotateHourPer)   value += '-' + selectedDbServersLogsTableRotateHourPer;
 
       value += ' ' + selectedDbServersLogsTableRotateDay;
-      if (selectedDbServersLogsTableRotateDayTo !== undefined )   value += '-' + selectedDbServersLogsTableRotateDayTo;
+      if (selectedDbServersLogsTableRotateDayTo)   value += '-' + selectedDbServersLogsTableRotateDayTo;
       value += ' ' + selectedDbServersLogsTableRotateMonth;
-      if (selectedDbServersLogsTableRotateMonthTo !== undefined )   value += '-' + selectedDbServersLogsTableRotateMonthTo;
+      if (selectedDbServersLogsTableRotateMonthTo)   value += '-' + selectedDbServersLogsTableRotateMonthTo;
 
       value += ' ' + selectedDbServersLogsTableRotateWeek;
-      if (selectedDbServersLogsTableRotateWeekTo !== undefined )   value += '-' + selectedDbServersLogsTableRotateWeekTo;
+      if (selectedDbServersLogsTableRotateWeekTo)   value += '-' + selectedDbServersLogsTableRotateWeekTo;
 
       if (confirm("Confirm save LogsTableRotate scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-logs-table-rotate-cron/'+value);
     };
 
     $scope.saveRollingRestartCron = function (selectedRollingRestartHour,selectedRollingRestartMin,selectedRollingRestartSec,selectedRollingRestartDay,selectedRollingRestartMonth,selectedRollingRestartWeek,selectedRollingRestartHourTo,selectedRollingRestartMinTo,selectedRollingRestartSecTo,selectedRollingRestartDayTo,selectedRollingRestartMonthTo,selectedRollingRestartWeekTo,selectedRollingRestartHourPer,selectedRollingRestartMinPer,selectedRollingRestartSecPer) {
       value= selectedRollingRestartSec;
-      if (selectedRollingRestartSecTo !== undefined )   value += '-' + selectedRollingRestartSecTo;
-      if (selectedRollingRestartSecPer !== undefined )   value += '/' + selectedRollingRestartSecPer;
+      if (selectedRollingRestartSecTo)   value += '-' + selectedRollingRestartSecTo;
+      if (selectedRollingRestartSecPer)   value += '/' + selectedRollingRestartSecPer;
 
       value += ' ' + selectedRollingRestartMin;
-      if (selectedRollingRestartMinTo !== undefined )   value += '-' + selectedRollingRestartMinTo;
-      if (selectedRollingRestartMinPer !== undefined )   value += '/' + selectedRollingRestartMinPer;
+      if (selectedRollingRestartMinTo)   value += '-' + selectedRollingRestartMinTo;
+      if (selectedRollingRestartMinPer)   value += '/' + selectedRollingRestartMinPer;
 
       value += ' ' + selectedRollingRestartHour;
-      if (selectedRollingRestartHourTo !== undefined )   value += '-' + selectedRollingRestartHourTo;
-      if (selectedRollingRestartHourPer !== undefined )   value += '-' + selectedRollingRestartHourPer;
+      if (selectedRollingRestartHourTo)   value += '-' + selectedRollingRestartHourTo;
+      if (selectedRollingRestartHourPer)   value += '-' + selectedRollingRestartHourPer;
 
       value += ' ' + selectedRollingRestartDay;
-      if (selectedRollingRestartDayTo !== undefined )   value += '-' + selectedRollingRestartDayTo;
+      if (selectedRollingRestartDayTo)   value += '-' + selectedRollingRestartDayTo;
       value += ' ' + selectedRollingRestartMonth;
-      if (selectedRollingRestartMonthTo !== undefined )   value += '-' + selectedRollingRestartMonthTo;
+      if (selectedRollingRestartMonthTo)   value += '-' + selectedRollingRestartMonthTo;
 
       value += ' ' + selectedRollingRestartWeek;
-      if (selectedRollingRestartWeekTo !== undefined )   value += '-' + selectedRollingRestartWeekTo;
+      if (selectedRollingRestartWeekTo)   value += '-' + selectedRollingRestartWeekTo;
 
       if (confirm("Confirm save RollingRestart scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-rolling-restart-cron/'+value);
     };
 
     $scope.saveRollingReprovCron = function (selectedRollingReprovHour,selectedRollingReprovMin,selectedRollingReprovSec,selectedRollingReprovDay,selectedRollingReprovMonth,selectedRollingReprovWeek,selectedRollingReprovHourTo,selectedRollingReprovMinTo,selectedRollingReprovSecTo,selectedRollingReprovDayTo,selectedRollingReprovMonthTo,selectedRollingReprovWeekTo,selectedRollingReprovHourPer,selectedRollingReprovMinPer,selectedRollingReprovSecPer) {
       value= selectedRollingReprovSec;
-      if (selectedRollingReprovSecTo !== undefined )   value += '-' + selectedRollingReprovSecTo;
-      if (selectedRollingReprovSecPer !== undefined )   value += '/' + selectedRollingReprovSecPer;
+      if (selectedRollingReprovSecTo)   value += '-' + selectedRollingReprovSecTo;
+      if (selectedRollingReprovSecPer)   value += '/' + selectedRollingReprovSecPer;
 
       value += ' ' + selectedRollingReprovMin;
-      if (selectedRollingReprovMinTo !== undefined )   value += '-' + selectedRollingReprovMinTo;
-      if (selectedRollingReprovMinPer !== undefined )   value += '/' + selectedRollingReprovMinPer;
+      if (selectedRollingReprovMinTo)   value += '-' + selectedRollingReprovMinTo;
+      if (selectedRollingReprovMinPer)   value += '/' + selectedRollingReprovMinPer;
 
       value += ' ' + selectedRollingReprovHour;
-      if (selectedRollingReprovHourTo !== undefined )   value += '-' + selectedRollingReprovHourTo;
-      if (selectedRollingReprovHourPer !== undefined )   value += '-' + selectedRollingReprovHourPer;
+      if (selectedRollingReprovHourTo)   value += '-' + selectedRollingReprovHourTo;
+      if (selectedRollingReprovHourPer)   value += '-' + selectedRollingReprovHourPer;
 
       value += ' ' + selectedRollingReprovDay;
-      if (selectedRollingReprovDayTo !== undefined )   value += '-' + selectedRollingReprovDayTo;
+      if (selectedRollingReprovDayTo)   value += '-' + selectedRollingReprovDayTo;
       value += ' ' + selectedRollingReprovMonth;
-      if (selectedRollingReprovMonthTo !== undefined )   value += '-' + selectedRollingReprovMonthTo;
+      if (selectedRollingReprovMonthTo)   value += '-' + selectedRollingReprovMonthTo;
 
       value += ' ' + selectedRollingReprovWeek;
-      if (selectedRollingReprovWeekTo !== undefined )   value += '-' + selectedRollingReprovWeekTo;
+      if (selectedRollingReprovWeekTo)   value += '-' + selectedRollingReprovWeekTo;
 
       if (confirm("Confirm save RollingReprov scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-rolling-reprov-cron/'+value);
     };
 
     $scope.saveJobsSshCron = function (selectedJobsSshHour,selectedJobsSshMin,selectedJobsSshSec,selectedJobsSshDay,selectedJobsSshMonth,selectedJobsSshWeek,selectedJobsSshHourTo,selectedJobsSshMinTo,selectedJobsSshSecTo,selectedJobsSshDayTo,selectedJobsSshMonthTo,selectedJobsSshWeekTo,selectedJobsSshHourPer,selectedJobsSshMinPer,selectedJobsSshSecPer) {
       value= selectedJobsSshSec;
-      if (selectedJobsSshSecTo !== undefined )   value += '-' + selectedJobsSshSecTo;
-      if (selectedJobsSshSecPer !== undefined )   value += '/' + selectedJobsSshSecPer;
+      if (selectedJobsSshSecTo)   value += '-' + selectedJobsSshSecTo;
+      if (selectedJobsSshSecPer)   value += '/' + selectedJobsSshSecPer;
 
       value += ' ' + selectedJobsSshMin;
-      if (selectedJobsSshMinTo !== undefined )   value += '-' + selectedJobsSshMinTo;
-      if (selectedJobsSshMinPer !== undefined )   value += '/' + selectedJobsSshMinPer;
+      if (selectedJobsSshMinTo)   value += '-' + selectedJobsSshMinTo;
+      if (selectedJobsSshMinPer)   value += '/' + selectedJobsSshMinPer;
 
       value += ' ' + selectedJobsSshHour;
-      if (selectedJobsSshHourTo !== undefined )   value += '-' + selectedJobsSshHourTo;
-      if (selectedJobsSshHourPer !== undefined )   value += '-' + selectedJobsSshHourPer;
+      if (selectedJobsSshHourTo)   value += '-' + selectedJobsSshHourTo;
+      if (selectedJobsSshHourPer)   value += '-' + selectedJobsSshHourPer;
 
       value += ' ' + selectedJobsSshDay;
-      if (selectedJobsSshDayTo !== undefined )   value += '-' + selectedJobsSshDayTo;
+      if (selectedJobsSshDayTo)   value += '-' + selectedJobsSshDayTo;
       value += ' ' + selectedJobsSshMonth;
-      if (selectedJobsSshMonthTo !== undefined )   value += '-' + selectedJobsSshMonthTo;
+      if (selectedJobsSshMonthTo)   value += '-' + selectedJobsSshMonthTo;
 
       value += ' ' + selectedJobsSshWeek;
-      if (selectedJobsSshWeekTo !== undefined )   value += '-' + selectedJobsSshWeekTo;
+      if (selectedJobsSshWeekTo)   value += '-' + selectedJobsSshWeekTo;
 
       if (confirm("Confirm save JobsSsh scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-jobs-ssh-cron/'+value);
     };
 
     $scope.saveSlaRotateCron = function (selectedSlaRotateHour,selectedSlaRotateMin,selectedSlaRotateSec,selectedSlaRotateDay,selectedSlaRotateMonth,selectedSlaRotateWeek,selectedSlaRotateHourTo,selectedSlaRotateMinTo,selectedSlaRotateSecTo,selectedSlaRotateDayTo,selectedSlaRotateMonthTo,selectedSlaRotateWeekTo,selectedSlaRotateHourPer,selectedSlaRotateMinPer,selectedSlaRotateSecPer) {
       value= selectedSlaRotateSec;
-      if (selectedSlaRotateSecTo !== undefined )   value += '-' + selectedSlaRotateSecTo;
-      if (selectedSlaRotateSecPer !== undefined )   value += '/' + selectedSlaRotateSecPer;
+      if (selectedSlaRotateSecTo)   value += '-' + selectedSlaRotateSecTo;
+      if (selectedSlaRotateSecPer)   value += '/' + selectedSlaRotateSecPer;
 
       value += ' ' + selectedSlaRotateMin;
-      if (selectedSlaRotateMinTo !== undefined )   value += '-' + selectedSlaRotateMinTo;
-      if (selectedSlaRotateMinPer !== undefined )   value += '/' + selectedSlaRotateMinPer;
+      if (selectedSlaRotateMinTo)   value += '-' + selectedSlaRotateMinTo;
+      if (selectedSlaRotateMinPer)   value += '/' + selectedSlaRotateMinPer;
 
       value += ' ' + selectedSlaRotateHour;
-      if (selectedSlaRotateHourTo !== undefined )   value += '-' + selectedSlaRotateHourTo;
-      if (selectedSlaRotateHourPer !== undefined )   value += '-' + selectedSlaRotateHourPer;
+      if (selectedSlaRotateHourTo)   value += '-' + selectedSlaRotateHourTo;
+      if (selectedSlaRotateHourPer)   value += '-' + selectedSlaRotateHourPer;
 
       value += ' ' + selectedSlaRotateDay;
-      if (selectedSlaRotateDayTo !== undefined )   value += '-' + selectedSlaRotateDayTo;
+      if (selectedSlaRotateDayTo)   value += '-' + selectedSlaRotateDayTo;
       value += ' ' + selectedSlaRotateMonth;
-      if (selectedSlaRotateMonthTo !== undefined )   value += '-' + selectedSlaRotateMonthTo;
+      if (selectedSlaRotateMonthTo)   value += '-' + selectedSlaRotateMonthTo;
 
       value += ' ' + selectedSlaRotateWeek;
-      if (selectedSlaRotateWeekTo !== undefined )   value += '-' + selectedSlaRotateWeekTo;
+      if (selectedSlaRotateWeekTo)   value += '-' + selectedSlaRotateWeekTo;
 
       if (confirm("Confirm save SlaRotate scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-sla-rotate-cron/'+value);
     };
@@ -1510,7 +1509,10 @@ function (
       };
 
       $scope.openCluster = function (clusterName) {
+        $timeout.cancel( $scope.promise);
+        $scope.selectedTab='Dashboard';
         $scope.selectedClusterName = clusterName;
+        $scope.start();
       };
 
       $scope.back = function () {

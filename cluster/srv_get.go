@@ -648,6 +648,15 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 	}
 	server.ClusterGroup.LogPrintf(LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	// Extract files
+	url, err := server.ClusterGroup.Conf.GetTarballUrl(server.ClusterGroup.Conf.ProvBinaryTarballName)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Compliance get binary %s directory  %s", url, err)
+	}
+	err = misc.DownloadFileTimeout(url, server.Datadir+"/"+server.ClusterGroup.Conf.ProvBinaryTarballName, 1200)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Compliance dowload binary %s directory  %s", url, err)
+	}
+	misc.Untargz(server.Datadir+"/init", server.Datadir+"/"+server.ClusterGroup.Conf.ProvBinaryTarballName)
 	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 		os.RemoveAll(server.Datadir + "/init/etc")
 	} else {
