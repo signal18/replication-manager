@@ -266,6 +266,8 @@ function (
       // get list of clusters
     //  if ($scope.selectedClusterName === undefined && $scope.selectedServer === undefined ) {
       if (!$scope.selectedClusterName && !$scope.selectedServer ) {
+        console.log($scope.selectedServer);
+
 
         Clusters.query({}, function (data) {
           if (data) {
@@ -303,6 +305,7 @@ function (
         });
 
       }
+      // end !$scope.selectedServer & $scope.selectedClusterName
       if ($scope.selectedClusterName ) {
         Servers.query({clusterName: $scope.selectedClusterName}, function (data) {
           if (!$scope.menuOpened) {
