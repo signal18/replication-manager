@@ -754,7 +754,12 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", server.Datadir+"/init/data", err)
 		}
+		err = misc.ChownR(server.Datadir+"/init/init", 755, 755)
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", server.Datadir+"/init/init", err)
+		}
 	}
+
 	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/ca-cert.pem", server.Datadir+"/init/etc/mysql/ssl/ca-cert.pem")
 	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/server-cert.pem", server.Datadir+"/init/etc/mysql/ssl/server-cert.pem")
 	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/server-key.pem", server.Datadir+"/init/etc/mysql/ssl/server-key.pem")
