@@ -10,7 +10,7 @@ function help {
 }
 [ -z $REPLICATION_MANAGER_USER ] && help && exit 1
 [ -z $REPLICATION_MANAGER_PASSWORD ] && help && exit 1
-[ -z $REPLICATION_MANAGER_API ] && help && exit 1
+[ -z $REPLICATION_MANAGER_URL ] && help && exit 1
 [ -z $REPLICATION_MANAGER_CLUSTER_NAME ] && help && exit 1
 [ -z $REPLICATION_MANAGER_HOST_NAME ] && help && exit 1
 [ -z $REPLICATION_MANAGER_HOST_PORT ] && help && exit 1
@@ -23,4 +23,4 @@ function get {
 }
 
 rm -rf  /bootstrap/etc /bootstrap/init
-get $REPLICATION_MANAGER_API/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config | tar xzvf - -C /bootstrap
+get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config | tar xzvf - -C /bootstrap

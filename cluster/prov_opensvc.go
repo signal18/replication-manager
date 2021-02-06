@@ -127,9 +127,9 @@ func (cluster *Cluster) OpenSVCCreateMaps() error {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_USER", err)
 	}
-	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_API", "https://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.APIPort+"/api")
+	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_URL", "https://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.APIPort)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_API", err)
+		cluster.LogPrintf(LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_URL", err)
 	}
 	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_CLUSTER_NAME", cluster.GetClusterName())
 	if err != nil {
