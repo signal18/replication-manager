@@ -39,13 +39,13 @@
                     <div ng-if="selectedTab=='Agents'"  ng-include src="'static/tab-cluster-agents.html'"></div>
                 </md-tab>
                 <md-tab md-select-id="Certificates" ng-click="onTabClicked('Certificates')" md-on-select="onTabSelected" label="Certificates" ng-if="settings.config.enterprise && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-certificates']==true">
-                    <div ng-if="selectedTab=='Certificates' "ng-include src="'static/tab-cluster-certificates.html'"></div>
+                    <div ng-if="selectedTab=='Certificates'" ng-include src="'static/tab-cluster-certificates.html'"></div>
                 </md-tab>
                 <md-tab md-select-id="Backups" ng-click="onTabClicked('Backups')" md-on-select="onTabSelected" label="Backups" ng-if="selectedCluster.config.backupRestic && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-backups']==true">
-                    <div ng-if="selectedTab=='Backups' ng-include src="'static/tab-cluster-backups.html'"></div>
+                    <div ng-if="selectedTab=='Backups'" ng-include src="'static/tab-cluster-backups.html'"></div>
                 </md-tab>
                 <md-tab md-select-id="QueryRules" ng-click="onTabClicked('QueryRules')" md-on-select="onTabSelected" label="QueryRules" ng-if="selectedCluster.config.proxysql && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-agents']==true">
-                    <div  ng-if="selectedTab=='QueryRules' ng-include src="'static/tab-cluster-queryrules.html'"></div>
+                    <div  ng-if="selectedTab=='QueryRules'" ng-include src="'static/tab-cluster-queryrules.html'"></div>
                 </md-tab>
 
                 <md-tab ng-if="selectedServer && !selectedQuery && selectedCluster.apiUsers[user].grants['db-show-process']==true" ng-click="onTabClicked('Processlist')"  md-select-id="Processlist" md-on-select="onTabSelected" label="Processlist" >

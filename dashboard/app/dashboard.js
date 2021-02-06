@@ -48,7 +48,7 @@ function (
   $scope.selectedAcls = [];
   $scope.selectedUserIndex = undefined;
   $scope.newUserAcls = undefined;
-  $scope.refreshInterval = 2000;
+  $scope.refreshInterval = undefined;
   $scope.digestmode = "pfs";
 
   $scope.missingDBTags = undefined;
@@ -266,20 +266,14 @@ function (
       // get list of clusters
     //  if ($scope.selectedClusterName === undefined && $scope.selectedServer === undefined ) {
       if (!$scope.selectedClusterName && !$scope.selectedServer ) {
-        console.log($scope.selectedServer);
-
-
-        Clusters.query({}, function (data) {
+          Clusters.query({}, function (data) {
           if (data) {
             $scope.clusters = data;
 
             if ($scope.clusters.length === 1 && $scope.settings.config.monitoringSaveConfig==false &&  $scope.clusters[0].name=="Default" ) {
                $scope.selectedClusterName = $scope.clusters[0].name;
             }
-      //      alert( $scope.selectedClusterName );
-            //else {
-            //  $scope.refreshInterval = 2000;
-          //  }
+
           }
         }, function () {
           $scope.reserror = true;
@@ -292,8 +286,10 @@ function (
             $scope.selectedPlan = $scope.plans[12];
             $scope.selectedOrchestrator= $scope.orchestrators[3];
             $scope.selectedPlanName =  $scope.selectedPlan.plan;
-            if ($scope.newUserAcls === undefined)  {
+            //     if ($scope.newUserAcls === undefined)  {
             //  alert(data.config.httpRefreshInterval);
+            //
+            if (!$scope.refreshInterval) {
                 $scope.refreshInterval = 	$scope.settings.config.httpRefreshInterval;
             }
             $scope.newUserAcls = JSON.parse(JSON.stringify($scope.settings.serviceAcl));
@@ -307,6 +303,7 @@ function (
       }
       // end !$scope.selectedServer & $scope.selectedClusterName
       if ($scope.selectedClusterName ) {
+          console.log($scope.selectedClusterName);
         Servers.query({clusterName: $scope.selectedClusterName}, function (data) {
           if (!$scope.menuOpened) {
             if (data) {
@@ -837,9 +834,9 @@ function (
 
 
     $scope.startPromise = function()  {
-
+          $timeout.cancel( $scope.promise);
+          console.log(  $scope.refreshInterval);
           promise = $timeout(function() {
-            $timeout.cancel( $scope.promise);
             $scope.callServices();
             $scope.startPromise();
           }, $scope.refreshInterval);
@@ -848,9 +845,9 @@ function (
 
 
     $scope.start = function() {
+      console.log("start promise");
       // Don't start if already defined
-
-      if ( angular.isDefined( $scope.promise) ) return;
+      if ( $scope.promise ) return;
       $scope.startPromise();
     };
 
@@ -861,9 +858,6 @@ function (
 
     $scope.calculateInterval = function(number) {
       $scope.refreshInterval += Number(number);
-      //change the interval
-      $timeout.cancel( $scope.promise);
-      $scope.startPromise();
     };
 
     $scope.checkIfAllowedInterval = function(number){
@@ -1515,7 +1509,7 @@ function (
         $timeout.cancel( $scope.promise);
         $scope.selectedTab='Dashboard';
         $scope.selectedClusterName = clusterName;
-        $scope.start();
+      //  $scope.start();
       };
 
       $scope.back = function () {
