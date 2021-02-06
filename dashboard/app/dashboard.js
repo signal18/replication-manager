@@ -53,7 +53,7 @@ function (
 
   $scope.missingDBTags = undefined;
   $scope.missingProxyTags = undefined;
-  var promise = undefined;
+  $scope.promise = undefined;
 
   $scope.user = undefined ;
 
@@ -233,6 +233,8 @@ function (
     $scope.isLoggedIn = AppService.hasAuthHeaders();
     if (!$scope.isLoggedIn) {
       $location.path('login');
+      return null;
+
     } else {
       $scope.user = AppService.getUser();
     }
@@ -258,10 +260,15 @@ function (
     };
 
 
-    $scope.callServices = function () {
-      if (!AppService.hasAuthHeaders() || $scope.menuOpened == true) return;
+     $scope.callServices = function () {
 
 
+       $scope.isLoggedIn = AppService.hasAuthHeaders();
+       
+      if (!AppService.hasAuthHeaders() || $scope.menuOpened == true)  {
+        $timeout.cancel( $scope.promise);
+        return null;
+      }
       //  $scope.selectedPlan = "";
       // get list of clusters
     //  if ($scope.selectedClusterName === undefined && $scope.selectedServer === undefined ) {
@@ -836,11 +843,13 @@ function (
     $scope.startPromise = function()  {
           $timeout.cancel( $scope.promise);
           console.log(  $scope.refreshInterval);
+      if ($scope.isLoggedIn) {
           promise = $timeout(function() {
             $scope.callServices();
             $scope.startPromise();
           }, $scope.refreshInterval);
-        }
+      }
+    };
 
 
 
