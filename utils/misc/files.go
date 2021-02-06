@@ -18,6 +18,15 @@ func ChownR(path string, uid, gid int) error {
 	})
 }
 
+func ChmodR(path string, perm os.FileMode) error {
+	return filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
+		if err == nil {
+			err = os.Chmod(name, perm)
+		}
+		return err
+	})
+}
+
 func ReadFile(src string) (string, error) {
 	filerc, err := os.Open(src)
 	if err != nil {
