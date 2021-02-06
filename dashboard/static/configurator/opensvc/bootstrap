@@ -17,7 +17,7 @@ function help {
 
 GET="wget -q --no-check-certificate -O- --header Content-Type:application/json"
 AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLICATION_MANAGER_PASSWORD\"}"
-TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html $REPLICATION_MANAGER_API/login)
+TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html $REPLICATION_MANAGER_URL/api/login)
 function get {
 	$GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" $@
 }
