@@ -58,17 +58,28 @@ func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor)
 	cluster.errorChan <- nil
 }
 
-func (cluster *Cluster) OnPremiseSUnprovisionDatabaseService(s *ServerMonitor) {
+func (cluster *Cluster) OnPremiseSUnprovisionDatabaseService(server *ServerMonitor) {
 
 	cluster.errorChan <- nil
 
 }
 
-func (cluster *Cluster) OnPremiseStopDatabaseService(s *ServerMonitor) {
+func (cluster *Cluster) OnPremiseStopDatabaseService(server *ServerMonitor) {
 	//s.JobServerStop() need an agent or ssh to trigger this
-	s.Shutdown()
+	server.Shutdown()
 }
 
-func (cluster *Cluster) OnPremiseStartDatabaseService(s *ServerMonitor) {
-	s.SetWaitStartCookie()
+func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) {
+
+	server.SetWaitStartCookie()
+	client, err := cluster.OnPremiseConnect(server)
+	if err != nil {
+		cluster.errorChan <- err
+	}
+	defer client.Close()
+	out, err := client.Cmd("systemctl stop mysql").SmartOutput()
+	if err != nil {
+		cluster.errorChan <- err
+	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise Provisioning  : %s", string(out))
 }

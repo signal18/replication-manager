@@ -419,7 +419,7 @@ func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, prx *Proxy) ma
 	svcenv := make(map[string]string)
 	svcenv["nodes"] = prx.Agent
 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
-	svcenv["size"] = cluster.Conf.ProvProxDisk + "b"
+	svcenv["size"] = cluster.Conf.ProvProxDisk + "g"
 	svcenv["ip_pod01"] = prx.Host
 	svcenv["port_pod01"] = prx.Port
 	svcenv["network"] = network

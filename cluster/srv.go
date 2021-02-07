@@ -1239,7 +1239,11 @@ func (server *ServerMonitor) Shutdown() error {
 	if server.Conn == nil {
 		return errors.New("No database connection pool")
 	}
-	_, err := server.Conn.Exec("SHUTDOWN")
+	cmd := "SHUTDOWN"
+	if server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 4 {
+		cmd = "SHUTDOWN WAIT FOR ALL SLAVES"
+	}
+	_, err := server.Conn.Exec(cmd)
 	if err != nil {
 		server.ClusterGroup.LogPrintf("TEST", "Shutdown failed %s", err)
 		return err
