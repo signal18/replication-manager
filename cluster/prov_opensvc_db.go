@@ -236,6 +236,7 @@ func (server *ServerMonitor) OpenSVCGetDBDefaultSection() map[string]string {
 		svcdefault["orchestrate"] = "start"
 	} else {
 		svcdefault["rollback"] = "false"
+		svcdefault["orchestrate"] = "ha"
 	}
 	svcdefault["app"] = server.ClusterGroup.Conf.ProvCodeApp
 	if server.ClusterGroup.Conf.ProvType == "docker" {
