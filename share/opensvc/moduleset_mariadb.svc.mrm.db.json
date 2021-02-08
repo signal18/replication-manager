@@ -3764,14 +3764,6 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/dbjobs_start.sh\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/sh\\nnohup /docker-entrypoint-initdb.d/dbjobs_launcher &\"}",
-                    "var_updated": "2021-02-05 13:14:29",
-                    "var_name": "db_cnf_script_dbjobs_start",
-                    "id": 6266
-                },
-                {
-                    "var_author": "admin Manager",
-                    "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/bootstrap\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\n. \\nwget -q -O- --no-check-certificate $REPLICATION_MANAGER_URL/static/configurator/opensvc/bootstrap | sh\"}",
                     "var_updated": "2021-02-05 21:00:18",
                     "var_name": "db_cnf_script_bootstrap",

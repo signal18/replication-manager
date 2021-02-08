@@ -271,16 +271,34 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 		svccontainer["run_args"] = "--ulimit nofile=262144:262144"
-		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw`
+		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 
 		//Proceed with galera specific
 		if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
 			if server.ClusterGroup.GetMaster() == nil {
 				server.ClusterGroup.vmaster = server
-				svccontainer["run_command"] = "mysqld --wsrep_new_cluster"
+				svccontainer["command"] = "mysqld --wsrep_new_cluster"
 			}
 		}
+	}
+	return svccontainer
+}
+
+func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string {
+	svccontainer := make(map[string]string)
+	if server.ClusterGroup.Conf.ProvType == "docker" || server.ClusterGroup.Conf.ProvType == "podman" {
+		svccontainer["tags"] = ""
+		svccontainer["netns"] = "container#01"
+		svccontainer["rm"] = "true"
+		svccontainer["image"] = "{env.docker_image}"
+		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
+		svccontainer["run_args"] = "--ulimit nofile=262144:262144"
+		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
+		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
+		svccontainer["command"] = "/docker-entrypoint-initdb.d/dbjobs_launcher"
+		svccontainer["entrypoint"] = "/bin/bash"
 	}
 	return svccontainer
 }
@@ -573,6 +591,9 @@ func (cluster *Cluster) OpenSVCGetVolumeDataSection() map[string]string {
 	svcvol["name"] = "{name}"
 	svcvol["pool"] = cluster.Conf.ProvVolumeData
 	svcvol["size"] = "{env.size}"
+	svcvol["directories"] = "run/mysqld"
+	svcvol["user"] = "999"
+	svcvol["group"] = "999"
 	return svcvol
 }
 
@@ -626,6 +647,7 @@ func (server *ServerMonitor) GenerateDBTemplateV2() (string, error) {
 	svcsection["container#01"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetInitContainerSection(server.Port)
 	svcsection["container#db"] = server.OpenSVCGetDBContainerSection()
+	svcsection["container#jobs"] = server.OpenSVCGetJobsContainerSection()
 
 	//	svcsection["task#01"] = server.ClusterGroup.OpenSVCGetTaskJobsSection()
 	svcsection["env"] = server.OpenSVCGetDBEnvSection()

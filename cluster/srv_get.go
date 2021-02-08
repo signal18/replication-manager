@@ -754,7 +754,7 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", server.Datadir+"/init/data", err)
 		}
-		err = misc.ChmodR(server.Datadir+"/init/init", 0700)
+		err = misc.ChmodR(server.Datadir+"/init/init", 0755)
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", server.Datadir+"/init/init", err)
 		}
