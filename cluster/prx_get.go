@@ -82,16 +82,6 @@ func (prx *Proxy) GetCluster() (*sqlx.DB, error) {
 func (proxy *Proxy) GetProxyConfig() string {
 	proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
 
-	if proxy.Type == config.ConstProxySpider {
-		if proxy.ShardProxy == nil {
-			proxy.ClusterGroup.LogPrintf(LvlErr, "Can't get shard proxy config start monitoring")
-			proxy.ClusterGroup.ShardProxyBootstrap(proxy)
-			return proxy.ShardProxy.GetDatabaseConfig()
-		} else {
-			return proxy.ShardProxy.GetDatabaseConfig()
-		}
-	}
-
 	type File struct {
 		Path    string `json:"path"`
 		Content string `json:"fmt"`

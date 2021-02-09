@@ -65,6 +65,10 @@ type Proxy struct {
 	Agent           string               `json:"agent"`
 }
 
+func (p *Proxy) GetAgent() string {
+	return p.Agent
+}
+
 func (p *Proxy) GetType() string {
 	return p.Type
 }
@@ -121,6 +125,10 @@ func (p *Proxy) SetPrevState(state string) {
 	p.PrevState = state
 }
 
+func (p *Proxy) SetSuspect() {
+	p.State = stateSuspect
+}
+
 type DatabaseProxy interface {
 	// Init oldmaster is only currently used by Maxscale
 	Init()
@@ -144,6 +152,7 @@ type DatabaseProxy interface {
 	GetFailCount() int
 	SetFailCount(c int)
 
+	GetAgent() string
 	GetName() string
 	GetHost() string
 	GetPort() string
@@ -187,6 +196,8 @@ type DatabaseProxy interface {
 	OpenSVCGetProxyDefaultSection() map[string]string
 	SetWaitStartCookie()
 	SetWaitStopCookie()
+
+	SetSuspect()
 }
 
 type Backend struct {
@@ -323,7 +334,8 @@ func (cluster *Cluster) newProxyList() error {
 		prx.SetDataDir()
 		prx.SetServiceName(cluster.Name, prx.Name)
 		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
-		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
+		prx.State = stateSuspect
+		cluster.Proxies[ctproxy] = prx
 		ctproxy++
 	}
 	if cluster.Conf.ProxysqlOn {
@@ -331,12 +343,6 @@ func (cluster *Cluster) newProxyList() error {
 		for k, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
 			prx := NewProxySQLProxy(cluster.Name, proxyHost, cluster.Conf)
 			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSProxySQLPartitions, cluster.Conf.ProxysqlHostsIPV6)
-			if k < len(slapospartitions) {
-				prx.SlapOSDatadir = slapospartitions[k]
-			}
-			if k < len(ipv6hosts) {
-				prx.HostIPV6 = ipv6hosts[k]
-			}
 
 			if cluster.key != nil {
 				p := crypto.Password{Key: cluster.key}
@@ -361,12 +367,6 @@ func (cluster *Cluster) newProxyList() error {
 		for k, proxyHost := range strings.Split(cluster.Conf.MdbsProxyHosts, ",") {
 			prx := new(MdbsProxy)
 			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSShardProxyPartitions, cluster.Conf.MdbsHostsIPV6)
-			if k < len(slapospartitions) {
-				prx.SlapOSDatadir = slapospartitions[k]
-			}
-			if k < len(ipv6hosts) {
-				prx.HostIPV6 = ipv6hosts[k]
-			}
 			prx.Type = config.ConstProxySpider
 			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
 			prx.User, prx.Pass = misc.SplitPair(cluster.Conf.MdbsProxyCredential)
@@ -448,19 +448,12 @@ func (cluster *Cluster) newProxyList() error {
 		prx.SetDataDir()
 		prx.SetServiceName(cluster.Name, prx.Name)
 		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
-		cluster.Proxies[ctproxy], err = cluster.newProxy(prx)
+		prx.State = stateSuspect
+		cluster.Proxies[ctproxy] = prx
 		ctproxy++
 	}
 
 	return nil
-}
-
-// TODO: clarify why this happens
-func (cluster *Cluster) newProxy(p *Proxy) (*Proxy, error) {
-	proxy := new(Proxy)
-	proxy = p
-	proxy.State = stateSuspect
-	return proxy, nil
 }
 
 func (cluster *Cluster) InjectProxiesTraffic() {

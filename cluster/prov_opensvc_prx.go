@@ -32,7 +32,7 @@ func (cluster *Cluster) OpenSVCStopProxyService(server DatabaseProxy) error {
 		}
 		svc.StopService(agent.Node_id, service.Svc_id)
 	} else {
-		err := svc.StopServiceV2(cluster.Name, server.GetServiceName(), server.Agent)
+		err := svc.StopServiceV2(cluster.Name, server.GetServiceName(), server.GetAgent())
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
 			return err
@@ -54,7 +54,7 @@ func (cluster *Cluster) OpenSVCStartProxyService(server DatabaseProxy) error {
 		}
 		svc.StartService(agent.Node_id, service.Svc_id)
 	} else {
-		err := svc.StartServiceV2(cluster.Name, server.GetServiceName(), server.Agent)
+		err := svc.StartServiceV2(cluster.Name, server.GetServiceName(), server.GetAgent())
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
 			return err
@@ -302,12 +302,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 	return nil
 }
 
-<<<<<<< HEAD
-func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.Host, pri DatabaseProxy) (string, error) {
-=======
 func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabaseProxy) (string, error) {
->>>>>>> 80837f54dec55bac9b6fc7c27f9e18a07f795b50
-
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = pri.OpenSVCGetProxyDefaultSection()
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
@@ -329,7 +324,7 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabasePr
 	}
 
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
-	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(prx.GetPort())
+	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(pri.GetPort())
 
 	if prx, ok := pri.(*MdbsProxy); ok {
 		svcsection["container#prx"] = cluster.OpenSVCGetShardproxyContainerSection(prx)
@@ -425,7 +420,7 @@ func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, prx DatabasePr
 		cluster.Conf.ProvProxRouteAddr, cluster.Conf.ProvProxRoutePort = misc.SplitHostPort(cluster.Conf.ExtProxyVIP)
 	}
 	svcenv := make(map[string]string)
-	svcenv["nodes"] = prx.Agent
+	svcenv["nodes"] = prx.GetAgent()
 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
 	svcenv["size"] = cluster.Conf.ProvProxDisk + "g"
 	svcenv["ip_pod01"] = prx.GetHost()
