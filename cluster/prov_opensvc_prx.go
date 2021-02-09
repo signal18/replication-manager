@@ -32,12 +32,7 @@ func (cluster *Cluster) OpenSVCStopProxyService(server DatabaseProxy) error {
 		}
 		svc.StopService(agent.Node_id, service.Svc_id)
 	} else {
-		agent, err := cluster.GetProxyAgent(server)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
-			return err
-		}
-		err = svc.StopServiceV2(cluster.Name, server.GetServiceName(), agent.HostName)
+		err := svc.StopServiceV2(cluster.Name, server.GetServiceName(), server.Agent)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
 			return err
@@ -59,12 +54,7 @@ func (cluster *Cluster) OpenSVCStartProxyService(server DatabaseProxy) error {
 		}
 		svc.StartService(agent.Node_id, service.Svc_id)
 	} else {
-		agent, err := cluster.GetProxyAgent(server)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
-			return err
-		}
-		err = svc.StartServiceV2(cluster.Name, server.GetServiceName(), agent.HostName)
+		err := svc.StartServiceV2(cluster.Name, server.GetServiceName(), server.Agent)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not stop proxy:  %s ", err)
 			return err
@@ -114,19 +104,19 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 			svc.SetServiceTag(idtag, idsrv)
 		}
 	}
-
+	cluster.OpenSVCCreateMaps()
 	srvlist := make([]string, len(cluster.Servers))
 	for i, s := range cluster.Servers {
 		srvlist[i] = s.Host
 	}
 	if prx, ok := pri.(*MaxscaleProxy); ok {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
+			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), prx)
 			if err != nil {
 				cluster.errorChan <- err
 				return err
 			}
-			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, agent.Node_name, res)
+			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, prx.Agent, res)
 			if err != nil {
 				cluster.errorChan <- err
 				return err
@@ -167,12 +157,12 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 			}
 			srv.ClusterGroup = cluster
 			if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-				res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
+				res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), prx)
 				if err != nil {
 					cluster.errorChan <- err
 					return err
 				}
-				err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, agent.Node_name, res)
+				err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, prx.Agent, res)
 				if err != nil {
 					cluster.errorChan <- err
 					return err
@@ -202,12 +192,12 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 	}
 	if prx, ok := pri.(*HaproxyProxy); ok {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
+			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), prx)
 			if err != nil {
 				cluster.errorChan <- err
 				return err
 			}
-			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, agent.Node_name, res)
+			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, prx.Agent, res)
 			if err != nil {
 				cluster.errorChan <- err
 				return err
@@ -239,12 +229,12 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 	if prx, ok := pri.(*SphinxProxy); ok {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 		} else {
-			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
+			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), prx)
 			if err != nil {
 				cluster.errorChan <- err
 				return err
 			}
-			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, agent.Node_name, res)
+			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, prx.Agent, res)
 			if err != nil {
 				cluster.errorChan <- err
 				return err
@@ -274,11 +264,11 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 	}
 	if prx, ok := pri.(*ProxySQLProxy); ok {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), agent, prx)
+			res, err := cluster.OpenSVCGetProxyTemplateV2(strings.Join(srvlist, " "), prx)
 			if err != nil {
 				return err
 			}
-			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, agent.Node_name, res)
+			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, prx.Agent, res)
 			if err != nil {
 				cluster.errorChan <- err
 				return err
@@ -312,7 +302,11 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 	return nil
 }
 
+<<<<<<< HEAD
 func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.Host, pri DatabaseProxy) (string, error) {
+=======
+func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabaseProxy) (string, error) {
+>>>>>>> 80837f54dec55bac9b6fc7c27f9e18a07f795b50
 
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = pri.OpenSVCGetProxyDefaultSection()
@@ -331,33 +325,34 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.
 		if cluster.Conf.ProvDockerDaemonPrivate {
 			svcsection["volume#00"] = cluster.OpenSVCGetVolumeDockerSection()
 		}
-		svcsection["volume#01"] = cluster.OpenSVCGetVolumeDataSection()
+		svcsection["volume#01"] = cluster.OpenSVCGetProxyVolumeDataSection()
 	}
-	svcsection["container#0001"] = cluster.OpenSVCGetNamespaceContainerSection()
-	svcsection["container#0002"] = cluster.OpenSVCGetInitContainerSection()
+
+	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
+	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(prx.GetPort())
 
 	if prx, ok := pri.(*MdbsProxy); ok {
-		svcsection["container#0003"] = cluster.OpenSVCGetShardproxyContainerSection(prx)
+		svcsection["container#prx"] = cluster.OpenSVCGetShardproxyContainerSection(prx)
 	}
 
 	if prx, ok := pri.(*SphinxProxy); ok {
-		svcsection["container#0003"] = cluster.OpenSVCGetSphinxContainerSection(prx)
+		svcsection["container#prx"] = cluster.OpenSVCGetSphinxContainerSection(prx)
 		svcsection["task#01"] = cluster.OpenSVCGetSphinxTaskSection(prx)
 	}
 
 	if prx, ok := pri.(*HaproxyProxy); ok {
-		svcsection["container#0003"] = cluster.OpenSVCGetHaproxyContainerSection(prx)
+		svcsection["container#prx"] = cluster.OpenSVCGetHaproxyContainerSection(prx)
 	}
 
 	if prx, ok := pri.(*ProxySQLProxy); ok {
-		svcsection["container#0003"] = cluster.OpenSVCGetProxysqlContainerSection(prx)
+		svcsection["container#prx"] = cluster.OpenSVCGetProxysqlContainerSection(prx)
 	}
 
 	if prx, ok := pri.(*MaxscaleProxy); ok {
-		svcsection["container#0003"] = cluster.OpenSVCGetMaxscaleContainerSection(prx)
+		svcsection["container#prx"] = cluster.OpenSVCGetMaxscaleContainerSection(prx)
 	}
 
-	svcsection["env"] = cluster.OpenSVCGetProxyEnvSection(servers, agent, pri)
+	svcsection["env"] = cluster.OpenSVCGetProxyEnvSection(servers, pri)
 
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
 	if err != nil {
@@ -366,6 +361,14 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, agent opensvc.
 	log.Println(svcsectionJson)
 	return string(svcsectionJson), nil
 
+}
+
+func (cluster *Cluster) OpenSVCGetProxyVolumeDataSection() map[string]string {
+	svcvol := make(map[string]string)
+	svcvol["name"] = "{name}"
+	svcvol["pool"] = cluster.Conf.ProvProxVolumeData
+	svcvol["size"] = "{env.size}"
+	return svcvol
 }
 
 func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx DatabaseProxy) {
@@ -408,8 +411,7 @@ func (cluster *Cluster) FoundProxyAgent(proxy DatabaseProxy) (opensvc.Host, erro
 	return agent, errors.New("Indice not found in proxies agent list")
 }
 
-func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, agent opensvc.Host, prx DatabaseProxy) map[string]string {
-
+func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, prx DatabaseProxy) map[string]string {
 	ips := strings.Split(cluster.Conf.ProvProxGateway, ".")
 	masks := strings.Split(cluster.Conf.ProvProxNetmask, ".")
 	for i, mask := range masks {
@@ -423,20 +425,17 @@ func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, agent opensvc.
 		cluster.Conf.ProvProxRouteAddr, cluster.Conf.ProvProxRoutePort = misc.SplitHostPort(cluster.Conf.ExtProxyVIP)
 	}
 	svcenv := make(map[string]string)
-	svcenv["nodes"] = agent.Node_name
+	svcenv["nodes"] = prx.Agent
 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
-	svcenv["size"] = cluster.Conf.ProvProxDisk + "b"
+	svcenv["size"] = cluster.Conf.ProvProxDisk + "g"
 	svcenv["ip_pod01"] = prx.GetHost()
 	svcenv["port_pod01"] = prx.GetPort()
-	svcenv["mysql_root_password"] = cluster.dbPass
-	svcenv["mysql_root_user"] = cluster.dbUser
 	svcenv["network"] = network
 	svcenv["gateway"] = cluster.Conf.ProvProxGateway
 	svcenv["netmask"] = cluster.Conf.ProvProxNetmask
 	svcenv["sphinx_img"] = cluster.Conf.ProvSphinxImg
 	svcenv["sphinx_mem"] = cluster.Conf.ProvSphinxMem
 	svcenv["sphinx_max_children"] = cluster.Conf.ProvSphinxMaxChildren
-
 	svcenv["haproxy_img"] = cluster.Conf.ProvProxHaproxyImg
 	svcenv["proxysql_img"] = cluster.Conf.ProvProxProxysqlImg
 	svcenv["maxscale_img"] = cluster.Conf.ProvProxMaxscaleImg
@@ -469,16 +468,16 @@ func (cluster *Cluster) GetProxiesEnv(collector opensvc.Collector, servers strin
 `
 	/*} else {
 		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = 0.0.0.0`
-	}*/
+	}
 	ips := strings.Split(collector.ProvProxNetGateway, ".")
 	masks := strings.Split(collector.ProvProxNetMask, ".")
 	for i, mask := range masks {
-		if mask == "0" {
-			ips[i] = "0"
+			if mask == "0" {
+				ips[i] = "0"
+			}
 		}
-	}
-	network := strings.Join(ips, ".")
-
+		network := strings.Join(ips, ".")
+	*/
 	if cluster.Conf.ExtProxyVIP != "" && cluster.Conf.ProvProxRouteAddr == "" {
 		cluster.Conf.ProvProxRouteAddr, cluster.Conf.ProvProxRoutePort = misc.SplitHostPort(cluster.Conf.ExtProxyVIP)
 	}
@@ -489,11 +488,6 @@ nodes = ` + agent.Node_name + `
 size = ` + collector.ProvProxDisk + `
 ` + ipPods + `
 ` + portPods + `
-mysql_root_password = ` + cluster.dbPass + `
-mysql_root_user = ` + cluster.dbUser + `
-network = ` + network + `
-gateway =  ` + collector.ProvProxNetGateway + `
-netmask =  ` + collector.ProvProxNetMask + `
 sphinx_img = ` + cluster.Conf.ProvSphinxImg + `
 sphinx_mem = ` + cluster.Conf.ProvSphinxMem + `
 sphinx_max_children = ` + cluster.Conf.ProvSphinxMaxChildren + `
@@ -528,15 +522,15 @@ mrm_cluster_name = ` + cluster.GetClusterName() + `
 
 func (server *Proxy) OpenSVCGetProxyDefaultSection() map[string]string {
 	svcdefault := make(map[string]string)
-	svcdefault["nodes"] = "{env.nodes}"
+	svcdefault["nodes"] = server.Agent
 	if server.ClusterGroup.Conf.ProvProxDiskPool == "zpool" && server.ClusterGroup.Conf.ProvProxAgentsFailover != "" {
+		svcdefault["nodes"] = server.Agent + "," + server.ClusterGroup.Conf.ProvProxAgentsFailover
 		svcdefault["cluster_type"] = "failover"
 		svcdefault["rollback"] = "true"
 		svcdefault["orchestrate"] = "start"
 	} else {
-		svcdefault["flex_primary"] = "{env.nodes[0]}"
+		svcdefault["flex_primary"] = server.Agent
 		svcdefault["rollback"] = "false"
-		svcdefault["topology"] = "flex"
 	}
 	svcdefault["app"] = server.ClusterGroup.Conf.ProvCodeApp
 	if server.ClusterGroup.Conf.ProvProxType == "docker" {

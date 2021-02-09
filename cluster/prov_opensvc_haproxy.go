@@ -17,15 +17,15 @@ func (cluster *Cluster) OpenSVCGetHaproxyContainerSection(server *HaproxyProxy) 
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
-		svccontainer["netns"] = "container#0001"
+		svccontainer["netns"] = "container#01"
 		svccontainer["image"] = "{env.haproxy_img}"
 		svccontainer["rm"] = "true"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
-			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/conf:/usr/local/etc/haproxy:rw`
+			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc:/usr/local/etc/haproxy:rw`
 		} else {
 			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
-			svccontainer["volume_mounts"] = `{env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/conf:/usr/local/etc/haproxy:rw`
+			svccontainer["volume_mounts"] = `{env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/etc:/usr/local/etc/haproxy:rw`
 		}
 	}
 
@@ -78,7 +78,7 @@ rm = true
 run_args = -v {env.base_dir}/pod` + pod + `/init/checkslave:/usr/bin/checkslave:rw
 		-v {env.base_dir}/pod` + pod + `/init/checkmaster:/usr/bin/checkmaster:rw
     -v /etc/localtime:/etc/localtime:ro
-    -v {env.base_dir}/pod` + pod + `/conf:/usr/local/etc/haproxy:rw
+    -v {env.base_dir}/pod` + pod + `/etc:/usr/local/etc/haproxy:rw
 `
 		if dockerMinusRm {
 			vm = vm + ` --rm

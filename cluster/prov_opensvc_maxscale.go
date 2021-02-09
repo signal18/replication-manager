@@ -17,15 +17,15 @@ func (cluster *Cluster) OpenSVCGetMaxscaleContainerSection(server *MaxscaleProxy
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
-		svccontainer["netns"] = "container#0001"
+		svccontainer["netns"] = "container#01"
 		svccontainer["image"] = "{env.maxscale_img}"
 		svccontainer["rm"] = "true"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
-			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v {env.base_dir}/pod01/conf:/etc/maxscale.d:rw`
+			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v {env.base_dir}/pod01/etc:/etc/maxscale.d:rw`
 		} else {
 			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
-			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/conf:/etc/maxscale.d:rw`
+			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/etc:/etc/maxscale.d:rw`
 		}
 	}
 	return svccontainer
@@ -74,7 +74,7 @@ run_image = {env.maxscale_img}
 rm = true
 netns = container#00` + pod + `
 run_args = -v /etc/localtime:/etc/localtime:ro
-    	     -v {env.base_dir}/pod` + pod + `/conf/maxscale.cnf:/etc/maxscale.cnf:rw
+    	     -v {env.base_dir}/pod` + pod + `/etc/maxscale.cnf:/etc/maxscale.cnf:rw
 `
 		if dockerMinusRm {
 			vm = vm + ` --rm

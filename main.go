@@ -348,6 +348,7 @@ func init() {
 		monitorCmd.Flags().IntVar(&conf.MxsBinlogPort, "maxscale-binlog-port", 3309, "MaxScale maxinfo plugin http port")
 		monitorCmd.Flags().BoolVar(&conf.MxsServerMatchPort, "maxscale-server-match-port", false, "Match servers running on same host with different port")
 		monitorCmd.Flags().StringVar(&conf.MxsBinaryPath, "maxscale-binary-path", "/usr/sbin/maxscale", "Maxscale binary location")
+		monitorCmd.Flags().StringVar(&conf.MxsHostsIPV6, "maxscale-servers-ipv6", "", "ipv6 bind address ")
 	}
 
 	if WithMySQLRouter == "ON" {
@@ -386,6 +387,7 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "HaProxy input bind address for write")
 		monitorCmd.Flags().StringVar(&conf.HaproxyAPIReadBackend, "haproxy-api-read-backend", "service_read", "HaProxy API backend name used for read")
 		monitorCmd.Flags().StringVar(&conf.HaproxyAPIWriteBackend, "haproxy-api-write-backend", "service_write", "HaProxy API backend name used for write")
+		monitorCmd.Flags().StringVar(&conf.HaproxyHostsIPV6, "haproxy-servers-ipv6", "", "ipv6 bind address ")
 	}
 	monitorCmd.Flags().BoolVar(&conf.MyproxyOn, "myproxy", false, "Use Internal Proxy")
 	monitorCmd.Flags().IntVar(&conf.MyproxyPort, "myproxy-port", 4000, "Internal proxy read/write port")
@@ -424,6 +426,7 @@ func init() {
 		if GoOS == "darwin" {
 			monitorCmd.Flags().StringVar(&conf.SphinxConfig, "sphinx-config", "/opt/replication-manager/share/sphinx/sphinx.conf", "Path to sphinx config")
 		}
+		monitorCmd.Flags().StringVar(&conf.SphinxHostsIPV6, "sphinx-servers-ipv6", "", "ipv6 bind address ")
 	}
 	if WithMonitoring == "ON" {
 		monitorCmd.Flags().IntVar(&conf.GraphiteCarbonPort, "graphite-carbon-port", 2003, "Graphite Carbon Metrics TCP & UDP port")
@@ -507,6 +510,8 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.BackupMysqlclientPath, "backup-mysqlclient-path", "", "Path to mysql client binary")
 	monitorCmd.Flags().BoolVar(&conf.BackupBinlogs, "backup-binlogs", true, "Archive binlogs")
 	monitorCmd.Flags().IntVar(&conf.BackupBinlogsKeep, "backup-binlogs-keep", 10, "Number of master binlog to keep")
+	monitorCmd.Flags().BoolVar(&conf.ProvBinaryInTarball, "prov-db-binary-in-tarball", false, "Add prov-db-binary-tarball-name binaries to init tarball")
+	monitorCmd.Flags().StringVar(&conf.ProvBinaryTarballName, "prov-db-binary-tarball-name", "mysql-8.0.17-macos10.14-x86_64.tar.gz", "Name of binary tarball to put in tarball")
 
 	monitorCmd.Flags().StringVar(&conf.ProvIops, "prov-db-disk-iops", "300", "Rnd IO/s in for micro service VM")
 	monitorCmd.Flags().StringVar(&conf.ProvIopsLatency, "prov-db-disk-iops-latency", "0.002", "IO latency in s")
@@ -549,7 +554,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.SlapOSHaProxyPartitions, "slapos-haproxy-partitions", "", "List haproxy slapos partitions path")
 	monitorCmd.Flags().StringVar(&conf.SlapOSMaxscalePartitions, "slapos-maxscale-partitions", "", "List maxscale slapos partitions path")
 	monitorCmd.Flags().StringVar(&conf.SlapOSShardProxyPartitions, "slapos-shardproxy-partitions", "", "List spider slapos partitions path")
-
+	monitorCmd.Flags().StringVar(&conf.SlapOSSphinxPartitions, "slapos-sphinx-partitions", "", "List sphinx slapos partitions path")
 	if WithProvisioning == "ON" {
 		monitorCmd.Flags().StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		monitorCmd.Flags().StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
@@ -563,9 +568,7 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.ProvDiskPool, "prov-db-disk-pool", "none", "[none|zpool|lvm]")
 		monitorCmd.Flags().StringVar(&conf.ProvDiskType, "prov-db-disk-type", "loopback", "[loopback|physical|pool|directory|volume]")
 		monitorCmd.Flags().StringVar(&conf.ProvVolumeDocker, "prov-db-volume-docker", "", "Volume name in case of docker private")
-		monitorCmd.Flags().StringVar(&conf.ProvVolumeData, "prov-db-volume-data", "", "Volume name of the datadir")
-		monitorCmd.Flags().StringVar(&conf.ProvVolumeSystem, "prov-db-volume-system", "", "Volume name of the system files binogs, redologs, logs")
-		monitorCmd.Flags().StringVar(&conf.ProvVolumeTemp, "prov-db-volume-temp", "", "Volume name of the tmp files")
+		monitorCmd.Flags().StringVar(&conf.ProvVolumeData, "prov-db-volume-data", "", "Volume name for the datadir")
 		monitorCmd.Flags().StringVar(&conf.ProvDiskDevice, "prov-db-disk-device", "/srv", "loopback:path-to-loopfile|physical:/dev/xx|pool:pool-name|directory:/srv")
 		monitorCmd.Flags().BoolVar(&conf.ProvDiskSnapshot, "prov-db-disk-snapshot-prefered-master", false, "Take snapshoot of prefered master")
 		monitorCmd.Flags().IntVar(&conf.ProvDiskSnapshotKeep, "prov-db-disk-snapshot-keep", 7, "Keek this number of snapshoot of prefered master")
@@ -603,7 +606,7 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.ProvSphinxDiskType, "prov-sphinx-disk-type", "[loopback|physical]", "[none|zpool|lvm]")
 		monitorCmd.Flags().StringVar(&conf.ProvSphinxDiskDevice, "prov-sphinx-disk-device", "[loopback|physical]", "[path-to-loopfile|/dev/xx]")
 		monitorCmd.Flags().StringVar(&conf.ProvSphinxMem, "prov-sphinx-memory", "256", "Memory in M for micro service VM")
-		monitorCmd.Flags().StringVar(&conf.ProvSphinxDisk, "prov-sphinx-disk-size", "20g", "Disk in g for micro service VM")
+		monitorCmd.Flags().StringVar(&conf.ProvSphinxDisk, "prov-sphinx-disk-size", "20", "Disk in g for micro service VM")
 		monitorCmd.Flags().StringVar(&conf.ProvSphinxCores, "prov-sphinx-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 		monitorCmd.Flags().StringVar(&conf.ProvSphinxCron, "prov-sphinx-reindex-schedule", "@5", "task time to 5 minutes for index rotation")
 		monitorCmd.Flags().StringVar(&conf.ProvSSLCa, "prov-tls-server-ca", "", "server TLS ca")

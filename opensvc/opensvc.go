@@ -133,6 +133,7 @@ type Collector struct {
 	ProvProxTags                string
 	ProvCores                   string
 	Verbose                     int
+	ContextTimeoutSecond        int
 }
 
 //Imput template URI [system|docker].[zfs|xfs|ext4|btrfs].[none|zpool|lvm].[loopback|physical].[path-to-file|/dev/xx]
@@ -774,19 +775,19 @@ func (collector *Collector) ImportCompliance(path string) (string, error) {
 	req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
 	return string(body), nil
@@ -808,13 +809,13 @@ func (collector *Collector) PublishSafe(safeUUID string, group string) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return err
 	}
 	defer resp.Body.Close()
 	_, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return err
 	}
 	return nil
@@ -865,13 +866,13 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
 	type Ret struct {
@@ -890,7 +891,7 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		//	log.Println("ERROR ", err)
+		//	log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
 	return r.Data[0].UUID, nil
@@ -920,13 +921,13 @@ func (collector *Collector) ImportForms(path string) (string, error) {
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
 	return string(body), nil
@@ -950,7 +951,7 @@ func (collector *Collector) GetHttpClient() *http.Client {
 		}
 	} else {
 
-		client.Transport = &http.Transport{
+		client.Transport = &http2.Transport{
 			TLSClientConfig: tlsConfig,
 		}
 	}
@@ -961,7 +962,7 @@ func (collector *Collector) GetHttpClient() *http.Client {
 func (collector *Collector) StartServiceV2(cluster string, srv string, node string) error {
 
 	client := collector.GetHttpClient()
-	jsondata := `{"action": "service_action", "node": "` + node + `", "options": {"path": "` + srv + `", "action": "start", "options": {}}}`
+	jsondata := `{"path": "` + srv + `", "action": "start", "options": {}}`
 	b := bytes.NewBuffer([]byte(jsondata))
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
 	req, err := http.NewRequest("POST", urlpost, b)
@@ -977,16 +978,17 @@ func (collector *Collector) StartServiceV2(cluster string, srv string, node stri
 	}
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
-	log.Println("Info ", string(body))
+	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 }
 
 func (collector *Collector) StopServiceV2(cluster string, srv string, node string) error {
 
 	client := collector.GetHttpClient()
-	jsondata := `{"action": "service_action", "node": "` + node + `", "options": {"path": "` + srv + `", "action": "stop", "options": {}}}`
+	jsondata := `{"path": "` + srv + `", "action": "stop", "options": {}}`
 	b := bytes.NewBuffer([]byte(jsondata))
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
+	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
 		return err
@@ -1000,7 +1002,7 @@ func (collector *Collector) StopServiceV2(cluster string, srv string, node strin
 	}
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
-	log.Println("Info ", string(body))
+	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 }
 
@@ -1010,6 +1012,7 @@ func (collector *Collector) PurgeServiceV2(cluster string, srv string, node stri
 	jsondata := `{"action": "service_action", "node": "` + node + `", "options": {"path": "` + srv + `", "action": "purge", "options": {}}}`
 	b := bytes.NewBuffer([]byte(jsondata))
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
+	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
 		return err
@@ -1023,21 +1026,128 @@ func (collector *Collector) PurgeServiceV2(cluster string, srv string, node stri
 	}
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
-	log.Println("Info ", string(body))
+	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 }
 
-// CreateTemplateV2 post a template to the collector
-func (collector *Collector) CreateTemplateV2(cluster string, srv string, node string, template string) error {
+func (collector *Collector) CreateConfigKeyValueV2(namespace string, service string, key string, value string) error {
 
-	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
-	log.Println("INFO ", urlpost)
-
-	jsondata := `{"action": "create", "options": {"namespace": "` + cluster + `", "provision": true, "sync": true, "data": {"` + srv + `": ` + template + `}}}`
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
+	jsondata := `{"path": "` + namespace + `/cfg/` + service + `", "key":"` + key + ` ", "data": "` + value + `"}`
+	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
+		log.Println("OpenSVC API Error: ", err)
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", "ANY")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("OpenSVC API Error: ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("OpenSVC API Response: ", string(body))
+	return nil
+}
+
+func (collector *Collector) CreateSecretKeyValueV2(namespace string, service string, key string, value string) error {
+
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
+	jsondata := `{"path": "` + namespace + `/sec/` + service + `", "key":"` + key + ` ", "data": "` + value + `"}`
+	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
+	client := collector.GetHttpClient()
+	b := bytes.NewBuffer([]byte(jsondata))
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		log.Println("Api Error: ", err)
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", "ANY")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Api Error: ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("OpenSVC API Response: ", string(body))
+	return nil
+}
+
+func (collector *Collector) CreateSecretV2(namespace string, service string) error {
+
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_create"
+
+	// just create or replace
+	jsondata := `{"path": "` + namespace + `/sec/` + service + `"}`
+	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
+	client := collector.GetHttpClient()
+	b := bytes.NewBuffer([]byte(jsondata))
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		log.Println("Api Error: ", err)
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", "ANY")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Api Error: ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("OpenSVC API Response: ", string(body))
+	return nil
+}
+
+func (collector *Collector) CreateConfigV2(namespace string, service string) error {
+
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_create"
+	jsondata := `{"path": "` + namespace + `/cfg/` + service + `"}`
+	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
+	client := collector.GetHttpClient()
+	b := bytes.NewBuffer([]byte(jsondata))
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		log.Println("Api Error: ", err)
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", "ANY")
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Api Error: ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("Api Response: ", string(body))
+	return nil
+}
+
+// CreateTemplateV2 post a template to the collector
+
+func (collector *Collector) CreateTemplateV2(cluster string, srv string, node string, template string) error {
+
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
+	jsondata := `{"namespace": "` + cluster + `", "provision": true, "sync": true, "data": {"` + srv + `": ` + template + `}}`
+	log.Println("OpenSVC API Request: ", urlpost, " Payload: ", jsondata)
+	client := collector.GetHttpClient()
+	b := bytes.NewBuffer([]byte(jsondata))
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		log.Println("OpenSVC API Error: ", err)
 		return err
 	}
 	req.Close = true
@@ -1045,11 +1155,12 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 	req.Header.Set("o-node", node)
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Println("OpenSVC API Error: ", err)
 		return err
 	}
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
-	log.Println("Info ", string(body))
+	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 }
 
@@ -1071,20 +1182,45 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 		req.Header.Set("content-type", "application/json")
 		req.Header.Set("o-node", "*")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
-	defer cancel()
+	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
 
-	resp, err := client.Do(req.WithContext(ctx))
+	defer cancel()
+	req = req.WithContext(ctx)
+	// Following can be use to cancel context timeout to trace API response time
+	/*	trace := &httptrace.ClientTrace{
+			DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
+				fmt.Printf("%v DNS Info: %+v\n", time.Now(), dnsInfo)
+			},
+			GotConn: func(connInfo httptrace.GotConnInfo) {
+				fmt.Printf("%v Got Conn: %+v\n", time.Now(), connInfo)
+			},
+		}
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+	*/
+
+	startConnect := time.Now()
+	resp, err := client.Do(req)
+
+	stopConnect := time.Now()
+	if collector.Verbose > 2 {
+		log.Printf("OpenSVC Connect took: %s\n", stopConnect.Sub(startConnect))
+	}
 	if err != nil {
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
+
+	defer client.CloseIdleConnections()
 	defer resp.Body.Close()
+	startRead := time.Now()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
-	if collector.Verbose > 0 {
-		log.Println("INFO ", string(body))
+	endRead := time.Now()
+	if collector.Verbose > 2 {
+		log.Printf("OpenSVC Read response took: %s\n", endRead.Sub(startRead))
+		log.Println("OpenSVC API Response: ", string(body))
 	}
 	if collector.UseAPI {
 		type Message struct {
@@ -1094,7 +1230,7 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 
 		err = json.Unmarshal(body, &r)
 		if err != nil {
-			log.Println("ERROR ", err)
+			log.Println("OpenSVC API Error: ", err)
 			return nil, err
 		}
 		for i, agent := range r.Data {
@@ -1131,6 +1267,7 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 
 	err = json.Unmarshal(body, &r)
 	if err != nil {
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	crcTable := crc64.MakeTable(crc64.ECMA)
@@ -1161,20 +1298,20 @@ func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
 	log.Println("INFO ", url)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 
@@ -1184,7 +1321,7 @@ func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	return r.Rulesets, nil
@@ -1197,20 +1334,20 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 	log.Println("INFO ", url)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 
@@ -1220,7 +1357,7 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	return r.RulesetVariables, nil
@@ -1294,19 +1431,19 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 	}
 	req.SetBasicAuth(collector.User, collector.Pass)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 
@@ -1316,7 +1453,7 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	return r.Groups, nil
@@ -1331,19 +1468,19 @@ func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "0", err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "0", err
 	}
 
@@ -1353,7 +1490,7 @@ func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "0", err
 	}
 	return strconv.Itoa(r.Groups[0].Id), nil
@@ -1377,20 +1514,20 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	count, err := collector.getMetaCount(body)
@@ -1407,7 +1544,7 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	return r.Tags, nil
@@ -1444,13 +1581,13 @@ func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return err
 	}
 	defer resp.Body.Close()
 	_, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return err
 	}
 	return nil
@@ -1482,20 +1619,20 @@ func (collector *Collector) GetTags() ([]Tag, error) {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 
@@ -1505,7 +1642,7 @@ func (collector *Collector) GetTags() ([]Tag, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	return r.Tags, nil
@@ -1520,20 +1657,20 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	//	log.Println(string(body))
@@ -1543,7 +1680,7 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	return r.Data, nil
@@ -1561,20 +1698,20 @@ func (collector *Collector) GetActionStatus(actionid string) string {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "W"
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "W"
 	}
 
@@ -1584,7 +1721,7 @@ func (collector *Collector) GetActionStatus(actionid string) string {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "W"
 	}
 	if r.Data == nil {
@@ -1607,20 +1744,20 @@ func (collector *Collector) GetAction(actionid string) *Action {
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil
 	}
 
@@ -1649,20 +1786,20 @@ func (collector *Collector) GetServices() ([]Service, error) {
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 
@@ -1672,7 +1809,7 @@ func (collector *Collector) GetServices() ([]Service, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	return r.Services, nil
@@ -1688,7 +1825,7 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 
 	}
 
@@ -1696,13 +1833,13 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 
@@ -1712,7 +1849,7 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return nil, err
 	}
 	return r.Services, nil
@@ -1765,14 +1902,14 @@ func (collector *Collector) StopService(nodeid string, serviceid string) (string
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
 	return string(body), nil
@@ -1795,16 +1932,16 @@ func (collector *Collector) StartService(nodeid string, serviceid string) (strin
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
-	log.Println("INFO ", string(body))
+	log.Println("OpenSVC API Response: ", string(body))
 	return string(body), nil
 
 }
@@ -1831,13 +1968,13 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return 0, err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return 0, err
 	}
 	type Message struct {
@@ -1856,7 +1993,7 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	} else {
 		log.Println(string(body))
 	}
-	log.Println("INFO ", string(body))
+	log.Println("OpenSVC API Response: ", string(body))
 	return actionid, nil
 }
 
@@ -1875,16 +2012,16 @@ func (collector *Collector) DeleteService(serviceid string) (string, error) {
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("ERROR ", err)
+		log.Println("OpenSVC API Error: ", err)
 		return "", err
 	}
-	log.Println("INFO ", string(body))
+	log.Println("OpenSVC API Response: ", string(body))
 	return string(body), nil
 
 }

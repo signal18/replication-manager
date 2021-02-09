@@ -11,9 +11,30 @@ package cluster
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
+func (proxy *Proxy) SetServiceName(namespace string, name string) {
+	proxy.ServiceName = namespace + "/svc/" + name
+}
+
+func (proxy *Proxy) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string, ProxysqlHostsIPV6 string) {
+	slapospartitions := strings.Split(SlapOSDBPartitions, ",")
+	agents := strings.Split(ProvAgents, ",")
+	ipv6hosts := strings.Split(ProxysqlHostsIPV6, ",")
+	if k < len(slapospartitions) {
+		proxy.SlapOSDatadir = slapospartitions[k]
+	}
+	if ProvAgents != "" {
+		proxy.Agent = agents[k%len(agents)]
+	}
+	if k < len(ipv6hosts) {
+		proxy.HostIPV6 = ipv6hosts[k]
+	}
+}
+
 func (proxy *Proxy) SetDataDir() {
+
 	proxy.Datadir = proxy.ClusterGroup.Conf.WorkingDir + "/" + proxy.ClusterGroup.Name + "/" + proxy.Host + "_" + proxy.Port
 	if _, err := os.Stat(proxy.Datadir); os.IsNotExist(err) {
 		os.MkdirAll(proxy.Datadir, os.ModePerm)

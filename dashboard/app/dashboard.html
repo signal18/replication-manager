@@ -10,82 +10,82 @@
           </div>
         </div>
         <md-content   layout="column">
-          <md-tabs style="min-height: 600px;" ng-if="selectedClusterName===undefined"   md-dynamic-height="" md-border-bottom="" >
+          <md-tabs style="min-height: 600px;" ng-if="!selectedClusterName"   md-dynamic-height="" md-border-bottom="" >
               <md-tab   label="Clusters">
-                  <div ng-include src="'static/tab-clusters-list.html'"></div>
+                  <div  ng-if="!selectedClusterName"  ng-include src="'static/tab-clusters-list.html'"></div>
               </md-tab>
             </md-tabs>
             <md-tabs  ng-if="selectedClusterName"  md-dynamic-height="" md-border-bottom="" >
                 <md-tab  ng-if="!selectedServer" ng-click="onTabClicked('Dashboard')"  md-select-id="Dashboard" md-on-select="onTabSelected" label="Dashboard">
-                    <div style="min-height:800px" ng-include src="'static/tab-cluster-dashboard.html'"></div>
+                    <div ng-if="selectedTab=='Dashboard'" style="min-height:800px" ng-include src="'static/tab-cluster-dashboard.html'"></div>
                 </md-tab>
                 <md-tab ng-if="!selectedServer"  ng-click="onTabClicked('Alerts')" md-select-id="Alerts" md-on-select="onTabSelected" label="Alerts ^{{alerts.errors.length}}">
-                    <div ng-include src="'static/tab-cluster-alerts.html'"></div>
+                    <div ng-if="selectedTab=='Alerts'" ng-include src="'static/tab-cluster-alerts.html'"></div>
                 </md-tab>
 
                 <md-tab ng-if="!selectedServer" ng-click="onTabClicked('Proxies')"  md-select-id="Proxies" md-on-select="onTabSelected" label="Proxies">
-                    <div ng-include src="'static/tab-cluster-proxies.html'"></div>
+                    <div ng-if="selectedTab=='Proxies'" ng-include src="'static/tab-cluster-proxies.html'"></div>
                 </md-tab>
                 <md-tab ng-if="!selectedServer"  ng-click="onTabClicked('Settings')" md-select-id="Settings" md-on-select="onTabSelected" label="Settings">
-                    <div ng-include src="'static/tab-cluster-settings.html'"></div>
+                    <div ng-if="selectedTab=='Settings'" ng-include src="'static/tab-cluster-settings.html'"></div>
                 </md-tab>
                 <md-tab ng-if="!selectedServer"  ng-click="onTabClicked('Configs')" md-select-id="Settings" md-on-select="onTabSelected" label="Configs">
-                    <div ng-include src="'static/tab-cluster-configs.html'"></div>
+                    <div ng-if="selectedTab=='Configs'" ng-include src="'static/tab-cluster-configs.html'"></div>
                 </md-tab>
                 <md-tab md-select-id="Graphs" ng-click="onTabClicked('Graphs')"  md-on-select="onTabSelected" label="Graphs" ng-if="!selectedServer && selectedCluster.config.graphiteMetrics==true && selectedCluster.apiUsers[user].grants['cluster-show-graphs']==true">
-                    <div ng-include src="'static/tab-cluster-graphs.html'"></div>
+                    <div ng-if="selectedTab=='Graphs'"  ng-include src="'static/tab-cluster-graphs.html'"></div>
                 </md-tab>
                 <md-tab md-select-id="Agents" ng-click="onTabClicked('Agents')" md-on-select="onTabSelected" label="Agents" ng-if="settings.config.enterprise && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-agents']==true">
-                    <div ng-include src="'static/tab-cluster-agents.html'"></div>
+                    <div ng-if="selectedTab=='Agents'"  ng-include src="'static/tab-cluster-agents.html'"></div>
                 </md-tab>
                 <md-tab md-select-id="Certificates" ng-click="onTabClicked('Certificates')" md-on-select="onTabSelected" label="Certificates" ng-if="settings.config.enterprise && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-certificates']==true">
-                    <div ng-include src="'static/tab-cluster-certificates.html'"></div>
+                    <div ng-if="selectedTab=='Certificates'" ng-include src="'static/tab-cluster-certificates.html'"></div>
                 </md-tab>
                 <md-tab md-select-id="Backups" ng-click="onTabClicked('Backups')" md-on-select="onTabSelected" label="Backups" ng-if="selectedCluster.config.backupRestic && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-backups']==true">
-                    <div ng-include src="'static/tab-cluster-backups.html'"></div>
+                    <div ng-if="selectedTab=='Backups'" ng-include src="'static/tab-cluster-backups.html'"></div>
                 </md-tab>
                 <md-tab md-select-id="QueryRules" ng-click="onTabClicked('QueryRules')" md-on-select="onTabSelected" label="QueryRules" ng-if="selectedCluster.config.proxysql && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-agents']==true">
-                    <div ng-include src="'static/tab-cluster-queryrules.html'"></div>
+                    <div  ng-if="selectedTab=='QueryRules'" ng-include src="'static/tab-cluster-queryrules.html'"></div>
                 </md-tab>
 
                 <md-tab ng-if="selectedServer && !selectedQuery && selectedCluster.apiUsers[user].grants['db-show-process']==true" ng-click="onTabClicked('Processlist')"  md-select-id="Processlist" md-on-select="onTabSelected" label="Processlist" >
-                    <div style="min-height:800px"  ng-include src="'static/tab-server-process.html'"></div>
+                    <div  ng-if="selectedTab=='Processlist'" style="min-height:800px"  ng-include src="'static/tab-server-process.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedServer && !selectedQuery  && selectedCluster.apiUsers[user].grants['db-show-logs']==true" ng-click="onTabClicked('LogSlow')"  md-select-id="LogSlow"  md-on-select="onTabSelected" label="Slow Queries" >
-                    <div ng-include src="'static/tab-server-slow.html'"></div>
+                    <div  ng-if="selectedTab=='LogSlow'" ng-include src="'static/tab-server-slow.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedServer && !selectedQuery  && selectedCluster.apiUsers[user].grants['db-show-logs']==true" ng-click="onTabClicked('PFSQueries')"  md-select-id="PFSQueries"  md-on-select="onTabSelected" label="Digest Queries">
-                    <div ng-include src="'static/tab-server-pfs-statements.html'"></div>
+                    <div ng-if="selectedTab=='PFSQueries'" ng-include src="'static/tab-server-pfs-statements.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedServer && !selectedQuery  && selectedCluster.apiUsers[user].grants['db-show-logs']==true" ng-click="onTabClicked('LogError')" md-select-id="LogError" md-on-select="onTabSelected" label="Errors">
-                    <div ng-include src="'static/tab-server-errors.html'"></div>
+                    <div ng-if="selectedTab=='LogError'" ng-include src="'static/tab-server-errors.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedServer && !selectedQuery  && selectedCluster.apiUsers[user].grants['db-show-schema']==true" ng-click="onTabClicked('Tables')" md-select-id="Tables" md-on-select="onTabSelected" label="Tables">
-                    <div ng-include src="'static/tab-server-tables.html'"></div>
+                    <div ng-if="selectedTab=='Tables'" ng-include src="'static/tab-server-tables.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedServer && !selectedQuery && selectedCluster.apiUsers[user].grants['db-show-status']==true" ng-click="onTabClicked('Status')" md-select-id="Status" md-on-select="onTabSelected" label="Status">
-                    <div ng-include src="'static/tab-server-status.html'"></div>
+                    <div ng-if="selectedTab=='Status'" ng-include src="'static/tab-server-status.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedServer && !selectedQuery && selectedCluster.apiUsers[user].grants['db-show-status']==true" ng-click="onTabClicked('StatusInnoDB')" md-select-id="StatusInnoDB" md-on-select="onTabSelected" label="Status InnoDB">
-                    <div ng-include src="'static/tab-server-statusinnodb.html'"></div>
+                    <div ng-if="selectedTab=='StatusInnoDB'" ng-include src="'static/tab-server-statusinnodb.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedServer && !selectedQuery && selectedCluster.apiUsers[user].grants['db-show-variables']==true" ng-click="onTabClicked('Variables')" md-select-id="Variables" md-on-select="onTabSelected" label="Variables">
-                    <div ng-include src="'static/tab-server-variables.html'"></div>
+                    <div ng-if="selectedTab=='Variables'" ng-include src="'static/tab-server-variables.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedServer && !selectedQuery" ng-click="onTabClicked('ServiceOpenSVC')" md-select-id="ServiceOpenSVC" md-on-select="onTabSelected" label="Service OpenSVC">
-                    <div ng-include src="'static/tab-server-serviceopensvc.html'"></div>
+                    <div ng-if="selectedTab=='ServiceOpenSVC'" ng-include src="'static/tab-server-serviceopensvc.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedServer && !selectedQuery && selectedCluster.apiUsers[user].grants['db-show-logs']==true" ng-click="onTabClicked('MetaDataLocks')" md-select-id="MetaDataLocks" md-on-select="onTabSelected" label="Metatata Locks">
-                    <div ng-include src="'static/tab-server-meta-data-locks.html'"></div>
+                    <div ng-if="selectedTab=='MetaDataLocks'" ng-include src="'static/tab-server-meta-data-locks.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedServer && !selectedQuery && selectedCluster.apiUsers[user].grants['db-show-logs']==true" ng-click="onTabClicked('QueryResponseTime')" md-select-id="QueryResponseTime" md-on-select="onTabSelected" label="Response Time">
-                    <div ng-include src="'static/tab-server-query-response-time.html'"></div>
+                    <div ng-if="selectedTab=='QueryResponseTime'" ng-include src="'static/tab-server-query-response-time.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedQuery && selectedCluster.apiUsers[user].grants['db-explain']==true" ng-click="onTabClicked('QueryExplain')" md-select-id="QueryExplain" md-on-select="onTabSelected" label="Explain Plan">
-                    <div ng-include src="'static/tab-query-explain.html'"></div>
+                    <div ng-if="selectedTab=='QueryExplain'" ng-include src="'static/tab-query-explain.html'"></div>
                 </md-tab>
                 <md-tab ng-if="!selectedServer && selectedCluster.apiUsers[user].grants['db-show-schema']==true" ng-click="onTabClicked('Shards')" md-on-select="onTabSelected" label="Shards">
-                    <div ng-include src="'static/tab-cluster-shards.html'"></div>
+                    <div ng-if="selectedTab=='Shards'" ng-include src="'static/tab-cluster-shards.html'"></div>
                 </md-tab>
             </md-tabs>
         </md-content>

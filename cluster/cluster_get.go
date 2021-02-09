@@ -194,7 +194,9 @@ func (cluster *Cluster) GetRejoinBackupBinlog() bool {
 func (cluster *Cluster) GetQps() int64 {
 	qps := int64(0)
 	for _, server := range cluster.Servers {
-		qps += server.QPS
+		if server != nil {
+			qps += server.QPS
+		}
 	}
 	return qps
 }
@@ -202,9 +204,11 @@ func (cluster *Cluster) GetQps() int64 {
 func (cluster *Cluster) GetConnections() int {
 	allconns := 0
 	for _, server := range cluster.Servers {
-		if conns, ok := server.Status["THREADS_RUNNING"]; ok {
-			numconns, _ := strconv.Atoi(conns)
-			allconns += numconns
+		if server != nil {
+			if conns, ok := server.Status["THREADS_RUNNING"]; ok {
+				numconns, _ := strconv.Atoi(conns)
+				allconns += numconns
+			}
 		}
 	}
 	return allconns

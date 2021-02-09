@@ -2,8 +2,12 @@ package misc
 
 import (
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
+	"time"
+
+	"github.com/siddontang/go/log"
 )
 
 func DownloadFile(filepath string, url string) error {
@@ -25,4 +29,28 @@ func DownloadFile(filepath string, url string) error {
 	// Write the body to file
 	_, err = io.Copy(out, resp.Body)
 	return err
+}
+
+func DownloadFileTimeout(url string, file string, timesecond int) error {
+	client := http.Client{
+		Timeout: time.Duration(timesecond) * time.Second,
+	}
+	response, err := client.Get(url)
+	if err != nil {
+		log.Errorf("Get File %s to %s : %s", url, file, err)
+		return err
+	}
+	defer response.Body.Close()
+	contents, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		log.Errorf("Read File %s to %s : %s", url, file, err)
+		return err
+	}
+
+	err = ioutil.WriteFile(file, contents, 0644)
+	if err != nil {
+		log.Errorf("Write File %s to %s : %s", url, file, err)
+		return err
+	}
+	return nil
 }

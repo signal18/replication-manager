@@ -29,7 +29,9 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
 		} else {
-			cluster.LogPrintf(LvlInfo, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
+			if cluster.GetLogLevel() > 2 {
+				cluster.LogPrintf(LvlInfo, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
+			}
 		}
 	}
 	svc.Host, svc.Port = misc.SplitHostPort(cluster.Conf.ProvHost)
@@ -69,7 +71,8 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvProxDockerShardproxyImg = cluster.Conf.ProvProxShardingImg
 	svc.ProvNetCNI = cluster.Conf.ProvNetCNI
 	svc.ProvProxTags = cluster.Conf.ProvProxTags
-	svc.Verbose = 1
+	svc.Verbose = cluster.GetLogLevel()
+	svc.ContextTimeoutSecond = 10
 
 	return svc
 }
@@ -78,11 +81,11 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 	svc := cluster.OpenSVCConnect()
 	hosts, err := svc.GetNodes()
 	if err != nil {
-		cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], err), ErrFrom: "TOPO"})
+		cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], err), ErrFrom: "OPENSVC"})
+		return nil, err
 	}
 	if hosts == nil {
-		cluster.LogPrintf(LvlErr, "Can't Get Opensvc Agent list")
-		return nil, errors.New("Can't Get Opensvc Agent list")
+		return nil, errors.New("Empty Opensvc Agent list")
 	}
 	agents := []Agent{}
 	for _, n := range hosts {
@@ -97,6 +100,43 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 		agents = append(agents, agent)
 	}
 	return agents, nil
+}
+
+func (cluster *Cluster) OpenSVCCreateMaps() error {
+	if cluster.Conf.ProvOpensvcUseCollectorAPI {
+		return errors.New("No support of Maps in Collector API")
+	}
+	svc := cluster.OpenSVCConnect()
+	err := svc.CreateSecretV2(cluster.Name, "env")
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not create secret: %s ", err)
+	}
+	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not add key to secret: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
+	}
+	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_SERVER_PASSWORD", cluster.GetDbPass())
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not add key to secret: %s %s ", "MYSQL_SERVER_PASSWORD", err)
+	}
+	err = svc.CreateConfigV2(cluster.Name, "env")
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not create config: %s ", err)
+	}
+	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_USER", "admin")
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_USER", err)
+	}
+	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_URL", "https://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.APIPort)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_URL", err)
+	}
+	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_CLUSTER_NAME", cluster.GetClusterName())
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_CLUSTER_NAME", err)
+	}
+
+	return err
 }
 
 func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) error {
@@ -145,7 +185,7 @@ func (server *ServerMonitor) GetSnapshot(collector opensvc.Collector) string {
 		conf = `
 [sync#2]
 type = zfssnap
-dataset = {disk#1001.name}/pod01
+dataset = {disk#1001.name}
 recursive = true
 name = daily
 schedule = 00:01-02:00@120
@@ -155,7 +195,7 @@ sync_max_delay = 1440
 `
 		conf = conf + `[task2]
  schedule = @1
- command = {env.base_dir}/pod01/init/snapback
+ command = {env.base_dir}/init/snapback
  user = root
 
 `
@@ -167,23 +207,19 @@ func (cluster *Cluster) GetPodNetTemplate(collector opensvc.Collector, pod strin
 	var net string
 
 	net = net + `
-[ip#` + pod + `]
-tags = sm sm.container sm.container.pod` + pod + ` pod` + pod + `
+[ip#01]
 `
 	if collector.ProvNetCNI {
 		net = net + `type = cni
-netns = container#00` + pod + `
+netns = container#01
 network =  ` + cluster.Conf.ProvNetCNICluster + `
 `
-		// if proxy
-		// expose = port/tcp
-		// repman to get variable backend-network
 		return net
-		//expose = {env.port_pod01}/tcp:8000
+
 	} else if collector.ProvMicroSrv == "docker" {
 		net = net + `type = docker
 
-netns = container#00` + pod + `
+netns = container#01
 `
 
 	}
@@ -209,29 +245,29 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 	if collector.ProvFSMode == "loopback" {
 
 		disk = disk + "\n"
-		disk = disk + "[disk#" + pod + "]\n"
+		disk = disk + "[disk#01]\n"
 		disk = disk + "type = loop\n"
-		disk = disk + "file = " + collector.ProvFSPath + "/{namespace}-{svcname}_pod" + pod + ".dsk\n"
+		disk = disk + "file = " + collector.ProvFSPath + "/{namespace}-{svcname}.dsk\n"
 		disk = disk + "size = {env.size}g\n"
 		disk = disk + "standby = true\n"
 		disk = disk + "\n"
 
 		if collector.ProvFSPool == "lvm" {
 			disk = disk + "\n"
-			disk = disk + "[disk#10" + pod + "]\n"
-			disk = disk + "name = {namespace}-{svcname}_" + pod + "\n"
+			disk = disk + "[disk#1001]\n"
+			disk = disk + "name = {namespace}-{svcname}\n"
 			disk = disk + "type = lvm\n"
-			disk = disk + "pvs = {disk#" + pod + ".file}\n"
+			disk = disk + "pvs = {disk#01.file}\n"
 			disk = disk + "standby = true\n"
 			disk = disk + "\n"
 
 		}
 		if collector.ProvFSPool == "zpool" {
 			disk = disk + "\n"
-			disk = disk + "[disk#10" + pod + "]\n"
-			disk = disk + "name = zp{namespace}-{svcname}_pod" + pod + "\n"
+			disk = disk + "[disk#1001]\n"
+			disk = disk + "name = zp{namespace}-{svcname}\n"
 			disk = disk + "type = zpool\n"
-			disk = disk + "vdev  = {disk#" + pod + ".file}\n"
+			disk = disk + "vdev  = {disk#01.file}\n"
 			disk = disk + "standby = true\n"
 			disk = disk + "\n"
 
@@ -240,9 +276,9 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 
 	if collector.ProvFSType == "directory" {
 		fs = fs + "\n"
-		fs = fs + "[fs#" + pod + "]\n"
+		fs = fs + "[fs#01]\n"
 		fs = fs + "type = directory\n"
-		fs = fs + "path = {env.base_dir}/pod" + pod + "\n"
+		fs = fs + "path = {env.base_dir}\n"
 		fs = fs + "pre_provision = docker network create {env.subnet_name} --subnet {env.subnet_cidr}\n"
 		fs = fs + "\n"
 		fs = fs + "\n"
@@ -252,29 +288,29 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 			podpool = "10" + pod
 		}
 		fs = fs + "\n"
-		fs = fs + "[fs#" + pod + "]\n"
+		fs = fs + "[fs#01]\n"
 		fs = fs + "type = " + collector.ProvFSType + "\n"
 		if collector.ProvFSPool == "lvm" {
 			re := regexp.MustCompile("[0-9]+")
 			strlvsize := re.FindAllString(collector.ProvDisk, 1)
 			lvsize, _ := strconv.Atoi(strlvsize[0])
 			lvsize--
-			fs = fs + "dev = /dev/{namespace}-{svcname}_" + pod + "/pod" + pod + "\n"
-			fs = fs + "vg = {namespace}-{svcname}_" + pod + "\n"
+			fs = fs + "dev = /dev/{namespace}-{svcname}\n"
+			fs = fs + "vg = {namespace}-{svcname}\n"
 			fs = fs + "size = 100%FREE\n"
 		} else if collector.ProvFSPool == "zpool" {
 			if collector.ProvFSMode == "loopback" || collector.ProvFSMode == "physical" {
-				fs = fs + "dev = {disk#" + podpool + ".name}/pod" + pod + "\n"
+				fs = fs + "dev = {disk#" + podpool + ".name}\n"
 			} else if collector.ProvFSMode == "pool" {
-				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/{namespace}-{svcname}_pod" + pod + "\n"
+				fs = fs + "dev =" + cluster.Conf.ProvDiskDevice + "/{namespace}-{svcname\n"
 			}
-			fs = fs + "size = {env.size}g\n"
+			fs = fs + "size = {env.size}\n"
 			fs = fs + "mkfs_opt = -o recordsize=16K -o primarycache=metadata -o atime=off -o compression=" + cluster.Conf.ProvDiskFSCompress + " -o mountpoint=legacy\n"
 		} else { //no pool
 			fs = fs + "dev = {disk#" + podpool + ".file}\n"
-			fs = fs + "size = {env.size}g\n"
+			fs = fs + "size = {env.size}\n"
 		}
-		fs = fs + "mnt = {env.base_dir}/pod" + pod + "\n"
+		fs = fs + "mnt = {env.base_dir}\n"
 		fs = fs + "standby = true\n"
 	} // not a directory
 	//cluster.LogPrintf(LvlErr, "%s", disk+fs)
@@ -348,8 +384,8 @@ func (cluster *Cluster) GetPodPackageTemplate(collector opensvc.Collector, pod s
 
 	if collector.ProvMicroSrv == "package" {
 		vm = vm + `
-[app#` + pod + `]
-script = {env.base_dir}/pod` + pod + `/init/launcher
+[app#01]
+script = {env.base_dir}/init/launcher
 start = 50
 stop = 50
 check = 50

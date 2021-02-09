@@ -1,0 +1,28 @@
+FROM golang:1.13-alpine as builder
+
+RUN apk --no-cache --update add make git
+
+RUN mkdir -p /go/src/github.com/signal18/replication-manager
+WORKDIR /go/src/github.com/signal18/replication-manager
+
+COPY . .
+
+RUN make osc cli
+
+
+FROM alpine:3
+
+RUN mkdir -p \
+        /etc/replication-manager \
+        /etc/replication-manager/cluster.d \
+        /var/lib/replication-manager
+
+RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
+
+COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/features/arbitrator/config.toml.sample.arbitrator /etc/replication-manager/config.toml
+COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-arb /usr/bin/replication-manager
+
+RUN apk --no-cache --update add ca-certificates restic mariadb-client mariadb haproxy
+
+CMD ["replication-manager-arb", "arbitrator" ]
+EXPOSE 10001

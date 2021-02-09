@@ -21,17 +21,14 @@ import (
 )
 
 func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
-
+	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
+	if err != nil {
+		cluster.errorChan <- err
+		cluster.LogPrintf(LvlErr, "Can't OpenSVCFoundDatabaseAgent in service config %s", err)
+		return ""
+	}
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
-
 		svc := cluster.OpenSVCConnect()
-		agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
-		if err != nil {
-			cluster.errorChan <- err
-			cluster.LogPrintf(LvlErr, "Can't OpenSVCFoundDatabaseAgent in service config %s", err)
-			return ""
-		}
-
 		res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't create OpenSVC config template %s", err)
@@ -51,13 +48,14 @@ func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
 
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	svc := cluster.OpenSVCConnect()
+	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
+	if err != nil {
+		cluster.errorChan <- err
+		return
+	}
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		var taglist []string
-		agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
-		if err != nil {
-			cluster.errorChan <- err
-			return
-		}
+
 		// Unprovision if already in OpenSVC
 		var idsrv string
 		mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + s.Name)
@@ -72,7 +70,6 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 				return
 			}
 		}
-
 		err = svc.DeteteServiceTags(idsrv)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can't delete service tags")
@@ -110,24 +107,19 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 			cluster.LogPrintf(LvlErr, "Can't fetch task")
 		}
 	} else {
-
+		cluster.OpenSVCCreateMaps()
 		res, err := s.GenerateDBTemplateV2()
 		if err != nil {
 			cluster.errorChan <- err
 			return
 		}
 
-		agent, err := s.ClusterGroup.GetDatabaseAgent(s)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can not provision database:  %s ", err)
-			cluster.errorChan <- err
-			return
-		}
 		cluster.LogPrintf(LvlInfo, "%s", res)
-		err = svc.CreateTemplateV2(cluster.Name, s.ServiceName, agent.HostName, res)
+		err = svc.CreateTemplateV2(cluster.Name, s.ServiceName, s.Agent, res)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not provision database:  %s ", err)
 		}
+
 	}
 	cluster.WaitDatabaseStart(s)
 
@@ -148,12 +140,8 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 		}
 		svc.StopService(agent.Node_id, service.Svc_id)
 	} else {
-		agent, err := cluster.GetDatabaseAgent(server)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can not stop database:  %s ", err)
-			return err
-		}
-		err = svc.StopServiceV2(cluster.Name, server.ServiceName, agent.HostName)
+
+		err := svc.StopServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not stop database:  %s ", err)
 			return err
@@ -175,12 +163,8 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 		}
 		svc.StartService(agent.Node_id, service.Svc_id)
 	} else {
-		agent, err := cluster.GetDatabaseAgent(server)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can not stop database:  %s ", err)
-			return err
-		}
-		err = svc.StartServiceV2(cluster.Name, server.ServiceName, agent.HostName)
+
+		err := svc.StartServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not stop database:  %s ", err)
 			return err
@@ -205,12 +189,8 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 			}
 		}
 	} else {
-		agent, err := cluster.GetDatabaseAgent(server)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can not unprovision database:  %s ", err)
-			cluster.errorChan <- err
-		}
-		err = opensvc.PurgeServiceV2(cluster.Name, server.ServiceName, agent.HostName)
+
+		err := opensvc.PurgeServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not unprovision database:  %s ", err)
 			cluster.errorChan <- err
@@ -249,15 +229,14 @@ func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensv
 
 func (server *ServerMonitor) OpenSVCGetDBDefaultSection() map[string]string {
 	svcdefault := make(map[string]string)
-	svcdefault["nodes"] = "{env.nodes}"
+	svcdefault["nodes"] = server.Agent
 	if server.ClusterGroup.Conf.ProvDiskPool == "zpool" && server.ClusterGroup.Conf.AutorejoinZFSFlashback && server.IsPrefered() {
 		svcdefault["cluster_type"] = "failover"
 		svcdefault["rollback"] = "true"
 		svcdefault["orchestrate"] = "start"
 	} else {
-		svcdefault["flex_primary"] = "{env.nodes[0]}"
 		svcdefault["rollback"] = "false"
-		svcdefault["topology"] = "flex"
+		svcdefault["orchestrate"] = "ha"
 	}
 	svcdefault["app"] = server.ClusterGroup.Conf.ProvCodeApp
 	if server.ClusterGroup.Conf.ProvType == "docker" {
@@ -286,22 +265,40 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvType == "docker" || server.ClusterGroup.Conf.ProvType == "podman" {
 		svccontainer["tags"] = ""
-		svccontainer["netns"] = "container#0001"
-		svccontainer["image"] = "{env.db_img}"
+		svccontainer["netns"] = "container#01"
+		svccontainer["rm"] = "true"
+		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
-		if server.ClusterGroup.Conf.ProvDiskType != "volume" {
-			svccontainer["run_args"] = `-e MYSQL_ROOT_PASSWORD={env.mysql_root_password} -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/data:/var/lib/mysql:rw -v {env.base_dir}/pod01/etc/mysql:/etc/mysql:rw -v {env.base_dir}/pod01/init:/docker-entrypoint-initdb.d:rw`
-		} else {
-			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}-data/data:/var/lib/mysql:rw {name}-system/data/.system:/var/lib/mysql/.system:rw {name}-temp/data/.system/tmp:/var/lib/mysql/.system/tmp:rw {name}-data/etc/mysql:/etc/mysql:rw {name}-data/init:/docker-entrypoint-initdb.d:rw`
-			svccontainer["environment"] = `MYSQL_ROOT_PASSWORD={env.mysql_root_password} MYSQL_INITDB_SKIP_TZINFO=yes`
-		}
+		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
+		svccontainer["run_args"] = "--ulimit nofile=262144:262144"
+		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
+		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
+
 		//Proceed with galera specific
 		if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
 			if server.ClusterGroup.GetMaster() == nil {
 				server.ClusterGroup.vmaster = server
-				svccontainer["run_command"] = "mysqld --wsrep_new_cluster"
+				svccontainer["command"] = "mysqld --wsrep_new_cluster"
 			}
 		}
+	}
+	return svccontainer
+}
+
+func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string {
+	svccontainer := make(map[string]string)
+	if server.ClusterGroup.Conf.ProvType == "docker" || server.ClusterGroup.Conf.ProvType == "podman" {
+		svccontainer["tags"] = ""
+		svccontainer["netns"] = "container#01"
+		svccontainer["rm"] = "true"
+		svccontainer["image"] = "{env.docker_image}"
+		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
+		svccontainer["run_args"] = "--ulimit nofile=262144:262144"
+		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
+		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
+		svccontainer["command"] = "/docker-entrypoint-initdb.d/dbjobs_launcher"
+		svccontainer["entrypoint"] = "/bin/bash"
 	}
 	return svccontainer
 }
@@ -316,9 +313,7 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 	}
 	svcenv["nodes"] = agent.HostName
 	svcenv["size"] = server.ClusterGroup.Conf.ProvDisk + "g"
-	svcenv["db_img"] = server.ClusterGroup.Conf.ProvDbImg
-	svcenv["mysql_root_password"] = server.Pass
-	svcenv["mysql_root_user"] = server.User
+	svcenv["docker_image"] = server.ClusterGroup.Conf.ProvDbImg
 	ips := strings.Split(server.ClusterGroup.Conf.ProvGateway, ".")
 	masks := strings.Split(server.ClusterGroup.Conf.ProvNetmask, ".")
 	for i, mask := range masks {
@@ -326,29 +321,30 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 			ips[i] = "0"
 		}
 	}
-	network := strings.Join(ips, ".")
-	svcenv["ip_pod01"] = server.Host
+
+	/*svcenv["ip_pod01"] = server.Host
 	svcenv["port_pod01"] = server.Port
 	svcenv["mrm_api_addr"] = server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.HttpPort
 	svcenv["mrm_cluster_name"] = server.ClusterGroup.GetClusterName()
-	svcenv["safe_ssl_ca_uuid"] = server.ClusterGroup.Conf.ProvSSLCaUUID
-	svcenv["safe_ssl_cert_uuid"] = server.ClusterGroup.Conf.ProvSSLCertUUID
-	svcenv["safe_ssl_key_uuid"] = server.ClusterGroup.Conf.ProvSSLKeyUUID
 	// not required for socket prov
-	svcenv["network"] = network
-	svcenv["gateway"] = server.ClusterGroup.Conf.ProvGateway
-	svcenv["netmask"] = server.ClusterGroup.Conf.ProvNetmask
-	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
-	svcenv["max_iops"] = server.ClusterGroup.Conf.ProvIops
-	svcenv["max_mem"] = server.ClusterGroup.Conf.ProvMem
-	svcenv["max_cores"] = server.ClusterGroup.Conf.ProvCores
-	svcenv["micro_srv"] = server.ClusterGroup.Conf.ProvType
-	svcenv["gcomm"] = server.ClusterGroup.GetGComm()
-	svcenv["server_id"] = string(server.Id[2:10])
-	svcenv["innodb_buffer_pool_size"] = server.ClusterGroup.GetConfigInnoDBBPSize()
-	svcenv["innodb_log_file_size"] = server.ClusterGroup.GetConfigInnoDBLogFileSize()
-	svcenv["innodb_buffer_pool_instances"] = server.ClusterGroup.GetConfigInnoDBBPInstances()
-	svcenv["innodb_log_buffer_size"] = "8"
+
+			network := strings.Join(ips, ".")
+			svcenv["mysql_root_password"] = server.Pass
+			svcenv["mysql_root_user"] = server.User
+			svcenv["network"] = network
+			svcenv["gateway"] = server.ClusterGroup.Conf.ProvGateway
+			svcenv["netmask"] = server.ClusterGroup.Conf.ProvNetmask
+		svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
+		svcenv["max_iops"] = server.ClusterGroup.Conf.ProvIops
+		svcenv["max_mem"] = server.ClusterGroup.Conf.ProvMem
+		svcenv["max_cores"] = server.ClusterGroup.Conf.ProvCores
+		svcenv["micro_srv"] = server.ClusterGroup.Conf.ProvType
+		svcenv["gcomm"] = server.ClusterGroup.GetGComm()
+		svcenv["server_id"] = string(server.Id[2:10])
+		svcenv["innodb_buffer_pool_size"] = server.ClusterGroup.GetConfigInnoDBBPSize()
+		svcenv["innodb_log_file_size"] = server.ClusterGroup.GetConfigInnoDBLogFileSize()
+		svcenv["innodb_buffer_pool_instances"] = server.ClusterGroup.GetConfigInnoDBBPInstances()
+		svcenv["innodb_log_buffer_size"] = "8"*/
 	return svcenv
 }
 
@@ -363,24 +359,27 @@ func (cluster *Cluster) OpenSVCGetNamespaceContainerSection() map[string]string 
 	return svccontainer
 }
 
-func (cluster *Cluster) OpenSVCGetInitContainerSection() map[string]string {
+func (cluster *Cluster) OpenSVCGetInitContainerSection(port string) map[string]string {
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer["detach"] = "false"
 		svccontainer["type"] = "docker"
 		svccontainer["image"] = "busybox"
-		svccontainer["netns"] = "container#0001"
+		svccontainer["netns"] = "container#01"
 		svccontainer["rm"] = "true"
 		svccontainer["start_timeout"] = "30s"
 		svccontainer["optional"] = "true"
 		if cluster.Conf.ProvDiskType != "volume" {
-			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01:/data"
+			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {env.base_dir}:/bootstrap"
 		} else {
-			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}-data:/data"
+			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}:/bootstrap"
 		}
-		svccontainer["command"] = "sh -c 'wget -qO- http://{env.mrm_api_addr}/api/clusters/{env.mrm_cluster_name}/servers/{env.ip_pod01}/{env.port_pod01}/config|tar xzvf - -C /data'"
-
+		svccontainer["command"] = "-c 'wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/opensvc/bootstrap | sh'"
 	}
+	svccontainer["entrypoint"] = "/bin/sh"
+	svccontainer["secrets_environment"] = "env/REPLICATION_MANAGER_PASSWORD"
+	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_USER env/REPLICATION_MANAGER_URL"
+	svccontainer["environment"] = "REPLICATION_MANAGER_CLUSTER_NAME={namespace} REPLICATION_MANAGER_HOST_NAME={fqdn} REPLICATION_MANAGER_HOST_PORT=" + port
 	return svccontainer
 }
 
@@ -409,15 +408,15 @@ func (cluster *Cluster) OpenSVCGetNetSection() map[string]string {
 	svcnet := make(map[string]string)
 	if cluster.Conf.ProvNetCNI {
 		svcnet["type"] = "cni"
-		svcnet["netns"] = "container#0001"
+		svcnet["netns"] = "container#01"
 		svcnet["network"] = cluster.Conf.ProvNetCNICluster
 		return svcnet
 	} else if cluster.Conf.ProvType == "docker" {
 		svcnet["type"] = "docker"
-		svcnet["netns"] = "container#0001"
+		svcnet["netns"] = "container#01"
 	} else if cluster.Conf.ProvType == "podman" {
 		svcnet["type"] = "podman"
-		svcnet["netns"] = "container#0001"
+		svcnet["netns"] = "container#01"
 	}
 	svcnet["ipdev"] = cluster.Conf.ProvNetIface
 	svcnet["ipname"] = "{env.ip_pod01}"
@@ -430,9 +429,9 @@ func (cluster *Cluster) OpenSVCGetNetSection() map[string]string {
 func (cluster *Cluster) OpenSVCGetTaskJobsSection() map[string]string {
 	svctask := make(map[string]string)
 	svctask["schedule"] = "@1"
-	svctask["command"] = "svcmgr -s {svcpath} docker exec -i {namespace}..{svcname}.container.2001 /bin/bash /docker-entrypoint-initdb.d/dbjobs"
+	svctask["command"] = "svcmgr -s {svcpath} docker exec -i {namespace}..{svcname}.container.db /bin/bash /docker-entrypoint-initdb.d/dbjobs"
 	svctask["user"] = "root"
-	svctask["run_requires"] = "fs#01(up,stdby up) container#0001(up,stdby up)"
+	svctask["run_requires"] = "container#db(up,stdby up)"
 	return svctask
 }
 
@@ -529,7 +528,7 @@ func (cluster *Cluster) OpenSVCGetFSPodSection() map[string]string {
 	if cluster.Conf.ProvDiskFS == "directory" {
 		//fs#01
 		svcfs["type"] = "directory"
-		svcfs["path"] = " {env.base_dir}/pod01"
+		svcfs["path"] = " {env.base_dir}"
 		if cluster.Conf.ProvType == "docker" {
 			svcfs["pre_provision"] = "docker network create {env.subnet_name} --subnet {env.subnet_cidr}"
 		}
@@ -545,26 +544,26 @@ func (cluster *Cluster) OpenSVCGetFSPodSection() map[string]string {
 			strlvsize := re.FindAllString(cluster.Conf.ProvDisk, 1)
 			lvsize, _ := strconv.Atoi(strlvsize[0])
 			lvsize--
-			svcfs["dev"] = " /dev/{namespace}-{svcname}_01/pod01"
+			svcfs["dev"] = " /dev/{namespace}-{svcname}_01"
 			svcfs["vg"] = "{namespace}-{svcname}_01"
 			svcfs["size"] = "100%FREE"
 		} else if cluster.Conf.ProvDiskPool == "zpool" {
 			if cluster.Conf.ProvDiskType == "loopback" || cluster.Conf.ProvDiskType == "physical" {
-				svcfs["dev"] = "{disk#" + podpool + ".name}/pod01"
+				svcfs["dev"] = "{disk#" + podpool + ".name}"
 			} else if cluster.Conf.ProvDiskType == "pool" {
-				svcfs["dev"] = cluster.Conf.ProvDiskDevice + "/{namespace}-{svcname}_pod01"
+				svcfs["dev"] = cluster.Conf.ProvDiskDevice + "/{namespace}-{svcname}"
 			}
-			svcfs["size"] = "{env.size}g"
+			svcfs["size"] = "{env.size}"
 			svcfs["mkfs_opt"] = "-o recordsize=16K -o primarycache=metadata -o atime=off -o compression=" + cluster.Conf.ProvDiskFSCompress + " -o mountpoint=legacy"
 		} else { //no pool
 			if cluster.Conf.ProvDiskType == "loopback" {
-				svcfs["dev"] = "{disk#" + podpool + ".name}/pod01"
+				svcfs["dev"] = "{disk#" + podpool + ".name}"
 			} else {
 				svcfs["dev"] = "{disk#" + podpool + ".file}"
 			}
-			svcfs["size"] = "{env.size}g"
+			svcfs["size"] = "{env.size}"
 		}
-		svcfs["mnt"] = "{env.base_dir}/pod01"
+		svcfs["mnt"] = "{env.base_dir}"
 		svcfs["standby"] = "true"
 	}
 	return svcfs
@@ -587,29 +586,24 @@ func (server *ServerMonitor) OpenSVCGetZFSSnapshotSection() map[string]string {
 	return svcsnap
 }
 
-func (cluster *Cluster) OpenSVCGetVolumeTempSection() map[string]string {
-	svcvol := make(map[string]string)
-	svcvol["name"] = "{name}-tmp"
-	svcvol["pool"] = cluster.Conf.ProvVolumeTemp
-	svcvol["size"] = cluster.Conf.ProvDiskTempSize + "m"
-	return svcvol
-}
-
 func (cluster *Cluster) OpenSVCGetVolumeDataSection() map[string]string {
 	svcvol := make(map[string]string)
-	svcvol["name"] = "{name}-data"
+	svcvol["name"] = "{name}"
 	svcvol["pool"] = cluster.Conf.ProvVolumeData
-	svcvol["size"] = cluster.Conf.ProvDisk + "g"
+	svcvol["size"] = "{env.size}"
+	svcvol["directories"] = "run/mysqld"
+	svcvol["user"] = "999"
+	svcvol["group"] = "999"
 	return svcvol
 }
 
-func (cluster *Cluster) OpenSVCGetVolumeSystemSection() map[string]string {
+/*func (cluster *Cluster) OpenSVCGetVolumeSystemSection() map[string]string {
 	svcvol := make(map[string]string)
 	svcvol["name"] = "{name}-system"
 	svcvol["pool"] = cluster.Conf.ProvVolumeSystem
 	svcvol["size"] = cluster.Conf.ProvDiskSystemSize + "g"
 	return svcvol
-}
+}*/
 
 func (cluster *Cluster) OpenSVCGetVolumeDockerSection() map[string]string {
 	svcvol := make(map[string]string)
@@ -625,29 +619,37 @@ func (server *ServerMonitor) GenerateDBTemplateV2() (string, error) {
 	svcsection["DEFAULT"] = server.OpenSVCGetDBDefaultSection()
 	svcsection["ip#01"] = server.ClusterGroup.OpenSVCGetNetSection()
 	if server.ClusterGroup.Conf.ProvDiskType != "volume" {
-		svcsection["disk#0000"] = server.ClusterGroup.OpenSVCGetDiskZpoolDockerPrivateSection()
-		svcsection["disk#00"] = server.ClusterGroup.OpenSVCGetDiskLoopbackDockerPrivateSection()
-		svcsection["disk#01"] = server.ClusterGroup.OpenSVCGetDiskLoopbackPodSection()
-		svcsection["disk#0001"] = server.ClusterGroup.OpenSVCGetDiskLoopbackSnapshotPodSection()
-		svcsection["fs#00"] = server.ClusterGroup.OpenSVCGetFSDockerPrivateSection()
+		if server.ClusterGroup.Conf.ProvDiskType != "pool" {
+
+			svcsection["disk#0000"] = server.ClusterGroup.OpenSVCGetDiskZpoolDockerPrivateSection()
+			svcsection["disk#00"] = server.ClusterGroup.OpenSVCGetDiskLoopbackDockerPrivateSection()
+			svcsection["disk#01"] = server.ClusterGroup.OpenSVCGetDiskLoopbackPodSection()
+			svcsection["disk#0001"] = server.ClusterGroup.OpenSVCGetDiskLoopbackSnapshotPodSection()
+		}
+		if server.ClusterGroup.Conf.ProvDockerDaemonPrivate {
+			svcsection["fs#00"] = server.ClusterGroup.OpenSVCGetFSDockerPrivateSection()
+		}
+
 		svcsection["fs#01"] = server.ClusterGroup.OpenSVCGetFSPodSection()
 		svcsection["fs#03"] = server.ClusterGroup.OpenSVCGetFSTmpSection()
-		svcsection["sync#01"] = server.OpenSVCGetZFSSnapshotSection()
-		svcsection["task#02"] = server.OpenSVCGetTaskZFSSnapshotSection()
-
+		if server.ClusterGroup.Conf.ProvDiskSnapshot {
+			svcsection["sync#01"] = server.OpenSVCGetZFSSnapshotSection()
+			svcsection["task#02"] = server.OpenSVCGetTaskZFSSnapshotSection()
+		}
 	} else {
 		if server.ClusterGroup.Conf.ProvDockerDaemonPrivate {
 			svcsection["volume#00"] = server.ClusterGroup.OpenSVCGetVolumeDockerSection()
 		}
 		svcsection["volume#01"] = server.ClusterGroup.OpenSVCGetVolumeDataSection()
-		svcsection["volume#02"] = server.ClusterGroup.OpenSVCGetVolumeSystemSection()
-		svcsection["volume#03"] = server.ClusterGroup.OpenSVCGetVolumeTempSection()
+		//	svcsection["volume#02"] = server.ClusterGroup.OpenSVCGetVolumeSystemSection()
+		//	svcsection["volume#03"] = server.ClusterGroup.OpenSVCGetVolumeTempSection()
 	}
-	svcsection["container#0001"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection()
-	svcsection["container#0002"] = server.ClusterGroup.OpenSVCGetInitContainerSection()
-	svcsection["container#0003"] = server.OpenSVCGetDBContainerSection()
+	svcsection["container#01"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection()
+	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetInitContainerSection(server.Port)
+	svcsection["container#db"] = server.OpenSVCGetDBContainerSection()
+	svcsection["container#jobs"] = server.OpenSVCGetJobsContainerSection()
 
-	svcsection["task#01"] = server.ClusterGroup.OpenSVCGetTaskJobsSection()
+	//	svcsection["task#01"] = server.ClusterGroup.OpenSVCGetTaskJobsSection()
 	svcsection["env"] = server.OpenSVCGetDBEnvSection()
 
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
@@ -707,7 +709,7 @@ rollback = false
 schedule = @1
 command = svcmgr -s {svcpath} docker exec -i {namespace}..{svcname}.container.2001 /bin/bash /docker-entrypoint-initdb.d/dbjobs
 user = root
-run_requires = fs#01(up,stdby up) container#0001(up,stdby up)
+run_requires = fs#01(up,stdby up) container#01(up,stdby up)
 
 `
 	ips := strings.Split(collector.ProvNetGateway, ".")
@@ -722,7 +724,7 @@ run_requires = fs#01(up,stdby up) container#0001(up,stdby up)
 [env]
 nodes = ` + agent + `
 size = ` + collector.ProvDisk + `g
-db_img = ` + collector.ProvDockerImg + `
+docker_imgage = ` + collector.ProvDockerImg + `
 ` + ipPods + `
 ` + portPods + `
 mysql_root_password = ` + server.ClusterGroup.dbPass + `
@@ -756,11 +758,11 @@ func (server *ServerMonitor) GetInitContainer(collector opensvc.Collector) strin
 	var vm string
 	if collector.ProvMicroSrv == "docker" {
 		vm = vm + `
-[container#0002]
+[container#02]
 detach = false
 type = docker
 image = busybox
-netns = container#0001
+netns = container#01
 rm = true
 start_timeout = 30s
 volume_mounts = /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01:/data
@@ -786,14 +788,14 @@ rm = true
 tags = pod` + pod + `
 type = docker
 rm = true
-netns = container#00` + pod + `
-run_image = {env.db_img}
+netns = container#01
+run_image = {env.docker_image}
 run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
  -e MYSQL_INITDB_SKIP_TZINFO=yes
  -v /etc/localtime:/etc/localtime:ro
- -v {env.base_dir}/pod` + pod + `/data:/var/lib/mysql:rw
- -v {env.base_dir}/pod` + pod + `/etc/mysql:/etc/mysql:rw
- -v {env.base_dir}/pod` + pod + `/init:/docker-entrypoint-initdb.d:rw
+ -v {env.base_dir}/data:/var/lib/mysql:rw
+ -v {env.base_dir}/etc/mysql:/etc/mysql:rw
+ -v {env.base_dir}/init:/docker-entrypoint-initdb.d:rw
 
 `
 		if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
@@ -809,53 +811,58 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 }
 
 func (server *ServerMonitor) GetEnv() map[string]string {
+
 	return map[string]string{
-		"%%ENV:NODES_CPU_CORES%%":                            server.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":                     server.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%":               server.ClusterGroup.GetConfigMaxConnections(),
-		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                      string(server.Id[2:10]),
-		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":                     string(server.Id[2:10]),
-		"%%ENV:SERVER_IP%%":                                  misc.Unbracket(server.GetBindAddress()),
-		"%%ENV:SERVER_HOST%%":                                server.Host,
-		"%%ENV:SERVER_PORT%%":                                server.Port,
-		"%%ENV:SVC_CONF_ENV_MYSQL_DATADIR%%":                 server.GetDatabaseDatadir(),
-		"%%ENV:SVC_CONF_ENV_MYSQL_CONFDIR%%":                 server.GetDatabaseConfdir(),
-		"%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%":                server.GetDatabaseClientBasedir(),
-		"%%ENV:SVC_CONF_ENV_MYSQL_SOCKET%%":                  server.GetDatabaseSocket(),
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":               server.ClusterGroup.dbUser,
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":           server.ClusterGroup.dbPass,
-		"%%ENV:SVC_CONF_ENV_MAX_MEM%%":                       server.ClusterGroup.GetConfigInnoDBBPSize(),
-		"%%ENV:SVC_CONF_ENV_INNODB_CACHE_SIZE%%":             server.ClusterGroup.GetConfigInnoDBBPSize(),
-		"%%ENV:SVC_CONF_ENV_TOKUDB_CACHE_SIZE%%":             server.ClusterGroup.GetConfigTokuDBBufferSize(),
-		"%%ENV:SVC_CONF_ENV_MYISAM_CACHE_SIZE%%":             server.ClusterGroup.GetConfigMyISAMKeyBufferSize(),
-		"%%ENV:SVC_CONF_ENV_MYISAM_CACHE_SEGMENTS%%":         server.ClusterGroup.GetConfigMyISAMKeyBufferSegements(),
-		"%%ENV:SVC_CONF_ENV_ARIA_CACHE_SIZE%%":               server.ClusterGroup.GetConfigAriaCacheSize(),
-		"%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%":              server.ClusterGroup.GetConfigQueryCacheSize(),
-		"%%ENV:SVC_CONF_ENV_ROCKSDB_CACHE_SIZE%%":            server.ClusterGroup.GetConfigRocksDBCacheSize(),
-		"%%ENV:SVC_CONF_ENV_S3_CACHE_SIZE%%":                 server.ClusterGroup.GetConfigS3CacheSize(),
-		"%%ENV:IBPINSTANCES%%":                               server.ClusterGroup.GetConfigInnoDBBPInstances(),
-		"%%ENV:SVC_CONF_ENV_GCOMM%%":                         server.ClusterGroup.GetGComm(),
-		"%%ENV:CHECKPOINTIOPS%%":                             server.ClusterGroup.GetConfigInnoDBIOCapacity(),
-		"%%ENV:SVC_CONF_ENV_MAX_IOPS%%":                      server.ClusterGroup.GetConfigInnoDBIOCapacityMax(),
-		"%%ENV:SVC_CONF_ENV_INNODB_IO_CAPACITY%%":            server.ClusterGroup.GetConfigInnoDBIOCapacity(),
-		"%%ENV:SVC_CONF_ENV_INNODB_IO_CAPACITY_MAX%%":        server.ClusterGroup.GetConfigInnoDBIOCapacityMax(),
-		"%%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%":     server.ClusterGroup.GetConfigInnoDBMaxDirtyPagePct(),
-		"%%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%": server.ClusterGroup.GetConfigInnoDBMaxDirtyPagePctLwm(),
-		"%%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_INSTANCES%%":  server.ClusterGroup.GetConfigInnoDBBPInstances(),
-		"%%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_SIZE%%":       server.ClusterGroup.GetConfigInnoDBBPSize(),
-		"%%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%":        server.ClusterGroup.GetConfigInnoDBLogBufferSize(),
-		"%%ENV:SVC_CONF_ENV_INNODB_LOG_FILE_SIZE%%":          server.ClusterGroup.GetConfigInnoDBLogFileSize(),
-		"%%ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%":       server.ClusterGroup.GetConfigInnoDBWriteIoThreads(),
-		"%%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%":        server.ClusterGroup.GetConfigInnoDBReadIoThreads(),
-		"%%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%":          server.ClusterGroup.GetConfigInnoDBPurgeThreads(),
-		"%%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%":               server.ClusterGroup.GetConfigExpireLogDays(),
-		"%%ENV:SVC_CONF_ENV_RELAY_SPACE_LIMIT%%":             server.ClusterGroup.GetConfigRelaySpaceLimit(),
-		"%%ENV:SVC_NAMESPACE%%":                              server.ClusterGroup.Name,
-		"%%ENV:SVC_NAME%%":                                   server.Name,
-		"%%ENV:SVC_CONF_ENV_SST_METHOD%%":                    server.ClusterGroup.Conf.MultiMasterWsrepSSTMethod,
-		"%%ENV:SVC_CONF_ENV_DOMAIN_ID%%":                     server.ClusterGroup.Conf.ProvDomain,
-		"%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%":             server.SSTPort,
-		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%":      server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.HttpPort,
+		"%%ENV:NODES_CPU_CORES%%":                                   server.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":                            server.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%":                      server.ClusterGroup.GetConfigMaxConnections(),
+		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                             string(server.Id[2:10]),
+		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":                            string(server.Id[2:10]),
+		"%%ENV:SERVER_IP%%":                                         misc.Unbracket(server.GetBindAddress()),
+		"%%ENV:SERVER_HOST%%":                                       server.Host,
+		"%%ENV:SERVER_PORT%%":                                       server.Port,
+		"%%ENV:SVC_CONF_ENV_MYSQL_DATADIR%%":                        server.GetDatabaseDatadir(),
+		"%%ENV:SVC_CONF_ENV_MYSQL_CONFDIR%%":                        server.GetDatabaseConfdir(),
+		"%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%":                       server.GetDatabaseClientBasedir(),
+		"%%ENV:SVC_CONF_ENV_MYSQL_SOCKET%%":                         server.GetDatabaseSocket(),
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":                      server.ClusterGroup.dbUser,
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":                  server.ClusterGroup.dbPass,
+		"%%ENV:SVC_CONF_ENV_MAX_MEM%%":                              server.ClusterGroup.GetConfigInnoDBBPSize(),
+		"%%ENV:SVC_CONF_ENV_INNODB_CACHE_SIZE%%":                    server.ClusterGroup.GetConfigInnoDBBPSize(),
+		"%%ENV:SVC_CONF_ENV_TOKUDB_CACHE_SIZE%%":                    server.ClusterGroup.GetConfigTokuDBBufferSize(),
+		"%%ENV:SVC_CONF_ENV_MYISAM_CACHE_SIZE%%":                    server.ClusterGroup.GetConfigMyISAMKeyBufferSize(),
+		"%%ENV:SVC_CONF_ENV_MYISAM_CACHE_SEGMENTS%%":                server.ClusterGroup.GetConfigMyISAMKeyBufferSegements(),
+		"%%ENV:SVC_CONF_ENV_ARIA_CACHE_SIZE%%":                      server.ClusterGroup.GetConfigAriaCacheSize(),
+		"%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%":                     server.ClusterGroup.GetConfigQueryCacheSize(),
+		"%%ENV:SVC_CONF_ENV_ROCKSDB_CACHE_SIZE%%":                   server.ClusterGroup.GetConfigRocksDBCacheSize(),
+		"%%ENV:SVC_CONF_ENV_S3_CACHE_SIZE%%":                        server.ClusterGroup.GetConfigS3CacheSize(),
+		"%%ENV:IBPINSTANCES%%":                                      server.ClusterGroup.GetConfigInnoDBBPInstances(),
+		"%%ENV:SVC_CONF_ENV_GCOMM%%":                                server.ClusterGroup.GetGComm(),
+		"%%ENV:CHECKPOINTIOPS%%":                                    server.ClusterGroup.GetConfigInnoDBIOCapacity(),
+		"%%ENV:SVC_CONF_ENV_MAX_IOPS%%":                             server.ClusterGroup.GetConfigInnoDBIOCapacityMax(),
+		"%%ENV:SVC_CONF_ENV_INNODB_IO_CAPACITY%%":                   server.ClusterGroup.GetConfigInnoDBIOCapacity(),
+		"%%ENV:SVC_CONF_ENV_INNODB_IO_CAPACITY_MAX%%":               server.ClusterGroup.GetConfigInnoDBIOCapacityMax(),
+		"%%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%":            server.ClusterGroup.GetConfigInnoDBMaxDirtyPagePct(),
+		"%%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%":        server.ClusterGroup.GetConfigInnoDBMaxDirtyPagePctLwm(),
+		"%%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_INSTANCES%%":         server.ClusterGroup.GetConfigInnoDBBPInstances(),
+		"%%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_SIZE%%":              server.ClusterGroup.GetConfigInnoDBBPSize(),
+		"%%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%":               server.ClusterGroup.GetConfigInnoDBLogBufferSize(),
+		"%%ENV:SVC_CONF_ENV_INNODB_LOG_FILE_SIZE%%":                 server.ClusterGroup.GetConfigInnoDBLogFileSize(),
+		"%%ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%":              server.ClusterGroup.GetConfigInnoDBWriteIoThreads(),
+		"%%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%":               server.ClusterGroup.GetConfigInnoDBReadIoThreads(),
+		"%%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%":                 server.ClusterGroup.GetConfigInnoDBPurgeThreads(),
+		"%%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%":                      server.ClusterGroup.GetConfigExpireLogDays(),
+		"%%ENV:SVC_CONF_ENV_RELAY_SPACE_LIMIT%%":                    server.ClusterGroup.GetConfigRelaySpaceLimit(),
+		"%%ENV:SVC_NAMESPACE%%":                                     server.ClusterGroup.Name,
+		"%%ENV:SVC_NAME%%":                                          server.Name,
+		"%%ENV:SVC_CONF_ENV_SST_METHOD%%":                           server.ClusterGroup.Conf.MultiMasterWsrepSSTMethod,
+		"%%ENV:SVC_CONF_ENV_DOMAIN_ID%%":                            server.ClusterGroup.Conf.ProvDomain,
+		"%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%":                    server.SSTPort,
+		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%":             server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.HttpPort,
+		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL%%":              server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort,
+		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_HOST_NAME%%":    server.Host,
+		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_HOST_PORT%%":    server.Port,
+		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_CLUSTER_NAME%%": server.ClusterGroup.Name,
 	}
 
 	//	size = ` + collector.ProvDisk + `

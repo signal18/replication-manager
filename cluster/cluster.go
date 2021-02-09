@@ -328,16 +328,16 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 
 	switch cluster.Conf.ProvOrchestrator {
 	case config.ConstOrchestratorLocalhost:
-		cluster.DropDBTag("docker")
-		cluster.DropDBTag("threadpool")
-		cluster.AddDBTag("pkg")
+		cluster.DropDBTagConfig("docker")
+		cluster.DropDBTagConfig("threadpool")
+		cluster.AddDBTagConfig("pkg")
 	}
 
 	return nil
 }
 func (cluster *Cluster) initOrchetratorNodes() {
 
-	cluster.LogPrintf(LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
+	//cluster.LogPrintf(LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
 	switch cluster.Conf.ProvOrchestrator {
 	case config.ConstOrchestratorOpenSVC:
 		cluster.Agents, _ = cluster.OpenSVCGetNodes()
@@ -375,19 +375,13 @@ func (cluster *Cluster) initScheduler() {
 
 func (cluster *Cluster) Run() {
 	cluster.initScheduler()
-	cluster.initOrchetratorNodes()
 	interval := time.Second
 
 	for cluster.exit == false {
 		if !cluster.Conf.MonitorPause {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
-			cluster.Uptime = cluster.GetStateMachine().GetUptime()
-			cluster.UptimeFailable = cluster.GetStateMachine().GetUptimeFailable()
-			cluster.UptimeSemiSync = cluster.GetStateMachine().GetUptimeSemiSync()
-			cluster.IsNotMonitoring = cluster.sme.IsInFailover()
-			cluster.IsCapturing = cluster.IsInCaptureMode()
-			cluster.MonitorSpin = fmt.Sprintf("%d ", cluster.GetStateMachine().GetHeartbeats())
+
 			select {
 			case sig := <-cluster.switchoverChan:
 				if sig {
@@ -421,12 +415,10 @@ func (cluster *Cluster) Run() {
 				// Heartbeat switchover or failover controller runs only on active repman
 
 				if cluster.runOnceAfterTopology {
-
-					if cluster.GetMaster() != nil {
-						cluster.initProxies()
-						cluster.ResticFetchRepo()
-						cluster.runOnceAfterTopology = false
-					}
+					cluster.initProxies()
+					cluster.initOrchetratorNodes()
+					cluster.ResticFetchRepo()
+					cluster.runOnceAfterTopology = false
 				} else {
 					wg.Add(1)
 					go cluster.refreshProxies(wg)
@@ -437,6 +429,7 @@ func (cluster *Cluster) Run() {
 						cluster.InjectProxiesTraffic()
 					}
 					if cluster.sme.GetHeartbeats()%30 == 0 {
+						cluster.initOrchetratorNodes()
 						cluster.MonitorQueryRules()
 						cluster.MonitorVariablesDiff()
 						cluster.ResticFetchRepo()
@@ -445,6 +438,7 @@ func (cluster *Cluster) Run() {
 						cluster.sme.PreserveState("WARN0093")
 						cluster.sme.PreserveState("WARN0084")
 						cluster.sme.PreserveState("WARN0095")
+						cluster.sme.PreserveState("ERR00082")
 					}
 					if cluster.sme.GetHeartbeats()%36000 == 0 {
 						cluster.ResticPurgeRepo()
@@ -460,21 +454,8 @@ func (cluster *Cluster) Run() {
 				cluster.CheckFailed()
 
 				cluster.Topology = cluster.GetTopology()
+				cluster.SetStatus()
 				cluster.StateProcessing()
-				cluster.IsProvision = cluster.IsProvisioned()
-				cluster.IsNeedProxiesRestart = cluster.HasRequestProxiesRestart()
-				cluster.IsNeedProxiesReprov = cluster.HasRequestProxiesReprov()
-				cluster.IsNeedDatabasesRollingRestart = cluster.HasRequestDBRollingRestart()
-				cluster.IsNeedDatabasesRollingReprov = cluster.HasRequestDBRollingReprov()
-				cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
-				cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()
-				cluster.WaitingRejoin = cluster.rejoinCond.Len()
-				cluster.WaitingFailover = cluster.failoverCond.Len()
-				cluster.WaitingSwitchover = cluster.switchoverCond.Len()
-				if len(cluster.Servers) > 0 {
-					cluster.QPS = cluster.GetQps()
-					cluster.Connections = cluster.GetConnections()
-				}
 
 			}
 		}
@@ -550,6 +531,7 @@ func (cluster *Cluster) StateProcessing() {
 
 	}
 }
+
 func (cluster *Cluster) Stop() {
 	//	cluster.scheduler.Stop()
 	cluster.Save()

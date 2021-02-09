@@ -646,8 +646,20 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 		Path    string `json:"path"`
 		Content string `json:"fmt"`
 	}
-
+	server.ClusterGroup.LogPrintf(LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	// Extract files
+	if server.ClusterGroup.Conf.ProvBinaryInTarball {
+		url, err := server.ClusterGroup.Conf.GetTarballUrl(server.ClusterGroup.Conf.ProvBinaryTarballName)
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Compliance get binary %s directory  %s", url, err)
+		}
+		err = misc.DownloadFileTimeout(url, server.Datadir+"/"+server.ClusterGroup.Conf.ProvBinaryTarballName, 1200)
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Compliance dowload binary %s directory  %s", url, err)
+		}
+		misc.Untargz(server.Datadir+"/init", server.Datadir+"/"+server.ClusterGroup.Conf.ProvBinaryTarballName)
+	}
+
 	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 		os.RemoveAll(server.Datadir + "/init/etc")
 	} else {
@@ -662,7 +674,9 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 					json.Unmarshal([]byte(variable.Value), &f)
 					fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir+"/init", -1)
 					dir := filepath.Dir(fpath)
-					server.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
+					if server.ClusterGroup.Conf.LogLevel > 2 {
+						server.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
+					}
 					// create directory
 					if _, err := os.Stat(dir); os.IsNotExist(err) {
 						err := os.MkdirAll(dir, os.FileMode(0775))
@@ -724,7 +738,9 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 						var f Link
 						json.Unmarshal([]byte(variable.Value), &f)
 						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir+"/init", -1)
-						server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+						if server.ClusterGroup.Conf.LogLevel > 2 {
+							server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+						}
 						os.Symlink(f.Target, fpath)
 						//	keys := strings.Split(variable.Value, " ")
 					}
@@ -738,7 +754,12 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", server.Datadir+"/init/data", err)
 		}
+		err = misc.ChmodR(server.Datadir+"/init/init", 0755)
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", server.Datadir+"/init/init", err)
+		}
 	}
+
 	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/ca-cert.pem", server.Datadir+"/init/etc/mysql/ssl/ca-cert.pem")
 	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/server-cert.pem", server.Datadir+"/init/etc/mysql/ssl/server-cert.pem")
 	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/server-key.pem", server.Datadir+"/init/etc/mysql/ssl/server-key.pem")
@@ -750,7 +771,7 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 	return ""
 }
 
-func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string) string {
+func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string, cmd string) string {
 	mydynamicconf := ""
 	// processing symlink
 	type Link struct {
@@ -762,6 +783,7 @@ func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string) string {
 			for _, variable := range rule.Variables {
 				if variable.Class == "symlink" {
 					if server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
+						//	server.ClusterGroup.LogPrintf(LvlInfo, "content %s %s", filter, rule.Filter)
 						if filter == "" || strings.Contains(rule.Filter, filter) {
 							var f Link
 							json.Unmarshal([]byte(variable.Value), &f)
@@ -769,7 +791,7 @@ func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string) string {
 							//	server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s , %s", fpath, f.Target)
 							file, err := os.Open(fpath + f.Target)
 							if err == nil {
-								r, _ := regexp.Compile("mariadb_command")
+								r, _ := regexp.Compile(cmd)
 								scanner := bufio.NewScanner(file)
 								for scanner.Scan() {
 									//		server.ClusterGroup.LogPrintf(LvlInfo, "content: %s", scanner.Text())

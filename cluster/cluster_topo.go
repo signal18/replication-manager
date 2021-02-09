@@ -12,7 +12,6 @@ package cluster
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/signal18/replication-manager/utils/state"
@@ -49,23 +48,20 @@ func (cluster *Cluster) newServerList() error {
 	//cluster.LogPrintf(LvlErr, "hello %+v", cluster.Conf.Hosts)
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 	// split("")  return len = 1
+
 	if cluster.Conf.Hosts != "" {
-		slapospartitions := strings.Split(cluster.Conf.SlapOSDBPartitions, ",")
-		sstports := strings.Split(cluster.Conf.SchedulerReceiverPorts, ",")
 
 		for k, url := range cluster.hostList {
 			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, false, cluster.GetDomain())
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", cluster.Servers[k].URL, err)
 			}
-			if k < len(slapospartitions) {
-				cluster.Servers[k].SlapOSDatadir = slapospartitions[k]
-			}
+			cluster.Servers[k].SetPlacement(k, cluster.Conf.ProvAgents, cluster.Conf.SlapOSDBPartitions, cluster.Conf.SchedulerReceiverPorts)
 
-			cluster.Servers[k].SSTPort = sstports[k%len(sstports)]
 			if cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)
 			}
+
 		}
 	}
 	cluster.Unlock()
@@ -133,7 +129,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// Check topology Cluster is down
 	cluster.TopologyClusterDown()
 	// Check topology Cluster all servers down
-	cluster.AllServersFailed()
+	cluster.IsDown = cluster.AllServersFailed()
 	cluster.CheckSameServerID()
 	// Spider shard discover
 	if cluster.Conf.Spider == true {
@@ -339,7 +335,6 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			})
 		}
 
-		cluster.sme.SetMasterUpAndSync(cluster.master.SemiSyncMasterStatus, cluster.master.RplMasterStatus)
 	}
 
 	if cluster.HasAllDbUp() {
@@ -371,12 +366,10 @@ func (cluster *Cluster) AllServersFailed() bool {
 	for _, s := range cluster.Servers {
 		if s.IsFailed() == false {
 			return false
-			cluster.IsDown = false
 		}
 	}
 	//"ERR00077": "All databases state down",
 	cluster.SetState("ERR00077", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00077"]), ErrFrom: "TOPO"})
-	cluster.IsDown = true
 	return true
 }
 

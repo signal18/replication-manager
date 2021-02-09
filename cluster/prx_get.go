@@ -80,6 +80,18 @@ func (prx *Proxy) GetCluster() (*sqlx.DB, error) {
 }
 
 func (proxy *Proxy) GetProxyConfig() string {
+	proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
+
+	if proxy.Type == config.ConstProxySpider {
+		if proxy.ShardProxy == nil {
+			proxy.ClusterGroup.LogPrintf(LvlErr, "Can't get shard proxy config start monitoring")
+			proxy.ClusterGroup.ShardProxyBootstrap(proxy)
+			return proxy.ShardProxy.GetDatabaseConfig()
+		} else {
+			return proxy.ShardProxy.GetDatabaseConfig()
+		}
+	}
+
 	type File struct {
 		Path    string `json:"path"`
 		Content string `json:"fmt"`
@@ -140,7 +152,9 @@ func (proxy *Proxy) GetProxyConfig() string {
 						var f Link
 						json.Unmarshal([]byte(variable.Value), &f)
 						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", proxy.Datadir+"/init", -1)
-						proxy.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+						if proxy.ClusterGroup.Conf.LogLevel > 2 {
+							proxy.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+						}
 						os.Symlink(f.Target, fpath)
 						//	keys := strings.Split(variable.Value, " ")
 					}
@@ -168,7 +182,7 @@ func (proxy *Proxy) GetInitContainer(collector opensvc.Collector) string {
 detach = false
 type = docker
 image = busybox
-netns = container#0001
+netns = container#01
 start_timeout = 30s
 rm = true
 volume_mounts = /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01:/data

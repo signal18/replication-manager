@@ -250,6 +250,7 @@ type Variable struct {
 type Binarylogs struct {
 	Log_name  string `json:"logName"`
 	File_size uint   `json:"fileSize"`
+	Encrypted string `json:"encrypted"` //mysql 8.0
 }
 
 type Explain struct {
@@ -362,14 +363,18 @@ func GetBinaryLogs(db *sqlx.DB, version *MySQLVersion) (map[string]uint, string,
 	rows, err := db.Queryx(query)
 
 	if err != nil {
-		return nil, query, errors.New("Could not get status variables")
+		return nil, query, errors.New("Could not get binary logs: " + err.Error())
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var v Binarylogs
-		err := rows.Scan(&v.Log_name, &v.File_size)
+		if version.IsMySQLOrPercona() && version.Major >= 8 {
+			err = rows.Scan(&v.Log_name, &v.File_size, &v.Encrypted)
+		} else {
+			err = rows.Scan(&v.Log_name, &v.File_size)
+		}
 		if err != nil {
-			return nil, query, errors.New("Could not get binary logs")
+			return nil, query, errors.New("Could not get binary logs: " + err.Error())
 		}
 		vars[v.Log_name] = v.File_size
 	}
@@ -698,7 +703,7 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 			}
 
 		} else {
-			stmt = "SELECT MAX(Select_priv) as Select_priv, MAX(Process_priv) as Process_priv, MAX(Super_priv) as Super_priv, MAX(Repl_slave_priv) as Repl_slave_priv, MAX(Repl_client_priv) as Repl_client_priv, MAX(Reload_priv) as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
+			stmt = "SELECT COALESCE(MAX(Select_priv),'N') as Select_priv, COALESCE(MAX(Process_priv),'N') as Process_priv, COALESCE(MAX(Super_priv),'N') as Super_priv, COALESCE(MAX(Repl_slave_priv),'N') as Repl_slave_priv, COALESCE(MAX(Repl_client_priv),'N') as Repl_client_priv, COALESCE(MAX(Reload_priv),'N') as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
 			row := db.QueryRowx(stmt, user, host, ip, "::", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255:255.255.0", iprange1, iprange2, iprange3)
 			err = row.StructScan(&priv)
 
@@ -723,7 +728,7 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 		}
 
 	} else {
-		stmt := "SELECT MAX(Select_priv) as Select_priv, MAX(Process_priv) as Process_priv, MAX(Super_priv) as Super_priv, MAX(Repl_slave_priv) as Repl_slave_priv, MAX(Repl_client_priv) as Repl_client_priv, MAX(Reload_priv) as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
+		stmt := "SELECT COALESCE(MAX(Select_priv),'N') as Select_priv, COALESCE(MAX(Process_priv),'N') as Process_priv, COALESCE(MAX(Super_priv),'N') as Super_priv, COALESCE(MAX(Repl_slave_priv),'N') as Repl_slave_priv, COALESCE(MAX(Repl_client_priv),'N') as Repl_client_priv, COALESCE(MAX(Reload_priv),'N') as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
 		row := db.QueryRowx(stmt, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3)
 		err = row.StructScan(&priv)
 		if err != nil && strings.Contains(err.Error(), "unsupported Scan") {

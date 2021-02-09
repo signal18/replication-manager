@@ -12,6 +12,7 @@ package config
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -214,6 +215,7 @@ type Config struct {
 	MxsPort                                   string `mapstructure:"maxscale-port" toml:"maxscale-port" json:"maxscalePort"`
 	MxsUser                                   string `mapstructure:"maxscale-user" toml:"maxscale-user" json:"maxscaleUser"`
 	MxsPass                                   string `mapstructure:"maxscale-pass" toml:"maxscale-pass" json:"maxscalePass"`
+	MxsHostsIPV6                              string `mapstructure:"maxscale-servers-ipv6" toml:"maxscale-servers-ipv6" json:"maxscaleServers-ipv6"`
 	MxsWritePort                              int    `mapstructure:"maxscale-write-port" toml:"maxscale-write-port" json:"maxscaleWritePort"`
 	MxsReadPort                               int    `mapstructure:"maxscale-read-port" toml:"maxscale-read-port" json:"maxscaleReadPort"`
 	MxsReadWritePort                          int    `mapstructure:"maxscale-read-write-port" toml:"maxscale-read-write-port" json:"maxscaleReadWritePort"`
@@ -238,6 +240,7 @@ type Config struct {
 	HaproxyStatPort                           int    `mapstructure:"haproxy-stat-port" toml:"haproxy-stat-port" json:"haproxyStatPort"`
 	HaproxyAPIPort                            int    `mapstructure:"haproxy-api-port" toml:"haproxy-api-port" json:"haproxyAPIPort"`
 	HaproxyWriteBindIp                        string `mapstructure:"haproxy-ip-write-bind" toml:"haproxy-ip-write-bind" json:"haproxyIpWriteBind"`
+	HaproxyHostsIPV6                          string `mapstructure:"haproxy-servers-ipv6" toml:"haproxy-servers-ipv6" json:"haproxyServers-ipv6"`
 	HaproxyReadBindIp                         string `mapstructure:"haproxy-ip-read-bind" toml:"haproxy-ip-read-bind" json:"haproxyIpReadBind"`
 	HaproxyBinaryPath                         string `mapstructure:"haproxy-binary-path" toml:"haproxy-binary-path" json:"haproxyBinaryPath"`
 	HaproxyAPIReadBackend                     string `mapstructure:"haproxy-api-read-backend"  toml:"haproxy-api-read-backend" json:"haproxyAPIReadBackend"`
@@ -270,6 +273,7 @@ type Config struct {
 	MysqlRouterReadWritePort                  int    `mapstructure:"mysqlrouter-read-write-port" toml:"mysqlrouter-read-write-port" json:"mysqlrouterReadWritePort"`
 	SphinxOn                                  bool   `mapstructure:"sphinx" toml:"sphinx" json:"sphinx"`
 	SphinxHosts                               string `mapstructure:"sphinx-servers" toml:"sphinx-servers" json:"sphinxServers"`
+	SphinxHostsIPV6                           string `mapstructure:"sphinx-servers-ipv6" toml:"sphinx-servers-ipv6" json:"sphinxServers-ipv6"`
 	SphinxConfig                              string `mapstructure:"sphinx-config" toml:"sphinx-config" json:"sphinxConfig"`
 	SphinxQLPort                              string `mapstructure:"sphinx-sql-port" toml:"sphinx-sql-port" json:"sphinxSqlPort"`
 	SphinxPort                                string `mapstructure:"sphinx-port" toml:"sphinx-port" json:"sphinxPort"`
@@ -310,6 +314,7 @@ type Config struct {
 	SlapOSHaProxyPartitions                   string `mapstructure:"slapos-haproxy-partitions" toml:"slapos-haproxy-partitions" json:"slaposHaproxyPartitions"`
 	SlapOSMaxscalePartitions                  string `mapstructure:"slapos-maxscale-partitions" toml:"slapos-maxscale-partitions" json:"slaposMaxscalePartitions"`
 	SlapOSShardProxyPartitions                string `mapstructure:"slapos-shardproxy-partitions" toml:"slapos-shardproxy-partitions" json:"slaposShardproxyPartitions"`
+	SlapOSSphinxPartitions                    string `mapstructure:"slapos-sphinx-partitions" toml:"slapos-sphinx-partitions" json:"slaposSphinxPartitions"`
 	ProvHost                                  string `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
 	ProvOpensvcP12Certificate                 string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificat" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
@@ -335,6 +340,8 @@ type Config struct {
 	ProvMaxConnections                        int    `mapstructure:"prov-db-max-connections" toml:"prov-db-max-connections" json:"provDbMaxConnections"`
 	ProvCores                                 string `mapstructure:"prov-db-cpu-cores" toml:"prov-db-cpu-cores" json:"provDbCpuCores"`
 	ProvTags                                  string `mapstructure:"prov-db-tags" toml:"prov-db-tags" json:"provDbTags"`
+	ProvBinaryInTarball                       bool   `mapstructure:"prov-db-binary-in-tarball" toml:"prov-db-binary-in-tarball" json:"provDbBinaryInTarball"`
+	ProvBinaryTarballName                     string `mapstructure:"prov-db-binary-tarball-name" toml:"prov-db-binary-tarball-name" json:"provDbBinaryTarballName"`
 	ProvDomain                                string `mapstructure:"prov-db-domain" toml:"prov-db-domain" json:"provDbDomain"`
 	ProvDisk                                  string `mapstructure:"prov-db-disk-size" toml:"prov-db-disk-size" json:"provDbDiskSize"`
 	ProvDiskSystemSize                        string `mapstructure:"prov-db-disk-system-size" toml:"prov-db-disk-system-size" json:"provDbDiskSystemSize"`
@@ -342,8 +349,6 @@ type Config struct {
 	ProvDiskDockerSize                        string `mapstructure:"prov-db-disk-docker-size" toml:"prov-db-disk-docker-size" json:"provDbDiskDockerSize"`
 	ProvVolumeDocker                          string `mapstructure:"prov-db-volume-docker" toml:"prov-db-volume-docker" json:"provDbVolumeDocker"`
 	ProvVolumeData                            string `mapstructure:"prov-db-volume-data" toml:"prov-db-volume-data" json:"provDbVolumeData"`
-	ProvVolumeSystem                          string `mapstructure:"prov-db-volume-system" toml:"prov-db-volume-system" json:"provDbVolumeSystem"`
-	ProvVolumeTemp                            string `mapstructure:"prov-db-volume-temp" toml:"prov-db-volume-temp" json:"provDbVolumeTemp"`
 	ProvDiskFS                                string `mapstructure:"prov-db-disk-fs" toml:"prov-db-disk-fs" json:"provDbDiskFs"`
 	ProvDiskFSCompress                        string `mapstructure:"prov-db-disk-fs-compress" toml:"prov-db-disk-fs-compress" json:"provDbDiskFsCompress"`
 	ProvDiskPool                              string `mapstructure:"prov-db-disk-pool" toml:"prov-db-disk-pool" json:"provDbDiskPool"`
@@ -914,8 +919,8 @@ type Tarballs struct {
 	Tarballs []Tarball `json:"tarballs"`
 }
 
-func (conf *Config) GetTarballs(file string) ([]Tarball, error) {
-
+func (conf *Config) GetTarballs() ([]Tarball, error) {
+	file := conf.ShareDir + "/repo/tarballs.json"
 	var tarballs Tarballs
 	jsonFile, err := os.Open(file)
 	if err != nil {
@@ -932,4 +937,15 @@ func (conf *Config) GetTarballs(file string) ([]Tarball, error) {
 	}
 
 	return tarballs.Tarballs, nil
+}
+
+func (conf *Config) GetTarballUrl(name string) (string, error) {
+
+	tarballs, _ := conf.GetTarballs()
+	for _, tarball := range tarballs {
+		if tarball.Name == name {
+			return tarball.Url, nil
+		}
+	}
+	return "", errors.New("tarball not found in collection")
 }

@@ -7,9 +7,7 @@
 package server
 
 import (
-	"encoding/csv"
 	"encoding/json"
-	"io"
 	"io/ioutil"
 	"log/syslog"
 	"net"
@@ -88,6 +86,7 @@ const (
 	ConstMonitorStandby string = "S"
 )
 
+//Unused in server still used in client cmd line
 type Settings struct {
 	Enterprise          string   `json:"enterprise"`
 	Interactive         string   `json:"interactive"`
@@ -489,7 +488,7 @@ func (repman *ReplicationManager) Run() error {
 	if err != nil {
 		log.WithError(err).Errorf("Initialization docker repo failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
 	}
-	repman.ServiceTarballs, err = repman.Conf.GetTarballs(repman.Conf.ShareDir + "/repo/tarballs.json")
+	repman.ServiceTarballs, err = repman.Conf.GetTarballs()
 	if err != nil {
 		log.WithError(err).Errorf("Initialization tarballs repo failed: %s %s", repman.Conf.ShareDir+"/repo/tarballs.json", err)
 	}
@@ -808,90 +807,22 @@ func (repman *ReplicationManager) DownloadFile(url string, file string) error {
 	}
 	response, err := client.Get(url)
 	if err != nil {
-		log.Errorf("GetServicePlans: %s", err)
+		log.Errorf("Get File %s to %s : %s", url, file, err)
 		return err
 	}
 	defer response.Body.Close()
 	contents, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		log.Errorf("GetServicePlans: %s", err)
+		log.Errorf("Read File %s to %s : %s", url, file, err)
 		return err
 	}
 
 	err = ioutil.WriteFile(file, contents, 0644)
 	if err != nil {
-		log.Errorf("GetServicePlans: %s", err)
+		log.Errorf("Write File %s to %s : %s", url, file, err)
 		return err
 	}
 	return nil
-}
-
-func (repman *ReplicationManager) ConvertCSVtoJSON(sourcefile string, destfile string, separator string) error {
-	file, err := os.Open(sourcefile)
-	if err != nil {
-		log.Errorf("failed opening file because: %s", err.Error())
-		return err
-	}
-	defer file.Close()
-
-	r := csv.NewReader(file)
-	r.TrimLeadingSpace = false
-	r.Comma = []rune(separator)[0]
-	rows, err := r.ReadAll()
-	if err != nil {
-		log.Fatal(err)
-	}
-	var res interface{}
-	if len(rows) > 1 {
-		header := rows[0]
-		rows = rows[1:]
-		objs := make([]map[string]string, len(rows))
-		for y, row := range rows {
-			obj := map[string]string{}
-			for x, cell := range row {
-				obj[header[x]] = cell
-			}
-			objs[y] = obj
-		}
-		res = objs
-	} else {
-		res = []map[string]string{}
-	}
-	output, err := json.Marshal(res)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fileout, err := os.OpenFile(destfile, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-
-	}
-	defer fileout.Close()
-	fileout.Truncate(0)
-	fileout.Write(output)
-	fileout.Write([]byte("\n"))
-
-	return nil
-}
-
-func (repman *ReplicationManager) CopyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	if err != nil {
-		return err
-	}
-	return out.Close()
 }
 
 func (repman *ReplicationManager) InitServicePlans() error {
@@ -904,10 +835,10 @@ func (repman *ReplicationManager) InitServicePlans() error {
 		log.Errorf("GetServicePlans download csv  %s", err)
 		// copy from share if not downloadable
 		if _, err := os.Stat(repman.Conf.WorkingDir + "/serviceplan.csv"); os.IsNotExist(err) {
-			repman.CopyFile(repman.Conf.ShareDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.csv")
+			misc.CopyFile(repman.Conf.ShareDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.csv")
 		}
 	}
-	err = repman.ConvertCSVtoJSON(repman.Conf.WorkingDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.json", ",")
+	err = misc.ConvertCSVtoJSON(repman.Conf.WorkingDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.json", ",")
 	if err != nil {
 		log.Errorf("GetServicePlans ConvertCSVtoJSON %s", err)
 		return err
