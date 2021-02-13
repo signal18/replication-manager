@@ -34,25 +34,24 @@ var (
 	// Version is the semantic version number, e.g. 1.0.1
 	Version string
 	// Provisoning to add flags for compile
-	WithProvisioning      string
-	WithArbitration       string
-	WithArbitrationClient string
-	WithProxysql          string
-	WithHaproxy           string
-	WithMaxscale          string
-	WithMariadbshardproxy string
-	WithMonitoring        string
-	WithMail              string
-	WithHttp              string
+	WithProvisioning      string = "ON"
+	WithArbitration       string = "OFF"
+	WithArbitrationClient string = "ON"
+	WithProxysql          string = "ON"
+	WithHaproxy           string = "ON"
+	WithMaxscale          string = "ON"
+	WithMariadbshardproxy string = "ON"
+	WithMonitoring        string = "ON"
+	WithMail              string = "ON"
+	WithHttp              string = "ON"
 	WithSpider            string
-	WithEnforce           string
-	WithDeprecate         string
-	WithOpenSVC           string
-	WithMultiTiers        string
+	WithEnforce           string = "ON"
+	WithDeprecate         string = "ON"
+	WithOpenSVC           string = "OFF"
 	WithTarball           string
 	WithMySQLRouter       string
-	WithSphinx            string
-	WithBackup            string
+	WithSphinx            string = "ON"
+	WithBackup            string = "ON"
 	// FullVersion is the semantic version number + git commit hash
 	FullVersion string
 	// Build is the build date of replication-manager
