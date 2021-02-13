@@ -20,34 +20,34 @@ bin: osc tst pro arm osc-cgo
 tar: osc-basedir tst-basedir pro-basedir arm-basedir osc-cgo-basedir
 
 osc:
-	env GOOS=$(OS) GOARCH=amd64 go build -v --tags "server" --ldflags "-extldflags '-static' -w -s -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC)
+	env GOOS=$(OS) GOARCH=amd64 go build -v  --ldflags "-extldflags '-static' -w -s -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC)
 
 osc-basedir:
-	env GOOS=$(OS) GOARCH=amd64  go build -v --tags "server" --ldflags "-extldflags '-static' -w -s $(TAR) -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC)-basedir
+	env GOOS=$(OS) GOARCH=amd64  go build -v  --ldflags "-extldflags '-static' -w -s $(TAR) -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC)-basedir
 
 osc-cgo:
-	env CGO_ENABLED=1 GOOS=$(OS) GOARCH=amd64 go build -v --tags "server" --ldflags "-extldflags '-static' -w -s -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC-CGO)
+	env CGO_ENABLED=1 GOOS=$(OS) GOARCH=amd64 go build -v  --ldflags "-extldflags '-static' -w -s -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC-CGO)
 
 osc-cgo-basedir:
-	env CGO_ENABLED=1 GOOS=$(OS) GOARCH=amd64  go build -v --tags "server" --ldflags "-extldflags '-static' -w -s $(TAR) -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC-CGO)-basedir
+	env CGO_ENABLED=1 GOOS=$(OS) GOARCH=amd64  go build -v  --ldflags "-extldflags '-static' -w -s $(TAR) -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC-CGO)-basedir
 
 tst:
-	env GOOS=$(OS) GOARCH=amd64  go build -v --tags "server" --ldflags "-w -s -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD)   -X main.WithDeprecate=OFF"  $(LDFLAGS) -o $(BINDIR)/$(BIN-TST)
+	env GOOS=$(OS) GOARCH=amd64  go build -v  --ldflags "-w -s -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD)   -X main.WithDeprecate=OFF"  $(LDFLAGS) -o $(BINDIR)/$(BIN-TST)
 
 tst-basedir:
-	env GOOS=$(OS) GOARCH=amd64  go build -v --tags "server" --ldflags "-w -s $(TAR) -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD)   -X main.WithDeprecate=OFF"  $(LDFLAGS) -o $(BINDIR)/$(BIN-TST)-basedir
+	env GOOS=$(OS) GOARCH=amd64  go build -v  --ldflags "-w -s $(TAR) -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD)   -X main.WithDeprecate=OFF"  $(LDFLAGS) -o $(BINDIR)/$(BIN-TST)-basedir
 
 pro:
 	env GOOS=$(OS) GOARCH=amd64  go build -v --tags "netcgo server" --ldflags "-w -s -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-PRO)
 
 pro-basedir:
-	env GOOS=$(OS) GOARCH=amd64  go build -v --tags "server" --ldflags "-w -s $(TAR) -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-PRO)-basedir
+	env GOOS=$(OS) GOARCH=amd64  go build -v  --ldflags "-w -s $(TAR) -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-PRO)-basedir
 
 arm:
-	env   GOOS=$(OS) GOARCH=arm64  go build -v --tags "server" --ldflags "-extldflags '-static' -w -s -X main.GoOS=$(OS) -X main.GoArch=arm64  -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-ARM)
+	env   GOOS=$(OS) GOARCH=arm64  go build -v  --ldflags "-extldflags '-static' -w -s -X main.GoOS=$(OS) -X main.GoArch=arm64  -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-ARM)
 
 arm-basedir:
-	env  GOOS=$(OS) GOARCH=arm64  go build -v --tags "server" --ldflags "-extldflags '-static' -w -s -X main.GoOS=$(OS) -X main.GoArch=arm64  -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-ARM)-basedir
+	env  GOOS=$(OS) GOARCH=arm64  go build -v  --ldflags "-extldflags '-static' -w -s -X main.GoOS=$(OS) -X main.GoArch=arm64  -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-ARM)-basedir
 
 cli:
 	env GOOS=$(OS) GOARCH=amd64  go build -v --tags "clients" --ldflags "-w -s -X main.GoOS=$(OS) -X main.GoArch=amd64 -X main.Version=$(VERSION) -X main.FullVersion=$(FULLVERSION) -X main.Build=$(BUILD) -X main.WithOpenSVC=ON  -X main.WithArbitrationClient=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-CLI)
