@@ -18,12 +18,32 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/haproxy"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/spf13/pflag"
 )
 
 type HaproxyProxy struct {
 	Proxy
+}
+
+func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
+	flags.BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HaProxy on same host")
+	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HaProxy mode [standby|runtimeapi|dataplaneapi]")
+	flags.StringVar(&conf.HaproxyUser, "haproxy-user", "admin", "Haproxy API user")
+	flags.StringVar(&conf.HaproxyPassword, "haproxy-password", "admin", "Haproxy API password")
+	flags.StringVar(&conf.HaproxyHosts, "haproxy-servers", "127.0.0.1", "HaProxy hosts")
+	flags.IntVar(&conf.HaproxyAPIPort, "haproxy-api-port", 1999, "HaProxy runtime api port")
+	flags.IntVar(&conf.HaproxyWritePort, "haproxy-write-port", 3306, "HaProxy read-write port to leader")
+	flags.IntVar(&conf.HaproxyReadPort, "haproxy-read-port", 3307, "HaProxy load balance read port to all nodes")
+	flags.IntVar(&conf.HaproxyStatPort, "haproxy-stat-port", 1988, "HaProxy statistics port")
+	flags.StringVar(&conf.HaproxyBinaryPath, "haproxy-binary-path", "/usr/sbin/haproxy", "HaProxy binary location")
+	flags.StringVar(&conf.HaproxyReadBindIp, "haproxy-ip-read-bind", "0.0.0.0", "HaProxy input bind address for read")
+	flags.StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "HaProxy input bind address for write")
+	flags.StringVar(&conf.HaproxyAPIReadBackend, "haproxy-api-read-backend", "service_read", "HaProxy API backend name used for read")
+	flags.StringVar(&conf.HaproxyAPIWriteBackend, "haproxy-api-write-backend", "service_write", "HaProxy API backend name used for write")
+	flags.StringVar(&conf.HaproxyHostsIPV6, "haproxy-servers-ipv6", "", "ipv6 bind address ")
 }
 
 func (proxy *HaproxyProxy) Init() {

@@ -9,7 +9,7 @@ package cluster
 func (cluster *Cluster) LocalhostProvisionProxyService(pri DatabaseProxy) error {
 	pri.GetProxyConfig()
 
-	if prx, ok := pri.(*MdbsProxy); ok {
+	if prx, ok := pri.(*MariadbShardProxy); ok {
 		cluster.LogPrintf(LvlInfo, "Bootstrap MariaDB Sharding Cluster")
 		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.GetPort(), prx.User, prx.Pass, true, "")
 		err := srv.Refresh()
@@ -50,7 +50,7 @@ func (cluster *Cluster) LocalhostProvisionProxyService(pri DatabaseProxy) error 
 }
 
 func (cluster *Cluster) LocalhostUnprovisionProxyService(pri DatabaseProxy) error {
-	if prx, ok := pri.(*MdbsProxy); ok {
+	if prx, ok := pri.(*MariadbShardProxy); ok {
 		cluster.LocalhostUnprovisionDatabaseService(prx.ShardProxy)
 	}
 
@@ -67,7 +67,7 @@ func (cluster *Cluster) LocalhostUnprovisionProxyService(pri DatabaseProxy) erro
 }
 
 func (cluster *Cluster) LocalhostStartProxyService(pri DatabaseProxy) error {
-	if prx, ok := pri.(*MdbsProxy); ok {
+	if prx, ok := pri.(*MariadbShardProxy); ok {
 		prx.ShardProxy.Shutdown()
 	}
 

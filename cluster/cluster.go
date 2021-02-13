@@ -844,7 +844,7 @@ func (cluster *Cluster) MonitorSchema() {
 		tables[t.Table_schema+"."+t.Table_name] = t
 		if haschanged && cluster.Conf.MdbsProxyOn {
 			for _, pri := range cluster.Proxies {
-				if prx, ok := pri.(*MdbsProxy); ok {
+				if prx, ok := pri.(*MariadbShardProxy); ok {
 					if !(t.Table_schema == "replication_manager_schema" || strings.Contains(t.Table_name, "_copy") == true || strings.Contains(t.Table_name, "_back") == true || strings.Contains(t.Table_name, "_old") == true || strings.Contains(t.Table_name, "_reshard") == true) {
 						cluster.LogPrintf(LvlDbg, "blabla table %s %s %s", duplicates, t.Table_schema, t.Table_name)
 						cluster.ShardProxyCreateVTable(prx, t.Table_schema, t.Table_name, duplicates, false)

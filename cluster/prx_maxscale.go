@@ -12,8 +12,10 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/spf13/pflag"
 )
 
 type MaxscaleProxy struct {
@@ -22,6 +24,28 @@ type MaxscaleProxy struct {
 
 func (cluster *Cluster) refreshMaxscale(proxy *MaxscaleProxy) error {
 	return proxy.refresh()
+}
+
+func (proxy *MaxscaleProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
+	flags.BoolVar(&conf.MxsOn, "maxscale", false, "MaxScale proxy server is query for backend status")
+	flags.BoolVar(&conf.CheckFalsePositiveMaxscale, "failover-falsepositive-maxscale", false, "Failover checks that maxscale detect failed master")
+	flags.IntVar(&conf.CheckFalsePositiveMaxscaleTimeout, "failover-falsepositive-maxscale-timeout", 14, "Failover checks that maxscale detect failed master")
+	flags.BoolVar(&conf.MxsBinlogOn, "maxscale-binlog", false, "Maxscale binlog server topolgy")
+	flags.MarkDeprecated("maxscale-monitor", "Deprecate disable maxscale monitoring for 2 nodes cluster")
+	flags.BoolVar(&conf.MxsDisableMonitor, "maxscale-disable-monitor", false, "Disable maxscale monitoring and fully drive server state")
+	flags.StringVar(&conf.MxsGetInfoMethod, "maxscale-get-info-method", "maxadmin", "How to get infos from Maxscale maxinfo|maxadmin")
+	flags.StringVar(&conf.MxsHost, "maxscale-servers", "", "MaxScale hosts ")
+	flags.StringVar(&conf.MxsPort, "maxscale-port", "6603", "MaxScale admin port")
+	flags.StringVar(&conf.MxsUser, "maxscale-user", "admin", "MaxScale admin user")
+	flags.StringVar(&conf.MxsPass, "maxscale-pass", "mariadb", "MaxScale admin password")
+	flags.IntVar(&conf.MxsWritePort, "maxscale-write-port", 3306, "MaxScale read-write port to leader")
+	flags.IntVar(&conf.MxsReadPort, "maxscale-read-port", 3307, "MaxScale load balance read port to all nodes")
+	flags.IntVar(&conf.MxsReadWritePort, "maxscale-read-write-port", 3308, "MaxScale load balance read port to all nodes")
+	flags.IntVar(&conf.MxsMaxinfoPort, "maxscale-maxinfo-port", 3309, "MaxScale maxinfo plugin http port")
+	flags.IntVar(&conf.MxsBinlogPort, "maxscale-binlog-port", 3309, "MaxScale maxinfo plugin http port")
+	flags.BoolVar(&conf.MxsServerMatchPort, "maxscale-server-match-port", false, "Match servers running on same host with different port")
+	flags.StringVar(&conf.MxsBinaryPath, "maxscale-binary-path", "/usr/sbin/maxscale", "Maxscale binary location")
+	flags.StringVar(&conf.MxsHostsIPV6, "maxscale-servers-ipv6", "", "ipv6 bind address ")
 }
 
 func (proxy *MaxscaleProxy) refresh() error {

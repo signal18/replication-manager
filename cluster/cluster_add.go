@@ -141,7 +141,7 @@ func (cluster *Cluster) AddUser(user string) error {
 	return nil
 }
 
-func (cluster *Cluster) AddShardingHostGroup(proxy *MdbsProxy) error {
+func (cluster *Cluster) AddShardingHostGroup(proxy *MariadbShardProxy) error {
 	if cluster.Conf.ClusterHead != "" {
 		return nil
 	}

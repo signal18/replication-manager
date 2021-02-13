@@ -4,7 +4,9 @@ import (
 	"database/sql"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/myproxy"
+	"github.com/spf13/pflag"
 )
 
 type MyProxyProxy struct {
@@ -13,6 +15,13 @@ type MyProxyProxy struct {
 
 func (cluster *Cluster) initMyProxy(proxy *MyProxyProxy) {
 	proxy.Init()
+}
+
+func (proxy *MyProxyProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
+	flags.BoolVar(&conf.MyproxyOn, "myproxy", false, "Use Internal Proxy")
+	flags.IntVar(&conf.MyproxyPort, "myproxy-port", 4000, "Internal proxy read/write port")
+	flags.StringVar(&conf.MyproxyUser, "myproxy-user", "admin", "Myproxy user")
+	flags.StringVar(&conf.MyproxyPassword, "myproxy-password", "repman", "Myproxy password")
 }
 
 func (proxy *MyProxyProxy) Init() {

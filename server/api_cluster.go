@@ -1672,7 +1672,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaUniversalTable(w http.R
 			return
 		}
 		for _, pri := range mycluster.Proxies {
-			if pr, ok := pri.(*cluster.MdbsProxy); ok {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
 				go mycluster.ShardSetUniversalTable(pr, vars["schemaName"], vars["tableName"])
 			}
 		}
@@ -1695,7 +1695,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaReshardTable(w http.Res
 			return
 		}
 		for _, pri := range mycluster.Proxies {
-			if pr, ok := pri.(*cluster.MdbsProxy); ok {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
 				clusters := mycluster.GetClusterListFromShardProxy(mycluster.Conf.MdbsProxyHosts)
 				if vars["clusterList"] == "" {
 					mycluster.ShardProxyReshardTable(pr, vars["schemaName"], vars["tableName"], clusters)
@@ -1730,7 +1730,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaMoveTable(w http.Respon
 			return
 		}
 		for _, pri := range mycluster.Proxies {
-			if pr, ok := pri.(*cluster.MdbsProxy); ok {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
 				if vars["clusterShard"] != "" {
 					destcluster := repman.getClusterByName(vars["clusterShard"])
 					if mycluster != nil {

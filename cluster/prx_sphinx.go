@@ -10,13 +10,30 @@ package cluster
 
 import (
 	"fmt"
+	"runtime"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/sphinx"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/spf13/pflag"
 )
 
 type SphinxProxy struct {
 	Proxy
+}
+
+func (proxy *SphinxProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
+	flags.BoolVar(&conf.SphinxOn, "sphinx", false, "Turn on SphinxSearch detection")
+	flags.StringVar(&conf.SphinxHosts, "sphinx-servers", "127.0.0.1", "SphinxSearch hosts")
+	flags.StringVar(&conf.SphinxPort, "sphinx-port", "9312", "SphinxSearch API port")
+	flags.StringVar(&conf.SphinxQLPort, "sphinx-sql-port", "9306", "SphinxSearch SQL port")
+	if runtime.GOOS == "linux" {
+		flags.StringVar(&conf.SphinxConfig, "sphinx-config", "/usr/share/replication-manager/shinx/sphinx.conf", "Path to sphinx config")
+	}
+	if runtime.GOOS == "darwin" {
+		flags.StringVar(&conf.SphinxConfig, "sphinx-config", "/opt/replication-manager/share/sphinx/sphinx.conf", "Path to sphinx config")
+	}
+	flags.StringVar(&conf.SphinxHostsIPV6, "sphinx-servers-ipv6", "", "ipv6 bind address ")
 }
 
 func (proxy *SphinxProxy) Connect() (sphinx.SphinxSQL, error) {

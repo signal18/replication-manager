@@ -18,18 +18,31 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/spf13/pflag"
 )
 
 var crcTable = crc64.MakeTable(crc64.ECMA)
 
-type MdbsProxy struct {
+type MariadbShardProxy struct {
 	Proxy
 }
 
-func (proxy *MdbsProxy) Init() {
+func (proxy *MariadbShardProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
+	flags.BoolVar(&conf.MdbsProxyOn, "shardproxy", false, "MariaDB Spider proxy")
+	flags.StringVar(&conf.MdbsProxyHosts, "shardproxy-servers", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")
+	flags.StringVar(&conf.MdbsProxyCredential, "shardproxy-credential", "root:mariadb", "MariaDB spider proxy credential")
+	flags.BoolVar(&conf.MdbsProxyCopyGrants, "shardproxy-copy-grants", true, "Copy grants from shards master")
+	flags.BoolVar(&conf.MdbsProxyLoadSystem, "shardproxy-load-system", true, "Load Spider system tables")
+	flags.StringVar(&conf.MdbsUniversalTables, "shardproxy-universal-tables", "replication_manager_schema.bench", "MariaDB spider proxy table list that are federarated to all master")
+	flags.StringVar(&conf.MdbsIgnoreTables, "shardproxy-ignore-tables", "", "MariaDB spider proxy master table list that are ignored")
+	flags.StringVar(&conf.MdbsHostsIPV6, "shardproxy-servers-ipv6", "", "ipv6 bind address ")
+}
+
+func (proxy *MariadbShardProxy) Init() {
 	cluster := proxy.ClusterGroup
 	cluster.LogPrintf(LvlInfo, "Init MdbShardProxy %s %s", proxy.Host, proxy.Port)
 	cluster.ShardProxyBootstrap(proxy)
@@ -40,7 +53,7 @@ func (proxy *MdbsProxy) Init() {
 	cluster.AddShardingHostGroup(proxy)
 }
 
-func (proxy *MdbsProxy) GetProxyConfig() string {
+func (proxy *MariadbShardProxy) GetProxyConfig() string {
 	if proxy.ShardProxy == nil {
 		proxy.ClusterGroup.LogPrintf(LvlErr, "Can't get shard proxy config start monitoring")
 		proxy.ClusterGroup.ShardProxyBootstrap(proxy)
@@ -50,7 +63,7 @@ func (proxy *MdbsProxy) GetProxyConfig() string {
 	}
 }
 
-func (proxy *MdbsProxy) Failover() {
+func (proxy *MariadbShardProxy) Failover() {
 	cluster := proxy.ClusterGroup
 	if cluster.master == nil {
 		return
@@ -96,7 +109,7 @@ func (proxy *MdbsProxy) Failover() {
 	}
 }
 
-func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MdbsProxy) {
+func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MariadbShardProxy) {
 	if cluster.master == nil {
 		return
 	}
@@ -138,7 +151,7 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MdbsProxy) {
 
 }
 
-func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *MdbsProxy) error {
+func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *MariadbShardProxy) error {
 	if proxy.ShardProxy == nil {
 		return errors.New("Sharding proxy no database monitor yet initialize")
 	}
@@ -203,7 +216,7 @@ func (cluster *Cluster) ShardProxyGetHeadCluster() *Cluster {
 	return nil
 }
 
-func (cluster *Cluster) ShardProxyCreateVTable(proxy *MdbsProxy, schema string, table string, duplicates []*ServerMonitor, withreshard bool) error {
+func (cluster *Cluster) ShardProxyCreateVTable(proxy *MariadbShardProxy, schema string, table string, duplicates []*ServerMonitor, withreshard bool) error {
 	checksum64 := crc64.Checksum([]byte(schema+"_"+cluster.GetName()), crcTable)
 	var err error
 	var ddl string
@@ -292,7 +305,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *MdbsProxy, schema string, 
 	return nil
 }
 
-func (cluster *Cluster) ShardSetUniversalTable(proxy *MdbsProxy, schema string, table string) error {
+func (cluster *Cluster) ShardSetUniversalTable(proxy *MariadbShardProxy, schema string, table string) error {
 	master := cluster.GetMaster()
 	if master == nil {
 		return errors.New("Universal table no valid master on current cluster")
@@ -325,7 +338,7 @@ func (cluster *Cluster) ShardSetUniversalTable(proxy *MdbsProxy, schema string, 
 	cluster.Conf.MdbsUniversalTables = cluster.Conf.MdbsUniversalTables + "," + schema + "." + table
 
 	for _, pri := range cluster.Proxies {
-		if pr, ok := pri.(*MdbsProxy); ok {
+		if pr, ok := pri.(*MariadbShardProxy); ok {
 			err := cluster.ShardProxyCreateVTable(pr, schema, table+"_copy", duplicates, false)
 			if err != nil {
 				return err
@@ -404,7 +417,7 @@ func (cluster *Cluster) ShardSetUniversalTable(proxy *MdbsProxy, schema string, 
 	return nil
 }
 
-func (cluster *Cluster) ShardProxyMoveTable(proxy *MdbsProxy, schema string, table string, destCluster *Cluster) error {
+func (cluster *Cluster) ShardProxyMoveTable(proxy *MariadbShardProxy, schema string, table string, destCluster *Cluster) error {
 	master := cluster.GetMaster()
 	if master == nil {
 		return errors.New("Move table no valid master on current cluster")
@@ -432,7 +445,7 @@ func (cluster *Cluster) ShardProxyMoveTable(proxy *MdbsProxy, schema string, tab
 	duplicates = append(duplicates, destmaster)
 
 	for _, pri := range cluster.Proxies {
-		if pr, ok := pri.(*MdbsProxy); ok {
+		if pr, ok := pri.(*MariadbShardProxy); ok {
 			err := destCluster.ShardProxyCreateVTable(pr, schema, table+"_copy", duplicates, false)
 			if err != nil {
 				return err
@@ -512,7 +525,7 @@ func (cluster *Cluster) ShardProxyMoveTable(proxy *MdbsProxy, schema string, tab
 	return nil
 }
 
-func (cluster *Cluster) ShardProxyReshardTable(proxy *MdbsProxy, schema string, table string, clusters map[string]*Cluster) error {
+func (cluster *Cluster) ShardProxyReshardTable(proxy *MariadbShardProxy, schema string, table string, clusters map[string]*Cluster) error {
 
 	master := cluster.GetMaster()
 	if master == nil {
@@ -545,7 +558,7 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *MdbsProxy, schema string, 
 	}
 
 	for _, pri := range cluster.Proxies {
-		if pr, ok := pri.(*MdbsProxy); ok {
+		if pr, ok := pri.(*MariadbShardProxy); ok {
 			err := cluster.ShardProxyCreateVTable(pr, schema, table+"_reshard", duplicates, false)
 			if err != nil {
 				return err
@@ -663,7 +676,7 @@ func (cluster *Cluster) RunQueryWithLog(server *ServerMonitor, query string) err
 	return nil
 }
 
-func (cluster *Cluster) ShardProxyBootstrap(proxy *MdbsProxy) error {
+func (cluster *Cluster) ShardProxyBootstrap(proxy *MariadbShardProxy) error {
 
 	var err error
 	if proxy.ShardProxy != nil {
@@ -683,7 +696,7 @@ func (cluster *Cluster) ShardProxyBootstrap(proxy *MdbsProxy) error {
 	return err
 }
 
-func (cluster *Cluster) ShardProxyCreateSystemTable(proxy *MdbsProxy) error {
+func (cluster *Cluster) ShardProxyCreateSystemTable(proxy *MariadbShardProxy) error {
 
 	params := fmt.Sprintf("?timeout=60s")
 
@@ -959,6 +972,6 @@ func (cluster *Cluster) ShardProxyCreateSystemTable(proxy *MdbsProxy) error {
 	return nil
 }
 
-func (cluster *Cluster) MdbsproxyCopyTable(oldmaster *ServerMonitor, newmaster *ServerMonitor, proxy *MdbsProxy) {
+func (cluster *Cluster) MdbsproxyCopyTable(oldmaster *ServerMonitor, newmaster *ServerMonitor, proxy *MariadbShardProxy) {
 
 }

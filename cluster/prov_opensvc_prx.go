@@ -145,7 +145,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 			}
 		}
 	}
-	if prx, ok := pri.(*MdbsProxy); ok {
+	if prx, ok := pri.(*MariadbShardProxy); ok {
 		if strings.Contains(svc.ProvProxAgents, agent.Node_name) {
 			srv, _ := cluster.newServerMonitor(prx.GetHost()+":"+prx.GetPort(), prx.User, prx.Pass, true, cluster.GetDomain())
 			err := srv.Refresh()
@@ -326,7 +326,7 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabasePr
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(pri.GetPort())
 
-	if prx, ok := pri.(*MdbsProxy); ok {
+	if prx, ok := pri.(*MariadbShardProxy); ok {
 		svcsection["container#prx"] = cluster.OpenSVCGetShardproxyContainerSection(prx)
 	}
 

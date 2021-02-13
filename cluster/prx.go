@@ -26,6 +26,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/spf13/pflag"
 )
 
 // Proxy defines a proxy
@@ -130,7 +131,7 @@ func (p *Proxy) SetSuspect() {
 }
 
 type DatabaseProxy interface {
-	// Init oldmaster is only currently used by Maxscale
+	AddFlags(flags *pflag.FlagSet, conf config.Config)
 	Init()
 	Refresh() error
 	Failover()
@@ -365,7 +366,7 @@ func (cluster *Cluster) newProxyList() error {
 	}
 	if cluster.Conf.MdbsProxyHosts != "" && cluster.Conf.MdbsProxyOn {
 		for k, proxyHost := range strings.Split(cluster.Conf.MdbsProxyHosts, ",") {
-			prx := new(MdbsProxy)
+			prx := new(MariadbShardProxy)
 			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSShardProxyPartitions, cluster.Conf.MdbsHostsIPV6)
 			prx.Type = config.ConstProxySpider
 			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
@@ -428,7 +429,7 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 	if cluster.Conf.MyproxyOn {
-		prx := new(Proxy)
+		prx := new(MyProxyProxy)
 		prx.Type = config.ConstProxyMyProxy
 		prx.Port = strconv.Itoa(cluster.Conf.MyproxyPort)
 		prx.Host = "0.0.0.0"

@@ -11,6 +11,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/spf13/pflag"
 )
 
 type ProxySQLProxy struct {
@@ -44,6 +45,27 @@ func NewProxySQLProxy(clusterName string, proxyHost string, conf config.Config) 
 	return prx
 }
 
+func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
+	flags.BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
+	flags.BoolVar(&conf.ProxysqlSaveToDisk, "proxysql-save-to-disk", false, "Save proxysql change to sqllight")
+	flags.StringVar(&conf.ProxysqlHosts, "proxysql-servers", "", "ProxySQL hosts")
+	flags.StringVar(&conf.ProxysqlHostsIPV6, "proxysql-servers-ipv6", "", "ProxySQL extra IPV6 bind for interfaces")
+	flags.StringVar(&conf.ProxysqlPort, "proxysql-port", "3306", "ProxySQL read/write proxy port")
+	flags.StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6032", "ProxySQL admin interface port")
+	flags.StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-reader-hostgroup", "1", "ProxySQL reader hostgroup")
+	flags.StringVar(&conf.ProxysqlWriterHostgroup, "proxysql-writer-hostgroup", "0", "ProxySQL writer hostgroup")
+	flags.StringVar(&conf.ProxysqlUser, "proxysql-user", "admin", "ProxySQL admin user")
+	flags.StringVar(&conf.ProxysqlPassword, "proxysql-password", "admin", "ProxySQL admin password")
+	flags.BoolVar(&conf.ProxysqlCopyGrants, "proxysql-bootstrap-users", true, "Copy users from master")
+	flags.BoolVar(&conf.ProxysqlMultiplexing, "proxysql-multiplexing", false, "Multiplexing")
+	flags.BoolVar(&conf.ProxysqlBootstrap, "proxysql-bootstrap", false, "Bootstrap ProxySQL backend servers and hostgroup")
+	flags.BoolVar(&conf.ProxysqlBootstrapVariables, "proxysql-bootstrap-variables", false, "Bootstrap ProxySQL backend servers and hostgroup")
+	flags.BoolVar(&conf.ProxysqlBootstrapHG, "proxysql-bootstrap-hostgroups", false, "Bootstrap ProxySQL hostgroups")
+	flags.BoolVar(&conf.ProxysqlBootstrapQueryRules, "proxysql-bootstrap-query-rules", false, "Bootstrap Query rules into ProxySQL")
+	flags.StringVar(&conf.ProxysqlBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "proxysql binary location")
+	flags.BoolVar(&conf.ProxysqlMasterIsReader, "proxysql-master-is-reader", false, "Add the master to the reader group")
+}
+
 func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 	psql := proxysql.ProxySQL{
 		User:     proxy.User,
@@ -62,11 +84,11 @@ func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 	return psql, nil
 }
 
-func (cluster *Cluster) AddShardProxy(proxysql *ProxySQLProxy, shardproxy *MdbsProxy) {
+func (cluster *Cluster) AddShardProxy(proxysql *ProxySQLProxy, shardproxy *MariadbShardProxy) {
 	proxysql.AddShardProxy(shardproxy)
 }
 
-func (proxy *ProxySQLProxy) AddShardProxy(shardproxy *MdbsProxy) {
+func (proxy *ProxySQLProxy) AddShardProxy(shardproxy *MariadbShardProxy) {
 	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
 		return
