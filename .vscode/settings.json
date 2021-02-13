@@ -1,5 +1,2 @@
 {
-    "go.buildFlags": [
-        "--ldflags -extldflags 'static' -w -s -X main.GoOS=linux -X main.GoArch=amd64 -X main.WithProvisioning=OFF"
-    ]
 }

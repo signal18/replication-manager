@@ -56,8 +56,8 @@ var (
 	FullVersion string
 	// Build is the build date of replication-manager
 	Build    string
-	GoOS     string
-	GoArch   string
+	GoOS     string = "linux"
+	GoArch   string = "amd64"
 	conf     config.Config
 	cfgGroup string
 )
