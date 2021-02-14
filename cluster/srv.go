@@ -842,34 +842,52 @@ func (server *ServerMonitor) Refresh() error {
 	return nil
 }
 
-/* Handles write freeze and existing transactions on a server */
+/* Handles write freeze and shoot existing transactions on a server */
 func (server *ServerMonitor) freeze() bool {
-	logs, err := dbhelper.SetReadOnly(server.Conn, true)
+	if server.ClusterGroup.Conf.FailEventScheduler {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes from Event Scheduler on %s", server.URL)
+		logs, err := server.SetEventScheduler(false)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not disable event scheduler on %s", server.URL)
+	}
+
+	server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes stopping all slaves on %s", server.URL)
+	logs, err := server.StopAllSlaves()
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not stop replicas source on ", server.URL)
+
+	server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes set read only on %s", server.URL)
+	logs, err = dbhelper.SetReadOnly(server.Conn, true)
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlInfo, "Could not set %s as read-only: %s", server.URL, err)
 	if err != nil {
 		return false
 	}
 	for i := server.ClusterGroup.Conf.SwitchWaitKill; i > 0; i -= 500 {
 		threads, logs, err := dbhelper.CheckLongRunningWrites(server.Conn, 0)
-		server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not check long running Writes %s as read-only: %s", server.URL, err)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not check long running writes %s as read-only: %s", server.URL, err)
 		if threads == 0 {
 			break
 		}
-		server.ClusterGroup.LogPrintf(LvlInfo, "Waiting for %d write threads to complete on %s", threads, server.URL)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes Waiting for %d write threads to complete %s", threads, server.URL)
 		time.Sleep(500 * time.Millisecond)
 	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes saving max_connections on %s ", server.URL)
+
 	server.maxConn, logs, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS", server.DBVersion)
-	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not get max_connections value on demoted leader")
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not save max_connections value on %s", server.URL)
 	if err != nil {
 
 	} else {
 		if server.ClusterGroup.Conf.SwitchDecreaseMaxConn {
+			server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes decreasing max_connections to 1 on %s ", server.URL)
 			logs, err := dbhelper.SetMaxConnections(server.Conn, strconv.FormatInt(server.ClusterGroup.Conf.SwitchDecreaseMaxConnValue, 10), server.DBVersion)
-			server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not set max_connections to 1 on demoted leader %s %s", server.URL, err)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not set max_connections to 1 on %s %s", server.URL, err)
 		}
 	}
-	server.ClusterGroup.LogPrintf("INFO", "Terminating all threads on %s", server.URL)
+	server.ClusterGroup.LogPrintf("INFO", "Freezing writes killing all other remaining threads on  %s", server.URL)
 	dbhelper.KillThreads(server.Conn, server.DBVersion)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes rejecting writes via FTWRL on %s ", server.URL)
+	logs, err = dbhelper.FlushTablesWithReadLock(server.Conn, server.DBVersion)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Could not lock tables on %s : %s", server.URL, err)
+
 	return true
 }
 
@@ -970,6 +988,42 @@ func (server *ServerMonitor) StopSlave() (string, error) {
 		return "", errors.New("No database connection pool")
 	}
 	return dbhelper.StopSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+}
+
+func (server *ServerMonitor) StopAllSlaves() (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
+	sql := ""
+	var lasterror error
+	for _, rep := range server.Replications {
+		res, errslave := dbhelper.StopSlave(server.Conn, rep.ConnectionName.String, server.DBVersion)
+		sql += res
+		if errslave != nil {
+			lasterror = errslave
+		}
+	}
+
+	return sql, lasterror
+}
+
+func (server *ServerMonitor) StopAllExtraSourceSlaves() (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
+	sql := ""
+	var lasterror error
+	for _, rep := range server.Replications {
+		if rep.ConnectionName.String != server.ClusterGroup.Conf.MasterConn {
+			res, errslave := dbhelper.StopSlave(server.Conn, rep.ConnectionName.String, server.DBVersion)
+			sql += res
+			if errslave != nil {
+				lasterror = errslave
+			}
+		}
+	}
+
+	return sql, lasterror
 }
 
 func (server *ServerMonitor) StartSlave() (string, error) {

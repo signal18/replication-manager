@@ -24,7 +24,7 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-// MasterFailover triggers a master switchover and returns the new master URL
+// MasterFailover triggers a leader change and returns the new master URL when single possible leader
 func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if cluster.GetTopology() == topoMultiMasterRing || cluster.GetTopology() == topoMultiMasterWsrep {
 		res := cluster.VMasterFailover(fail)
@@ -148,15 +148,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				}
 			}
 		}
-		if cluster.Conf.FailEventScheduler {
-			cluster.LogPrintf(LvlInfo, "Disable Event Scheduler on old master")
-			logs, err := cluster.oldMaster.SetEventScheduler(false)
-			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not disable event scheduler on old master")
-		}
+
 		cluster.oldMaster.freeze()
-		cluster.LogPrintf(LvlInfo, "Rejecting updates on %s (old master)", cluster.oldMaster.URL)
-		logs, err := dbhelper.FlushTablesWithReadLock(cluster.oldMaster.Conn, cluster.oldMaster.DBVersion)
-		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not lock tables on %s (old master) %s", cluster.oldMaster.URL, err)
 
 	}
 	// Sync candidate depending on the master status.
@@ -178,12 +171,12 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		dbhelper.MasterWaitGTID(cluster.master.Conn, cluster.oldMaster.GTIDBinlogPos.Sprint(), 30)
 	} else {*/
 	// Failover
-	cluster.LogPrintf(LvlInfo, "Waiting for candidate master to apply relay log")
+	cluster.LogPrintf(LvlInfo, "Waiting for candidate master %s to apply relay log", cluster.master.URL)
 	err = cluster.master.ReadAllRelayLogs()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Error while reading relay logs on candidate: %s", err)
+		cluster.LogPrintf(LvlErr, "Error while reading relay logs on candidate %s: %s", cluster.master, err)
 	}
-	cluster.LogPrintf(LvlDbg, "Save replication status before electing")
+	cluster.LogPrintf(LvlDbg, "Save replication status before opening traffic")
 	ms, err := cluster.master.GetSlaveStatus(cluster.master.ReplicationSourceName)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Failover can not fetch replication info on new master: %s", err)
@@ -326,7 +319,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		logs, err := dbhelper.UnlockTables(cluster.oldMaster.Conn)
 		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not unlock tables on old master %s", err)
 
-		cluster.oldMaster.StopSlave() // This is helpful in some cases the old master can have an old replication running
+		// Moved in freeze
+		//cluster.oldMaster.StopSlave() // This is helpful in some cases the old master can have an old replication running
 		one_shoot_slave_pos := false
 		if cluster.oldMaster.DBVersion.IsMariaDB() && cluster.oldMaster.HaveMariaDBGTID == false && cluster.oldMaster.DBVersion.Major >= 10 {
 			logs, err := dbhelper.SetGTIDSlavePos(cluster.oldMaster.Conn, cluster.master.GTIDBinlogPos.Sprint())
@@ -419,6 +413,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			logs, err = cluster.oldMaster.StartSlave()
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Start slave failed on old master,%s reason:  %s ", cluster.oldMaster.URL, err)
 		} else {
+
 			// Is Maxscale
 			// Don't start slave until the relay as been point to new master
 			cluster.LogPrintf(LvlInfo, "Pointing old master to relay server")
@@ -457,7 +452,6 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		}
 		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Change master failed on old master %s", err)
-
 		if cluster.Conf.ReadOnly {
 			logs, err = dbhelper.SetReadOnly(cluster.oldMaster.Conn, true)
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not set old master as read-only, %s", err)
@@ -479,6 +473,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.slaves = append(cluster.slaves, cluster.oldMaster)
 		}
 	}
+	// End Old Alive Leader as new replica
+
+	// Multi source on old leader case
+	cluster.FailoverExtraMultiSource(cluster.oldMaster, cluster.master, fail)
 
 	// ********
 	// Phase 5: Switch slaves to new master
@@ -655,6 +653,90 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	return true
 }
 
+// FailoverExtraMultiSource care of master extra muti source replications
+func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMaster *ServerMonitor, fail bool) error {
+
+	for _, rep := range oldMaster.Replications {
+
+		if rep.ConnectionName.String != cluster.Conf.MasterConn {
+			myparentrplpassword := ""
+			parentCluster := cluster.GetParentClusterFromReplicationSource(rep)
+			cluster.LogPrintf(LvlInfo, "Failover replication source %s ", rep.ConnectionName)
+			if parentCluster != nil {
+				myparentrplpassword = parentCluster.rplPass
+			} else {
+				cluster.LogPrintf(LvlErr, "Unable to found a monitored cluster for replication source %s ", rep.ConnectionName)
+				cluster.LogPrintf(LvlErr, "Moving source %s with empty password to preserve replication stream on new master", rep.ConnectionName)
+			}
+			// need a way to found parent replication password
+			if rep.UsingGtid.String == "No" {
+
+				logs, err := dbhelper.ChangeMaster(NewMaster.Conn, dbhelper.ChangeMasterOpt{
+					Host:        rep.MasterHost.String,
+					Port:        rep.MasterPort.String,
+					User:        rep.MasterUser.String,
+					Password:    myparentrplpassword,
+					Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+					Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
+					Mode:        "POSITIONAL",
+					Logfile:     rep.MasterLogFile.String,
+					Logpos:      rep.ExecMasterLogPos.String,
+					SSL:         cluster.Conf.ReplicationSSL,
+					Channel:     rep.ConnectionName.String,
+					IsDelayed:   false,
+					Delay:       "0",
+					PostgressDB: NewMaster.PostgressDB,
+				}, NewMaster.DBVersion)
+				cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", LvlErr, "Change master failed on slave %s, %s", NewMaster.URL, err)
+			} else {
+				if rep.UsingGtid.String == strings.ToUpper("SLAVE_POS") || rep.UsingGtid.String == strings.ToUpper("CURRENT_POS") {
+					//  We herite last GTID state from the old leader failed or not
+					logs, err := dbhelper.ChangeMaster(cluster.oldMaster.Conn, dbhelper.ChangeMasterOpt{
+						Host:        rep.MasterHost.String,
+						Port:        rep.MasterPort.String,
+						User:        rep.MasterUser.String,
+						Password:    myparentrplpassword,
+						Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+						Heartbeat:   strconv.Itoa(int(rep.SlaveHeartbeatPeriod)),
+						Mode:        strings.ToUpper(rep.UsingGtid.String),
+						SSL:         cluster.Conf.ReplicationSSL,
+						Channel:     rep.ConnectionName.String,
+						IsDelayed:   false,
+						Delay:       "0",
+						PostgressDB: NewMaster.PostgressDB,
+					}, NewMaster.DBVersion)
+					cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", LvlErr, "Change master failed on slave %s, %s", NewMaster.URL, err)
+
+				} else if rep.RetrievedGtidSet.Valid && rep.ExecutedGtidSet.String != "" {
+					logs, err := dbhelper.ChangeMaster(NewMaster.Conn, dbhelper.ChangeMasterOpt{
+						Host:        rep.MasterHost.String,
+						Port:        rep.MasterPort.String,
+						User:        rep.MasterUser.String,
+						Password:    myparentrplpassword,
+						Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+						Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
+						Mode:        "MASTER_AUTO_POSITION",
+						SSL:         cluster.Conf.ReplicationSSL,
+						Channel:     rep.ConnectionName.String,
+						IsDelayed:   false,
+						Delay:       "0",
+						PostgressDB: NewMaster.PostgressDB,
+					}, NewMaster.DBVersion)
+					cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", LvlErr, "Change master failed on slave %s, %s", NewMaster.URL, err)
+
+				}
+			}
+			logs, err := dbhelper.StartSlave(NewMaster.Conn, rep.ConnectionName.String, NewMaster.DBVersion)
+			cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", LvlErr, "Start replication source %s failed on %s, %s", rep.ConnectionName, NewMaster.URL, err)
+			if fail == false {
+				logs, err := dbhelper.ResetSlave(oldMaster.Conn, true, rep.ConnectionName.String, oldMaster.DBVersion)
+				cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", LvlErr, "Reset replication source %s failed on %s, %s", rep.ConnectionName, oldMaster.URL, err)
+			}
+		}
+	}
+	return nil
+}
+
 // Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate.
 func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog bool) int {
 	ll := len(l)
@@ -772,8 +854,9 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 	return -1
 }
 
+// electFailoverCandidate ound the most up to date and look after a possibility to failover on it
 func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bool) int {
-	//Found the most uptodate and look after a possibility to failover on it
+
 	ll := len(l)
 	seqList := make([]uint64, ll)
 	posList := make([]uint64, ll)
@@ -1025,6 +1108,7 @@ func (cluster *Cluster) foundPreferedMaster(l []*ServerMonitor) *ServerMonitor {
 	return nil
 }
 
+// VMasterFailover triggers a leader change and returns the new master URL when all possible leader multimaster ring or galera
 func (cluster *Cluster) VMasterFailover(fail bool) bool {
 
 	cluster.sme.SetFailoverState()
@@ -1284,27 +1368,6 @@ func (cluster *Cluster) electVirtualCandidate(oldMaster *ServerMonitor, forcingL
 
 	}
 	return -1
-}
-
-func (cluster *Cluster) GetRingChildServer(oldMaster *ServerMonitor) *ServerMonitor {
-	for _, s := range cluster.Servers {
-		if s.ServerID != cluster.oldMaster.ServerID {
-			//cluster.LogPrintf(LvlDbg, "test %s failed %s", s.URL, cluster.oldMaster.URL)
-			master, err := cluster.GetMasterFromReplication(s)
-			if err == nil && master.ServerID == oldMaster.ServerID {
-				return s
-			}
-		}
-	}
-	return nil
-}
-
-func (cluster *Cluster) GetRingParentServer(oldMaster *ServerMonitor) *ServerMonitor {
-	ss, err := cluster.oldMaster.GetSlaveStatusLastSeen(cluster.oldMaster.ReplicationSourceName)
-	if err != nil {
-		return nil
-	}
-	return cluster.GetServerFromURL(ss.MasterHost.String + ":" + ss.MasterPort.String)
 }
 
 func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {

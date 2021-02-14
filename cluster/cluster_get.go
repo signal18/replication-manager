@@ -18,6 +18,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/cron"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -529,6 +530,41 @@ func (cluster *Cluster) GetChildClusters() map[string]*Cluster {
 		}
 	}
 	return clusters
+}
+
+func (cluster *Cluster) GetParentClusterFromReplicationSource(rep dbhelper.SlaveStatus) *Cluster {
+
+	for _, c := range cluster.clusterList {
+		if cluster.Name != c.Name {
+			for _, srv := range c.Servers {
+				if srv.Host == rep.MasterHost.String && srv.Port == rep.MasterPort.String {
+					return c
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) GetRingChildServer(oldMaster *ServerMonitor) *ServerMonitor {
+	for _, s := range cluster.Servers {
+		if s.ServerID != cluster.oldMaster.ServerID {
+			//cluster.LogPrintf(LvlDbg, "test %s failed %s", s.URL, cluster.oldMaster.URL)
+			master, err := cluster.GetMasterFromReplication(s)
+			if err == nil && master.ServerID == oldMaster.ServerID {
+				return s
+			}
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) GetRingParentServer(oldMaster *ServerMonitor) *ServerMonitor {
+	ss, err := cluster.oldMaster.GetSlaveStatusLastSeen(cluster.oldMaster.ReplicationSourceName)
+	if err != nil {
+		return nil
+	}
+	return cluster.GetServerFromURL(ss.MasterHost.String + ":" + ss.MasterPort.String)
 }
 
 func (cluster *Cluster) GetClusterFromName(name string) (*Cluster, error) {
