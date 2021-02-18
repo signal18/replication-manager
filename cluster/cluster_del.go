@@ -8,6 +8,13 @@ package cluster
 
 import "strings"
 
+func (cluster *Cluster) RemoveServerFromIndex(index int) {
+	newServers := make([]*ServerMonitor, 0)
+	newServers = append(newServers, cluster.Servers[:index]...)
+	newServers = append(newServers, cluster.Servers[index+1:]...)
+	cluster.Servers = newServers
+}
+
 func (cluster *Cluster) CancelRollingRestart() error {
 	cluster.LogPrintf(LvlInfo, "API receive cancel rolling restart")
 	for _, pr := range cluster.Proxies {

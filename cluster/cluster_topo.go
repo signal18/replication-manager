@@ -73,19 +73,27 @@ func (cluster *Cluster) AddChildServers() error {
 	mychilds := cluster.GetChildClusters()
 	for _, c := range mychilds {
 		for _, sv := range c.Servers {
-
+			cluster.LogPrintf(LvlDbg, "AddChildServers chacking %s of %s ", sv.URL, c.Name)
 			if sv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
-				mymaster, _ := cluster.GetMasterFromReplication(sv)
-				if mymaster != nil {
-					//	cluster.slaves = append(cluster.slaves, sv)
-					if !cluster.HasServer(sv) {
-						srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.dbUser, sv.ClusterGroup.dbPass, false, c.GetDomain())
-						if err != nil {
-							return err
-						}
-						srv.Ignored = true
-						cluster.Servers = append(cluster.Servers, srv)
+				cluster.LogPrintf(LvlDbg, "AddChildServers %s IsSlaveOfReplicationSource  %s  ", sv.URL, cluster.Conf.MasterConn)
+				//			mymaster, _ := cluster.GetMasterFromReplication(sv)
+				//			if mymaster != nil {
+				cluster.LogPrintf(LvlDbg, "AddChildServers %s master found  %s  ", sv.URL, cluster.Conf.MasterConn)
+
+				if !cluster.HasServer(sv) {
+					cluster.LogPrintf(LvlDbg, "AddChildServers %s Has server already found  %s  ", sv.URL, cluster.Conf.MasterConn)
+
+					srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.dbUser, sv.ClusterGroup.dbPass, false, c.GetDomain())
+					if err != nil {
+						return err
 					}
+					srv.Ignored = true
+					cluster.Servers = append(cluster.Servers, srv)
+					//			}
+				}
+			} else {
+				if cluster.HasServer(sv) {
+					cluster.RemoveServerFromIndex(cluster.GetServerIndice(sv))
 				}
 			}
 		}

@@ -254,7 +254,7 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 					cluster.LogPrintf(LvlInfo, "Detecting broken resplication and UP state in haproxy %s drain  server %s", proxy.Host+":"+proxy.Port, srv.URL)
 					haRuntime.SetDrain(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
 				}
-				if (srv.State == stateSlave || srv.State == stateRelay) && line[17] == "DRAIN" {
+				if (srv.State == stateSlave || srv.State == stateRelay) && line[17] == "DRAIN" && !srv.IsIgnored() {
 					cluster.LogPrintf(LvlInfo, "Detecting valid resplication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL)
 					haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
 				}

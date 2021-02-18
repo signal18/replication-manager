@@ -686,6 +686,7 @@ func (cl *Cluster) SetArbitratorReport() error {
 	return nil
 }
 
+// SetClusterHead for MariaDB spider we can arbtitraty shard tables to child clusters
 func (cluster *Cluster) SetClusterHead(ClusterName string) {
 	cluster.Conf.ClusterHead = ClusterName
 }

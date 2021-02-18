@@ -661,15 +661,15 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 		if rep.ConnectionName.String != cluster.Conf.MasterConn {
 			myparentrplpassword := ""
 			parentCluster := cluster.GetParentClusterFromReplicationSource(rep)
-			cluster.LogPrintf(LvlInfo, "Failover replication source %s ", rep.ConnectionName)
+			cluster.LogPrintf(LvlInfo, "Failover replication source %s ", rep.ConnectionName.String)
 			if parentCluster != nil {
 				myparentrplpassword = parentCluster.rplPass
 			} else {
-				cluster.LogPrintf(LvlErr, "Unable to found a monitored cluster for replication source %s ", rep.ConnectionName)
-				cluster.LogPrintf(LvlErr, "Moving source %s with empty password to preserve replication stream on new master", rep.ConnectionName)
+				cluster.LogPrintf(LvlErr, "Unable to found a monitored cluster for replication source %s ", rep.ConnectionName.String)
+				cluster.LogPrintf(LvlErr, "Moving source %s with empty password to preserve replication stream on new master", rep.ConnectionName.String)
 			}
 			// need a way to found parent replication password
-			if rep.UsingGtid.String == "No" {
+			if strings.ToUpper(rep.UsingGtid.String) == "NO" {
 
 				logs, err := dbhelper.ChangeMaster(NewMaster.Conn, dbhelper.ChangeMasterOpt{
 					Host:        rep.MasterHost.String,
@@ -689,9 +689,9 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 				}, NewMaster.DBVersion)
 				cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", LvlErr, "Change master failed on slave %s, %s", NewMaster.URL, err)
 			} else {
-				if rep.UsingGtid.String == strings.ToUpper("SLAVE_POS") || rep.UsingGtid.String == strings.ToUpper("CURRENT_POS") {
+				if strings.ToUpper(rep.UsingGtid.String) == "SLAVE_POS" || strings.ToUpper(rep.UsingGtid.String) == "CURRENT_POS" {
 					//  We herite last GTID state from the old leader failed or not
-					logs, err := dbhelper.ChangeMaster(cluster.oldMaster.Conn, dbhelper.ChangeMasterOpt{
+					logs, err := dbhelper.ChangeMaster(NewMaster.Conn, dbhelper.ChangeMasterOpt{
 						Host:        rep.MasterHost.String,
 						Port:        rep.MasterPort.String,
 						User:        rep.MasterUser.String,
@@ -727,10 +727,10 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 				}
 			}
 			logs, err := dbhelper.StartSlave(NewMaster.Conn, rep.ConnectionName.String, NewMaster.DBVersion)
-			cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", LvlErr, "Start replication source %s failed on %s, %s", rep.ConnectionName, NewMaster.URL, err)
+			cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", LvlErr, "Start replication source %s failed on %s, %s", rep.ConnectionName.String, NewMaster.URL, err)
 			if fail == false {
 				logs, err := dbhelper.ResetSlave(oldMaster.Conn, true, rep.ConnectionName.String, oldMaster.DBVersion)
-				cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", LvlErr, "Reset replication source %s failed on %s, %s", rep.ConnectionName, oldMaster.URL, err)
+				cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", LvlErr, "Reset replication source %s failed on %s, %s", rep.ConnectionName.String, oldMaster.URL, err)
 			}
 		}
 	}

@@ -491,6 +491,17 @@ func (cluster *Cluster) GetCron() []cron.Entry {
 
 }
 
+func (cluster *Cluster) GetServerIndice(srv *ServerMonitor) int {
+	for i, sv := range cluster.Servers {
+		//	cluster.LogPrintf(LvlInfo, "HasServer:%s %s, %s %s", sv.Id, srv.Id, sv.URL, srv.URL)
+		// id can not be used for checking equality because  same srv in different clusters
+		if sv.URL == srv.URL {
+			return i
+		}
+	}
+	return 0
+}
+
 func (cluster *Cluster) getClusterByName(clname string) *Cluster {
 
 	for _, c := range cluster.clusterList {
@@ -527,6 +538,17 @@ func (cluster *Cluster) GetChildClusters() map[string]*Cluster {
 		//	cluster.LogPrintf(LvlErr, "GetChildClusters %s %s ", cluster.Name, c.Conf.ClusterHead)
 		if cluster.Name == c.Conf.ClusterHead {
 			clusters[c.Name] = c
+		}
+		// lopp over master multi source replication
+		condidateclustermaster := c.GetMaster()
+		if condidateclustermaster != nil && c.Name != cluster.Name {
+			for _, rep := range condidateclustermaster.Replications {
+				// is a source name has my cluster name or is any child cluster master point to my master
+				if rep.ConnectionName.String == cluster.Name || (cluster.GetMaster() != nil && cluster.master.Host == rep.MasterHost.String && cluster.master.Port == rep.MasterPort.String) {
+					cluster.LogPrintf(LvlDbg, "Discovering of a child cluster %s replication source %s", c.Name, rep.ConnectionName.String)
+					clusters[c.Name] = c
+				}
+			}
 		}
 	}
 	return clusters
