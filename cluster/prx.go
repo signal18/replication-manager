@@ -435,11 +435,11 @@ func (cluster *Cluster) newProxyList() error {
 		prx.ReadWritePort = cluster.Conf.MyproxyPort
 		prx.User = cluster.Conf.MyproxyUser
 		prx.Pass = cluster.Conf.MyproxyPassword
-		if prx.Name == "" {
-			prx.Name = prx.Host
-		}
 		if prx.Host == "" {
 			prx.Host = "repman." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
+		}
+		if prx.Name == "" {
+			prx.Name = prx.Host
 		}
 		prx.ClusterGroup = cluster
 		prx.SetID()
