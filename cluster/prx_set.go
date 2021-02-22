@@ -10,9 +10,18 @@ package cluster
 
 import (
 	"fmt"
+	"hash/crc64"
 	"os"
+	"strconv"
 	"strings"
 )
+
+func (p *Proxy) SetID() {
+	cluster := p.ClusterGroup
+	p.Id = "px" + strconv.FormatUint(
+		crc64.Checksum([]byte(cluster.Name+p.Name+":"+strconv.Itoa(p.WritePort)), cluster.crcTable),
+		10)
+}
 
 func (proxy *Proxy) SetServiceName(namespace string, name string) {
 	proxy.ServiceName = namespace + "/svc/" + name

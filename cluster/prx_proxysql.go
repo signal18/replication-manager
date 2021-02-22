@@ -3,7 +3,6 @@ package cluster
 import (
 	"errors"
 	"fmt"
-	"hash/crc64"
 	"strconv"
 
 	"github.com/signal18/replication-manager/config"
@@ -40,7 +39,7 @@ func NewProxySQLProxy(clusterName string, proxyHost string, conf config.Config) 
 		}
 	}
 
-	prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(clusterName+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
+	prx.SetID()
 
 	return prx
 }

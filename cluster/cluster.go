@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc64"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -154,6 +155,7 @@ type Cluster struct {
 	WaitingSwitchover             int                         `json:"waitingSwitchover"`
 	WaitingFailover               int                         `json:"waitingFailover"`
 	sync.Mutex
+	crcTable *crc64.Table
 }
 
 type ClusterSorter []*Cluster
@@ -226,6 +228,7 @@ const (
 
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, log *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 	cluster.switchoverChan = make(chan bool)
 	// should use buffered channels or it will block
 	cluster.statecloseChan = make(chan state.State, 100)

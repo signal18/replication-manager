@@ -25,8 +25,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-var crcTable = crc64.MakeTable(crc64.ECMA)
-
 type MariadbShardProxy struct {
 	Proxy
 }
@@ -77,7 +75,7 @@ func (proxy *MariadbShardProxy) Failover() {
 		if s == "replication_manager_schema" {
 			foundReplicationManagerSchema = true
 		}
-		checksum64 := crc64.Checksum([]byte(s+"_"+cluster.GetName()), crcTable)
+		checksum64 := crc64.Checksum([]byte(s+"_"+cluster.GetName()), cluster.crcTable)
 
 		query := "CREATE OR REPLACE SERVER RW" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + misc.Unbracket(cluster.master.Host) + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
 		_, err = proxy.ShardProxy.Conn.Exec(query)
@@ -123,7 +121,7 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MariadbShardProxy) {
 		if s == "replication_manager_schema" {
 			foundReplicationManagerSchema = true
 		}
-		checksum64 := crc64.Checksum([]byte(s+"_"+cluster.GetName()), crcTable)
+		checksum64 := crc64.Checksum([]byte(s+"_"+cluster.GetName()), cluster.crcTable)
 
 		query := "CREATE SERVER IF NOT EXISTS RW" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + misc.Unbracket(cluster.master.Host) + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
 		_, err = proxy.ShardProxy.Conn.Exec(query)
@@ -217,7 +215,7 @@ func (cluster *Cluster) ShardProxyGetHeadCluster() *Cluster {
 }
 
 func (cluster *Cluster) ShardProxyCreateVTable(proxy *MariadbShardProxy, schema string, table string, duplicates []*ServerMonitor, withreshard bool) error {
-	checksum64 := crc64.Checksum([]byte(schema+"_"+cluster.GetName()), crcTable)
+	checksum64 := crc64.Checksum([]byte(schema+"_"+cluster.GetName()), cluster.crcTable)
 	var err error
 	var ddl string
 	if len(duplicates) == 1 {
@@ -239,7 +237,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *MariadbShardProxy, schema 
 		link_status_def := " link_status \""
 		for _, cl := range cluster.ShardProxyGetShardClusters() {
 			cl.CheckMdbShardServersSchema(proxy)
-			checksum64 := crc64.Checksum([]byte(schema+"_"+cl.GetName()), crcTable)
+			checksum64 := crc64.Checksum([]byte(schema+"_"+cl.GetName()), cluster.crcTable)
 			srv_def = srv_def + "RW" + strconv.FormatUint(checksum64, 10) + " "
 			link_status_def = link_status_def + "0 "
 		}
@@ -281,7 +279,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *MariadbShardProxy, schema 
 		clusterList := cluster.ShardProxyGetShardClusters()
 		for _, cl := range clusterList {
 			cl.CheckMdbShardServersSchema(proxy)
-			checksum64 := crc64.Checksum([]byte(schema+"_"+cl.GetName()), crcTable)
+			checksum64 := crc64.Checksum([]byte(schema+"_"+cl.GetName()), cluster.crcTable)
 			query = query + " PARTITION pt" + strconv.Itoa(i) + " COMMENT ='srv \"RW" + strconv.FormatUint(checksum64, 10) + "\", tbl \"" + table + "\", database \"" + schema + "\"'"
 			if i != len(clusterList) {
 				query = query + ",\n"

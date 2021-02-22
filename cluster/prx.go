@@ -10,7 +10,6 @@ package cluster
 
 import (
 	"fmt"
-	"hash/crc64"
 	"os"
 	"strconv"
 	"strings"
@@ -220,7 +219,6 @@ type proxyList []DatabaseProxy
 func (cluster *Cluster) newProxyList() error {
 	nbproxies := 0
 
-	crcTable := crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 	if cluster.Conf.MxsHost != "" && cluster.Conf.MxsOn {
 		nbproxies += len(strings.Split(cluster.Conf.MxsHost, ","))
 	}
@@ -277,9 +275,8 @@ func (cluster *Cluster) newProxyList() error {
 			if cluster.Conf.ProvNetCNI {
 				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 			}
-			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
-
+			prx.SetID()
 			prx.SetDataDir()
 			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
@@ -306,8 +303,8 @@ func (cluster *Cluster) newProxyList() error {
 			if cluster.Conf.ProvNetCNI {
 				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 			}
-			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
+			prx.SetID()
 			prx.SetDataDir()
 			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
@@ -330,8 +327,8 @@ func (cluster *Cluster) newProxyList() error {
 		if prx.Name == "" {
 			prx.Name = prx.Host
 		}
-		prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 		prx.ClusterGroup = cluster
+		prx.SetID()
 		prx.SetDataDir()
 		prx.SetServiceName(cluster.Name, prx.Name)
 		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
@@ -383,8 +380,8 @@ func (cluster *Cluster) newProxyList() error {
 				prx.Port = "3306"
 			}
 			prx.WritePort, _ = strconv.Atoi(prx.GetPort())
-			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
+			prx.SetID()
 			prx.SetDataDir()
 			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
@@ -414,8 +411,8 @@ func (cluster *Cluster) newProxyList() error {
 			if cluster.Conf.ProvNetCNI {
 				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 			}
-			prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 			prx.ClusterGroup = cluster
+			prx.SetID()
 			prx.SetDataDir()
 			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
@@ -441,11 +438,11 @@ func (cluster *Cluster) newProxyList() error {
 		if prx.Name == "" {
 			prx.Name = prx.Host
 		}
-		prx.Id = "px" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+prx.Name+":"+strconv.Itoa(prx.WritePort)), crcTable), 10)
 		if prx.Host == "" {
 			prx.Host = "repman." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 		}
 		prx.ClusterGroup = cluster
+		prx.SetID()
 		prx.SetDataDir()
 		prx.SetServiceName(cluster.Name, prx.Name)
 		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
