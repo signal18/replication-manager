@@ -55,11 +55,6 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 
 }
 
-// Deprecated: replaced by proxy.GetCluster()
-func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
-	return prx.GetCluster()
-}
-
 func (prx *Proxy) GetCluster() (*sqlx.DB, error) {
 	cluster := prx.ClusterGroup
 	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
@@ -326,4 +321,48 @@ protocol=MySQLBackend
 		return ""
 	}
 	return ""
+}
+
+func (p *Proxy) GetAgent() string {
+	return p.Agent
+}
+
+func (p *Proxy) GetType() string {
+	return p.Type
+}
+
+func (p *Proxy) GetHost() string {
+	return p.Host
+}
+
+func (p *Proxy) GetPort() string {
+	return p.Port
+}
+
+func (p *Proxy) GetWritePort() int {
+	return p.WritePort
+}
+
+func (p *Proxy) GetId() string {
+	return p.Id
+}
+
+func (p *Proxy) GetState() string {
+	return p.State
+}
+
+func (p *Proxy) GetUser() string {
+	return p.User
+}
+
+func (p *Proxy) GetPass() string {
+	return p.Pass
+}
+
+func (p *Proxy) GetFailCount() int {
+	return p.FailCount
+}
+
+func (p *Proxy) GetPrevState() string {
+	return p.PrevState
 }

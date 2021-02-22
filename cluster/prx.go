@@ -65,70 +65,6 @@ type Proxy struct {
 	Agent           string               `json:"agent"`
 }
 
-func (p *Proxy) GetAgent() string {
-	return p.Agent
-}
-
-func (p *Proxy) GetType() string {
-	return p.Type
-}
-
-func (p *Proxy) GetHost() string {
-	return p.Host
-}
-
-func (p *Proxy) GetPort() string {
-	return p.Port
-}
-
-func (p *Proxy) GetWritePort() int {
-	return p.WritePort
-}
-
-func (p *Proxy) GetId() string {
-	return p.Id
-}
-
-func (p *Proxy) GetState() string {
-	return p.State
-}
-
-func (p *Proxy) SetState(v string) {
-	p.State = v
-}
-
-func (p *Proxy) GetUser() string {
-	return p.User
-}
-
-func (p *Proxy) GetPass() string {
-	return p.Pass
-}
-
-func (p *Proxy) GetFailCount() int {
-	return p.FailCount
-}
-
-func (p *Proxy) SetFailCount(c int) {
-	p.FailCount = c
-}
-
-func (p *Proxy) SetCredential(credential string) {
-	p.User, p.Pass = misc.SplitPair(credential)
-}
-
-func (p *Proxy) GetPrevState() string {
-	return p.PrevState
-}
-
-func (p *Proxy) SetPrevState(state string) {
-	p.PrevState = state
-}
-
-func (p *Proxy) SetSuspect() {
-	p.State = stateSuspect
-}
-
 type DatabaseProxy interface {
 	AddFlags(flags *pflag.FlagSet, conf config.Config)
 	Init()
@@ -608,8 +544,6 @@ func (cluster *Cluster) failoverProxies() {
 	cluster.initConsul()
 }
 
-// TODO: reduce to
-// for { pr.Init() }
 func (cluster *Cluster) initProxies() {
 	for _, pr := range cluster.Proxies {
 		cluster.LogPrintf(LvlInfo, "New proxy monitored: %s %s:%s", pr.GetType(), pr.GetHost(), pr.GetPort())
@@ -630,6 +564,8 @@ func (proxy *Proxy) SendStats() error {
 	}
 	for _, wbackend := range proxy.BackendsWrite {
 		var metrics = make([]graphite.Metric, 4)
+
+		// TODO: clarify what this replacer does and what the purpose is
 		replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-", ":", "-")
 		server := "rw-" + replacer.Replace(wbackend.PrxName)
 		metrics[0] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.bytes_send", proxy.Type, proxy.Id, server), wbackend.PrxByteOut, time.Now().Unix())

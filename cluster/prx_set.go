@@ -14,6 +14,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 func (p *Proxy) SetID() {
@@ -92,4 +94,24 @@ func (proxy *Proxy) SetReprovCookie() {
 		fmt.Println("Error:", err)
 	}
 	newFile.Close()
+}
+
+func (p *Proxy) SetPrevState(state string) {
+	p.PrevState = state
+}
+
+func (p *Proxy) SetSuspect() {
+	p.State = stateSuspect
+}
+
+func (p *Proxy) SetFailCount(c int) {
+	p.FailCount = c
+}
+
+func (p *Proxy) SetCredential(credential string) {
+	p.User, p.Pass = misc.SplitPair(credential)
+}
+
+func (p *Proxy) SetState(v string) {
+	p.State = v
 }
