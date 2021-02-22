@@ -115,3 +115,7 @@ func (p *Proxy) SetCredential(credential string) {
 func (p *Proxy) SetState(v string) {
 	p.State = v
 }
+
+func (p *Proxy) SetCluster(c *Cluster) {
+	p.ClusterGroup = c
+}

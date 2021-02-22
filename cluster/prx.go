@@ -66,6 +66,7 @@ type Proxy struct {
 }
 
 type DatabaseProxy interface {
+	SetCluster(c *Cluster)
 	AddFlags(flags *pflag.FlagSet, conf config.Config)
 	Init()
 	Refresh() error
@@ -134,6 +135,10 @@ type DatabaseProxy interface {
 	SetWaitStopCookie()
 
 	SetSuspect()
+
+	SetID()
+	SetDataDir()
+	SetServiceName(string, string)
 }
 
 type Backend struct {
@@ -180,13 +185,9 @@ func (cluster *Cluster) newProxyList() error {
 			if cluster.Conf.ProvNetCNI {
 				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 			}
-			prx.ClusterGroup = cluster
-			prx.SetID()
-			prx.SetDataDir()
-			prx.SetServiceName(cluster.Name, prx.Name)
-			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
-			prx.State = stateSuspect
-			cluster.Proxies = append(cluster.Proxies, prx)
+
+			cluster.AddProxy(prx)
+
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
@@ -207,13 +208,9 @@ func (cluster *Cluster) newProxyList() error {
 			if cluster.Conf.ProvNetCNI {
 				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 			}
-			prx.ClusterGroup = cluster
-			prx.SetID()
-			prx.SetDataDir()
-			prx.SetServiceName(cluster.Name, prx.Name)
-			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
-			prx.State = stateSuspect
-			cluster.Proxies = append(cluster.Proxies, prx)
+
+			cluster.AddProxy(prx)
+
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
@@ -229,13 +226,8 @@ func (cluster *Cluster) newProxyList() error {
 		if prx.Name == "" {
 			prx.Name = prx.Host
 		}
-		prx.ClusterGroup = cluster
-		prx.SetID()
-		prx.SetDataDir()
-		prx.SetServiceName(cluster.Name, prx.Name)
-		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
-		prx.State = stateSuspect
-		cluster.Proxies = append(cluster.Proxies, prx)
+
+		cluster.AddProxy(prx)
 	}
 	if cluster.Conf.ProxysqlOn {
 
@@ -250,12 +242,8 @@ func (cluster *Cluster) newProxyList() error {
 				prx.Pass = p.PlainText
 			}
 
-			prx.ClusterGroup = cluster
-			prx.SetDataDir()
-			prx.SetServiceName(cluster.Name, prx.Name)
-			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
-			prx.State = stateSuspect
-			cluster.Proxies = append(cluster.Proxies, prx)
+			cluster.AddProxy(prx)
+
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
@@ -280,13 +268,9 @@ func (cluster *Cluster) newProxyList() error {
 				prx.Port = "3306"
 			}
 			prx.WritePort, _ = strconv.Atoi(prx.GetPort())
-			prx.ClusterGroup = cluster
-			prx.SetID()
-			prx.SetDataDir()
-			prx.SetServiceName(cluster.Name, prx.Name)
-			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
-			prx.State = stateSuspect
-			cluster.Proxies = append(cluster.Proxies, prx)
+
+			cluster.AddProxy(prx)
+
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
@@ -310,13 +294,9 @@ func (cluster *Cluster) newProxyList() error {
 			if cluster.Conf.ProvNetCNI {
 				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 			}
-			prx.ClusterGroup = cluster
-			prx.SetID()
-			prx.SetDataDir()
-			prx.SetServiceName(cluster.Name, prx.Name)
-			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
-			prx.State = stateSuspect
-			cluster.Proxies = append(cluster.Proxies, prx)
+
+			cluster.AddProxy(prx)
+
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
@@ -339,13 +319,8 @@ func (cluster *Cluster) newProxyList() error {
 		if prx.Name == "" {
 			prx.Name = prx.Host
 		}
-		prx.ClusterGroup = cluster
-		prx.SetID()
-		prx.SetDataDir()
-		prx.SetServiceName(cluster.Name, prx.Name)
-		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
-		prx.State = stateSuspect
-		cluster.Proxies = append(cluster.Proxies, prx)
+
+		cluster.AddProxy(prx)
 	}
 
 	cluster.LogPrintf(LvlInfo, "Loaded %d proxies", len(cluster.Proxies))

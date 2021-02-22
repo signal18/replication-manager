@@ -39,8 +39,6 @@ func NewProxySQLProxy(clusterName string, proxyHost string, conf config.Config) 
 		}
 	}
 
-	prx.SetID()
-
 	return prx
 }
 
