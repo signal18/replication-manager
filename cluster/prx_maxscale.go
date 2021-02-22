@@ -14,6 +14,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/maxscale"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/pflag"
 )
@@ -24,6 +25,32 @@ type MaxscaleProxy struct {
 
 func (cluster *Cluster) refreshMaxscale(proxy *MaxscaleProxy) error {
 	return proxy.refresh()
+}
+
+func NewMaxscaleProxy(placement int, cluster *Cluster, proxyHost string) *MaxscaleProxy {
+	conf := cluster.Conf
+	prx := new(MaxscaleProxy)
+	prx.Type = config.ConstProxyMaxscale
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSMaxscalePartitions, conf.MxsHostsIPV6)
+	prx.Port = conf.MxsPort
+	prx.User = conf.MxsUser
+	prx.Pass = conf.MxsPass
+	if cluster.key != nil {
+		p := crypto.Password{Key: cluster.key}
+		p.CipherText = prx.Pass
+		p.Decrypt()
+		prx.Pass = p.PlainText
+	}
+	prx.ReadPort = conf.MxsReadPort
+	prx.WritePort = conf.MxsWritePort
+	prx.ReadWritePort = conf.MxsReadWritePort
+	prx.Name = proxyHost
+	prx.Host = proxyHost
+	if cluster.Conf.ProvNetCNI {
+		prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+	}
+
+	return prx
 }
 
 func (proxy *MaxscaleProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {

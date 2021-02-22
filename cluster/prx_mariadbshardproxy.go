@@ -29,6 +29,29 @@ type MariadbShardProxy struct {
 	Proxy
 }
 
+func NewMariadbShardProxy(placement int, cluster *Cluster, proxyHost string) *MariadbShardProxy {
+	conf := cluster.Conf
+	prx := new(MariadbShardProxy)
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSShardProxyPartitions, conf.MdbsHostsIPV6)
+	prx.Type = config.ConstProxySpider
+	prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
+	prx.User, prx.Pass = misc.SplitPair(conf.MdbsProxyCredential)
+	prx.ReadPort, _ = strconv.Atoi(prx.GetPort())
+	prx.ReadWritePort, _ = strconv.Atoi(prx.GetPort())
+	prx.Name = proxyHost
+	if conf.ProvNetCNI {
+		if conf.ClusterHead == "" {
+			prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+		} else {
+			prx.Host = prx.Host + "." + conf.ClusterHead + ".svc." + conf.ProvOrchestratorCluster
+		}
+		prx.Port = "3306"
+	}
+	prx.WritePort, _ = strconv.Atoi(prx.GetPort())
+
+	return prx
+}
+
 func (proxy *MariadbShardProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
 	flags.BoolVar(&conf.MdbsProxyOn, "shardproxy", false, "MariaDB Spider proxy")
 	flags.StringVar(&conf.MdbsProxyHosts, "shardproxy-servers", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")

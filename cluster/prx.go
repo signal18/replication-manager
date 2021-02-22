@@ -21,7 +21,6 @@ import (
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/router/myproxy"
 	"github.com/signal18/replication-manager/router/proxysql"
-	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -161,49 +160,14 @@ func (cluster *Cluster) newProxyList() error {
 	cluster.Proxies = make([]DatabaseProxy, 0)
 
 	if cluster.Conf.MxsHost != "" && cluster.Conf.MxsOn {
-
 		for k, proxyHost := range strings.Split(cluster.Conf.MxsHost, ",") {
-			// prx := new(Proxy)
-			prx := new(MaxscaleProxy)
-			prx.Type = config.ConstProxyMaxscale
-			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSMaxscalePartitions, cluster.Conf.MxsHostsIPV6)
-			prx.Port = cluster.Conf.MxsPort
-			prx.User = cluster.Conf.MxsUser
-			prx.Pass = cluster.Conf.MxsPass
-			if cluster.key != nil {
-				p := crypto.Password{Key: cluster.key}
-				p.CipherText = prx.Pass
-				p.Decrypt()
-				prx.Pass = p.PlainText
-			}
-			prx.ReadPort = cluster.Conf.MxsReadPort
-			prx.WritePort = cluster.Conf.MxsWritePort
-			prx.ReadWritePort = cluster.Conf.MxsReadWritePort
-			prx.Name = proxyHost
-			prx.Host = proxyHost
-			if cluster.Conf.ProvNetCNI {
-				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
-			}
-
+			prx := NewMaxscaleProxy(k, cluster, proxyHost)
 			cluster.AddProxy(prx)
 		}
 	}
 	if cluster.Conf.HaproxyOn {
-
 		for k, proxyHost := range strings.Split(cluster.Conf.HaproxyHosts, ",") {
-			prx := new(HaproxyProxy)
-			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSHaProxyPartitions, cluster.Conf.HaproxyHostsIPV6)
-			prx.Type = config.ConstProxyHaproxy
-			prx.Port = strconv.Itoa(cluster.Conf.HaproxyAPIPort)
-			prx.ReadPort = cluster.Conf.HaproxyReadPort
-			prx.WritePort = cluster.Conf.HaproxyWritePort
-			prx.ReadWritePort = cluster.Conf.HaproxyWritePort
-			prx.Name = proxyHost
-			prx.Host = proxyHost
-			if cluster.Conf.ProvNetCNI {
-				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
-			}
-
+			prx := NewHaproxyProxy(k, cluster, proxyHost)
 			cluster.AddProxy(prx)
 		}
 	}
@@ -221,84 +185,28 @@ func (cluster *Cluster) newProxyList() error {
 		cluster.AddProxy(prx)
 	}
 	if cluster.Conf.ProxysqlOn {
-
 		for k, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
-			prx := NewProxySQLProxy(cluster.Name, proxyHost, cluster.Conf)
-			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSProxySQLPartitions, cluster.Conf.ProxysqlHostsIPV6)
-
-			if cluster.key != nil {
-				p := crypto.Password{Key: cluster.key}
-				p.CipherText = prx.Pass
-				p.Decrypt()
-				prx.Pass = p.PlainText
-			}
-
+			prx := NewProxySQLProxy(k, cluster, proxyHost)
 			cluster.AddProxy(prx)
 		}
 	}
 	if cluster.Conf.MdbsProxyHosts != "" && cluster.Conf.MdbsProxyOn {
 		for k, proxyHost := range strings.Split(cluster.Conf.MdbsProxyHosts, ",") {
-			prx := new(MariadbShardProxy)
-			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSShardProxyPartitions, cluster.Conf.MdbsHostsIPV6)
-			prx.Type = config.ConstProxySpider
-			prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
-			prx.User, prx.Pass = misc.SplitPair(cluster.Conf.MdbsProxyCredential)
-			prx.ReadPort, _ = strconv.Atoi(prx.GetPort())
-			prx.ReadWritePort, _ = strconv.Atoi(prx.GetPort())
-			prx.Name = proxyHost
-			if cluster.Conf.ProvNetCNI {
-				if cluster.Conf.ClusterHead == "" {
-					prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
-				} else {
-					prx.Host = prx.Host + "." + cluster.Conf.ClusterHead + ".svc." + cluster.Conf.ProvOrchestratorCluster
-				}
-				prx.Port = "3306"
-			}
-			prx.WritePort, _ = strconv.Atoi(prx.GetPort())
-
+			prx := NewMariadbShardProxy(k, cluster, proxyHost)
 			cluster.AddProxy(prx)
 			cluster.LogPrintf(LvlDbg, "New MdbShardProxy proxy created: %s %s", prx.Host, prx.GetPort())
 		}
 	}
 	if cluster.Conf.SphinxHosts != "" && cluster.Conf.SphinxOn {
 		for k, proxyHost := range strings.Split(cluster.Conf.SphinxHosts, ",") {
-			prx := new(SphinxProxy)
-			prx.SetPlacement(k, cluster.Conf.ProvProxAgents, cluster.Conf.SlapOSSphinxPartitions, cluster.Conf.SphinxHostsIPV6)
-			prx.Type = config.ConstProxySphinx
-
-			prx.Port = cluster.Conf.SphinxQLPort
-			prx.User = ""
-			prx.Pass = ""
-			prx.ReadPort, _ = strconv.Atoi(prx.GetPort())
-			prx.WritePort, _ = strconv.Atoi(prx.GetPort())
-			prx.ReadWritePort, _ = strconv.Atoi(prx.GetPort())
-			prx.Name = proxyHost
-			prx.Host = proxyHost
-			if cluster.Conf.ProvNetCNI {
-				prx.Host = prx.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
-			}
+			prx := NewSphinxProxy(k, cluster, proxyHost)
 
 			cluster.AddProxy(prx)
-			cluster.LogPrintf(LvlDbg, "New SphinxSearch proxy created: %s %s", prx.Host, prx.GetPort())
+			cluster.LogPrintf(LvlDbg, "New SphinxSearch proxy created: %s %s", prx.GetHost(), prx.GetPort())
 		}
 	}
 	if cluster.Conf.MyproxyOn {
-		prx := new(MyProxyProxy)
-		prx.Type = config.ConstProxyMyProxy
-		prx.Port = strconv.Itoa(cluster.Conf.MyproxyPort)
-		prx.Host = "0.0.0.0"
-		prx.ReadPort = cluster.Conf.MyproxyPort
-		prx.WritePort = cluster.Conf.MyproxyPort
-		prx.ReadWritePort = cluster.Conf.MyproxyPort
-		prx.User = cluster.Conf.MyproxyUser
-		prx.Pass = cluster.Conf.MyproxyPassword
-		if prx.Host == "" {
-			prx.Host = "repman." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
-		}
-		if prx.Name == "" {
-			prx.Name = prx.Host
-		}
-
+		prx := NewMyProxyProxy(0, cluster, "")
 		cluster.AddProxy(prx)
 	}
 

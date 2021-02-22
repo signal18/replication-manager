@@ -7,6 +7,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/proxysql"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -17,7 +18,8 @@ type ProxySQLProxy struct {
 	Proxy
 }
 
-func NewProxySQLProxy(clusterName string, proxyHost string, conf config.Config) *ProxySQLProxy {
+func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxySQLProxy {
+	conf := cluster.Conf
 	prx := new(ProxySQLProxy)
 	prx.Name = proxyHost
 	prx.Host = proxyHost
@@ -31,12 +33,21 @@ func NewProxySQLProxy(clusterName string, proxyHost string, conf config.Config) 
 	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
 	prx.ReadPort, _ = strconv.Atoi(conf.ProxysqlPort)
 
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSProxySQLPartitions, conf.ProxysqlHostsIPV6)
+
 	if conf.ProvNetCNI {
 		if conf.ClusterHead == "" {
-			prx.Host = prx.Host + "." + clusterName + ".svc." + conf.ProvOrchestratorCluster
+			prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
 		} else {
 			prx.Host = prx.Host + "." + conf.ClusterHead + ".svc." + conf.ProvOrchestratorCluster
 		}
+	}
+
+	if cluster.key != nil {
+		p := crypto.Password{Key: cluster.key}
+		p.CipherText = prx.Pass
+		p.Decrypt()
+		prx.Pass = p.PlainText
 	}
 
 	return prx

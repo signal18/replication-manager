@@ -28,6 +28,22 @@ type HaproxyProxy struct {
 	Proxy
 }
 
+func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *HaproxyProxy {
+	conf := cluster.Conf
+	prx := new(HaproxyProxy)
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSHaProxyPartitions, conf.HaproxyHostsIPV6)
+	prx.Type = config.ConstProxyHaproxy
+	prx.Port = strconv.Itoa(conf.HaproxyAPIPort)
+	prx.ReadPort = conf.HaproxyReadPort
+	prx.WritePort = conf.HaproxyWritePort
+	prx.ReadWritePort = conf.HaproxyWritePort
+	prx.Name = proxyHost
+	prx.Host = proxyHost
+	if conf.ProvNetCNI {
+		prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+	}
+}
+
 func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
 	flags.BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HaProxy on same host")
 	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HaProxy mode [standby|runtimeapi|dataplaneapi]")

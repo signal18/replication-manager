@@ -11,6 +11,7 @@ package cluster
 import (
 	"fmt"
 	"runtime"
+	"strconv"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/sphinx"
@@ -20,6 +21,27 @@ import (
 
 type SphinxProxy struct {
 	Proxy
+}
+
+func NewSphinxProxy(placement int, cluster *Cluster, proxyHost string) *SphinxProxy {
+	conf := cluster.Conf
+	prx := new(SphinxProxy)
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSSphinxPartitions, conf.SphinxHostsIPV6)
+	prx.Type = config.ConstProxySphinx
+
+	prx.Port = conf.SphinxQLPort
+	prx.User = ""
+	prx.Pass = ""
+	prx.ReadPort, _ = strconv.Atoi(prx.GetPort())
+	prx.WritePort, _ = strconv.Atoi(prx.GetPort())
+	prx.ReadWritePort, _ = strconv.Atoi(prx.GetPort())
+	prx.Name = proxyHost
+	prx.Host = proxyHost
+	if conf.ProvNetCNI {
+		prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+	}
+
+	return prx
 }
 
 func (proxy *SphinxProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
