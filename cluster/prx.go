@@ -159,7 +159,6 @@ type proxyList []DatabaseProxy
 
 func (cluster *Cluster) newProxyList() error {
 	cluster.Proxies = make([]DatabaseProxy, 0)
-	var err error
 
 	if cluster.Conf.MxsHost != "" && cluster.Conf.MxsOn {
 
@@ -187,10 +186,6 @@ func (cluster *Cluster) newProxyList() error {
 			}
 
 			cluster.AddProxy(prx)
-
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
-			}
 		}
 	}
 	if cluster.Conf.HaproxyOn {
@@ -210,10 +205,6 @@ func (cluster *Cluster) newProxyList() error {
 			}
 
 			cluster.AddProxy(prx)
-
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
-			}
 		}
 	}
 	if cluster.Conf.ExtProxyOn {
@@ -243,10 +234,6 @@ func (cluster *Cluster) newProxyList() error {
 			}
 
 			cluster.AddProxy(prx)
-
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
-			}
 		}
 	}
 	if cluster.Conf.MdbsProxyHosts != "" && cluster.Conf.MdbsProxyOn {
@@ -270,10 +257,6 @@ func (cluster *Cluster) newProxyList() error {
 			prx.WritePort, _ = strconv.Atoi(prx.GetPort())
 
 			cluster.AddProxy(prx)
-
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
-			}
 			cluster.LogPrintf(LvlDbg, "New MdbShardProxy proxy created: %s %s", prx.Host, prx.GetPort())
 		}
 	}
@@ -296,10 +279,6 @@ func (cluster *Cluster) newProxyList() error {
 			}
 
 			cluster.AddProxy(prx)
-
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
-			}
 			cluster.LogPrintf(LvlDbg, "New SphinxSearch proxy created: %s %s", prx.Host, prx.GetPort())
 		}
 	}
