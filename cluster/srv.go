@@ -731,7 +731,7 @@ func (server *ServerMonitor) Refresh() error {
 		if server.DBVersion.IsPPostgreSQL() {
 			//PostgresQL as no server_id concept mimic via internal server id for topology detection
 			var sid uint64
-			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), cluster.crcTable), 10), 10, 64)
+			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), server.ClusterGroup.crcTable), 10), 10, 64)
 			if err != nil {
 				server.ClusterGroup.LogPrintf(LvlWarn, "PG Could not assign server_id s", err)
 			}
