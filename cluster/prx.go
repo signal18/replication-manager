@@ -153,38 +153,7 @@ type Backend struct {
 type proxyList []DatabaseProxy
 
 func (cluster *Cluster) newProxyList() error {
-	nbproxies := 0
-
-	if cluster.Conf.MxsHost != "" && cluster.Conf.MxsOn {
-		nbproxies += len(strings.Split(cluster.Conf.MxsHost, ","))
-	}
-	if cluster.Conf.HaproxyOn {
-		nbproxies += len(strings.Split(cluster.Conf.HaproxyHosts, ","))
-	}
-	if cluster.Conf.MdbsProxyHosts != "" && cluster.Conf.MdbsProxyOn {
-		nbproxies += len(strings.Split(cluster.Conf.MdbsProxyHosts, ","))
-	}
-	if cluster.Conf.ProxysqlOn {
-		nbproxies += len(strings.Split(cluster.Conf.ProxysqlHosts, ","))
-	}
-	if cluster.Conf.MysqlRouterOn {
-		nbproxies += len(strings.Split(cluster.Conf.MysqlRouterHosts, ","))
-	}
-	if cluster.Conf.SphinxOn {
-		nbproxies += len(strings.Split(cluster.Conf.SphinxHosts, ","))
-	}
-	if cluster.Conf.ExtProxyOn {
-		nbproxies++
-	}
-	// internal myproxy
-	if cluster.Conf.MyproxyOn {
-		nbproxies++
-	}
-	cluster.Proxies = make([]DatabaseProxy, nbproxies)
-
-	cluster.LogPrintf(LvlInfo, "Loading %d proxies", nbproxies)
-
-	var ctproxy = 0
+	cluster.Proxies = make([]DatabaseProxy, 0)
 	var err error
 
 	if cluster.Conf.MxsHost != "" && cluster.Conf.MxsOn {
@@ -217,11 +186,10 @@ func (cluster *Cluster) newProxyList() error {
 			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
 			prx.State = stateSuspect
-			cluster.Proxies[ctproxy] = prx
+			cluster.Proxies = append(cluster.Proxies, prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
-			ctproxy++
 		}
 	}
 	if cluster.Conf.HaproxyOn {
@@ -245,12 +213,10 @@ func (cluster *Cluster) newProxyList() error {
 			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
 			prx.State = stateSuspect
-			cluster.Proxies[ctproxy] = prx
+			cluster.Proxies = append(cluster.Proxies, prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
-
-			ctproxy++
 		}
 	}
 	if cluster.Conf.ExtProxyOn {
@@ -269,8 +235,7 @@ func (cluster *Cluster) newProxyList() error {
 		prx.SetServiceName(cluster.Name, prx.Name)
 		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
 		prx.State = stateSuspect
-		cluster.Proxies[ctproxy] = prx
-		ctproxy++
+		cluster.Proxies = append(cluster.Proxies, prx)
 	}
 	if cluster.Conf.ProxysqlOn {
 
@@ -290,11 +255,10 @@ func (cluster *Cluster) newProxyList() error {
 			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
 			prx.State = stateSuspect
-			cluster.Proxies[ctproxy] = prx
+			cluster.Proxies = append(cluster.Proxies, prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
-			ctproxy++
 		}
 	}
 	if cluster.Conf.MdbsProxyHosts != "" && cluster.Conf.MdbsProxyOn {
@@ -322,12 +286,11 @@ func (cluster *Cluster) newProxyList() error {
 			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
 			prx.State = stateSuspect
-			cluster.Proxies[ctproxy] = prx
+			cluster.Proxies = append(cluster.Proxies, prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
 			cluster.LogPrintf(LvlDbg, "New MdbShardProxy proxy created: %s %s", prx.Host, prx.GetPort())
-			ctproxy++
 		}
 	}
 	if cluster.Conf.SphinxHosts != "" && cluster.Conf.SphinxOn {
@@ -353,12 +316,11 @@ func (cluster *Cluster) newProxyList() error {
 			prx.SetServiceName(cluster.Name, prx.Name)
 			cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
 			prx.State = stateSuspect
-			cluster.Proxies[ctproxy] = prx
+			cluster.Proxies = append(cluster.Proxies, prx)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to proxy %s %s: %s", prx.Host, prx.GetPort(), err)
 			}
 			cluster.LogPrintf(LvlDbg, "New SphinxSearch proxy created: %s %s", prx.Host, prx.GetPort())
-			ctproxy++
 		}
 	}
 	if cluster.Conf.MyproxyOn {
@@ -383,9 +345,10 @@ func (cluster *Cluster) newProxyList() error {
 		prx.SetServiceName(cluster.Name, prx.Name)
 		cluster.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.Type, prx.Host, prx.GetPort())
 		prx.State = stateSuspect
-		cluster.Proxies[ctproxy] = prx
-		ctproxy++
+		cluster.Proxies = append(cluster.Proxies, prx)
 	}
+
+	cluster.LogPrintf(LvlInfo, "Loaded %d proxies", len(cluster.Proxies))
 
 	return nil
 }
