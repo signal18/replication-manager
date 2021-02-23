@@ -9,41 +9,34 @@
 package cluster
 
 import (
-	"fmt"
 	"os"
 )
 
-func (proxy *Proxy) DelProvisionCookie() {
-	err := os.Remove(proxy.Datadir + "/@cookie_prov")
+func (proxy *Proxy) delCookie(key string) error {
+	err := os.Remove(proxy.Datadir + "/@/" + key)
 	if err != nil {
-		fmt.Println("Error:", err)
+		proxy.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie (%s) %s", key, err)
 	}
+
+	return err
 }
 
-func (proxy *Proxy) DelReprovisionCookie() {
-	err := os.Remove(proxy.Datadir + "/@cookie_reprov")
-	if err != nil {
-		proxy.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
-	}
+func (proxy *Proxy) DelProvisionCookie() error {
+	return proxy.delCookie("cookie_prov")
 }
 
-func (proxy *Proxy) DelRestartCookie() {
-	err := os.Remove(proxy.Datadir + "/@cookie_restart")
-	if err != nil {
-		proxy.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
-	}
+func (proxy *Proxy) DelReprovisionCookie() error {
+	return proxy.delCookie("cookie_reprov")
 }
 
-func (proxy *Proxy) DelWaitStartCookie() {
-	err := os.Remove(proxy.Datadir + "/@cookie_waitstart")
-	if err != nil {
-		proxy.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
-	}
+func (proxy *Proxy) DelRestartCookie() error {
+	return proxy.delCookie("cookie_restart")
 }
 
-func (proxy *Proxy) DelWaitStopCookie() {
-	err := os.Remove(proxy.Datadir + "/@cookie_waitstop")
-	if err != nil {
-		proxy.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
-	}
+func (proxy *Proxy) DelWaitStartCookie() error {
+	return proxy.delCookie("cookie_waitstart")
+}
+
+func (proxy *Proxy) DelWaitStopCookie() error {
+	return proxy.delCookie("cookie_waitstop")
 }

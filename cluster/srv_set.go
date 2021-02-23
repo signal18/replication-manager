@@ -289,42 +289,31 @@ func (server *ServerMonitor) SetInnoDBMonitor() {
 	dbhelper.SetInnoDBLockMonitor(server.Conn)
 }
 
-func (server *ServerMonitor) SetProvisionCookie() {
-	newFile, err := os.Create(server.Datadir + "/@cookie_prov")
+func (server *ServerMonitor) createCookie(key string) error {
+	newFile, err := os.Create(server.Datadir + "/@" + key)
+	defer newFile.Close()
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Can't save provision cookie %s", err)
+		server.ClusterGroup.LogPrintf(LvlDbg, "Create cookie (%s) %s", key, err)
 	}
-	newFile.Close()
+	return err
 }
 
-func (server *ServerMonitor) SetRestartCookie() {
-	newFile, err := os.Create(server.Datadir + "/@cookie_restart")
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Can't save restart cookie %s", err)
-	}
-	newFile.Close()
+func (server *ServerMonitor) SetProvisionCookie() error {
+	return server.createCookie("cookie_prov")
 }
 
-func (server *ServerMonitor) SetWaitStartCookie() {
-	newFile, err := os.Create(server.Datadir + "/@cookie_waitstart")
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Can't save wait start cookie %s", err)
-	}
-	newFile.Close()
+func (server *ServerMonitor) SetRestartCookie() error {
+	return server.createCookie("cookie_restart")
 }
 
-func (server *ServerMonitor) SetWaitStopCookie() {
-	newFile, err := os.Create(server.Datadir + "/@cookie_waitstop")
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Can't save wait start cookie %s", err)
-	}
-	newFile.Close()
+func (server *ServerMonitor) SetWaitStartCookie() error {
+	return server.createCookie("cookie_waitstart")
 }
 
-func (server *ServerMonitor) SetReprovCookie() {
-	newFile, err := os.Create(server.Datadir + "/@cookie_reprov")
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Can't save restart cookie %s", err)
-	}
-	newFile.Close()
+func (server *ServerMonitor) SetWaitStopCookie() error {
+	return server.createCookie("cookie_waitstop")
+}
+
+func (server *ServerMonitor) SetReprovCookie() error {
+	return server.createCookie("cookie_reprov")
 }
