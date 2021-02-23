@@ -72,17 +72,8 @@ type DatabaseProxy interface {
 	Failover()
 	SetMaintenance(server *ServerMonitor)
 	GetType() string
-	DelRestartCookie()
-	DelReprovisionCookie()
 
-	SetProvisionCookie()
-	HasProvisionCookie() bool
 	IsRunning() bool
-	SetRestartCookie()
-	HasRestartCookie() bool
-	SetReprovCookie()
-	HasReprovCookie() bool
-
 	SetCredential(credential string)
 
 	GetFailCount() int
@@ -110,13 +101,8 @@ type DatabaseProxy interface {
 	SetMaintenanceHaproxy(server *ServerMonitor)
 
 	IsFilterInTags(filter string) bool
-	HasWaitStartCookie() bool
-	HasWaitStopCookie() bool
 	IsDown() bool
 
-	DelProvisionCookie()
-	DelWaitStartCookie()
-	DelWaitStopCookie()
 	GetProxyConfig() string
 	// GetInitContainer(collector opensvc.Collector) string
 	GetBindAddress() string
@@ -130,14 +116,30 @@ type DatabaseProxy interface {
 	SendStats() error
 
 	OpenSVCGetProxyDefaultSection() map[string]string
-	SetWaitStartCookie()
-	SetWaitStopCookie()
 
 	SetSuspect()
 
 	SetID()
 	SetDataDir()
 	SetServiceName(namespace string)
+
+	SetProvisionCookie() error
+	SetReprovCookie() error
+	SetRestartCookie() error
+	SetWaitStartCookie() error
+	SetWaitStopCookie() error
+
+	HasProvisionCookie() bool
+	HasReprovCookie() bool
+	HasRestartCookie() bool
+	HasWaitStartCookie() bool
+	HasWaitStopCookie() bool
+
+	DelProvisionCookie() error
+	DelReprovisionCookie() error
+	DelRestartCookie() error
+	DelWaitStartCookie() error
+	DelWaitStopCookie() error
 }
 
 type Backend struct {

@@ -44,7 +44,7 @@ func (repman *ReplicationManager) httpserver() {
 
 	// before starting the http server, check that the dashboard is present
 	if err := repman.testFile("app.html"); err != nil {
-		log.Printf("ERROR", "Dashboard app.html file missing - will not start http server %s\n", err)
+		log.Printf("ERROR: Dashboard app.html file missing - will not start http server %s\n", err)
 		return
 	}
 
