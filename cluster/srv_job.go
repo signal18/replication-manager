@@ -35,7 +35,6 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	river "github.com/signal18/replication-manager/utils/river"
 	"github.com/signal18/replication-manager/utils/s18log"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (server *ServerMonitor) JobRun() {
@@ -477,41 +476,31 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 		rows.Scan(&task.task, &task.ct)
 		if task.ct > 0 {
 			if task.ct > 10 {
-				server.ClusterGroup.sme.AddState("ERR00060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["ERR00060"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				server.ClusterGroup.SetSugarState("ERR00060", "JOB", server.URL, server.URL)
 				purge := "DELETE from replication_manager_schema.jobs WHERE task='" + task.task + "' AND done=0 AND result IS NULL order by start asc limit  " + strconv.Itoa(task.ct-1)
 				err := server.ExecQueryNoBinLog(purge)
 				if err != nil {
 					server.ClusterGroup.LogPrintf(LvlErr, "Scheduler error purging replication_manager_schema.jobs %s", err)
 				}
 			} else {
-				if task.task == "optimized" {
-					server.ClusterGroup.sme.AddState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0072"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "restart" {
-					server.ClusterGroup.sme.AddState("WARN0096", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0096"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "stop" {
-					server.ClusterGroup.sme.AddState("WARN0097", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0097"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "xtrabackup" {
-					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "mariabackup" {
-					server.ClusterGroup.sme.AddState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0073"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "reseedxtrabackup" {
-					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "reseedmariabackup" {
-					server.ClusterGroup.sme.AddState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0074"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "reseedmysqldump" {
-					server.ClusterGroup.sme.AddState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0075"], server.ClusterGroup.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "reseedmydumper" {
-					server.ClusterGroup.sme.AddState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0075"], server.ClusterGroup.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "flashbackxtrabackup" {
-					server.ClusterGroup.sme.AddState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0076"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "flashbackmariabackup" {
-					server.ClusterGroup.sme.AddState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0076"], server.ClusterGroup.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "flashbackmydumper" {
-					server.ClusterGroup.sme.AddState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0077"], server.ClusterGroup.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else if task.task == "flashbackmysqldump" {
-					server.ClusterGroup.sme.AddState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(server.ClusterGroup.GetErrorList()["WARN0077"], server.ClusterGroup.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				switch task.task {
+				case "optimized":
+					server.ClusterGroup.SetSugarState("WARN0072", "JOB", server.URL, server.URL)
+				case "restart":
+					server.ClusterGroup.SetSugarState("WARN0096", "JOB", server.URL, server.URL)
+				case "stop":
+					server.ClusterGroup.SetSugarState("WARN0097", "JOB", server.URL, server.URL)
+				case "xtrabackup", "mariabackup":
+					server.ClusterGroup.SetSugarState("WARN0073", "JOB", server.URL, server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
+				case "reseedxtrabackup", "reseedmariabackup":
+					server.ClusterGroup.SetSugarState("WARN0074", "JOB", server.URL, server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
+				case "reseedmysqldump", "reseedmydumper":
+					server.ClusterGroup.SetSugarState("WARN0075", "JOB", server.URL, server.ClusterGroup.Conf.BackupLogicalType, server.URL)
+				case "flashbackxtrabackup", "flashbackmariabackup":
+					server.ClusterGroup.SetSugarState("WARN0076", "JOB", server.URL, server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
+				case "flashbackmydumper", "flashbackmysqldump":
+					server.ClusterGroup.SetSugarState("WARN0077", "JOB", server.URL, server.ClusterGroup.Conf.BackupLogicalType, server.URL)
 				}
-
 			}
 		}
 

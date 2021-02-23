@@ -9,10 +9,7 @@
 package cluster
 
 import (
-	"fmt"
-
 	"github.com/signal18/replication-manager/router/sphinx"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 func connectSphinx(proxy *Proxy) (sphinx.SphinxSQL, error) {
@@ -38,7 +35,7 @@ func (cluster *Cluster) initSphinx(proxy *Proxy) {
 
 	sphinx, err := connectSphinx(proxy)
 	if err != nil {
-		cluster.sme.AddState("ERR00058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00058"], err), ErrFrom: "MON"})
+		cluster.SetSugarState("ERR00058", "MON", "", err)
 		return
 	}
 	defer sphinx.Connection.Close()
@@ -52,7 +49,7 @@ func (cluster *Cluster) refreshSphinx(proxy *Proxy) error {
 
 	sphinx, err := connectSphinx(proxy)
 	if err != nil {
-		cluster.sme.AddState("ERR00058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00058"], err), ErrFrom: "MON"})
+		cluster.SetSugarState("ERR00058", "MON", "", err)
 		return err
 	}
 	defer sphinx.Connection.Close()

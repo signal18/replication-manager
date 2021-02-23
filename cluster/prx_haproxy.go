@@ -183,7 +183,7 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 	result, err := haRuntime.ApiCmd("show stat")
 
 	if err != nil {
-		cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
+		cluster.SetSugarState("ERR00052", "MON", "", err)
 		return err
 	}
 

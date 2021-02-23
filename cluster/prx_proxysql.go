@@ -8,7 +8,6 @@ import (
 	"github.com/signal18/replication-manager/router/proxysql"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {
@@ -35,7 +34,7 @@ func (cluster *Cluster) AddShardProxy(proxysql *Proxy, shardproxy *Proxy) {
 	}
 	psql, err := connectProxysql(proxysql)
 	if err != nil {
-		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		cluster.SetSugarState("ERR00051", "MON", "", err)
 		return
 	}
 	defer psql.Connection.Close()
@@ -49,7 +48,7 @@ func (cluster *Cluster) AddQueryRulesProxysql(proxy *Proxy, rules []proxysql.Que
 	}
 	psql, err := connectProxysql(proxy)
 	if err != nil {
-		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		cluster.SetSugarState("ERR00051", "MON", "", err)
 		return err
 	}
 	defer psql.Connection.Close()
@@ -64,7 +63,7 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 
 	psql, err := connectProxysql(proxy)
 	if err != nil {
-		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		cluster.SetSugarState("ERR00051", "MON", "", err)
 		return
 	}
 	defer psql.Connection.Close()
@@ -117,7 +116,7 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 	psql, err := connectProxysql(proxy)
 	if err != nil {
-		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		cluster.SetSugarState("ERR00051", "MON", "", err)
 		return
 	}
 
@@ -160,7 +159,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 
 	psql, err := connectProxysql(proxy)
 	if err != nil {
-		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		cluster.SetSugarState("ERR00051", "MON", "", err)
 		cluster.sme.CopyOldStateFromUnknowServer(proxy.Name)
 		return err
 	}
@@ -218,7 +217,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 			cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting online rejoining server %s", s.URL)
 			err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
 			if err != nil {
-				cluster.sme.AddState("ERR00069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00069"], s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
+				cluster.SetSugarState("ERR00069", "PRX", proxy.Name, s.URL, err)
 			}
 			updated = true
 		}
@@ -228,7 +227,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 			cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting offline standalone server %s", s.URL)
 			err = psql.SetOffline(misc.Unbracket(s.Host), s.Port)
 			if err != nil {
-				cluster.sme.AddState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+				cluster.SetSugarState("ERR00070", "PRX", proxy.Name, s.URL, err)
 
 			}
 			updated = true
@@ -240,14 +239,16 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 				cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting writer standalone server %s", s.URL)
 				err = psql.SetWriter(misc.Unbracket(s.Host), s.Port)
 				if err != nil {
-					cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					// NOTE: this one had AddState ERR00071 but threw the error from ERR00070, which is what I wanted to prevent
+					// with the SetSugarState
+					cluster.SetSugarState("ERR00071", "PRX", proxy.Name, s.URL, err)
 				}
 				updated = true
 			} else if s.IsSlave && !s.IsIgnored() {
 				err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
 				cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting reader standalone server %s", s.URL)
 				if err != nil {
-					cluster.sme.AddState("ERR00072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00072"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					cluster.SetSugarState("ERR00072", "PRX", proxy.Name, s.URL, err)
 				}
 				updated = true
 			}
@@ -256,7 +257,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 		if s.IsMaster() && cluster.Conf.ProxysqlCopyGrants {
 			myprxusermap, _, err := dbhelper.GetProxySQLUsers(psql.Connection)
 			if err != nil {
-				cluster.sme.AddState("ERR00053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00053"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
+				cluster.SetSugarState("ERR00053", "PRX", proxy.Name, err)
 			}
 			uniUsers := make(map[string]dbhelper.Grant)
 			dupUsers := make(map[string]string)
@@ -265,7 +266,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 				user, ok := uniUsers[u.User+":"+u.Password]
 				if ok {
 					dupUsers[user.User] = user.User
-					cluster.sme.AddState("ERR00057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00057"], user.User), ErrFrom: "MON", ServerUrl: proxy.Name})
+					cluster.SetSugarState("ERR00057", "MON", proxy.Name, user.User)
 				} else {
 					if u.Password != "" && u.Password != "invalid" {
 						if u.User != cluster.dbUser {
@@ -284,7 +285,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 
 					err := psql.AddUser(user.User, user.Password)
 					if err != nil {
-						cluster.sme.AddState("ERR00054", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00054"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
+						cluster.SetSugarState("ERR00054", "MON", proxy.Name, err)
 
 					}
 				}
@@ -299,11 +300,11 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 	}
 	proxy.QueryRules, err = psql.GetQueryRulesRuntime()
 	if err != nil {
-		cluster.sme.AddState("WARN0092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0092"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
+		cluster.SetSugarState("WARN0092", "MON", proxy.Name, err)
 	}
 	proxy.Variables, err = psql.GetVariables()
 	if err != nil {
-		cluster.sme.AddState("WARN0098", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0098"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
+		cluster.SetSugarState("WARN0098", "MON", proxy.Name, err)
 	}
 	if proxy.ClusterGroup.Conf.ProxysqlBootstrapVariables {
 		if proxy.Variables["MYSQL-MULTIPLEXING"] == "TRUE" && !proxy.ClusterGroup.Conf.ProxysqlMultiplexing {
@@ -332,7 +333,7 @@ func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, s *ServerMonitor) {
 
 	psql, err := connectProxysql(proxy)
 	if err != nil {
-		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		cluster.SetSugarState("ERR00051", "MON", "", err)
 		return
 	}
 	defer psql.Connection.Close()

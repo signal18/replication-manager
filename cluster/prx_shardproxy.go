@@ -21,7 +21,6 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 var crcTable = crc64.MakeTable(crc64.ECMA)
@@ -93,7 +92,7 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *Proxy) {
 	}
 	schemas, _, err := cluster.master.GetSchemas()
 	if err != nil {
-		cluster.sme.AddState("WARN0089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0089"], cluster.master.URL), ErrFrom: "PROXY", ServerUrl: cluster.master.URL})
+		cluster.SetSugarState("WARN0089", "PROXY", cluster.master.URL, cluster.master.URL)
 		return
 	}
 	foundReplicationManagerSchema := false
