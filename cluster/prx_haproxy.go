@@ -42,6 +42,8 @@ func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *Haproxy
 	if conf.ProvNetCNI {
 		prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
 	}
+
+	return prx
 }
 
 func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {

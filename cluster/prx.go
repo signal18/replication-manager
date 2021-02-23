@@ -137,7 +137,7 @@ type DatabaseProxy interface {
 
 	SetID()
 	SetDataDir()
-	SetServiceName(string, string)
+	SetServiceName(namespace string)
 }
 
 type Backend struct {
@@ -194,7 +194,7 @@ func (cluster *Cluster) newProxyList() error {
 		for k, proxyHost := range strings.Split(cluster.Conf.MdbsProxyHosts, ",") {
 			prx := NewMariadbShardProxy(k, cluster, proxyHost)
 			cluster.AddProxy(prx)
-			cluster.LogPrintf(LvlDbg, "New MdbShardProxy proxy created: %s %s", prx.Host, prx.GetPort())
+			cluster.LogPrintf(LvlDbg, "New MdbShardProxy proxy created: %s %s", prx.GetHost(), prx.GetPort())
 		}
 	}
 	if cluster.Conf.SphinxHosts != "" && cluster.Conf.SphinxOn {

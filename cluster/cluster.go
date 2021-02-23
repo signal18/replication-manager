@@ -1295,7 +1295,7 @@ func (c *Cluster) AddProxy(prx DatabaseProxy) {
 	prx.SetCluster(c)
 	prx.SetID()
 	prx.SetDataDir()
-	prx.SetServiceName(c.Name, prx.GetName())
+	prx.SetServiceName(c.Name)
 	c.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.GetType(), prx.GetHost(), prx.GetPort())
 	prx.SetState(stateSuspect)
 	c.Proxies = append(c.Proxies, prx)
