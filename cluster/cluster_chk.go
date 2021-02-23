@@ -570,7 +570,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 				if slaveSeq >= masterSeq {
 					break
 				} else {
-					cluster.SetState("WARN0086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0086"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
+					cluster.SetSugarState("WARN0086", "MON", s.URL, s.URL)
 				}
 				time.Sleep(1 * time.Second)
 			}
@@ -614,8 +614,7 @@ func (cluster *Cluster) CheckSameServerID() {
 				continue
 			}
 			if s.ServerID == sothers.ServerID {
-				cluster.SetState("WARN0087", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0087"], s.URL, sothers.URL), ErrFrom: "MON", ServerUrl: s.URL})
-
+				cluster.SetSugarState("WARN0087", "MON", s.URL, s.URL, sothers.URL)
 			}
 		}
 	}
@@ -634,7 +633,7 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 				continue
 			}
 			if s.Status["WSREP_CLUSTER_STATE_UUID"] != sothers.Status["WSREP_CLUSTER_STATE_UUID"] {
-				cluster.SetState("ERR00083", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00083"], s.URL, s.Status["WSREP_CLUSTER_STATE_UUID"], sothers.URL, sothers.Status["WSREP_CLUSTER_STATE_UUID"]), ErrFrom: "MON", ServerUrl: s.URL})
+				cluster.SetSugarState("ERR00083", "MON", s.URL, s.URL, s.Status["WSREP_CLUSTER_STATE_UUID"], sothers.URL, sothers.Status["WSREP_CLUSTER_STATE_UUID"])
 				return false
 			}
 		}
@@ -652,7 +651,7 @@ func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
 		}
 		hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, cluster.master.Variables["GTID_EXECUTED"], s.Variables["GTID_EXECUTED"])
 		if hasErrantTrx {
-			cluster.SetState("WARN0091", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0091"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
+			cluster.SetSugarState("WARN0091", "MON", s.URL, s.URL)
 			return false
 		}
 	}

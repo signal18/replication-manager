@@ -681,7 +681,7 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 			continue
 		}
 		if !sl.HasBinlog() && !sl.IsIgnored() {
-			cluster.SetState("ERR00013", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+			cluster.SetSugarState("ERR00013", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 		if cluster.Conf.MultiMaster == true && sl.State == stateMaster {
@@ -818,7 +818,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 			continue
 		}
 		if !sl.HasBinlog() && !sl.IsIgnored() {
-			cluster.SetState("ERR00013", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+			cluster.SetSugarState("ERR00013", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 		if cluster.GetTopology() == topoMultiMasterWsrep && cluster.vmaster != nil {

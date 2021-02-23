@@ -636,6 +636,41 @@ func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
 	cluster.clusterList = clusters
 }
 
+// SetSugarState calls SetState without needing to create the state.State{} struct yourself.
+// Key sets the ErrKey
+// From sets the ErrFrom
+// URL is optional, will be set to the state if present
+// Based on WARN/ERR it will set the ErrType correctly.
+// desc is optional, if there are parameters missing for the error message they'll be blanked
+func (cluster *Cluster) SetSugarState(key, from, url string, desc ...interface{}) {
+	s := state.State{
+		ErrKey:  key,
+		ErrFrom: from,
+	}
+	if strings.Contains(key, "WARN") {
+		s.ErrType = LvlWarn
+	}
+	if strings.Contains(key, "ERR") {
+		s.ErrType = LvlErr
+	}
+
+	if url != "" {
+		s.ServerUrl = url
+	}
+
+	count := strings.Count(clusterError[key], "%s")
+	if count != 0 {
+		for len(desc) != count {
+			desc = append(desc, "")
+		}
+		s.ErrDesc = fmt.Sprintf(clusterError[key], desc...)
+	} else {
+		s.ErrDesc = clusterError[key]
+	}
+
+	cluster.SetState(key, s)
+}
+
 func (cluster *Cluster) SetState(key string, s state.State) {
 	if !strings.Contains(cluster.Conf.MonitorIgnoreError, key) {
 		cluster.sme.AddState(key, s)

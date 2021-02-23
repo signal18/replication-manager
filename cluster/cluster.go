@@ -10,7 +10,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -775,7 +774,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		}
 	}
 	if variablesdiff != "" {
-		cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], variablesdiff), ErrFrom: "MON", ServerUrl: cluster.GetMaster().URL})
+		cluster.SetSugarState("WARN0084", "MON", cluster.GetMaster().URL, variablesdiff)
 	}
 }
 

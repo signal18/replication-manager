@@ -11,10 +11,7 @@ package cluster
 
 import (
 	"errors"
-	"fmt"
 	"sync"
-
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 type topologyError struct {
@@ -162,7 +159,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				}
 				if cluster.Status == ConstMonitorActif && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
 					//Extra master in master slave topology rejoin it after split brain
-					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
+					cluster.SetSugarState("ERR00063", "TOPO", "")
 					cluster.Servers[k].RejoinMaster()
 				} else {
 					cluster.master = cluster.Servers[k]
@@ -180,7 +177,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 	// If no cluster.slaves are detected, generate an error
 	if len(cluster.slaves) == 0 && cluster.GetTopology() != topoMultiMasterWsrep {
-		cluster.SetState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00010"]), ErrFrom: "TOPO"})
+		cluster.SetSugarState("ERR00010", "TOPO", "")
 	}
 
 	// Check that all slave servers have the same master and conformity.
@@ -191,7 +188,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				sl.CheckSlaveSameMasterGrants()
 				if sl.HasCycling() {
 					if cluster.Conf.MultiMaster == false && len(cluster.Servers) == 2 {
-						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO", ServerUrl: sl.URL})
+						cluster.SetSugarState("ERR00011", "TOPO", sl.URL)
 						cluster.Conf.MultiMaster = true
 					}
 					if cluster.Conf.MultiMasterRing == false && len(cluster.Servers) > 2 {
@@ -204,7 +201,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					//broken replication ring
 				} else if cluster.Conf.MultiMasterRing == true {
 					//setting a virtual master if none
-					cluster.SetState("ERR00048", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00048"]), ErrFrom: "TOPO"})
+					cluster.SetSugarState("ERR00048", "TOPO", sl.URL)
 					cluster.master = cluster.GetFailedServer()
 				}
 
@@ -227,7 +224,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 		}
 		if srw > 1 {
-			cluster.SetState("WARN0003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, choosing prefered master", ErrFrom: "TOPO"})
+			cluster.SetSugarState("WARN0003", "TOPO", "")
 		}
 		srw = 0
 		for _, s := range cluster.Servers {
@@ -236,12 +233,12 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 		}
 		if srw > 1 {
-			cluster.SetState("WARN0004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to preferred master.", ErrFrom: "TOPO"})
+			cluster.SetSugarState("WARN0004", "TOPO", "")
 			server := cluster.getPreferedMaster()
 			if server != nil {
 				server.SetReadWrite()
 			} else {
-				cluster.SetState("WARN0006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a preferred master.", ErrFrom: "TOPO"})
+				cluster.SetSugarState("WARN0006", "TOPO", "")
 			}
 		}
 	}
@@ -291,7 +288,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	if cluster.master == nil {
 		// could not detect master
 		if cluster.GetMaster() == nil {
-			cluster.SetState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00012"]), ErrFrom: "TOPO"})
+			cluster.SetSugarState("ERR00012", "TOPO", "")
 		}
 	} else {
 		cluster.master.RplMasterStatus = false
@@ -310,7 +307,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					replMaster, _ := cluster.GetMasterFromReplication(sl)
 
 					if replMaster != nil && replMaster.Id != cluster.master.Id {
-						cluster.SetState("ERR00064", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00064"], sl.URL, cluster.master.URL, replMaster.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+						cluster.SetSugarState("ERR00064", "TOPO", sl.URL, sl.URL, cluster.master.URL, replMaster.URL)
 
 						if cluster.Conf.ReplicationNoRelay && cluster.Status == ConstMonitorActif {
 							cluster.RejoinFixRelay(sl, cluster.master)
@@ -327,12 +324,8 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		}
 		// State also check in failover_check false positive
 		if cluster.master.IsFailed() && cluster.slaves.HasAllSlavesRunning() {
-			cluster.SetState("ERR00016", state.State{
-				ErrType:   "ERROR",
-				ErrDesc:   clusterError["ERR00016"],
-				ErrFrom:   "NET",
-				ServerUrl: cluster.master.URL,
-			})
+			// TODO: check if From: NET is correct here
+			cluster.SetSugarState("ERR00016", "NET", cluster.master.URL)
 		}
 
 	}
@@ -346,13 +339,13 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 	if cluster.Conf.Arbitration {
 		if cluster.IsSplitBrain {
-			cluster.SetState("WARN0079", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0079"]), ErrFrom: "ARB"})
+			cluster.SetSugarState("WARN0079", "ARB", "")
 		}
 		if cluster.IsLostMajority {
-			cluster.SetState("WARN0080", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0080"]), ErrFrom: "ARB"})
+			cluster.SetSugarState("WARN0080", "ARB", "")
 		}
 		if cluster.IsFailedArbitrator {
-			cluster.SetState("WARN0090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0090"], cluster.Conf.ArbitratorAddress), ErrFrom: "ARB"})
+			cluster.SetSugarState("WARN0090", "ARB", "", cluster.Conf.ArbitratorAddress)
 		}
 	}
 	if cluster.sme.CanMonitor() {
@@ -369,7 +362,7 @@ func (cluster *Cluster) AllServersFailed() bool {
 		}
 	}
 	//"ERR00077": "All databases state down",
-	cluster.SetState("ERR00077", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00077"]), ErrFrom: "TOPO"})
+	cluster.SetSugarState("ERR00077", "TOPO", "")
 	return true
 }
 
@@ -394,7 +387,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 
 				}
 			}
-			cluster.SetState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})
+			cluster.SetSugarState("ERR00021", "TOPO", "")
 			cluster.IsClusterDown = true
 			return true
 		}

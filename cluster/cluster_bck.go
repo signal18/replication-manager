@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -19,7 +18,6 @@ import (
 	"sync"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 type Backup struct {
@@ -46,7 +44,7 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 		stderr := io.MultiWriter(os.Stderr, &stderrBuf)
 		resticcmd.Env = cluster.ResticGetEnv()
 		if err := resticcmd.Start(); err != nil {
-			cluster.SetState("WARN0096", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0096"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
+			cluster.SetSugarState("WARN0096", "BACKUP", "", resticcmd.Path, err)
 			return err
 		}
 		var wg sync.WaitGroup
@@ -61,7 +59,7 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 
 		err := resticcmd.Wait()
 		if err != nil {
-			cluster.sme.AddState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
+			cluster.SetSugarState("WARN0094", "CHECK", "", err, stdoutBuf.Bytes(), stderrBuf.Bytes())
 			return err
 		}
 		if errStdout != nil || errStderr != nil {
@@ -104,7 +102,7 @@ func (cluster *Cluster) ResticInitRepo() error {
 
 		resticcmd.Env = cluster.ResticGetEnv()
 		if err := resticcmd.Start(); err != nil {
-			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
+			cluster.SetSugarState("WARN0095", "BACKUP", "", resticcmd.Path, err)
 			return err
 		}
 		var wg sync.WaitGroup
@@ -119,7 +117,7 @@ func (cluster *Cluster) ResticInitRepo() error {
 
 		err := resticcmd.Wait()
 		if err != nil {
-			cluster.sme.AddState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
+			cluster.SetSugarState("WARN0095", "CHECK", "", err, stdoutBuf.Bytes(), stderrBuf.Bytes())
 		}
 		if errStdout != nil || errStderr != nil {
 			return errors.New("failed to capture stdout or stderr\n")
@@ -141,7 +139,7 @@ func (cluster *Cluster) ResticFetchRepo() error {
 
 		resticcmd.Env = cluster.ResticGetEnv()
 		if err := resticcmd.Start(); err != nil {
-			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
+			cluster.SetSugarState("WARN0094", "BACKUP", "", resticcmd.Path, err)
 			return err
 		}
 		var wg sync.WaitGroup
@@ -156,7 +154,7 @@ func (cluster *Cluster) ResticFetchRepo() error {
 
 		err := resticcmd.Wait()
 		if err != nil {
-			cluster.sme.AddState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
+			cluster.SetSugarState("WARN0093", "CHECK", "", err, stdoutBuf.Bytes(), stderrBuf.Bytes())
 			cluster.ResticInitRepo()
 			return err
 		}

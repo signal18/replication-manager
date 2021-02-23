@@ -149,4 +149,7 @@ var clusterError = map[string]string{
 	"WARN0098": "ProxySQL could not load global variables from runtime (%s)",
 	"WARN0099": "MariaDB version as replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"WARN0100": "No space left on device pn %s",
+	"WARN0003": "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, choosing prefered master",
+	"WARN0004": "RO server count > 1 in multi-master mode.  switching to preferred master.",
+	"WARN0006": "Multi-master need a preferred master.",
 }
