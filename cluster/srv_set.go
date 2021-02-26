@@ -36,6 +36,10 @@ func (server *ServerMonitor) SetPlacement(k int, ProvAgents string, SlapOSDBPart
 	server.SSTPort = sstports[k%len(sstports)]
 }
 
+func (server *ServerMonitor) SetSourceClusterName(name string) {
+	server.SourceClusterName = name
+}
+
 func (server *ServerMonitor) SetIgnored(ignored bool) {
 	server.Ignored = ignored
 }

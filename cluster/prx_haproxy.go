@@ -93,8 +93,12 @@ func (cluster *Cluster) initHaproxy(proxy *Proxy) {
 		if err = haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
 			//	log.Printf("Failed to add server to service_write ")
 		}
+	} else {
+		s := haproxy.ServerDetail{Name: "leader", Host: "unknown", Port: 3306, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
+		if err = haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
+			//	log.Printf("Failed to add server to service_write ")
+		}
 	}
-
 	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: cluster.Conf.HaproxyAPIReadBackend, BindPort: cluster.Conf.HaproxyReadPort, BindIp: cluster.Conf.HaproxyReadBindIp}
 	if err := haConfig.AddFrontend(&fer); err != nil {
 		cluster.LogPrintf(LvlErr, "Haproxy failed to add frontend read")
@@ -128,17 +132,17 @@ func (cluster *Cluster) initHaproxy(proxy *Proxy) {
 
 	err = haConfig.Render()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Could not render initial haproxy config, exiting...")
+		cluster.LogPrintf(LvlErr, "Could not create haproxy config %s", err)
 	}
 	if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
-		cluster.LogPrintf(LvlInfo, "Haproxy reload config err %s", err.Error())
+		cluster.LogPrintf(LvlInfo, "Haproxy set pid %s", err)
 	} else {
 		cluster.LogPrintf(LvlInfo, "Haproxy reload config on pid %s", haConfig.PidFile)
 	}
 
 	err = haRuntime.Reload(&haConfig)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Can't Reloadhaproxy config %s"+err.Error())
+		cluster.LogPrintf(LvlErr, "Can't reload haproxy config %s", err)
 	}
 
 }
@@ -194,7 +198,7 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 
 	proxy.BackendsWrite = nil
 	proxy.BackendsRead = nil
-
+	foundMasterInStat := false
 	for {
 		line, error := reader.Read()
 		if error == io.EOF {
@@ -211,7 +215,7 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 
 			srv := cluster.GetServerFromURL(line[73])
 			if srv != nil {
-
+				foundMasterInStat = true
 				proxy.BackendsWrite = append(proxy.BackendsWrite, Backend{
 					Host:           srv.Host,
 					Port:           srv.Port,
@@ -223,7 +227,6 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 					PrxByteOut:     line[9],
 					PrxLatency:     line[61], //ttime: average session time in ms over the 1024 last requests
 				})
-
 				if !srv.IsMaster() {
 					master := cluster.GetMaster()
 					if master != nil {
@@ -231,9 +234,7 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 						haRuntime.SetMaster(master.Host, master.Port)
 					}
 				}
-
 			}
-
 		}
 		if strings.Contains(strings.ToLower(line[0]), "read") {
 			srv := cluster.GetServerFromURL(line[73])
@@ -261,7 +262,16 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 			}
 		}
 	}
-
+	if !foundMasterInStat {
+		master := cluster.GetMaster()
+		if master != nil {
+			res, err := haRuntime.SetMaster(master.Host, master.Port)
+			cluster.LogPrintf(LvlInfo, "Have leader in cluster but not in haproxy %s fixing it to master %s return %s", proxy.Host+":"+proxy.Port, master.URL, res)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Can add leader %s in cluster but not in haproxy %s : %s", master.URL, proxy.Host+":"+proxy.Port, err)
+			}
+		}
+	}
 	return nil
 }
 

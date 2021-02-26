@@ -56,8 +56,11 @@ func (server *ServerMonitor) IsMysqlDumpUValidOption(option string) bool {
 }
 
 func (server *ServerMonitor) IsSlaveOfReplicationSource(name string) bool {
+
 	if server.Replications != nil {
+
 		for _, ss := range server.Replications {
+			server.ClusterGroup.LogPrintf(LvlDbg, "IsSlaveOfReplicationSource check %s drop unlinked server %s ", ss.ConnectionName.String, name)
 			if ss.ConnectionName.String == name {
 				return true
 			}

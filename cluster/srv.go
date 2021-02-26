@@ -41,8 +41,9 @@ import (
 type ServerMonitor struct {
 	Id                          string                       `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
 	Name                        string                       `json:"name"`
-	Domain                      string                       `json:"domain"`
+	Domain                      string                       `json:"domain"` // Use to store orchestrator CNI domain .<cluster_name>.svc.<cluster_name>
 	ServiceName                 string                       `json:"serviceName"`
+	SourceClusterName           string                       `json:"sourceClusterName"` //Used to idenfied server added from other clusters linked with multi source
 	Conn                        *sqlx.DB                     `json:"-"`
 	User                        string                       `json:"user"`
 	Pass                        string                       `json:"-"`
@@ -54,6 +55,7 @@ type ServerMonitor struct {
 	IP                          string                       `json:"ip"`
 	Strict                      string                       `json:"strict"`
 	ServerID                    uint64                       `json:"serverId"`
+	DomainID                    uint64                       `json:"domainId"`
 	GTIDBinlogPos               *gtid.List                   `json:"gtidBinlogPos"`
 	CurrentGtid                 *gtid.List                   `json:"currentGtid"`
 	SlaveGtid                   *gtid.List                   `json:"slaveGtid"`
@@ -223,6 +225,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	}
 	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name+server.Port), crcTable), 10)
 	var sid uint64
+	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id
 	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.CrcTable), 10), 10, 64)
 	server.ServerID = sid
 	if cluster.Conf.TunnelHost != "" {
@@ -600,6 +603,13 @@ func (server *ServerMonitor) Refresh() error {
 				server.CurrentGtid = gtid.NewList(server.Variables["GTID_CURRENT_POS"])
 				server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
 
+				sid, err := strconv.ParseUint(server.Variables["GTID_DOMAIN_ID"], 10, 64)
+				if err != nil {
+					server.ClusterGroup.LogPrintf(LvlErr, "Could not parse domain_id, reason: %s", err)
+				} else {
+					server.DomainID = uint64(sid)
+				}
+
 			} else {
 				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
 				server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
@@ -849,11 +859,9 @@ func (server *ServerMonitor) freeze() bool {
 		logs, err := server.SetEventScheduler(false)
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not disable event scheduler on %s", server.URL)
 	}
-
 	server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes stopping all slaves on %s", server.URL)
 	logs, err := server.StopAllSlaves()
-	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not stop replicas source on ", server.URL)
-
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not stop replicas source on %s ", server.URL)
 	server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes set read only on %s", server.URL)
 	logs, err = dbhelper.SetReadOnly(server.Conn, true)
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlInfo, "Could not set %s as read-only: %s", server.URL, err)

@@ -70,31 +70,44 @@ func (cluster *Cluster) newServerList() error {
 
 // AddChildServers Add child clusters nodes  if they get same  source name
 func (cluster *Cluster) AddChildServers() error {
+
 	mychilds := cluster.GetChildClusters()
+
 	for _, c := range mychilds {
 		for _, sv := range c.Servers {
-			cluster.LogPrintf(LvlDbg, "AddChildServers chacking %s of %s ", sv.URL, c.Name)
+			cluster.LogPrintf(LvlDbg, "AddChildServers checking %s of %s ", sv.URL, c.Name)
 			if sv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
-				cluster.LogPrintf(LvlDbg, "AddChildServers %s IsSlaveOfReplicationSource  %s  ", sv.URL, cluster.Conf.MasterConn)
-				//			mymaster, _ := cluster.GetMasterFromReplication(sv)
-				//			if mymaster != nil {
-				cluster.LogPrintf(LvlDbg, "AddChildServers %s master found  %s  ", sv.URL, cluster.Conf.MasterConn)
-
+				cluster.LogPrintf(LvlDbg, "Inter cluster multi-source check %s IsSlaveOfReplicationSource  %s  ", sv.URL, cluster.Conf.MasterConn)
 				if !cluster.HasServer(sv) {
-					cluster.LogPrintf(LvlDbg, "AddChildServers %s Has server already found  %s  ", sv.URL, cluster.Conf.MasterConn)
+					cluster.LogPrintf(LvlInfo, "Inter cluster multi-source  %s add server not yet discovered  %s  ", sv.URL, cluster.Conf.MasterConn)
 
 					srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.dbUser, sv.ClusterGroup.dbPass, false, c.GetDomain())
 					if err != nil {
+						cluster.LogPrintf(LvlErr, "Inter cluster multi-source %s add server not yet discovered  %s error %s", sv.URL, cluster.Conf.MasterConn, err)
+
 						return err
 					}
-					srv.Ignored = true
+
+					srv.SetSourceClusterName(c.Name)
+					srv.SetIgnored(true)
 					cluster.Servers = append(cluster.Servers, srv)
-					//			}
+					wg := new(sync.WaitGroup)
+					wg.Add(1)
+					cluster.TopologyDiscover(wg)
+					wg.Wait()
+					return nil
+					// leave for next monitor loop to remove the sever if no more link
 				}
-			} else {
-				if cluster.HasServer(sv) {
-					cluster.RemoveServerFromIndex(cluster.GetServerIndice(sv))
-				}
+			}
+		}
+	}
+	for _, sv := range cluster.Servers {
+		cluster.LogPrintf(LvlDbg, "Inter cluster multi-source check drop unlinked server %s source cluster  %s vs this cluster %s  ", sv.URL, sv.GetSourceClusterName(), cluster.Name)
+		if sv.GetSourceClusterName() != cluster.Name && sv.GetSourceClusterName() != "" {
+
+			if !sv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
+				cluster.LogPrintf(LvlInfo, "Inter cluster multi-source %s drop unlinked server %s  ", sv.URL, cluster.Conf.MasterConn)
+				cluster.RemoveServerFromIndex(cluster.GetServerIndice(sv))
 			}
 		}
 	}
@@ -106,7 +119,6 @@ func (cluster *Cluster) AddChildServers() error {
 // Create a connection to each host and build list of slaves.
 func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	defer wcg.Done()
-	cluster.AddChildServers()
 	//monitor ignored server fist so that their replication position get oldest
 	wg := new(sync.WaitGroup)
 	if cluster.Conf.Hosts == "" {

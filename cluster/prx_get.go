@@ -305,6 +305,10 @@ protocol=MySQLBackend
 		confmaxscaleserverlist += "server" + strconv.Itoa(i)
 
 	}
+	if confhaproxywrite == "" && proxy.ClusterGroup.Conf.HaproxyMode == "runtimeapi" {
+		confhaproxywrite += `
+server leader unknown:3306  weight 100 maxconn 2000 check inter 1000`
+	}
 	switch variable {
 	case "%%ENV:SERVERS_HAPROXY_WRITE%%":
 		return confhaproxywrite
