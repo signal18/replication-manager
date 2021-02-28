@@ -152,4 +152,5 @@ var clusterError = map[string]string{
 	"WARN0003": "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, choosing prefered master",
 	"WARN0004": "RO server count > 1 in multi-master mode.  switching to preferred master.",
 	"WARN0006": "Multi-master need a preferred master.",
+	"WARN0007": "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1",
 }
