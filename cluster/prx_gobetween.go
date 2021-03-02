@@ -6,11 +6,11 @@
 
 package cluster
 
-func (cluster *Cluster) initGoBetween(oldmaster *ServerMonitor, proxy *Proxy) {
+func (cluster *Cluster) initGoBetween(oldmaster *ServerMonitor, proxy DatabaseProxy) {
 
 }
 
-func (cluster *Cluster) refreshGoBetween(proxy *Proxy) error {
+func (cluster *Cluster) refreshGoBetween(proxy DatabaseProxy) error {
 
 	return nil
 }

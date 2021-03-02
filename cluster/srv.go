@@ -209,7 +209,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.IsCompute = compute
 	server.Domain = domain
 	server.TLSConfigUsed = ConstTLSCurrentConfig
-	server.CrcTable = crc64.MakeTable(crc64.ECMA)
 	server.ClusterGroup = cluster
 	server.DBVersion = dbhelper.NewMySQLVersion("Unknowed-0.0.0", "")
 	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
@@ -223,8 +222,9 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 			}*/
 		url = server.Name + server.Domain + ":3306"
 	}
-	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name+server.Port), crcTable), 10)
+	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name+server.Port), cluster.crcTable), 10)
 	var sid uint64
+
 	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id
 	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.CrcTable), 10), 10, 64)
 	server.ServerID = sid
@@ -742,7 +742,7 @@ func (server *ServerMonitor) Refresh() error {
 		if server.DBVersion.IsPPostgreSQL() {
 			//PostgresQL as no server_id concept mimic via internal server id for topology detection
 			var sid uint64
-			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), server.CrcTable), 10), 10, 64)
+			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), server.ClusterGroup.crcTable), 10), 10, 64)
 			if err != nil {
 				server.ClusterGroup.LogPrintf(LvlWarn, "PG Could not assign server_id s", err)
 			}

@@ -5,13 +5,76 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/proxysql"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/spf13/pflag"
 )
 
-func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {
+type ProxySQLProxy struct {
+	Proxy
+}
+
+func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxySQLProxy {
+	conf := cluster.Conf
+	prx := new(ProxySQLProxy)
+	prx.Name = proxyHost
+	prx.Host = proxyHost
+	prx.Type = config.ConstProxySqlproxy
+	prx.Port = conf.ProxysqlAdminPort
+	prx.ReadWritePort, _ = strconv.Atoi(conf.ProxysqlPort)
+	prx.User = conf.ProxysqlUser
+	prx.Pass = conf.ProxysqlPassword
+	prx.ReaderHostgroup, _ = strconv.Atoi(conf.ProxysqlReaderHostgroup)
+	prx.WriterHostgroup, _ = strconv.Atoi(conf.ProxysqlWriterHostgroup)
+	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
+	prx.ReadPort, _ = strconv.Atoi(conf.ProxysqlPort)
+
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSProxySQLPartitions, conf.ProxysqlHostsIPV6)
+
+	if conf.ProvNetCNI {
+		if conf.ClusterHead == "" {
+			prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+		} else {
+			prx.Host = prx.Host + "." + conf.ClusterHead + ".svc." + conf.ProvOrchestratorCluster
+		}
+	}
+
+	if cluster.key != nil {
+		p := crypto.Password{Key: cluster.key}
+		p.CipherText = prx.Pass
+		p.Decrypt()
+		prx.Pass = p.PlainText
+	}
+
+	return prx
+}
+
+func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
+	flags.BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
+	flags.BoolVar(&conf.ProxysqlSaveToDisk, "proxysql-save-to-disk", false, "Save proxysql change to sqllight")
+	flags.StringVar(&conf.ProxysqlHosts, "proxysql-servers", "", "ProxySQL hosts")
+	flags.StringVar(&conf.ProxysqlHostsIPV6, "proxysql-servers-ipv6", "", "ProxySQL extra IPV6 bind for interfaces")
+	flags.StringVar(&conf.ProxysqlPort, "proxysql-port", "3306", "ProxySQL read/write proxy port")
+	flags.StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6032", "ProxySQL admin interface port")
+	flags.StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-reader-hostgroup", "1", "ProxySQL reader hostgroup")
+	flags.StringVar(&conf.ProxysqlWriterHostgroup, "proxysql-writer-hostgroup", "0", "ProxySQL writer hostgroup")
+	flags.StringVar(&conf.ProxysqlUser, "proxysql-user", "admin", "ProxySQL admin user")
+	flags.StringVar(&conf.ProxysqlPassword, "proxysql-password", "admin", "ProxySQL admin password")
+	flags.BoolVar(&conf.ProxysqlCopyGrants, "proxysql-bootstrap-users", true, "Copy users from master")
+	flags.BoolVar(&conf.ProxysqlMultiplexing, "proxysql-multiplexing", false, "Multiplexing")
+	flags.BoolVar(&conf.ProxysqlBootstrap, "proxysql-bootstrap", false, "Bootstrap ProxySQL backend servers and hostgroup")
+	flags.BoolVar(&conf.ProxysqlBootstrapVariables, "proxysql-bootstrap-variables", false, "Bootstrap ProxySQL backend servers and hostgroup")
+	flags.BoolVar(&conf.ProxysqlBootstrapHG, "proxysql-bootstrap-hostgroups", false, "Bootstrap ProxySQL hostgroups")
+	flags.BoolVar(&conf.ProxysqlBootstrapQueryRules, "proxysql-bootstrap-query-rules", false, "Bootstrap Query rules into ProxySQL")
+	flags.StringVar(&conf.ProxysqlBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "proxysql binary location")
+	flags.BoolVar(&conf.ProxysqlMasterIsReader, "proxysql-master-is-reader", false, "Add the master to the reader group")
+}
+
+func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 	psql := proxysql.ProxySQL{
 		User:     proxy.User,
 		Password: proxy.Pass,
@@ -29,25 +92,30 @@ func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {
 	return psql, nil
 }
 
-func (cluster *Cluster) AddShardProxy(proxysql *Proxy, shardproxy *Proxy) {
+func (cluster *Cluster) AddShardProxy(proxysql *ProxySQLProxy, shardproxy *MariadbShardProxy) {
+	proxysql.AddShardProxy(shardproxy)
+}
+
+func (proxy *ProxySQLProxy) AddShardProxy(shardproxy *MariadbShardProxy) {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
 		return
 	}
-	psql, err := connectProxysql(proxysql)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return
 	}
 	defer psql.Connection.Close()
 	psql.AddShardServer(misc.Unbracket(shardproxy.Host), shardproxy.Port)
-
 }
 
-func (cluster *Cluster) AddQueryRulesProxysql(proxy *Proxy, rules []proxysql.QueryRule) error {
+func (proxy *ProxySQLProxy) AddQueryRulesProxysql(rules []proxysql.QueryRule) error {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
 		return errors.New("No proxysql enable in config")
 	}
-	psql, err := connectProxysql(proxy)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return err
@@ -57,12 +125,13 @@ func (cluster *Cluster) AddQueryRulesProxysql(proxy *Proxy, rules []proxysql.Que
 	return err
 }
 
-func (cluster *Cluster) initProxysql(proxy *Proxy) {
+func (proxy *ProxySQLProxy) Init() {
+	cluster := proxy.ClusterGroup
 	if !cluster.Conf.ProxysqlBootstrap || !cluster.Conf.ProxysqlOn {
 		return
 	}
 
-	psql, err := connectProxysql(proxy)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return
@@ -114,8 +183,13 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	}
 }
 
-func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
-	psql, err := connectProxysql(proxy)
+func (cluster *Cluster) failoverProxysql(proxy *ProxySQLProxy) {
+	proxy.Failover()
+}
+
+func (proxy *ProxySQLProxy) Failover() {
+	cluster := proxy.ClusterGroup
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return
@@ -153,12 +227,13 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 
 }
 
-func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
+func (proxy *ProxySQLProxy) Refresh() error {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
 		return nil
 	}
 
-	psql, err := connectProxysql(proxy)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		cluster.sme.CopyOldStateFromUnknowServer(proxy.Name)
@@ -325,12 +400,17 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, s *ServerMonitor) {
+func (cluster *Cluster) setMaintenanceProxysql(proxy *ProxySQLProxy, s *ServerMonitor) {
+	proxy.SetMaintenance(s)
+}
+
+func (proxy *ProxySQLProxy) SetMaintenance(s *ServerMonitor) {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
 		return
 	}
 
-	psql, err := connectProxysql(proxy)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
 		return

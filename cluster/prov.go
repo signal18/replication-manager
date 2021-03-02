@@ -90,7 +90,12 @@ func (cluster *Cluster) ProvisionServices() error {
 			}
 		}
 	}
-	for _, prx := range cluster.Proxies {
+
+	for _, pri := range cluster.Proxies {
+		prx, ok := pri.(*Proxy)
+		if !ok {
+			continue
+		}
 		switch cluster.Conf.ProvOrchestrator {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCProvisionProxyService(prx)
@@ -101,17 +106,22 @@ func (cluster *Cluster) ProvisionServices() error {
 		case config.ConstOrchestratorLocalhost:
 			go cluster.LocalhostProvisionProxyService(prx)
 		default:
+			// TODO: wtf? it never hits the second loop
 			cluster.sme.RemoveFailoverState()
 			return nil
 		}
 	}
-	for _, prx := range cluster.Proxies {
+	for _, pri := range cluster.Proxies {
+		prx, ok := pri.(*Proxy)
+		if !ok {
+			continue
+		}
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Provisionning proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.Name)
+				cluster.LogPrintf(LvlErr, "Provisionning proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
 			} else {
-				cluster.LogPrintf(LvlInfo, "Provisionning done for proxy %s", cluster.Name+"/svc/"+prx.Name)
+				cluster.LogPrintf(LvlInfo, "Provisionning done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
 				prx.SetProvisionCookie()
 			}
 		}
@@ -151,7 +161,7 @@ func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 	return nil
 }
 
-func (cluster *Cluster) InitProxyService(prx *Proxy) error {
+func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 	switch cluster.Conf.ProvOrchestrator {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionProxyService(prx)
@@ -206,7 +216,11 @@ func (cluster *Cluster) Unprovision() error {
 			}
 		}
 	}
-	for _, prx := range cluster.Proxies {
+	for _, pri := range cluster.Proxies {
+		prx, ok := pri.(*Proxy)
+		if !ok {
+			continue
+		}
 		switch cluster.Conf.ProvOrchestrator {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCUnprovisionProxyService(prx)
@@ -221,13 +235,17 @@ func (cluster *Cluster) Unprovision() error {
 			return nil
 		}
 	}
-	for _, prx := range cluster.Proxies {
+	for _, pri := range cluster.Proxies {
+		prx, ok := pri.(*Proxy)
+		if !ok {
+			continue
+		}
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.Name)
+				cluster.LogPrintf(LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
 			} else {
-				cluster.LogPrintf(LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.Name)
+				cluster.LogPrintf(LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
 				prx.DelProvisionCookie()
 				prx.DelRestartCookie()
 				prx.DelReprovisionCookie()
@@ -244,7 +262,7 @@ func (cluster *Cluster) Unprovision() error {
 	return nil
 }
 
-func (cluster *Cluster) UnprovisionProxyService(prx *Proxy) error {
+func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
 	switch cluster.Conf.ProvOrchestrator {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCUnprovisionProxyService(prx)
@@ -316,7 +334,7 @@ func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 	return nil
 }
 
-func (cluster *Cluster) StopProxyService(server *Proxy) error {
+func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 
 	switch cluster.Conf.ProvOrchestrator {
 	case config.ConstOrchestratorOpenSVC:
@@ -332,7 +350,7 @@ func (cluster *Cluster) StopProxyService(server *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) StartProxyService(server *Proxy) error {
+func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
 
 	switch cluster.Conf.ProvOrchestrator {
 	case config.ConstOrchestratorOpenSVC:
@@ -629,7 +647,7 @@ func (cluster *Cluster) GetDatabaseAgent(server *ServerMonitor) (Agent, error) {
 	return agent, errors.New("Indice not found in database node list")
 }
 
-func (cluster *Cluster) GetProxyAgent(server *Proxy) (Agent, error) {
+func (cluster *Cluster) GetProxyAgent(server DatabaseProxy) (Agent, error) {
 	var agent Agent
 	agents := strings.Split(cluster.Conf.ProvProxAgents, ",")
 	if len(agents) == 0 {
@@ -637,7 +655,7 @@ func (cluster *Cluster) GetProxyAgent(server *Proxy) (Agent, error) {
 	}
 	for i, srv := range cluster.Servers {
 
-		if srv.Id == server.Id {
+		if srv.Id == server.GetId() {
 			agentName := agents[i%len(agents)]
 			agent, err := cluster.GetAgentInOrchetrator(agentName)
 			if err != nil {

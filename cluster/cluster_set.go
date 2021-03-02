@@ -564,7 +564,7 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 		cluster.Conf.MxsUser, cluster.Conf.MxsPass = misc.SplitPair(credential)
 	}
 	for _, prx := range cluster.Proxies {
-		prx.User, prx.Pass = misc.SplitPair(credential)
+		prx.SetCredential(credential)
 		prx.SetRestartCookie()
 	}
 }
@@ -778,9 +778,9 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 				oriClusters, err := cluster.GetClusterFromName(cluster.Conf.ClusterHead)
 				if err == nil {
 					for _, oriProxy := range oriClusters.Proxies {
-						cluster.LogPrintf(LvlInfo, "Adding new proxy %s copy %s:%s", oriProxy.Type, oriProxy.Host, oriProxy.Port)
-						if oriProxy.Type == config.ConstProxySpider {
-							cluster.AddSeededProxy(oriProxy.Type, oriProxy.Host, oriProxy.Port, oriProxy.User, oriProxy.Pass)
+						cluster.LogPrintf(LvlInfo, "Adding new proxy %s copy %s:%s", oriProxy.GetType(), oriProxy.GetHost(), oriProxy.GetPort())
+						if oriProxy.GetType() == config.ConstProxySpider {
+							cluster.AddSeededProxy(oriProxy.GetType(), oriProxy.GetHost(), oriProxy.GetPort(), oriProxy.GetUser(), oriProxy.GetPass())
 						}
 					}
 					if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {

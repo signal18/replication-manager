@@ -51,7 +51,7 @@ func (cluster *Cluster) PrepareBench() error {
 		time := "--max-time=60"
 		mode := "--oltp-test-mode=complex"
 		var cmdprep *exec.Cmd
-		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, mode, requests, threads, "prepare")
+		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, mode, requests, threads, "prepare")
 
 		if cluster.Conf.SysbenchV1 {
 			test = "oltp_read_write"
@@ -60,7 +60,7 @@ func (cluster *Cluster) PrepareBench() error {
 			requests = "" //			--events=N
 			time = "--time=60"
 			mode = ""
-			cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, threads, "prepare")
+			cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, threads, "prepare")
 
 		}
 
@@ -94,10 +94,10 @@ func (cluster *Cluster) CleanupBench() error {
 		if cluster.Conf.SysbenchV1 {
 			test = "oltp_read_write"
 		}
-		var cleanup = cluster.Conf.SysbenchBinaryPath + " --test=oltp  --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=" + prx.Host + " --mysql-port=" + strconv.Itoa(prx.WritePort) + " cleanup"
+		var cleanup = cluster.Conf.SysbenchBinaryPath + " --test=oltp  --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.rplUser + " --mysql-password=" + cluster.rplPass + " --mysql-host=" + prx.GetHost() + " --mysql-port=" + strconv.Itoa(prx.GetWritePort()) + " cleanup"
 		cluster.LogPrintf("BENCH", "%s", strings.Replace(cleanup, cluster.rplPass, "XXXXX", -1))
 		var cmdcls *exec.Cmd
-		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, test, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), "cleanup")
+		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, test, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.rplUser, "--mysql-password="+cluster.rplPass, "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), "cleanup")
 		var outcls bytes.Buffer
 		cmdcls.Stdout = &outcls
 
@@ -149,14 +149,14 @@ func (cluster *Cluster) RunBench() error {
 		time := "--max-time=" + strconv.Itoa(cluster.Conf.SysbenchTime)
 		mode := "--oltp-test-mode=complex"
 		var cmdrun *exec.Cmd
-		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, mode, requests, threads, "run")
+		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, mode, requests, threads, "run")
 		if cluster.Conf.SysbenchV1 {
 			test = "oltp_read_write"
 			tablesize = "--table-size=1000000"
 			threads = "--threads=" + strconv.Itoa(cluster.Conf.SysbenchThreads)
 			requests = "" //			--events=N
 			time = "--time=" + strconv.Itoa(cluster.Conf.SysbenchTime)
-			cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.Host, "--mysql-port="+strconv.Itoa(prx.WritePort), time, threads, "run")
+			cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.dbUser, "--mysql-password="+cluster.dbPass, "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, threads, "run")
 		}
 		cluster.LogPrintf(LvlInfo, "Command: %s", strings.Replace(cmdrun.String(), cluster.dbPass, "XXXX", -1))
 

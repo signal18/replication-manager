@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc64"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -154,6 +155,7 @@ type Cluster struct {
 	WaitingSwitchover             int                         `json:"waitingSwitchover"`
 	WaitingFailover               int                         `json:"waitingFailover"`
 	sync.Mutex
+	crcTable *crc64.Table
 }
 
 type ClusterSorter []*Cluster
@@ -226,6 +228,7 @@ const (
 
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, log *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 	cluster.switchoverChan = make(chan bool)
 	// should use buffered channels or it will block
 	cluster.statecloseChan = make(chan state.State, 100)
@@ -844,12 +847,12 @@ func (cluster *Cluster) MonitorSchema() {
 		}
 		t.Table_clusters = strings.Join(tableCluster, ",")
 		tables[t.Table_schema+"."+t.Table_name] = t
-		if haschanged {
-			for _, pr := range cluster.Proxies {
-				if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
+		if haschanged && cluster.Conf.MdbsProxyOn {
+			for _, pri := range cluster.Proxies {
+				if prx, ok := pri.(*MariadbShardProxy); ok {
 					if !(t.Table_schema == "replication_manager_schema" || strings.Contains(t.Table_name, "_copy") == true || strings.Contains(t.Table_name, "_back") == true || strings.Contains(t.Table_name, "_old") == true || strings.Contains(t.Table_name, "_reshard") == true) {
 						cluster.LogPrintf(LvlDbg, "blabla table %s %s %s", duplicates, t.Table_schema, t.Table_name)
-						cluster.ShardProxyCreateVTable(pr, t.Table_schema, t.Table_name, duplicates, false)
+						cluster.ShardProxyCreateVTable(prx, t.Table_schema, t.Table_name, duplicates, false)
 					}
 				}
 			}
@@ -865,8 +868,12 @@ func (cluster *Cluster) MonitorQueryRules() {
 	if !cluster.Conf.MonitorQueryRules {
 		return
 	}
-	for _, prx := range cluster.Proxies {
-		if cluster.Conf.ProxysqlOn && prx.Type == config.ConstProxySqlproxy {
+	// exit early
+	if !cluster.Conf.ProxysqlOn {
+		return
+	}
+	for _, pri := range cluster.Proxies {
+		if prx, ok := pri.(*ProxySQLProxy); ok {
 			qr := prx.QueryRules
 			for _, rule := range qr {
 				var myRule config.QueryRule
@@ -1284,4 +1291,14 @@ func (cluster *Cluster) ConfigDiscovery() error {
 	//	containermem = containermem * int64(sharedmempcts["innodb"]) / 100
 
 	return nil
+}
+
+func (c *Cluster) AddProxy(prx DatabaseProxy) {
+	prx.SetCluster(c)
+	prx.SetID()
+	prx.SetDataDir()
+	prx.SetServiceName(c.Name)
+	c.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.GetType(), prx.GetHost(), prx.GetPort())
+	prx.SetState(stateSuspect)
+	c.Proxies = append(c.Proxies, prx)
 }

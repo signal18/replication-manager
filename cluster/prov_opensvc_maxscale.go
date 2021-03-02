@@ -13,7 +13,7 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (cluster *Cluster) OpenSVCGetMaxscaleContainerSection(server *Proxy) map[string]string {
+func (cluster *Cluster) OpenSVCGetMaxscaleContainerSection(server *MaxscaleProxy) map[string]string {
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
@@ -31,7 +31,7 @@ func (cluster *Cluster) OpenSVCGetMaxscaleContainerSection(server *Proxy) map[st
 	return svccontainer
 }
 
-func (cluster *Cluster) GetMaxscaleTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+func (cluster *Cluster) GetMaxscaleTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *MaxscaleProxy) (string, error) {
 
 	conf := `
 [DEFAULT]

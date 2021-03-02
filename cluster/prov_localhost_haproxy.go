@@ -15,14 +15,14 @@ import (
 	"strings"
 )
 
-func (cluster *Cluster) LocalhostUnprovisionHaProxyService(prx *Proxy) error {
+func (cluster *Cluster) LocalhostUnprovisionHaProxyService(prx *HaproxyProxy) error {
 	cluster.LocalhostStopHaProxyService(prx)
 	os.RemoveAll(prx.Datadir + "/var")
 	cluster.errorChan <- nil
 	return nil
 }
 
-func (cluster *Cluster) LocalhostProvisionHaProxyService(prx *Proxy) error {
+func (cluster *Cluster) LocalhostProvisionHaProxyService(prx *HaproxyProxy) error {
 
 	out := &bytes.Buffer{}
 	path := prx.Datadir + "/var"
@@ -51,7 +51,7 @@ func (cluster *Cluster) LocalhostProvisionHaProxyService(prx *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStopHaProxyService(prx *Proxy) error {
+func (cluster *Cluster) LocalhostStopHaProxyService(prx *HaproxyProxy) error {
 
 	//	cluster.LogPrintf("TEST", "Killing database %s %d", server.Id, server.Process.Pid)
 
@@ -64,10 +64,10 @@ func (cluster *Cluster) LocalhostStopHaProxyService(prx *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStartHaProxyService(prx *Proxy) error {
+func (cluster *Cluster) LocalhostStartHaProxyService(prx *HaproxyProxy) error {
 	prx.GetProxyConfig()
 	//init haproxy do start or reload
-	cluster.initHaproxy(prx)
+	prx.Init()
 	/*mariadbdCmd := exec.Command(cluster.Conf.HaproxyBinaryPath+"/haproxy", "--config="+prx.Datadir+"/init/etc/haproxy.cnf", "--datadir="+prx.Datadir+"/var")
 	cluster.LogPrintf(LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 

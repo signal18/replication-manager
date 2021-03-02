@@ -141,9 +141,12 @@ func (cluster *Cluster) AddUser(user string) error {
 	return nil
 }
 
-func (cluster *Cluster) AddShardingHostGroup(proxy *Proxy) error {
-	for _, pr := range cluster.Proxies {
-		if pr.Type == config.ConstProxySqlproxy && pr.ClusterGroup.Conf.ClusterHead == "" {
+func (cluster *Cluster) AddShardingHostGroup(proxy *MariadbShardProxy) error {
+	if cluster.Conf.ClusterHead != "" {
+		return nil
+	}
+	for _, pri := range cluster.Proxies {
+		if pr, ok := pri.(*ProxySQLProxy); ok {
 			cluster.AddShardProxy(pr, proxy)
 		}
 	}
@@ -151,8 +154,11 @@ func (cluster *Cluster) AddShardingHostGroup(proxy *Proxy) error {
 }
 
 func (cluster *Cluster) AddShardingQueryRules(schema string, table string) error {
-	for _, pr := range cluster.Proxies {
-		if pr.Type == config.ConstProxySqlproxy && pr.ClusterGroup.Conf.ClusterHead == "" {
+	if cluster.Conf.ClusterHead != "" {
+		return nil
+	}
+	for _, pri := range cluster.Proxies {
+		if pr, ok := pri.(*ProxySQLProxy); ok {
 			var qr proxysql.QueryRule
 			var qrs []proxysql.QueryRule
 			qr.Id = misc.Hash("dml." + schema + "." + table)
@@ -161,7 +167,7 @@ func (cluster *Cluster) AddShardingQueryRules(schema string, table string) error
 			qr.Apply = 1
 			qr.DestinationHostgroup.Int64 = 999
 			qrs = append(qrs, qr)
-			cluster.AddQueryRulesProxysql(pr, qrs)
+			pr.AddQueryRulesProxysql(qrs)
 		}
 	}
 	return nil

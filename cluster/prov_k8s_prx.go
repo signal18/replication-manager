@@ -9,7 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (cluster *Cluster) K8SProvisionProxyService(prx *Proxy) {
+func (cluster *Cluster) K8SProvisionProxyService(prx DatabaseProxy) {
 	clientset, err := cluster.K8SConnectAPI()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Cannot init Kubernetes client API %s ", err)
@@ -18,7 +18,7 @@ func (cluster *Cluster) K8SProvisionProxyService(prx *Proxy) {
 	}
 
 	deploymentsClient := clientset.AppsV1().Deployments(cluster.Name)
-	port, _ := strconv.Atoi(prx.Port)
+	port, _ := strconv.Atoi(prx.GetPort())
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: cluster.Name + "-deployment",
@@ -39,11 +39,11 @@ func (cluster *Cluster) K8SProvisionProxyService(prx *Proxy) {
 				Spec: apiv1.PodSpec{
 					Containers: []apiv1.Container{
 						{
-							Name:  prx.Name,
+							Name:  prx.GetName(),
 							Image: cluster.Conf.ProvProxProxysqlImg,
 							Ports: []apiv1.ContainerPort{
 								{
-									Name:          prx.Name,
+									Name:          prx.GetName(),
 									Protocol:      apiv1.ProtocolTCP,
 									ContainerPort: int32(port),
 								},
@@ -68,13 +68,13 @@ func (cluster *Cluster) K8SProvisionProxyService(prx *Proxy) {
 	return
 }
 
-func (cluster *Cluster) K8SUnprovisionProxyService(prx *Proxy) {
+func (cluster *Cluster) K8SUnprovisionProxyService(prx DatabaseProxy) {
 	cluster.errorChan <- nil
 }
 
-func (cluster *Cluster) K8SStartProxyService(server *Proxy) error {
+func (cluster *Cluster) K8SStartProxyService(server DatabaseProxy) error {
 	return errors.New("Can't start proxy")
 }
-func (cluster *Cluster) K8SStopProxyService(server *Proxy) error {
+func (cluster *Cluster) K8SStopProxyService(server DatabaseProxy) error {
 	return errors.New("Can't stop proxy")
 }

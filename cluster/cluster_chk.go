@@ -28,42 +28,31 @@ func (cluster *Cluster) CheckFailed() {
 		cluster.sme.AddState("ERR00001", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00001"]), ErrFrom: "CHECK"})
 		return
 	}
-	if cluster.master != nil {
-		if cluster.isFoundCandidateMaster() {
-			if cluster.isBetweenFailoverTimeValid() {
-				if cluster.IsNotHavingMySQLErrantTransaction() {
-					if cluster.IsSameWsrepUUID() {
-						if cluster.isMaxMasterFailedCountReached() {
-							if cluster.isActiveArbitration() {
-								if cluster.isMaxClusterFailoverCountNotReached() {
-									if cluster.isAutomaticFailover() {
-										if cluster.isMasterFailed() {
-											if cluster.isNotFirstSlave() {
-												if cluster.isArbitratorAlive() {
+	if cluster.master == nil {
+		cluster.LogPrintf(LvlDbg, "Master not discovered, skipping failover check")
+	}
 
-													// False Positive
-													if cluster.isExternalOk() == false {
-														if cluster.isOneSlaveHeartbeatIncreasing() == false {
-															if cluster.isMaxscaleSupectRunning() == false {
-																cluster.MasterFailover(true)
-																cluster.failoverCond.Send <- true
-															}
-														}
-													}
-												}
+	if cluster.isFoundCandidateMaster() &&
+		cluster.isBetweenFailoverTimeValid() &&
+		cluster.IsNotHavingMySQLErrantTransaction() &&
+		cluster.IsSameWsrepUUID() &&
+		cluster.isMaxMasterFailedCountReached() &&
+		cluster.isActiveArbitration() &&
+		cluster.isMaxClusterFailoverCountNotReached() &&
+		cluster.isAutomaticFailover() &&
+		cluster.isMasterFailed() &&
+		cluster.isNotFirstSlave() &&
+		cluster.isArbitratorAlive() {
 
-											}
-										}
-									}
-								}
-							}
-						}
-					}
+		// False Positive
+		if cluster.isExternalOk() == false {
+			if cluster.isOneSlaveHeartbeatIncreasing() == false {
+				if cluster.isMaxscaleSupectRunning() == false {
+					cluster.MasterFailover(true)
+					cluster.failoverCond.Send <- true
 				}
 			}
 		}
-	} else {
-		cluster.LogPrintf(LvlDbg, "Master not discovered, skipping failover check")
 	}
 }
 
