@@ -20,6 +20,7 @@ import (
 	mysqllog "log"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/server"
 
@@ -33,31 +34,30 @@ var (
 	// Version is the semantic version number, e.g. 1.0.1
 	Version string
 	// Provisoning to add flags for compile
-	WithProvisioning      string
-	WithArbitration       string
-	WithArbitrationClient string
-	WithProxysql          string
-	WithHaproxy           string
-	WithMaxscale          string
-	WithMariadbshardproxy string
-	WithMonitoring        string
-	WithMail              string
-	WithHttp              string
+	WithProvisioning      string = "ON"
+	WithArbitration       string = "OFF"
+	WithArbitrationClient string = "ON"
+	WithProxysql          string = "ON"
+	WithHaproxy           string = "ON"
+	WithMaxscale          string = "ON"
+	WithMariadbshardproxy string = "ON"
+	WithMonitoring        string = "ON"
+	WithMail              string = "ON"
+	WithHttp              string = "ON"
 	WithSpider            string
-	WithEnforce           string
-	WithDeprecate         string
-	WithOpenSVC           string
-	WithMultiTiers        string
+	WithEnforce           string = "ON"
+	WithDeprecate         string = "ON"
+	WithOpenSVC           string = "OFF"
 	WithTarball           string
 	WithMySQLRouter       string
-	WithSphinx            string
-	WithBackup            string
+	WithSphinx            string = "ON"
+	WithBackup            string = "ON"
 	// FullVersion is the semantic version number + git commit hash
 	FullVersion string
 	// Build is the build date of replication-manager
 	Build    string
-	GoOS     string
-	GoArch   string
+	GoOS     string = "linux"
+	GoArch   string = "amd64"
 	conf     config.Config
 	cfgGroup string
 )
@@ -330,27 +330,12 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.ExtProxyVIP, "extproxy-address", "", "Network address when route is manage via external script,  host:[port] format")
 
 	if WithMaxscale == "ON" {
-		monitorCmd.Flags().BoolVar(&conf.MxsOn, "maxscale", false, "MaxScale proxy server is query for backend status")
-		monitorCmd.Flags().BoolVar(&conf.CheckFalsePositiveMaxscale, "failover-falsepositive-maxscale", false, "Failover checks that maxscale detect failed master")
-		monitorCmd.Flags().IntVar(&conf.CheckFalsePositiveMaxscaleTimeout, "failover-falsepositive-maxscale-timeout", 14, "Failover checks that maxscale detect failed master")
-		monitorCmd.Flags().BoolVar(&conf.MxsBinlogOn, "maxscale-binlog", false, "Maxscale binlog server topolgy")
-		monitorCmd.Flags().MarkDeprecated("maxscale-monitor", "Deprecate disable maxscale monitoring for 2 nodes cluster")
-		monitorCmd.Flags().BoolVar(&conf.MxsDisableMonitor, "maxscale-disable-monitor", false, "Disable maxscale monitoring and fully drive server state")
-		monitorCmd.Flags().StringVar(&conf.MxsGetInfoMethod, "maxscale-get-info-method", "maxadmin", "How to get infos from Maxscale maxinfo|maxadmin")
-		monitorCmd.Flags().StringVar(&conf.MxsHost, "maxscale-servers", "", "MaxScale hosts ")
-		monitorCmd.Flags().StringVar(&conf.MxsPort, "maxscale-port", "6603", "MaxScale admin port")
-		monitorCmd.Flags().StringVar(&conf.MxsUser, "maxscale-user", "admin", "MaxScale admin user")
-		monitorCmd.Flags().StringVar(&conf.MxsPass, "maxscale-pass", "mariadb", "MaxScale admin password")
-		monitorCmd.Flags().IntVar(&conf.MxsWritePort, "maxscale-write-port", 3306, "MaxScale read-write port to leader")
-		monitorCmd.Flags().IntVar(&conf.MxsReadPort, "maxscale-read-port", 3307, "MaxScale load balance read port to all nodes")
-		monitorCmd.Flags().IntVar(&conf.MxsReadWritePort, "maxscale-read-write-port", 3308, "MaxScale load balance read port to all nodes")
-		monitorCmd.Flags().IntVar(&conf.MxsMaxinfoPort, "maxscale-maxinfo-port", 3309, "MaxScale maxinfo plugin http port")
-		monitorCmd.Flags().IntVar(&conf.MxsBinlogPort, "maxscale-binlog-port", 3309, "MaxScale maxinfo plugin http port")
-		monitorCmd.Flags().BoolVar(&conf.MxsServerMatchPort, "maxscale-server-match-port", false, "Match servers running on same host with different port")
-		monitorCmd.Flags().StringVar(&conf.MxsBinaryPath, "maxscale-binary-path", "/usr/sbin/maxscale", "Maxscale binary location")
-		monitorCmd.Flags().StringVar(&conf.MxsHostsIPV6, "maxscale-servers-ipv6", "", "ipv6 bind address ")
+		maxscaleprx := new(cluster.MaxscaleProxy)
+		maxscaleprx.AddFlags(monitorCmd.Flags(), conf)
 	}
 
+	// TODO: this seems dead code / unimplemented
+	// start
 	if WithMySQLRouter == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.MysqlRouterOn, "mysqlrouter", false, "MySQLRouter proxy server is query for backend status")
 		monitorCmd.Flags().StringVar(&conf.MysqlRouterHosts, "mysqlrouter-servers", "127.0.0.1", "MaxScale hosts ")
@@ -361,73 +346,32 @@ func init() {
 		monitorCmd.Flags().IntVar(&conf.MysqlRouterReadPort, "mysqlrouter-read-port", 3307, "MySQLRouter load balance read port to all nodes")
 		monitorCmd.Flags().IntVar(&conf.MysqlRouterReadWritePort, "mysqlrouter-read-write-port", 3308, "MySQLRouter load balance read port to all nodes")
 	}
+	// end of dead code
 
 	if WithMariadbshardproxy == "ON" {
-		monitorCmd.Flags().BoolVar(&conf.MdbsProxyOn, "shardproxy", false, "MariaDB Spider proxy")
-		monitorCmd.Flags().StringVar(&conf.MdbsProxyHosts, "shardproxy-servers", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")
-		monitorCmd.Flags().StringVar(&conf.MdbsProxyCredential, "shardproxy-credential", "root:mariadb", "MariaDB spider proxy credential")
-		monitorCmd.Flags().BoolVar(&conf.MdbsProxyCopyGrants, "shardproxy-copy-grants", true, "Copy grants from shards master")
-		monitorCmd.Flags().BoolVar(&conf.MdbsProxyLoadSystem, "shardproxy-load-system", true, "Load Spider system tables")
-		monitorCmd.Flags().StringVar(&conf.MdbsUniversalTables, "shardproxy-universal-tables", "replication_manager_schema.bench", "MariaDB spider proxy table list that are federarated to all master")
-		monitorCmd.Flags().StringVar(&conf.MdbsIgnoreTables, "shardproxy-ignore-tables", "", "MariaDB spider proxy master table list that are ignored")
-		monitorCmd.Flags().StringVar(&conf.MdbsHostsIPV6, "shardproxy-servers-ipv6", "", "ipv6 bind address ")
+		mdbsprx := new(cluster.MariadbShardProxy)
+		mdbsprx.AddFlags(monitorCmd.Flags(), conf)
 	}
 	if WithHaproxy == "ON" {
-		monitorCmd.Flags().BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HaProxy on same host")
-		monitorCmd.Flags().StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HaProxy mode [standby|runtimeapi|dataplaneapi]")
-		monitorCmd.Flags().StringVar(&conf.HaproxyUser, "haproxy-user", "admin", "Haproxy API user")
-		monitorCmd.Flags().StringVar(&conf.HaproxyPassword, "haproxy-password", "admin", "Haproxy API password")
-		monitorCmd.Flags().StringVar(&conf.HaproxyHosts, "haproxy-servers", "127.0.0.1", "HaProxy hosts")
-		monitorCmd.Flags().IntVar(&conf.HaproxyAPIPort, "haproxy-api-port", 1999, "HaProxy runtime api port")
-		monitorCmd.Flags().IntVar(&conf.HaproxyWritePort, "haproxy-write-port", 3306, "HaProxy read-write port to leader")
-		monitorCmd.Flags().IntVar(&conf.HaproxyReadPort, "haproxy-read-port", 3307, "HaProxy load balance read port to all nodes")
-		monitorCmd.Flags().IntVar(&conf.HaproxyStatPort, "haproxy-stat-port", 1988, "HaProxy statistics port")
-		monitorCmd.Flags().StringVar(&conf.HaproxyBinaryPath, "haproxy-binary-path", "/usr/sbin/haproxy", "HaProxy binary location")
-		monitorCmd.Flags().StringVar(&conf.HaproxyReadBindIp, "haproxy-ip-read-bind", "0.0.0.0", "HaProxy input bind address for read")
-		monitorCmd.Flags().StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "HaProxy input bind address for write")
-		monitorCmd.Flags().StringVar(&conf.HaproxyAPIReadBackend, "haproxy-api-read-backend", "service_read", "HaProxy API backend name used for read")
-		monitorCmd.Flags().StringVar(&conf.HaproxyAPIWriteBackend, "haproxy-api-write-backend", "service_write", "HaProxy API backend name used for write")
-		monitorCmd.Flags().StringVar(&conf.HaproxyHostsIPV6, "haproxy-servers-ipv6", "", "ipv6 bind address ")
+		haprx := new(cluster.HaproxyProxy)
+		haprx.AddFlags(monitorCmd.Flags(), conf)
 	}
-	monitorCmd.Flags().BoolVar(&conf.MyproxyOn, "myproxy", false, "Use Internal Proxy")
-	monitorCmd.Flags().IntVar(&conf.MyproxyPort, "myproxy-port", 4000, "Internal proxy read/write port")
-	monitorCmd.Flags().StringVar(&conf.MyproxyUser, "myproxy-user", "admin", "Myproxy user")
-	monitorCmd.Flags().StringVar(&conf.MyproxyPassword, "myproxy-password", "repman", "Myproxy password")
-
 	if WithProxysql == "ON" {
-		monitorCmd.Flags().BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
-		monitorCmd.Flags().BoolVar(&conf.ProxysqlSaveToDisk, "proxysql-save-to-disk", false, "Save proxysql change to sqllight")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlHosts, "proxysql-servers", "", "ProxySQL hosts")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlHostsIPV6, "proxysql-servers-ipv6", "", "ProxySQL extra IPV6 bind for interfaces")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlPort, "proxysql-port", "3306", "ProxySQL read/write proxy port")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6032", "ProxySQL admin interface port")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-reader-hostgroup", "1", "ProxySQL reader hostgroup")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlWriterHostgroup, "proxysql-writer-hostgroup", "0", "ProxySQL writer hostgroup")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlUser, "proxysql-user", "admin", "ProxySQL admin user")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlPassword, "proxysql-password", "admin", "ProxySQL admin password")
-		monitorCmd.Flags().BoolVar(&conf.ProxysqlCopyGrants, "proxysql-bootstrap-users", true, "Copy users from master")
-		monitorCmd.Flags().BoolVar(&conf.ProxysqlMultiplexing, "proxysql-multiplexing", false, "Multiplexing")
-		monitorCmd.Flags().BoolVar(&conf.ProxysqlBootstrap, "proxysql-bootstrap", false, "Bootstrap ProxySQL backend servers and hostgroup")
-		monitorCmd.Flags().BoolVar(&conf.ProxysqlBootstrapVariables, "proxysql-bootstrap-variables", false, "Bootstrap ProxySQL backend servers and hostgroup")
-
-		monitorCmd.Flags().BoolVar(&conf.ProxysqlBootstrapHG, "proxysql-bootstrap-hostgroups", false, "Bootstrap ProxySQL hostgroups")
-		monitorCmd.Flags().BoolVar(&conf.ProxysqlBootstrapQueryRules, "proxysql-bootstrap-query-rules", false, "Bootstrap Query rules into ProxySQL")
-		monitorCmd.Flags().StringVar(&conf.ProxysqlBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "proxysql binary location")
-		monitorCmd.Flags().BoolVar(&conf.ProxysqlMasterIsReader, "proxysql-master-is-reader", false, "Add the master to the reader group")
+		proxysqlprx := new(cluster.ProxySQLProxy)
+		proxysqlprx.AddFlags(monitorCmd.Flags(), conf)
 	}
 	if WithSphinx == "ON" {
-		monitorCmd.Flags().BoolVar(&conf.SphinxOn, "sphinx", false, "Turn on SphinxSearch detection")
-		monitorCmd.Flags().StringVar(&conf.SphinxHosts, "sphinx-servers", "127.0.0.1", "SphinxSearch hosts")
-		monitorCmd.Flags().StringVar(&conf.SphinxPort, "sphinx-port", "9312", "SphinxSearch API port")
-		monitorCmd.Flags().StringVar(&conf.SphinxQLPort, "sphinx-sql-port", "9306", "SphinxSearch SQL port")
-		if GoOS == "linux" {
-			monitorCmd.Flags().StringVar(&conf.SphinxConfig, "sphinx-config", "/usr/share/replication-manager/shinx/sphinx.conf", "Path to sphinx config")
-		}
-		if GoOS == "darwin" {
-			monitorCmd.Flags().StringVar(&conf.SphinxConfig, "sphinx-config", "/opt/replication-manager/share/sphinx/sphinx.conf", "Path to sphinx config")
-		}
-		monitorCmd.Flags().StringVar(&conf.SphinxHostsIPV6, "sphinx-servers-ipv6", "", "ipv6 bind address ")
+		sphinxprx := new(cluster.SphinxProxy)
+		sphinxprx.AddFlags(monitorCmd.Flags(), conf)
 	}
+
+	myproxyprx := new(cluster.MyProxyProxy)
+	myproxyprx.AddFlags(monitorCmd.Flags(), conf)
+
+	if WithSpider == "ON" {
+		monitorCmd.Flags().BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
+	}
+
 	if WithMonitoring == "ON" {
 		monitorCmd.Flags().IntVar(&conf.GraphiteCarbonPort, "graphite-carbon-port", 2003, "Graphite Carbon Metrics TCP & UDP port")
 		monitorCmd.Flags().IntVar(&conf.GraphiteCarbonApiPort, "graphite-carbon-api-port", 10002, "Graphite Carbon API port")
@@ -451,9 +395,6 @@ func init() {
 		monitorCmd.Flags().IntVar(&conf.ArbitrationReadTimout, "arbitration-read-timeout", 800, "Read timeout for arbotration response in millisec don't woveload monitoring ticker in second")
 	}
 
-	if WithSpider == "ON" {
-		monitorCmd.Flags().BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
-	}
 	monitorCmd.Flags().StringVar(&conf.SchedulerReceiverPorts, "scheduler-db-servers-receiver-ports", "4444", "Scheduler TCP port to send data to db node, if list port affection is modulo db nodes")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerBackupLogical, "scheduler-db-servers-logical-backup", true, "Schedule logical backup")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerBackupPhysical, "scheduler-db-servers-physical-backup", false, "Schedule logical backup")

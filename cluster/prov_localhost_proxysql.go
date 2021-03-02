@@ -14,13 +14,15 @@ import (
 	"time"
 )
 
-func (cluster *Cluster) LocalhostUnprovisionProxySQLService(prx *Proxy) error {
+// TODO: Make all of these part of ProxySQLProxy and not Cluster
+
+func (cluster *Cluster) LocalhostUnprovisionProxySQLService(prx *ProxySQLProxy) error {
 	cluster.LocalhostStopProxysqlService(prx)
 	cluster.errorChan <- nil
 	return nil
 }
 
-func (cluster *Cluster) LocalhostProvisionProxySQLService(prx *Proxy) error {
+func (cluster *Cluster) LocalhostProvisionProxySQLService(prx *ProxySQLProxy) error {
 
 	out := &bytes.Buffer{}
 	path := prx.Datadir + "/var"
@@ -49,7 +51,7 @@ func (cluster *Cluster) LocalhostProvisionProxySQLService(prx *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStopProxysqlService(prx *Proxy) error {
+func (cluster *Cluster) LocalhostStopProxysqlService(prx *ProxySQLProxy) error {
 
 	//	cluster.LogPrintf("TEST", "Killing database %s %d", server.Id, server.Process.Pid)
 
@@ -58,7 +60,7 @@ func (cluster *Cluster) LocalhostStopProxysqlService(prx *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStartProxySQLService(prx *Proxy) error {
+func (cluster *Cluster) LocalhostStartProxySQLService(prx *ProxySQLProxy) error {
 	prx.GetProxyConfig()
 
 	/*	path := prx.Datadir + "/var"

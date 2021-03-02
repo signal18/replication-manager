@@ -52,7 +52,7 @@ func (cluster *Cluster) IsProvisioned() bool {
 		if !px.HasProvisionCookie() {
 			if px.IsRunning() {
 				px.SetProvisionCookie()
-				cluster.LogPrintf(LvlInfo, "Can Proxy Connect creating cookie state:%s", px.State)
+				cluster.LogPrintf(LvlInfo, "Can Proxy Connect creating cookie state:%s", px.GetState())
 			} else {
 				return false
 			}
