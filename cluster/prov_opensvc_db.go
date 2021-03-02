@@ -856,7 +856,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_NAMESPACE%%":                                     server.ClusterGroup.Name,
 		"%%ENV:SVC_NAME%%":                                          server.Name,
 		"%%ENV:SVC_CONF_ENV_SST_METHOD%%":                           server.ClusterGroup.Conf.MultiMasterWsrepSSTMethod,
-		"%%ENV:SVC_CONF_ENV_DOMAIN_ID%%":                            server.ClusterGroup.Conf.ProvDomain,
+		"%%ENV:SVC_CONF_ENV_DOMAIN_ID%%":                            server.ClusterGroup.GetConfigReplicationDomain(),
 		"%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%":                    server.SSTPort,
 		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%":             server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.HttpPort,
 		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL%%":              server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort,

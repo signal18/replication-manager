@@ -2144,6 +2144,63 @@
                 }
             ],
             "fset_name": "mariadb.engine.archive"
+        },
+        {
+            "fset_stats": false,
+            "id": 402,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "deb",
+                        "f_table": "v_tags",
+                        "id": 359
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "system.deb"
+        },
+        {
+            "fset_stats": false,
+            "id": 403,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "rpm",
+                        "f_table": "v_tags",
+                        "id": 360
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "system.rpm"
+        },
+        {
+            "fset_stats": false,
+            "id": 404,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "trace",
+                        "f_table": "v_tags",
+                        "id": 361
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.trace"
         }
     ],
     "rulesets": [
@@ -2156,8 +2213,8 @@
             "rulesets": [
                 "mariadb.svc.env",
                 "mariadb.svc.mrm.db.cnf.docker",
-                "mariadb.svc.mrm.db.cnf.package",
-                "mariadb.svc.mrm.db.cnf.generic"
+                "mariadb.svc.mrm.db.cnf.generic",
+                "mariadb.svc.mrm.db.cnf.package"
             ],
             "publications": [
                 "replication-manager"
@@ -2475,7 +2532,9 @@
             "ruleset_public": false,
             "ruleset_type": "contextual",
             "rulesets": [
-                "mariadb.svc.mrm.db.cnf.package.ssl"
+                "mariadb.svc.mrm.db.cnf.package.ssl",
+                "mariadb.svc.mrm.db.cnf.package.deb",
+                "mariadb.svc.mrm.db.cnf.package.rpm"
             ],
             "publications": [
                 "replication-manager"
@@ -2548,8 +2607,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_optimizer.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL max_prepared_stmt_count=200000;SET GLOBAL optimizer_search_depth = 0;SET GLOBAL join_cache_level = 6;SET GLOBAL optimizer_switch ='extended_keys=off';SET GLOBAL optimizer_switch ='index_condition_pushdown=on';SET GLOBAL optimizer_switch ='engine_condition_pushdown=on';SET GLOBAL optimizer_switch ='derived_merge=on';SET GLOBAL optimizer_switch ='derived_with_keys=on';SET GLOBAL optimizer_switch ='firstmatch=off';SET GLOBAL optimizer_switch ='loosescan=off';SET GLOBAL optimizer_switch ='materialization=on';SET GLOBAL optimizer_switch ='in_to_exists=on';SET GLOBAL optimizer_switch ='semijoin=on';SET GLOBAL optimizer_switch ='partial_match_rowid_merge=on';SET GLOBAL optimizer_switch ='partial_match_table_scan=on';SET GLOBAL optimizer_switch ='subquery_cache=off';SET GLOBAL optimizer_switch ='mrr=on';SET GLOBAL optimizer_switch ='mrr_cost_based=off';SET GLOBAL optimizer_switch ='mrr_sort_keys=on';SET GLOBAL optimizer_switch ='outer_join_with_cache=on';SET GLOBAL optimizer_switch ='semijoin_with_cache=off';SET GLOBAL optimizer_switch ='join_cache_incremental=on';SET GLOBAL optimizer_switch ='join_cache_hashed=on';SET GLOBAL optimizer_switch ='join_cache_bka=on';SET GLOBAL optimizer_switch ='optimize_join_buffer_size=on';SET GLOBAL optimizer_switch ='table_elimination=on';SET GLOBAL eq_range_index_dive_limit=10;SET GLOBAL in_predicate_conversion_threshold=1000;SET GLOBAL optimizer_switch='orderby_uses_equalities=on';SET GLOBAL max_prepared_stmt_count=200000;SET GLOBAL eq_range_index_dive_limit=10;SET GLOBAL in_predicate_conversion_threshold=1000;\\n\\n# mysql_command: SET GLOBAL max_prepared_stmt_count=200000;SET GLOBAL optimizer_search_depth = 0;SET GLOBAL join_cache_level = 6;SET GLOBAL optimizer_switch ='extended_keys=off';SET GLOBAL optimizer_switch ='index_condition_pushdown=on';SET GLOBAL optimizer_switch ='engine_condition_pushdown=on';SET GLOBAL optimizer_switch ='derived_merge=on';SET GLOBAL optimizer_switch ='derived_with_keys=on';SET GLOBAL optimizer_switch ='firstmatch=off';SET GLOBAL optimizer_switch ='loosescan=off';SET GLOBAL optimizer_switch ='materialization=on';SET GLOBAL optimizer_switch ='in_to_exists=on';SET GLOBAL optimizer_switch ='semijoin=on';SET GLOBAL optimizer_switch ='partial_match_rowid_merge=on';SET GLOBAL optimizer_switch ='partial_match_table_scan=on';SET GLOBAL optimizer_switch ='subquery_cache=off';SET GLOBAL optimizer_switch ='mrr=on';SET GLOBAL optimizer_switch ='mrr_cost_based=off';SET GLOBAL optimizer_switch ='mrr_sort_keys=on';SET GLOBAL optimizer_switch ='outer_join_with_cache=on';SET GLOBAL optimizer_switch ='semijoin_with_cache=off';SET GLOBAL optimizer_switch ='join_cache_incremental=on';SET GLOBAL optimizer_switch ='join_cache_hashed=on';SET GLOBAL optimizer_switch ='join_cache_bka=on';SET GLOBAL optimizer_switch ='optimize_join_buffer_size=on';SET GLOBAL optimizer_switch ='table_elimination=on';SET GLOBAL eq_range_index_dive_limit=10;SET GLOBAL in_predicate_conversion_threshold=1000;SET GLOBAL optimizer_switch='orderby_uses_equalities=on';SET GLOBAL optimizer_switch='use_index_extensions=off'; SET GLOBAL optimizer_switch='duplicateweedout=on'; \\n\\n[mysqld]\\nloose_optimizer_switch='use_index_extensions=off'\\nloose_optimizer_switch ='index_condition_pushdown=on'\\nloose_optimizer_switch ='engine_condition_pushdown=on'\\nloose_optimizer_switch ='derived_merge=on'\\nloose_optimizer_switch ='mrr=on'\\nloose_optimizer_switch ='mrr_cost_based=off'\\nloose_optimizer_switch ='firstmatch=off'\\nloose_optimizer_switch ='loosescan=off'\\nloose_optimizer_switch ='semijoin=on'\\nloose_optimizer_switch ='duplicateweedout=on'\\nloose_optimizer_switch ='materialization=on'\\n\\n[mariadb]\\nloose_optimizer_search_depth = 0\\nloose_join_cache_level = 6\\nloose_optimizer_switch ='extended_keys=off'\\nloose_optimizer_switch ='derived_with_keys=on'\\nloose_optimizer_switch ='in_to_exists=on'\\nloose_optimizer_switch ='partial_match_rowid_merge=on'\\nloose_optimizer_switch ='partial_match_table_scan=on'\\nloose_optimizer_switch ='subquery_cache=off'\\nloose_optimizer_switch ='mrr_sort_keys=on'\\nloose_optimizer_switch ='outer_join_with_cache=on'\\nloose_optimizer_switch ='semijoin_with_cache=off'\\nloose_optimizer_switch ='join_cache_incremental=on'\\nloose_optimizer_switch ='join_cache_hashed=on'\\nloose_optimizer_switch ='join_cache_bka=on'\\nloose_optimizer_switch ='optimize_join_buffer_size=on'\\nloose_optimizer_switch ='table_elimination=on'\\n#10.1.16\\nloose_optimizer_switch='orderby_uses_equalities=on'\\n#10.3.18, 10.4.8\\nloose_optimizer_switch ='in_predicate_conversion=on'\\nloose_eq_range_index_dive_limit=10\\nloose_in_predicate_conversion_threshold=1000\\n#10.4\\nloose_max_prepared_stmt_count=200000\\n\"}",
-                    "var_updated": "2021-01-15 16:10:13",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_optimizer.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL max_prepared_stmt_count=200000;SET GLOBAL optimizer_search_depth = 0;SET GLOBAL join_cache_level = 6;SET GLOBAL optimizer_switch ='extended_keys=off';SET GLOBAL optimizer_switch ='index_condition_pushdown=on';SET GLOBAL optimizer_switch ='engine_condition_pushdown=on';SET GLOBAL optimizer_switch ='derived_merge=on';SET GLOBAL optimizer_switch ='derived_with_keys=on';SET GLOBAL optimizer_switch ='firstmatch=off';SET GLOBAL optimizer_switch ='loosescan=off';SET GLOBAL optimizer_switch ='materialization=on';SET GLOBAL optimizer_switch ='in_to_exists=on';SET GLOBAL optimizer_switch ='semijoin=on';SET GLOBAL optimizer_switch ='partial_match_rowid_merge=on';SET GLOBAL optimizer_switch ='partial_match_table_scan=on';SET GLOBAL optimizer_switch ='subquery_cache=off';SET GLOBAL optimizer_switch ='mrr=on';SET GLOBAL optimizer_switch ='mrr_cost_based=off';SET GLOBAL optimizer_switch ='mrr_sort_keys=on';SET GLOBAL optimizer_switch ='outer_join_with_cache=on';SET GLOBAL optimizer_switch ='semijoin_with_cache=off';SET GLOBAL optimizer_switch ='join_cache_incremental=on';SET GLOBAL optimizer_switch ='join_cache_hashed=on';SET GLOBAL optimizer_switch ='join_cache_bka=on';SET GLOBAL optimizer_switch ='optimize_join_buffer_size=on';SET GLOBAL optimizer_switch ='table_elimination=on';SET GLOBAL eq_range_index_dive_limit=10;SET GLOBAL in_predicate_conversion_threshold=1000;SET GLOBAL optimizer_switch='orderby_uses_equalities=on';SET GLOBAL max_prepared_stmt_count=200000;SET GLOBAL eq_range_index_dive_limit=10;SET GLOBAL in_predicate_conversion_threshold=1000;\\n\\n# mysql_command: SET GLOBAL max_prepared_stmt_count=200000;SET GLOBAL optimizer_search_depth = 0;SET GLOBAL join_cache_level = 6;SET GLOBAL optimizer_switch ='extended_keys=off';SET GLOBAL optimizer_switch ='index_condition_pushdown=on';SET GLOBAL optimizer_switch ='engine_condition_pushdown=on';SET GLOBAL optimizer_switch ='derived_merge=on';SET GLOBAL optimizer_switch ='derived_with_keys=on';SET GLOBAL optimizer_switch ='firstmatch=off';SET GLOBAL optimizer_switch ='loosescan=off';SET GLOBAL optimizer_switch ='materialization=on';SET GLOBAL optimizer_switch ='in_to_exists=on';SET GLOBAL optimizer_switch ='semijoin=on';SET GLOBAL optimizer_switch ='partial_match_rowid_merge=on';SET GLOBAL optimizer_switch ='partial_match_table_scan=on';SET GLOBAL optimizer_switch ='subquery_cache=off';SET GLOBAL optimizer_switch ='mrr=on';SET GLOBAL optimizer_switch ='mrr_cost_based=off';SET GLOBAL optimizer_switch ='mrr_sort_keys=on';SET GLOBAL optimizer_switch ='outer_join_with_cache=on';SET GLOBAL optimizer_switch ='semijoin_with_cache=off';SET GLOBAL optimizer_switch ='join_cache_incremental=on';SET GLOBAL optimizer_switch ='join_cache_hashed=on';SET GLOBAL optimizer_switch ='join_cache_bka=on';SET GLOBAL optimizer_switch ='optimize_join_buffer_size=on';SET GLOBAL optimizer_switch ='table_elimination=on';SET GLOBAL eq_range_index_dive_limit=10;SET GLOBAL in_predicate_conversion_threshold=1000;SET GLOBAL optimizer_switch='orderby_uses_equalities=on';SET GLOBAL optimizer_switch='use_index_extensions=off'; SET GLOBAL optimizer_switch='duplicateweedout=on'; \\n\\n[mysqld]\\nloose_optimizer_switch='use_index_extensions=off'\\nloose_optimizer_switch ='index_condition_pushdown=on'\\nloose_optimizer_switch ='engine_condition_pushdown=on'\\nloose_optimizer_switch ='derived_merge=on'\\nloose_optimizer_switch ='mrr=on'\\nloose_optimizer_switch ='mrr_cost_based=off'\\nloose_optimizer_switch ='firstmatch=off'\\nloose_optimizer_switch ='loosescan=off'\\nloose_optimizer_switch ='semijoin=on'\\nloose_optimizer_switch ='duplicateweedout=on'\\nloose_optimizer_switch ='materialization=on'\\n\\n[mariadb]\\nloose_optimizer_search_depth = 0\\nloose_join_cache_level = 6\\nloose_optimizer_switch ='extended_keys=off'\\nloose_optimizer_switch ='derived_with_keys=on'\\nloose_optimizer_switch ='in_to_exists=on'\\nloose_optimizer_switch ='partial_match_rowid_merge=on'\\nloose_optimizer_switch ='partial_match_table_scan=on'\\nloose_optimizer_switch ='subquery_cache=off'\\nloose_optimizer_switch ='mrr_sort_keys=on'\\nloose_optimizer_switch ='outer_join_with_cache=on'\\nloose_optimizer_switch ='semijoin_with_cache=off'\\nloose_optimizer_switch ='join_cache_incremental=on'\\nloose_optimizer_switch ='join_cache_hashed=on'\\nloose_optimizer_switch ='join_cache_bka=on'\\nloose_optimizer_switch ='optimize_join_buffer_size=on'\\nloose_optimizer_switch ='table_elimination=on'\\n#10.1.16\\nloose_optimizer_switch='orderby_uses_equalities=on'\\n# 10.3.18, 10.4.8\\nloose_optimizer_switch ='in_predicate_conversion=on'\\nloose_eq_range_index_dive_limit=10\\nloose_in_predicate_conversion_threshold=1000\\n\\n# 10.6\\nloose_optimizer_switch ='not_null_range_scan=off'\\nloose_optimizer_switch ='cost_based_order_by_limit=on'\\n\\n# 10.4\\nloose_max_prepared_stmt_count=200000\\n\"}",
+                    "var_updated": "2021-02-09 11:19:57",
                     "var_name": "db_cnf_default_optimizer",
                     "id": 5913
                 },
@@ -3768,6 +3827,14 @@
                     "var_updated": "2021-02-05 21:00:18",
                     "var_name": "db_cnf_script_bootstrap",
                     "id": 6267
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_opt_trace.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_documentation: https://mariadb.com/kb/en/optimizer-trace-overview/\\n# mariadb_version: 10.4.4\\n# mariadb_command: SET GLOBAL optimizer_trace='enabled=on';\\n\\n# mysql_documentation: https://dev.mysql.com/doc/dev/mysql-server/latest/PAGE_OPT_TRACE.html\\n# mysql_version: 7.0\\n# mysql_command: SET GLOBAL optimizer_trace='enabled=on';\\n\\n\\n[mysqld]\\nloose_optimizer_trace='enabled=on'\"}",
+                    "var_updated": "2021-02-15 10:31:28",
+                    "var_name": "db_cnf_opt_with_trace",
+                    "id": 6273
                 }
             ],
             "ruleset_public": false,
@@ -3882,7 +3949,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.log_nowarnings",
                 "mariadb.svc.mrm.db.cnf.generic.rep_nologslavestatement",
                 "mariadb.svc.mrm.db.cnf.generic.rep_nosyncbinlog",
-                "mariadb.svc.mrm.db.cnf.generic.enginearchive"
+                "mariadb.svc.mrm.db.cnf.generic.enginearchive",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withtrace"
             ],
             "publications": [
                 "replication-manager"
@@ -5829,6 +5897,30 @@
             ]
         },
         {
+            "fset_name": "system.deb",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.package.deb",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/post_bootstrap\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_UID%%\"}",
+                    "var_updated": "2021-02-09 12:53:54",
+                    "var_name": "post_bootstrap",
+                    "id": 6272
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1111,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
             "fset_name": "mariadb.replication.row",
             "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withrow",
             "variables": [
@@ -6618,6 +6710,54 @@
                 "replication-manager"
             ],
             "id": 1145,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "system.rpm",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.package.rpm",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/post_bootstrap\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
+                    "var_updated": "2021-02-09 12:53:48",
+                    "var_name": "post_bootstrap",
+                    "id": 6271
+                }
+            ],
+            "ruleset_public": true,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1146,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.trace",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withtrace",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/99_with_opt_trace.cnf\",\"target\":\"../with_opt_trace.cnf\"}",
+                    "var_updated": "2021-02-15 10:34:16",
+                    "var_name": "db_link_with_eits",
+                    "id": 6274
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1147,
             "responsibles": [
                 "replication-manager"
             ]

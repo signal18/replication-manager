@@ -9,6 +9,7 @@ package cluster
 import (
 	"encoding/json"
 	"errors"
+	"hash/crc32"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/cron"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -256,7 +258,7 @@ func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
 	}
 	for _, server := range cluster.Servers {
 		if cluster.Conf.LogLevel > 2 {
-			cluster.LogPrintf(LvlDbg, "Lookup server %s if preferred master: %s", server.URL, cluster.Conf.PrefMaster)
+			cluster.LogPrintf(LvlDbg, "Lookup if server: %s is preferred master: %s", server.URL, cluster.Conf.PrefMaster)
 		}
 		if server.URL == cluster.Conf.PrefMaster {
 			return server
@@ -271,7 +273,7 @@ func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 	}
 	for _, server := range cluster.Servers {
 		if cluster.Conf.LogLevel > 2 {
-			cluster.LogPrintf(LvlDbg, "Lookup server %s if maxscale binlog server: %s", server.URL, cluster.Conf.PrefMaster)
+			cluster.LogPrintf(LvlDbg, "Check for relay server %s: relay: %t", server.URL, server.IsRelay)
 		}
 		if server.IsRelay {
 			return server
@@ -476,6 +478,17 @@ func (cluster *Cluster) GetCron() []cron.Entry {
 
 }
 
+func (cluster *Cluster) GetServerIndice(srv *ServerMonitor) int {
+	for i, sv := range cluster.Servers {
+		//	cluster.LogPrintf(LvlInfo, "HasServer:%s %s, %s %s", sv.Id, srv.Id, sv.URL, srv.URL)
+		// id can not be used for checking equality because  same srv in different clusters
+		if sv.URL == srv.URL {
+			return i
+		}
+	}
+	return 0
+}
+
 func (cluster *Cluster) getClusterByName(clname string) *Cluster {
 
 	for _, c := range cluster.clusterList {
@@ -511,10 +524,57 @@ func (cluster *Cluster) GetChildClusters() map[string]*Cluster {
 	for _, c := range cluster.clusterList {
 		//	cluster.LogPrintf(LvlErr, "GetChildClusters %s %s ", cluster.Name, c.Conf.ClusterHead)
 		if cluster.Name == c.Conf.ClusterHead {
+			cluster.LogPrintf(LvlDbg, "Discovering of a child cluster via ClusterHead %s replication source %s", c.Name, c.Conf.ClusterHead)
 			clusters[c.Name] = c
+		}
+		// lopp over master multi source replication
+		condidateclustermaster := c.GetMaster()
+		if condidateclustermaster != nil && c.Name != cluster.Name {
+			for _, rep := range condidateclustermaster.Replications {
+				// is a source name has my cluster name or is any child cluster master point to my master
+				if rep.ConnectionName.String == cluster.Name || (cluster.GetMaster() != nil && cluster.master.Host == rep.MasterHost.String && cluster.master.Port == rep.MasterPort.String) {
+					cluster.LogPrintf(LvlDbg, "Discovering of a child cluster via multi source %s replication source %s", c.Name, rep.ConnectionName.String)
+					clusters[c.Name] = c
+				}
+			}
 		}
 	}
 	return clusters
+}
+
+func (cluster *Cluster) GetParentClusterFromReplicationSource(rep dbhelper.SlaveStatus) *Cluster {
+
+	for _, c := range cluster.clusterList {
+		if cluster.Name != c.Name {
+			for _, srv := range c.Servers {
+				if srv.Host == rep.MasterHost.String && srv.Port == rep.MasterPort.String {
+					return c
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) GetRingChildServer(oldMaster *ServerMonitor) *ServerMonitor {
+	for _, s := range cluster.Servers {
+		if s.ServerID != cluster.oldMaster.ServerID {
+			//cluster.LogPrintf(LvlDbg, "test %s failed %s", s.URL, cluster.oldMaster.URL)
+			master, err := cluster.GetMasterFromReplication(s)
+			if err == nil && master.ServerID == oldMaster.ServerID {
+				return s
+			}
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) GetRingParentServer(oldMaster *ServerMonitor) *ServerMonitor {
+	ss, err := cluster.oldMaster.GetSlaveStatusLastSeen(cluster.oldMaster.ReplicationSourceName)
+	if err != nil {
+		return nil
+	}
+	return cluster.GetServerFromURL(ss.MasterHost.String + ":" + ss.MasterPort.String)
 }
 
 func (cluster *Cluster) GetClusterFromName(name string) (*Cluster, error) {
@@ -618,6 +678,15 @@ func (cluster *Cluster) GetConfigExpireLogDays() string {
 
 func (cluster *Cluster) GetConfigRelaySpaceLimit() string {
 	return strconv.Itoa(10 * 1024 * 1024)
+}
+
+func (cluster *Cluster) GetConfigReplicationDomain() string {
+	// Multi source need differnt domain id
+	if cluster.Conf.MasterConn != "" && cluster.Conf.ProvDomain == "0" {
+		crcTable := crc32.MakeTable(0xD5828281)
+		return strconv.FormatUint(uint64(crc32.Checksum([]byte(cluster.Name), crcTable)), 10)
+	}
+	return cluster.Conf.ProvDomain
 }
 
 // GetConfigInnoDBBPSize configure 80% of the ConfigMemory in Megabyte

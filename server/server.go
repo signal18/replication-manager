@@ -275,13 +275,13 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 	cf1 := viper.Sub("Default")
 	//cf1.Debug()
-	cf1.AutomaticEnv()
-	cf1.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
-	cf1.SetEnvPrefix("DEFAULT")
 	if cf1 == nil {
 		//log.Fatal("config.toml has no [Default] configuration group and config group has not been specified")
 		log.Warning("config.toml has no [Default] configuration group and config group has not been specified")
 	} else {
+		cf1.AutomaticEnv()
+		cf1.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+		cf1.SetEnvPrefix("DEFAULT")
 
 		cf1.Unmarshal(&conf)
 

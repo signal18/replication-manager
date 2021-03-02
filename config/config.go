@@ -99,6 +99,7 @@ type Config struct {
 	PRXServersBackendMaxReplicationLag        int    `mapstructure:"proxy-servers-backend-max-replication-lag" toml:"proxy-servers-backend--max-replication-lag" json:"proxyServersBackendMaxReplicationLag"`
 	PRXServersBackendMaxConnections           int    `mapstructure:"proxy-servers-backend-max-connections" toml:"proxy-servers-backend--max-connections" json:"proxyServersBackendMaxConnections"`
 	ClusterHead                               string `mapstructure:"cluster-head" toml:"cluster-head" json:"clusterHead"`
+	ReplicationMultisourceHeadClusters        string `mapstructure:"replication-multisource-head-clusters" toml:"replication-multisource-head-clusters" json:"replicationMultisourceHeadClusters"`
 	MasterConnectRetry                        int    `mapstructure:"replication-master-connect-retry" toml:"replication-master-connect-retry" json:"replicationMasterConnectRetry"`
 	RplUser                                   string `mapstructure:"replication-credential" toml:"replication-credential" json:"replicationCredential"`
 	ReplicationErrorScript                    string `mapstructure:"replication-error-script" toml:"replication-error-script" json:"replicationErrorScript"`
@@ -303,7 +304,7 @@ type Config struct {
 	ArbitratorAddress                         string `mapstructure:"arbitrator-bind-address" toml:"arbitrator-bind-address" json:"arbitratorBindAddress"`
 	ArbitratorDriver                          string `mapstructure:"arbitrator-driver" toml:"arbitrator-driver" json:"arbitratorDriver"`
 	ArbitrationReadTimout                     int    `mapstructure:"arbitration-read-timeout" toml:"arbitration-read-timeout" json:"arbitrationReadTimout"`
-	FailForceGtid                             bool   `toml:"-" json:"-"` //suspicious code
+	SwitchoverCopyOldLeaderGtid                             bool   `toml:"-" json:"-"` //suspicious code
 	Test                                      bool   `mapstructure:"test" toml:"test" json:"test"`
 	TestInjectTraffic                         bool   `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
 	Enterprise                                bool   `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector

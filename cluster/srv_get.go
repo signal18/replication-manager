@@ -34,6 +34,10 @@ func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {
 	return server.FullProcessList
 }
 
+func (server *ServerMonitor) GetSourceClusterName() string {
+	return server.SourceClusterName
+}
+
 func (server *ServerMonitor) GetProcessListReplicationLongQuery() string {
 	if !server.ClusterGroup.Conf.MonitorProcessList {
 		return ""

@@ -167,6 +167,17 @@ func (gl List) GetSeqNos() []uint64 {
 	return d
 }
 
+// GetSeqNos returns a slice of sequence integers per domaine
+func (gl List) GetSeqDomainIdNos(domainId uint64) []uint64 {
+	var d []uint64
+	for _, g := range gl {
+		if g.DomainID == domainId {
+			d = append(d, g.SeqNo)
+		}
+	}
+	return d
+}
+
 // return the sequence of a sprecific domain
 func (gl List) GetSeqServerIdNos(serverId uint64) uint64 {
 	for _, g := range gl {

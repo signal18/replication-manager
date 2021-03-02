@@ -451,6 +451,8 @@ func (cluster *Cluster) Run() {
 				}
 
 				wg.Wait()
+				// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so elelection win but server is ignored see electFailoverCandidate
+				cluster.AddChildServers()
 
 				cluster.IsFailable = cluster.GetStatus()
 				// CheckFailed trigger failover code if passing all false positiv and constraints
