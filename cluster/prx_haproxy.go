@@ -322,13 +322,21 @@ func (cluster *Cluster) setMaintenanceHaproxy(pr *Proxy, server *ServerMonitor) 
 	pr.SetMaintenance(server)
 }
 
-func (pr *Proxy) SetMaintenance(server *ServerMonitor) {
-	cluster := pr.ClusterGroup
+func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
+	cluster := proxy.ClusterGroup
+	if cluster.Conf.HaproxyOn {
+		return
+	}
+	if cluster.Conf.HaproxyMode == "standby" {
+		proxy.Init()
+		return
+	}
+
 	haRuntime := haproxy.Runtime{
 		Binary:   cluster.Conf.HaproxyBinaryPath,
-		SockFile: filepath.Join(pr.Datadir+"/var", "/haproxy.stats.sock"),
-		Port:     pr.Port,
-		Host:     pr.Host,
+		SockFile: filepath.Join(proxy.Datadir+"/var", "/haproxy.stats.sock"),
+		Port:     proxy.Port,
+		Host:     proxy.Host,
 	}
 
 	if server.IsMaintenance {
@@ -345,12 +353,16 @@ func (pr *Proxy) SetMaintenance(server *ServerMonitor) {
 	}
 }
 
-func (prx *Proxy) Failover() {
-	cluster := prx.ClusterGroup
+func (proxy *Proxy) Failover() {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.HaproxyMode == "runtimeapi" {
-		prx.Refresh()
+		proxy.Refresh()
 	}
 	if cluster.Conf.HaproxyMode == "standby" {
-		prx.Init()
+		proxy.Init()
 	}
+}
+
+func (proxy *HaproxyProxy) BackendsStateChange() {
+	proxy.Refresh()
 }

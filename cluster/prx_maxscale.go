@@ -250,8 +250,18 @@ func (cluster *Cluster) setMaintenanceMaxscale(pr DatabaseProxy, server *ServerM
 	pr.SetMaintenance(server)
 }
 
+func (proxy *MaxscaleProxy) BackendsStateChange() {
+	return
+}
+
 func (pr *MaxscaleProxy) SetMaintenance(server *ServerMonitor) {
 	cluster := pr.ClusterGroup
+	if cluster.GetMaster() != nil {
+		return
+	}
+	if cluster.Conf.MxsOn {
+		return
+	}
 	m := maxscale.MaxScale{Host: pr.Host, Port: pr.Port, User: pr.User, Pass: pr.Pass}
 	err := m.Connect()
 	if err != nil {

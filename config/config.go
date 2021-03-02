@@ -304,7 +304,7 @@ type Config struct {
 	ArbitratorAddress                         string `mapstructure:"arbitrator-bind-address" toml:"arbitrator-bind-address" json:"arbitratorBindAddress"`
 	ArbitratorDriver                          string `mapstructure:"arbitrator-driver" toml:"arbitrator-driver" json:"arbitratorDriver"`
 	ArbitrationReadTimout                     int    `mapstructure:"arbitration-read-timeout" toml:"arbitration-read-timeout" json:"arbitrationReadTimout"`
-	SwitchoverCopyOldLeaderGtid                             bool   `toml:"-" json:"-"` //suspicious code
+	SwitchoverCopyOldLeaderGtid               bool   `toml:"-" json:"-"` //suspicious code
 	Test                                      bool   `mapstructure:"test" toml:"test" json:"test"`
 	TestInjectTraffic                         bool   `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
 	Enterprise                                bool   `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector
@@ -543,6 +543,7 @@ const (
 	ConstProxyMysqlrouter string = "mysqlrouter"
 	ConstProxySphinx      string = "sphinx"
 	ConstProxyMyProxy     string = "myproxy"
+	ConstProxyConsul      string = "consul"
 )
 
 type ServicePlan struct {

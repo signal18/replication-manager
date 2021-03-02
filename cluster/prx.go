@@ -71,6 +71,7 @@ type DatabaseProxy interface {
 	Refresh() error
 	Failover()
 	SetMaintenance(server *ServerMonitor)
+	BackendsStateChange()
 	GetType() string
 
 	IsRunning() bool
@@ -212,6 +213,11 @@ func (cluster *Cluster) newProxyList() error {
 		cluster.AddProxy(prx)
 	}
 
+	if cluster.Conf.RegistryConsul {
+		prx := NewConsulProxy(0, cluster, "")
+		cluster.AddProxy(prx)
+	}
+
 	cluster.LogPrintf(LvlInfo, "Loaded %d proxies", len(cluster.Proxies))
 
 	return nil
@@ -289,39 +295,18 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 
 func (cluster *Cluster) SetProxyServerMaintenance(serverid uint64) {
 	// Found server from ServerId
+	server := cluster.GetServerFromId(serverid)
 	for _, pr := range cluster.Proxies {
-		server := cluster.GetServerFromId(serverid)
-		if cluster.Conf.HaproxyOn {
-			if prx, ok := pr.(*HaproxyProxy); ok {
-				if cluster.Conf.HaproxyMode == "runtimeapi" {
-					prx.SetMaintenance(server)
-				}
-				if cluster.Conf.HaproxyMode == "standby" {
-					prx.Init()
-				}
-			}
-		}
-		if cluster.Conf.MxsOn {
-			if prx, ok := pr.(*MaxscaleProxy); ok {
-				if cluster.GetMaster() != nil {
-					prx.SetMaintenance(server)
-				}
-			}
-		}
-		if cluster.Conf.ProxysqlOn {
-			if prx, ok := pr.(*ProxySQLProxy); ok {
-				if cluster.GetMaster() != nil {
-					prx.SetMaintenance(server)
-				}
-			}
-		}
+		cluster.LogPrintf(LvlInfo, "Notify server %s in maintenance in Proxy Type: %s Host: %s Port: %s", server.URL, pr.GetType(), pr.GetHost(), pr.GetPort())
+		pr.SetMaintenance(server)
 	}
-	cluster.initConsul()
 }
 
 // called  by server monitor if state change
 func (cluster *Cluster) backendStateChangeProxies() {
-	cluster.initConsul()
+	for _, pr := range cluster.Proxies {
+		pr.BackendsStateChange()
+	}
 }
 
 // Used to monitor proxies call by main monitor loop
@@ -368,7 +353,7 @@ func (cluster *Cluster) failoverProxies() {
 		cluster.LogPrintf(LvlInfo, "Failover Proxy Type: %s Host: %s Port: %s", pr.GetType(), pr.GetHost(), pr.GetPort())
 		pr.Failover()
 	}
-	cluster.initConsul()
+
 }
 
 func (cluster *Cluster) initProxies() {
@@ -376,7 +361,6 @@ func (cluster *Cluster) initProxies() {
 		cluster.LogPrintf(LvlInfo, "New proxy monitored: %s %s:%s", pr.GetType(), pr.GetHost(), pr.GetPort())
 		pr.Init()
 	}
-	cluster.initConsul()
 }
 
 func (cluster *Cluster) SendProxyStats(proxy DatabaseProxy) error {

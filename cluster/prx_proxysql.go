@@ -404,8 +404,16 @@ func (cluster *Cluster) setMaintenanceProxysql(proxy *ProxySQLProxy, s *ServerMo
 	proxy.SetMaintenance(s)
 }
 
+func (proxy *ProxySQLProxy) BackendsStateChange() {
+	proxy.Refresh()
+}
+
 func (proxy *ProxySQLProxy) SetMaintenance(s *ServerMonitor) {
 	cluster := proxy.ClusterGroup
+	// TODO ? check if needed
+	if cluster.GetMaster() != nil {
+		return
+	}
 	if cluster.Conf.ProxysqlOn == false {
 		return
 	}
