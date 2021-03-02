@@ -90,6 +90,10 @@ func (proxy *SphinxProxy) Init() {
 
 }
 
+func (proxy *SphinxProxy) BackendsStateChange() {
+	return
+}
+
 func (proxy *SphinxProxy) Refresh() error {
 	cluster := proxy.ClusterGroup
 	if cluster.Conf.SphinxOn == false {
@@ -125,9 +129,6 @@ func (proxy *SphinxProxy) Refresh() error {
 	return nil
 }
 
-func (cluster *Cluster) setMaintenanceSphinx(proxy *SphinxProxy, host string, port string) {
-	if cluster.Conf.SphinxOn == false {
-		return
-	}
-
+func (proxy *SphinxProxy) SetMaintenance(s *ServerMonitor) {
+	return
 }

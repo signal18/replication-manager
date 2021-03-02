@@ -39,6 +39,18 @@ func (cluster *Cluster) initMyProxy(proxy *MyProxyProxy) {
 	proxy.Init()
 }
 
+func (proxy *MyProxyProxy) BackendsStateChange() {
+	return
+}
+
+func (proxy *MyProxyProxy) SetMaintenance(s *ServerMonitor) {
+	return
+}
+
+func (proxy *MyProxyProxy) Refresh() error {
+	return nil
+}
+
 func (proxy *MyProxyProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
 	flags.BoolVar(&conf.MyproxyOn, "myproxy", false, "Use Internal Proxy")
 	flags.IntVar(&conf.MyproxyPort, "myproxy-port", 4000, "Internal proxy read/write port")

@@ -130,6 +130,14 @@ func (proxy *MariadbShardProxy) Failover() {
 	}
 }
 
+func (proxy *MariadbShardProxy) BackendsStateChange() {
+	return
+}
+
+func (proxy *MariadbShardProxy) SetMaintenance(s *ServerMonitor) {
+	return
+}
+
 func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MariadbShardProxy) {
 	if cluster.master == nil {
 		return

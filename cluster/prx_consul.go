@@ -14,18 +14,61 @@ import (
 	"strings"
 
 	"github.com/micro/go-micro/registry"
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/crypto"
 )
 
-func (cluster *Cluster) initConsul() error {
+type ConsulProxy struct {
+	Proxy
+}
+
+func NewConsulProxy(placement int, cluster *Cluster, proxyHost string) *ConsulProxy {
+	conf := cluster.Conf
+	prx := new(ConsulProxy)
+	prx.Name = proxyHost
+	prx.Host = proxyHost
+	prx.Type = config.ConstProxyConsul
+	prx.Port = conf.ProxysqlAdminPort
+	prx.ReadWritePort, _ = strconv.Atoi(conf.ProxysqlPort)
+	prx.User = conf.ProxysqlUser
+	prx.Pass = conf.ProxysqlPassword
+	prx.ReaderHostgroup, _ = strconv.Atoi(conf.ProxysqlReaderHostgroup)
+	prx.WriterHostgroup, _ = strconv.Atoi(conf.ProxysqlWriterHostgroup)
+	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
+	prx.ReadPort, _ = strconv.Atoi(conf.ProxysqlPort)
+
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSProxySQLPartitions, conf.ProxysqlHostsIPV6)
+
+	if conf.ProvNetCNI {
+		if conf.ClusterHead == "" {
+			prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+		} else {
+			prx.Host = prx.Host + "." + conf.ClusterHead + ".svc." + conf.ProvOrchestratorCluster
+		}
+	}
+
+	if cluster.key != nil {
+		p := crypto.Password{Key: cluster.key}
+		p.CipherText = prx.Pass
+		p.Decrypt()
+		prx.Pass = p.PlainText
+	}
+
+	return prx
+}
+
+func (proxy *ConsulProxy) Init() {
+	cluster := proxy.ClusterGroup
 	var opt registry.Options
 	//opt := consul.DefaultConfig()
 	if cluster.Conf.RegistryConsul == false || cluster.IsActive() == false {
-		return nil
+		return
 	}
 	opt.Addrs = strings.Split(cluster.Conf.RegistryHosts, ",")
 	//DefaultRegistry()
 	//opt := registry.DefaultRegistry
 	reg := registry.NewRegistry()
+
 	if cluster.GetMaster() != nil {
 
 		port, _ := strconv.Atoi(cluster.GetMaster().Port)
@@ -94,5 +137,20 @@ func (cluster *Cluster) initConsul() error {
 		}
 	}
 
+}
+
+func (proxy *ConsulProxy) Refresh() error {
 	return nil
+}
+
+func (proxy *ConsulProxy) Failover() {
+	proxy.Init()
+}
+
+func (proxy *ConsulProxy) BackendsStateChange() {
+	proxy.Init()
+}
+
+func (proxy *ConsulProxy) SetMaintenance(s *ServerMonitor) {
+	proxy.Init()
 }
