@@ -214,6 +214,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
 	server.ClusterGroup = cluster
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
+
 	if cluster.Conf.ProvNetCNI {
 		/*	if server.IsCompute && cluster.Conf.ClusterHead != "" {
 				url = server.Name + "." + cluster.Conf.ClusterHead + ".svc." + server.ClusterGroup.Conf.ProvOrchestratorCluster + ":3306"
@@ -222,12 +223,13 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 			}*/
 		url = server.Name + server.Domain + ":3306"
 	}
-	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name+server.Port), cluster.crcTable), 10)
+	server.CrcTable = crc64.MakeTable(crc64.ECMA)
 	var sid uint64
-
 	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id
 	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.CrcTable), 10), 10, 64)
 	server.ServerID = sid
+	server.Id = fmt.Sprintf("%s%d", "db", sid)
+
 	if cluster.Conf.TunnelHost != "" {
 		go server.Tunnel()
 	}
