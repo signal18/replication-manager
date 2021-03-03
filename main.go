@@ -331,7 +331,7 @@ func init() {
 
 	if WithMaxscale == "ON" {
 		maxscaleprx := new(cluster.MaxscaleProxy)
-		maxscaleprx.AddFlags(monitorCmd.Flags(), conf)
+		maxscaleprx.AddFlags(monitorCmd.Flags(), &conf)
 	}
 
 	// TODO: this seems dead code / unimplemented
@@ -350,23 +350,23 @@ func init() {
 
 	if WithMariadbshardproxy == "ON" {
 		mdbsprx := new(cluster.MariadbShardProxy)
-		mdbsprx.AddFlags(monitorCmd.Flags(), conf)
+		mdbsprx.AddFlags(monitorCmd.Flags(), &conf)
 	}
 	if WithHaproxy == "ON" {
 		haprx := new(cluster.HaproxyProxy)
-		haprx.AddFlags(monitorCmd.Flags(), conf)
+		haprx.AddFlags(monitorCmd.Flags(), &conf)
 	}
 	if WithProxysql == "ON" {
 		proxysqlprx := new(cluster.ProxySQLProxy)
-		proxysqlprx.AddFlags(monitorCmd.Flags(), conf)
+		proxysqlprx.AddFlags(monitorCmd.Flags(), &conf)
 	}
 	if WithSphinx == "ON" {
 		sphinxprx := new(cluster.SphinxProxy)
-		sphinxprx.AddFlags(monitorCmd.Flags(), conf)
+		sphinxprx.AddFlags(monitorCmd.Flags(), &conf)
 	}
 
 	myproxyprx := new(cluster.MyProxyProxy)
-	myproxyprx.AddFlags(monitorCmd.Flags(), conf)
+	myproxyprx.AddFlags(monitorCmd.Flags(), &conf)
 
 	if WithSpider == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")

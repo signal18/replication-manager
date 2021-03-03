@@ -53,7 +53,7 @@ func NewMaxscaleProxy(placement int, cluster *Cluster, proxyHost string) *Maxsca
 	return prx
 }
 
-func (proxy *MaxscaleProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
+func (proxy *MaxscaleProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.MxsOn, "maxscale", false, "MaxScale proxy server is query for backend status")
 	flags.BoolVar(&conf.CheckFalsePositiveMaxscale, "failover-falsepositive-maxscale", false, "Failover checks that maxscale detect failed master")
 	flags.IntVar(&conf.CheckFalsePositiveMaxscaleTimeout, "failover-falsepositive-maxscale-timeout", 14, "Failover checks that maxscale detect failed master")

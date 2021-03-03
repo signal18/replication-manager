@@ -44,7 +44,7 @@ func NewSphinxProxy(placement int, cluster *Cluster, proxyHost string) *SphinxPr
 	return prx
 }
 
-func (proxy *SphinxProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
+func (proxy *SphinxProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.SphinxOn, "sphinx", false, "Turn on SphinxSearch detection")
 	flags.StringVar(&conf.SphinxHosts, "sphinx-servers", "127.0.0.1", "SphinxSearch hosts")
 	flags.StringVar(&conf.SphinxPort, "sphinx-port", "9312", "SphinxSearch API port")

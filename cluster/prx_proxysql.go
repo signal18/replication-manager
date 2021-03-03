@@ -53,7 +53,7 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 	return prx
 }
 
-func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
+func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
 	flags.BoolVar(&conf.ProxysqlSaveToDisk, "proxysql-save-to-disk", false, "Save proxysql change to sqllight")
 	flags.StringVar(&conf.ProxysqlHosts, "proxysql-servers", "", "ProxySQL hosts")

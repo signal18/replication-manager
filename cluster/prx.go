@@ -66,7 +66,7 @@ type Proxy struct {
 
 type DatabaseProxy interface {
 	SetCluster(c *Cluster)
-	AddFlags(flags *pflag.FlagSet, conf config.Config)
+	AddFlags(flags *pflag.FlagSet, conf *config.Config)
 	Init()
 	Refresh() error
 	Failover()

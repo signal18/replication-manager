@@ -52,7 +52,7 @@ func NewMariadbShardProxy(placement int, cluster *Cluster, proxyHost string) *Ma
 	return prx
 }
 
-func (proxy *MariadbShardProxy) AddFlags(flags *pflag.FlagSet, conf config.Config) {
+func (proxy *MariadbShardProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.MdbsProxyOn, "shardproxy", false, "MariaDB Spider proxy")
 	flags.StringVar(&conf.MdbsProxyHosts, "shardproxy-servers", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")
 	flags.StringVar(&conf.MdbsProxyCredential, "shardproxy-credential", "root:mariadb", "MariaDB spider proxy credential")
