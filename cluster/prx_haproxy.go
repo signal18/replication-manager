@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"encoding/csv"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -19,7 +18,6 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/router/haproxy"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) initHaproxy(proxy *Proxy) {
@@ -204,7 +202,7 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 			return err
 		}
 		if len(line) < 73 {
-			cluster.sme.AddState("WARN0078", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0078"], err), ErrFrom: "MON"})
+			cluster.SetSugarState("WARN0078", "MON", "", err)
 			return errors.New(clusterError["WARN0078"])
 		}
 		if strings.Contains(strings.ToLower(line[0]), "write") {
