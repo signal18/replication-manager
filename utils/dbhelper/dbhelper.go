@@ -1456,15 +1456,35 @@ func DisablePFSQueries(db *sqlx.DB) (string, error) {
 	return query, err
 }
 
+func GetSampleQueryFromPFS(db *sqlx.DB, Query PFSQuery) (string, error) {
+	query := "SELECT COALESCE( B.SQL_TEXT,'')  as query FROM performance_schema.events_statements_history_long B WHERE B.DIGEST =''" + Query.Digest + "'"
+	rows, err := db.Queryx(query)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var res string
+		err := rows.Scan(&res)
+		if err != nil {
+			return "", err
+		}
+		return res, nil
+	}
+	return "", err
+}
+
 func GetQueries(db *sqlx.DB) (map[string]PFSQuery, string, error) {
 
 	vars := make(map[string]PFSQuery)
 	query := "set session group_concat_max_len=2048"
 	db.Exec(query)
+	/*	COALESCE((SELECT B.SQL_TEXT FROM performance_schema.events_statements_history_long B WHERE
+		A.DIGEST = B.DIGEST LIMIT 1 ),'')  as query, */
+	// to expensive FULL SCAN to extact during explain
 	query = `SELECT
 	A.digest as digest,
-	COALESCE((SELECT B.SQL_TEXT FROM performance_schema.events_statements_history_long B WHERE
-	 A.DIGEST = B.DIGEST LIMIT 1 ),'')  as query,
+	'' as query,
 	A.digest_text as digest_text,
 	A.LAST_SEEN as last_seen,
 	COALESCE(A.SCHEMA_NAME,'') as schema_name,
