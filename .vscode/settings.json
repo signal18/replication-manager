@@ -1,2 +1,6 @@
 {
+<<<<<<< Updated upstream
+=======
+    "go.testFlags": ["-v"]
+>>>>>>> Stashed changes
 }

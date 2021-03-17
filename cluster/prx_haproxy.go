@@ -353,7 +353,7 @@ func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
 	}
 }
 
-func (proxy *Proxy) Failover() {
+func (proxy *HaproxyProxy) Failover() {
 	cluster := proxy.ClusterGroup
 	if cluster.Conf.HaproxyMode == "runtimeapi" {
 		proxy.Refresh()
