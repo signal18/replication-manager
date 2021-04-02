@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package signal18.config_store.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/signal18/replication-manager/config_store";
+
+enum Environment {
+    NONE = 0;
+    PRODUCTION = 1;
+    STAGING = 2;
+    TESTING = 3;
+    DEVELOPMENT = 4;
+}
+
+enum Type {
+    STRING = 0;
+    INT = 1;
+    FLOAT = 2;
+    BOOL = 3;
+}
+
+message Property {
+    string key = 1;
+    repeated Value values = 2;
+    string namespace = 3;
+    Environment environment = 4;
+    repeated string section = 5;
+
+    int64 revision = 10;
+    string version = 11;
+
+    // either created or modified can be dropped as they are the same value
+    google.protobuf.Timestamp created = 12;
+    google.protobuf.Timestamp deleted = 14;
+}
+
+message Value {
+    string value_string = 1;
+    int64 value_int = 2;
+    float value_float = 3;
+    bool value_bool = 4;
+    Type type = 6;
+}
+
+message Query {
+    Property property = 1;
+    int64 limit = 2;
+    bool ignore_value = 3;
+}
+
+service ConfigStore {
+    rpc Store(stream Property) returns (stream Property) {}
+    rpc Search(Query) returns (stream Property) {}
+}
