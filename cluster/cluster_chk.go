@@ -127,7 +127,9 @@ func (cluster *Cluster) isMasterFailed() bool {
 // isMaxMasterFailedCountReach test tentative to connect
 func (cluster *Cluster) isMaxMasterFailedCountReached() bool {
 	// no illimited failed count
-
+	if cluster.master == nil {
+		return true
+	}
 	if cluster.master.FailCount >= cluster.Conf.MaxFail {
 		cluster.sme.AddState("WARN0023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0023"]), ErrFrom: "CHECK"})
 		return true
@@ -632,6 +634,9 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 }
 
 func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
+	if cluster.master == nil {
+		return true
+	}
 	if !(cluster.master.HasMySQLGTID()) {
 		return true
 	}

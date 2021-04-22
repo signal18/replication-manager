@@ -128,7 +128,8 @@ func (cluster *Cluster) ResticInitRepo() error {
 	return nil
 }
 
-func (cluster *Cluster) ResticFetchRepo() error {
+func (cluster *Cluster) ResticFetchRepo(wcg *sync.WaitGroup) error {
+	defer wcg.Done()
 	if cluster.Conf.BackupRestic {
 		//		var stdout, stderr []byte
 		var stdoutBuf, stderrBuf bytes.Buffer

@@ -223,7 +223,8 @@ func (cluster *Cluster) newProxyList() error {
 	return nil
 }
 
-func (cluster *Cluster) InjectProxiesTraffic() {
+func (cluster *Cluster) InjectProxiesTraffic(wcg *sync.WaitGroup) {
+	defer wcg.Done()
 	var definer string
 	// Found server from ServerId
 	if cluster.GetMaster() != nil {
@@ -356,7 +357,8 @@ func (cluster *Cluster) failoverProxies() {
 
 }
 
-func (cluster *Cluster) initProxies() {
+func (cluster *Cluster) initProxies(wcg *sync.WaitGroup) {
+	defer wcg.Done()
 	for _, pr := range cluster.Proxies {
 		cluster.LogPrintf(LvlInfo, "New proxy monitored: %s %s:%s", pr.GetType(), pr.GetHost(), pr.GetPort())
 		pr.Init()

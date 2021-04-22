@@ -850,7 +850,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 
 		seqnos := gtid.NewList("1-1-1").GetSeqNos()
 
-		if errss == nil {
+		if errss == nil && cluster.master != nil {
 			if cluster.master.State != stateFailed {
 				// Need MySQL GTID support
 				seqnos = sl.SlaveGtid.GetSeqDomainIdNos(cluster.master.DomainID)

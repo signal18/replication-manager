@@ -171,7 +171,9 @@ func (server *ServerMonitor) HasLogGeneral() bool {
 }
 
 func (server *ServerMonitor) HasMySQLGTID() bool {
-
+	if server.DBVersion == nil {
+		return false
+	}
 	if !(server.DBVersion.IsMySQL() || server.DBVersion.IsPercona()) {
 		return false
 	}

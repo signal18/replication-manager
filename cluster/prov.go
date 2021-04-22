@@ -34,7 +34,10 @@ func (cluster *Cluster) Bootstrap() error {
 		return err
 	}
 	if cluster.Conf.Test {
-		cluster.initProxies()
+		wg := new(sync.WaitGroup)
+		wg.Add(1)
+		cluster.initProxies(wg)
+		wg.Wait()
 		err = cluster.WaitProxyEqualMaster()
 		if err != nil {
 			return err

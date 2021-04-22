@@ -29,6 +29,7 @@ require (
 	github.com/bluele/slack v0.0.0-20180528010058-b4b4d354a079
 	github.com/bradfitz/gomemcache v0.0.0-20170208213004-1952afaa557d
 	github.com/codegangsta/negroni v0.3.0
+	github.com/confluentinc/confluent-kafka-go v1.6.1
 	github.com/davecgh/go-spew v1.1.1
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/dgryski/carbonzipper v0.0.0-20170426152955-d1a3cec4169b
@@ -75,6 +76,7 @@ require (
 	github.com/iu0v1/gelada v1.2.2
 	github.com/jacobsa/fuse v0.0.0-20180417054321-cd3959611bcb
 	github.com/jmoiron/sqlx v1.2.0
+	github.com/jonaslimads/go-mysql-kafka v0.0.0-20200321202030-802890128900
 	github.com/jordan-wright/email v0.0.0-20160301001728-a62870b0c368
 	github.com/juju/errors v0.0.0-20170703010042-c7d06af17c68
 	github.com/kahing/goofys v0.23.1
@@ -105,11 +107,12 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/satori/go.uuid v1.2.0
+	github.com/segmentio/kafka-go v0.3.5
 	github.com/shirou/gopsutil v2.20.2+incompatible
 	github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
 	github.com/siddontang/go-log v0.0.0-20190221022429-1e957dd83bed
-	github.com/siddontang/go-mysql v0.0.0-20190311123328-7fc3b28d6104
+	github.com/siddontang/go-mysql v0.0.0-20200222075837-12e89848f047
 	github.com/siddontang/go-mysql-elasticsearch v0.0.0-20180201161913-f34f371d4391
 	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/afero v1.1.2

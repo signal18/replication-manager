@@ -46,22 +46,22 @@ func (h *eventHandler) OnRotate(e *replication.RotateEvent) error {
 
 	h.r.syncCh <- posSaver{pos, true}
 
-	return h.r.ctx.Err()
+	return nil
 }
 
 func (h *eventHandler) OnDDL(nextPos mysql.Position, _ *replication.QueryEvent) error {
 	h.r.syncCh <- posSaver{nextPos, true}
-	return h.r.ctx.Err()
+	return nil
 }
 
 func (h *eventHandler) OnTableChanged(schema string, table string) error {
 	log.Infof("Table change %s.%s", schema, table)
-	return h.r.ctx.Err()
+	return nil
 }
 
 func (h *eventHandler) OnXID(nextPos mysql.Position) error {
 	h.r.syncCh <- posSaver{nextPos, false}
-	return h.r.ctx.Err()
+	return nil
 }
 
 func (h *eventHandler) OnRow(e *canal.RowsEvent) error {
@@ -78,68 +78,73 @@ func (h *eventHandler) OnRow(e *canal.RowsEvent) error {
 	ddlBreack := h.r.beforebulktable != e.Table.Name || h.r.beforebulkschema != e.Table.Schema
 	h.r.UnProtectFromFlush()
 
-	if ddlBreack {
-
-		log.Infof("Disable bulk mode breack in DDL")
-		oldrule, ok := h.r.rules[ruleKey(h.r.beforebulkschema, h.r.beforebulktable)]
-		if ok {
-			if h.r.c.BatchMode == "SQL" || h.r.c.BatchMode == "F1" {
-				log.Infof("Flushing insert breack in DDL %d", h.r.bulkidx)
-				err = h.r.FlushMultiRowInsertBuffer(oldrule)
-			}
-		}
+	if h.r.c.BatchMode == "KAFKA" {
 		h.r.ProtectFromFlush()
-		h.r.bulkmode = false
+		h.r.micro_transactions_events[rule.CSchema+"_"+rule.CTable] = append(h.r.micro_transactions_events[rule.CSchema+"_"+rule.CTable], e)
 		h.r.UnProtectFromFlush()
+	} else {
+		if ddlBreack {
 
-	}
-
-	switch e.Action {
-	case canal.InsertAction:
-		h.r.ProtectFromFlush()
-		if h.r.c.BatchMode == "SQL" || h.r.c.BatchMode == "F1" {
-			h.r.buffered_inserts = append(h.r.buffered_inserts, e.Rows[0])
-		} else {
-			h.r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable] = append(h.r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable], e.Rows[0])
-		}
-
-		h.r.bulkidx++
-		NeedFlush := h.r.bulkmode == true && h.r.bulkidx < h.r.c.BatchSize
-		h.r.UnProtectFromFlush()
-
-		if !(NeedFlush) {
-			if h.r.c.BatchMode == "SQL" || h.r.c.BatchMode == "F1" {
-				log.Infof("Flushing insert Buffer in Do Event %d", h.r.bulkidx)
-				err = h.r.FlushMultiRowInsertBuffer(rule)
+			log.Infof("Disable bulk mode breack in DDL")
+			oldrule, ok := h.r.rules[ruleKey(h.r.beforebulkschema, h.r.beforebulktable)]
+			if ok {
+				if h.r.c.BatchMode == "SQL" || h.r.c.BatchMode == "F1" {
+					log.Infof("Flushing insert breack in DDL %d", h.r.bulkidx)
+					err = h.r.FlushMultiRowInsertBuffer(oldrule)
+				}
 			}
 			h.r.ProtectFromFlush()
-
-			h.r.bulkmode = true
+			h.r.bulkmode = false
 			h.r.UnProtectFromFlush()
+
 		}
-		h.r.ProtectFromFlush()
-		h.r.beforewasinsert = 1
-		h.r.UnProtectFromFlush()
-	case canal.DeleteAction:
-		h.r.ProtectFromFlush()
-		h.r.bulkmode = false
+		switch e.Action {
+		case canal.InsertAction:
+			h.r.ProtectFromFlush()
+			if h.r.c.BatchMode == "SQL" || h.r.c.BatchMode == "F1" {
+				h.r.buffered_inserts = append(h.r.buffered_inserts, e.Rows[0])
+			} else {
+				h.r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable] = append(h.r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable], e.Rows[0])
+			}
 
-		err = h.r.makeDeleteRequest(rule, e.Rows)
-		h.r.beforewasinsert = 0
-		h.r.UnProtectFromFlush()
+			h.r.bulkidx++
+			NeedFlush := h.r.bulkmode == true && h.r.bulkidx < h.r.c.BatchSize
+			h.r.UnProtectFromFlush()
 
-	case canal.UpdateAction:
-		h.r.bulkidx++
-		h.r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable] = append(h.r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable], e.Rows[0])
+			if !(NeedFlush) {
+				if h.r.c.BatchMode == "SQL" || h.r.c.BatchMode == "F1" {
+					log.Infof("Flushing insert Buffer in Do Event %d", h.r.bulkidx)
+					err = h.r.FlushMultiRowInsertBuffer(rule)
+				}
+				h.r.ProtectFromFlush()
 
-		h.r.bulkmode = false
-		err = h.r.makeUpdateRequest(rule, e.Rows)
-		h.r.beforewasinsert = 0
-	default:
-		h.r.ProtectFromFlush()
-		h.r.bulkmode = false
-		h.r.UnProtectFromFlush()
-		return errors.Errorf("invalid rows action %s", e.Action)
+				h.r.bulkmode = true
+				h.r.UnProtectFromFlush()
+			}
+			h.r.ProtectFromFlush()
+			h.r.beforewasinsert = 1
+			h.r.UnProtectFromFlush()
+		case canal.DeleteAction:
+			h.r.ProtectFromFlush()
+			h.r.bulkmode = false
+
+			err = h.r.makeDeleteRequest(rule, e.Rows)
+			h.r.beforewasinsert = 0
+			h.r.UnProtectFromFlush()
+
+		case canal.UpdateAction:
+			h.r.bulkidx++
+			h.r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable] = append(h.r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable], e.Rows[0])
+
+			h.r.bulkmode = false
+			err = h.r.makeUpdateRequest(rule, e.Rows)
+			h.r.beforewasinsert = 0
+		default:
+			h.r.ProtectFromFlush()
+			h.r.bulkmode = false
+			h.r.UnProtectFromFlush()
+			return errors.Errorf("invalid rows action %s", e.Action)
+		}
 	}
 	h.r.ProtectFromFlush()
 	h.r.beforebulktable = e.Table.Name
@@ -161,7 +166,7 @@ func (h *eventHandler) OnGTID(gtid mysql.GTIDSet) error {
 	return nil
 }
 
-func (h *eventHandler) OnPosSynced(pos mysql.Position, force bool) error {
+func (h *eventHandler) OnPosSynced(pos mysql.Position, gtid mysql.GTIDSet, force bool) error {
 	return nil
 }
 
@@ -196,53 +201,69 @@ func (r *River) UnProtectFromFlush() error {
 }
 
 func (r *River) FlushMicroTransaction(rule *Rule, table string) error {
+	if r.c.BatchMode == "CSV" {
+		var newFile *os.File
+		var err error
+		newFile, err = os.Create(fmt.Sprintf("%s/INSERT_%s_%s.%09d", r.c.DumpPath, r.run_uuid, table, r.micro_transactions_id))
+		if err != nil {
+			log.Fatal(err)
+		}
+		w := yacr.NewWriter(newFile, '\t', true)
 
-	var newFile *os.File
-	var err error
-	newFile, err = os.Create(fmt.Sprintf("%s/INSERT_%s_%s.%09d", r.c.DumpPath, r.run_uuid, table, r.micro_transactions_id))
-	if err != nil {
-		log.Fatal(err)
-	}
-	w := yacr.NewWriter(newFile, '\t', true)
+		for _, values := range r.micro_transactions["insert_"+table] {
+			///	b := &bytes.Buffer{}
+			//w := DefaultWriter(b)
+			w.WriteRecord(values...)
+			w.Flush()
+			err := w.Err()
 
-	for _, values := range r.micro_transactions["insert_"+table] {
-		///	b := &bytes.Buffer{}
-		//w := DefaultWriter(b)
-		w.WriteRecord(values...)
-		w.Flush()
-		err := w.Err()
+			if err != nil {
+				log.Errorf("Unexpected error: %s\n", err)
+			}
 
+			//log.Warnf("%s", values)
+
+		}
+		newFile, err = os.Create(fmt.Sprintf("%s/DELETE_%s_%s.%09d", r.c.DumpPath, r.run_uuid, table, r.micro_transactions_id))
 		if err != nil {
 			log.Errorf("Unexpected error: %s\n", err)
+		} else {
+
+			w = yacr.NewWriter(newFile, '\t', true)
+			for _, values := range r.micro_transactions["delete_"+table] {
+				///	b := &bytes.Buffer{}
+				//w := DefaultWriter(b)
+				w.WriteRecord(values...)
+				w.Flush()
+				err := w.Err()
+
+				if err != nil {
+					log.Errorf("Unexpected error: %s\n", err)
+				}
+
+				//log.Warnf("%s", values)
+			}
+
 		}
-
-		//log.Warnf("%s", values)
-
+		newFile.Close()
+		r.TarGz(fmt.Sprintf(r.c.DumpPath+"/%09d.tar.gz", r.micro_transactions_id), r.c.DumpPath, fmt.Sprintf("%09d", r.micro_transactions_id))
 	}
-	newFile, err = os.Create(fmt.Sprintf("%s/DELETE_%s_%s.%09d", r.c.DumpPath, r.run_uuid, table, r.micro_transactions_id))
-	if err != nil {
-		log.Fatal(err)
-	}
-	w = yacr.NewWriter(newFile, '\t', true)
-	for _, values := range r.micro_transactions["delete_"+table] {
-		///	b := &bytes.Buffer{}
-		//w := DefaultWriter(b)
-		w.WriteRecord(values...)
-		w.Flush()
-		err := w.Err()
-
+	if r.c.BatchMode == "KAFKA" {
+		for _, event := range r.micro_transactions_events[table] {
+			r.kafkaStreamer.WriteRow(rule.KTopic, rule.KPartitions, event)
+		}
+		err := r.kafkaStreamer.CommitTransactionalProducer(rule.KTopic, rule.KPartitions)
 		if err != nil {
-			log.Errorf("Unexpected error: %s\n", err)
+			log.Errorf("commit micro transaction: %s", err)
+			return err
 		}
-
-		//log.Warnf("%s", values)
-
 	}
-
+	r.micro_transactions_id++
 	r.micro_transactions["insert_"+table] = nil
 	r.micro_transactions["delete_"+table] = nil
+	r.micro_transactions_events[table] = nil
 	r.bulkidx = 0
-	newFile.Close()
+
 	return nil
 }
 

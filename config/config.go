@@ -476,6 +476,22 @@ type Config struct {
 	BackupBinlogs                             bool   `mapstructure:"backup-binlogs" toml:"backup-binlogs" json:"backupBinlogs"`
 	BackupBinlogsKeep                         int    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
 	ClusterConfigPath                         string `mapstructure:"cluster-config-file" toml:"-" json:"-"`
+	CdcReplications                           []struct {
+		Name               string `mapstructure:"name" toml:"name" json:"name"`
+		Type               string `mapstructure:"type" toml:"type" json:"type"`
+		Hosts              string `mapstructure:"hosts" toml:"hosts" json:"hosts"`
+		ReplcationServerID uint32 `mapstructure:"replication-server-id" toml:"replication-server-id" json:"replcationServerID"`
+		Watches            []struct {
+			Schema string   `mapstructure:"schema" toml:"schema" json:"schema"`
+			Tables []string `mapstructure:"tables" toml:"tables" json:"tables"`
+		} `mapstructure:"watch" toml:"watch" json:"watch"`
+		Rules []struct {
+			MasterSchema    string `mapstructure:"from-schema" toml:"from-schema" json:"fromSchema"`
+			MasterTable     string `mapstructure:"from-table" toml:"from-table" json:"fromTable"`
+			KafkaTopic      string `mapstructure:"to-kafka-topic" toml:"to-kafka-topic" json:"toKafkaTopic"`
+			KafkaPartitions int32  `mapstructure:"to-kafka-partitions" toml:"to-kafka-partitions" json:"toKafkaPartitions"`
+		} `mapstructure:"rule" toml:"rule" json:"rule"`
+	} `mapstructure:"cdc" toml:"cdc" json:"cdc"`
 
 	//	BackupResticStoragePolicy                 string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API

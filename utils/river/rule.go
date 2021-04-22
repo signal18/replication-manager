@@ -10,7 +10,9 @@ type Rule struct {
 	CSchema string `toml:"cloud_schema" `
 	CTable  string `toml:"cloud_table"`
 	Parent  string `toml:"parent"`
-
+	// Kafka need a topic destination
+	KTopic      string `toml:"kafka_topic"`
+	KPartitions int32  `toml:"kafka_partitions"`
 	// Default, a MySQL table field name is mapped to Elasticsearch field name.
 	// Sometimes, you want to use different name, e.g, the MySQL file name is title,
 	// but in Elasticsearch, you want to name it my_title.

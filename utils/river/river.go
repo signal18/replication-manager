@@ -18,34 +18,37 @@ import (
 	"github.com/siddontang/go-mysql/canal"
 	"github.com/siddontang/go-mysql/mysql"
 	"github.com/siddontang/go-mysql/schema"
+	"github.com/signal18/replication-manager/utils/kafka"
 	log "github.com/sirupsen/logrus"
 )
 
 type River struct {
-	c                     *Config
-	canal                 *canal.Canal
-	rules                 map[string]*Rule
-	st                    *stat
-	quit                  chan struct{}
-	wg                    sync.WaitGroup
-	bulkmode              bool
-	buffered_inserts      [][]interface{}
-	micro_transactions    map[string][][]interface{}
-	micro_transactions_id int64
-	buffered_deletes      [][]interface{}
-	bulkidx               int64
-	beforebulktable       string
-	beforebulkschema      string
-	beforewasinsert       int64
-	dumpdone              bool
-	ticker                *time.Ticker
-	flushmutex            *sync.Mutex
-	run_uuid              string
-	bufdestsql            []string
+	c                         *Config
+	canal                     *canal.Canal
+	rules                     map[string]*Rule
+	st                        *stat
+	quit                      chan struct{}
+	wg                        sync.WaitGroup
+	bulkmode                  bool
+	buffered_inserts          [][]interface{}
+	micro_transactions        map[string][][]interface{}
+	micro_transactions_events map[string][]*canal.RowsEvent
+	micro_transactions_id     int64
+	buffered_deletes          [][]interface{}
+	bulkidx                   int64
+	beforebulktable           string
+	beforebulkschema          string
+	beforewasinsert           int64
+	dumpdone                  bool
+	ticker                    *time.Ticker
+	flushmutex                *sync.Mutex
+	run_uuid                  string
+	bufdestsql                []string
 	// slaveconn             *client.Conn
-	slavepool *sql.DB
-	syncCh    chan interface{}
-	ctx       context.Context
+	slavepool     *sql.DB
+	syncCh        chan interface{}
+	ctx           context.Context
+	kafkaStreamer kafka.Streamer
 }
 
 func NewRiver(c *Config) (*River, error) {
@@ -60,23 +63,27 @@ func NewRiver(c *Config) (*River, error) {
 	r.rules = make(map[string]*Rule)
 	r.micro_transactions = make(map[string][][]interface{})
 	r.micro_transactions_id = 0
-
+	r.micro_transactions_events = make(map[string][]*canal.RowsEvent)
 	r.syncCh = make(chan interface{}, 4096)
 	r.rules = make(map[string]*Rule)
 
 	var err error
 
 	var dsn = r.c.SlaveUser + ":" + r.c.SlavePassword + "@tcp(" + r.c.SlaveHost + ")/"
-	r.slavepool, err = sql.Open("mysql", dsn) // this does not really open a new connection
+	if r.c.BatchMode != "CSV" && r.c.BatchMode != "KAFKA" {
 
-	if err != nil {
-		log.Fatalf("Error on initializing slave database connection: %s", err.Error())
+		r.slavepool, err = sql.Open("mysql", dsn) // this does not really open a new connection
+
+		if err != nil {
+			log.Fatalf("Error on initializing slave database connection: %s", err.Error())
+		}
+		r.slavepool.SetMaxOpenConns(4)
+		r.slavepool.SetMaxIdleConns(1)
 	}
-	r.slavepool.SetMaxOpenConns(4)
-	r.slavepool.SetMaxIdleConns(1)
-
 	//  defer r.slavepool.Close()
-
+	if r.c.BatchMode == "KAFKA" {
+		r.kafkaStreamer = kafka.NewStreamer(r.c.KafkaBrokers)
+	}
 	if r.c.DumpInit {
 		err = os.Remove(r.c.DumpPath + "/master.info")
 	}
@@ -100,7 +107,9 @@ func NewRiver(c *Config) (*River, error) {
 
 	r.st = &stat{r: r}
 
-	go r.st.Run(r.c.StatAddr)
+	if r.c.HaveHttp {
+		go r.st.Run(r.c.StatAddr)
+	}
 	return r, nil
 }
 
@@ -110,7 +119,7 @@ func (r *River) newCanal() error {
 	cfg.User = r.c.MyUser
 	cfg.Password = r.c.MyPassword
 	cfg.Flavor = r.c.MyFlavor
-	//cfg.DataDir = r.c.DumpPath
+	//	cfg.DataDir = r.c.DumpPath
 	cfg.ServerID = r.c.DumpServerID
 	cfg.Dump.ExecutionPath = r.c.DumpExec
 	cfg.Dump.DiscardErr = false
@@ -290,7 +299,7 @@ func (r *River) prepareRule() error {
 
 		// table must have a PK for one column, multi columns may be supported later.
 
-		if len(rule.TableInfo.PKColumns) != 1 {
+		if len(rule.TableInfo.PKColumns) != 1 && r.c.NeedPK {
 			return errors.Errorf("%s.%s must have a PK for a column", rule.MSchema, rule.MTable)
 		}
 	}
@@ -318,6 +327,7 @@ func (r *River) Run() error {
 			log.Infof("Deleting Collection")
 
 			for _, rule := range r.c.Rules {
+
 				log.Infof("Deleting collection %s.%s", rule.MSchema, rule.MTable)
 				sql := "delete from spdc.t where collection=CAST(CONV(LEFT(MD5(\"" + rule.MSchema + "." + rule.MTable + "\"), 16), 16, 10) AS UNSIGNED)"
 				//	r.ExecuteDest(sql)
@@ -353,12 +363,24 @@ func (r *River) Run() error {
 		log.Infof("Starting River in Delta Mode")
 	}
 
+	if r.c.BatchMode == "KAFKA" {
+		for _, rule := range r.rules {
+			log.Infof("Starting Transaction Producer %s %v", rule.KTopic, rule.KPartitions)
+			err := r.kafkaStreamer.StartTransactionalProducer(rule.KTopic, rule.KPartitions)
+			if err != nil {
+				log.Errorf("Starting Transaction Producer: %s", err)
+				return err
+			}
+		}
+	}
 	go func() {
 		<-r.canal.WaitDumpDone()
-		log.Infof("Dump Finished for River")
+		log.Infof("Dump Finished  for River")
 		rule, ok := r.rules[ruleKey(r.beforebulkschema, r.beforebulktable)]
 		if ok {
-			r.FlushMultiRowInsertBuffer(rule)
+			if r.c.BatchMode != "KAFKA" && r.c.BatchMode != "CSV" {
+				r.FlushMultiRowInsertBuffer(rule)
+			}
 			r.dumpdone = true
 
 		}
@@ -372,22 +394,21 @@ func (r *River) Run() error {
 	go func() {
 		for t := range r.ticker.C {
 
-			if r.c.BatchMode == "CSV" {
-				as_data := 0
-				for _, rule := range r.rules {
-					if r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable] != nil {
+			if r.c.BatchMode == "CSV" || r.c.BatchMode == "KAFKA" {
 
-						err := r.FlushMicroTransaction(rule, rule.CSchema+"_"+rule.CTable)
-						if err != nil {
-							log.Fatal(err)
-							return
-						}
-						as_data = 1
+				for _, rule := range r.rules {
+					var err error
+					if r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable] != nil || r.micro_transactions["update_"+rule.CSchema+"_"+rule.CTable] != nil || r.micro_transactions["delete_"+rule.CSchema+"_"+rule.CTable] != nil {
+						err = r.FlushMicroTransaction(rule, rule.CSchema+"_"+rule.CTable)
 					}
-				}
-				if as_data == 1 {
-					r.TarGz(fmt.Sprintf(r.c.DumpPath+"/%09d.tar.gz", r.micro_transactions_id), r.c.DumpPath, fmt.Sprintf("%09d", r.micro_transactions_id))
-					r.micro_transactions_id++
+					if r.micro_transactions_events[rule.CSchema+"_"+rule.CTable] != nil {
+						err = r.FlushMicroTransaction(rule, rule.CSchema+"_"+rule.CTable)
+					}
+					if err != nil {
+						log.Printf("Flush micro transaction: %s", err)
+						return
+					}
+
 				}
 
 			} else {
@@ -410,11 +431,16 @@ func (r *River) Run() error {
 		}
 	}()
 
-	if err := r.canal.Run(); err != nil {
+	set, _ := mysql.ParseGTIDSet("mysql", "")
+	err = r.canal.StartFromGTID(set)
+	if err != nil {
 		log.Errorf("start canal err %v", err)
-
 		return errors.Trace(err)
 	}
+	/*	if err := r.canal.Run(); err != nil {
+		log.Errorf("start canal err %v", err)
+		return errors.Trace(err)
+	}*/
 
 	return nil
 }
@@ -497,47 +523,6 @@ func (r *River) ExecuteDest(cmd string, args ...interface{}) (rr *sql.Rows, err 
 	}
 	return
 }
-
-/*
-
-func (r *River) ExecuteDest(cmd string, args ...interface{}) (rr *mysql.Result, err error) {
-
-	retryNum := 3
-
-
-	for i := 0; i < retryNum; i++ {
-		if r.slaveconn == nil {
-			r.slaveconn, err = client.Connect(r.c.SlaveHost, r.c.SlaveUser, r.c.SlavePassword, "")
-			if err != nil {
-				log.Errorf("%s", err.Error())
-				return nil, errors.Trace(err)
-			}
-		}
-		//log.Errorf("%s", cmd)
-		rr, err = r.slaveconn.Execute(cmd, args...)
-		if err != nil && err != mysql.ErrBadConn {
-			if len(cmd) > 199 {
-				log.Errorf("%s %s", err.Error(), cmd[:200])
-			} else {
-				log.Errorf("%s %s", err.Error(), cmd)
-
-			}
-
-			continue
-		} else if err == mysql.ErrBadConn {
-			log.Errorf("%s", err.Error())
-			r.slaveconn.Close()
-			r.slaveconn = nil
-			continue
-		} else {
-
-			return
-		}
-	}
-	return
-}
-
-*/
 
 func (r *River) Close() {
 	r.ticker.Stop()

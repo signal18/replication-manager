@@ -26,6 +26,7 @@ import (
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/river"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 	log "github.com/sirupsen/logrus"
@@ -92,48 +93,8 @@ type Cluster struct {
 	DiskType                      map[string]string           `json:"diskType"`
 	VMType                        map[string]bool             `json:"vmType"`
 	Agents                        []Agent                     `json:"agents"`
-	hostList                      []string                    `json:"-"`
-	proxyList                     []string                    `json:"-"`
-	clusterList                   map[string]*Cluster         `json:"-"`
-	slaves                        serverList                  `json:"-"`
-	master                        *ServerMonitor              `json:"-"`
-	oldMaster                     *ServerMonitor              `json:"-"`
-	vmaster                       *ServerMonitor              `json:"-"`
-	mxs                           *maxscale.MaxScale          `json:"-"`
-	dbUser                        string                      `json:"-"`
-	dbPass                        string                      `json:"-"`
-	rplUser                       string                      `json:"-"`
-	rplPass                       string                      `json:"-"`
-	sme                           *state.StateMachine         `json:"-"`
-	runOnceAfterTopology          bool                        `json:"-"`
-	logPtr                        *os.File                    `json:"-"`
-	termlength                    int                         `json:"-"`
-	runUUID                       string                      `json:"-"`
-	cfgGroupDisplay               string                      `json:"-"`
-	repmgrVersion                 string                      `json:"-"`
-	repmgrHostname                string                      `json:"-"`
-	key                           []byte                      `json:"-"`
-	exitMsg                       string                      `json:"-"`
-	exit                          bool                        `json:"-"`
-	canFlashBack                  bool                        `json:"-"`
-	failoverCond                  *nbc.NonBlockingChan        `json:"-"`
-	switchoverCond                *nbc.NonBlockingChan        `json:"-"`
-	rejoinCond                    *nbc.NonBlockingChan        `json:"-"`
-	bootstrapCond                 *nbc.NonBlockingChan        `json:"-"`
-	altertableCond                *nbc.NonBlockingChan        `json:"-"`
-	addtableCond                  *nbc.NonBlockingChan        `json:"-"`
-	statecloseChan                chan state.State            `json:"-"`
-	switchoverChan                chan bool                   `json:"-"`
-	errorChan                     chan error                  `json:"-"`
-	testStopCluster               bool                        `json:"-"`
-	testStartCluster              bool                        `json:"-"`
-	lastmaster                    *ServerMonitor              `json:"-"`
-	benchmarkType                 string                      `json:"-"`
 	HaveDBTLSCert                 bool                        `json:"haveDBTLSCert"`
 	HaveDBTLSOldCert              bool                        `json:"haveDBTLSOldCert"`
-	tlsconf                       *tls.Config                 `json:"-"`
-	tlsoldconf                    *tls.Config                 `json:"-"`
-	tunnel                        *ssh.Client                 `json:"-"`
 	DBModule                      config.Compliance           `json:"-"`
 	ProxyModule                   config.Compliance           `json:"-"`
 	QueryRules                    map[uint32]config.QueryRule `json:"-"`
@@ -141,19 +102,61 @@ type Cluster struct {
 	SLAHistory                    []state.Sla                 `json:"slaHistory"`
 	APIUsers                      map[string]APIUser          `json:"apiUsers"`
 	Schedule                      map[string]cron.Entry       `json:"-"`
-	scheduler                     *cron.Cron                  `json:"-"`
-	idSchedulerPhysicalBackup     cron.EntryID                `json:"-"`
-	idSchedulerLogicalBackup      cron.EntryID                `json:"-"`
-	idSchedulerOptimize           cron.EntryID                `json:"-"`
-	idSchedulerErrorLogs          cron.EntryID                `json:"-"`
-	idSchedulerLogRotateTable     cron.EntryID                `json:"-"`
-	idSchedulerSLARotate          cron.EntryID                `json:"-"`
-	idSchedulerRollingRestart     cron.EntryID                `json:"-"`
-	idSchedulerDbsjobsSsh         cron.EntryID                `json:"-"`
-	idSchedulerRollingReprov      cron.EntryID                `json:"-"`
 	WaitingRejoin                 int                         `json:"waitingRejoin"`
 	WaitingSwitchover             int                         `json:"waitingSwitchover"`
 	WaitingFailover               int                         `json:"waitingFailover"`
+	hostList                      []string
+	proxyList                     []string
+	clusterList                   map[string]*Cluster
+	cdcList                       map[string]*river.River
+	slaves                        serverList
+	master                        *ServerMonitor
+	oldMaster                     *ServerMonitor
+	vmaster                       *ServerMonitor
+	mxs                           *maxscale.MaxScale
+	dbUser                        string
+	dbPass                        string
+	rplUser                       string
+	rplPass                       string
+	sme                           *state.StateMachine
+	runOnceAfterTopology          bool
+	runOnceAfterMasterDiscovery   bool
+	logPtr                        *os.File
+	termlength                    int
+	runUUID                       string
+	cfgGroupDisplay               string
+	repmgrVersion                 string
+	repmgrHostname                string
+	key                           []byte
+	exitMsg                       string
+	exit                          bool
+	canFlashBack                  bool
+	failoverCond                  *nbc.NonBlockingChan
+	switchoverCond                *nbc.NonBlockingChan
+	rejoinCond                    *nbc.NonBlockingChan
+	bootstrapCond                 *nbc.NonBlockingChan
+	altertableCond                *nbc.NonBlockingChan
+	addtableCond                  *nbc.NonBlockingChan
+	statecloseChan                chan state.State
+	switchoverChan                chan bool
+	errorChan                     chan error
+	testStopCluster               bool
+	testStartCluster              bool
+	lastmaster                    *ServerMonitor
+	benchmarkType                 string
+	tlsconf                       *tls.Config
+	tlsoldconf                    *tls.Config
+	tunnel                        *ssh.Client
+	scheduler                     *cron.Cron
+	idSchedulerPhysicalBackup     cron.EntryID
+	idSchedulerLogicalBackup      cron.EntryID
+	idSchedulerOptimize           cron.EntryID
+	idSchedulerErrorLogs          cron.EntryID
+	idSchedulerLogRotateTable     cron.EntryID
+	idSchedulerSLARotate          cron.EntryID
+	idSchedulerRollingRestart     cron.EntryID
+	idSchedulerDbsjobsSsh         cron.EntryID
+	idSchedulerRollingReprov      cron.EntryID
 	sync.Mutex
 	crcTable *crc64.Table
 }
@@ -240,6 +243,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.altertableCond = nbc.New()
 	cluster.canFlashBack = true
 	cluster.runOnceAfterTopology = true
+	cluster.runOnceAfterMasterDiscovery = true
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 	cluster.tlog = tlog
@@ -338,7 +342,8 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 
 	return nil
 }
-func (cluster *Cluster) initOrchetratorNodes() {
+func (cluster *Cluster) initOrchetratorNodes(wcg *sync.WaitGroup) {
+	defer wcg.Done()
 
 	//cluster.LogPrintf(LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
 	switch cluster.Conf.ProvOrchestrator {
@@ -416,26 +421,41 @@ func (cluster *Cluster) Run() {
 				wg.Add(1)
 				go cluster.Heartbeat(wg)
 				// Heartbeat switchover or failover controller runs only on active repman
-
+				wg.Wait()
+				if cluster.runOnceAfterMasterDiscovery && cluster.master != nil {
+					wg.Add(1)
+					go cluster.initCDC(wg)
+					cluster.runOnceAfterMasterDiscovery = false
+				}
 				if cluster.runOnceAfterTopology {
-					cluster.initProxies()
-					cluster.initOrchetratorNodes()
-					cluster.ResticFetchRepo()
+					wg.Add(1)
+					go cluster.initProxies(wg)
+					wg.Add(1)
+					go cluster.initOrchetratorNodes(wg)
+					wg.Add(1)
+					go cluster.ResticFetchRepo(wg)
+
 					cluster.runOnceAfterTopology = false
 				} else {
 					wg.Add(1)
 					go cluster.refreshProxies(wg)
 					if cluster.sme.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.sme.IsInSchemaMonitor() {
-						go cluster.MonitorSchema()
+						wg.Add(1)
+						go cluster.MonitorSchema(wg)
 					}
 					if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
-						cluster.InjectProxiesTraffic()
+						wg.Add(1)
+						go cluster.InjectProxiesTraffic(wg)
 					}
 					if cluster.sme.GetHeartbeats()%30 == 0 {
-						cluster.initOrchetratorNodes()
-						cluster.MonitorQueryRules()
-						cluster.MonitorVariablesDiff()
-						cluster.ResticFetchRepo()
+						wg.Add(1)
+						go cluster.initOrchetratorNodes(wg)
+						wg.Add(1)
+						go cluster.MonitorQueryRules(wg)
+						wg.Add(1)
+						go cluster.MonitorVariablesDiff(wg)
+						wg.Add(1)
+						go cluster.ResticFetchRepo(wg)
 
 					} else {
 						cluster.sme.PreserveState("WARN0093")
@@ -448,9 +468,9 @@ func (cluster *Cluster) Run() {
 					} else {
 						cluster.sme.PreserveState("WARN0094")
 					}
+					wg.Wait()
 				}
 
-				wg.Wait()
 				// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so elelection win but server is ignored see electFailoverCandidate
 				cluster.AddChildServers()
 
@@ -733,7 +753,8 @@ func (cluster *Cluster) ResetCrashes() {
 	cluster.Crashes = nil
 }
 
-func (cluster *Cluster) MonitorVariablesDiff() {
+func (cluster *Cluster) MonitorVariablesDiff(wcg *sync.WaitGroup) {
+	defer wcg.Done()
 	if !cluster.Conf.MonitorVariableDiff || cluster.GetMaster() == nil {
 		return
 	}
@@ -784,7 +805,8 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 	}
 }
 
-func (cluster *Cluster) MonitorSchema() {
+func (cluster *Cluster) MonitorSchema(wcg *sync.WaitGroup) {
+	defer wcg.Done()
 	if !cluster.Conf.MonitorSchemaChange {
 		return
 	}
@@ -864,7 +886,9 @@ func (cluster *Cluster) MonitorSchema() {
 	cluster.sme.RemoveMonitorSchemaState()
 }
 
-func (cluster *Cluster) MonitorQueryRules() {
+func (cluster *Cluster) MonitorQueryRules(wcg *sync.WaitGroup) {
+	defer wcg.Done()
+
 	if !cluster.Conf.MonitorQueryRules {
 		return
 	}
