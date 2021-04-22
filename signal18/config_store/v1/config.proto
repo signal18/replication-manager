@@ -37,11 +37,8 @@ message Property {
 }
 
 message Value {
-    string value_string = 1;
-    int64 value_int = 2;
-    float value_float = 3;
-    bool value_bool = 4;
-    Type type = 6;
+    string data = 1;
+    Type type = 2;
 }
 
 message Query {

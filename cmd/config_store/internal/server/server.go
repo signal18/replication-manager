@@ -94,7 +94,7 @@ func (s *Server) Store(stream cs.ConfigStore_StoreServer) error {
 			found := find[0]
 			if found.Key == in.Key && found.Namespace == in.Namespace && found.Environment == in.Environment {
 
-				if found.DatabaseValue() == in.DatabaseValue() {
+				if cs.ValuesEqual(found.Values, in.Values) {
 					log.Printf("Property did not change: %v", in)
 					stream.Send(found)
 					continue

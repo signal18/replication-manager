@@ -18,14 +18,8 @@ func main() {
 	}
 
 	props := make([]*cs.Property, 0)
-	props = append(props, csc.NewStringProperty([]string{"foo", "baz"}, "client-test", "foo", "foo-2"))
-	props = append(props, csc.NewStringProperty([]string{}, "client-test", "bar", "bar"))
-
-	// for checking the error on the server
-	// props = append(props, &cs.Property{
-	// 	Value: "foo-2",
-	// 	Store: "client-test",
-	// })
+	props = append(props, csc.NewProperty([]string{"foo", "baz"}, "client-test", "foo", "foo-2"))
+	props = append(props, csc.NewProperty([]string{"bar-section"}, "client-test", "bar", "value1", "value2"))
 
 	ctx := context.Background()
 	responses, err := csc.Store(ctx, props)
@@ -73,14 +67,14 @@ func main() {
 
 	specificUnavailableNamespace, err := csc.Search(ctx, &cs.Query{
 		Property: &cs.Property{
-			Namespace: "foo",
+			Namespace: "bar-section",
 		},
 	})
 	if err != nil {
 		log.Printf("Error retrieving data: %s", err)
 	}
 	for _, r := range specificUnavailableNamespace {
-		log.Printf("List foo data: %v", r)
+		log.Printf("List bar-section data: %v", r)
 	}
 
 }

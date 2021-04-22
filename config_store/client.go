@@ -37,8 +37,8 @@ func NewConfigStore(address string, env Environment) *ConfigStore {
 	return csc
 }
 
-func (csc *ConfigStore) NewStringProperty(section []string, namespace string, key string, value string) *Property {
-	return NewStringProperty(section, namespace, csc.env, key, value)
+func (csc *ConfigStore) NewProperty(section []string, namespace string, key string, values ...interface{}) *Property {
+	return NewProperty(section, namespace, csc.env, key, values...)
 }
 
 func (csc *ConfigStore) Store(ctx context.Context, properties []*Property) ([]*Property, error) {
@@ -133,7 +133,7 @@ func (csc *ConfigStore) ImportTOML(path string) error {
 			Section: section,
 		}
 
-		p.SetValue(value)
+		p.SetValues(value)
 
 		log.Printf("p: %v", p)
 		props = append(props, p)

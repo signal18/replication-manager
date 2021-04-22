@@ -2,7 +2,6 @@ package storage
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -65,6 +64,8 @@ func (st *SQLiteStorage) create() error {
 	schema := `CREATE TABLE properties (
 		key text,
 		value text null,
+		value_order int default 0, 
+		value_type int default 0,
 		section text null,
 		namespace text default "default",
 		environment int default 0,
@@ -85,13 +86,19 @@ func (st *SQLiteStorage) create() error {
 
 var (
 	storeProperty = "INSERT INTO properties (" +
-		"key, value, section, namespace, " +
-		"environment, revision, version, " +
+		"key, " +
+		"value, " +
+		"value_order, " +
+		"value_type, " +
+		"section, " +
+		"namespace, " +
+		"environment, " +
+		"revision, " +
+		"version, " +
 		"created" +
 		") VALUES (" +
-		"?, ?, ?, ?, " +
-		"?, ?, ?, " +
-		"?" +
+		"?, ?, ?, ?, ?, " +
+		"?, ?, ?, ?, ?" +
 		")"
 )
 
@@ -100,19 +107,22 @@ func (st *SQLiteStorage) Store(property *cs.Property) (*cs.Property, error) {
 
 	property.Created = timestamppb.Now()
 
-	_, err := st.db.Exec(storeProperty,
-		property.Key,
-		property.DatabaseValue(),
-		strings.Join(property.Section, cs.RecordSeperator),
-		property.Namespace,
-		property.Environment,
-		property.Revision,
-		property.Version,
-		property.Created.AsTime().Format(time.RFC3339Nano),
-	)
-
-	if err != nil {
-		return nil, err
+	for order, value := range property.Values {
+		_, err := st.db.Exec(storeProperty,
+			property.Key,
+			value.Data,
+			order,
+			value.Type,
+			strings.Join(property.Section, cs.RecordSeperator),
+			property.Namespace,
+			property.Environment,
+			property.Revision,
+			property.Version,
+			property.Created.AsTime().Format(time.RFC3339Nano),
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return property, nil
@@ -136,6 +146,9 @@ func (st *SQLiteStorage) Search(query *cs.Query) (results []*cs.Property, err er
 		return results, ErrNoRowsFound
 	}
 
+	var lastKey string
+	var p *cs.Property
+
 	for rows.Next() {
 		buf := make(map[string]interface{})
 		err = rows.MapScan(buf)
@@ -143,13 +156,34 @@ func (st *SQLiteStorage) Search(query *cs.Query) (results []*cs.Property, err er
 			return
 		}
 
-		p := &cs.Property{}
+		// if the lastKey doesn't match the incoming key
+		// reset the Property as it doesn't have additional Values
+		if key, ok := buf["key"]; ok {
+			if key != nil {
+				if lastKey != key.(string) {
+					if lastKey != "" {
+						results = append(results, p)
+					}
+					p = &cs.Property{}
+				}
+			}
+		}
 		err = p.Scan(buf)
 		if err != nil {
 			return
 		}
 
+		lastKey = p.Key
+	}
+
+	// because of the way we loop over the set we have to add the final one
+	// to the actual results
+	if p != nil {
 		results = append(results, p)
+	}
+
+	if len(results) > int(query.Limit) {
+		return results[:query.Limit], nil
 	}
 
 	return
@@ -171,12 +205,13 @@ func (st *SQLiteStorage) getSQLQuery(q *cs.Query) (query string, values []interf
 		values = append(values, q.Property.Key)
 	}
 
-	if !q.IgnoreValue {
-		if q.Property.DatabaseValue() != "" {
-			queries = append(queries, "value = ?")
-			values = append(values, q.Property.DatabaseValue())
-		}
-	}
+	// TODO: reimplement
+	// if !q.IgnoreValue {
+	// 	if q.Property.DatabaseValue() != "" {
+	// 		queries = append(queries, "value = ?")
+	// 		values = append(values, q.Property.DatabaseValue())
+	// 	}
+	// }
 
 	if q.Property.Namespace != "" {
 		queries = append(queries, "namespace = ?")
@@ -202,9 +237,7 @@ func (st *SQLiteStorage) getSQLQuery(q *cs.Query) (query string, values []interf
 
 	query += " ORDER BY revision DESC"
 
-	if q.Limit != 0 {
-		query += fmt.Sprintf(" LIMIT %d", q.Limit)
-	}
+	// normally we'd do a LIMIT here but we do that inside the search :)
 
 	return query, values
 }
