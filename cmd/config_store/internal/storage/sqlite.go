@@ -223,14 +223,23 @@ func (st *SQLiteStorage) getSQLQuery(q *cs.Query) (query string, values []interf
 		values = append(values, q.Property.Environment)
 	}
 
+	revisionless := false
 	if q.Property.Revision != 0 {
 		queries = append(queries, "revision = ?")
 		values = append(values, q.Property.Revision)
+	} else {
+		revisionless = true
 	}
 
 	if q.Property.Version != "" {
 		queries = append(queries, "version = ?")
 		values = append(values, q.Property.Version)
+	}
+
+	if revisionless {
+		inQuery := "revision IN (SELECT revision FROM properties WHERE " + strings.Join(queries, " AND ") + " ORDER BY revision DESC LIMIT 1)"
+		queries = append(queries, inQuery)
+		values = append(values, values...)
 	}
 
 	query = basequery + strings.Join(queries, " AND ")
