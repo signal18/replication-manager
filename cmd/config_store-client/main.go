@@ -8,9 +8,17 @@ import (
 )
 
 func main() {
-	// connect to the locally available config_store server
+	// generate a key one time to use for the secrets
+	// key, err := cs.GenerateHexKey()
+	// if err != nil {
+	// 	log.Fatalf("Could not generate hex key: %s", err)
+	// }
+	key := "b00a4909fe6b7113c20ad8443cfe40075b817fe4351c4e287b44f1d69336edc7"
+	log.Printf("Key: %s", key)
 
+	// connect to the locally available config_store server
 	csc := cs.NewConfigStore("127.0.0.1:7777", cs.Environment_NONE)
+	csc.SetKeyFromHex(key)
 
 	err := csc.ImportTOML("/etc/replication-manager/")
 	if err != nil {
@@ -19,7 +27,15 @@ func main() {
 
 	props := make([]*cs.Property, 0)
 	props = append(props, csc.NewProperty([]string{"foo", "baz"}, "client-test", "foo", "foo-2"))
-	props = append(props, csc.NewProperty([]string{"bar-section"}, "client-test", "bar", "value1", "value2"))
+	props = append(props, csc.NewProperty([]string{"bar-section"}, "client-test", "bar", "value1", "value20"))
+
+	password, err := csc.NewSecret([]string{"secrets"}, "cluster", "rootpassword", "somesecretpassword")
+	if err != nil {
+		log.Fatalf("Could not create secret")
+	}
+	props = append(props, password)
+
+	log.Printf("password property: %v", password)
 
 	ctx := context.Background()
 	responses, err := csc.Store(ctx, props)
@@ -29,6 +45,9 @@ func main() {
 
 	for _, r := range responses {
 		log.Printf("Store response data: %v", r)
+		if r.Secret {
+			log.Printf("Property is secret: %s", r.GetValues())
+		}
 	}
 
 	// list the available properties

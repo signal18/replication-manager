@@ -124,9 +124,10 @@ require (
 	github.com/walle/lll v1.0.1 // indirect
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
+	github.com/zeebo/blake3 v0.1.1
 	golang.org/x/crypto v0.0.0-20190510104115-cbcb75029529
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
-	golang.org/x/sys v0.0.0-20190616124812-15dcb6c0061f
+	golang.org/x/sys v0.0.0-20201014080544-cc95f250f6bc
 	golang.org/x/text v0.3.2
 	google.golang.org/appengine v1.5.0
 	google.golang.org/grpc v1.36.0

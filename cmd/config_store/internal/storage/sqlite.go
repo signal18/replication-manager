@@ -70,7 +70,9 @@ func (st *SQLiteStorage) create() error {
 		namespace text default "default",
 		environment int default 0,
 		revision int default 0,
-		version string null,
+		version text null,
+		secret int default 0,
+		checksum text null,
 		created TEXT default CURRENT_TIMESTAMP,
 		deleted TEXT null
 	);`
@@ -95,10 +97,12 @@ var (
 		"environment, " +
 		"revision, " +
 		"version, " +
+		"secret, " +
+		"checksum, " +
 		"created" +
 		") VALUES (" +
-		"?, ?, ?, ?, ?, " +
-		"?, ?, ?, ?, ?" +
+		"?, ?, ?, ?, ?, ?," +
+		"?, ?, ?, ?, ?, ?" +
 		")"
 )
 
@@ -118,6 +122,8 @@ func (st *SQLiteStorage) Store(property *cs.Property) (*cs.Property, error) {
 			property.Environment,
 			property.Revision,
 			property.Version,
+			property.Secret,
+			value.Checksum,
 			property.Created.AsTime().Format(time.RFC3339Nano),
 		)
 		if err != nil {

@@ -2,6 +2,9 @@ package config_store
 
 import (
 	context "context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"io"
 	"log"
 	"strings"
@@ -14,6 +17,7 @@ import (
 type ConfigStore struct {
 	conn *grpc.ClientConn
 	env  Environment
+	key  []byte
 }
 
 func NewConfigStore(address string, env Environment) *ConfigStore {
@@ -37,8 +41,49 @@ func NewConfigStore(address string, env Environment) *ConfigStore {
 	return csc
 }
 
+func GenerateKey() ([]byte, error) {
+	key := make([]byte, 32)
+	_, err := rand.Read(key)
+	if err != nil {
+		return nil, err
+	}
+	return key, nil
+}
+
+func GenerateHexKey() (string, error) {
+	key, err := GenerateKey()
+	if err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(key), nil
+}
+
+func (csc *ConfigStore) SetKey(key []byte) {
+	csc.key = key
+}
+
+func (csc *ConfigStore) SetKeyFromHex(key string) error {
+	binaryKey, err := hex.DecodeString(key)
+	if err != nil {
+		return err
+	}
+	csc.key = binaryKey
+	return nil
+}
+
 func (csc *ConfigStore) NewProperty(section []string, namespace string, key string, values ...interface{}) *Property {
 	return NewProperty(section, namespace, csc.env, key, values...)
+}
+
+func (csc *ConfigStore) NewSecret(section []string, namespace string, key string, values ...interface{}) (*Property, error) {
+	if csc.key == nil {
+		return nil, fmt.Errorf("config store key cannot be nil when using secrets")
+	}
+
+	p := NewSecret(section, namespace, csc.env, key, values...)
+
+	return p, nil
 }
 
 func (csc *ConfigStore) Store(ctx context.Context, properties []*Property) ([]*Property, error) {
@@ -54,6 +99,13 @@ func (csc *ConfigStore) Store(ctx context.Context, properties []*Property) ([]*P
 	var responses []*Property
 
 	for _, p := range properties {
+		if p.Secret {
+			err := p.Encrypt(csc.key)
+			if err != nil {
+				log.Printf("Cannot encrypt: %s", err)
+				return nil, err
+			}
+		}
 		if err := storeClient.Send(p); err != nil {
 			log.Printf("Error sending: %v", err)
 			return nil, err
@@ -62,6 +114,13 @@ func (csc *ConfigStore) Store(ctx context.Context, properties []*Property) ([]*P
 		if err != nil {
 			log.Printf("Error returned: %v", err)
 			return nil, err
+		}
+		if resp.Secret {
+			resp.Decrypt(csc.key)
+			if err != nil {
+				log.Printf("Cannot decrypt: %s", err)
+				return nil, err
+			}
 		}
 		responses = append(responses, resp)
 	}
@@ -93,6 +152,14 @@ func (csc *ConfigStore) Search(ctx context.Context, query *Query) ([]*Property, 
 		if err != nil {
 			log.Printf("Could not list: %s", err)
 			return nil, err
+		}
+
+		if in.Secret {
+			err = in.Decrypt(csc.key)
+			if err != nil {
+				log.Printf("Could not decrypt: %s", err)
+				return nil, err
+			}
 		}
 
 		responses = append(responses, in)

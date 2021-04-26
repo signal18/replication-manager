@@ -1,12 +1,17 @@
 package config_store
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/zeebo/blake3"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -29,6 +34,13 @@ func NewProperty(section []string, namespace string, env Environment, key string
 	return p
 }
 
+func NewSecret(section []string, namespace string, env Environment, key string, values ...interface{}) *Property {
+	p := NewProperty(section, namespace, env, key, values...)
+	p.SetSecret(true)
+
+	return p
+}
+
 func ValuesEqual(a []*Value, b []*Value) bool {
 	if len(a) != len(b) {
 		return false
@@ -36,11 +48,101 @@ func ValuesEqual(a []*Value, b []*Value) bool {
 
 	for i := range a {
 		if a[i].Data != b[i].Data {
+			if a[i].Checksum == b[i].Checksum {
+				continue
+			}
 			return false
 		}
 	}
 
 	return true
+}
+
+func (p *Property) SetSecret(b bool) {
+	p.Secret = b
+}
+
+func (p *Property) Encrypt(key []byte) error {
+	for _, v := range p.Values {
+		err := v.Encrypt(key)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (p *Property) Decrypt(key []byte) error {
+	for _, v := range p.Values {
+		err := v.Decrypt(key)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (v *Value) checksum() {
+	data := []byte(v.Data)
+	chk := blake3.Sum256(data)
+	v.Checksum = string(hex.EncodeToString(chk[:]))
+}
+
+// Encrypt takes the Data inside the Value and encrypts it with the supplied key
+// it is encoded in hex to be able to store it as a string
+func (v *Value) Encrypt(key []byte) error {
+	data := []byte(v.Data)
+	v.checksum()
+
+	blockCipher, err := aes.NewCipher(key)
+	if err != nil {
+		return err
+	}
+
+	gcm, err := cipher.NewGCM(blockCipher)
+	if err != nil {
+		return err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = rand.Read(nonce); err != nil {
+		return err
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, data, nil)
+	v.Data = hex.EncodeToString(ciphertext)
+
+	return nil
+}
+
+func (v *Value) Decrypt(key []byte) error {
+	// we must first convert from hex to bytes
+	data, err := hex.DecodeString(v.Data)
+	if err != nil {
+		return err
+	}
+
+	blockCipher, err := aes.NewCipher(key)
+	if err != nil {
+		return err
+	}
+
+	gcm, err := cipher.NewGCM(blockCipher)
+	if err != nil {
+		return err
+	}
+
+	nonce, ciphertext := data[:gcm.NonceSize()], data[gcm.NonceSize():]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return err
+	}
+
+	v.Data = string(plaintext)
+
+	return nil
 }
 
 func (p *Property) Validate() error {
@@ -171,6 +273,7 @@ func (p *Property) Scan(results map[string]interface{}) error {
 	}
 
 	var valueType Type
+	var checksum string
 
 	if buf, ok := results["type"]; ok {
 		if buf != nil {
@@ -178,11 +281,18 @@ func (p *Property) Scan(results map[string]interface{}) error {
 		}
 	}
 
+	if buf, ok := results["checksum"]; ok {
+		if buf != nil {
+			checksum = buf.(string)
+		}
+	}
+
 	if buf, ok := results["value"]; ok {
 		if buf != nil {
 			value := &Value{
-				Data: buf.(string),
-				Type: valueType,
+				Data:     buf.(string),
+				Type:     valueType,
+				Checksum: checksum,
 			}
 
 			p.Values = append(p.Values, value)
@@ -240,6 +350,16 @@ func (p *Property) Scan(results map[string]interface{}) error {
 					return err
 				}
 				p.Deleted = timestamppb.New(t)
+			}
+		}
+
+		if buf, ok := results["secret"]; ok {
+			if buf != nil {
+				if buf.(int64) == 0 {
+					p.Secret = false
+				} else {
+					p.Secret = true
+				}
 			}
 		}
 	}

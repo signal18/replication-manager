@@ -27,6 +27,7 @@ message Property {
     string namespace = 3;
     Environment environment = 4;
     repeated string section = 5;
+    bool secret = 6;
 
     int64 revision = 10;
     string version = 11;
@@ -39,6 +40,7 @@ message Property {
 message Value {
     string data = 1;
     Type type = 2;
+    string checksum = 3; // used to prevent restoring encrypted values
 }
 
 message Query {
