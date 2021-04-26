@@ -48,7 +48,7 @@ function (
   $scope.selectedAcls = [];
   $scope.selectedUserIndex = undefined;
   $scope.newUserAcls = undefined;
-  $scope.refreshInterval = undefined;
+  $scope.refreshInterval = 4000;
   $scope.digestmode = "pfs";
 
   $scope.missingDBTags = undefined;
