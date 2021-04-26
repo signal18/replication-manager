@@ -87,7 +87,8 @@ func (p *Property) Decrypt(key []byte) error {
 func (v *Value) checksum() {
 	data := []byte(v.Data)
 	chk := blake3.Sum256(data)
-	v.Checksum = string(hex.EncodeToString(chk[:]))
+	double := blake3.Sum256(chk[:])
+	v.Checksum = string(hex.EncodeToString(double[:8]))
 }
 
 // Encrypt takes the Data inside the Value and encrypts it with the supplied key
