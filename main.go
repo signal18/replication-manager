@@ -508,7 +508,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.BackupMysqldumpOptions, "backup-mysqldump-options", "--hex-blob --single-transaction --verbose --all-databases --add-drop-database --system=all", "Extra options")
 	monitorCmd.Flags().StringVar(&conf.BackupMysqlbinlogPath, "backup-mysqlbinlog-path", "", "Path to mysqlbinlog binary")
 	monitorCmd.Flags().StringVar(&conf.BackupMysqlclientPath, "backup-mysqlclient-path", "", "Path to mysql client binary")
-	monitorCmd.Flags().BoolVar(&conf.BackupBinlogs, "backup-binlogs", true, "Archive binlogs")
+	monitorCmd.Flags().BoolVar(&conf.BackupBinlogs, "backup-binlogs", false, "Archive binlogs")
 	monitorCmd.Flags().IntVar(&conf.BackupBinlogsKeep, "backup-binlogs-keep", 10, "Number of master binlog to keep")
 	monitorCmd.Flags().BoolVar(&conf.ProvBinaryInTarball, "prov-db-binary-in-tarball", false, "Add prov-db-binary-tarball-name binaries to init tarball")
 	monitorCmd.Flags().StringVar(&conf.ProvBinaryTarballName, "prov-db-binary-tarball-name", "mysql-8.0.17-macos10.14-x86_64.tar.gz", "Name of binary tarball to put in tarball")
