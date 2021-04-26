@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zeebo/blake3"
+	"golang.org/x/crypto/argon2"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -84,18 +84,17 @@ func (p *Property) Decrypt(key []byte) error {
 	return nil
 }
 
-func (v *Value) checksum() {
+func (v *Value) argon2(salt []byte) {
 	data := []byte(v.Data)
-	chk := blake3.Sum256(data)
-	double := blake3.Sum256(chk[:])
-	v.Checksum = string(hex.EncodeToString(double[:8]))
+	hash := argon2.IDKey(data, salt, 1, 64*1024, 1, 32)
+	v.Checksum = hex.EncodeToString(hash)
 }
 
 // Encrypt takes the Data inside the Value and encrypts it with the supplied key
 // it is encoded in hex to be able to store it as a string
 func (v *Value) Encrypt(key []byte) error {
 	data := []byte(v.Data)
-	v.checksum()
+	v.argon2(key)
 
 	blockCipher, err := aes.NewCipher(key)
 	if err != nil {
