@@ -219,10 +219,12 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	cluster.errorChan <- nil
 }
 
-func (cluster *Cluster) K8SStopDatabaseService(s *ServerMonitor) {
+func (cluster *Cluster) K8SStopDatabaseService(s *ServerMonitor) error {
+	return nil
 }
 
-func (cluster *Cluster) K8SStartDatabaseService(s *ServerMonitor) {
+func (cluster *Cluster) K8SStartDatabaseService(s *ServerMonitor) error {
+	return nil
 }
 
 func (cluster *Cluster) K8SUnprovisionDatabaseService(s *ServerMonitor) {

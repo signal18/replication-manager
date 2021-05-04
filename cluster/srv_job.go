@@ -581,6 +581,22 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		return nil
 	}
 
+	if server.IsMariaDB() && server.DBVersion.Major == 10 &&
+		server.DBVersion.Minor >= 4 && server.DBVersion.Minor < 6 &&
+		server.ClusterGroup.Conf.BackupLockDDL &&
+		(server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump || server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper) {
+		bckConn, err := server.GetNewDBConn()
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Error backup request: %s", err)
+		}
+		defer bckConn.Close()
+		_, err = bckConn.Exec("BACKUP STAGE START")
+		server.ClusterGroup.LogSQL("BACKUP STAGE START", err, server.URL, "JobBackupLogical", LvlErr, "Failed SQL for server %s: %s ", server.URL, err)
+		_, err = bckConn.Exec("BACKUP STAGE BLOCK_DDL")
+		server.ClusterGroup.LogSQL("BACKUP BLOCK_DDL", err, server.URL, "JobBackupLogical", LvlErr, "Failed SQL for server %s: %s ", server.URL, err)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Blocking DDL via BACKUP STAGE")
+	}
+
 	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeRiver {
 		cfg := new(river.Config)
 		cfg.MyHost = server.URL
@@ -608,7 +624,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 		river.NewRiver(cfg)
 	}
+
+	// Blocking DDL
 	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
+
 		usegtid := "--gtid"
 		events := ""
 		dumpslave := ""
@@ -629,7 +648,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", -1))
 		f, err := os.Create(server.GetMyBackupDirectory() + "mysqldump.sql.gz")
 		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Error backup request: %s", err)
+			server.ClusterGroup.LogPrintf(LvlErr, "Error mysqldump backup request: %s", err)
 			return err
 		}
 		wf := bufio.NewWriter(f)
@@ -653,7 +672,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 			err := dumpCmd.Wait()
 
 			if err != nil {
-				log.Println(err)
+				server.ClusterGroup.LogPrintf(LvlErr, "mysqldump: %s", err)
 			}
 			gw.Flush()
 			gw.Close()
