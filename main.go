@@ -416,6 +416,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.SchedulerJobsSSHCron, "scheduler-jobs-ssh-cron", "0 * * * * *", "Remote execution of dbjobs via ssh ")
 
 	monitorCmd.Flags().BoolVar(&conf.Backup, "backup", false, "Turn on Backup")
+	monitorCmd.Flags().BoolVar(&conf.BackupLockDDL, "backup-lockddl", true, "Use mariadb backup stage")
 	monitorCmd.Flags().IntVar(&conf.BackupLogicalLoadThreads, "backup-logical-load-threads", 2, "Number of threads to load database")
 	monitorCmd.Flags().IntVar(&conf.BackupLogicalDumpThreads, "backup-logical-dump-threads", 2, "Number of threads to dump database")
 	monitorCmd.Flags().BoolVar(&conf.BackupLogicalDumpSystemTables, "backup-logical-dump-system-tables", false, "Backup restore the mysql database")
@@ -496,6 +497,18 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.SlapOSMaxscalePartitions, "slapos-maxscale-partitions", "", "List maxscale slapos partitions path")
 	monitorCmd.Flags().StringVar(&conf.SlapOSShardProxyPartitions, "slapos-shardproxy-partitions", "", "List spider slapos partitions path")
 	monitorCmd.Flags().StringVar(&conf.SlapOSSphinxPartitions, "slapos-sphinx-partitions", "", "List sphinx slapos partitions path")
+	monitorCmd.Flags().StringVar(&conf.ProvDbBootstrapScript, "prov-db-bootstrap-script", "", "Database bootstrap script")
+	monitorCmd.Flags().StringVar(&conf.ProvProxyBootstrapScript, "prov-proxy-bootstrap-script", "", "Proxy bootstrap script")
+	monitorCmd.Flags().StringVar(&conf.ProvDbCleanupScript, "prov-db-cleanup-script", "", "Database cleanup script")
+	monitorCmd.Flags().StringVar(&conf.ProvProxyCleanupScript, "prov-proxy-cleanup-script", "", "Proxy cleanup script")
+	monitorCmd.Flags().StringVar(&conf.ProvDbStartScript, "prov-db-start-script", "", "Database start script")
+	monitorCmd.Flags().StringVar(&conf.ProvProxyStartScript, "prov-proxy-start-script", "", "Proxy start script")
+	monitorCmd.Flags().StringVar(&conf.ProvDbStopScript, "prov-db-stop-script", "", "Database stop script")
+	monitorCmd.Flags().StringVar(&conf.ProvProxyStopScript, "prov-proxy-stop-script", "", "Proxy stop script")
+
+	monitorCmd.Flags().BoolVar(&conf.OnPremiseSSH, "onpremise-ssh", false, "Connect to host via SSH using user private key")
+	monitorCmd.Flags().IntVar(&conf.OnPremiseSSHPort, "onpremise-ssh-port", 22, "Connect to host via SSH using ssh port")
+	monitorCmd.Flags().StringVar(&conf.OnPremiseSSHCredential, "onpremise-ssh-credential", "root:", "User:password for ssh if no password using current user private key")
 	if WithProvisioning == "ON" {
 		monitorCmd.Flags().StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		monitorCmd.Flags().StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")

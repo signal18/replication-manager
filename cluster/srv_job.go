@@ -766,14 +766,6 @@ func (server *ServerMonitor) copyLogs(r io.Reader) {
 		} else {
 			server.ClusterGroup.LogPrintf(LvlInfo, "%s", s.Text())
 		}
-
-		/*n, err := r.Read(buf)
-		if n > 0 {
-			server.ClusterGroup.LogPrintf(LvlInfo, "%s", buf)
-		}
-		if err != nil {
-			break
-		}*/
 	}
 }
 

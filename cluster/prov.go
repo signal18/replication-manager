@@ -79,6 +79,7 @@ func (cluster *Cluster) ProvisionServices() error {
 			cluster.sme.RemoveFailoverState()
 			return nil
 		}
+		cluster.ProvisionDatabaseScript(server)
 	}
 	for _, server := range cluster.Servers {
 		select {
@@ -115,6 +116,7 @@ func (cluster *Cluster) ProvisionServices() error {
 			cluster.sme.RemoveFailoverState()
 			return nil
 		}
+		cluster.ProvisionProxyScript(prx)
 	}
 	for _, pri := range cluster.Proxies {
 		prx, ok := pri.(*Proxy)
@@ -155,14 +157,15 @@ func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 		cluster.sme.RemoveFailoverState()
 		return nil
 	}
+	cluster.ProvisionDatabaseScript(server)
 	select {
 	case err := <-cluster.errorChan:
 		cluster.sme.RemoveFailoverState()
 		if err == nil {
 			server.SetProvisionCookie()
 		} else {
+			return err
 		}
-		return err
 	}
 
 	return nil
@@ -183,13 +186,15 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 	default:
 		return nil
 	}
+	cluster.ProvisionProxyScript(prx)
 	select {
 	case err := <-cluster.errorChan:
 		cluster.sme.RemoveFailoverState()
 		if err == nil {
 			prx.SetProvisionCookie()
+		} else {
+			return err
 		}
-		return err
 	}
 	return nil
 }
@@ -213,6 +218,7 @@ func (cluster *Cluster) Unprovision() error {
 			cluster.sme.RemoveFailoverState()
 			return nil
 		}
+		cluster.UnprovisionDatabaseScript(server)
 	}
 	for _, server := range cluster.Servers {
 		select {
@@ -247,6 +253,7 @@ func (cluster *Cluster) Unprovision() error {
 			cluster.sme.RemoveFailoverState()
 			return nil
 		}
+		cluster.UnprovisionProxyScript(prx)
 	}
 	for _, pri := range cluster.Proxies {
 		prx, ok := pri.(*Proxy)
@@ -289,6 +296,7 @@ func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
 		go cluster.OnPremiseUnprovisionProxyService(prx)
 	default:
 	}
+	cluster.UnprovisionProxyScript(prx)
 	select {
 	case err := <-cluster.errorChan:
 		if err == nil {
@@ -315,6 +323,7 @@ func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error 
 	default:
 		go cluster.LocalhostUnprovisionDatabaseService(server)
 	}
+	cluster.UnprovisionDatabaseScript(server)
 	select {
 
 	case err := <-cluster.errorChan:
@@ -322,8 +331,9 @@ func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error 
 			server.DelProvisionCookie()
 			server.DelReprovisionCookie()
 			server.DelRestartCookie()
+		} else {
+			return err
 		}
-		return err
 	}
 	return nil
 }
@@ -349,6 +359,7 @@ func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 	default:
 		return errors.New("No valid orchestrator")
 	}
+	cluster.StopDatabaseService(server)
 	if err == nil {
 		server.DelRestartCookie()
 	}
@@ -373,6 +384,7 @@ func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 	default:
 		return errors.New("No valid orchestrator")
 	}
+	cluster.StopProxyService(server)
 	if err == nil {
 		server.DelRestartCookie()
 	}
@@ -396,6 +408,7 @@ func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
 	default:
 		return errors.New("No valid orchestrator")
 	}
+	cluster.StartProxyService(server)
 	if err == nil {
 		server.DelRestartCookie()
 	}
@@ -425,6 +438,7 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	default:
 		return errors.New("No valid orchestrator")
 	}
+	cluster.StartDatabaseService(server)
 	if err == nil {
 		server.DelRestartCookie()
 	}
