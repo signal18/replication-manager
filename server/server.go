@@ -827,18 +827,21 @@ func (repman *ReplicationManager) DownloadFile(url string, file string) error {
 
 func (repman *ReplicationManager) InitServicePlans() error {
 	if repman.Conf.ProvServicePlanRegistry == "" {
-		return nil
-	}
-
-	err := repman.DownloadFile(repman.Conf.ProvServicePlanRegistry, repman.Conf.WorkingDir+"/serviceplan.csv")
-	if err != nil {
-		log.Errorf("GetServicePlans download csv  %s", err)
+		err := repman.DownloadFile(repman.Conf.ProvServicePlanRegistry, repman.Conf.WorkingDir+"/serviceplan.csv")
+		if err != nil {
+			log.Errorf("GetServicePlans download csv  %s", err)
+			// copy from share if not downloadable
+			if _, err := os.Stat(repman.Conf.WorkingDir + "/serviceplan.csv"); os.IsNotExist(err) {
+				misc.CopyFile(repman.Conf.ShareDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.csv")
+			}
+		}
+	} else {
 		// copy from share if not downloadable
 		if _, err := os.Stat(repman.Conf.WorkingDir + "/serviceplan.csv"); os.IsNotExist(err) {
 			misc.CopyFile(repman.Conf.ShareDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.csv")
 		}
 	}
-	err = misc.ConvertCSVtoJSON(repman.Conf.WorkingDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.json", ",")
+	err := misc.ConvertCSVtoJSON(repman.Conf.WorkingDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.json", ",")
 	if err != nil {
 		log.Errorf("GetServicePlans ConvertCSVtoJSON %s", err)
 		return err
