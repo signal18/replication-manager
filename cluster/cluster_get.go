@@ -10,12 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
-	"net/http"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -397,7 +396,15 @@ func (cluster *Cluster) GetBackupServer() *ServerMonitor {
 	if !cluster.IsDiscovered() || len(cluster.Servers) < 1 {
 		return nil
 	}
+	//1	cluster.LogPrintf(LvlInfo, "%d ", len(cluster.Servers))
+
 	for _, server := range cluster.Servers {
+		if server == nil {
+			return nil
+		}
+		//	cluster.LogPrintf(LvlInfo, "%s ", server.State)
+		//	cluster.LogPrintf(LvlInfo, "%t ", server.PreferedBackup)
+
 		if server.State != stateFailed && server.PreferedBackup {
 			return server
 		}
@@ -844,36 +851,24 @@ func (cluster *Cluster) GetQueryRules() []config.QueryRule {
 }
 
 func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
+
 	type Message struct {
 		Rows []config.ServicePlan `json:"rows"`
 	}
 	var m Message
 
-	client := http.Client{
-		Timeout: 300 * time.Millisecond,
-	}
-	response, err := client.Get(cluster.Conf.ProvServicePlanRegistry)
+	file, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/serviceplan.json")
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "GetServicePlans: %s %s", cluster.Conf.ProvServicePlanRegistry, err)
+		log.Errorf("failed opening file because: %s", err.Error())
 		return nil
 	}
-	defer response.Body.Close()
-	contents, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "GetServicePlans: %s", err)
-		return nil
-	}
-	err = json.Unmarshal(contents, &m)
+
+	err = json.Unmarshal([]byte(file), &m.Rows)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "GetServicePlans  %s", err)
 		return nil
 	}
-	/*
-		r := make([]config.ServicePlan, 0, len(m.Rows))
-		for _, value := range m.Rows {
-			r = append(r, value)
-		}
-		/*sort.Sort(QueryRuleSorter(r))*/
+
 	return m.Rows
 }
 
