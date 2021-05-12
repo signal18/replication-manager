@@ -180,6 +180,51 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MariadbShardProxy) {
 
 }
 
+func (proxy *MariadbShardProxy) Refresh() error {
+	if proxy.ShardProxy == nil {
+		return errors.New("Sharding proxy no database monitor yet initialize")
+	}
+	err := proxy.ShardProxy.Refresh()
+	if err != nil {
+
+		return err
+	}
+	proxy.Version = proxy.ShardProxy.Variables["VERSION"]
+
+	proxy.BackendsWrite = nil
+	proxy.BackendsRead = nil
+
+	servers, _, _ := dbhelper.GetServers(proxy.ShardProxy.Conn)
+	for _, s := range servers {
+		myport := strconv.FormatUint(uint64(s.Port), 10)
+		var bke = Backend{
+			Host:         s.Host,
+			Port:         myport,
+			PrxName:      s.Host + ":" + myport,
+			PrxStatus:    "ONLINE",
+			PrxHostgroup: "WRITE",
+		}
+
+		//PrxConnections: s.Variables,
+		//PrxByteIn:      strconv.Itoa(proxysqlByteOut),
+		//PrxByteOut:     strconv.Itoa(proxysqlByteIn),
+		//PrxLatency:     strconv.Itoa(proxysqlLatency),
+
+		proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
+
+		var bkeread = Backend{
+			Host:         s.Host,
+			Port:         myport,
+			PrxName:      s.Host + ":" + myport,
+			PrxStatus:    "ONLINE",
+			PrxHostgroup: "READ",
+		}
+		proxy.BackendsRead = append(proxy.BackendsRead, bkeread)
+	}
+	proxy.ClusterGroup.CheckMdbShardServersSchema(proxy)
+	return nil
+}
+
 func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *MariadbShardProxy) error {
 	if proxy.ShardProxy == nil {
 		return errors.New("Sharding proxy no database monitor yet initialize")

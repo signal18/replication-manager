@@ -312,40 +312,40 @@ func (cluster *Cluster) backendStateChangeProxies() {
 // Used to monitor proxies call by main monitor loop
 func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 	defer wcg.Done()
-
 	for _, pr := range cluster.Proxies {
-		var err error
-		err = pr.Refresh()
-		if err == nil {
-			pr.SetFailCount(0)
-			pr.SetState(stateProxyRunning)
-			if pr.HasWaitStartCookie() {
-				pr.DelWaitStartCookie()
-			}
-		} else {
-			fc := pr.GetFailCount() + 1
-			// TODO: Can pr.ClusterGroup be different from cluster *Cluster? code doesn't imply it. if not change to
-			// cl, err := pr.GetCluster()
-			// cl.Conf.MaxFail
-			if fc >= cluster.Conf.MaxFail {
-				if fc == cluster.Conf.MaxFail {
-					cluster.LogPrintf("INFO", "Declaring %s proxy as failed %s:%s %s", pr.GetType(), pr.GetHost(), pr.GetPort(), err)
+		if pr != nil {
+			var err error
+			err = pr.Refresh()
+			if err == nil {
+				pr.SetFailCount(0)
+				pr.SetState(stateProxyRunning)
+				if pr.HasWaitStartCookie() {
+					pr.DelWaitStartCookie()
 				}
-				pr.SetState(stateFailed)
-				pr.DelWaitStopCookie()
-				pr.DelRestartCookie()
 			} else {
-				pr.SetState(stateSuspect)
+				fc := pr.GetFailCount() + 1
+				// TODO: Can pr.ClusterGroup be different from cluster *Cluster? code doesn't imply it. if not change to
+				// cl, err := pr.GetCluster()
+				// cl.Conf.MaxFail
+				if fc >= cluster.Conf.MaxFail {
+					if fc == cluster.Conf.MaxFail {
+						cluster.LogPrintf("INFO", "Declaring %s proxy as failed %s:%s %s", pr.GetType(), pr.GetHost(), pr.GetPort(), err)
+					}
+					pr.SetState(stateFailed)
+					pr.DelWaitStopCookie()
+					pr.DelRestartCookie()
+				} else {
+					pr.SetState(stateSuspect)
+				}
 			}
-		}
-		if pr.GetPrevState() != pr.GetState() {
-			pr.SetPrevState(pr.GetState())
-		}
-		if cluster.Conf.GraphiteMetrics {
-			pr.SendStats()
+			if pr.GetPrevState() != pr.GetState() {
+				pr.SetPrevState(pr.GetState())
+			}
+			if cluster.Conf.GraphiteMetrics {
+				pr.SendStats()
+			}
 		}
 	}
-
 }
 
 func (cluster *Cluster) failoverProxies() {

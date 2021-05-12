@@ -118,10 +118,13 @@ func (cluster *Cluster) HasAllDbUp() bool {
 		return false
 	}
 	for _, s := range cluster.Servers {
-		if s.State == stateFailed || s.State == stateSuspect /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
-			return false
+		if s != nil {
+			if s.State == stateFailed || s.State == stateSuspect /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+				return false
+			}
 		}
 	}
+
 	return true
 }
 
@@ -130,8 +133,10 @@ func (cluster *Cluster) HasRequestDBRestart() bool {
 		return false
 	}
 	for _, s := range cluster.Servers {
-		if s.HasRestartCookie() {
-			return true
+		if s != nil {
+			if s.HasRestartCookie() {
+				return true
+			}
 		}
 	}
 	return false
@@ -143,8 +148,10 @@ func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 		return false
 	}
 	for _, s := range cluster.Servers {
-		if !s.HasRestartCookie() {
-			return false
+		if s != nil {
+			if !s.HasRestartCookie() {
+				return false
+			}
 		}
 	}
 	return ret
@@ -156,17 +163,22 @@ func (cluster *Cluster) HasRequestDBRollingReprov() bool {
 		return false
 	}
 	for _, s := range cluster.Servers {
-		if !s.HasReprovCookie() {
-			return false
+		if s != nil {
+			if !s.HasReprovCookie() {
+				return false
+			}
 		}
 	}
+
 	return ret
 }
 
 func (cluster *Cluster) HasRequestDBReprov() bool {
 	for _, s := range cluster.Servers {
-		if s.HasReprovCookie() {
-			return true
+		if s != nil {
+			if s.HasReprovCookie() {
+				return true
+			}
 		}
 	}
 	return false
@@ -174,8 +186,10 @@ func (cluster *Cluster) HasRequestDBReprov() bool {
 
 func (cluster *Cluster) HasRequestProxiesRestart() bool {
 	for _, p := range cluster.Proxies {
-		if p.HasRestartCookie() {
-			return true
+		if p != nil {
+			if p.HasRestartCookie() {
+				return true
+			}
 		}
 	}
 	return false
@@ -183,8 +197,10 @@ func (cluster *Cluster) HasRequestProxiesRestart() bool {
 
 func (cluster *Cluster) HasRequestProxiesReprov() bool {
 	for _, p := range cluster.Proxies {
-		if p.HasReprovCookie() {
-			return true
+		if p != nil {
+			if p.HasReprovCookie() {
+				return true
+			}
 		}
 	}
 	return false
