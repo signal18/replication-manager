@@ -2201,6 +2201,44 @@
                 }
             ],
             "fset_name": "mariadb.optimizer.trace"
+        },
+        {
+            "fset_stats": false,
+            "id": 406,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "noauth",
+                        "f_table": "v_tags",
+                        "id": 363
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.security.noauth"
+        },
+        {
+            "fset_stats": false,
+            "id": 407,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "interleave",
+                        "f_table": "v_tags",
+                        "id": 364
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.memory.interleave"
         }
     ],
     "rulesets": [
@@ -2783,8 +2821,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_myrock.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'ha_myrocks';\\n\\n[mariadb]\\nplugin-load-add=ha_rocksdb.so\\nloose_rocksdb_max_open_files=-1\\nloose_rocksdb_base_background_compactions=1\\nloose_rocksdb_max_background_compactions=8\\nloose_rocksdb_max_total_wal_size=4G\\nloose_rocksdb_max_background_flushes=4\\nloose_rocksdb_block_size=16384\\nloose_rocksdb_block_cache_size=%%ENV:SVC_CONF_ENV_ROCKSDB_CACHE_SIZE%%M\\nloose_rocksdb_table_cache_numshardbits=6\\n\\n# rate limiter\\nloose_rocksdb_bytes_per_sync=4194304\\nloose_rocksdb_wal_bytes_per_sync=4194304\\nloose_rocksdb_rate_limiter_bytes_per_sec=104857600 #100MB/s\\n\\n# triggering compaction if there are many sequential deletes\\nloose_rocksdb_compaction_sequential_deletes_count_sd=1\\nloose_rocksdb_compaction_sequential_deletes=199999\\nloose_rocksdb_compaction_sequential_deletes_window=200000\\n\\n# read free replication\\n#rocksdb_rpl_lookup_rows=0\\n\\nloose_rocksdb_default_cf_options=write_buffer_size=128m;target_file_size_base=32m;max_bytes_for_level_base=512m;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=10;level0_stop_writes_trigger=15;max_write_buffer_number=4;compression_per_level=kLZ4Compression;bottommost_compression=kZSTD;compression_opts=-14:1:0;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=0};level_compaction_dynamic_level_bytes=true;optimize_filters_for_hits=true;memtable_prefix_bloom_size_ratio=0.05;prefix_extractor=capped:12;compaction_pri=kMinOverlappingRatio\\n\\nloose_rocksdb_override_cf_options=cf_link_pk={prefix_extractor=capped:20};rev:cf_link_id1_type={prefix_extractor=capped:20}\\n \\nloose_rocksdb_allow_concurrent_memtable_write=1\\nloose_rocksdb_enable_write_thread_adaptive_yield=1\"}",
-                    "var_updated": "2020-12-23 17:59:05",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_myrock.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'ha_myrocks';\\n\\n[mariadb]\\nplugin-load-add=ha_rocksdb.so\\nloose_rocksdb_max_open_files=-1\\nloose_rocksdb_base_background_compactions=1\\nloose_rocksdb_max_background_compactions=8\\nloose_rocksdb_max_total_wal_size=4G\\nloose_rocksdb_max_background_flushes=4\\nloose_rocksdb_block_size=16384\\nloose_rocksdb_block_cache_size=%%ENV:SVC_CONF_ENV_ROCKSDB_CACHE_SIZE%%M\\nloose_rocksdb_table_cache_numshardbits=6\\n\\n# rate limiter\\nloose_rocksdb_bytes_per_sync=4194304\\nloose_rocksdb_wal_bytes_per_sync=4194304\\nloose_rocksdb_rate_limiter_bytes_per_sec=104857600 #100MB/s\\n\\n# triggering compaction if there are many sequential deletes\\nloose_rocksdb_compaction_sequential_deletes_count_sd=1\\nloose_rocksdb_compaction_sequential_deletes=199999\\nloose_rocksdb_compaction_sequential_deletes_window=200000\\n\\n# read free replication\\n#rocksdb_rpl_lookup_rows=0\\n\\n# From benchmark \\n#rocksdb_default_cf_options=\\\"write_buffer_size=256m;target_file_size_base=32m;max_bytes_for_level_base=512m;max_write_buffer_number=4;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=20;level0_stop_writes_trigger=30;max_write_buffer_number=4;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=0};level_compaction_dynamic_level_bytes=true;optimize_filters_for_hits=true;memtable_prefix_bloom_size_ratio=0.05;prefix_extractor=capped:12;compaction_pri=kMinOverlappingRatio;compression=kZSTD;bottommost_compression=kZSTD;compression_opts=-14:1:0\\\"\\n\\n\\nloose_rocksdb_default_cf_options=write_buffer_size=128m;target_file_size_base=32m;max_bytes_for_level_base=512m;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=10;level0_stop_writes_trigger=15;max_write_buffer_number=4;compression_per_level=kLZ4Compression;bottommost_compression=kZSTD;compression_opts=-14:1:0;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=0};level_compaction_dynamic_level_bytes=true;optimize_filters_for_hits=true;memtable_prefix_bloom_size_ratio=0.05;prefix_extractor=capped:12;compaction_pri=kMinOverlappingRatio\\n\\nloose_rocksdb_override_cf_options=cf_link_pk={prefix_extractor=capped:20};rev:cf_link_id1_type={prefix_extractor=capped:20}\\n \\nloose_rocksdb_allow_concurrent_memtable_write=1\\nloose_rocksdb_enable_write_thread_adaptive_yield=1\"}",
+                    "var_updated": "2021-03-17 11:38:53",
                     "var_name": "db_cnf_engine_myrocks",
                     "id": 5937
                 },
@@ -3537,7 +3575,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_idempotent.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#mariadb_command: SET GLOBAL slave_exec_mode='IDEMPOTENT';\\n#mariadb_default: SET GLOBAL slave_exec_mode='STRICT';\\n\\n#mysql_command: SET GLOBAL slave_exec_mode='IDEMPOTENT';\\n#mysql_default: SET GLOBAL slave_exec_mode='STRICT';\\n\\n[mysqld]\\nloose_slave_exec_mode=IDEMPOTENT\"}",
                     "var_updated": "2021-01-03 22:47:04",
-                    "var_name": "db_cnf_rep_idempotent",
+                    "var_name": "db_cnf_rep_with_idempotent",
                     "id": 6183
                 },
                 {
@@ -3545,7 +3583,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_loosy.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL loose_slave_type_conversions='ALL_NON_LOSSY,ALL_LOSSY';\\n# mariadb_default: SET GLOBAL loose_slave_type_conversions='ALL_NON_LOSSY';\\n\\n[mysqld]\\nloose_slave_type_conversions='ALL_NON_LOSSY,ALL_LOSSY'\"}",
                     "var_updated": "2021-01-13 18:26:15",
-                    "var_name": "db_cnf_rep_lossy",
+                    "var_name": "db_cnf_rep_with_ossy",
                     "id": 6184
                 },
                 {
@@ -3785,7 +3823,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_rep_slavestatement.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL replicate_annotate_row_events = 0;SET GLOBAL binlog_annotate_row_events = 0;\\n# mariadb_default: SET GLOBAL replicate_annotate_row_events = 1;SET GLOBAL binlog_annotate_row_events = 1;\\n\\n# mysql_command: SET GLOBAL binlog_row_query_log_events = 0;\\n# mysql_default: SET GLOBAL binlog_row_query_log_events = 1;\\n\\n[mariadb]\\nloose_replicate_annotate_row_events = 0\\nloose_binlog_annotate_row_events = 0\\n\\n[mysqld]\\nbinlog_row_query_log_events = 0\"}",
                     "var_updated": "2021-01-03 22:43:45",
-                    "var_name": "db_cnf_repl_no_logslavestatement",
+                    "var_name": "db_cnf_rep_no_logslavestatement",
                     "id": 6257
                 },
                 {
@@ -3793,7 +3831,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_rep_syncbinlog.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL sync_binlog = 0;\\n# mariadb_default: SET GLOBAL sync_binlog = 1;\\n\\n# mysql_command: SET GLOBAL sync_binlog = 0;\\n# mysql_default: SET GLOBAL sync_binlog = 1;\\n\\n[mysqld]\\nsync_binlog = 0\"}",
                     "var_updated": "2021-01-03 22:44:24",
-                    "var_name": "db_cnf_repl_no_syncbinlog",
+                    "var_name": "db_cnf_rep_no_syncbinlog",
                     "id": 6258
                 },
                 {
@@ -3835,6 +3873,38 @@
                     "var_updated": "2021-02-15 10:31:28",
                     "var_name": "db_cnf_opt_with_trace",
                     "id": 6273
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_networkcompress.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_documantation: https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#slave_compressed_protocol\\n# mariadb_version: 5.5 \\n# mariadb_command: SET GLOBAL slave_compressed_protocol=1; \\n# mariadb_default: SET GLOBAL slave_compressed_protocol=0; \\n\\n# mysql_version: 5.5\\n\\n[mysqld]\\nloose_slave_compressed_protocol=1\"}",
+                    "var_updated": "2021-03-01 11:56:21",
+                    "var_name": "db_cnf_rep_with_compression",
+                    "id": 6275
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_sec_auth.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nskip-grant-tables\"}",
+                    "var_updated": "2021-05-12 09:05:30",
+                    "var_name": "db_cnf_sec_no_auth",
+                    "id": 6276
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_rowminimal.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: set global binlog_format='ROW';set global binlog_row_image=MINIMAL;\\n# mariadb_default: set global binlog_format='MIXED';set global binlog_row_image=MINIMAL;\\n\\n# mysql_command: set global binlog_format='ROW';set global binlog_row_image=MINIMAL;\\n# mysql_default: set global binlog_format='MIXED';set global binlog_row_image=MINIMAL;\\n\\n[mysqld]\\nloose_binlog_format=ROW\\nloose_binlog_row_image=MINIMAL\"}",
+                    "var_updated": "2021-05-12 09:23:07",
+                    "var_name": "db_cnf_rep_with_formatrowmin",
+                    "id": 6277
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_mem_interleave.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nloose_innodb_numa_interleave=1\"}",
+                    "var_updated": "2021-05-12 09:20:43",
+                    "var_name": "db_cnf_mem_with_interleave",
+                    "id": 6278
                 }
             ],
             "ruleset_public": false,
@@ -3950,7 +4020,10 @@
                 "mariadb.svc.mrm.db.cnf.generic.rep_nologslavestatement",
                 "mariadb.svc.mrm.db.cnf.generic.rep_nosyncbinlog",
                 "mariadb.svc.mrm.db.cnf.generic.enginearchive",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withtrace"
+                "mariadb.svc.mrm.db.cnf.generic.opt_withtrace",
+                "mariadb.svc.mrm.db.cnf.generic.sec_noauth",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withrowminimal",
+                "mariadb.svc.mrm.db.cnf.generic.mem_withinterleave"
             ],
             "publications": [
                 "replication-manager"
@@ -6758,6 +6831,78 @@
                 "replication-manager"
             ],
             "id": 1147,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.security.noauth",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.sec_noauth",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/20_no_sec_auth.cnf\",\"target\":\"../no_sec_auth.cnf\"}",
+                    "var_updated": "2021-05-12 09:35:40",
+                    "var_name": "symlink_withsecnoauth",
+                    "id": 6279
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1148,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.memory.interleave",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.mem_withinterleave",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/30_with_mem_interleave.cnf\",\"target\":\"../with_mem_interleave.cnf\"}",
+                    "var_updated": "2021-05-12 09:33:17",
+                    "var_name": "symlink_withinterleave",
+                    "id": 6280
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1149,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.replication.minimal",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withrowminimal",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/30_with_rep_rowminimal.cnf\",\"target\":\"../with_rep_rowminimal.cnf\"}",
+                    "var_updated": "2021-05-12 09:45:28",
+                    "var_name": "symlink_withrowminimal",
+                    "id": 6281
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1150,
             "responsibles": [
                 "replication-manager"
             ]

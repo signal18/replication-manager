@@ -697,12 +697,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 		if plan.Plan == theplan {
 			cluster.LogPrintf(LvlInfo, "Attaching service plan %s", theplan)
 			cluster.Conf.ProvServicePlan = theplan
-			cluster.SetDBCores(strconv.Itoa(plan.DbCores))
-			cluster.SetDBMemorySize(strconv.Itoa(plan.DbMemory))
-			cluster.SetDBDiskSize(strconv.Itoa(plan.DbDataSize))
-			cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops))
-			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
-			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
+
 			if cluster.Conf.User == "" {
 				cluster.LogPrintf(LvlInfo, "Settting database root credential to admin:repman ")
 				cluster.Conf.User = "admin:repman"
@@ -797,7 +792,12 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 					}
 				}
 			}
-
+			cluster.SetDBCores(strconv.Itoa(plan.DbCores))
+			cluster.SetDBMemorySize(strconv.Itoa(plan.DbMemory))
+			cluster.SetDBDiskSize(strconv.Itoa(plan.DbDataSize))
+			cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops))
+			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
+			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
 			return nil
 		}
 	}
