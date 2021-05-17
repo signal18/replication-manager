@@ -621,6 +621,13 @@ func (server *ServerMonitor) Refresh() error {
 			}
 			if server.ClusterGroup.sme.GetHeartbeats()%30 == 0 {
 				server.CheckPrivileges()
+			} else {
+				server.ClusterGroup.sme.PreserveState("ERR00007")
+				server.ClusterGroup.sme.PreserveState("ERR00006")
+				server.ClusterGroup.sme.PreserveState("ERR00008")
+				server.ClusterGroup.sme.PreserveState("ERR00015")
+				server.ClusterGroup.sme.PreserveState("ERR00078")
+				server.ClusterGroup.sme.PreserveState("ERR00009")
 			}
 			if server.ClusterGroup.Conf.FailEventScheduler && server.IsMaster() && !server.HasEventScheduler() {
 				server.ClusterGroup.LogPrintf(LvlInfo, "Enable Event Scheduler on master")
