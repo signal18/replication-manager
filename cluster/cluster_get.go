@@ -838,7 +838,7 @@ func (cluster *Cluster) GetConfigInnoDBLogFileSize() string {
 	if err != nil {
 		return "1024"
 	}
-	value = value / 10
+	value = value / 2
 	if value < valuemin {
 		value = valuemin
 	}
@@ -893,7 +893,7 @@ func (cluster *Cluster) GetConfigInnoDBReadIoThreads() string {
 }
 
 func (cluster *Cluster) GetConfigInnoDBPurgeThreads() string {
-	return cluster.GetConfigInnoDBWriteIoThreads()
+	return "4"
 }
 
 func (cluster *Cluster) GetQueryRules() []config.QueryRule {
