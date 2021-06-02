@@ -318,6 +318,7 @@ func (cluster *Cluster) SetBenchMethod(m string) {
 	cluster.benchmarkType = m
 }
 
+// SetPrefMaster is used by regtest test_switchover_semisync_switchback_prefmaster_norplcheck
 func (cluster *Cluster) SetPrefMaster(PrefMaster string) {
 	for _, srv := range cluster.Servers {
 		if srv.URL == PrefMaster || srv.Name == PrefMaster {
