@@ -318,16 +318,16 @@ func (cluster *Cluster) SetBenchMethod(m string) {
 	cluster.benchmarkType = m
 }
 
-// SetPrefMaster is used by regtest test_switchover_semisync_switchback_prefmaster_norplcheck
+// SetPrefMaster is used by regtest test_switchover_semisync_switchback_prefmaster_norplcheck and API to force a server
 func (cluster *Cluster) SetPrefMaster(PrefMaster string) {
+	cluster.Conf.PrefMaster = PrefMaster
 	for _, srv := range cluster.Servers {
-		if srv.URL == PrefMaster || srv.Name == PrefMaster {
+		if strings.Contains(PrefMaster, srv.URL) {
 			srv.SetPrefered(true)
 		} else {
 			srv.SetPrefered(false)
 		}
 	}
-	cluster.Conf.PrefMaster = PrefMaster
 }
 
 func (cluster *Cluster) SetFailoverCtr(failoverCtr int) {

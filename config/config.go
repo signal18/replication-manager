@@ -145,6 +145,7 @@ type Config struct {
 	CheckFalsePositiveExternal                bool   `mapstructure:"failover-falsepositive-external" toml:"failover-falsepositive-external" json:"failoverFalsePositiveExternal"`
 	CheckFalsePositiveExternalPort            int    `mapstructure:"failover-falsepositive-external-port" toml:"failover-falsepositive-external-port" json:"failoverFalsePositiveExternalPort"`
 	FailoverLogFileKeep                       int    `mapstructure:"failover-log-file-keep" toml:"failover-log-file-keep" json:"failoverLogFileKeep"`
+	FailoverSwitchToPrefered                  bool   `mapstructure:"failover-switch-to-prefered" toml:"failover-switch-to-prefered" json:"failoverSwithToPrefered"`
 	Autorejoin                                bool   `mapstructure:"autorejoin" toml:"autorejoin" json:"autorejoin"`
 	Autoseed                                  bool   `mapstructure:"autoseed" toml:"autoseed" json:"autoseed"`
 	AutorejoinFlashback                       bool   `mapstructure:"autorejoin-flashback" toml:"autorejoin-flashback" json:"autorejoinFlashback"`

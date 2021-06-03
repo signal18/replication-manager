@@ -569,14 +569,6 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// if consul or internal proxy need to adapt read only route to new slaves
 	cluster.backendStateChangeProxies()
 
-	if fail == true && cluster.Conf.PrefMaster != cluster.oldMaster.URL && cluster.master.URL != cluster.Conf.PrefMaster && cluster.Conf.PrefMaster != "" {
-		prm := cluster.foundPreferedMaster(cluster.slaves)
-		if prm != nil {
-			cluster.LogPrintf(LvlInfo, "Not on Preferred Master after failover")
-			cluster.MasterFailover(false)
-		}
-	}
-
 	cluster.LogPrintf(LvlInfo, "Master switch on %s complete", cluster.master.URL)
 	cluster.master.FailCount = 0
 	if fail == true {
@@ -584,6 +576,16 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.FailoverTs = time.Now().Unix()
 	}
 	cluster.sme.RemoveFailoverState()
+
+	// Not a prefered master this code is not default
+	if cluster.Conf.FailoverSwitchToPrefered && fail == true && cluster.Conf.PrefMaster != "" && !cluster.master.IsPrefered() {
+		prm := cluster.foundPreferedMaster(cluster.slaves)
+		if prm != nil {
+			cluster.LogPrintf(LvlInfo, "Switchover after failover not on a prefered leader after failover")
+			cluster.MasterFailover(false)
+		}
+	}
+
 	return true
 }
 

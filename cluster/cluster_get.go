@@ -251,7 +251,7 @@ func (cluster *Cluster) GetGComm() string {
 	return strings.Join(gcomms, ",")
 }
 
-func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
+func (cluster *Cluster) getOnePreferedMaster() *ServerMonitor {
 	if cluster.Conf.PrefMaster == "" {
 		return nil
 	}
@@ -259,7 +259,7 @@ func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
 		if cluster.Conf.LogLevel > 2 {
 			cluster.LogPrintf(LvlDbg, "Lookup if server: %s is preferred master: %s", server.URL, cluster.Conf.PrefMaster)
 		}
-		if server.URL == cluster.Conf.PrefMaster {
+		if strings.Contains(cluster.Conf.PrefMaster, server.URL) {
 			return server
 		}
 	}
