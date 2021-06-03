@@ -769,7 +769,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 		}
 		r.ParseForm() // Parses the request body
 		newPrefMaster := r.Form.Get("prefmaster")
-		mycluster.LogPrintf(cluster.LvlInfo, "Was ask for prefered master: %s", newPrefMaster)
+		mycluster.LogPrintf(cluster.LvlInfo, "API force for prefered master: %s", newPrefMaster)
 		if mycluster.IsInHostList(newPrefMaster) {
 			mycluster.SetPrefMaster(newPrefMaster)
 		} else {

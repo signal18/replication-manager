@@ -237,7 +237,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		}
 		if srw > 1 {
 			cluster.SetState("WARN0004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to preferred master.", ErrFrom: "TOPO"})
-			server := cluster.getPreferedMaster()
+			server := cluster.getOnePreferedMaster()
 			if server != nil {
 				server.SetReadWrite()
 			} else {
