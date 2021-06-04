@@ -359,6 +359,7 @@ func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 	default:
 		return errors.New("No valid orchestrator")
 	}
+	cluster.StopDatabaseScript(server)
 	if err == nil {
 		server.DelRestartCookie()
 	}
@@ -383,7 +384,7 @@ func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 	default:
 		return errors.New("No valid orchestrator")
 	}
-	cluster.StopProxyService(server)
+	cluster.StopProxyScript(server)
 	if err == nil {
 		server.DelRestartCookie()
 	}
@@ -407,7 +408,7 @@ func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
 	default:
 		return errors.New("No valid orchestrator")
 	}
-	cluster.StartProxyService(server)
+	cluster.StartProxyScript(server)
 	if err == nil {
 		server.DelRestartCookie()
 	}
@@ -437,7 +438,7 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	default:
 		return errors.New("No valid orchestrator")
 	}
-	cluster.StartDatabaseService(server)
+	cluster.StartDatabaseScript(server)
 	if err == nil {
 		server.DelRestartCookie()
 	}

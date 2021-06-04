@@ -20,7 +20,7 @@ func (cluster *Cluster) UnprovisionDatabaseScript(server *ServerMonitor) error {
 	if cluster.Conf.ProvDbCleanupScript == "" {
 		return nil
 	}
-	scriptCmd := exec.Command(cluster.Conf.ProvDbCleanupScript, misc.Unbracket(server.Host), server.Port, cluster.dbUser, cluster.dbPass)
+	scriptCmd := exec.Command(cluster.Conf.ProvDbCleanupScript, misc.Unbracket(server.Host), server.Port, cluster.dbUser, cluster.dbPass, cluster.Name)
 	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.dbPass, "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
@@ -48,7 +48,7 @@ func (cluster *Cluster) ProvisionDatabaseScript(server *ServerMonitor) error {
 	if cluster.Conf.ProvDbBootstrapScript == "" {
 		return nil
 	}
-	scriptCmd := exec.Command(cluster.Conf.ProvDbBootstrapScript, misc.Unbracket(server.Host), server.Port, cluster.dbUser, cluster.dbPass)
+	scriptCmd := exec.Command(cluster.Conf.ProvDbBootstrapScript, misc.Unbracket(server.Host), server.Port, cluster.dbUser, cluster.dbPass, cluster.Name)
 	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.dbPass, "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
@@ -76,7 +76,7 @@ func (cluster *Cluster) StopDatabaseScript(server *ServerMonitor) error {
 	if cluster.Conf.ProvDbStopScript == "" {
 		return nil
 	}
-	scriptCmd := exec.Command(cluster.Conf.ProvDbStopScript, misc.Unbracket(server.Host), server.Port, cluster.dbUser, cluster.dbPass)
+	scriptCmd := exec.Command(cluster.Conf.ProvDbStopScript, misc.Unbracket(server.Host), server.Port, cluster.dbUser, cluster.dbPass, cluster.Name)
 	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.dbPass, "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
@@ -104,7 +104,7 @@ func (cluster *Cluster) StartDatabaseScript(server *ServerMonitor) error {
 	if cluster.Conf.ProvDbStartScript == "" {
 		return nil
 	}
-	scriptCmd := exec.Command(cluster.Conf.ProvDbStartScript, misc.Unbracket(server.Host), server.Port, cluster.dbUser, cluster.dbPass)
+	scriptCmd := exec.Command(cluster.Conf.ProvDbStartScript, misc.Unbracket(server.Host), server.Port, cluster.dbUser, cluster.dbPass, cluster.Name)
 	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.dbPass, "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
@@ -132,7 +132,7 @@ func (cluster *Cluster) UnprovisionProxyScript(server DatabaseProxy) error {
 	if cluster.Conf.ProvProxyCleanupScript == "" {
 		return nil
 	}
-	scriptCmd := exec.Command(cluster.Conf.ProvProxyCleanupScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass())
+	scriptCmd := exec.Command(cluster.Conf.ProvProxyCleanupScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass(), cluster.Name)
 	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
@@ -173,7 +173,7 @@ func (cluster *Cluster) ProvisionProxyScript(server DatabaseProxy) error {
 	if cluster.Conf.ProvProxyBootstrapScript == "" {
 		return nil
 	}
-	scriptCmd := exec.Command(cluster.Conf.ProvProxyBootstrapScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass())
+	scriptCmd := exec.Command(cluster.Conf.ProvProxyBootstrapScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass(), cluster.Name)
 	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
@@ -212,7 +212,7 @@ func (cluster *Cluster) StartProxyScript(server DatabaseProxy) error {
 	if cluster.Conf.ProvProxyStartScript == "" {
 		return nil
 	}
-	scriptCmd := exec.Command(cluster.Conf.ProvProxyStartScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass())
+	scriptCmd := exec.Command(cluster.Conf.ProvProxyStartScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass(), cluster.Name)
 	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
@@ -251,7 +251,7 @@ func (cluster *Cluster) StopProxyScript(server DatabaseProxy) error {
 	if cluster.Conf.ProvProxyStopScript == "" {
 		return nil
 	}
-	scriptCmd := exec.Command(cluster.Conf.ProvProxyStopScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass())
+	scriptCmd := exec.Command(cluster.Conf.ProvProxyStopScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass(), cluster.Name)
 	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
