@@ -359,7 +359,6 @@ func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 	default:
 		return errors.New("No valid orchestrator")
 	}
-	cluster.StopDatabaseService(server)
 	if err == nil {
 		server.DelRestartCookie()
 	}
