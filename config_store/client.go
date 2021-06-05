@@ -41,6 +41,20 @@ func NewConfigStore(address string, env Environment) *ConfigStore {
 	return csc
 }
 
+type ConfigSection struct {
+	csc     *ConfigStore
+	section []string
+}
+
+func (csc *ConfigStore) Section(name ...string) *ConfigSection {
+	cs := &ConfigSection{
+		csc:     csc,
+		section: name,
+	}
+
+	return cs
+}
+
 func GenerateKey() ([]byte, error) {
 	key := make([]byte, 32)
 	_, err := rand.Read(key)
@@ -84,6 +98,14 @@ func (csc *ConfigStore) NewSecret(section []string, namespace string, key string
 	p := NewSecret(section, namespace, csc.env, key, values...)
 
 	return p, nil
+}
+
+func (cs *ConfigSection) NewProperty(namespace string, key string, values ...interface{}) *Property {
+	return cs.csc.NewProperty(cs.section, namespace, key, values...)
+}
+
+func (cs *ConfigSection) NewSecret(namespace string, key string, values ...interface{}) (*Property, error) {
+	return cs.csc.NewSecret(cs.section, namespace, key, values...)
 }
 
 func (csc *ConfigStore) Store(ctx context.Context, properties []*Property) ([]*Property, error) {
@@ -132,6 +154,12 @@ func (csc *ConfigStore) Store(ctx context.Context, properties []*Property) ([]*P
 	}
 
 	return responses, nil
+}
+
+func (cs *ConfigSection) Search(ctx context.Context, query *Query) ([]*Property, error) {
+	query.Property.Section = cs.section
+
+	return cs.csc.Search(ctx, query)
 }
 
 func (csc *ConfigStore) Search(ctx context.Context, query *Query) ([]*Property, error) {

@@ -14,7 +14,7 @@
             "args": ["monitor", "--config", "/etc/replication-manager/config.toml", "--log-file", "/var/lib/replication-manager/data/replication-manager.log"],
         },
         {
-            "name": "config_store",
+            "name": "config_store server",
             "type": "go",
             "request": "launch",
             "mode": "auto",

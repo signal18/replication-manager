@@ -25,11 +25,13 @@ func main() {
 		log.Fatalf("Could not import TOML config: %s", err)
 	}
 
-	props := make([]*cs.Property, 0)
-	props = append(props, csc.NewProperty([]string{"foo", "baz"}, "client-test", "foo", "foo-2"))
-	props = append(props, csc.NewProperty([]string{"bar-section"}, "client-test", "bar", "value1", "value20"))
+	mySQLSection := csc.Section("mysql")
 
-	password, err := csc.NewSecret([]string{"secrets"}, "cluster", "rootpassword", "somesecretpassword")
+	props := make([]*cs.Property, 0)
+	props = append(props, mySQLSection.NewProperty("client-test", "foo", "foo-2"))
+	props = append(props, mySQLSection.NewProperty("client-test", "bar", "value1", "value20"))
+
+	password, err := mySQLSection.NewSecret("cluster", "rootpassword", "somesecretpassword")
 	if err != nil {
 		log.Fatalf("Could not create secret")
 	}

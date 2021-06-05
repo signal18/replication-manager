@@ -58,6 +58,10 @@ func ValuesEqual(a []*Value, b []*Value) bool {
 	return true
 }
 
+func (p *Property) SetNamespace(namespace string) {
+	p.Namespace = namespace
+}
+
 func (p *Property) SetSecret(b bool) {
 	p.Secret = b
 }
