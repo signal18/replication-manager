@@ -67,6 +67,7 @@ type Config struct {
 	MonitorCaptureTrigger                     string `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
 	MonitorIgnoreError                        string `mapstructure:"monitoring-ignore-errors" toml:"monitoring-ignore-errors" json:"monitoringIgnoreErrors"`
 	MonitorTenant                             string `mapstructure:"monitoring-tenant" toml:"monitoring-tenant" json:"monitoringTenant"`
+	MonitoringAlertTrigger                    string `mapstructure:"monitoring-alert-trigger" toml:"monitoring-alert-trigger" json:"MonitoringAlertTrigger"`
 	Interactive                               bool   `mapstructure:"interactive" toml:"-" json:"interactive"`
 	Verbose                                   bool   `mapstructure:"verbose" toml:"verbose" json:"verbose"`
 	LogFile                                   string `mapstructure:"log-file" toml:"log-file" json:"logFile"`
