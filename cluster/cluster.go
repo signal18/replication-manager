@@ -528,6 +528,7 @@ func (cluster *Cluster) StateProcessing() {
 		ostates := cluster.sme.GetOpenStates()
 		for _, s := range ostates {
 			cluster.CheckCapture(s)
+			cluster.CheckAlert(s)
 		}
 		cluster.sme.ClearState()
 		if cluster.sme.GetHeartbeats()%60 == 0 {
