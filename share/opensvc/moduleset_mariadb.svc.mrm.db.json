@@ -3928,8 +3928,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_splitundolog.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_documentation: https://mariadb.com/kb/en/innodb-system-variables/#innodb_undo_log_truncate\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-system-variables/#innodb_rollback_segments\\n# mariadb_documentation: https://mysqlonarm.github.io/2x-mysql-performance/\\n\\n[mysqld]\\nloose_innodb_undo_tablespaces=64\\nloose_innodb_undo_log_truncate=1\"}",
-                    "var_updated": "2021-05-20 10:19:15",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_splitundolog.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_alert: from:10.5.0;to:;label:MDEV-25801;trigger: SELECT IF(variable_value=\\\"ON\\\", 1,0) FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME= \\\"innodb_undo_log_truncate\\\";\\n# mariadb_alert: from:10.6.0 to: label:MDEV-25801\\n\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-system-variables/#innodb_undo_log_truncate\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-system-variables/#innodb_rollback_segments\\n# mariadb_documentation: https://mysqlonarm.github.io/2x-mysql-performance/\\n\\n[mysqld]\\nloose_innodb_undo_tablespaces=64\\nloose_innodb_undo_log_truncate=1\"}",
+                    "var_updated": "2021-06-10 13:51:46",
                     "var_name": "db_cnf_disk_splitundo",
                     "id": 6282
                 }
@@ -5380,8 +5380,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/01_with_net_bind.cnf\",\"target\":\"../with_net_bind.cnf\"}",
-                    "var_updated": "2021-01-04 16:04:13",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/99_with_net_bind.cnf\",\"target\":\"../with_net_bind.cnf\"}",
+                    "var_updated": "2021-06-11 12:51:23",
                     "var_name": "db_link_withnetbind",
                     "id": 6122
                 }
@@ -6366,8 +6366,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/99_no_net_bind.cnf\",\"target\":\"../no_net_bind.cnf\"}",
-                    "var_updated": "2021-01-04 16:04:32",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/10_no_net_bind.cnf\",\"target\":\"../no_net_bind.cnf\"}",
+                    "var_updated": "2021-06-11 12:50:01",
                     "var_name": "db_link_nobind",
                     "id": 6217
                 }
