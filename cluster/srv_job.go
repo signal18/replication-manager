@@ -900,6 +900,9 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	if !server.IsMaster() {
 		return errors.New("Purge only master binlog")
 	}
+	if !server.ClusterGroup.Conf.BackupBinlogs {
+		return errors.New("Copy binlog not enable")
+	}
 	binlogfilestart, _ := strconv.Atoi(strings.Split(binlogfile, ".")[1])
 	prefix := strings.Split(binlogfile, ".")[0]
 	binlogfilestop := binlogfilestart - server.ClusterGroup.Conf.BackupBinlogsKeep
