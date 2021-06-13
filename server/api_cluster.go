@@ -1455,6 +1455,19 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 
 }
 
+// swagger:operation GET /api/clusters/{clusterName}/status clusterStatus
+// Shows the status for that specific named cluster
+//
+// ---
+// parameters:
+// - name: clusterName
+//   in: path
+//   description: cluster to filter by
+//   required: true
+//   type: string
+// responses:
+//   '200':
+//     "$ref": "#/responses/status"
 func (repman *ReplicationManager) handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)

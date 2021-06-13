@@ -17,6 +17,8 @@ import (
 	"github.com/nsf/termbox-go"
 )
 
+// Collection of log messages
+// swagger:response termlog
 type TermLog struct {
 	Buffer []string
 	Len    int
