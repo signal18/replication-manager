@@ -580,9 +580,9 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	if server.IsDown() {
 		return nil
 	}
-
+	server.DelBackupLogicalCookie()
 	if server.IsMariaDB() && server.DBVersion.Major == 10 &&
-		server.DBVersion.Minor >= 4 && server.DBVersion.Minor < 6 &&
+		server.DBVersion.Minor >= 4 &&
 		server.ClusterGroup.Conf.BackupLockDDL &&
 		(server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump || server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper) {
 		bckConn, err := server.GetNewDBConn()
@@ -673,6 +673,8 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 			if err != nil {
 				server.ClusterGroup.LogPrintf(LvlErr, "mysqldump: %s", err)
+			} else {
+				server.SetBackupLogicalCookie()
 			}
 			gw.Flush()
 			gw.Close()
@@ -749,6 +751,8 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		wg.Wait()
 		if err := dumpCmd.Wait(); err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "MyDumper: %s", err)
+		} else {
+			server.SetBackupLogicalCookie()
 		}
 	}
 

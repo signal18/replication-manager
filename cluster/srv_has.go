@@ -84,6 +84,10 @@ func (server *ServerMonitor) HasWaitStartCookie() bool {
 	return server.hasCookie("cookie_waitstart")
 }
 
+func (server *ServerMonitor) HasWaitBackupCookie() bool {
+	return server.hasCookie("cookie_waitbackup")
+}
+
 func (server *ServerMonitor) HasWaitStopCookie() bool {
 	return server.hasCookie("cookie_waitstop")
 }
@@ -94,6 +98,14 @@ func (server *ServerMonitor) HasRestartCookie() bool {
 
 func (server *ServerMonitor) HasReprovCookie() bool {
 	return server.hasCookie("cookie_reprov")
+}
+
+func (server *ServerMonitor) HasBackupLogicalCookie() bool {
+	return server.hasCookie("cookie_logicalbackup")
+}
+
+func (server *ServerMonitor) HasBackupPhysicalCookie() bool {
+	return server.hasCookie("cookie_physicalbackup")
 }
 
 func (server *ServerMonitor) HasReadOnly() bool {

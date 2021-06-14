@@ -307,3 +307,14 @@ func (server *ServerMonitor) SetWaitStopCookie() error {
 func (server *ServerMonitor) SetReprovCookie() error {
 	return server.createCookie("cookie_reprov")
 }
+
+func (server *ServerMonitor) SetWaitBackupCookie() error {
+	return server.createCookie("cookie_waitbackup")
+}
+
+func (server *ServerMonitor) SetBackupPhysicalCookie() error {
+	return server.createCookie("cookie_physicalbackup")
+}
+func (server *ServerMonitor) SetBackupLogicalCookie() error {
+	return server.createCookie("cookie_logicalbackup")
+}

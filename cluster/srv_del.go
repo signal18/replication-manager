@@ -41,3 +41,15 @@ func (server *ServerMonitor) DelReprovisionCookie() error {
 func (server *ServerMonitor) DelRestartCookie() error {
 	return server.delCookie("cookie_restart")
 }
+
+func (server *ServerMonitor) DelWaitBackupCookie() error {
+	return server.delCookie("cookie_waitbackup")
+}
+
+func (server *ServerMonitor) DelBackupLogicalCookie() error {
+	return server.delCookie("cookie_logicalbackup")
+}
+
+func (server *ServerMonitor) DelBackupPhysicalCookie() error {
+	return server.delCookie("cookie_physicalbackup")
+}
