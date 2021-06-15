@@ -296,23 +296,43 @@ func (SM *StateMachine) IsDiscovered() bool {
 
 func (SM *StateMachine) GetStates() []string {
 	var log []string
-	SM.Lock()
+
 	//every thing in  OldState that can't be found in curstate
-	for key2, value2 := range *SM.OldState {
-		if SM.CurState.Search(key2) == false {
-			//log = append(log, fmt.Sprintf("%-5s %s HAS BEEN FIXED, %s", value2.ErrType, key2, value2.ErrDesc))
-			log = append(log, fmt.Sprintf("RESOLV %s : %s", key2, value2.ErrDesc))
-		}
+	for key2, value2 := range SM.GetLastResolvedStates() {
+		log = append(log, fmt.Sprintf("RESOLV %s : %s", key2, value2.ErrDesc))
 	}
 
-	for key, value := range *SM.CurState {
-		if SM.OldState.Search(key) == false {
-			//log = append(log, fmt.Sprintf("%-5s %s %s", value.ErrType, key, value.ErrDesc))
-			log = append(log, fmt.Sprintf("OPENED %s : %s", key, value.ErrDesc))
+	for key, value := range SM.GetLastOpenedStates() {
+		log = append(log, fmt.Sprintf("OPENED %s : %s", key, value.ErrDesc))
+	}
+
+	return log
+}
+
+func (SM *StateMachine) GetLastResolvedStates() map[string]State {
+	resolved := make(map[string]State)
+	SM.Lock()
+	//every thing in  OldState that can't be found in curstate
+	for key, state := range *SM.OldState {
+		if SM.CurState.Search(key) == false {
+			resolved[key] = state
 		}
 	}
 	SM.Unlock()
-	return log
+	return resolved
+}
+
+func (SM *StateMachine) GetLastOpenedStates() map[string]State {
+	opened := make(map[string]State)
+	SM.Lock()
+	//every thing in  OldState that can't be found in curstate
+	for key, state := range *SM.CurState {
+		if SM.OldState.Search(key) == false {
+			opened[key] = state
+		}
+	}
+	SM.Unlock()
+	return opened
 }
 
 func (SM *StateMachine) GetResolvedStates() []State {
