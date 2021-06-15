@@ -466,7 +466,9 @@ func (cluster *Cluster) CheckAlert(state state.State) {
 		}
 
 		err := cluster.SendAlert(a)
-		cluster.LogPrintf("ERROR", "Could not send alert: %s ", err)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Could not send alert: %s ", err)
+		}
 	}
 }
 
