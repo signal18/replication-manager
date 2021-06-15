@@ -528,8 +528,12 @@ func (cluster *Cluster) StateProcessing() {
 		ostates := cluster.sme.GetOpenStates()
 		for _, s := range ostates {
 			cluster.CheckCapture(s)
+		}
+
+		for _, s := range cluster.sme.GetLastOpenedStates() {
 			cluster.CheckAlert(s)
 		}
+
 		cluster.sme.ClearState()
 		if cluster.sme.GetHeartbeats()%60 == 0 {
 			cluster.Save()
