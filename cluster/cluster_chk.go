@@ -464,6 +464,11 @@ func (cluster *Cluster) CheckAlert(state state.State) {
 		return
 	}
 
+	// exit even earlier
+	if cluster.Conf.MailTo == "" && cluster.Conf.AlertScript == "" {
+		return
+	}
+
 	if strings.Contains(cluster.Conf.MonitoringAlertTrigger, state.ErrKey) {
 		a := alert.Alert{
 			State:  state.ErrKey,
