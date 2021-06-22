@@ -1482,6 +1482,43 @@ func (repman *ReplicationManager) handlerMuxClusterStatus(w http.ResponseWriter,
 	}
 }
 
+// swagger:operation GET /api/clusters/{clusterName}/actions/master-physical-backup master-physical-backup
+//
+//
+// ---
+// parameters:
+// - name: clusterName
+//   in: path
+//   description: cluster to filter by
+//   required: true
+//   type: string
+// produces:
+//  - text/plain
+// responses:
+//   '200':
+//     description: OK
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '400':
+//     description: No cluster found
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No cluster found:cluster_1
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '403':
+//     description: No valid ACL
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No valid ACL
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+
 func (repman *ReplicationManager) handlerMuxClusterMasterPhysicalBackup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)

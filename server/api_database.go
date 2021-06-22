@@ -1044,6 +1044,52 @@ func (repman *ReplicationManager) handlerMuxServerUnprovision(w http.ResponseWri
 	}
 }
 
+// swagger:operation GET /api/clusters/{clusterName}/servers/{serverName}/is-master serverName-is-master
+//
+//
+// ---
+// parameters:
+// - name: clusterName
+//   in: path
+//   description: cluster to filter by
+//   required: true
+//   type: string
+// - name: serverName
+//   in: path
+//   description: server to filter by
+//   required: true
+//   type: string
+// produces:
+//  - text/plain
+// responses:
+//   '200':
+//     description: OK
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: 200 -Valid Master!
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '500':
+//     description: No cluster
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No cluster
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '503':
+//     description: Not a Valid Master
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: 503 -Not a Valid Master!
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+
 func (repman *ReplicationManager) handlerMuxServersIsMasterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1272,6 +1318,52 @@ func (repman *ReplicationManager) handlerMuxServersPortIsMasterStatus(w http.Res
 		return
 	}
 }
+
+// swagger:operation GET /api/clusters/{clusterName}/servers/{serverName}/is-slave serverName-is-slave
+//
+//
+// ---
+// parameters:
+// - name: clusterName
+//   in: path
+//   description: cluster to filter by
+//   required: true
+//   type: string
+// - name: serverName
+//   in: path
+//   description: server to filter by
+//   required: true
+//   type: string
+// produces:
+//  - text/plain
+// responses:
+//   '200':
+//     description: OK
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: 200 -Valid Slave!
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '500':
+//     description: No cluster
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No cluster
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '503':
+//     description: Not a Valid Slave!
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: 503 -Not a Valid Slave!
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
 
 func (repman *ReplicationManager) handlerMuxServersIsSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1879,6 +1971,63 @@ func (repman *ReplicationManager) handlerMuxServerAllSlavesStatus(w http.Respons
 		return
 	}
 }
+
+// swagger:operation GET /api/clusters/{clusterName}/servers/{serverName}/master-status serverName-master-status
+//
+//
+// ---
+// parameters:
+// - name: clusterName
+//   in: path
+//   description: cluster to filter by
+//   required: true
+//   type: string
+// - name: serverName
+//   in: path
+//   description: server to filter by
+//   required: true
+//   type: string
+// produces:
+//  - text/plain
+// responses:
+//   '200':
+//     description: OK
+//   '403':
+//     description: No valid ACL
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No valid ACL
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '500':
+//     description: Encoding error
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: Encoding error
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '500':
+//     description: No cluster
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No cluster
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '503':
+//     description: Not a Valid Server!
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: 503 -Not a Valid Server!
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
 
 func (repman *ReplicationManager) handlerMuxServerMasterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")

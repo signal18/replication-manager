@@ -36,6 +36,268 @@
         }
       }
     },
+    "/api/clusters/{clusterName}/actions/master-physical-backup": {
+      "get": {
+        "produces": [
+          "text/plain"
+        ],
+        "operationId": "master-physical-backup",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "cluster to filter by",
+            "name": "clusterName",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            }
+          },
+          "400": {
+            "description": "No cluster found",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "No cluster found:cluster_1"
+            }
+          },
+          "403": {
+            "description": "No valid ACL",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "No valid ACL"
+            }
+          }
+        }
+      }
+    },
+    "/api/clusters/{clusterName}/servers/{serverName}/is-master": {
+      "get": {
+        "produces": [
+          "text/plain"
+        ],
+        "operationId": "serverName-is-master",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "cluster to filter by",
+            "name": "clusterName",
+            "in": "path",
+            "required": true
+          },
+          {
+            "type": "string",
+            "description": "server to filter by",
+            "name": "serverName",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "200 -Valid Master!"
+            }
+          },
+          "500": {
+            "description": "No cluster",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "No cluster"
+            }
+          },
+          "503": {
+            "description": "Not a Valid Master",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "503 -Not a Valid Master!"
+            }
+          }
+        }
+      }
+    },
+    "/api/clusters/{clusterName}/servers/{serverName}/is-slave": {
+      "get": {
+        "produces": [
+          "text/plain"
+        ],
+        "operationId": "serverName-is-slave",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "cluster to filter by",
+            "name": "clusterName",
+            "in": "path",
+            "required": true
+          },
+          {
+            "type": "string",
+            "description": "server to filter by",
+            "name": "serverName",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "200 -Valid Slave!"
+            }
+          },
+          "500": {
+            "description": "No cluster",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "No cluster"
+            }
+          },
+          "503": {
+            "description": "Not a Valid Slave!",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "503 -Not a Valid Slave!"
+            }
+          }
+        }
+      }
+    },
+    "/api/clusters/{clusterName}/servers/{serverName}/master-status": {
+      "get": {
+        "produces": [
+          "text/plain"
+        ],
+        "operationId": "serverName-master-status",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "cluster to filter by",
+            "name": "clusterName",
+            "in": "path",
+            "required": true
+          },
+          {
+            "type": "string",
+            "description": "server to filter by",
+            "name": "serverName",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "No valid ACL",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "No valid ACL"
+            }
+          },
+          "500": {
+            "description": "No cluster",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "No cluster"
+            }
+          },
+          "503": {
+            "description": "Not a Valid Server!",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "503 -Not a Valid Server!"
+            }
+          }
+        }
+      }
+    },
     "/api/clusters/{clusterName}/status": {
       "get": {
         "description": "Shows the status for that specific named cluster",
@@ -56,6 +318,16 @@
         }
       }
     },
+    "/api/heartbeat": {
+      "get": {
+        "operationId": "heartbeat",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/heartbeat"
+          }
+        }
+      }
+    },
     "/api/prometheus": {
       "get": {
         "description": "Returns the Prometheus metrics for all database instances on the server\nin the Prometheus text format",
@@ -68,6 +340,11 @@
             "description": "Prometheus file format",
             "schema": {
               "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
             }
           }
         }
@@ -2369,6 +2646,47 @@
       },
       "x-go-package": "github.com/signal18/replication-manager/utils/gtid"
     },
+    "Heartbeat": {
+      "type": "object",
+      "properties": {
+        "cluster": {
+          "type": "string",
+          "x-go-name": "Cluster"
+        },
+        "failed": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "Failed"
+        },
+        "hosts": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "Hosts"
+        },
+        "id": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "UID"
+        },
+        "master": {
+          "type": "string",
+          "x-go-name": "Master"
+        },
+        "secret": {
+          "type": "string",
+          "x-go-name": "Secret"
+        },
+        "status": {
+          "type": "string",
+          "x-go-name": "Status"
+        },
+        "uuid": {
+          "type": "string",
+          "x-go-name": "UUID"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/server"
+    },
     "HttpLog": {
       "description": "Collection of log messages",
       "type": "object",
@@ -2639,6 +2957,12 @@
         "items": {
           "$ref": "#/definitions/Crash"
         }
+      }
+    },
+    "heartbeat": {
+      "description": "A Heartbeat returns a quick overview of the cluster status",
+      "schema": {
+        "$ref": "#/definitions/Heartbeat"
       }
     },
     "httplog": {

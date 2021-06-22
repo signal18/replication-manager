@@ -367,6 +367,9 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 //     description: Prometheus file format
 //     schema:
 //       type: string
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
 func (repman *ReplicationManager) handlerMuxPrometheus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -440,6 +443,11 @@ func (repman *ReplicationManager) handlerMuxTimeout(w http.ResponseWriter, r *ht
 	time.Sleep(1200 * time.Second)
 	io.WriteString(w, `{"alive": "running"}`)
 }
+
+// swagger:route GET /api/heartbeat heartbeat
+//
+//     Responses:
+//       200: heartbeat
 
 func (repman *ReplicationManager) handlerMuxMonitorHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var send Heartbeat
