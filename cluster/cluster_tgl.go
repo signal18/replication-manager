@@ -249,7 +249,7 @@ func (cluster *Cluster) SwitchMonitoringProcesslist() {
 
 func (cluster *Cluster) SwitchMonitoringScheduler() {
 	cluster.Conf.MonitorScheduler = !cluster.Conf.MonitorScheduler
-	if cluster.Conf.MonitorScheduler {
+	if !cluster.Conf.MonitorScheduler {
 		cluster.LogPrintf(LvlInfo, "Stopping scheduler")
 		cluster.scheduler.Stop()
 	} else {
