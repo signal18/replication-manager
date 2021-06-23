@@ -254,7 +254,7 @@ func (cluster *Cluster) SwitchMonitoringScheduler() {
 		cluster.scheduler.Stop()
 	} else {
 		cluster.LogPrintf(LvlInfo, "Starting scheduler")
-		cluster.scheduler.Start()
+		cluster.initScheduler()
 	}
 }
 
