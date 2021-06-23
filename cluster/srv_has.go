@@ -356,9 +356,17 @@ func (server *ServerMonitor) IsRunning() bool {
 	return !server.IsDown()
 }
 
-// IFailed() returns true is the server is Failed or auth error
+// IsFailed() returns true is the server is Failed or auth error
 func (server *ServerMonitor) IsFailed() bool {
 	if server.State == stateFailed || server.State == stateErrorAuth {
+		return true
+	}
+	return false
+}
+
+// IsInStateFailed() returns true is the server state is failed
+func (server *ServerMonitor) IsInStateFailed() bool {
+	if server.State == stateFailed {
 		return true
 	}
 	return false
