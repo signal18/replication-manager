@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package signal18.replication_manager.v3;
+
+option go_package = "github.com/signal18/replication-manager;repmanv3";
+
+message Cluster {
+    string name = 1;
+}
+
+enum ServiceStatus {
+    SERVICESTATUS_UNSPECIFIED = 0;
+    RUNNING = 1;
+    STARTING = 2;
+    ERRORS = 3;
+}
+
+message StatusMessage {
+    ServiceStatus alive = 1;
+}
+
+// message Cluster {
+//     string name = 1;
+//     string tenant = 2;
+//     string working_dir = 3;
+//     repeated Agent agents = 4;
+//     repeated Tag config_tags = 5;
+//     repeated Tag config_prx_tags = 6;
+// }
+
+// message Agent {
+//     string id = 1;
+//     string hostname = 2;
+//     uint64 cpu_cores = 3;
+//     uint64 cpu_freq = 4;
+//     uint64 mem_bytes = 5;
+//     uint64 mem_free_bytes = 6;
+//     string os_kernel = 7;
+//     string os_name = 8;
+//     string status = 9;
+//     string version = 10;
+// }
+
+// message Tag {
+//     uint64 id = 1;
+//     string name = 2;
+//     string category = 3;
+// }
+

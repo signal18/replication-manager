@@ -12,6 +12,7 @@ BIN-PRO = $(BIN)-pro
 BIN-ARM = $(BIN)-arm
 BIN-CLI = $(BIN)-cli
 BIN-ARB = $(BIN)-arb
+PROTO_DIR = signal18/replication-manager/v3
 
 all: bin tar cli arb
 
@@ -60,3 +61,21 @@ package: all
 
 clean:
 	find $(BINDIR) -type f | xargs rm
+
+proto:
+	@protoc/bin/protoc \
+		-I ${PROTO_DIR} \
+		-I googleapis/ \
+		--go_opt=paths=source_relative \
+		--go_out=repmanv3 \
+		--go-grpc_opt=paths=source_relative \
+		--go-grpc_out=repmanv3 \
+		--grpc-gateway_opt logtostderr=true \
+		--grpc-gateway_opt paths=source_relative \
+		--grpc-gateway_out repmanv3 \
+		--openapiv2_out repmanv3 \
+		--openapiv2_opt logtostderr=true \
+		--openapiv2_opt allow_merge=true \
+		--openapiv2_opt merge_file_name=repmanv3 \
+		-orepmanv3/service.desc \
+		${PROTO_DIR}/cluster.proto ${PROTO_DIR}/messages.proto

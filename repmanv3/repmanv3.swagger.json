@@ -1,0 +1,130 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "cluster.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "ClusterPublicService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v3/clusters/{name}/actions/master-physical-backup": {
+      "get": {
+        "operationId": "ClusterPublicService_MasterPhysicalBackup",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ClusterPublicService"
+        ]
+      }
+    },
+    "/v3/clusters/{name}/status": {
+      "get": {
+        "operationId": "ClusterPublicService_ClusterStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v3StatusMessage"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ClusterPublicService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "typeUrl": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string",
+          "format": "byte"
+        }
+      }
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v3ServiceStatus": {
+      "type": "string",
+      "enum": [
+        "SERVICESTATUS_UNSPECIFIED",
+        "RUNNING",
+        "STARTING",
+        "ERRORS"
+      ],
+      "default": "SERVICESTATUS_UNSPECIFIED"
+    },
+    "v3StatusMessage": {
+      "type": "object",
+      "properties": {
+        "alive": {
+          "$ref": "#/definitions/v3ServiceStatus"
+        }
+      }
+    }
+  }
+}

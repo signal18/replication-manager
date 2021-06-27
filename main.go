@@ -725,8 +725,16 @@ For interacting with this daemon use,
 
 		RepMan = new(server.ReplicationManager)
 		RepMan.InitConfig(conf)
+		RepMan.SetV3Config(server.Repmanv3Config{
+			Listen: server.Repmanv3ListenAddress{
+				Address: "0.0.0.0",
+				Port:    "7777",
+			},
+			TLS: server.Repmanv3TLS{
+				Enabled: false,
+			},
+		})
 		RepMan.Run()
-
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
 		// Close connections on exit.
