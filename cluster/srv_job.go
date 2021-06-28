@@ -457,7 +457,7 @@ func (server *ServerMonitor) JobMyLoaderParseMeta(dir string) (config.MyDumperMe
 }
 
 func (server *ServerMonitor) JobsCheckRunning() error {
-	if server.IsDown() || server.ClusterGroup.Conf.MonitorScheduler == false {
+	if server.IsDown() {
 		return nil
 	}
 	//server.JobInsertTaks("", "", "")
@@ -856,7 +856,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 		return err
 	}
 	defer client.Close()
-	out, err2 := client.ScriptFile(server.Datadir + "/init/init/dbjobs_new").SmartOutput()
+	out, err2 := client.Script(server.Datadir + "/init/init/dbjobs_new").Output()
 	if err2 != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err2)
 		return err

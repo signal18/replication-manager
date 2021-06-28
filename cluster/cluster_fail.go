@@ -821,6 +821,9 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 				continue
 			}
 		}
+		if cluster.master == nil {
+			continue
+		}
 
 		ss, errss := sl.GetSlaveStatus(sl.ReplicationSourceName)
 		// not a slave
