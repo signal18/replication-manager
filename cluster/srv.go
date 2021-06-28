@@ -400,6 +400,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skiping refresh")
 		return
 	}
+	// For orchestrator to trigger a start via tracking state URL
+	if server.PrevState == stateFailed {
+		server.DelWaitStartCookie()
+		server.DelRestartCookie()
+	}
+
 	// reaffect a global DB pool object if we never get it , ex dynamic seeding
 	if server.Conn == nil {
 		server.Conn = conn
@@ -415,11 +421,6 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 	defer conn.Close()
 
-	// For orchestrator to trigger a start via tracking state URL
-	if server.PrevState == stateFailed {
-		server.DelWaitStartCookie()
-		server.DelRestartCookie()
-	}
 	// Reset FailCount
 	if (server.State != stateFailed && server.State != stateErrorAuth && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
 		server.FailCount = 0
