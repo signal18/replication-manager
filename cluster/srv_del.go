@@ -14,7 +14,7 @@ import (
 )
 
 func (server *ServerMonitor) delCookie(key string) error {
-	err := os.Remove(server.Datadir + "/@/" + key)
+	err := os.Remove(server.Datadir + "/@" + key)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie (%s) %s", key, err)
 	}
