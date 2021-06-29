@@ -511,8 +511,6 @@ func (repman *ReplicationManager) Run() error {
 
 	go repman.apiserver()
 
-	go repman.StartServer(true)
-
 	if repman.Conf.ProvOrchestrator == "opensvc" {
 		repman.Agents = []opensvc.Host{}
 		repman.OpenSVC.Host, repman.OpenSVC.Port = misc.SplitHostPort(repman.Conf.ProvHost)

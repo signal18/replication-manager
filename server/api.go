@@ -25,7 +25,6 @@ import (
 	"github.com/codegangsta/negroni"
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
-	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/regtest"
@@ -147,12 +146,30 @@ func (repman *ReplicationManager) apiserver() {
 	log.Info("Starting HTTPS & JWT API on " + repman.Conf.APIBind + ":" + repman.Conf.APIPort)
 	var err error
 
-	if repman.Conf.MonitoringSSLCert == "" {
-		//	err = http.ListenAndServeTLS(repman.Conf.APIBind+":"+repman.Conf.APIPort, repman.Conf.ShareDir+"/server.crt", repman.Conf.ShareDir+"/server.key", router)
-		err = http.ListenAndServeTLS(repman.Conf.APIBind+":"+repman.Conf.APIPort, repman.Conf.ShareDir+"/server.crt", repman.Conf.ShareDir+"/server.key", handlers.CORS(handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}), handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}), handlers.AllowedOrigins([]string{"*"}))(router))
-	} else {
-		err = http.ListenAndServeTLS(repman.Conf.APIBind+":"+repman.Conf.APIPort, repman.Conf.MonitoringSSLCert, repman.Conf.MonitoringSSLKey, handlers.CORS(handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}), handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}), handlers.AllowedOrigins([]string{"*"}))(router))
+	tlsConfig := Repmanv3TLS{
+		Enabled: false,
 	}
+
+	if repman.Conf.MonitoringSSLCert != "" {
+		tlsConfig = Repmanv3TLS{
+			Enabled:            true,
+			CertificatePath:    repman.Conf.MonitoringSSLCert,
+			CertificateKeyPath: repman.Conf.MonitoringSSLKey,
+		}
+	}
+
+	repman.SetV3Config(Repmanv3Config{
+		Listen: Repmanv3ListenAddress{
+			Address: repman.Conf.APIBind,
+			Port:    repman.Conf.APIPort,
+		},
+		TLS: tlsConfig,
+	})
+
+	// pass the router to the V3 server that will multiplex the legacy API and the
+	// new gRPC + JSON Gateway API.
+	err = repman.StartServerV3(true, router)
+
 	if err != nil {
 		log.Errorf("JWT API can't start: %s", err)
 	}

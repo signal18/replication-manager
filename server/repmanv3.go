@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	v3 "github.com/signal18/replication-manager/repmanv3"
@@ -52,7 +54,7 @@ func (s *ReplicationManager) SetV3Config(config Repmanv3Config) {
 	s.v3Config = config
 }
 
-func (s *ReplicationManager) StartServer(debug bool) error {
+func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -103,20 +105,22 @@ func (s *ReplicationManager) StartServer(debug bool) error {
 		dopts,
 	)
 	if err != nil {
-		return fmt.Errorf("could not register service Distrib: %w", err)
+		return fmt.Errorf("could not register service ClusterPublicService: %w", err)
 	}
 
 	httpmux.Handle("/", gwmux)
-	// httpmux.HandleFunc("/v1/swagger.json", func(w http.ResponseWriter, r *http.Request) {
-	// 	headers := w.Header()
-	// 	headers["Access-Control-Allow-Origin"] = []string{"*"}
-	// 	headers["Content-Type"] = []string{"application/json"}
-	// 	fmt.Fprint(w, distrib.GetSwaggerJSON())
-	// })
 
 	srv := &http.Server{
-		Addr:    s.v3Config.Listen.AddressWithPort(),
-		Handler: grpcHandlerFunc(s, httpmux),
+		Addr: s.v3Config.Listen.AddressWithPort(),
+		Handler: grpcHandlerFunc(s,
+			httpmux,
+			handlers.CORS(
+				handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
+				handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}),
+				handlers.AllowedOrigins([]string{"*"}),
+			)(router),
+		),
+
 		// ErrorLog: zap.NewStdLog(s.log),
 	}
 
@@ -127,14 +131,10 @@ func (s *ReplicationManager) StartServer(debug bool) error {
 	// s.V3Up <- true
 	if s.v3Config.TLS.Enabled {
 		log.Info("starting multiplexed TLS HTTP/2.0 and HTTP/1.1 Gateway server: ", s.v3Config.Listen.AddressWithPort())
-		// s.log.Info("starting multiplexed HTTP/2.0 and HTTP/1.1 Gateway server",
-		// 	zap.String("listen", s.v3Config.Listen.AddressWithPort()), zap.Bool("TLS", s.v3Config.TLS.Enabled))
 		srv.TLSConfig = tlsConfig
 		err = srv.Serve(tls.NewListener(conn, srv.TLSConfig))
 	} else {
 		log.Info("starting multiplexed HTTP/2.0 and HTTP/1.1 Gateway server: ", s.v3Config.Listen.AddressWithPort())
-		// s.log.Info("starting multiplexed HTTP/2.0 and HTTP/1.1 Gateway server",
-		// 	zap.String("listen", conn.Addr().String()), zap.Bool("TLS", s.v3Config.TLS.Enabled))
 		// we need to wrap the non-tls connection inside h2c because http2 in Go enforces TLS
 		srv.Handler = h2c.NewHandler(srv.Handler, &http2.Server{})
 		err = srv.Serve(conn)
@@ -191,16 +191,21 @@ func (s *ReplicationManager) getCredentials() (opts []grpc.ServerOption, dopts [
 }
 
 // grpcHandlerFunc returns an http.Handler that delegates to grpcServer on incoming gRPC
-// connections or otherHandler otherwise. Copied from cockroachdb.
-func grpcHandlerFunc(s *ReplicationManager, otherHandler http.Handler) http.Handler {
+// connections or otherHandler otherwise. Adapter from cockroachdb.
+func grpcHandlerFunc(s *ReplicationManager, otherHandler http.Handler, legacyHandler http.Handler) http.Handler {
 	return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 		if req.ProtoMajor == 2 && req.Header.Get("Content-Type") == "application/grpc" {
 			s.grpcServer.ServeHTTP(resp, req)
 		} else {
 			if s.grpcWrapped.IsAcceptableGrpcCorsRequest(req) || s.grpcWrapped.IsGrpcWebRequest(req) {
 				s.grpcWrapped.ServeHTTP(resp, req)
-			} else {
+			}
+
+			// check if we need to serve the new API or the old one
+			if strings.Contains(req.URL.Path, "/v3") {
 				otherHandler.ServeHTTP(resp, req)
+			} else {
+				legacyHandler.ServeHTTP(resp, req)
 			}
 		}
 	})
