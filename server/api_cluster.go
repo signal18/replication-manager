@@ -1459,13 +1459,17 @@ func (repman *ReplicationManager) handlerMuxClusterStatus(w http.ResponseWriter,
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	if mycluster.GetStatus() {
-		io.WriteString(w, `{"alive": "running"}`)
+	if mycluster != nil {
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		if mycluster.GetStatus() {
+			io.WriteString(w, `{"alive": "running"}`)
+		} else {
+			io.WriteString(w, `{"alive": "errors"}`)
+		}
 	} else {
-		io.WriteString(w, `{"alive": "errors"}`)
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, "No cluster found:"+vars["clusterName"])
 	}
 }
 
