@@ -122,7 +122,10 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 }
 
 func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
-
+	if server.ClusterGroup.master != nil && !server.ClusterGroup.GetBackupServer().HasBackupPhysicalCookie() {
+		server.createCookie("cookie_waitbackup")
+		return 0, errors.New("No Physical Backup")
+	}
 	jobid, err := server.JobInsertTaks("reseed"+server.ClusterGroup.Conf.BackupPhysicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
@@ -153,6 +156,10 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 }
 
 func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
+	if server.ClusterGroup.master != nil && !server.ClusterGroup.GetBackupServer().HasBackupPhysicalCookie() {
+		server.createCookie("cookie_waitbackup")
+		return 0, errors.New("No Physical Backup")
+	}
 
 	jobid, err := server.JobInsertTaks("flashback"+server.ClusterGroup.Conf.BackupPhysicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 
@@ -186,6 +193,12 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 }
 
 func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
+
+	if server.ClusterGroup.master != nil && !server.ClusterGroup.GetBackupServer().HasBackupLogicalCookie() {
+		server.createCookie("cookie_waitbackup")
+		return 0, errors.New("No Logical Backup")
+	}
+
 	jobid, err := server.JobInsertTaks("reseed"+server.ClusterGroup.Conf.BackupLogicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
@@ -237,6 +250,10 @@ func (server *ServerMonitor) JobServerRestart() (int64, error) {
 }
 
 func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
+	if server.ClusterGroup.master != nil && !server.ClusterGroup.GetBackupServer().HasBackupLogicalCookie() {
+		server.createCookie("cookie_waitbackup")
+		return 0, errors.New("No Logical Backup")
+	}
 	jobid, err := server.JobInsertTaks("flashback"+server.ClusterGroup.Conf.BackupLogicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
