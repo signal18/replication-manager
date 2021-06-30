@@ -4,6 +4,7 @@ package signal18.replication_manager.v3;
 
 import "google/api/annotations.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
 import "messages.proto";
 
 option go_package = "github.com/signal18/replication-manager;repmanv3";
@@ -20,6 +21,40 @@ service ClusterPublicService {
         // replaces /api/clusters/{name}/actions/master-physical-backup
         option (google.api.http) = {
             get: "/v3/clusters/{name}/actions/master-physical-backup"
+        };
+    }
+}
+
+service ClusterService {
+    rpc GetSettingsForCluster(Cluster) returns (google.protobuf.Struct) {
+        // replaces /api/clusters/{clusterName}/settings
+        option (google.api.http) = {
+            get: "/v3/clusters/{name}/settings"
+        };
+    }
+
+    rpc SetActionForClusterSettings(ClusterSetting) returns (google.protobuf.Empty) {
+        
+        option (google.api.http) = {
+            // /api/clusters/{clusterName}/settings/actions/apply-dynamic-config
+            // /api/clusters/{clusterName}/settings/actions/discover
+            // /api/clusters/{clusterName}/settings/actions/reload
+            get: "/v3/clusters/{cluster.name}/settings/actions/{action}"
+            additional_bindings {
+                // /api/clusters/{clusterName}/settings/actions/add-db-tag/{tagValue}
+                // /api/clusters/{clusterName}/settings/actions/add-proxy-tag/{tagValue}
+                // /api/clusters/{clusterName}/settings/actions/drop-db-tag/{tagValue}
+                // /api/clusters/{clusterName}/settings/actions/drop-proxy-tag/{tagValue}
+				get: "/v3/clusters/{cluster.name}/settings/actions/{action}/{tag_value}"
+			}
+            additional_bindings {
+                // /api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}
+				get: "/v3/clusters/{cluster.name}/settings/actions/set/{setting.name}/{setting.value}"
+			}
+            additional_bindings {
+                // /api/clusters/{clusterName}/settings/actions/switch/{settingName}
+				get: "/v3/clusters/{cluster.name}/settings/actions/switch/{switch.name}"
+			}
         };
     }
 }

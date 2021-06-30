@@ -7,6 +7,9 @@
   "tags": [
     {
       "name": "ClusterPublicService"
+    },
+    {
+      "name": "ClusterService"
     }
   ],
   "consumes": [
@@ -16,6 +19,802 @@
     "application/json"
   ],
   "paths": {
+    "/v3/clusters/{cluster.name}/settings/actions/set/{setting.name}/{setting.value}": {
+      "get": {
+        "operationId": "ClusterService_SetActionForClusterSettings3",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "setting.name",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "UNSPECIFIED",
+              "BACKUP_BINLOGS_KEEP",
+              "BACKUP_KEEP_DAILY",
+              "BACKUP_KEEP_HOURLY",
+              "BACKUP_KEEP_MONTHLY",
+              "BACKUP_KEEP_WEEKLY",
+              "BACKUP_KEEP_YEARLY",
+              "BACKUP_LOGICAL_TYPE",
+              "BACKUP_PHYSICAL_TYPE",
+              "DB_SERVERS_CREDENTIAL",
+              "DB_SERVERS_HOSTS",
+              "FAILOVER_LIMIT",
+              "FAILOVER_MAX_SLAVE_DELAY",
+              "MAXSCALE_SERVERS_CREDENTIAL",
+              "MONITORING_ADDRESS",
+              "PROV_DB_AGENTS",
+              "PROV_DB_CPU_CORES",
+              "PROV_DB_DISK_DEVICE",
+              "PROV_DB_DISK_FS",
+              "PROV_DB_DISK_IOPS",
+              "PROV_DB_DISK_POOL",
+              "PROV_DB_DISK_SIZE",
+              "PROV_DB_DISK_TYPE",
+              "PROV_DB_EXPIRE_LOG_DAYS",
+              "PROV_DB_IMAGE",
+              "PROV_DB_MAX_CONNECTIONS",
+              "PROV_DB_MEMORY",
+              "PROV_DB_SERVICE_TYPE",
+              "PROV_NET_CNI_CLUSTER",
+              "PROV_ORCHESTRATOR_CLUSTER",
+              "PROV_ORCHESTRATOR",
+              "PROV_PROXY_AGENTS",
+              "PROV_PROXY_CPU_CORES",
+              "PROV_PROXY_DISK_DEVICE",
+              "PROV_PROXY_DISK_FS",
+              "PROV_PROXY_DISK_POOL",
+              "PROV_PROXY_DISK_SIZE",
+              "PROV_PROXY_DISK_TYPE",
+              "PROV_PROXY_DOCKER_HAPROXY_IMG",
+              "PROV_PROXY_DOCKER_MAXSCALE_IMG",
+              "PROV_PROXY_DOCKER_PROXYSQL_IMG",
+              "PROV_PROXY_DOCKER_SHARDPROXY_IMG",
+              "PROV_PROXY_MEMORY",
+              "PROV_PROXY_SERVICE_TYPE",
+              "PROV_SERVICE_PLAN",
+              "PROV_SPHINX_IMG",
+              "PROXY_SERVERS_BACKEND_MAX_CONNECTIONS",
+              "PROXY_SERVERS_BACKEND_MAX_REPLICATION_LAG",
+              "PROXYSQL_SERVERS_CREDENTIAL",
+              "REPLICATION_CREDENTIAL",
+              "SCHEDULER_DB_SERVERS_LOGICAL_BACKUP_CRON",
+              "SCHEDULER_DB_SERVERS_LOGS_CRON",
+              "SCHEDULER_DB_SERVERS_LOGS_TABLE_ROTATE_CRON",
+              "SCHEDULER_DB_SERVERS_OPTIMIZE_CRON",
+              "SCHEDULER_DB_SERVERS_PHYSICAL_BACKUP_CRON",
+              "SCHEDULER_JOBS_SSH_CRON",
+              "SCHEDULER_ROLLING_REPROV_CRON",
+              "SCHEDULER_ROLLING_RESTART_CRON",
+              "SCHEDULER_SLA_ROTATE_CRON",
+              "SHARDPROXY_SERVERS_CREDENTIAL",
+              "SWITCHOVER_WAIT_ROUTE_CHANGE"
+            ]
+          },
+          {
+            "name": "setting.value",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNSPECIFIED",
+              "DISCOVER",
+              "APPLY_DYNAMIC_CONFIG",
+              "RELOAD",
+              "SET",
+              "SWITCH",
+              "ADD_DB_TAG",
+              "DROP_DB_TAG",
+              "ADD_PROXY_TAG",
+              "DROP_PROXY_TAG"
+            ],
+            "default": "UNSPECIFIED"
+          },
+          {
+            "name": "tagValue",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "switch.name",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNSPECIFIED",
+              "AUTOREJOIN_BACKUP_BINLOG",
+              "AUTOREJOIN_FLASHBACK_ON_SYNC",
+              "AUTOREJOIN_FLASHBACK_ON_UNSYNC",
+              "AUTOREJOIN_FLASHBACK",
+              "AUTOREJOIN_LOGICAL_BACKUP",
+              "AUTOREJOIN_MYSQLDUMP",
+              "AUTOREJOIN_PHYSICAL_BACKUP",
+              "AUTOREJOIN_SLAVE_POSITIONAL_HEARTBEAT",
+              "AUTOREJOIN_ZFS_FLASHBACK",
+              "AUTOREJOIN",
+              "AUTOSEED",
+              "BACKUP_BINLOGS",
+              "BACKUP_RESTIC",
+              "CHECK_REPLICATION_FILTERS",
+              "CHECK_REPLICATION_STATE",
+              "DATABASE_HEARTBEAT",
+              "FAILOVER_AT_SYNC",
+              "FAILOVER_EVENT_SCHEDULER",
+              "FAILOVER_EVENT_STATUS",
+              "FAILOVER_MODE",
+              "FAILOVER_READONLY_STATE",
+              "FAILOVER_RESTART_UNSAFE",
+              "FORCE_SLAVE_NO_GTID_MODE",
+              "GRAPHITE_EMBEDDED",
+              "GRAPHITE_METRICS",
+              "MONITORING_CAPTURE",
+              "MONITORING_INNODB_STATUS",
+              "MONITORING_PAUSE",
+              "MONITORING_PROCESSLIST",
+              "MONITORING_QUERIES",
+              "MONITORING_SAVE_CONFIG",
+              "MONITORING_SCHEDULER",
+              "MONITORING_SCHEMA_CHANGE",
+              "MONITORING_VARIABLE_DIFF",
+              "PROV_DB_APPLY_DYNAMIC_CONFIG",
+              "PROV_DOCKER_DAEMON_PRIVATE",
+              "PROV_NET_CNI",
+              "PROXY_SERVERS_BACKEND_COMPRESSION",
+              "PROXY_SERVERS_READ_ON_MASTER",
+              "PROXYSQL_BOOTSTRAP_HOSTGROUPS",
+              "PROXYSQL_BOOTSTRAP_QUERY_RULES",
+              "PROXYSQL_BOOTSTRAP_SERVERS",
+              "PROXYSQL_BOOTSTRAP_USERS",
+              "PROXYSQL_BOOTSTRAP_VARIABLES",
+              "PROXYSQL_BOOTSTRAP",
+              "PROXYSQL_COPY_GRANTS",
+              "PROXYSQL",
+              "SCHEDULER_DB_SERVERS_LOGICAL_BACKUP",
+              "SCHEDULER_DB_SERVERS_LOGS_TABLE_ROTATE",
+              "SCHEDULER_DB_SERVERS_LOGS",
+              "SCHEDULER_DB_SERVERS_OPTIMIZE",
+              "SCHEDULER_DB_SERVERS_PHYSICAL_BACKUP",
+              "SCHEDULER_JOBS_SSH",
+              "SCHEDULER_ROLLING_REPROV",
+              "SCHEDULER_ROLLING_RESTART",
+              "SHARDPROXY_COPY_GRANTS",
+              "SWITCHOVER_AT_SYNC",
+              "TEST",
+              "VERBOSE"
+            ],
+            "default": "UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
+    "/v3/clusters/{cluster.name}/settings/actions/switch/{switch.name}": {
+      "get": {
+        "operationId": "ClusterService_SetActionForClusterSettings4",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "switch.name",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "UNSPECIFIED",
+              "AUTOREJOIN_BACKUP_BINLOG",
+              "AUTOREJOIN_FLASHBACK_ON_SYNC",
+              "AUTOREJOIN_FLASHBACK_ON_UNSYNC",
+              "AUTOREJOIN_FLASHBACK",
+              "AUTOREJOIN_LOGICAL_BACKUP",
+              "AUTOREJOIN_MYSQLDUMP",
+              "AUTOREJOIN_PHYSICAL_BACKUP",
+              "AUTOREJOIN_SLAVE_POSITIONAL_HEARTBEAT",
+              "AUTOREJOIN_ZFS_FLASHBACK",
+              "AUTOREJOIN",
+              "AUTOSEED",
+              "BACKUP_BINLOGS",
+              "BACKUP_RESTIC",
+              "CHECK_REPLICATION_FILTERS",
+              "CHECK_REPLICATION_STATE",
+              "DATABASE_HEARTBEAT",
+              "FAILOVER_AT_SYNC",
+              "FAILOVER_EVENT_SCHEDULER",
+              "FAILOVER_EVENT_STATUS",
+              "FAILOVER_MODE",
+              "FAILOVER_READONLY_STATE",
+              "FAILOVER_RESTART_UNSAFE",
+              "FORCE_SLAVE_NO_GTID_MODE",
+              "GRAPHITE_EMBEDDED",
+              "GRAPHITE_METRICS",
+              "MONITORING_CAPTURE",
+              "MONITORING_INNODB_STATUS",
+              "MONITORING_PAUSE",
+              "MONITORING_PROCESSLIST",
+              "MONITORING_QUERIES",
+              "MONITORING_SAVE_CONFIG",
+              "MONITORING_SCHEDULER",
+              "MONITORING_SCHEMA_CHANGE",
+              "MONITORING_VARIABLE_DIFF",
+              "PROV_DB_APPLY_DYNAMIC_CONFIG",
+              "PROV_DOCKER_DAEMON_PRIVATE",
+              "PROV_NET_CNI",
+              "PROXY_SERVERS_BACKEND_COMPRESSION",
+              "PROXY_SERVERS_READ_ON_MASTER",
+              "PROXYSQL_BOOTSTRAP_HOSTGROUPS",
+              "PROXYSQL_BOOTSTRAP_QUERY_RULES",
+              "PROXYSQL_BOOTSTRAP_SERVERS",
+              "PROXYSQL_BOOTSTRAP_USERS",
+              "PROXYSQL_BOOTSTRAP_VARIABLES",
+              "PROXYSQL_BOOTSTRAP",
+              "PROXYSQL_COPY_GRANTS",
+              "PROXYSQL",
+              "SCHEDULER_DB_SERVERS_LOGICAL_BACKUP",
+              "SCHEDULER_DB_SERVERS_LOGS_TABLE_ROTATE",
+              "SCHEDULER_DB_SERVERS_LOGS",
+              "SCHEDULER_DB_SERVERS_OPTIMIZE",
+              "SCHEDULER_DB_SERVERS_PHYSICAL_BACKUP",
+              "SCHEDULER_JOBS_SSH",
+              "SCHEDULER_ROLLING_REPROV",
+              "SCHEDULER_ROLLING_RESTART",
+              "SHARDPROXY_COPY_GRANTS",
+              "SWITCHOVER_AT_SYNC",
+              "TEST",
+              "VERBOSE"
+            ]
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNSPECIFIED",
+              "DISCOVER",
+              "APPLY_DYNAMIC_CONFIG",
+              "RELOAD",
+              "SET",
+              "SWITCH",
+              "ADD_DB_TAG",
+              "DROP_DB_TAG",
+              "ADD_PROXY_TAG",
+              "DROP_PROXY_TAG"
+            ],
+            "default": "UNSPECIFIED"
+          },
+          {
+            "name": "tagValue",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "setting.name",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNSPECIFIED",
+              "BACKUP_BINLOGS_KEEP",
+              "BACKUP_KEEP_DAILY",
+              "BACKUP_KEEP_HOURLY",
+              "BACKUP_KEEP_MONTHLY",
+              "BACKUP_KEEP_WEEKLY",
+              "BACKUP_KEEP_YEARLY",
+              "BACKUP_LOGICAL_TYPE",
+              "BACKUP_PHYSICAL_TYPE",
+              "DB_SERVERS_CREDENTIAL",
+              "DB_SERVERS_HOSTS",
+              "FAILOVER_LIMIT",
+              "FAILOVER_MAX_SLAVE_DELAY",
+              "MAXSCALE_SERVERS_CREDENTIAL",
+              "MONITORING_ADDRESS",
+              "PROV_DB_AGENTS",
+              "PROV_DB_CPU_CORES",
+              "PROV_DB_DISK_DEVICE",
+              "PROV_DB_DISK_FS",
+              "PROV_DB_DISK_IOPS",
+              "PROV_DB_DISK_POOL",
+              "PROV_DB_DISK_SIZE",
+              "PROV_DB_DISK_TYPE",
+              "PROV_DB_EXPIRE_LOG_DAYS",
+              "PROV_DB_IMAGE",
+              "PROV_DB_MAX_CONNECTIONS",
+              "PROV_DB_MEMORY",
+              "PROV_DB_SERVICE_TYPE",
+              "PROV_NET_CNI_CLUSTER",
+              "PROV_ORCHESTRATOR_CLUSTER",
+              "PROV_ORCHESTRATOR",
+              "PROV_PROXY_AGENTS",
+              "PROV_PROXY_CPU_CORES",
+              "PROV_PROXY_DISK_DEVICE",
+              "PROV_PROXY_DISK_FS",
+              "PROV_PROXY_DISK_POOL",
+              "PROV_PROXY_DISK_SIZE",
+              "PROV_PROXY_DISK_TYPE",
+              "PROV_PROXY_DOCKER_HAPROXY_IMG",
+              "PROV_PROXY_DOCKER_MAXSCALE_IMG",
+              "PROV_PROXY_DOCKER_PROXYSQL_IMG",
+              "PROV_PROXY_DOCKER_SHARDPROXY_IMG",
+              "PROV_PROXY_MEMORY",
+              "PROV_PROXY_SERVICE_TYPE",
+              "PROV_SERVICE_PLAN",
+              "PROV_SPHINX_IMG",
+              "PROXY_SERVERS_BACKEND_MAX_CONNECTIONS",
+              "PROXY_SERVERS_BACKEND_MAX_REPLICATION_LAG",
+              "PROXYSQL_SERVERS_CREDENTIAL",
+              "REPLICATION_CREDENTIAL",
+              "SCHEDULER_DB_SERVERS_LOGICAL_BACKUP_CRON",
+              "SCHEDULER_DB_SERVERS_LOGS_CRON",
+              "SCHEDULER_DB_SERVERS_LOGS_TABLE_ROTATE_CRON",
+              "SCHEDULER_DB_SERVERS_OPTIMIZE_CRON",
+              "SCHEDULER_DB_SERVERS_PHYSICAL_BACKUP_CRON",
+              "SCHEDULER_JOBS_SSH_CRON",
+              "SCHEDULER_ROLLING_REPROV_CRON",
+              "SCHEDULER_ROLLING_RESTART_CRON",
+              "SCHEDULER_SLA_ROTATE_CRON",
+              "SHARDPROXY_SERVERS_CREDENTIAL",
+              "SWITCHOVER_WAIT_ROUTE_CHANGE"
+            ],
+            "default": "UNSPECIFIED"
+          },
+          {
+            "name": "setting.value",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
+    "/v3/clusters/{cluster.name}/settings/actions/{action}": {
+      "get": {
+        "operationId": "ClusterService_SetActionForClusterSettings",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "UNSPECIFIED",
+              "DISCOVER",
+              "APPLY_DYNAMIC_CONFIG",
+              "RELOAD",
+              "SET",
+              "SWITCH",
+              "ADD_DB_TAG",
+              "DROP_DB_TAG",
+              "ADD_PROXY_TAG",
+              "DROP_PROXY_TAG"
+            ]
+          },
+          {
+            "name": "tagValue",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "setting.name",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNSPECIFIED",
+              "BACKUP_BINLOGS_KEEP",
+              "BACKUP_KEEP_DAILY",
+              "BACKUP_KEEP_HOURLY",
+              "BACKUP_KEEP_MONTHLY",
+              "BACKUP_KEEP_WEEKLY",
+              "BACKUP_KEEP_YEARLY",
+              "BACKUP_LOGICAL_TYPE",
+              "BACKUP_PHYSICAL_TYPE",
+              "DB_SERVERS_CREDENTIAL",
+              "DB_SERVERS_HOSTS",
+              "FAILOVER_LIMIT",
+              "FAILOVER_MAX_SLAVE_DELAY",
+              "MAXSCALE_SERVERS_CREDENTIAL",
+              "MONITORING_ADDRESS",
+              "PROV_DB_AGENTS",
+              "PROV_DB_CPU_CORES",
+              "PROV_DB_DISK_DEVICE",
+              "PROV_DB_DISK_FS",
+              "PROV_DB_DISK_IOPS",
+              "PROV_DB_DISK_POOL",
+              "PROV_DB_DISK_SIZE",
+              "PROV_DB_DISK_TYPE",
+              "PROV_DB_EXPIRE_LOG_DAYS",
+              "PROV_DB_IMAGE",
+              "PROV_DB_MAX_CONNECTIONS",
+              "PROV_DB_MEMORY",
+              "PROV_DB_SERVICE_TYPE",
+              "PROV_NET_CNI_CLUSTER",
+              "PROV_ORCHESTRATOR_CLUSTER",
+              "PROV_ORCHESTRATOR",
+              "PROV_PROXY_AGENTS",
+              "PROV_PROXY_CPU_CORES",
+              "PROV_PROXY_DISK_DEVICE",
+              "PROV_PROXY_DISK_FS",
+              "PROV_PROXY_DISK_POOL",
+              "PROV_PROXY_DISK_SIZE",
+              "PROV_PROXY_DISK_TYPE",
+              "PROV_PROXY_DOCKER_HAPROXY_IMG",
+              "PROV_PROXY_DOCKER_MAXSCALE_IMG",
+              "PROV_PROXY_DOCKER_PROXYSQL_IMG",
+              "PROV_PROXY_DOCKER_SHARDPROXY_IMG",
+              "PROV_PROXY_MEMORY",
+              "PROV_PROXY_SERVICE_TYPE",
+              "PROV_SERVICE_PLAN",
+              "PROV_SPHINX_IMG",
+              "PROXY_SERVERS_BACKEND_MAX_CONNECTIONS",
+              "PROXY_SERVERS_BACKEND_MAX_REPLICATION_LAG",
+              "PROXYSQL_SERVERS_CREDENTIAL",
+              "REPLICATION_CREDENTIAL",
+              "SCHEDULER_DB_SERVERS_LOGICAL_BACKUP_CRON",
+              "SCHEDULER_DB_SERVERS_LOGS_CRON",
+              "SCHEDULER_DB_SERVERS_LOGS_TABLE_ROTATE_CRON",
+              "SCHEDULER_DB_SERVERS_OPTIMIZE_CRON",
+              "SCHEDULER_DB_SERVERS_PHYSICAL_BACKUP_CRON",
+              "SCHEDULER_JOBS_SSH_CRON",
+              "SCHEDULER_ROLLING_REPROV_CRON",
+              "SCHEDULER_ROLLING_RESTART_CRON",
+              "SCHEDULER_SLA_ROTATE_CRON",
+              "SHARDPROXY_SERVERS_CREDENTIAL",
+              "SWITCHOVER_WAIT_ROUTE_CHANGE"
+            ],
+            "default": "UNSPECIFIED"
+          },
+          {
+            "name": "setting.value",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "switch.name",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNSPECIFIED",
+              "AUTOREJOIN_BACKUP_BINLOG",
+              "AUTOREJOIN_FLASHBACK_ON_SYNC",
+              "AUTOREJOIN_FLASHBACK_ON_UNSYNC",
+              "AUTOREJOIN_FLASHBACK",
+              "AUTOREJOIN_LOGICAL_BACKUP",
+              "AUTOREJOIN_MYSQLDUMP",
+              "AUTOREJOIN_PHYSICAL_BACKUP",
+              "AUTOREJOIN_SLAVE_POSITIONAL_HEARTBEAT",
+              "AUTOREJOIN_ZFS_FLASHBACK",
+              "AUTOREJOIN",
+              "AUTOSEED",
+              "BACKUP_BINLOGS",
+              "BACKUP_RESTIC",
+              "CHECK_REPLICATION_FILTERS",
+              "CHECK_REPLICATION_STATE",
+              "DATABASE_HEARTBEAT",
+              "FAILOVER_AT_SYNC",
+              "FAILOVER_EVENT_SCHEDULER",
+              "FAILOVER_EVENT_STATUS",
+              "FAILOVER_MODE",
+              "FAILOVER_READONLY_STATE",
+              "FAILOVER_RESTART_UNSAFE",
+              "FORCE_SLAVE_NO_GTID_MODE",
+              "GRAPHITE_EMBEDDED",
+              "GRAPHITE_METRICS",
+              "MONITORING_CAPTURE",
+              "MONITORING_INNODB_STATUS",
+              "MONITORING_PAUSE",
+              "MONITORING_PROCESSLIST",
+              "MONITORING_QUERIES",
+              "MONITORING_SAVE_CONFIG",
+              "MONITORING_SCHEDULER",
+              "MONITORING_SCHEMA_CHANGE",
+              "MONITORING_VARIABLE_DIFF",
+              "PROV_DB_APPLY_DYNAMIC_CONFIG",
+              "PROV_DOCKER_DAEMON_PRIVATE",
+              "PROV_NET_CNI",
+              "PROXY_SERVERS_BACKEND_COMPRESSION",
+              "PROXY_SERVERS_READ_ON_MASTER",
+              "PROXYSQL_BOOTSTRAP_HOSTGROUPS",
+              "PROXYSQL_BOOTSTRAP_QUERY_RULES",
+              "PROXYSQL_BOOTSTRAP_SERVERS",
+              "PROXYSQL_BOOTSTRAP_USERS",
+              "PROXYSQL_BOOTSTRAP_VARIABLES",
+              "PROXYSQL_BOOTSTRAP",
+              "PROXYSQL_COPY_GRANTS",
+              "PROXYSQL",
+              "SCHEDULER_DB_SERVERS_LOGICAL_BACKUP",
+              "SCHEDULER_DB_SERVERS_LOGS_TABLE_ROTATE",
+              "SCHEDULER_DB_SERVERS_LOGS",
+              "SCHEDULER_DB_SERVERS_OPTIMIZE",
+              "SCHEDULER_DB_SERVERS_PHYSICAL_BACKUP",
+              "SCHEDULER_JOBS_SSH",
+              "SCHEDULER_ROLLING_REPROV",
+              "SCHEDULER_ROLLING_RESTART",
+              "SHARDPROXY_COPY_GRANTS",
+              "SWITCHOVER_AT_SYNC",
+              "TEST",
+              "VERBOSE"
+            ],
+            "default": "UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
+    "/v3/clusters/{cluster.name}/settings/actions/{action}/{tagValue}": {
+      "get": {
+        "operationId": "ClusterService_SetActionForClusterSettings2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "UNSPECIFIED",
+              "DISCOVER",
+              "APPLY_DYNAMIC_CONFIG",
+              "RELOAD",
+              "SET",
+              "SWITCH",
+              "ADD_DB_TAG",
+              "DROP_DB_TAG",
+              "ADD_PROXY_TAG",
+              "DROP_PROXY_TAG"
+            ]
+          },
+          {
+            "name": "tagValue",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "setting.name",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNSPECIFIED",
+              "BACKUP_BINLOGS_KEEP",
+              "BACKUP_KEEP_DAILY",
+              "BACKUP_KEEP_HOURLY",
+              "BACKUP_KEEP_MONTHLY",
+              "BACKUP_KEEP_WEEKLY",
+              "BACKUP_KEEP_YEARLY",
+              "BACKUP_LOGICAL_TYPE",
+              "BACKUP_PHYSICAL_TYPE",
+              "DB_SERVERS_CREDENTIAL",
+              "DB_SERVERS_HOSTS",
+              "FAILOVER_LIMIT",
+              "FAILOVER_MAX_SLAVE_DELAY",
+              "MAXSCALE_SERVERS_CREDENTIAL",
+              "MONITORING_ADDRESS",
+              "PROV_DB_AGENTS",
+              "PROV_DB_CPU_CORES",
+              "PROV_DB_DISK_DEVICE",
+              "PROV_DB_DISK_FS",
+              "PROV_DB_DISK_IOPS",
+              "PROV_DB_DISK_POOL",
+              "PROV_DB_DISK_SIZE",
+              "PROV_DB_DISK_TYPE",
+              "PROV_DB_EXPIRE_LOG_DAYS",
+              "PROV_DB_IMAGE",
+              "PROV_DB_MAX_CONNECTIONS",
+              "PROV_DB_MEMORY",
+              "PROV_DB_SERVICE_TYPE",
+              "PROV_NET_CNI_CLUSTER",
+              "PROV_ORCHESTRATOR_CLUSTER",
+              "PROV_ORCHESTRATOR",
+              "PROV_PROXY_AGENTS",
+              "PROV_PROXY_CPU_CORES",
+              "PROV_PROXY_DISK_DEVICE",
+              "PROV_PROXY_DISK_FS",
+              "PROV_PROXY_DISK_POOL",
+              "PROV_PROXY_DISK_SIZE",
+              "PROV_PROXY_DISK_TYPE",
+              "PROV_PROXY_DOCKER_HAPROXY_IMG",
+              "PROV_PROXY_DOCKER_MAXSCALE_IMG",
+              "PROV_PROXY_DOCKER_PROXYSQL_IMG",
+              "PROV_PROXY_DOCKER_SHARDPROXY_IMG",
+              "PROV_PROXY_MEMORY",
+              "PROV_PROXY_SERVICE_TYPE",
+              "PROV_SERVICE_PLAN",
+              "PROV_SPHINX_IMG",
+              "PROXY_SERVERS_BACKEND_MAX_CONNECTIONS",
+              "PROXY_SERVERS_BACKEND_MAX_REPLICATION_LAG",
+              "PROXYSQL_SERVERS_CREDENTIAL",
+              "REPLICATION_CREDENTIAL",
+              "SCHEDULER_DB_SERVERS_LOGICAL_BACKUP_CRON",
+              "SCHEDULER_DB_SERVERS_LOGS_CRON",
+              "SCHEDULER_DB_SERVERS_LOGS_TABLE_ROTATE_CRON",
+              "SCHEDULER_DB_SERVERS_OPTIMIZE_CRON",
+              "SCHEDULER_DB_SERVERS_PHYSICAL_BACKUP_CRON",
+              "SCHEDULER_JOBS_SSH_CRON",
+              "SCHEDULER_ROLLING_REPROV_CRON",
+              "SCHEDULER_ROLLING_RESTART_CRON",
+              "SCHEDULER_SLA_ROTATE_CRON",
+              "SHARDPROXY_SERVERS_CREDENTIAL",
+              "SWITCHOVER_WAIT_ROUTE_CHANGE"
+            ],
+            "default": "UNSPECIFIED"
+          },
+          {
+            "name": "setting.value",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "switch.name",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "UNSPECIFIED",
+              "AUTOREJOIN_BACKUP_BINLOG",
+              "AUTOREJOIN_FLASHBACK_ON_SYNC",
+              "AUTOREJOIN_FLASHBACK_ON_UNSYNC",
+              "AUTOREJOIN_FLASHBACK",
+              "AUTOREJOIN_LOGICAL_BACKUP",
+              "AUTOREJOIN_MYSQLDUMP",
+              "AUTOREJOIN_PHYSICAL_BACKUP",
+              "AUTOREJOIN_SLAVE_POSITIONAL_HEARTBEAT",
+              "AUTOREJOIN_ZFS_FLASHBACK",
+              "AUTOREJOIN",
+              "AUTOSEED",
+              "BACKUP_BINLOGS",
+              "BACKUP_RESTIC",
+              "CHECK_REPLICATION_FILTERS",
+              "CHECK_REPLICATION_STATE",
+              "DATABASE_HEARTBEAT",
+              "FAILOVER_AT_SYNC",
+              "FAILOVER_EVENT_SCHEDULER",
+              "FAILOVER_EVENT_STATUS",
+              "FAILOVER_MODE",
+              "FAILOVER_READONLY_STATE",
+              "FAILOVER_RESTART_UNSAFE",
+              "FORCE_SLAVE_NO_GTID_MODE",
+              "GRAPHITE_EMBEDDED",
+              "GRAPHITE_METRICS",
+              "MONITORING_CAPTURE",
+              "MONITORING_INNODB_STATUS",
+              "MONITORING_PAUSE",
+              "MONITORING_PROCESSLIST",
+              "MONITORING_QUERIES",
+              "MONITORING_SAVE_CONFIG",
+              "MONITORING_SCHEDULER",
+              "MONITORING_SCHEMA_CHANGE",
+              "MONITORING_VARIABLE_DIFF",
+              "PROV_DB_APPLY_DYNAMIC_CONFIG",
+              "PROV_DOCKER_DAEMON_PRIVATE",
+              "PROV_NET_CNI",
+              "PROXY_SERVERS_BACKEND_COMPRESSION",
+              "PROXY_SERVERS_READ_ON_MASTER",
+              "PROXYSQL_BOOTSTRAP_HOSTGROUPS",
+              "PROXYSQL_BOOTSTRAP_QUERY_RULES",
+              "PROXYSQL_BOOTSTRAP_SERVERS",
+              "PROXYSQL_BOOTSTRAP_USERS",
+              "PROXYSQL_BOOTSTRAP_VARIABLES",
+              "PROXYSQL_BOOTSTRAP",
+              "PROXYSQL_COPY_GRANTS",
+              "PROXYSQL",
+              "SCHEDULER_DB_SERVERS_LOGICAL_BACKUP",
+              "SCHEDULER_DB_SERVERS_LOGS_TABLE_ROTATE",
+              "SCHEDULER_DB_SERVERS_LOGS",
+              "SCHEDULER_DB_SERVERS_OPTIMIZE",
+              "SCHEDULER_DB_SERVERS_PHYSICAL_BACKUP",
+              "SCHEDULER_JOBS_SSH",
+              "SCHEDULER_ROLLING_REPROV",
+              "SCHEDULER_ROLLING_RESTART",
+              "SHARDPROXY_COPY_GRANTS",
+              "SWITCHOVER_AT_SYNC",
+              "TEST",
+              "VERBOSE"
+            ],
+            "default": "UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
     "/v3/clusters/{name}/actions/master-physical-backup": {
       "get": {
         "operationId": "ClusterPublicService_MasterPhysicalBackup",
@@ -43,6 +842,36 @@
         ],
         "tags": [
           "ClusterPublicService"
+        ]
+      }
+    },
+    "/v3/clusters/{name}/settings": {
+      "get": {
+        "operationId": "ClusterService_GetSettingsForCluster",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ClusterService"
         ]
       }
     },
@@ -78,6 +907,174 @@
     }
   },
   "definitions": {
+    "ClusterSettingAction": {
+      "type": "string",
+      "enum": [
+        "UNSPECIFIED",
+        "DISCOVER",
+        "APPLY_DYNAMIC_CONFIG",
+        "RELOAD",
+        "SET",
+        "SWITCH",
+        "ADD_DB_TAG",
+        "DROP_DB_TAG",
+        "ADD_PROXY_TAG",
+        "DROP_PROXY_TAG"
+      ],
+      "default": "UNSPECIFIED"
+    },
+    "ClusterSettingSetting": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/SettingSettingName"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "ClusterSettingSwitch": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/SwitchSwitchName"
+        }
+      }
+    },
+    "SettingSettingName": {
+      "type": "string",
+      "enum": [
+        "UNSPECIFIED",
+        "BACKUP_BINLOGS_KEEP",
+        "BACKUP_KEEP_DAILY",
+        "BACKUP_KEEP_HOURLY",
+        "BACKUP_KEEP_MONTHLY",
+        "BACKUP_KEEP_WEEKLY",
+        "BACKUP_KEEP_YEARLY",
+        "BACKUP_LOGICAL_TYPE",
+        "BACKUP_PHYSICAL_TYPE",
+        "DB_SERVERS_CREDENTIAL",
+        "DB_SERVERS_HOSTS",
+        "FAILOVER_LIMIT",
+        "FAILOVER_MAX_SLAVE_DELAY",
+        "MAXSCALE_SERVERS_CREDENTIAL",
+        "MONITORING_ADDRESS",
+        "PROV_DB_AGENTS",
+        "PROV_DB_CPU_CORES",
+        "PROV_DB_DISK_DEVICE",
+        "PROV_DB_DISK_FS",
+        "PROV_DB_DISK_IOPS",
+        "PROV_DB_DISK_POOL",
+        "PROV_DB_DISK_SIZE",
+        "PROV_DB_DISK_TYPE",
+        "PROV_DB_EXPIRE_LOG_DAYS",
+        "PROV_DB_IMAGE",
+        "PROV_DB_MAX_CONNECTIONS",
+        "PROV_DB_MEMORY",
+        "PROV_DB_SERVICE_TYPE",
+        "PROV_NET_CNI_CLUSTER",
+        "PROV_ORCHESTRATOR_CLUSTER",
+        "PROV_ORCHESTRATOR",
+        "PROV_PROXY_AGENTS",
+        "PROV_PROXY_CPU_CORES",
+        "PROV_PROXY_DISK_DEVICE",
+        "PROV_PROXY_DISK_FS",
+        "PROV_PROXY_DISK_POOL",
+        "PROV_PROXY_DISK_SIZE",
+        "PROV_PROXY_DISK_TYPE",
+        "PROV_PROXY_DOCKER_HAPROXY_IMG",
+        "PROV_PROXY_DOCKER_MAXSCALE_IMG",
+        "PROV_PROXY_DOCKER_PROXYSQL_IMG",
+        "PROV_PROXY_DOCKER_SHARDPROXY_IMG",
+        "PROV_PROXY_MEMORY",
+        "PROV_PROXY_SERVICE_TYPE",
+        "PROV_SERVICE_PLAN",
+        "PROV_SPHINX_IMG",
+        "PROXY_SERVERS_BACKEND_MAX_CONNECTIONS",
+        "PROXY_SERVERS_BACKEND_MAX_REPLICATION_LAG",
+        "PROXYSQL_SERVERS_CREDENTIAL",
+        "REPLICATION_CREDENTIAL",
+        "SCHEDULER_DB_SERVERS_LOGICAL_BACKUP_CRON",
+        "SCHEDULER_DB_SERVERS_LOGS_CRON",
+        "SCHEDULER_DB_SERVERS_LOGS_TABLE_ROTATE_CRON",
+        "SCHEDULER_DB_SERVERS_OPTIMIZE_CRON",
+        "SCHEDULER_DB_SERVERS_PHYSICAL_BACKUP_CRON",
+        "SCHEDULER_JOBS_SSH_CRON",
+        "SCHEDULER_ROLLING_REPROV_CRON",
+        "SCHEDULER_ROLLING_RESTART_CRON",
+        "SCHEDULER_SLA_ROTATE_CRON",
+        "SHARDPROXY_SERVERS_CREDENTIAL",
+        "SWITCHOVER_WAIT_ROUTE_CHANGE"
+      ],
+      "default": "UNSPECIFIED"
+    },
+    "SwitchSwitchName": {
+      "type": "string",
+      "enum": [
+        "UNSPECIFIED",
+        "AUTOREJOIN_BACKUP_BINLOG",
+        "AUTOREJOIN_FLASHBACK_ON_SYNC",
+        "AUTOREJOIN_FLASHBACK_ON_UNSYNC",
+        "AUTOREJOIN_FLASHBACK",
+        "AUTOREJOIN_LOGICAL_BACKUP",
+        "AUTOREJOIN_MYSQLDUMP",
+        "AUTOREJOIN_PHYSICAL_BACKUP",
+        "AUTOREJOIN_SLAVE_POSITIONAL_HEARTBEAT",
+        "AUTOREJOIN_ZFS_FLASHBACK",
+        "AUTOREJOIN",
+        "AUTOSEED",
+        "BACKUP_BINLOGS",
+        "BACKUP_RESTIC",
+        "CHECK_REPLICATION_FILTERS",
+        "CHECK_REPLICATION_STATE",
+        "DATABASE_HEARTBEAT",
+        "FAILOVER_AT_SYNC",
+        "FAILOVER_EVENT_SCHEDULER",
+        "FAILOVER_EVENT_STATUS",
+        "FAILOVER_MODE",
+        "FAILOVER_READONLY_STATE",
+        "FAILOVER_RESTART_UNSAFE",
+        "FORCE_SLAVE_NO_GTID_MODE",
+        "GRAPHITE_EMBEDDED",
+        "GRAPHITE_METRICS",
+        "MONITORING_CAPTURE",
+        "MONITORING_INNODB_STATUS",
+        "MONITORING_PAUSE",
+        "MONITORING_PROCESSLIST",
+        "MONITORING_QUERIES",
+        "MONITORING_SAVE_CONFIG",
+        "MONITORING_SCHEDULER",
+        "MONITORING_SCHEMA_CHANGE",
+        "MONITORING_VARIABLE_DIFF",
+        "PROV_DB_APPLY_DYNAMIC_CONFIG",
+        "PROV_DOCKER_DAEMON_PRIVATE",
+        "PROV_NET_CNI",
+        "PROXY_SERVERS_BACKEND_COMPRESSION",
+        "PROXY_SERVERS_READ_ON_MASTER",
+        "PROXYSQL_BOOTSTRAP_HOSTGROUPS",
+        "PROXYSQL_BOOTSTRAP_QUERY_RULES",
+        "PROXYSQL_BOOTSTRAP_SERVERS",
+        "PROXYSQL_BOOTSTRAP_USERS",
+        "PROXYSQL_BOOTSTRAP_VARIABLES",
+        "PROXYSQL_BOOTSTRAP",
+        "PROXYSQL_COPY_GRANTS",
+        "PROXYSQL",
+        "SCHEDULER_DB_SERVERS_LOGICAL_BACKUP",
+        "SCHEDULER_DB_SERVERS_LOGS_TABLE_ROTATE",
+        "SCHEDULER_DB_SERVERS_LOGS",
+        "SCHEDULER_DB_SERVERS_OPTIMIZE",
+        "SCHEDULER_DB_SERVERS_PHYSICAL_BACKUP",
+        "SCHEDULER_JOBS_SSH",
+        "SCHEDULER_ROLLING_REPROV",
+        "SCHEDULER_ROLLING_RESTART",
+        "SHARDPROXY_COPY_GRANTS",
+        "SWITCHOVER_AT_SYNC",
+        "TEST",
+        "VERBOSE"
+      ],
+      "default": "UNSPECIFIED"
+    },
     "protobufAny": {
       "type": "object",
       "properties": {
@@ -89,6 +1086,14 @@
           "format": "byte"
         }
       }
+    },
+    "protobufNullValue": {
+      "type": "string",
+      "enum": [
+        "NULL_VALUE"
+      ],
+      "default": "NULL_VALUE",
+      "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\n The JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
     },
     "rpcStatus": {
       "type": "object",
@@ -105,6 +1110,14 @@
           "items": {
             "$ref": "#/definitions/protobufAny"
           }
+        }
+      }
+    },
+    "v3Cluster": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
         }
       }
     },

@@ -86,6 +86,8 @@ type ReplicationManager struct {
 	grpcServer  *grpc.Server
 	grpcWrapped *grpcweb.WrappedGrpcServer
 	repmanv3.UnimplementedClusterPublicServiceServer
+	repmanv3.UnimplementedClusterServiceServer
+
 	V3Up     chan bool
 	v3Config Repmanv3Config
 }

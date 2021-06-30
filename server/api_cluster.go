@@ -933,132 +933,135 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 		}
 		setting := vars["settingName"]
 		mycluster.LogPrintf("INFO", "API receive switch setting %s", setting)
-		switch setting {
-		case "verbose":
-			mycluster.SwitchVerbosity()
-		case "failover-mode":
-			mycluster.SwitchInteractive()
-		case "failover-readonly-state":
-			mycluster.SwitchReadOnly()
-		case "failover-restart-unsafe":
-			mycluster.SwitchFailoverRestartUnsafe()
-		case "failover-at-sync":
-			mycluster.SwitchFailSync()
-		case "force-slave-no-gtid-mode":
-			mycluster.SwitchForceSlaveNoGtid()
-		case "failover-event-status":
-			mycluster.SwitchFailoverEventStatus()
-		case "failover-event-scheduler":
-			mycluster.SwitchFailoverEventScheduler()
-		case "autorejoin":
-			mycluster.SwitchRejoin()
-		case "autoseed":
-			mycluster.SwitchAutoseed()
-		case "autorejoin-backup-binlog":
-			mycluster.SwitchRejoinBackupBinlog()
-		case "autorejoin-flashback":
-			mycluster.SwitchRejoinFlashback()
-		case "autorejoin-flashback-on-sync":
-			mycluster.SwitchRejoinSemisync()
-		case "autorejoin-flashback-on-unsync": //?????
-		case "autorejoin-slave-positional-heartbeat":
-			mycluster.SwitchRejoinPseudoGTID()
-		case "autorejoin-zfs-flashback":
-			mycluster.SwitchRejoinZFSFlashback()
-		case "autorejoin-mysqldump":
-			mycluster.SwitchRejoinDump()
-		case "autorejoin-logical-backup":
-			mycluster.SwitchRejoinLogicalBackup()
-		case "autorejoin-physical-backup":
-			mycluster.SwitchRejoinPhysicalBackup()
-		case "switchover-at-sync":
-			mycluster.SwitchSwitchoverSync()
-		case "check-replication-filters":
-			mycluster.SwitchCheckReplicationFilters()
-		case "check-replication-state":
-			mycluster.SwitchRplChecks()
-		case "scheduler-db-servers-logical-backup":
-			mycluster.SwitchSchedulerBackupLogical()
-		case "scheduler-db-servers-physical-backup":
-			mycluster.SwitchSchedulerBackupPhysical()
-		case "scheduler-db-servers-logs":
-			mycluster.SwitchSchedulerDatabaseLogs()
-		case "scheduler-jobs-ssh":
-			mycluster.SwitchSchedulerDbJobsSsh()
-		case "scheduler-db-servers-logs-table-rotate":
-			mycluster.SwitchSchedulerDatabaseLogsTableRotate()
-		case "scheduler-rolling-restart":
-			mycluster.SwitchSchedulerRollingRestart()
-		case "scheduler-rolling-reprov":
-			mycluster.SwitchSchedulerRollingReprov()
-		case "scheduler-db-servers-optimize":
-			mycluster.SwitchSchedulerDatabaseOptimize()
-		case "graphite-metrics":
-			mycluster.SwitchGraphiteMetrics()
-		case "graphite-embedded":
-			mycluster.SwitchGraphiteEmbedded()
-		case "shardproxy-copy-grants":
-			mycluster.SwitchProxysqlCopyGrants()
-
-		case "proxysql-copy-grants":
-			mycluster.SwitchProxysqlCopyGrants()
-		case "proxysql-bootstrap-users":
-			mycluster.SwitchProxysqlCopyGrants()
-		case "proxysql-bootstrap-variables":
-			mycluster.SwitchProxysqlBootstrapVariables()
-		case "proxysql-bootstrap-hostgroups":
-			mycluster.SwitchProxysqlBootstrapHostgroups()
-		case "proxysql-bootstrap-servers":
-			mycluster.SwitchProxysqlBootstrapServers()
-		case "proxysql-bootstrap-query-rules":
-			mycluster.SwitchProxysqlBootstrapQueryRules()
-		case "proxysql-bootstrap":
-			mycluster.SwitchProxysqlBootstrap()
-		case "proxysql":
-			mycluster.SwitchProxySQL()
-		case "proxy-servers-read-on-master":
-			mycluster.SwitchProxyServersReadOnMaster()
-		case "proxy-servers-backend-compression":
-			mycluster.SwitchProxyServersBackendCompression()
-		case "database-heartbeat":
-			mycluster.SwitchTraffic()
-		case "test":
-			mycluster.SwitchTestMode()
-		case "prov-net-cni":
-			mycluster.SwitchProvNetCNI()
-		case "prov-db-apply-dynamic-config":
-			mycluster.SwitchDBApplyDynamicConfig()
-		case "prov-docker-daemon-private":
-			mycluster.SwitchProvDockerDaemonPrivate()
-		case "backup-restic":
-			mycluster.SwitchBackupRestic()
-		case "backup-binlogs":
-			mycluster.SwitchBackupBinlogs()
-		case "monitoring-pause":
-			mycluster.SwitchMonitoringPause()
-		case "monitoring-save-config":
-			mycluster.SwitchMonitoringSaveConfig()
-		case "monitoring-queries":
-			mycluster.SwitchMonitoringQueries()
-		case "monitoring-scheduler":
-			mycluster.SwitchMonitoringScheduler()
-		case "monitoring-schema-change":
-			mycluster.SwitchMonitoringSchemaChange()
-		case "monitoring-capture":
-			mycluster.SwitchMonitoringCapture()
-		case "monitoring-innodb-status":
-			mycluster.SwitchMonitoringInnoDBStatus()
-		case "monitoring-variable-diff":
-			mycluster.SwitchMonitoringVariableDiff()
-		case "monitoring-processlist":
-			mycluster.SwitchMonitoringProcesslist()
-		}
-
+		repman.switchSettings(mycluster, setting)
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}
 	return
+}
+
+func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, setting string) {
+	switch setting {
+	case "verbose":
+		mycluster.SwitchVerbosity()
+	case "failover-mode":
+		mycluster.SwitchInteractive()
+	case "failover-readonly-state":
+		mycluster.SwitchReadOnly()
+	case "failover-restart-unsafe":
+		mycluster.SwitchFailoverRestartUnsafe()
+	case "failover-at-sync":
+		mycluster.SwitchFailSync()
+	case "force-slave-no-gtid-mode":
+		mycluster.SwitchForceSlaveNoGtid()
+	case "failover-event-status":
+		mycluster.SwitchFailoverEventStatus()
+	case "failover-event-scheduler":
+		mycluster.SwitchFailoverEventScheduler()
+	case "autorejoin":
+		mycluster.SwitchRejoin()
+	case "autoseed":
+		mycluster.SwitchAutoseed()
+	case "autorejoin-backup-binlog":
+		mycluster.SwitchRejoinBackupBinlog()
+	case "autorejoin-flashback":
+		mycluster.SwitchRejoinFlashback()
+	case "autorejoin-flashback-on-sync":
+		mycluster.SwitchRejoinSemisync()
+	case "autorejoin-flashback-on-unsync": //?????
+	case "autorejoin-slave-positional-heartbeat":
+		mycluster.SwitchRejoinPseudoGTID()
+	case "autorejoin-zfs-flashback":
+		mycluster.SwitchRejoinZFSFlashback()
+	case "autorejoin-mysqldump":
+		mycluster.SwitchRejoinDump()
+	case "autorejoin-logical-backup":
+		mycluster.SwitchRejoinLogicalBackup()
+	case "autorejoin-physical-backup":
+		mycluster.SwitchRejoinPhysicalBackup()
+	case "switchover-at-sync":
+		mycluster.SwitchSwitchoverSync()
+	case "check-replication-filters":
+		mycluster.SwitchCheckReplicationFilters()
+	case "check-replication-state":
+		mycluster.SwitchRplChecks()
+	case "scheduler-db-servers-logical-backup":
+		mycluster.SwitchSchedulerBackupLogical()
+	case "scheduler-db-servers-physical-backup":
+		mycluster.SwitchSchedulerBackupPhysical()
+	case "scheduler-db-servers-logs":
+		mycluster.SwitchSchedulerDatabaseLogs()
+	case "scheduler-jobs-ssh":
+		mycluster.SwitchSchedulerDbJobsSsh()
+	case "scheduler-db-servers-logs-table-rotate":
+		mycluster.SwitchSchedulerDatabaseLogsTableRotate()
+	case "scheduler-rolling-restart":
+		mycluster.SwitchSchedulerRollingRestart()
+	case "scheduler-rolling-reprov":
+		mycluster.SwitchSchedulerRollingReprov()
+	case "scheduler-db-servers-optimize":
+		mycluster.SwitchSchedulerDatabaseOptimize()
+	case "graphite-metrics":
+		mycluster.SwitchGraphiteMetrics()
+	case "graphite-embedded":
+		mycluster.SwitchGraphiteEmbedded()
+	case "shardproxy-copy-grants":
+		mycluster.SwitchProxysqlCopyGrants()
+
+	case "proxysql-copy-grants":
+		mycluster.SwitchProxysqlCopyGrants()
+	case "proxysql-bootstrap-users":
+		mycluster.SwitchProxysqlCopyGrants()
+	case "proxysql-bootstrap-variables":
+		mycluster.SwitchProxysqlBootstrapVariables()
+	case "proxysql-bootstrap-hostgroups":
+		mycluster.SwitchProxysqlBootstrapHostgroups()
+	case "proxysql-bootstrap-servers":
+		mycluster.SwitchProxysqlBootstrapServers()
+	case "proxysql-bootstrap-query-rules":
+		mycluster.SwitchProxysqlBootstrapQueryRules()
+	case "proxysql-bootstrap":
+		mycluster.SwitchProxysqlBootstrap()
+	case "proxysql":
+		mycluster.SwitchProxySQL()
+	case "proxy-servers-read-on-master":
+		mycluster.SwitchProxyServersReadOnMaster()
+	case "proxy-servers-backend-compression":
+		mycluster.SwitchProxyServersBackendCompression()
+	case "database-heartbeat":
+		mycluster.SwitchTraffic()
+	case "test":
+		mycluster.SwitchTestMode()
+	case "prov-net-cni":
+		mycluster.SwitchProvNetCNI()
+	case "prov-db-apply-dynamic-config":
+		mycluster.SwitchDBApplyDynamicConfig()
+	case "prov-docker-daemon-private":
+		mycluster.SwitchProvDockerDaemonPrivate()
+	case "backup-restic":
+		mycluster.SwitchBackupRestic()
+	case "backup-binlogs":
+		mycluster.SwitchBackupBinlogs()
+	case "monitoring-pause":
+		mycluster.SwitchMonitoringPause()
+	case "monitoring-save-config":
+		mycluster.SwitchMonitoringSaveConfig()
+	case "monitoring-queries":
+		mycluster.SwitchMonitoringQueries()
+	case "monitoring-scheduler":
+		mycluster.SwitchMonitoringScheduler()
+	case "monitoring-schema-change":
+		mycluster.SwitchMonitoringSchemaChange()
+	case "monitoring-capture":
+		mycluster.SwitchMonitoringCapture()
+	case "monitoring-innodb-status":
+		mycluster.SwitchMonitoringInnoDBStatus()
+	case "monitoring-variable-diff":
+		mycluster.SwitchMonitoringVariableDiff()
+	case "monitoring-processlist":
+		mycluster.SwitchMonitoringProcesslist()
+	}
 }
 
 func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {
@@ -1072,136 +1075,139 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		}
 		setting := vars["settingName"]
 		mycluster.LogPrintf("INFO", "API receive set setting %s", setting)
-		switch setting {
-		case "replication-credential":
-			mycluster.SetReplicationCredential(vars["settingValue"])
-		case "failover-max-slave-delay":
-			val, _ := strconv.ParseInt(vars["settingValue"], 10, 64)
-			mycluster.SetRplMaxDelay(val)
-		case "switchover-wait-route-change":
-			mycluster.SetSwitchoverWaitRouteChange(vars["settingValue"])
-		case "failover-limit":
-			val, _ := strconv.Atoi(vars["settingValue"])
-			mycluster.SetFailLimit(val)
-		case "backup-keep-hourly":
-			mycluster.SetBackupKeepHourly(vars["settingValue"])
-		case "backup-keep-daily":
-			mycluster.SetBackupKeepDaily(vars["settingValue"])
-		case "backup-keep-monthly":
-			mycluster.SetBackupKeepMonthly(vars["settingValue"])
-		case "backup-keep-weekly":
-			mycluster.SetBackupKeepWeekly(vars["settingValue"])
-		case "backup-keep-yearly":
-			mycluster.SetBackupKeepYearly(vars["settingValue"])
-		case "backup-logical-type":
-			mycluster.SetBackupLogicalType(vars["settingValue"])
-		case "backup-physical-type":
-			mycluster.SetBackupPhysicalType(vars["settingValue"])
-		case "db-servers-hosts":
-			mycluster.SetDbServerHosts(vars["settingValue"])
-		case "db-servers-credential":
-			mycluster.SetDbServersCredential(vars["settingValue"])
-		case "prov-service-plan":
-			mycluster.SetServicePlan(vars["settingValue"])
-		case "prov-net-cni-cluster":
-			mycluster.SetProvNetCniCluster(vars["settingValue"])
-		case "prov-orchestrator-cluster":
-			mycluster.SetProvOrchestratorCluster(vars["settingValue"])
-		case "prov-db-disk-size":
-			mycluster.SetDBDiskSize(vars["settingValue"])
-		case "prov-db-cpu-cores":
-			mycluster.SetDBCores(vars["settingValue"])
-		case "prov-db-memory":
-			mycluster.SetDBMemorySize(vars["settingValue"])
-		case "prov-db-disk-iops":
-			mycluster.SetDBDiskIOPS(vars["settingValue"])
-		case "prov-db-max-connections":
-			mycluster.SetDBMaxConnections(vars["settingValue"])
-		case "prov-db-expire-log-days":
-			mycluster.SetDBExpireLogDays(vars["settingValue"])
-		case "prov-db-agents":
-			mycluster.SetProvDbAgents(vars["settingValue"])
-		case "prov-proxy-agents":
-			mycluster.SetProvProxyAgents(vars["settingValue"])
-		case "prov-orchestrator":
-			mycluster.SetProvOrchestrator(vars["settingValue"])
-		case "prov-sphinx-img":
-			mycluster.SetProvSphinxImage(vars["settingValue"])
-		case "prov-db-image":
-			mycluster.SetProvDBImage(vars["settingValue"])
-		case "prov-db-disk-type":
-			mycluster.SetProvDbDiskType(vars["settingValue"])
-		case "prov-db-disk-fs":
-			mycluster.SetProvDbDiskFS(vars["settingValue"])
-		case "prov-db-disk-pool":
-			mycluster.SetProvDbDiskPool(vars["settingValue"])
-		case "prov-db-disk-device":
-			mycluster.SetProvDbDiskDevice(vars["settingValue"])
-		case "prov-db-service-type":
-			mycluster.SetProvDbServiceType(vars["settingValue"])
-		case "proxysql-servers-credential":
-			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxySqlproxy)
-		case "proxy-servers-backend-max-connections":
-			mycluster.SetProxyServersBackendMaxConnections(vars["settingValue"])
-		case "proxy-servers-backend-max-replication-lag":
-			mycluster.SetProxyServersBackendMaxReplicationLag(vars["settingValue"])
-		case "maxscale-servers-credential":
-			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxyMaxscale)
-		case "shardproxy-servers-credential":
-			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxySpider)
-		case "prov-proxy-disk-size":
-			mycluster.SetProxyDiskSize(vars["settingValue"])
-		case "prov-proxy-cpu-cores":
-			mycluster.SetProxyCores(vars["settingValue"])
-		case "prov-proxy-memory":
-			mycluster.SetProxyMemorySize(vars["settingValue"])
-		case "prov-proxy-docker-proxysql-img":
-			mycluster.SetProvProxySQLImage(vars["settingValue"])
-		case "prov-proxy-docker-maxscale-img":
-			mycluster.SetProvMaxscaleImage(vars["settingValue"])
-		case "prov-proxy-docker-haproxy-img":
-			mycluster.SetProvHaproxyImage(vars["settingValue"])
-		case "prov-proxy-docker-shardproxy-img":
-			mycluster.SetProvShardproxyImage(vars["settingValue"])
-		case "prov-proxy-disk-type":
-			mycluster.SetProvProxyDiskType(vars["settingValue"])
-		case "prov-proxy-disk-fs":
-			mycluster.SetProvProxyDiskFS(vars["settingValue"])
-		case "prov-proxy-disk-pool":
-			mycluster.SetProvProxyDiskPool(vars["settingValue"])
-		case "prov-proxy-disk-device":
-			mycluster.SetProvProxyDiskDevice(vars["settingValue"])
-		case "prov-proxy-service-type":
-			mycluster.SetProvProxyServiceType(vars["settingValue"])
-		case "monitoring-address":
-			mycluster.SetMonitoringAddress(vars["settingValue"])
-		case "scheduler-db-servers-logical-backup-cron":
-			mycluster.SetSchedulerDbServersLogicalBackupCron(vars["settingValue"])
-		case "scheduler-db-servers-logs-cron":
-			mycluster.SetSchedulerDbServersLogsCron(vars["settingValue"])
-		case "scheduler-db-servers-logs-table-rotate-cron":
-			mycluster.SetSchedulerDbServersLogsTableRotateCron(vars["settingValue"])
-		case "scheduler-db-servers-optimize-cron":
-			mycluster.SetSchedulerDbServersOptimizeCron(vars["settingValue"])
-		case "scheduler-db-servers-physical-backup-cron":
-			mycluster.SetSchedulerDbServersPhysicalBackupCron(vars["settingValue"])
-		case "scheduler-rolling-reprov-cron":
-			mycluster.SetSchedulerRollingReprovCron(vars["settingValue"])
-		case "scheduler-rolling-restart-cron":
-			mycluster.SetSchedulerRollingRestartCron(vars["settingValue"])
-		case "scheduler-sla-rotate-cron":
-			mycluster.SetSchedulerSlaRotateCron(vars["settingValue"])
-		case "scheduler-jobs-ssh-cron":
-			mycluster.SetSchedulerJobsSshCron(vars["settingValue"])
-		case "backup-binlogs-keep":
-			mycluster.SetBackupBinlogsKeep(vars["settingValue"])
-
-		}
+		repman.setSetting(mycluster, setting, vars["settingValue"])
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}
 	return
+}
+
+func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name string, value string) {
+	switch name {
+	case "replication-credential":
+		mycluster.SetReplicationCredential(value)
+	case "failover-max-slave-delay":
+		val, _ := strconv.ParseInt(value, 10, 64)
+		mycluster.SetRplMaxDelay(val)
+	case "switchover-wait-route-change":
+		mycluster.SetSwitchoverWaitRouteChange(value)
+	case "failover-limit":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetFailLimit(val)
+	case "backup-keep-hourly":
+		mycluster.SetBackupKeepHourly(value)
+	case "backup-keep-daily":
+		mycluster.SetBackupKeepDaily(value)
+	case "backup-keep-monthly":
+		mycluster.SetBackupKeepMonthly(value)
+	case "backup-keep-weekly":
+		mycluster.SetBackupKeepWeekly(value)
+	case "backup-keep-yearly":
+		mycluster.SetBackupKeepYearly(value)
+	case "backup-logical-type":
+		mycluster.SetBackupLogicalType(value)
+	case "backup-physical-type":
+		mycluster.SetBackupPhysicalType(value)
+	case "db-servers-hosts":
+		mycluster.SetDbServerHosts(value)
+	case "db-servers-credential":
+		mycluster.SetDbServersCredential(value)
+	case "prov-service-plan":
+		mycluster.SetServicePlan(value)
+	case "prov-net-cni-cluster":
+		mycluster.SetProvNetCniCluster(value)
+	case "prov-orchestrator-cluster":
+		mycluster.SetProvOrchestratorCluster(value)
+	case "prov-db-disk-size":
+		mycluster.SetDBDiskSize(value)
+	case "prov-db-cpu-cores":
+		mycluster.SetDBCores(value)
+	case "prov-db-memory":
+		mycluster.SetDBMemorySize(value)
+	case "prov-db-disk-iops":
+		mycluster.SetDBDiskIOPS(value)
+	case "prov-db-max-connections":
+		mycluster.SetDBMaxConnections(value)
+	case "prov-db-expire-log-days":
+		mycluster.SetDBExpireLogDays(value)
+	case "prov-db-agents":
+		mycluster.SetProvDbAgents(value)
+	case "prov-proxy-agents":
+		mycluster.SetProvProxyAgents(value)
+	case "prov-orchestrator":
+		mycluster.SetProvOrchestrator(value)
+	case "prov-sphinx-img":
+		mycluster.SetProvSphinxImage(value)
+	case "prov-db-image":
+		mycluster.SetProvDBImage(value)
+	case "prov-db-disk-type":
+		mycluster.SetProvDbDiskType(value)
+	case "prov-db-disk-fs":
+		mycluster.SetProvDbDiskFS(value)
+	case "prov-db-disk-pool":
+		mycluster.SetProvDbDiskPool(value)
+	case "prov-db-disk-device":
+		mycluster.SetProvDbDiskDevice(value)
+	case "prov-db-service-type":
+		mycluster.SetProvDbServiceType(value)
+	case "proxysql-servers-credential":
+		mycluster.SetProxyServersCredential(value, config.ConstProxySqlproxy)
+	case "proxy-servers-backend-max-connections":
+		mycluster.SetProxyServersBackendMaxConnections(value)
+	case "proxy-servers-backend-max-replication-lag":
+		mycluster.SetProxyServersBackendMaxReplicationLag(value)
+	case "maxscale-servers-credential":
+		mycluster.SetProxyServersCredential(value, config.ConstProxyMaxscale)
+	case "shardproxy-servers-credential":
+		mycluster.SetProxyServersCredential(value, config.ConstProxySpider)
+	case "prov-proxy-disk-size":
+		mycluster.SetProxyDiskSize(value)
+	case "prov-proxy-cpu-cores":
+		mycluster.SetProxyCores(value)
+	case "prov-proxy-memory":
+		mycluster.SetProxyMemorySize(value)
+	case "prov-proxy-docker-proxysql-img":
+		mycluster.SetProvProxySQLImage(value)
+	case "prov-proxy-docker-maxscale-img":
+		mycluster.SetProvMaxscaleImage(value)
+	case "prov-proxy-docker-haproxy-img":
+		mycluster.SetProvHaproxyImage(value)
+	case "prov-proxy-docker-shardproxy-img":
+		mycluster.SetProvShardproxyImage(value)
+	case "prov-proxy-disk-type":
+		mycluster.SetProvProxyDiskType(value)
+	case "prov-proxy-disk-fs":
+		mycluster.SetProvProxyDiskFS(value)
+	case "prov-proxy-disk-pool":
+		mycluster.SetProvProxyDiskPool(value)
+	case "prov-proxy-disk-device":
+		mycluster.SetProvProxyDiskDevice(value)
+	case "prov-proxy-service-type":
+		mycluster.SetProvProxyServiceType(value)
+	case "monitoring-address":
+		mycluster.SetMonitoringAddress(value)
+	case "scheduler-db-servers-logical-backup-cron":
+		mycluster.SetSchedulerDbServersLogicalBackupCron(value)
+	case "scheduler-db-servers-logs-cron":
+		mycluster.SetSchedulerDbServersLogsCron(value)
+	case "scheduler-db-servers-logs-table-rotate-cron":
+		mycluster.SetSchedulerDbServersLogsTableRotateCron(value)
+	case "scheduler-db-servers-optimize-cron":
+		mycluster.SetSchedulerDbServersOptimizeCron(value)
+	case "scheduler-db-servers-physical-backup-cron":
+		mycluster.SetSchedulerDbServersPhysicalBackupCron(value)
+	case "scheduler-rolling-reprov-cron":
+		mycluster.SetSchedulerRollingReprovCron(value)
+	case "scheduler-rolling-restart-cron":
+		mycluster.SetSchedulerRollingRestartCron(value)
+	case "scheduler-sla-rotate-cron":
+		mycluster.SetSchedulerSlaRotateCron(value)
+	case "scheduler-jobs-ssh-cron":
+		mycluster.SetSchedulerJobsSshCron(value)
+	case "backup-binlogs-keep":
+		mycluster.SetBackupBinlogsKeep(value)
+	}
 }
 
 func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *http.Request) {
