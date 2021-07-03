@@ -111,9 +111,9 @@ type DatabaseProxy interface {
 	GetUseSSL() string
 	GetUseCompression() string
 	GetDatadir() string
+	GetConfigDatadir() string
 	GetEnv() map[string]string
 	GetConfigProxyModule(variable string) string
-
 	SendStats() error
 
 	OpenSVCGetProxyDefaultSection() map[string]string

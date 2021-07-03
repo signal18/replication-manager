@@ -1353,7 +1353,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if repman.Conf.APISecureConfig {
+		if mycluster.Conf.APISecureConfig {
 			if !repman.IsValidClusterACL(r, mycluster) {
 				http.Error(w, "No valid ACL", 403)
 				return
@@ -1367,7 +1367,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
 				w.WriteHeader(404)
-				w.Write([]byte("404 Something went wrong - " + http.StatusText(404)))
+				w.Write([]byte("404 Something went wrong reading : " + string(node.Datadir+"/config.tar.gz") + " " + err.Error() + " - " + http.StatusText(404)))
 				return
 			}
 			w.Write(data)
@@ -1378,7 +1378,8 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
 				w.WriteHeader(404)
-				w.Write([]byte("404 Something went wrong - " + http.StatusText(404)))
+				w.Write([]byte("404 Something went wrong reading : " + string(proxy.GetDatadir()+"/config.tar.gz") + " " + err.Error() + " - " + http.StatusText(404)))
+
 				return
 			}
 			w.Write(data)
