@@ -205,11 +205,19 @@ func (proxy *Proxy) GetUseCompression() string {
 
 }
 
-func (proxy *Proxy) GetDatadir() string {
+func (proxy *Proxy) GetConfigDatadir() string {
 	if proxy.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
 		return proxy.SlapOSDatadir
 	}
 	return "/tmp"
+}
+
+func (proxy *Proxy) GetDatadir() string {
+	return proxy.Datadir
+}
+
+func (proxy *Proxy) GetName() string {
+	return proxy.Name
 }
 
 func (proxy *ProxySQLProxy) GetEnv() map[string]string {
@@ -261,7 +269,7 @@ func (proxy *Proxy) GetBaseEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_VIP_PORT%%":              proxy.ClusterGroup.Conf.ProvProxRoutePort,
 		"%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%":          proxy.ClusterGroup.Conf.MonitorAddress + ":" + proxy.ClusterGroup.Conf.HttpPort,
 		"%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%":      proxy.ClusterGroup.GetClusterName(),
-		"%%ENV:SVC_CONF_ENV_DATADIR%%":               proxy.GetDatadir(),
+		"%%ENV:SVC_CONF_ENV_DATADIR%%":               proxy.GetConfigDatadir(),
 	}
 }
 
