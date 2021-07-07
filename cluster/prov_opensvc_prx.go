@@ -508,10 +508,6 @@ mrm_api_addr = ` + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + `
 mrm_cluster_name = ` + cluster.GetClusterName() + `
 `
 
-	if pr, ok := prx.(*ProxySQLProxy); ok {
-		conf += `proxysql_read_on_master =  ` + pr.ProxySQLReadOnMaster()
-	}
-
 	return conf
 }
 

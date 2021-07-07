@@ -7,9 +7,11 @@
 package cluster
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
@@ -21,6 +23,20 @@ func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
 		}
 	}
 	return false
+}
+
+func (cluster *Cluster) HasValidBackup() bool {
+	if cluster.Conf.MonitorScheduler && (cluster.Conf.SchedulerBackupLogical || cluster.Conf.SchedulerBackupPhysical) {
+		sv := cluster.GetBackupServer()
+		if sv != nil {
+			if sv.HasBackupLogicalCookie() || sv.HasBackupPhysicalCookie() {
+				return true
+			}
+		}
+	}
+	cluster.SetState("WARN0101", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0101"]), ErrFrom: "TOPO"})
+	return false
+
 }
 
 func (cluster *Cluster) HasSchedulerEntry(myname string) bool {

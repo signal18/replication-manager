@@ -62,6 +62,7 @@ type Cluster struct {
 	IsNeedDatabasesRollingRestart bool                        `json:"isNeedDatabasesRollingRestart"`
 	IsNeedDatabasesRollingReprov  bool                        `json:"isNeedDatabasesRollingReprov"`
 	IsNeedDatabasesReprov         bool                        `json:"isNeedDatabasesReprov"`
+	IsValidBackup                 bool                        `json:"isValidBackup"`
 	IsNotMonitoring               bool                        `json:"isNotMonitoring"`
 	IsCapturing                   bool                        `json:"isCapturing"`
 	Conf                          config.Config               `json:"config"`
@@ -436,12 +437,14 @@ func (cluster *Cluster) Run() {
 						cluster.MonitorQueryRules()
 						cluster.MonitorVariablesDiff()
 						cluster.ResticFetchRepo()
+						cluster.IsValidBackup = cluster.HasValidBackup()
 
 					} else {
 						cluster.sme.PreserveState("WARN0093")
 						cluster.sme.PreserveState("WARN0084")
 						cluster.sme.PreserveState("WARN0095")
 						cluster.sme.PreserveState("ERR00082")
+						cluster.sme.PreserveState("WARN0101")
 					}
 					if cluster.sme.GetHeartbeats()%36000 == 0 {
 						cluster.ResticPurgeRepo()
