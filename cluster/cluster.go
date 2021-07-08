@@ -796,7 +796,10 @@ func (cluster *Cluster) MonitorSchema() {
 	if cluster.master == nil {
 		return
 	}
-	if cluster.master.State == stateFailed || cluster.master.State == stateMaintenance {
+	if cluster.master.State == stateFailed || cluster.master.State == stateMaintenance || cluster.master.State == stateUnconn {
+		return
+	}
+	if cluster.master.Conn == nil {
 		return
 	}
 	cluster.sme.SetMonitorSchemaState()
