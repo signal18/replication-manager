@@ -317,13 +317,13 @@ func (server *ServerMonitor) CheckPrivileges() {
 				server.ClusterGroup.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, err), ErrFrom: "CONF", ServerUrl: server.URL})
 			}
 			if priv.Repl_client_priv == "N" {
-				server.ClusterGroup.SetState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00006"], ErrFrom: "CONF", ServerUrl: server.URL})
+				server.ClusterGroup.SetState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00006"], server.URL), ErrFrom: "CONF", ServerUrl: server.URL})
 			}
 			if priv.Super_priv == "N" {
-				server.ClusterGroup.SetState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00008"], ErrFrom: "CONF", ServerUrl: server.URL})
+				server.ClusterGroup.SetState("ERR00008", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00008"], server.URL), ErrFrom: "CONF", ServerUrl: server.URL})
 			}
 			if priv.Reload_priv == "N" {
-				server.ClusterGroup.SetState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00009"], ErrFrom: "CONF", ServerUrl: server.URL})
+				server.ClusterGroup.SetState("ERR00009", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00009"], server.URL), ErrFrom: "CONF", ServerUrl: server.URL})
 			}
 		}
 		// Check replication user has correct privs.
@@ -336,7 +336,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 					server.ClusterGroup.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], server.ClusterGroup.rplUser, sv2.URL, err), ErrFrom: "CONF", ServerUrl: sv2.URL})
 				}
 				if rpriv.Repl_slave_priv == "N" {
-					server.ClusterGroup.SetState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00007"], ErrFrom: "CONF", ServerUrl: sv2.URL})
+					server.ClusterGroup.SetState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00007"], sv2.URL), ErrFrom: "CONF", ServerUrl: sv2.URL})
 				}
 			}
 		}
