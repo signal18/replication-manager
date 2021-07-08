@@ -521,8 +521,19 @@ func (cluster *Cluster) StateProcessing() {
 					go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed)
 				}
 			}
+			if s.ErrKey == "WARN0101" {
+				cluster.LogPrintf(LvlInfo, "Cluster have  backup")
+				for _, srv := range cluster.Servers {
+					if srv.HasWaitBackupCookie() {
+						cluster.LogPrintf(LvlInfo, "Server %s was waiting for backup", srv.URL)
+						go srv.ReseedMasterSST()
+					}
+				}
+
+			}
 			//		cluster.statecloseChan <- s
 		}
+
 		states := cluster.sme.GetStates()
 		for i := range states {
 			cluster.LogPrintf("STATE", states[i])

@@ -150,6 +150,7 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 }
 
 func (server *ServerMonitor) ReseedMasterSST() error {
+	server.DelWaitBackupCookie()
 	if server.ClusterGroup.Conf.AutorejoinMysqldump == true {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoin dump restore %s", server.URL)
 		err := server.RejoinDirectDump()

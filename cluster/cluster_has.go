@@ -26,14 +26,14 @@ func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
 }
 
 func (cluster *Cluster) HasValidBackup() bool {
-	if cluster.Conf.MonitorScheduler && (cluster.Conf.SchedulerBackupLogical || cluster.Conf.SchedulerBackupPhysical) {
-		sv := cluster.GetBackupServer()
-		if sv != nil {
-			if sv.HasBackupLogicalCookie() || sv.HasBackupPhysicalCookie() {
-				return true
-			}
+	//	if cluster.Conf.MonitorScheduler && (cluster.Conf.SchedulerBackupLogical || cluster.Conf.SchedulerBackupPhysical) {
+	sv := cluster.GetBackupServer()
+	if sv != nil {
+		if sv.HasBackupLogicalCookie() || sv.HasBackupPhysicalCookie() {
+			return true
 		}
 	}
+	//	}
 	cluster.SetState("WARN0101", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0101"]), ErrFrom: "TOPO"})
 	return false
 
