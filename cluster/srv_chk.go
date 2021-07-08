@@ -274,7 +274,7 @@ func (server *ServerMonitor) CheckMasterSettings() {
 	if server.HaveBinlogSlaveUpdates == false {
 		server.ClusterGroup.sme.AddState("WARN0069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0069"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if server.HaveGtidStrictMode == false {
+	if server.HaveGtidStrictMode == false && server.DBVersion.Flavor == "MariaDB" {
 		server.ClusterGroup.sme.AddState("WARN0070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0070"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if server.IsAcid() == false && server.ClusterGroup.IsDiscovered() {
