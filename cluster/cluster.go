@@ -789,20 +789,25 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 				var slavevalue Diff
 				slavevalue.Server = s.URL
 				slavevalue.VariableValue = slaveVariables[k]
-				myvalues = append(myvalues, mastervalue)
+				myvalues = append(myvalues, slavevalue)
 				variablesdiff += "+ Master Variable: " + k + " -> " + v + "\n"
 				variablesdiff += "- Slave: " + s.URL + " -> " + slaveVariables[k] + "\n"
 			}
-			if len(myvalues) > 1 {
-				myvardiff.VariableName = k
-				myvardiff.DiffValues = myvalues
-				alldiff = append(alldiff, myvardiff)
-			}
+		}
+		if len(myvalues) > 1 {
+			myvardiff.VariableName = k
+			myvardiff.DiffValues = myvalues
+			alldiff = append(alldiff, myvardiff)
 		}
 	}
 	if variablesdiff != "" {
 		cluster.DiffVariables = alldiff
-		cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], variablesdiff), ErrFrom: "MON", ServerUrl: cluster.GetMaster().URL})
+		jtext, err := json.MarshalIndent(alldiff, " ", "\t")
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Encoding variables diff %s", err)
+			return
+		}
+		cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], string(jtext)), ErrFrom: "MON", ServerUrl: cluster.GetMaster().URL})
 	}
 }
 
