@@ -761,6 +761,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		"SOCKET":              true,
 		"DATADIR":             true,
 		"THREAD_POOL_SIZE":    true,
+		"RELAY_LOG":           true,
 	}
 	variablesdiff := ""
 	for k, v := range masterVariables {
