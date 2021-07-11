@@ -12,6 +12,24 @@
             "program": "${workspaceFolder}/main.go",
             "env": {},
             "args": ["monitor", "--config", "/etc/replication-manager/config.toml", "--log-file", "/var/lib/replication-manager/data/replication-manager.log"],
+        },
+        {
+            "name": "config_store server",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/cmd/config_store/main.go",
+            "env": {},
+            "args": [],
+        },
+        {
+            "name": "config_store client",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/cmd/config_store-client/main.go",
+            "env": {},
+            "args": [],
         }
     ]
 }

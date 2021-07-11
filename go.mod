@@ -47,12 +47,13 @@ require (
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d
+	github.com/golang/protobuf v1.5.0
 	github.com/gonum/blas v0.0.0-20180125090452-e7c5890b24cf
 	github.com/gonum/floats v0.0.0-20180125090339-7de1f4ea7ab5
 	github.com/gonum/internal v0.0.0-20180125090855-fda53f8d2571
 	github.com/gonum/lapack v0.0.0-20180125091020-f0b8b25edece
 	github.com/gonum/matrix v0.0.0-20180124231301-a41cc49d4c29
-	github.com/google/uuid v1.1.1
+	github.com/google/uuid v1.1.2
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/gorilla/context v1.1.1
 	github.com/gorilla/handlers v1.3.0
@@ -86,7 +87,7 @@ require (
 	github.com/magiconair/properties v1.8.0
 	github.com/magneticio/vamp-router v0.0.0-20151116102511-29379b621548
 	github.com/mattn/go-runewidth v0.0.0-20170510074858-97311d9f7767
-	github.com/mattn/go-sqlite3 v1.9.0
+	github.com/mattn/go-sqlite3 v1.14.6
 	github.com/micro/go-log v0.1.0 // indirect
 	github.com/micro/go-micro v0.1.4
 	github.com/micro/misc v0.1.0 // indirect
@@ -118,16 +119,20 @@ require (
 	github.com/spf13/jwalterweatherman v1.0.0
 	github.com/spf13/pflag v1.0.3
 	github.com/spf13/viper v1.4.0
-	github.com/stretchr/testify v1.4.0
+	github.com/stretchr/testify v1.5.1
 	github.com/urfave/cli v1.22.3
 	github.com/walle/lll v1.0.1 // indirect
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
+	github.com/zeebo/blake3 v0.1.1
 	golang.org/x/crypto v0.0.0-20190510104115-cbcb75029529
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
-	golang.org/x/sys v0.0.0-20190616124812-15dcb6c0061f
+	golang.org/x/sys v0.0.0-20201014080544-cc95f250f6bc
 	golang.org/x/text v0.3.2
 	google.golang.org/appengine v1.5.0
+	google.golang.org/grpc v1.36.0
+	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0 // indirect
+	google.golang.org/protobuf v1.26.0
 	gopkg.in/airbrake/gobrake.v2 v2.0.9 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7
