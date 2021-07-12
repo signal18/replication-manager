@@ -408,6 +408,9 @@ func (cluster *Cluster) GetBackupServer() *ServerMonitor {
 			return server
 		}
 	}
+	if cluster.master != nil {
+		return cluster.master
+	}
 	return nil
 }
 

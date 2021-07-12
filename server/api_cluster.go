@@ -461,11 +461,10 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if !repman.IsValidClusterACL(r, mycluster) {
-			repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.RollingRestart()
+		repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

@@ -20,6 +20,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/user"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -866,18 +867,33 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	if server.ClusterGroup.IsInFailover() {
 		return errors.New("Cancel dbjob via ssh during failover")
 	}
+	user, err := user.Current()
 	key := os.Getenv("HOME") + "/.ssh/id_rsa"
-	client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":22", "apple", key)
+	client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":22", user.Username, key)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err)
 		return err
 	}
 	defer client.Close()
-	out, err2 := client.Script(server.Datadir + "/init/init/dbjobs_new").Output()
-	if err2 != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err2)
-		return err
+
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+	filerc, err := os.Open(server.Datadir + "/init/init/dbjobs_new")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err)
+		return errors.New("Cancel dbjob can't open script")
+
 	}
+	defer filerc.Close()
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(filerc)
+
+	if client.Shell().SetStdio(buf, &stdout, &stderr).Start(); err != nil {
+		server.ClusterGroup.LogPrintf(LvlWarn, "JobRunViaSSH %s", stderr.String())
+	}
+	out := stdout.String()
 
 	res := new(JobResult)
 	val := reflect.ValueOf(res).Elem()
@@ -886,13 +902,14 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 			val.Field(i).SetBool(false)
 		} else {
 			val.Field(i).SetBool(true)
-			server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", out)
+			server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", val.Type().Field(i).Name)
 		}
 	}
-	//server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", res)
-	//server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", val)
 
 	server.ClusterGroup.JobResults[server.URL] = res
+	if server.ClusterGroup.Conf.LogLevel > 2 {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", res)
+	}
 	return nil
 }
 
