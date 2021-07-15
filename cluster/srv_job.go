@@ -889,7 +889,15 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	defer filerc.Close()
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(filerc)
-
+	adminuser := "admin"
+	adminpassword := "repman"
+	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
+		adminpassword = user.Password
+	}
+	_, err = client.Cmd("export MYSQL_ROOT_PASSWORD=" + server.Pass).Cmd("export REPLICATION_MANAGER_URL=" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort).Cmd("export REPLICATION_MANAGER_USER=" + adminuser).Cmd("export REPLICATION_MANAGER_PASSWORD=" + adminpassword).Cmd("export REPLICATION_MANAGER_HOST_NAME=" + server.Host).Cmd("export REPLICATION_MANAGER_HOST_PORT=" + server.Port).Cmd("export REPLICATION_MANAGER_CLUSTER_NAME=" + server.ClusterGroup.Name).SmartOutput()
+	if err != nil {
+		return errors.New("JobRunViaSSH Setup env variables via SSH %s" + err.Error())
+	}
 	if client.Shell().SetStdio(buf, &stdout, &stderr).Start(); err != nil {
 		server.ClusterGroup.LogPrintf(LvlWarn, "JobRunViaSSH %s", stderr.String())
 	}
