@@ -280,6 +280,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SetIgnored(cluster.IsInIgnoredHosts(server))
 	server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
+	server.ReloadSaveInfosVariables()
 	/*if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
 		server.Conn, err = sqlx.Open("postgres", server.DSN)
 	} else {
@@ -633,6 +634,7 @@ func (server *ServerMonitor) Refresh() error {
 				server.ClusterGroup.SetState("ERR00073", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
 			}
 			if server.ClusterGroup.sme.GetHeartbeats()%30 == 0 {
+				server.SaveInfos()
 				server.CheckPrivileges()
 			} else {
 				server.ClusterGroup.sme.PreserveState("ERR00007")
@@ -1211,6 +1213,49 @@ func (server *ServerMonitor) Capture() error {
 
 	go server.CaptureLoop(server.ClusterGroup.GetStateMachine().GetHeartbeats())
 	go server.JobCapturePurge(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name, server.ClusterGroup.Conf.MonitorCaptureFileKeep)
+	return nil
+}
+
+func (server *ServerMonitor) SaveInfos() error {
+	type Save struct {
+		Variables   map[string]string      `json:"variables"`
+		ProcessList []dbhelper.Processlist `json:"processlist"`
+		Status      map[string]string      `json:"status"`
+		SlaveStatus []dbhelper.SlaveStatus `json:"slavestatus"`
+	}
+	var clsave Save
+	clsave.Variables = server.Variables
+	clsave.Status = server.Status
+	clsave.ProcessList = server.FullProcessList
+	clsave.SlaveStatus = server.LastSeenReplications
+	saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
+	err := ioutil.WriteFile(server.Datadir+"/serverstate.json", saveJSON, 0644)
+	if err != nil {
+		return errors.New("SaveInfos" + err.Error())
+	}
+	return nil
+}
+
+func (server *ServerMonitor) ReloadSaveInfosVariables() error {
+	type Save struct {
+		Variables   map[string]string      `json:"variables"`
+		ProcessList []dbhelper.Processlist `json:"processlist"`
+		Status      map[string]string      `json:"status"`
+		SlaveStatus []dbhelper.SlaveStatus `json:"slavestatus"`
+	}
+
+	var clsave Save
+	file, err := ioutil.ReadFile(server.Datadir + "/serverstate.json")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlInfo, "No file found %s: %v\n", server.Datadir+"/serverstate.json", err)
+		return err
+	}
+	err = json.Unmarshal(file, &clsave)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "File error: %v\n", err)
+		return err
+	}
+	server.Variables = clsave.Variables
 	return nil
 }
 

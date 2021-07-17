@@ -654,7 +654,7 @@ func (cluster *Cluster) RejoinFixRelay(slave *ServerMonitor, relay *ServerMonito
 	return nil
 }
 
-// UseGtid  check is replication use gtid
+// UseGtid check is replication use gtid
 func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
 	ss, errss := server.GetSlaveStatus(server.ReplicationSourceName)
 	if errss != nil {
@@ -663,7 +663,7 @@ func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
 
 	server.ClusterGroup.LogPrintf(LvlDbg, "Rejoin Server use GTID %s", ss.UsingGtid.String)
 
-	// An old master  master do no have replication
+	// An old master do no have replication
 	if crash.FailoverIOGtid == nil {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Rejoin server cannot find a saved master election GTID")
 		return false

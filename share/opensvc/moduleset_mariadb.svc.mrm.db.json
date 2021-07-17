@@ -2258,6 +2258,25 @@
                 }
             ],
             "fset_name": "mariadb.disk.splitundolog"
+        },
+        {
+            "fset_stats": false,
+            "id": 409,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "nosplitpath",
+                        "f_table": "v_tags",
+                        "id": 366
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.disk.nosplitpath"
         }
     ],
     "rulesets": [
@@ -2696,8 +2715,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_innodb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# INNODB\\n# ------\\n# mariadb_command: SET GLOBAL innodb_adaptive_hash_index=0;SET GLOBAL innodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%*1024*1024;SET GLOBAL innodb_io_capacity = %%ENV:CHECKPOINTIOPS%%;SET GLOBAL innodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%;SET GLOBAL innodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%;SET GLOBAL innodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%;SET GLOBAL innodb_flush_neighbors = 1;EXECUTE IMMEDIATE IF(@@innodb_buffer_pool_instances=%%ENV:IBPINSTANCES%%,\\\"SELECT 'Unchanged innodb_buffer_pool_instances'\\\", \\\"SET GLOBAL innodb_buffer_pool_instances =%%ENV:IBPINSTANCES%%\\\"); EXECUTE IMMEDIATE IF(@@innodb_read_io_threads=%%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%,\\\"SELECT 'Unchanged innodb_read_io_threads'\\\", \\\"SET GLOBAL innodb_read_io_threads = %%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%\\\");EXECUTE IMMEDIATE IF(@@innodb_write_io_threads=%%ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%,\\\"SELECT 'Unchanged innodb_write_io_threads'\\\", \\\"SET GLOBAL innodb_write_io_threads = %%ENV:ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%\\\");EXECUTE IMMEDIATE  IF(@@innodb_log_buffer_size=%%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%*1024*1024,\\\"SELECT 'Unchanged innodb_log_buffer_size'\\\", \\\"SET GLOBAL innodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%*1024*1024\\\");SET GLOBAL innodb_thread_concurrency = 0;EXECUTE IMMEDIATE  IF(@@innodb_autoinc_lock_mode=2,\\\"SELECT 'Unchanged innodb_autoinc_lock_mode'\\\", \\\"SET GLOBAL innodb_autoinc_lock_mode=2\\\");SET GLOBAL innodb_stats_on_metadata = 0;SET GLOBAL innodb_buffer_pool_dump_at_shutdown = 1;EXECUTE IMMEDIATE  IF(@@innodb_buffer_pool_load_at_startup=1,\\\"SELECT 'Unchanged innodb_buffer_pool_load_at_startup'\\\", \\\"SET GLOBAL innodb_buffer_pool_load_at_startup=1\\\");EXECUTE IMMEDIATE  IF(@@innodb_open_files=16384,\\\"SELECT 'Unchanged innodb_open_files'\\\", \\\"SET GLOBAL innodb_open_files=16384\\\");EXECUTE IMMEDIATE  IF(@@innodb_purge_threads=%%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%,\\\"SELECT 'Unchanged innodb_purge_threads'\\\", \\\"SET GLOBAL innodb_purge_threads = %%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%\\\");SET GLOBAL innodb_concurrency_tickets = 5000;SET GLOBAL innodb_print_all_deadlocks = 1; EXECUTE IMMEDIATE  IF(@@innodb_large_prefix=1 OR @@innodb_large_prefix IS NULL,\\\"SELECT 'Unchanged innodb_large_prefix'\\\", \\\"SET GLOBAL innodb_large_prefix = 1\\\"); EXECUTE IMMEDIATE  IF(@@innodb_file_format='barracuda' OR @@innodb_file_format IS NULL,\\\"SELECT 'Unchanged barracuda'\\\", \\\"SET GLOBAL innodb_file_format='barracuda'\\\");SET GLOBAL innodb_default_row_format=dynamic;\\n \\n[mysqld-5.5]\\ninnodb_file_format = barracuda\\n[mysqld-5.6]\\ninnodb_file_format = barracuda\\n[mysqld-5.7]\\ninnodb_file_format = barracuda \\n#deprecated in 5.8\\n\\n[mariadb]\\n#innodb_buffer_pool_populate=0 \\n[mariadb 5.5]\\ninnodb_file_format = barracuda\\n[mariadb 10.0]\\ninnodb_file_format = barracuda\\n \\n[mariadb 10.1]\\ninnodb_force_primary_key = 1\\ninnodb_default_row_format=dynamic\\n#innodb_defragment = 1\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.2]\\ninnodb_lock_schedule_algorithm=fcfs\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.3]\\ninnodb-page-cleaners= %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld]\\ntransaction-isolation = READ-COMMITTED\\ndefault_storage_engine = InnoDB\\ninnodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_SIZE%%M\\ninnodb_buffer_pool_instances = %%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_INSTANCES%%\\ninnodb_read_io_threads = %%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%\\ninnodb_write_io_threads = %%ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%\\ninnodb_io_capacity = %%ENV:CHECKPOINTIOPS%%\\ninnodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%\\ninnodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%\\ninnodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%\\ninnodb_log_file_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_FILE_SIZE%%M\\n# innodb_log_buffer_size change Crash 10.2.14\\ninnodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%M\\nloose_innodb_purge_threads = %%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%\\ninnodb_adaptive_hash_index = 0\\ninnodb_file_per_table= 1\\ninnodb_log_files_in_group = 1\\ninnodb_flush_neighbors = 1\\ninnodb_thread_concurrency = 0\\ninnodb_flush_method = O_DIRECT\\n#innodb_undo_tablespaces = 4\\ninnodb_autoinc_lock_mode = 2\\ninnodb_stats_on_metadata = 0\\ninnodb_buffer_pool_dump_at_shutdown = 1\\ninnodb_buffer_pool_load_at_startup = 1\\ninnodb_open_files = 16384\\ninnodb_concurrency_tickets = 5000\\ninnodb_print_all_deadlocks = 1  \\n# innodb_monitor_enable = all // cost perf  \\n\\n[mariadb 10.4]\\ninnodb_large_prefix = 1\\ninnodb_file_format = barracuda\\ninnodb_default_row_format=dynamic\\n\"}",
-                    "var_updated": "2021-05-20 10:26:25",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_innodb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# INNODB\\n# ------\\n# mariadb_command: SET GLOBAL innodb_adaptive_hash_index=0;SET GLOBAL innodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%*1024*1024;SET GLOBAL innodb_io_capacity = %%ENV:CHECKPOINTIOPS%%;SET GLOBAL innodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%;SET GLOBAL innodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%;SET GLOBAL innodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%;SET GLOBAL innodb_flush_neighbors = 1;EXECUTE IMMEDIATE IF(@@innodb_buffer_pool_instances=%%ENV:IBPINSTANCES%%,\\\"SELECT 'Unchanged innodb_buffer_pool_instances'\\\", \\\"SET GLOBAL innodb_buffer_pool_instances =%%ENV:IBPINSTANCES%%\\\"); EXECUTE IMMEDIATE IF(@@innodb_read_io_threads=%%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%,\\\"SELECT 'Unchanged innodb_read_io_threads'\\\", \\\"SET GLOBAL innodb_read_io_threads = %%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%\\\");EXECUTE IMMEDIATE IF(@@innodb_write_io_threads=%%ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%,\\\"SELECT 'Unchanged innodb_write_io_threads'\\\", \\\"SET GLOBAL innodb_write_io_threads = %%ENV:ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%\\\");EXECUTE IMMEDIATE  IF(@@innodb_log_buffer_size=%%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%*1024*1024,\\\"SELECT 'Unchanged innodb_log_buffer_size'\\\", \\\"SET GLOBAL innodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%*1024*1024\\\");SET GLOBAL innodb_thread_concurrency = 0;EXECUTE IMMEDIATE  IF(@@innodb_autoinc_lock_mode=2,\\\"SELECT 'Unchanged innodb_autoinc_lock_mode'\\\", \\\"SET GLOBAL innodb_autoinc_lock_mode=2\\\");SET GLOBAL innodb_stats_on_metadata = 0;SET GLOBAL innodb_buffer_pool_dump_at_shutdown = 1;EXECUTE IMMEDIATE  IF(@@innodb_buffer_pool_load_at_startup=1,\\\"SELECT 'Unchanged innodb_buffer_pool_load_at_startup'\\\", \\\"SET GLOBAL innodb_buffer_pool_load_at_startup=1\\\");EXECUTE IMMEDIATE  IF(@@innodb_open_files=16384,\\\"SELECT 'Unchanged innodb_open_files'\\\", \\\"SET GLOBAL innodb_open_files=16384\\\");EXECUTE IMMEDIATE  IF(@@innodb_purge_threads=%%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%,\\\"SELECT 'Unchanged innodb_purge_threads'\\\", \\\"SET GLOBAL innodb_purge_threads = %%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%\\\");SET GLOBAL innodb_concurrency_tickets = 5000;SET GLOBAL innodb_print_all_deadlocks = 1; EXECUTE IMMEDIATE  IF(@@innodb_large_prefix=1 OR @@innodb_large_prefix IS NULL,\\\"SELECT 'Unchanged innodb_large_prefix'\\\", \\\"SET GLOBAL innodb_large_prefix = 1\\\"); EXECUTE IMMEDIATE  IF(@@innodb_file_format='barracuda' OR @@innodb_file_format IS NULL,\\\"SELECT 'Unchanged barracuda'\\\", \\\"SET GLOBAL innodb_file_format='barracuda'\\\");SET GLOBAL innodb_default_row_format=dynamic;\\n \\n[mysqld-5.5]\\ninnodb_file_format = barracuda\\n[mysqld-5.6]\\ninnodb_file_format = barracuda\\n[mysqld-5.7]\\ninnodb_file_format = barracuda \\n#deprecated in 5.8\\n\\n[mariadb]\\n#innodb_buffer_pool_populate=0 \\n[mariadb 5.5]\\ninnodb_file_format = barracuda\\n[mariadb 10.0]\\ninnodb_file_format = barracuda\\n \\n[mariadb 10.1]\\ninnodb_force_primary_key = 1\\ninnodb_default_row_format=dynamic\\n#innodb_defragment = 1\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.2]\\ninnodb_lock_schedule_algorithm=fcfs\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.3]\\ninnodb-page-cleaners= %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld]\\ntransaction-isolation = READ-COMMITTED\\ndefault_storage_engine = InnoDB\\ninnodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_SIZE%%M\\ninnodb_buffer_pool_instances = %%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_INSTANCES%%\\ninnodb_read_io_threads = %%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%\\ninnodb_write_io_threads = %%ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%\\ninnodb_io_capacity = %%ENV:CHECKPOINTIOPS%%\\ninnodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%\\ninnodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%\\ninnodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%\\ninnodb_log_file_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_FILE_SIZE%%M\\n# innodb_log_buffer_size change Crash 10.2.14\\ninnodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%M\\nloose_innodb_purge_threads = %%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%\\nloose_innodb_lru_flush_size = %%ENV:SVC_CONF_ENV_INNODB_LRU_FLUSH_SIZE%%\\ninnodb_adaptive_hash_index = 0\\ninnodb_file_per_table= 1\\ninnodb_log_files_in_group = 1\\ninnodb_flush_neighbors = 1\\ninnodb_thread_concurrency = 0\\ninnodb_flush_method = O_DIRECT\\n#innodb_undo_tablespaces = 4\\ninnodb_autoinc_lock_mode = 2\\ninnodb_stats_on_metadata = 0\\ninnodb_buffer_pool_dump_at_shutdown = 1\\ninnodb_buffer_pool_load_at_startup = 1\\ninnodb_open_files = 16384\\ninnodb_concurrency_tickets = 5000\\ninnodb_print_all_deadlocks = 1  \\n# innodb_monitor_enable = all // cost perf  \\n\\n[mariadb 10.4]\\ninnodb_large_prefix = 1\\ninnodb_file_format = barracuda\\ninnodb_default_row_format=dynamic\\n\"}",
+                    "var_updated": "2021-07-16 09:17:42",
                     "var_name": "db_cnf_engine_innodb",
                     "id": 5917
                 },
@@ -4051,7 +4070,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.sec_noauth",
                 "mariadb.svc.mrm.db.cnf.generic.mem_withinterleave",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withrowminimal",
-                "mariadb.svc.mrm.db.cnf.generic.disk_withsplitundolog"
+                "mariadb.svc.mrm.db.cnf.generic.disk_withsplitundolog",
+                "mariadb.svc.mrm.db.cnf.generic.disk_nosplitpath"
             ],
             "publications": [
                 "replication-manager"
@@ -6955,6 +6975,30 @@
                 "replication-manager"
             ],
             "id": 1151,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.disk.nosplitpath",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_nosplitpath",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_path.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ntmpdir = %%ENV:SVC_CONF_ENV_MYSQL_TMPDIR%%\\nslave_load_tmpdir = %%ENV:SVC_CONF_ENV_MYSQL_SLAVE_LOAD_TMPDIR%%\\nlog_error = %%ENV:SVC_CONF_ENV_MYSQL_LOG_ERROR%%\\nslow_query_log_file = %%ENV:SVC_CONF_ENV_MYSQL_SLOW_QUERY_LOG_FILE%%\\ngeneral_log_file= %%ENV:SVC_CONF_ENV_MYSQL_GENERAL_LOG_FILE%%\\ninnodb_data_home_dir = %%ENV:SVC_CONF_ENV_MYSQL_INNODB_DATA_HOME_DIR%%\\ninnodb_log_group_home_dir =  %%ENV:SVC_CONF_ENV_MYSQL_INNODB_LOG_GROUP_HOME_DIR%%\\nloose_innodb_undo_directory  = %%ENV:SVC_CONF_ENV_MYSQL_INNODB_UNDO_DIRECTORY%%\\nlog_bin= %%ENV:SVC_CONF_ENV_MYSQL_LOG_BIN%%\\nlog_bin_index= %%ENV:SVC_CONF_ENV_MYSQL_LOG_BIN_INDEX%%\\nrelay_log = %%ENV:SVC_CONF_ENV_MYSQL_RELAY_LOG%%\\nrelay_log_index = %%ENV:SVC_CONF_ENV_MYSQL_RELAY_LOG_INDEX%%\\n\\n[mariadb]\\n# Bug aria_log_dir_path is not available in variables \\n# aria_log_dir_path = %%ENV:SVC_CONF_ENV_MYSQL_ARIA_LOG_DIR_PATH%%\"}",
+                    "var_updated": "2021-07-15 15:36:26",
+                    "var_name": "db_cnf_default_path",
+                    "id": 6285
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1152,
             "responsibles": [
                 "replication-manager"
             ]

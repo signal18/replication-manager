@@ -32,7 +32,7 @@ func (cluster *Cluster) loadDBCertificates(path string) error {
 	var cacertfile, clicertfile, clikeyfile string
 
 	if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTLSCLI == "" || cluster.Conf.HostsTLSKEY == "" {
-		if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.HaveDBTag("ssl") {
+		if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.Configurator.HaveDBTag("ssl") {
 			cacertfile = path + "/ca-cert.pem"
 			clicertfile = path + "/client-cert.pem"
 			clikeyfile = path + "/client-key.pem"
@@ -72,7 +72,7 @@ func (cluster *Cluster) loadDBOldCertificates(path string) error {
 	var cacertfile, clicertfile, clikeyfile string
 
 	if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTLSCLI == "" || cluster.Conf.HostsTLSKEY == "" {
-		if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.HaveDBTag("ssl") {
+		if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.Configurator.HaveDBTag("ssl") {
 			cacertfile = path + "/ca-cert.pem"
 			clicertfile = path + "/client-cert.pem"
 			clikeyfile = path + "/client-key.pem"

@@ -722,9 +722,12 @@ func (repman *ReplicationManager) handlerMuxSetSettingsDiscover(w http.ResponseW
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.ConfigDiscovery()
+		err := mycluster.ConfigDiscovery()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 	} else {
-
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -842,7 +845,7 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 	if mycluster != nil {
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetDBModuleTags())
+		err := e.Encode(mycluster.Configurator.GetDBModuleTags())
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return

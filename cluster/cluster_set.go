@@ -258,59 +258,85 @@ func (cluster *Cluster) SetInteractive(check bool) {
 }
 
 func (cluster *Cluster) SetDBDiskSize(value string) {
-	cluster.Conf.ProvDisk = value
-	cluster.SetDBReprovCookie()
+
+  cluster.Configurator.SetDBDisk(value)
+	cluster.Conf.ProvDisk = cluster.Configurator.GetConfigDBDisk()
+
+cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBCores(value string) {
-	cluster.Conf.ProvCores = value
-	cluster.SetDBRestartCookie()
+
+  cluster.Configurator.SetDBCores(value)
+	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
+  cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBMemorySize(value string) {
-	cluster.Conf.ProvMem = value
+
+  cluster.Configurator.SetDBMemory(value)
+	cluster.Conf.ProvMem = cluster.Configurator.GetConfigDBMemory()
+  cluster.SetDBReprovCookie()
+}
+
+func (cluster *Cluster) SetDBCoresFromConfigurator() {
+
+	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
 	cluster.SetDBRestartCookie()
 }
 
+func (cluster *Cluster) SetDBMemoryFromConfigurator() {
+	cluster.Conf.ProvMem = cluster.Configurator.GetConfigDBMemory()
+	cluster.SetDBRestartCookie()
+}
+
+func (cluster *Cluster) SetDBIOPSFromConfigurator() {
+		cluster.Conf.ProvIops=cluster.Configurator.GetConfigDBDiskIOPS()
+		cluster.SetDBRestartCookie()
+}
+
+func (cluster *Cluster) SetTagsFromConfigurator() {
+	cluster.Conf.ProvTags = cluster.Configurator.GetConfigDBTags()
+	cluster.Conf.ProvTags = cluster.Configurator.GetConfigProxyTags()
+}
+
 func (cluster *Cluster) SetDBDiskIOPS(value string) {
-	cluster.Conf.ProvIops = value
+	cluster.Configurator.SetDBDiskIOPS(value)
+  cluster.Conf.ProvIops = cluster.Configurator.GetConfigDBDiskIOPS()
 	cluster.SetDBRestartCookie()
 }
 
 func (cluster *Cluster) SetDBMaxConnections(value string) {
-	valueNum, err := strconv.Atoi(value)
-	if err != nil {
-		cluster.Conf.ProvMaxConnections = 1000
-	}
-	cluster.Conf.ProvMaxConnections = valueNum
+	cluster.Configurator.SetDBMaxConnections(value)
+	cluster.Conf.ProvMaxConnections =cluster.Configurator.GetConfigDBMaxConnections()
 	cluster.SetDBRestartCookie()
 }
 
 func (cluster *Cluster) SetDBExpireLogDays(value string) {
-	valueNum, err := strconv.Atoi(value)
-	if err != nil {
-		cluster.Conf.ProvExpireLogDays = 5
-	}
-	cluster.Conf.ProvExpireLogDays = valueNum
+	cluster.Configurator.SetDBExpireLogDays(value)
+	cluster.Conf.ProvExpireLogDays = cluster.Configurator.GetConfigDBExpireLogDays()
 	cluster.SetDBRestartCookie()
 }
 
 func (cluster *Cluster) SetProxyCores(value string) {
-	cluster.Conf.ProvProxCores = value
+	cluster.Configurator.SetProxyCores(value)
+	cluster.Conf.ProvProxCores =cluster.Configurator.GetConfigProxyCores()
 	cluster.SetProxiesRestartCookie()
 }
+
 func (cluster *Cluster) SetProxyMemorySize(value string) {
-	cluster.Conf.ProvProxMem = value
+	cluster.Configurator.SetProxyMemorySize(value)
+	cluster.Conf.ProvProxMem = cluster.Configurator.GetProxyMemorySize()
 	cluster.SetProxiesRestartCookie()
 }
+
 func (cluster *Cluster) SetProxyDiskSize(value string) {
-	cluster.Conf.ProvProxDisk = value
+	cluster.Configurator.SetProxyDiskSize(value)
+	cluster.Conf.ProvProxDisk = cluster.Configurator.GetProxyDiskSize()
 	cluster.SetProxiesReprovCookie()
 }
 
 func (cluster *Cluster) SetTraffic(traffic bool) {
-	//cluster.SetBenchMethod("table")
-	//cluster.PrepareBench()
 	cluster.Conf.TestInjectTraffic = traffic
 }
 
@@ -452,8 +478,8 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 }
 
 func (cluster *Cluster) SetClusterVariablesFromConfig() {
-	cluster.DBTags = cluster.GetDatabaseTags()
-	cluster.ProxyTags = cluster.GetProxyTags()
+	cluster.Configurator.SetConfig(cluster.Conf)
+
 	var err error
 	err = cluster.loadDBCertificates(cluster.WorkingDir)
 	if err != nil {

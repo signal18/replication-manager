@@ -267,21 +267,3 @@ func (cluster *Cluster) IsInFailover() bool {
 func (cluster *Cluster) IsDiscovered() bool {
 	return cluster.sme.IsDiscovered()
 }
-
-func (cluster *Cluster) HaveDBTag(tag string) bool {
-	for _, t := range cluster.DBTags {
-		if t == tag {
-			return true
-		}
-	}
-	return false
-}
-
-func (cluster *Cluster) HaveProxyTag(tag string) bool {
-	for _, t := range cluster.ProxyTags {
-		if t == tag {
-			return true
-		}
-	}
-	return false
-}

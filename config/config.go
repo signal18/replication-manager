@@ -587,6 +587,12 @@ type DockerRepos struct {
 	Repos []DockerRepo `json:"repos"`
 }
 
+type Tag struct {
+	Id       uint   `json:"id"`
+	Name     string `json:"name"`
+	Category string `json:"category"`
+}
+
 type Grant struct {
 	Grant  string `json:"grant"`
 	Enable bool   `json:"enable"`

@@ -10,19 +10,7 @@ package cluster
 
 import (
 	"os"
-	"strings"
 )
-
-func (proxy *Proxy) IsFilterInTags(filter string) bool {
-	tags := proxy.ClusterGroup.GetProxyTags()
-	for _, tag := range tags {
-		if strings.Contains(filter, "."+tag) {
-			//	fmt.Println(server.ClusterGroup.Conf.ProvTags + " vs tag: " + tag + "  against " + filter)
-			return true
-		}
-	}
-	return false
-}
 
 func (proxy *Proxy) hasCookie(key string) bool {
 	if _, err := os.Stat(proxy.Datadir + "/@" + key); os.IsNotExist(err) {
