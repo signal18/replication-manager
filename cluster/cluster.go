@@ -67,7 +67,6 @@ type Cluster struct {
 	IsCapturing                   bool          `json:"isCapturing"`
 	Conf                          config.Config `json:"config"`
 	CleanAll                      bool          `json:"cleanReplication"` //used in testing
-
 	Topology                  string                      `json:"topology"`
 	Uptime                    string                      `json:"uptime"`
 	UptimeFailable            string                      `json:"uptimeFailable"`
@@ -199,6 +198,16 @@ type JobResult struct {
 	Stop                  bool `json:"stop"`
 	Start                 bool `json:"start"`
 	Restart               bool `json:"restart"`
+}
+
+type Diff struct {
+	Server        string `json:"serverName"`
+	VariableValue string `json:"variableValue"`
+}
+
+type VariableDiff struct {
+	VariableName string `json:"variableName"`
+	DiffValues   []Diff `json:"diffValues"`
 }
 
 const (
@@ -773,21 +782,42 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		"SOCKET":              true,
 		"DATADIR":             true,
 		"THREAD_POOL_SIZE":    true,
+		"RELAY_LOG":           true,
 	}
 	variablesdiff := ""
+	var alldiff []VariableDiff
 	for k, v := range masterVariables {
-
+		var myvardiff VariableDiff
+		var myvalues []Diff
+		var mastervalue Diff
+		mastervalue.Server = cluster.GetMaster().URL
+		mastervalue.VariableValue = v
+		myvalues = append(myvalues, mastervalue)
 		for _, s := range cluster.slaves {
 			slaveVariables := s.Variables
 			if slaveVariables[k] != v && exceptVariables[k] != true {
+				var slavevalue Diff
+				slavevalue.Server = s.URL
+				slavevalue.VariableValue = slaveVariables[k]
+				myvalues = append(myvalues, slavevalue)
 				variablesdiff += "+ Master Variable: " + k + " -> " + v + "\n"
 				variablesdiff += "- Slave: " + s.URL + " -> " + slaveVariables[k] + "\n"
 			}
-
+		}
+		if len(myvalues) > 1 {
+			myvardiff.VariableName = k
+			myvardiff.DiffValues = myvalues
+			alldiff = append(alldiff, myvardiff)
 		}
 	}
 	if variablesdiff != "" {
-		cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], variablesdiff), ErrFrom: "MON", ServerUrl: cluster.GetMaster().URL})
+		cluster.DiffVariables = alldiff
+		jtext, err := json.MarshalIndent(alldiff, " ", "\t")
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Encoding variables diff %s", err)
+			return
+		}
+		cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], string(jtext)), ErrFrom: "MON", ServerUrl: cluster.GetMaster().URL})
 	}
 }
 
@@ -798,7 +828,10 @@ func (cluster *Cluster) MonitorSchema() {
 	if cluster.master == nil {
 		return
 	}
-	if cluster.master.State == stateFailed || cluster.master.State == stateMaintenance {
+	if cluster.master.State == stateFailed || cluster.master.State == stateMaintenance || cluster.master.State == stateUnconn {
+		return
+	}
+	if cluster.master.Conn == nil {
 		return
 	}
 	cluster.sme.SetMonitorSchemaState()

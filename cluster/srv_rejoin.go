@@ -66,6 +66,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 					return nil
 				} else {
 					server.ClusterGroup.rejoinCond.Send <- true
+					server.ClusterGroup.LogPrintf("INFO", "No auto seeding %s", server.URL)
 					return errors.New("No Autoseed")
 				}
 			}
