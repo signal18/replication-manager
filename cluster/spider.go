@@ -22,29 +22,31 @@ func (cluster *Cluster) SpiderShardsDiscovery() {
 	for _, s := range cluster.Servers {
 		cluster.tlog.Add(fmt.Sprintf("INFO: Is Spider Monitor server %s ", s.URL))
 		mon, err := dbhelper.GetSpiderMonitor(s.Conn)
-		if err == nil {
-			if mon != "" {
-				cluster.tlog.Add(fmt.Sprintf("INFO: Retriving Spider Shards Server %s ", s.URL))
-				extraUrl, err := dbhelper.GetSpiderShardUrl(s.Conn)
-				if err == nil {
-					if extraUrl != "" {
-						for j, url := range strings.Split(extraUrl, ",") {
-							var err error
-							srv, err := cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, true, cluster.GetDomain())
-							srv.State = stateShard
-							cluster.Servers = append(cluster.Servers, srv)
-							if err != nil {
-								log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", cluster.Servers[j].URL, err)
-							}
-							if cluster.Conf.Verbose {
-								cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New server created: %v", cluster.Name, cluster.Servers[j].URL))
-							}
+		if err != nil {
+			continue
+		}
+		if mon != "" {
+			cluster.tlog.Add(fmt.Sprintf("INFO: Retriving Spider Shards Server %s ", s.URL))
+			extraUrl, err := dbhelper.GetSpiderShardUrl(s.Conn)
+			if err == nil {
+				if extraUrl != "" {
+					for j, url := range strings.Split(extraUrl, ",") {
+						var err error
+						srv, err := cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, true, cluster.GetDomain())
+						srv.State = stateShard
+						cluster.Servers = append(cluster.Servers, srv)
+						if err != nil {
+							log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", cluster.Servers[j].URL, err)
+						}
+						if cluster.Conf.Verbose {
+							cluster.tlog.Add(fmt.Sprintf("[%s] DEBUG: New server created: %v", cluster.Name, cluster.Servers[j].URL))
 						}
 					}
 				}
 			}
 		}
 	}
+
 }
 
 func (cluster *Cluster) SpiderSetShardsRepl() {

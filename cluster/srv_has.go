@@ -56,8 +56,11 @@ func (server *ServerMonitor) IsMysqlDumpUValidOption(option string) bool {
 }
 
 func (server *ServerMonitor) IsSlaveOfReplicationSource(name string) bool {
+
 	if server.Replications != nil {
+
 		for _, ss := range server.Replications {
+			server.ClusterGroup.LogPrintf(LvlDbg, "IsSlaveOfReplicationSource check %s drop unlinked server %s ", ss.ConnectionName.String, name)
 			if ss.ConnectionName.String == name {
 				return true
 			}
@@ -66,54 +69,43 @@ func (server *ServerMonitor) IsSlaveOfReplicationSource(name string) bool {
 	return false
 }
 
-func (server *ServerMonitor) HasProvisionCookie() bool {
-	if server == nil {
-		return false
-	}
-	if _, err := os.Stat(server.Datadir + "/@cookie_prov"); os.IsNotExist(err) {
+func (server *ServerMonitor) hasCookie(key string) bool {
+	if _, err := os.Stat(server.Datadir + "/@" + key); os.IsNotExist(err) {
 		return false
 	}
 	return true
+}
+
+func (server *ServerMonitor) HasProvisionCookie() bool {
+	return server.hasCookie("cookie_prov")
 }
 
 func (server *ServerMonitor) HasWaitStartCookie() bool {
-	if server == nil {
-		return false
-	}
-	if _, err := os.Stat(server.Datadir + "/@cookie_waitstart"); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	return server.hasCookie("cookie_waitstart")
+}
+
+func (server *ServerMonitor) HasWaitBackupCookie() bool {
+	return server.hasCookie("cookie_waitbackup")
 }
 
 func (server *ServerMonitor) HasWaitStopCookie() bool {
-	if server == nil {
-		return false
-	}
-	if _, err := os.Stat(server.Datadir + "/@cookie_waitstop"); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	return server.hasCookie("cookie_waitstop")
 }
 
 func (server *ServerMonitor) HasRestartCookie() bool {
-	if server == nil {
-		return false
-	}
-	if _, err := os.Stat(server.Datadir + "/@cookie_restart"); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	return server.hasCookie("cookie_restart")
 }
 
 func (server *ServerMonitor) HasReprovCookie() bool {
-	if server == nil {
-		return false
-	}
-	if _, err := os.Stat(server.Datadir + "/@cookie_reprov"); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	return server.hasCookie("cookie_reprov")
+}
+
+func (server *ServerMonitor) HasBackupLogicalCookie() bool {
+	return server.hasCookie("cookie_logicalbackup")
+}
+
+func (server *ServerMonitor) HasBackupPhysicalCookie() bool {
+	return server.hasCookie("cookie_physicalbackup")
 }
 
 func (server *ServerMonitor) HasReadOnly() bool {
@@ -364,9 +356,17 @@ func (server *ServerMonitor) IsRunning() bool {
 	return !server.IsDown()
 }
 
-// IFailed() returns true is the server is Failed or auth error
+// IsFailed() returns true is the server is Failed or auth error
 func (server *ServerMonitor) IsFailed() bool {
 	if server.State == stateFailed || server.State == stateErrorAuth {
+		return true
+	}
+	return false
+}
+
+// IsInStateFailed() returns true is the server state is failed
+func (server *ServerMonitor) IsInStateFailed() bool {
+	if server.State == stateFailed {
 		return true
 	}
 	return false

@@ -10,13 +10,9 @@
 package cluster
 
 import (
-	"bufio"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,13 +21,16 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
-	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {
 	return server.FullProcessList
+}
+
+func (server *ServerMonitor) GetSourceClusterName() string {
+	return server.SourceClusterName
 }
 
 func (server *ServerMonitor) GetProcessListReplicationLongQuery() string {
@@ -573,6 +572,17 @@ func (server *ServerMonitor) GetTableDefinition(schema string, table string) (st
 	return ddl, nil
 }
 
+func (server *ServerMonitor) GetDatabaseBasedir() string {
+
+	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+		return server.Datadir
+
+	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+		return server.SlapOSDatadir
+	}
+	return ""
+}
+
 func (server *ServerMonitor) GetTablePK(schema string, table string) (string, error) {
 	query := "SELECT group_concat( distinct column_name) from information_schema.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME='PRIMARY' AND CONSTRAINT_SCHEMA='" + schema + "' AND TABLE_NAME='" + table + "'"
 	var pk string
@@ -582,233 +592,4 @@ func (server *ServerMonitor) GetTablePK(schema string, table string) (string, er
 		return "", nil
 	}
 	return pk, nil
-}
-
-func (server *ServerMonitor) IsFilterInTags(filter string) bool {
-	tags := server.ClusterGroup.GetDatabaseTags()
-	for _, tag := range tags {
-		if strings.HasSuffix(filter, tag) {
-			//	fmt.Println(server.ClusterGroup.Conf.ProvTags + " vs tag: " + tag + "  against " + filter)
-			return true
-		}
-		if server.IsCompute && strings.Contains(filter, "spider") {
-			//IsCompute identify spider nodes need to force tag spider if no present in db tags config
-			return true
-		}
-	}
-	return false
-}
-
-func (server *ServerMonitor) GetDatabaseDatadir() string {
-	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
-		return server.Datadir + "/var"
-	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
-		return server.SlapOSDatadir + "/var/lib/mysql"
-	}
-	return "/var/lib/mysql"
-}
-func (server *ServerMonitor) GetDatabaseConfdir() string {
-	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
-		return server.Datadir + "/init/etc/mysql"
-	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
-		return server.SlapOSDatadir + "/etc/mysql"
-	}
-	return "/etc/mysql"
-}
-func (server *ServerMonitor) GetDatabaseBinary() string {
-	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
-		return server.ClusterGroup.Conf.ProvDBBinaryBasedir + "/mysqld"
-	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
-		return server.SlapOSDatadir + "/usr/sbin/mysqld"
-	}
-	return "/usr/sbin/mysqld"
-}
-func (server *ServerMonitor) GetDatabaseSocket() string {
-	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
-		return server.Datadir + "/" + server.Id + ".sock"
-	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
-		return server.SlapOSDatadir + "/var/mysqld.sock"
-	}
-	return "/var/run/mysqld/mysqld.sock"
-}
-
-func (server *ServerMonitor) GetDatabaseClientBasedir() string {
-	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
-		return server.ClusterGroup.Conf.ProvDBClientBasedir
-	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
-		return server.SlapOSDatadir + "/usr/bin/"
-	}
-	return "/usr/bin/mysql"
-}
-
-func (server *ServerMonitor) GetDatabaseConfig() string {
-	type File struct {
-		Path    string `json:"path"`
-		Content string `json:"fmt"`
-	}
-	server.ClusterGroup.LogPrintf(LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
-	// Extract files
-	if server.ClusterGroup.Conf.ProvBinaryInTarball {
-		url, err := server.ClusterGroup.Conf.GetTarballUrl(server.ClusterGroup.Conf.ProvBinaryTarballName)
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Compliance get binary %s directory  %s", url, err)
-		}
-		err = misc.DownloadFileTimeout(url, server.Datadir+"/"+server.ClusterGroup.Conf.ProvBinaryTarballName, 1200)
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Compliance dowload binary %s directory  %s", url, err)
-		}
-		misc.Untargz(server.Datadir+"/init", server.Datadir+"/"+server.ClusterGroup.Conf.ProvBinaryTarballName)
-	}
-
-	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
-		os.RemoveAll(server.Datadir + "/init/etc")
-	} else {
-		os.RemoveAll(server.Datadir + "/init")
-	}
-	for _, rule := range server.ClusterGroup.DBModule.Rulesets {
-		if strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
-
-			for _, variable := range rule.Variables {
-				if variable.Class == "file" || variable.Class == "fileprop" {
-					var f File
-					json.Unmarshal([]byte(variable.Value), &f)
-					fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir+"/init", -1)
-					dir := filepath.Dir(fpath)
-					if server.ClusterGroup.Conf.LogLevel > 2 {
-						server.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
-					}
-					// create directory
-					if _, err := os.Stat(dir); os.IsNotExist(err) {
-						err := os.MkdirAll(dir, os.FileMode(0775))
-						if err != nil {
-							server.ClusterGroup.LogPrintf(LvlErr, "Compliance create directory %q: %s", dir, err)
-						}
-					}
-
-					if fpath[len(fpath)-1:] != "/" && (server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
-						content := misc.ExtractKey(f.Content, server.GetEnv())
-
-						if server.IsFilterInTags("docker") && server.ClusterGroup.Conf.ProvOrchestrator != config.ConstOrchestratorLocalhost {
-							if server.IsFilterInTags("wsrep") {
-								//if galera don't cusomized system files
-								if strings.Contains(content, "./.system") {
-									content = ""
-								}
-							} else {
-								content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
-							}
-						}
-						if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
-							content = strings.Replace(content, "includedir ..", "includedir "+server.Datadir+"/init", -1)
-							content = strings.Replace(content, "../etc/mysql", server.Datadir+"/init/etc/mysql", -1)
-
-						} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
-							content = strings.Replace(content, "includedir ..", "includedir "+server.SlapOSDatadir+"/", -1)
-							content = strings.Replace(content, "../etc/mysql", server.SlapOSDatadir+"/etc/mysql", -1)
-							content = strings.Replace(content, "./.system", server.SlapOSDatadir+"/var/lib/mysql/.system", -1)
-						}
-						outFile, err := os.Create(fpath)
-						if err != nil {
-							server.ClusterGroup.LogPrintf(LvlErr, "Compliance create file failed %q: %s", fpath, err)
-						} else {
-							_, err = outFile.WriteString(content)
-
-							if err != nil {
-								server.ClusterGroup.LogPrintf(LvlErr, "Compliance writing file failed %q: %s", fpath, err)
-							}
-							outFile.Close()
-							//server.ClusterGroup.LogPrintf(LvlInfo, "Variable name %s", variable.Name)
-						}
-
-					}
-				}
-			}
-		}
-	}
-	// processing symlink
-	type Link struct {
-		Symlink string `json:"symlink"`
-		Target  string `json:"target"`
-	}
-	for _, rule := range server.ClusterGroup.DBModule.Rulesets {
-		if strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf.generic") {
-			for _, variable := range rule.Variables {
-				if variable.Class == "symlink" {
-					if server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
-						var f Link
-						json.Unmarshal([]byte(variable.Value), &f)
-						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", server.Datadir+"/init", -1)
-						if server.ClusterGroup.Conf.LogLevel > 2 {
-							server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
-						}
-						os.Symlink(f.Target, fpath)
-						//	keys := strings.Split(variable.Value, " ")
-					}
-				}
-			}
-		}
-	}
-
-	if server.ClusterGroup.HaveDBTag("docker") {
-		err := misc.ChownR(server.Datadir+"/init/data", 999, 999)
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", server.Datadir+"/init/data", err)
-		}
-		err = misc.ChmodR(server.Datadir+"/init/init", 0755)
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", server.Datadir+"/init/init", err)
-		}
-	}
-
-	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/ca-cert.pem", server.Datadir+"/init/etc/mysql/ssl/ca-cert.pem")
-	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/server-cert.pem", server.Datadir+"/init/etc/mysql/ssl/server-cert.pem")
-	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/server-key.pem", server.Datadir+"/init/etc/mysql/ssl/server-key.pem")
-	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/client-cert.pem", server.Datadir+"/init/etc/mysql/ssl/client-cert.pem")
-	misc.CopyFile(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"/client-key.pem", server.Datadir+"/init/etc/mysql/ssl/client-key.pem")
-
-	server.ClusterGroup.TarGz(server.Datadir+"/config.tar.gz", server.Datadir+"/init")
-
-	return ""
-}
-
-func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string, cmd string) string {
-	mydynamicconf := ""
-	// processing symlink
-	type Link struct {
-		Symlink string `json:"symlink"`
-		Target  string `json:"target"`
-	}
-	for _, rule := range server.ClusterGroup.DBModule.Rulesets {
-		if strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf.generic") {
-			for _, variable := range rule.Variables {
-				if variable.Class == "symlink" {
-					if server.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
-						//	server.ClusterGroup.LogPrintf(LvlInfo, "content %s %s", filter, rule.Filter)
-						if filter == "" || strings.Contains(rule.Filter, filter) {
-							var f Link
-							json.Unmarshal([]byte(variable.Value), &f)
-							fpath := server.Datadir + "/init/etc/mysql/conf.d/"
-							//	server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s , %s", fpath, f.Target)
-							file, err := os.Open(fpath + f.Target)
-							if err == nil {
-								r, _ := regexp.Compile(cmd)
-								scanner := bufio.NewScanner(file)
-								for scanner.Scan() {
-									//		server.ClusterGroup.LogPrintf(LvlInfo, "content: %s", scanner.Text())
-									if r.MatchString(scanner.Text()) {
-										mydynamicconf = mydynamicconf + strings.Split(scanner.Text(), ":")[1]
-									}
-								}
-								file.Close()
-
-							} else {
-								server.ClusterGroup.LogPrintf(LvlInfo, "Error in dynamic config: %s", err)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return mydynamicconf
 }

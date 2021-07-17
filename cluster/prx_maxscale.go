@@ -12,11 +12,71 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/maxscale"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/spf13/pflag"
 )
 
-func (cluster *Cluster) refreshMaxscale(proxy *Proxy) error {
+type MaxscaleProxy struct {
+	Proxy
+}
+
+func (cluster *Cluster) refreshMaxscale(proxy *MaxscaleProxy) error {
+	return proxy.refresh()
+}
+
+func NewMaxscaleProxy(placement int, cluster *Cluster, proxyHost string) *MaxscaleProxy {
+	conf := cluster.Conf
+	prx := new(MaxscaleProxy)
+	prx.Type = config.ConstProxyMaxscale
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSMaxscalePartitions, conf.MxsHostsIPV6)
+	prx.Port = conf.MxsPort
+	prx.User = conf.MxsUser
+	prx.Pass = conf.MxsPass
+	if cluster.key != nil {
+		p := crypto.Password{Key: cluster.key}
+		p.CipherText = prx.Pass
+		p.Decrypt()
+		prx.Pass = p.PlainText
+	}
+	prx.ReadPort = conf.MxsReadPort
+	prx.WritePort = conf.MxsWritePort
+	prx.ReadWritePort = conf.MxsReadWritePort
+	prx.Name = proxyHost
+	prx.Host = proxyHost
+	if cluster.Conf.ProvNetCNI {
+		prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+	}
+
+	return prx
+}
+
+func (proxy *MaxscaleProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
+	flags.BoolVar(&conf.MxsOn, "maxscale", false, "MaxScale proxy server is query for backend status")
+	flags.BoolVar(&conf.CheckFalsePositiveMaxscale, "failover-falsepositive-maxscale", false, "Failover checks that maxscale detect failed master")
+	flags.IntVar(&conf.CheckFalsePositiveMaxscaleTimeout, "failover-falsepositive-maxscale-timeout", 14, "Failover checks that maxscale detect failed master")
+	flags.BoolVar(&conf.MxsBinlogOn, "maxscale-binlog", false, "Maxscale binlog server topolgy")
+	flags.MarkDeprecated("maxscale-monitor", "Deprecate disable maxscale monitoring for 2 nodes cluster")
+	flags.BoolVar(&conf.MxsDisableMonitor, "maxscale-disable-monitor", false, "Disable maxscale monitoring and fully drive server state")
+	flags.StringVar(&conf.MxsGetInfoMethod, "maxscale-get-info-method", "maxadmin", "How to get infos from Maxscale maxinfo|maxadmin")
+	flags.StringVar(&conf.MxsHost, "maxscale-servers", "", "MaxScale hosts ")
+	flags.StringVar(&conf.MxsPort, "maxscale-port", "6603", "MaxScale admin port")
+	flags.StringVar(&conf.MxsUser, "maxscale-user", "admin", "MaxScale admin user")
+	flags.StringVar(&conf.MxsPass, "maxscale-pass", "mariadb", "MaxScale admin password")
+	flags.IntVar(&conf.MxsWritePort, "maxscale-write-port", 3306, "MaxScale read-write port to leader")
+	flags.IntVar(&conf.MxsReadPort, "maxscale-read-port", 3307, "MaxScale load balance read port to all nodes")
+	flags.IntVar(&conf.MxsReadWritePort, "maxscale-read-write-port", 3308, "MaxScale load balance read port to all nodes")
+	flags.IntVar(&conf.MxsMaxinfoPort, "maxscale-maxinfo-port", 3309, "MaxScale maxinfo plugin http port")
+	flags.IntVar(&conf.MxsBinlogPort, "maxscale-binlog-port", 3309, "MaxScale maxinfo plugin http port")
+	flags.BoolVar(&conf.MxsServerMatchPort, "maxscale-server-match-port", false, "Match servers running on same host with different port")
+	flags.StringVar(&conf.MxsBinaryPath, "maxscale-binary-path", "/usr/sbin/maxscale", "Maxscale binary location")
+	flags.StringVar(&conf.MxsHostsIPV6, "maxscale-servers-ipv6", "", "ipv6 bind address ")
+}
+
+func (proxy *MaxscaleProxy) refresh() error {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.MxsOn == false {
 		return nil
 	}
@@ -83,7 +143,12 @@ func (cluster *Cluster) refreshMaxscale(proxy *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
+func (cluster *Cluster) initMaxscale(proxy DatabaseProxy) {
+	proxy.Init()
+}
+
+func (proxy *MaxscaleProxy) Init() {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.MxsOn == false {
 		return
 	}
@@ -178,37 +243,25 @@ func (cluster *Cluster) initMaxscale(oldmaster *ServerMonitor, proxy *Proxy) {
 				}
 			}
 		}
-		if oldmaster != nil {
-			err = m.ClearServer(oldmaster.MxsServerName, "master")
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
-			}
-
-			if oldmaster.State != stateSlave {
-				err = m.ClearServer(oldmaster.MxsServerName, "slave")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
-				}
-				err = m.ClearServer(oldmaster.MxsServerName, "running")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
-				}
-			} else {
-				err = m.SetServer(oldmaster.MxsServerName, "slave")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
-				}
-				err = m.SetServer(oldmaster.MxsServerName, "running")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "MaxScale client could not send command:%s", err)
-				}
-
-			}
-		}
 	}
 }
 
-func (cluster *Cluster) setMaintenanceMaxscale(pr *Proxy, server *ServerMonitor) {
+func (cluster *Cluster) setMaintenanceMaxscale(pr DatabaseProxy, server *ServerMonitor) {
+	pr.SetMaintenance(server)
+}
+
+func (proxy *MaxscaleProxy) BackendsStateChange() {
+	return
+}
+
+func (pr *MaxscaleProxy) SetMaintenance(server *ServerMonitor) {
+	cluster := pr.ClusterGroup
+	if cluster.GetMaster() != nil {
+		return
+	}
+	if cluster.Conf.MxsOn {
+		return
+	}
 	m := maxscale.MaxScale{Host: pr.Host, Port: pr.Port, User: pr.User, Pass: pr.Pass}
 	err := m.Connect()
 	if err != nil {
@@ -224,4 +277,9 @@ func (cluster *Cluster) setMaintenanceMaxscale(pr *Proxy, server *ServerMonitor)
 		m.Close()
 	}
 	m.Close()
+}
+
+// Failover for MaxScale simply calls Init
+func (prx *MaxscaleProxy) Failover() {
+	prx.Init()
 }

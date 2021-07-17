@@ -3,6 +3,7 @@ package cluster
 import (
 	"errors"
 	"os"
+	"strconv"
 
 	"github.com/helloyi/go-sshclient"
 	sshcli "github.com/helloyi/go-sshclient"
@@ -10,11 +11,16 @@ import (
 )
 
 func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Client, error) {
-	if server.ClusterGroup.IsInFailover() {
+	if cluster.IsInFailover() {
 		return nil, errors.New("OnPremise Provisioning cancel during connect")
 	}
+	if cluster.Conf.OnPremiseSSH {
+		return nil, errors.New("onpremise-ssh disable ")
+	}
+	user, _ := misc.SplitPair(cluster.Conf.OnPremiseSSHCredential)
+
 	key := os.Getenv("HOME") + "/.ssh/id_rsa"
-	client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":22", "root", key)
+	client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, key)
 	if err != nil {
 		return nil, errors.New("OnPremise Provisioning via SSH %s" + err.Error())
 	}
@@ -58,28 +64,30 @@ func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor)
 	cluster.errorChan <- nil
 }
 
-func (cluster *Cluster) OnPremiseSUnprovisionDatabaseService(server *ServerMonitor) {
+func (cluster *Cluster) OnPremiseUnprovisionDatabaseService(server *ServerMonitor) {
 
 	cluster.errorChan <- nil
 
 }
 
-func (cluster *Cluster) OnPremiseStopDatabaseService(server *ServerMonitor) {
+func (cluster *Cluster) OnPremiseStopDatabaseService(server *ServerMonitor) error {
 	//s.JobServerStop() need an agent or ssh to trigger this
 	server.Shutdown()
+	return nil
 }
 
-func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) {
+func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) error {
 
 	server.SetWaitStartCookie()
 	client, err := cluster.OnPremiseConnect(server)
 	if err != nil {
-		cluster.errorChan <- err
+		return err
 	}
 	defer client.Close()
-	out, err := client.Cmd("systemctl stop mysql").SmartOutput()
+	out, err := client.Cmd("systemctl start mysql").SmartOutput()
 	if err != nil {
-		cluster.errorChan <- err
+		return err
 	}
 	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise Provisioning  : %s", string(out))
+	return nil
 }

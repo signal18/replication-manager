@@ -13,11 +13,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/router/maxscale"
+	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -28,42 +30,31 @@ func (cluster *Cluster) CheckFailed() {
 		cluster.sme.AddState("ERR00001", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00001"]), ErrFrom: "CHECK"})
 		return
 	}
-	if cluster.master != nil {
-		if cluster.isFoundCandidateMaster() {
-			if cluster.isBetweenFailoverTimeValid() {
-				if cluster.IsNotHavingMySQLErrantTransaction() {
-					if cluster.IsSameWsrepUUID() {
-						if cluster.isMaxMasterFailedCountReached() {
-							if cluster.isActiveArbitration() {
-								if cluster.isMaxClusterFailoverCountNotReached() {
-									if cluster.isAutomaticFailover() {
-										if cluster.isMasterFailed() {
-											if cluster.isNotFirstSlave() {
-												if cluster.isArbitratorAlive() {
+	if cluster.master == nil {
+		cluster.LogPrintf(LvlDbg, "Master not discovered, skipping failover check")
+	}
 
-													// False Positive
-													if cluster.isExternalOk() == false {
-														if cluster.isOneSlaveHeartbeatIncreasing() == false {
-															if cluster.isMaxscaleSupectRunning() == false {
-																cluster.MasterFailover(true)
-																cluster.failoverCond.Send <- true
-															}
-														}
-													}
-												}
+	if cluster.isFoundCandidateMaster() &&
+		cluster.isBetweenFailoverTimeValid() &&
+		cluster.IsNotHavingMySQLErrantTransaction() &&
+		cluster.IsSameWsrepUUID() &&
+		cluster.isMaxMasterFailedCountReached() &&
+		cluster.isActiveArbitration() &&
+		cluster.isMaxClusterFailoverCountNotReached() &&
+		cluster.isAutomaticFailover() &&
+		cluster.isMasterFailed() &&
+		cluster.isNotFirstSlave() &&
+		cluster.isArbitratorAlive() {
 
-											}
-										}
-									}
-								}
-							}
-						}
-					}
+		// False Positive
+		if cluster.isExternalOk() == false {
+			if cluster.isOneSlaveHeartbeatIncreasing() == false {
+				if cluster.isMaxscaleSupectRunning() == false {
+					cluster.MasterFailover(true)
+					cluster.failoverCond.Send <- true
 				}
 			}
 		}
-	} else {
-		cluster.LogPrintf(LvlDbg, "Master not discovered, skipping failover check")
 	}
 }
 
@@ -80,13 +71,13 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		}
 		return false
 	}
-	if hasBinLogs == false && cluster.Conf.CheckBinFilter == true {
+	if hasBinLogs == false && cluster.Conf.CheckBinFilter == true && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") {
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Binlog filters differ on master and slave %s. Skipping", sl.URL)
 		}
 		return false
 	}
-	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && cluster.Conf.CheckReplFilter == true {
+	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") && cluster.Conf.CheckReplFilter == true {
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Replication filters differ on master and slave %s. Skipping", sl.URL)
 		}
@@ -461,6 +452,56 @@ func (cluster *Cluster) CheckCapture(state state.State) {
 			}
 		}
 	}
+}
+
+func (cluster *Cluster) CheckAlert(state state.State) {
+	if cluster.Conf.MonitoringAlertTrigger == "" {
+		return
+	}
+
+	// exit even earlier
+	if cluster.Conf.MailTo == "" && cluster.Conf.AlertScript == "" {
+		return
+	}
+
+	if strings.Contains(cluster.Conf.MonitoringAlertTrigger, state.ErrKey) {
+		a := alert.Alert{
+			State:  state.ErrKey,
+			Origin: cluster.Name,
+		}
+
+		err := cluster.SendAlert(a)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Could not send alert: %s ", err)
+		}
+	}
+}
+
+func (cluster *Cluster) SendAlert(alert alert.Alert) error {
+	if cluster.Conf.MailTo != "" {
+		alert.From = cluster.Conf.MailFrom
+		alert.To = cluster.Conf.MailTo
+		alert.Destination = cluster.Conf.MailSMTPAddr
+		alert.User = cluster.Conf.MailSMTPUser
+		alert.Password = cluster.Conf.MailSMTPPassword
+		alert.TlsVerify = cluster.Conf.MailSMTPTLSSkipVerify
+		err := alert.Email()
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
+		}
+	}
+	if cluster.Conf.AlertScript != "" {
+		cluster.LogPrintf("INFO", "Calling alert script")
+		var out []byte
+		out, err := exec.Command(cluster.Conf.AlertScript, alert.Origin, alert.PrevState, alert.State).CombinedOutput()
+		if err != nil {
+			cluster.LogPrintf("ERROR", "%s", err)
+		}
+
+		cluster.LogPrintf("INFO", "Alert script complete:", string(out))
+	}
+
+	return nil
 }
 
 func (cluster *Cluster) CheckAllTableChecksum() {

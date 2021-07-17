@@ -148,7 +148,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 			//			f := fmt.Sprintln(stamp, format)
 
 			//	io.WriteString(cluster.logPtr, fmt.Sprintf(f, args...))
-			log.WithField("cluster", cluster.Name).Debugf(cliformat, args...)
+			//	log.WithField("cluster", cluster.Name).Debugf(cliformat, args...)
 		}
 		if cluster.tlog != nil && cluster.tlog.Len > 0 {
 			cluster.tlog.Add(fmt.Sprintf(format, args...))

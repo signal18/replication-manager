@@ -7,9 +7,11 @@
 package cluster
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
@@ -21,6 +23,20 @@ func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
 		}
 	}
 	return false
+}
+
+func (cluster *Cluster) HasValidBackup() bool {
+	//	if cluster.Conf.MonitorScheduler && (cluster.Conf.SchedulerBackupLogical || cluster.Conf.SchedulerBackupPhysical) {
+	sv := cluster.GetBackupServer()
+	if sv != nil {
+		if sv.HasBackupLogicalCookie() || sv.HasBackupPhysicalCookie() {
+			return true
+		}
+	}
+	//	}
+	cluster.SetState("WARN0101", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0101"]), ErrFrom: "TOPO"})
+	return false
+
 }
 
 func (cluster *Cluster) HasSchedulerEntry(myname string) bool {
@@ -52,7 +68,7 @@ func (cluster *Cluster) IsProvisioned() bool {
 		if !px.HasProvisionCookie() {
 			if px.IsRunning() {
 				px.SetProvisionCookie()
-				cluster.LogPrintf(LvlInfo, "Can Proxy Connect creating cookie state:%s", px.State)
+				cluster.LogPrintf(LvlInfo, "Can Proxy Connect creating cookie state:%s", px.GetState())
 			} else {
 				return false
 			}
@@ -118,10 +134,13 @@ func (cluster *Cluster) HasAllDbUp() bool {
 		return false
 	}
 	for _, s := range cluster.Servers {
-		if s.State == stateFailed || s.State == stateSuspect /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
-			return false
+		if s != nil {
+			if s.State == stateFailed || s.State == stateSuspect /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+				return false
+			}
 		}
 	}
+
 	return true
 }
 
@@ -130,8 +149,10 @@ func (cluster *Cluster) HasRequestDBRestart() bool {
 		return false
 	}
 	for _, s := range cluster.Servers {
-		if s.HasRestartCookie() {
-			return true
+		if s != nil {
+			if s.HasRestartCookie() {
+				return true
+			}
 		}
 	}
 	return false
@@ -143,8 +164,10 @@ func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 		return false
 	}
 	for _, s := range cluster.Servers {
-		if !s.HasRestartCookie() {
-			return false
+		if s != nil {
+			if !s.HasRestartCookie() {
+				return false
+			}
 		}
 	}
 	return ret
@@ -156,17 +179,22 @@ func (cluster *Cluster) HasRequestDBRollingReprov() bool {
 		return false
 	}
 	for _, s := range cluster.Servers {
-		if !s.HasReprovCookie() {
-			return false
+		if s != nil {
+			if !s.HasReprovCookie() {
+				return false
+			}
 		}
 	}
+
 	return ret
 }
 
 func (cluster *Cluster) HasRequestDBReprov() bool {
 	for _, s := range cluster.Servers {
-		if s.HasReprovCookie() {
-			return true
+		if s != nil {
+			if s.HasReprovCookie() {
+				return true
+			}
 		}
 	}
 	return false
@@ -174,8 +202,10 @@ func (cluster *Cluster) HasRequestDBReprov() bool {
 
 func (cluster *Cluster) HasRequestProxiesRestart() bool {
 	for _, p := range cluster.Proxies {
-		if p.HasRestartCookie() {
-			return true
+		if p != nil {
+			if p.HasRestartCookie() {
+				return true
+			}
 		}
 	}
 	return false
@@ -183,8 +213,10 @@ func (cluster *Cluster) HasRequestProxiesRestart() bool {
 
 func (cluster *Cluster) HasRequestProxiesReprov() bool {
 	for _, p := range cluster.Proxies {
-		if p.HasReprovCookie() {
-			return true
+		if p != nil {
+			if p.HasReprovCookie() {
+				return true
+			}
 		}
 	}
 	return false
@@ -234,22 +266,4 @@ func (cluster *Cluster) IsInFailover() bool {
 
 func (cluster *Cluster) IsDiscovered() bool {
 	return cluster.sme.IsDiscovered()
-}
-
-func (cluster *Cluster) HaveDBTag(tag string) bool {
-	for _, t := range cluster.DBTags {
-		if t == tag {
-			return true
-		}
-	}
-	return false
-}
-
-func (cluster *Cluster) HaveProxyTag(tag string) bool {
-	for _, t := range cluster.ProxyTags {
-		if t == tag {
-			return true
-		}
-	}
-	return false
 }

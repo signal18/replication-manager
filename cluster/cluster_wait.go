@@ -250,7 +250,7 @@ func (cluster *Cluster) WaitDatabaseFailed(server *ServerMonitor) error {
 
 			exitloop++
 
-			if server.IsFailed() {
+			if server.IsInStateFailed() {
 				exitloop = 9999999
 			} else {
 				cluster.LogPrintf(LvlInfo, "Waiting state failed on %s ", server.URL)

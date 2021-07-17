@@ -9,13 +9,9 @@
 package cluster
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
@@ -23,9 +19,9 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
-func (cluster *Cluster) GetProxyFromName(name string) *Proxy {
+func (cluster *Cluster) GetProxyFromName(name string) DatabaseProxy {
 	for _, pr := range cluster.Proxies {
-		if pr.Id == name {
+		if pr.GetId() == name {
 			return pr
 		}
 	}
@@ -41,8 +37,8 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
 
 	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
-	if prx.Host != "" {
-		dsn += "tcp(" + prx.Host + ":" + strconv.Itoa(prx.WritePort) + ")/" + params
+	if prx.GetHost() != "" {
+		dsn += "tcp(" + prx.GetHost() + ":" + strconv.Itoa(prx.GetWritePort()) + ")/" + params
 	} else {
 
 		return nil, errors.New("No proxies definition")
@@ -55,7 +51,8 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 
 }
 
-func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
+func (prx *Proxy) GetCluster() (*sqlx.DB, error) {
+	cluster := prx.ClusterGroup
 	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
 	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
 	if cluster.Conf.MonitorWriteHeartbeatCredential != "" {
@@ -75,95 +72,10 @@ func (cluster *Cluster) GetClusterThisProxyConn(prx *Proxy) (*sqlx.DB, error) {
 
 func (proxy *Proxy) GetProxyConfig() string {
 	proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
-
-	if proxy.Type == config.ConstProxySpider {
-		if proxy.ShardProxy == nil {
-			proxy.ClusterGroup.LogPrintf(LvlErr, "Can't get shard proxy config start monitoring")
-			proxy.ClusterGroup.ShardProxyBootstrap(proxy)
-			return proxy.ShardProxy.GetDatabaseConfig()
-		} else {
-			return proxy.ShardProxy.GetDatabaseConfig()
-		}
+	err := proxy.ClusterGroup.Configurator.GenerateProxyConfig(proxy.Datadir, proxy.GetEnv())
+	if err != nil {
+		proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
 	}
-	type File struct {
-		Path    string `json:"path"`
-		Content string `json:"fmt"`
-	}
-	os.RemoveAll(proxy.Datadir + "/init")
-	// Extract files
-	for _, rule := range proxy.ClusterGroup.ProxyModule.Rulesets {
-
-		if strings.Contains(rule.Name, "mariadb.svc.mrm.proxy.cnf") {
-
-			for _, variable := range rule.Variables {
-
-				if variable.Class == "file" || variable.Class == "fileprop" {
-					var f File
-					json.Unmarshal([]byte(variable.Value), &f)
-					fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", proxy.Datadir+"/init", -1)
-					dir := filepath.Dir(fpath)
-					//	proxy.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
-					// create directory
-					if _, err := os.Stat(dir); os.IsNotExist(err) {
-						err := os.MkdirAll(dir, os.FileMode(0775))
-						if err != nil {
-							proxy.ClusterGroup.LogPrintf(LvlErr, "Compliance create directory %q: %s", dir, err)
-						}
-					}
-					proxy.ClusterGroup.LogPrintf(LvlInfo, "rule %s filter %s %t", rule.Name, rule.Filter, proxy.IsFilterInTags(rule.Filter))
-					if fpath[len(fpath)-1:] != "/" && (proxy.IsFilterInTags(rule.Filter) || rule.Filter == "") {
-						content := misc.ExtractKey(f.Content, proxy.GetEnv())
-						outFile, err := os.Create(fpath)
-						if err != nil {
-							proxy.ClusterGroup.LogPrintf(LvlErr, "Compliance create file failed %q: %s", fpath, err)
-						} else {
-							_, err = outFile.WriteString(content)
-
-							if err != nil {
-								proxy.ClusterGroup.LogPrintf(LvlErr, "Compliance writing file failed %q: %s", fpath, err)
-							}
-							outFile.Close()
-							//server.ClusterGroup.LogPrintf(LvlInfo, "Variable name %s", variable.Name)
-
-						}
-
-					}
-				}
-			}
-		}
-	}
-	// processing symlink
-	type Link struct {
-		Symlink string `json:"symlink"`
-		Target  string `json:"target"`
-	}
-	for _, rule := range proxy.ClusterGroup.ProxyModule.Rulesets {
-		if strings.Contains(rule.Name, "mariadb.svc.mrm.proxy.cnf") {
-			for _, variable := range rule.Variables {
-				if variable.Class == "symlink" {
-					if proxy.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.proxy.cnf" {
-						var f Link
-						json.Unmarshal([]byte(variable.Value), &f)
-						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", proxy.Datadir+"/init", -1)
-						if proxy.ClusterGroup.Conf.LogLevel > 2 {
-							proxy.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
-						}
-						os.Symlink(f.Target, fpath)
-						//	keys := strings.Split(variable.Value, " ")
-					}
-				}
-			}
-		}
-	}
-
-	if proxy.ClusterGroup.HaveProxyTag("docker") {
-		err := misc.ChownR(proxy.Datadir+"/init/data", 999, 999)
-		if err != nil {
-			proxy.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", proxy.Datadir+"/init/data", err)
-		}
-	}
-	proxy.ClusterGroup.TarGz(proxy.Datadir+"/config.tar.gz", proxy.Datadir+"/init")
-	//server.TarAddDirectory(server.Datadir+"/data", tw)
 	return ""
 }
 
@@ -200,27 +112,44 @@ func (proxy *Proxy) GetBindAddressExtraIPV6() string {
 	return ""
 }
 func (proxy *Proxy) GetUseSSL() string {
-	if proxy.IsFilterInTags("ssl") {
+	if proxy.ClusterGroup.Configurator.IsFilterInProxyTags("ssl") {
 		return "true"
 	}
 	return "false"
 }
 func (proxy *Proxy) GetUseCompression() string {
-	if proxy.IsFilterInTags("nonetworkcompress") {
+	if proxy.ClusterGroup.Configurator.IsFilterInProxyTags("nonetworkcompress") {
 		return "false"
 	}
 	return "true"
 
 }
 
-func (proxy *Proxy) GetDatadir() string {
+func (proxy *Proxy) GetConfigDatadir() string {
 	if proxy.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
 		return proxy.SlapOSDatadir
 	}
 	return "/tmp"
 }
 
+func (proxy *Proxy) GetDatadir() string {
+	return proxy.Datadir
+}
+
+func (proxy *Proxy) GetName() string {
+	return proxy.Name
+}
+
+func (proxy *ProxySQLProxy) GetEnv() map[string]string {
+	env := proxy.GetBaseEnv()
+	return env
+}
+
 func (proxy *Proxy) GetEnv() map[string]string {
+	return proxy.GetBaseEnv()
+}
+
+func (proxy *Proxy) GetBaseEnv() map[string]string {
 	return map[string]string{
 		"%%ENV:NODES_CPU_CORES%%":                      proxy.ClusterGroup.Conf.ProvCores,
 		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":               proxy.ClusterGroup.Conf.ProvCores,
@@ -259,9 +188,16 @@ func (proxy *Proxy) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_VIP_PORT%%":                proxy.ClusterGroup.Conf.ProvProxRoutePort,
 		"%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%":            proxy.ClusterGroup.Conf.MonitorAddress + ":" + proxy.ClusterGroup.Conf.HttpPort,
 		"%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%":        proxy.ClusterGroup.GetClusterName(),
-		"%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%": proxy.ProxySQLReadOnMaster(),
-		"%%ENV:SVC_CONF_ENV_DATADIR%%":                 proxy.GetDatadir(),
+		"%%ENV:SVC_CONF_ENV_DATADIR%%":                 proxy.GetConfigDatadir(),
+		"%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%": proxy.GetConfigProxySQLReadOnMaster(),
 	}
+}
+
+func (proxy *Proxy) GetConfigProxySQLReadOnMaster() string {
+	if proxy.ClusterGroup.Configurator.IsFilterInProxyTags("proxy.route.readonmaster") {
+		return "1"
+	}
+	return "0"
 }
 
 func (proxy *Proxy) GetConfigProxyModule(variable string) string {
@@ -305,6 +241,10 @@ protocol=MySQLBackend
 		confmaxscaleserverlist += "server" + strconv.Itoa(i)
 
 	}
+	if confhaproxywrite == "" && proxy.ClusterGroup.Conf.HaproxyMode == "runtimeapi" {
+		confhaproxywrite += `
+server leader unknown:3306  weight 100 maxconn 2000 check inter 1000`
+	}
 	switch variable {
 	case "%%ENV:SERVERS_HAPROXY_WRITE%%":
 		return confhaproxywrite
@@ -320,4 +260,48 @@ protocol=MySQLBackend
 		return ""
 	}
 	return ""
+}
+
+func (p *Proxy) GetAgent() string {
+	return p.Agent
+}
+
+func (p *Proxy) GetType() string {
+	return p.Type
+}
+
+func (p *Proxy) GetHost() string {
+	return p.Host
+}
+
+func (p *Proxy) GetPort() string {
+	return p.Port
+}
+
+func (p *Proxy) GetWritePort() int {
+	return p.WritePort
+}
+
+func (p *Proxy) GetId() string {
+	return p.Id
+}
+
+func (p *Proxy) GetState() string {
+	return p.State
+}
+
+func (p *Proxy) GetUser() string {
+	return p.User
+}
+
+func (p *Proxy) GetPass() string {
+	return p.Pass
+}
+
+func (p *Proxy) GetFailCount() int {
+	return p.FailCount
+}
+
+func (p *Proxy) GetPrevState() string {
+	return p.PrevState
 }

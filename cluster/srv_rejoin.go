@@ -151,6 +151,7 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 }
 
 func (server *ServerMonitor) ReseedMasterSST() error {
+	server.DelWaitBackupCookie()
 	if server.ClusterGroup.Conf.AutorejoinMysqldump == true {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoin dump restore %s", server.URL)
 		err := server.RejoinDirectDump()
@@ -158,21 +159,23 @@ func (server *ServerMonitor) ReseedMasterSST() error {
 			server.ClusterGroup.LogPrintf("ERROR", "mysqldump restore failed %s", err)
 			return errors.New("Dump from master failed")
 		}
-	} else if server.ClusterGroup.Conf.AutorejoinLogicalBackup {
-		server.JobReseedLogicalBackup()
-	} else if server.ClusterGroup.Conf.AutorejoinPhysicalBackup {
-		server.JobReseedPhysicalBackup()
-	} else if server.ClusterGroup.Conf.RejoinScript != "" {
-		server.ClusterGroup.LogPrintf("INFO", "Calling rejoin script")
-		var out []byte
-		out, err := exec.Command(server.ClusterGroup.Conf.RejoinScript, misc.Unbracket(server.Host), misc.Unbracket(server.ClusterGroup.master.Host)).CombinedOutput()
-		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "%s", err)
-		}
-		server.ClusterGroup.LogPrintf("INFO", "Rejoin script complete %s", string(out))
 	} else {
-		server.ClusterGroup.LogPrintf("INFO", "No SST reseed method found")
-		return errors.New("No SST reseed method found")
+		if server.ClusterGroup.Conf.AutorejoinLogicalBackup {
+			server.JobReseedLogicalBackup()
+		} else if server.ClusterGroup.Conf.AutorejoinPhysicalBackup {
+			server.JobReseedPhysicalBackup()
+		} else if server.ClusterGroup.Conf.RejoinScript != "" {
+			server.ClusterGroup.LogPrintf("INFO", "Calling rejoin script")
+			var out []byte
+			out, err := exec.Command(server.ClusterGroup.Conf.RejoinScript, misc.Unbracket(server.Host), misc.Unbracket(server.ClusterGroup.master.Host)).CombinedOutput()
+			if err != nil {
+				server.ClusterGroup.LogPrintf("ERROR", "%s", err)
+			}
+			server.ClusterGroup.LogPrintf("INFO", "Rejoin script complete %s", string(out))
+		} else {
+			server.ClusterGroup.LogPrintf("INFO", "No SST reseed method found")
+			return errors.New("No SST reseed method found")
+		}
 	}
 
 	return nil
@@ -652,7 +655,7 @@ func (cluster *Cluster) RejoinFixRelay(slave *ServerMonitor, relay *ServerMonito
 	return nil
 }
 
-// UseGtid  check is replication use gtid
+// UseGtid check is replication use gtid
 func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
 	ss, errss := server.GetSlaveStatus(server.ReplicationSourceName)
 	if errss != nil {
@@ -661,7 +664,7 @@ func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
 
 	server.ClusterGroup.LogPrintf(LvlDbg, "Rejoin Server use GTID %s", ss.UsingGtid.String)
 
-	// An old master  master do no have replication
+	// An old master do no have replication
 	if crash.FailoverIOGtid == nil {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Rejoin server cannot find a saved master election GTID")
 		return false

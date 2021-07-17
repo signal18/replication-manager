@@ -18,11 +18,54 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/haproxy"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/spf13/pflag"
 )
 
-func (cluster *Cluster) initHaproxy(proxy *Proxy) {
+type HaproxyProxy struct {
+	Proxy
+}
+
+func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *HaproxyProxy {
+	conf := cluster.Conf
+	prx := new(HaproxyProxy)
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSHaProxyPartitions, conf.HaproxyHostsIPV6)
+	prx.Type = config.ConstProxyHaproxy
+	prx.Port = strconv.Itoa(conf.HaproxyAPIPort)
+	prx.ReadPort = conf.HaproxyReadPort
+	prx.WritePort = conf.HaproxyWritePort
+	prx.ReadWritePort = conf.HaproxyWritePort
+	prx.Name = proxyHost
+	prx.Host = proxyHost
+	if conf.ProvNetCNI {
+		prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+	}
+
+	return prx
+}
+
+func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
+	flags.BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HaProxy on same host")
+	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HaProxy mode [standby|runtimeapi|dataplaneapi]")
+	flags.StringVar(&conf.HaproxyUser, "haproxy-user", "admin", "Haproxy API user")
+	flags.StringVar(&conf.HaproxyPassword, "haproxy-password", "admin", "Haproxy API password")
+	flags.StringVar(&conf.HaproxyHosts, "haproxy-servers", "127.0.0.1", "HaProxy hosts")
+	flags.IntVar(&conf.HaproxyAPIPort, "haproxy-api-port", 1999, "HaProxy runtime api port")
+	flags.IntVar(&conf.HaproxyWritePort, "haproxy-write-port", 3306, "HaProxy read-write port to leader")
+	flags.IntVar(&conf.HaproxyReadPort, "haproxy-read-port", 3307, "HaProxy load balance read port to all nodes")
+	flags.IntVar(&conf.HaproxyStatPort, "haproxy-stat-port", 1988, "HaProxy statistics port")
+	flags.StringVar(&conf.HaproxyBinaryPath, "haproxy-binary-path", "/usr/sbin/haproxy", "HaProxy binary location")
+	flags.StringVar(&conf.HaproxyReadBindIp, "haproxy-ip-read-bind", "0.0.0.0", "HaProxy input bind address for read")
+	flags.StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "HaProxy input bind address for write")
+	flags.StringVar(&conf.HaproxyAPIReadBackend, "haproxy-api-read-backend", "service_read", "HaProxy API backend name used for read")
+	flags.StringVar(&conf.HaproxyAPIWriteBackend, "haproxy-api-write-backend", "service_write", "HaProxy API backend name used for write")
+	flags.StringVar(&conf.HaproxyHostsIPV6, "haproxy-servers-ipv6", "", "ipv6 bind address ")
+}
+
+func (proxy *HaproxyProxy) Init() {
+	cluster := proxy.ClusterGroup
 	haproxydatadir := proxy.Datadir + "/var"
 
 	if _, err := os.Stat(haproxydatadir); os.IsNotExist(err) {
@@ -93,8 +136,12 @@ func (cluster *Cluster) initHaproxy(proxy *Proxy) {
 		if err = haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
 			//	log.Printf("Failed to add server to service_write ")
 		}
+	} else {
+		s := haproxy.ServerDetail{Name: "leader", Host: "unknown", Port: 3306, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
+		if err = haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
+			//	log.Printf("Failed to add server to service_write ")
+		}
 	}
-
 	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: cluster.Conf.HaproxyAPIReadBackend, BindPort: cluster.Conf.HaproxyReadPort, BindIp: cluster.Conf.HaproxyReadBindIp}
 	if err := haConfig.AddFrontend(&fer); err != nil {
 		cluster.LogPrintf(LvlErr, "Haproxy failed to add frontend read")
@@ -128,23 +175,23 @@ func (cluster *Cluster) initHaproxy(proxy *Proxy) {
 
 	err = haConfig.Render()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Could not render initial haproxy config, exiting...")
+		cluster.LogPrintf(LvlErr, "Could not create haproxy config %s", err)
 	}
 	if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
-		cluster.LogPrintf(LvlInfo, "Haproxy reload config err %s", err.Error())
+		cluster.LogPrintf(LvlInfo, "Haproxy set pid %s", err)
 	} else {
 		cluster.LogPrintf(LvlInfo, "Haproxy reload config on pid %s", haConfig.PidFile)
 	}
 
 	err = haRuntime.Reload(&haConfig)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Can't Reloadhaproxy config %s"+err.Error())
+		cluster.LogPrintf(LvlErr, "Can't reload haproxy config %s", err)
 	}
 
 }
 
-func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
-
+func (proxy *HaproxyProxy) Refresh() error {
+	cluster := proxy.ClusterGroup
 	// if proxy.ClusterGroup.Conf.HaproxyStatHttp {
 
 	/*
@@ -194,7 +241,7 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 
 	proxy.BackendsWrite = nil
 	proxy.BackendsRead = nil
-
+	foundMasterInStat := false
 	for {
 		line, error := reader.Read()
 		if error == io.EOF {
@@ -211,7 +258,7 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 
 			srv := cluster.GetServerFromURL(line[73])
 			if srv != nil {
-
+				foundMasterInStat = true
 				proxy.BackendsWrite = append(proxy.BackendsWrite, Backend{
 					Host:           srv.Host,
 					Port:           srv.Port,
@@ -223,7 +270,6 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 					PrxByteOut:     line[9],
 					PrxLatency:     line[61], //ttime: average session time in ms over the 1024 last requests
 				})
-
 				if !srv.IsMaster() {
 					master := cluster.GetMaster()
 					if master != nil {
@@ -231,9 +277,7 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 						haRuntime.SetMaster(master.Host, master.Port)
 					}
 				}
-
 			}
-
 		}
 		if strings.Contains(strings.ToLower(line[0]), "read") {
 			srv := cluster.GetServerFromURL(line[73])
@@ -254,23 +298,45 @@ func (cluster *Cluster) refreshHaproxy(proxy *Proxy) error {
 					cluster.LogPrintf(LvlInfo, "Detecting broken resplication and UP state in haproxy %s drain  server %s", proxy.Host+":"+proxy.Port, srv.URL)
 					haRuntime.SetDrain(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
 				}
-				if (srv.State == stateSlave || srv.State == stateRelay) && line[17] == "DRAIN" {
+				if (srv.State == stateSlave || srv.State == stateRelay) && line[17] == "DRAIN" && !srv.IsIgnored() {
 					cluster.LogPrintf(LvlInfo, "Detecting valid resplication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL)
 					haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
 				}
 			}
 		}
 	}
-
+	if !foundMasterInStat {
+		master := cluster.GetMaster()
+		if master != nil {
+			res, err := haRuntime.SetMaster(master.Host, master.Port)
+			cluster.LogPrintf(LvlInfo, "Have leader in cluster but not in haproxy %s fixing it to master %s return %s", proxy.Host+":"+proxy.Port, master.URL, res)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Can add leader %s in cluster but not in haproxy %s : %s", master.URL, proxy.Host+":"+proxy.Port, err)
+			}
+		}
+	}
 	return nil
 }
 
 func (cluster *Cluster) setMaintenanceHaproxy(pr *Proxy, server *ServerMonitor) {
+	pr.SetMaintenance(server)
+}
+
+func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
+	cluster := proxy.ClusterGroup
+	if cluster.Conf.HaproxyOn {
+		return
+	}
+	if cluster.Conf.HaproxyMode == "standby" {
+		proxy.Init()
+		return
+	}
+
 	haRuntime := haproxy.Runtime{
 		Binary:   cluster.Conf.HaproxyBinaryPath,
-		SockFile: filepath.Join(pr.Datadir+"/var", "/haproxy.stats.sock"),
-		Port:     pr.Port,
-		Host:     pr.Host,
+		SockFile: filepath.Join(proxy.Datadir+"/var", "/haproxy.stats.sock"),
+		Port:     proxy.Port,
+		Host:     proxy.Host,
 	}
 
 	if server.IsMaintenance {
@@ -285,4 +351,18 @@ func (cluster *Cluster) setMaintenanceHaproxy(pr *Proxy, server *ServerMonitor) 
 			haRuntime.SetReady("leader", cluster.Conf.HaproxyAPIReadBackend)
 		}
 	}
+}
+
+func (proxy *HaproxyProxy) Failover() {
+	cluster := proxy.ClusterGroup
+	if cluster.Conf.HaproxyMode == "runtimeapi" {
+		proxy.Refresh()
+	}
+	if cluster.Conf.HaproxyMode == "standby" {
+		proxy.Init()
+	}
+}
+
+func (proxy *HaproxyProxy) BackendsStateChange() {
+	proxy.Refresh()
 }

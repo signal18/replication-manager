@@ -15,7 +15,7 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (cluster *Cluster) OpenSVCGetShardproxyContainerSection(server *Proxy) map[string]string {
+func (cluster *Cluster) OpenSVCGetShardproxyContainerSection(server *MariadbShardProxy) map[string]string {
 
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
@@ -35,7 +35,7 @@ func (cluster *Cluster) OpenSVCGetShardproxyContainerSection(server *Proxy) map[
 	return svccontainer
 }
 
-func (cluster *Cluster) GetShardproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+func (cluster *Cluster) GetShardproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *MariadbShardProxy) (string, error) {
 
 	ipPods := ""
 
@@ -92,10 +92,7 @@ gcomm	 = ` + cluster.GetGComm() + `
 mrm_api_addr = ` + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + `
 mrm_cluster_name = ` + cluster.GetClusterName() + `
 server_id = ` + string(prx.Id[2:10]) + `
-innodb_buffer_pool_size = ` + cluster.GetConfigInnoDBBPSize() + `
-innodb_log_file_size = ` + cluster.GetConfigInnoDBLogFileSize() + `
-innodb_buffer_pool_instances = ` + cluster.GetConfigInnoDBBPInstances() + `
-innodb_log_buffer_size = 8
+
 `
 	log.Println(conf)
 	return conf, nil

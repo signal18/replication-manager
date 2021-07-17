@@ -9,13 +9,24 @@
 package cluster
 
 import (
-	"fmt"
+	"hash/crc64"
 	"os"
+	"strconv"
 	"strings"
+
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
-func (proxy *Proxy) SetServiceName(namespace string, name string) {
-	proxy.ServiceName = namespace + "/svc/" + name
+func (p *Proxy) SetID() {
+	cluster := p.ClusterGroup
+	p.Id = "px" + strconv.FormatUint(
+		crc64.Checksum([]byte(cluster.Name+p.Name+":"+strconv.Itoa(p.WritePort)), cluster.crcTable),
+		10)
+}
+
+// TODO: clarify where this is used, can maybe be replaced with a Getter
+func (proxy *Proxy) SetServiceName(namespace string) {
+	proxy.ServiceName = namespace + "/svc/" + proxy.Name
 }
 
 func (proxy *Proxy) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string, ProxysqlHostsIPV6 string) {
@@ -45,42 +56,55 @@ func (proxy *Proxy) SetDataDir() {
 	}
 }
 
-func (proxy *Proxy) SetProvisionCookie() {
-	newFile, err := os.Create(proxy.Datadir + "/@cookie_prov")
+func (proxy *Proxy) createCookie(key string) error {
+	newFile, err := os.Create(proxy.Datadir + "/@" + key)
+	defer newFile.Close()
 	if err != nil {
-		fmt.Println("Error:", err)
+		proxy.ClusterGroup.LogPrintf(LvlDbg, "Create cookie (%s) %s", key, err)
 	}
-	newFile.Close()
+	return err
 }
 
-func (proxy *Proxy) SetWaitStartCookie() {
-	newFile, err := os.Create(proxy.Datadir + "/@cookie_waitstart")
-	if err != nil {
-		fmt.Println("Error:", err)
-	}
-	newFile.Close()
+func (proxy *Proxy) SetProvisionCookie() error {
+	return proxy.createCookie("cookie_prov")
 }
 
-func (proxy *Proxy) SetWaitStopCookie() {
-	newFile, err := os.Create(proxy.Datadir + "/@cookie_waitstop")
-	if err != nil {
-		fmt.Println("Error:", err)
-	}
-	newFile.Close()
+func (proxy *Proxy) SetWaitStartCookie() error {
+	return proxy.createCookie("cookie_waitstart")
 }
 
-func (proxy *Proxy) SetRestartCookie() {
-	newFile, err := os.Create(proxy.Datadir + "/@cookie_restart")
-	if err != nil {
-		fmt.Println("Error:", err)
-	}
-	newFile.Close()
+func (proxy *Proxy) SetWaitStopCookie() error {
+	return proxy.createCookie("cookie_waitstop")
 }
 
-func (proxy *Proxy) SetReprovCookie() {
-	newFile, err := os.Create(proxy.Datadir + "/@cookie_reprov")
-	if err != nil {
-		fmt.Println("Error:", err)
-	}
-	newFile.Close()
+func (proxy *Proxy) SetRestartCookie() error {
+	return proxy.createCookie("cookie_restart")
+}
+
+func (proxy *Proxy) SetReprovCookie() error {
+	return proxy.createCookie("cookie_reprov")
+}
+
+func (p *Proxy) SetPrevState(state string) {
+	p.PrevState = state
+}
+
+func (p *Proxy) SetSuspect() {
+	p.State = stateSuspect
+}
+
+func (p *Proxy) SetFailCount(c int) {
+	p.FailCount = c
+}
+
+func (p *Proxy) SetCredential(credential string) {
+	p.User, p.Pass = misc.SplitPair(credential)
+}
+
+func (p *Proxy) SetState(v string) {
+	p.State = v
+}
+
+func (p *Proxy) SetCluster(c *Cluster) {
+	p.ClusterGroup = c
 }

@@ -11,7 +11,6 @@ package cluster
 
 import (
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -102,33 +101,11 @@ func (server *ServerMonitor) SendAlert() error {
 		return nil
 	}
 
-	if server.ClusterGroup.Conf.MailTo != "" {
-		a := alert.Alert{
-			From:        server.ClusterGroup.Conf.MailFrom,
-			To:          server.ClusterGroup.Conf.MailTo,
-			State:       server.State,
-			PrevState:   server.PrevState,
-			Origin:      server.URL,
-			Destination: server.ClusterGroup.Conf.MailSMTPAddr,
-			User:        server.ClusterGroup.Conf.MailSMTPUser,
-			Password:    server.ClusterGroup.Conf.MailSMTPPassword,
-			TlsVerify:   server.ClusterGroup.Conf.MailSMTPTLSSkipVerify,
-		}
-		err := a.Email()
-		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
-		}
-	}
-	if server.ClusterGroup.Conf.AlertScript != "" {
-		server.ClusterGroup.LogPrintf("INFO", "Calling alert script")
-		var out []byte
-		out, err := exec.Command(server.ClusterGroup.Conf.AlertScript, server.URL, server.PrevState, server.State).CombinedOutput()
-		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "%s", err)
-		}
-
-		server.ClusterGroup.LogPrintf("INFO", "Alert script complete:", string(out))
+	a := alert.Alert{
+		State:     server.State,
+		PrevState: server.PrevState,
+		Origin:    server.URL,
 	}
 
-	return nil
+	return server.ClusterGroup.SendAlert(a)
 }

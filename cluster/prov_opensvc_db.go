@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/opensvc"
-	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -744,10 +743,7 @@ safe_ssl_ca_uuid = ` + server.ClusterGroup.Conf.ProvSSLCaUUID + `
 safe_ssl_cert_uuid = ` + server.ClusterGroup.Conf.ProvSSLCertUUID + `
 safe_ssl_key_uuid = ` + server.ClusterGroup.Conf.ProvSSLKeyUUID + `
 server_id = ` + string(server.Id[2:10]) + `
-innodb_buffer_pool_size = ` + server.ClusterGroup.GetConfigInnoDBBPSize() + `
-innodb_log_file_size = ` + server.ClusterGroup.GetConfigInnoDBLogFileSize() + `
-innodb_buffer_pool_instances = ` + server.ClusterGroup.GetConfigInnoDBBPInstances() + `
-innodb_log_buffer_size = 8
+
 `
 	log.Println(conf)
 
@@ -808,62 +804,4 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 		}
 	}
 	return vm
-}
-
-func (server *ServerMonitor) GetEnv() map[string]string {
-
-	return map[string]string{
-		"%%ENV:NODES_CPU_CORES%%":                                   server.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":                            server.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%":                      server.ClusterGroup.GetConfigMaxConnections(),
-		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                             string(server.Id[2:10]),
-		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":                            string(server.Id[2:10]),
-		"%%ENV:SERVER_IP%%":                                         misc.Unbracket(server.GetBindAddress()),
-		"%%ENV:SERVER_HOST%%":                                       server.Host,
-		"%%ENV:SERVER_PORT%%":                                       server.Port,
-		"%%ENV:SVC_CONF_ENV_MYSQL_DATADIR%%":                        server.GetDatabaseDatadir(),
-		"%%ENV:SVC_CONF_ENV_MYSQL_CONFDIR%%":                        server.GetDatabaseConfdir(),
-		"%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%":                       server.GetDatabaseClientBasedir(),
-		"%%ENV:SVC_CONF_ENV_MYSQL_SOCKET%%":                         server.GetDatabaseSocket(),
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":                      server.ClusterGroup.dbUser,
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":                  server.ClusterGroup.dbPass,
-		"%%ENV:SVC_CONF_ENV_MAX_MEM%%":                              server.ClusterGroup.GetConfigInnoDBBPSize(),
-		"%%ENV:SVC_CONF_ENV_INNODB_CACHE_SIZE%%":                    server.ClusterGroup.GetConfigInnoDBBPSize(),
-		"%%ENV:SVC_CONF_ENV_TOKUDB_CACHE_SIZE%%":                    server.ClusterGroup.GetConfigTokuDBBufferSize(),
-		"%%ENV:SVC_CONF_ENV_MYISAM_CACHE_SIZE%%":                    server.ClusterGroup.GetConfigMyISAMKeyBufferSize(),
-		"%%ENV:SVC_CONF_ENV_MYISAM_CACHE_SEGMENTS%%":                server.ClusterGroup.GetConfigMyISAMKeyBufferSegements(),
-		"%%ENV:SVC_CONF_ENV_ARIA_CACHE_SIZE%%":                      server.ClusterGroup.GetConfigAriaCacheSize(),
-		"%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%":                     server.ClusterGroup.GetConfigQueryCacheSize(),
-		"%%ENV:SVC_CONF_ENV_ROCKSDB_CACHE_SIZE%%":                   server.ClusterGroup.GetConfigRocksDBCacheSize(),
-		"%%ENV:SVC_CONF_ENV_S3_CACHE_SIZE%%":                        server.ClusterGroup.GetConfigS3CacheSize(),
-		"%%ENV:IBPINSTANCES%%":                                      server.ClusterGroup.GetConfigInnoDBBPInstances(),
-		"%%ENV:SVC_CONF_ENV_GCOMM%%":                                server.ClusterGroup.GetGComm(),
-		"%%ENV:CHECKPOINTIOPS%%":                                    server.ClusterGroup.GetConfigInnoDBIOCapacity(),
-		"%%ENV:SVC_CONF_ENV_MAX_IOPS%%":                             server.ClusterGroup.GetConfigInnoDBIOCapacityMax(),
-		"%%ENV:SVC_CONF_ENV_INNODB_IO_CAPACITY%%":                   server.ClusterGroup.GetConfigInnoDBIOCapacity(),
-		"%%ENV:SVC_CONF_ENV_INNODB_IO_CAPACITY_MAX%%":               server.ClusterGroup.GetConfigInnoDBIOCapacityMax(),
-		"%%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%":            server.ClusterGroup.GetConfigInnoDBMaxDirtyPagePct(),
-		"%%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%":        server.ClusterGroup.GetConfigInnoDBMaxDirtyPagePctLwm(),
-		"%%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_INSTANCES%%":         server.ClusterGroup.GetConfigInnoDBBPInstances(),
-		"%%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_SIZE%%":              server.ClusterGroup.GetConfigInnoDBBPSize(),
-		"%%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%":               server.ClusterGroup.GetConfigInnoDBLogBufferSize(),
-		"%%ENV:SVC_CONF_ENV_INNODB_LOG_FILE_SIZE%%":                 server.ClusterGroup.GetConfigInnoDBLogFileSize(),
-		"%%ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%":              server.ClusterGroup.GetConfigInnoDBWriteIoThreads(),
-		"%%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%":               server.ClusterGroup.GetConfigInnoDBReadIoThreads(),
-		"%%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%":                 server.ClusterGroup.GetConfigInnoDBPurgeThreads(),
-		"%%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%":                      server.ClusterGroup.GetConfigExpireLogDays(),
-		"%%ENV:SVC_CONF_ENV_RELAY_SPACE_LIMIT%%":                    server.ClusterGroup.GetConfigRelaySpaceLimit(),
-		"%%ENV:SVC_NAMESPACE%%":                                     server.ClusterGroup.Name,
-		"%%ENV:SVC_NAME%%":                                          server.Name,
-		"%%ENV:SVC_CONF_ENV_SST_METHOD%%":                           server.ClusterGroup.Conf.MultiMasterWsrepSSTMethod,
-		"%%ENV:SVC_CONF_ENV_DOMAIN_ID%%":                            server.ClusterGroup.Conf.ProvDomain,
-		"%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%":                    server.SSTPort,
-		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%":             server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.HttpPort,
-		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL%%":              server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort,
-		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_HOST_NAME%%":    server.Host,
-		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_HOST_PORT%%":    server.Port,
-		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_CLUSTER_NAME%%": server.ClusterGroup.Name,
-	}
-
-	//	size = ` + collector.ProvDisk + `
 }

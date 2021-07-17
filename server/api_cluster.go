@@ -461,11 +461,10 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if !repman.IsValidClusterACL(r, mycluster) {
-			repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.RollingRestart()
+		repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -723,9 +722,12 @@ func (repman *ReplicationManager) handlerMuxSetSettingsDiscover(w http.ResponseW
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.ConfigDiscovery()
+		err := mycluster.ConfigDiscovery()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 	} else {
-
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -843,7 +845,7 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 	if mycluster != nil {
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetDBModuleTags())
+		err := e.Encode(mycluster.Configurator.GetDBModuleTags())
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
@@ -1675,8 +1677,8 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaUniversalTable(w http.R
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		for _, pr := range mycluster.Proxies {
-			if mycluster.Conf.MdbsProxyOn {
+		for _, pri := range mycluster.Proxies {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
 				go mycluster.ShardSetUniversalTable(pr, vars["schemaName"], vars["tableName"])
 			}
 		}
@@ -1698,8 +1700,8 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaReshardTable(w http.Res
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		for _, pr := range mycluster.Proxies {
-			if mycluster.Conf.MdbsProxyOn {
+		for _, pri := range mycluster.Proxies {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
 				clusters := mycluster.GetClusterListFromShardProxy(mycluster.Conf.MdbsProxyHosts)
 				if vars["clusterList"] == "" {
 					mycluster.ShardProxyReshardTable(pr, vars["schemaName"], vars["tableName"], clusters)
@@ -1733,8 +1735,8 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaMoveTable(w http.Respon
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		for _, pr := range mycluster.Proxies {
-			if mycluster.Conf.MdbsProxyOn {
+		for _, pri := range mycluster.Proxies {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
 				if vars["clusterShard"] != "" {
 					destcluster := repman.getClusterByName(vars["clusterShard"])
 					if mycluster != nil {

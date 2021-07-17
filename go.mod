@@ -67,7 +67,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.1
 	github.com/hashicorp/hcl v1.0.0
 	github.com/hashicorp/serf v0.0.0-20180213013805-d4f33d5b6a0b
-	github.com/helloyi/go-sshclient v0.0.0-20191203124208-f1e205501005
+	github.com/helloyi/go-sshclient v1.0.0
 	github.com/howeyc/fsnotify v0.0.0-20151003194602-f0c08ee9c607
 	github.com/hpcloud/tail v1.0.0
 	github.com/hydrogen18/stalecucumber v0.0.0-20161215203336-0a94983f3e27
@@ -123,9 +123,9 @@ require (
 	github.com/walle/lll v1.0.1 // indirect
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
-	golang.org/x/crypto v0.0.0-20190510104115-cbcb75029529
+	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2
-	golang.org/x/sys v0.0.0-20190616124812-15dcb6c0061f
+	golang.org/x/sys v0.0.0-20191026070338-33540a1f6037
 	golang.org/x/text v0.3.2
 	google.golang.org/appengine v1.5.0
 	gopkg.in/airbrake/gobrake.v2 v2.0.9 // indirect

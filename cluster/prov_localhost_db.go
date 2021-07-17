@@ -326,7 +326,7 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 
 		time.Sleep(time.Millisecond * 2000)
 		//cluster.LogPrintf(LvlInfo, "Waiting database startup ")
-		cluster.LogPrintf(LvlInfo, "Waiting database startup .. %s", out)
+		cluster.LogPrintf(LvlInfo, "Waiting database startup %d: %s", exitloop, out.String())
 		conn, err2 := sqlx.Open("mysql", server.DSN)
 		if err2 == nil {
 			defer conn.Close()

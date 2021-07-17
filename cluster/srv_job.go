@@ -20,6 +20,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/user"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -122,7 +123,10 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 }
 
 func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
-
+	if server.ClusterGroup.master != nil && !server.ClusterGroup.GetBackupServer().HasBackupPhysicalCookie() {
+		server.createCookie("cookie_waitbackup")
+		return 0, errors.New("No Physical Backup")
+	}
 	jobid, err := server.JobInsertTaks("reseed"+server.ClusterGroup.Conf.BackupPhysicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
@@ -153,6 +157,10 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 }
 
 func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
+	if server.ClusterGroup.master != nil && !server.ClusterGroup.GetBackupServer().HasBackupPhysicalCookie() {
+		server.createCookie("cookie_waitbackup")
+		return 0, errors.New("No Physical Backup")
+	}
 
 	jobid, err := server.JobInsertTaks("flashback"+server.ClusterGroup.Conf.BackupPhysicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 
@@ -186,6 +194,12 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 }
 
 func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
+
+	if server.ClusterGroup.master != nil && !server.ClusterGroup.GetBackupServer().HasBackupLogicalCookie() {
+		server.createCookie("cookie_waitbackup")
+		return 0, errors.New("No Logical Backup")
+	}
+
 	jobid, err := server.JobInsertTaks("reseed"+server.ClusterGroup.Conf.BackupLogicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 
 	if err != nil {
@@ -237,6 +251,10 @@ func (server *ServerMonitor) JobServerRestart() (int64, error) {
 }
 
 func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
+	if server.ClusterGroup.master != nil && !server.ClusterGroup.GetBackupServer().HasBackupLogicalCookie() {
+		server.createCookie("cookie_waitbackup")
+		return 0, errors.New("No Logical Backup")
+	}
 	jobid, err := server.JobInsertTaks("flashback"+server.ClusterGroup.Conf.BackupLogicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed logical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
@@ -457,7 +475,7 @@ func (server *ServerMonitor) JobMyLoaderParseMeta(dir string) (config.MyDumperMe
 }
 
 func (server *ServerMonitor) JobsCheckRunning() error {
-	if server.IsDown() || server.ClusterGroup.Conf.MonitorScheduler == false {
+	if server.IsDown() {
 		return nil
 	}
 	//server.JobInsertTaks("", "", "")
@@ -580,6 +598,22 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	if server.IsDown() {
 		return nil
 	}
+	server.DelBackupLogicalCookie()
+	if server.IsMariaDB() && server.DBVersion.Major == 10 &&
+		server.DBVersion.Minor >= 4 &&
+		server.ClusterGroup.Conf.BackupLockDDL &&
+		(server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump || server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper) {
+		bckConn, err := server.GetNewDBConn()
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Error backup request: %s", err)
+		}
+		defer bckConn.Close()
+		_, err = bckConn.Exec("BACKUP STAGE START")
+		server.ClusterGroup.LogSQL("BACKUP STAGE START", err, server.URL, "JobBackupLogical", LvlErr, "Failed SQL for server %s: %s ", server.URL, err)
+		_, err = bckConn.Exec("BACKUP STAGE BLOCK_DDL")
+		server.ClusterGroup.LogSQL("BACKUP BLOCK_DDL", err, server.URL, "JobBackupLogical", LvlErr, "Failed SQL for server %s: %s ", server.URL, err)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Blocking DDL via BACKUP STAGE")
+	}
 
 	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeRiver {
 		cfg := new(river.Config)
@@ -608,7 +642,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 		river.NewRiver(cfg)
 	}
+
+	// Blocking DDL
 	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
+
 		usegtid := "--gtid"
 		events := ""
 		dumpslave := ""
@@ -629,7 +666,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", -1))
 		f, err := os.Create(server.GetMyBackupDirectory() + "mysqldump.sql.gz")
 		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Error backup request: %s", err)
+			server.ClusterGroup.LogPrintf(LvlErr, "Error mysqldump backup request: %s", err)
 			return err
 		}
 		wf := bufio.NewWriter(f)
@@ -653,7 +690,9 @@ func (server *ServerMonitor) JobBackupLogical() error {
 			err := dumpCmd.Wait()
 
 			if err != nil {
-				log.Println(err)
+				server.ClusterGroup.LogPrintf(LvlErr, "mysqldump: %s", err)
+			} else {
+				server.SetBackupLogicalCookie()
 			}
 			gw.Flush()
 			gw.Close()
@@ -730,6 +769,8 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		wg.Wait()
 		if err := dumpCmd.Wait(); err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "MyDumper: %s", err)
+		} else {
+			server.SetBackupLogicalCookie()
 		}
 	}
 
@@ -747,14 +788,6 @@ func (server *ServerMonitor) copyLogs(r io.Reader) {
 		} else {
 			server.ClusterGroup.LogPrintf(LvlInfo, "%s", s.Text())
 		}
-
-		/*n, err := r.Read(buf)
-		if n > 0 {
-			server.ClusterGroup.LogPrintf(LvlInfo, "%s", buf)
-		}
-		if err != nil {
-			break
-		}*/
 	}
 }
 
@@ -834,18 +867,41 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	if server.ClusterGroup.IsInFailover() {
 		return errors.New("Cancel dbjob via ssh during failover")
 	}
+	user, err := user.Current()
 	key := os.Getenv("HOME") + "/.ssh/id_rsa"
-	client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":22", "apple", key)
+	client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":22", user.Username, key)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err)
 		return err
 	}
 	defer client.Close()
-	out, err2 := client.ScriptFile(server.Datadir + "/init/init/dbjobs_new").SmartOutput()
-	if err2 != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err2)
-		return err
+
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+	filerc, err := os.Open(server.Datadir + "/init/init/dbjobs_new")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err)
+		return errors.New("Cancel dbjob can't open script")
+
 	}
+	defer filerc.Close()
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(filerc)
+	adminuser := "admin"
+	adminpassword := "repman"
+	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
+		adminpassword = user.Password
+	}
+	_, err = client.Cmd("export MYSQL_ROOT_PASSWORD=" + server.Pass).Cmd("export REPLICATION_MANAGER_URL=" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort).Cmd("export REPLICATION_MANAGER_USER=" + adminuser).Cmd("export REPLICATION_MANAGER_PASSWORD=" + adminpassword).Cmd("export REPLICATION_MANAGER_HOST_NAME=" + server.Host).Cmd("export REPLICATION_MANAGER_HOST_PORT=" + server.Port).Cmd("export REPLICATION_MANAGER_CLUSTER_NAME=" + server.ClusterGroup.Name).SmartOutput()
+	if err != nil {
+		return errors.New("JobRunViaSSH Setup env variables via SSH %s" + err.Error())
+	}
+	if client.Shell().SetStdio(buf, &stdout, &stderr).Start(); err != nil {
+		server.ClusterGroup.LogPrintf(LvlWarn, "JobRunViaSSH %s", stderr.String())
+	}
+	out := stdout.String()
 
 	res := new(JobResult)
 	val := reflect.ValueOf(res).Elem()
@@ -854,13 +910,14 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 			val.Field(i).SetBool(false)
 		} else {
 			val.Field(i).SetBool(true)
-			server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", out)
+			server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", val.Type().Field(i).Name)
 		}
 	}
-	//server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", res)
-	//server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", val)
 
 	server.ClusterGroup.JobResults[server.URL] = res
+	if server.ClusterGroup.Conf.LogLevel > 2 {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Exec via ssh  : %s", res)
+	}
 	return nil
 }
 

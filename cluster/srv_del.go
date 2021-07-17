@@ -13,37 +13,43 @@ import (
 	"os"
 )
 
-func (server *ServerMonitor) DelProvisionCookie() {
-	err := os.Remove(server.Datadir + "/@cookie_prov")
+func (server *ServerMonitor) delCookie(key string) error {
+	err := os.Remove(server.Datadir + "/@" + key)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
+		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie (%s) %s", key, err)
 	}
+
+	return err
 }
 
-func (server *ServerMonitor) DelWaitStartCookie() {
-	err := os.Remove(server.Datadir + "/@cookie_waitstart")
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
-	}
+func (server *ServerMonitor) DelProvisionCookie() error {
+	return server.delCookie("cookie_prov")
 }
 
-func (server *ServerMonitor) DelWaitStopCookie() {
-	err := os.Remove(server.Datadir + "/@cookie_waitstop")
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
-	}
+func (server *ServerMonitor) DelWaitStartCookie() error {
+	return server.delCookie("cookie_waitstart")
 }
 
-func (server *ServerMonitor) DelReprovisionCookie() {
-	err := os.Remove(server.Datadir + "/@cookie_reprov")
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
-	}
+func (server *ServerMonitor) DelWaitStopCookie() error {
+	return server.delCookie("cookie_waitstop")
 }
 
-func (server *ServerMonitor) DelRestartCookie() {
-	err := os.Remove(server.Datadir + "/@cookie_restart")
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie %s", err)
-	}
+func (server *ServerMonitor) DelReprovisionCookie() error {
+	return server.delCookie("cookie_reprov")
+}
+
+func (server *ServerMonitor) DelRestartCookie() error {
+	return server.delCookie("cookie_restart")
+}
+
+func (server *ServerMonitor) DelWaitBackupCookie() error {
+	return server.delCookie("cookie_waitbackup")
+}
+
+func (server *ServerMonitor) DelBackupLogicalCookie() error {
+	return server.delCookie("cookie_logicalbackup")
+}
+
+func (server *ServerMonitor) DelBackupPhysicalCookie() error {
+	return server.delCookie("cookie_physicalbackup")
 }
