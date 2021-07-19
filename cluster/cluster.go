@@ -410,7 +410,7 @@ func (cluster *Cluster) Run() {
 				}
 				wg := new(sync.WaitGroup)
 				wg.Add(1)
-				go cluster.TopologyDiscover(wg)
+				cluster.TopologyDiscover(wg)
 				wg.Add(1)
 				go cluster.Heartbeat(wg)
 				// Heartbeat switchover or failover controller runs only on active repman
@@ -634,12 +634,15 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Conf = conf
 	cluster.Configurator.SetConfig(conf)
 	cluster.sme.SetFailoverState()
+	cluster.runOnceAfterTopology = true
+
+	cluster.SetUnDiscovered()
 	cluster.newServerList()
+	//wg := new(sync.WaitGroup)
+	//wg.Add(1)
+	//cluster.TopologyDiscover(wg)
+	//wg.Wait()
 	cluster.newProxyList()
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	cluster.TopologyDiscover(wg)
-	wg.Wait()
 	cluster.sme.RemoveFailoverState()
 }
 

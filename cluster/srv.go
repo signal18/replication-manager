@@ -468,7 +468,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disabled")
 			}
 
-		} else if server.State != stateMaster && server.PrevState != stateUnconn {
+		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State == stateUnconn {
 			// Master will never get discovery in topology if it does not get unconnected first it default to suspect
 			if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
 				server.State = stateUnconn
