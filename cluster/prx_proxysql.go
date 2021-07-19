@@ -156,7 +156,7 @@ func (proxy *ProxySQLProxy) Init() {
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "ProxySQL could not add writer %s (%s) ", s.URL, err)
 				}
-				if cluster.Conf.ProxysqlMasterIsReader {
+				if cluster.Conf.ProxysqlMasterIsReader && cluster.Configurator.HaveProxyTag("readonmaster") {
 					err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)))
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
