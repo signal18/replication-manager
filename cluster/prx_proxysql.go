@@ -206,7 +206,7 @@ func (proxy *ProxySQLProxy) Failover() {
 			}
 		}
 		if s.IsMaster() && !s.IsRelay {
-			err = psql.ReplaceWriter(misc.Unbracket(s.Host), s.Port, misc.Unbracket(cluster.oldMaster.Host), cluster.oldMaster.Port, cluster.Conf.ProxysqlMasterIsReader)
+			err = psql.ReplaceWriter(misc.Unbracket(s.Host), s.Port, misc.Unbracket(cluster.oldMaster.Host), cluster.oldMaster.Port, cluster.Conf.ProxysqlMasterIsReader && cluster.Configurator.HaveProxyTag("readonmaster"))
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Failover ProxySQL could not set server %s Master (%s)", s.URL, err)
 			} else {
