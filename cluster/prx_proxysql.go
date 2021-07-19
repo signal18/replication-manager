@@ -162,7 +162,7 @@ func (proxy *ProxySQLProxy) Init() {
 						cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
 					}
 				}
-			} else {
+			} else if s.State == stateSlave {
 				err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)))
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
