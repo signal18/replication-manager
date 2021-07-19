@@ -461,11 +461,10 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if !repman.IsValidClusterACL(r, mycluster) {
-			repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.RollingRestart()
+		repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -723,9 +722,12 @@ func (repman *ReplicationManager) handlerMuxSetSettingsDiscover(w http.ResponseW
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.ConfigDiscovery()
+		err := mycluster.ConfigDiscovery()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 	} else {
-
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -843,7 +845,7 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 	if mycluster != nil {
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetDBModuleTags())
+		err := e.Encode(mycluster.Configurator.GetDBModuleTags())
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
@@ -1459,13 +1461,17 @@ func (repman *ReplicationManager) handlerMuxClusterStatus(w http.ResponseWriter,
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	if mycluster.GetStatus() {
-		io.WriteString(w, `{"alive": "running"}`)
+	if mycluster != nil {
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		if mycluster.GetStatus() {
+			io.WriteString(w, `{"alive": "running"}`)
+		} else {
+			io.WriteString(w, `{"alive": "errors"}`)
+		}
 	} else {
-		io.WriteString(w, `{"alive": "errors"}`)
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, "No cluster found:"+vars["clusterName"])
 	}
 }
 

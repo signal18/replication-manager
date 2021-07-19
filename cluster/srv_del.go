@@ -14,7 +14,7 @@ import (
 )
 
 func (server *ServerMonitor) delCookie(key string) error {
-	err := os.Remove(server.Datadir + "/@/" + key)
+	err := os.Remove(server.Datadir + "/@" + key)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie (%s) %s", key, err)
 	}
@@ -40,4 +40,16 @@ func (server *ServerMonitor) DelReprovisionCookie() error {
 
 func (server *ServerMonitor) DelRestartCookie() error {
 	return server.delCookie("cookie_restart")
+}
+
+func (server *ServerMonitor) DelWaitBackupCookie() error {
+	return server.delCookie("cookie_waitbackup")
+}
+
+func (server *ServerMonitor) DelBackupLogicalCookie() error {
+	return server.delCookie("cookie_logicalbackup")
+}
+
+func (server *ServerMonitor) DelBackupPhysicalCookie() error {
+	return server.delCookie("cookie_physicalbackup")
 }

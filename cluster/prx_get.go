@@ -9,13 +9,9 @@
 package cluster
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
@@ -76,86 +72,10 @@ func (prx *Proxy) GetCluster() (*sqlx.DB, error) {
 
 func (proxy *Proxy) GetProxyConfig() string {
 	proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
-
-	type File struct {
-		Path    string `json:"path"`
-		Content string `json:"fmt"`
+	err := proxy.ClusterGroup.Configurator.GenerateProxyConfig(proxy.Datadir, proxy.GetEnv())
+	if err != nil {
+		proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
 	}
-	os.RemoveAll(proxy.Datadir + "/init")
-	// Extract files
-	for _, rule := range proxy.ClusterGroup.ProxyModule.Rulesets {
-
-		if strings.Contains(rule.Name, "mariadb.svc.mrm.proxy.cnf") {
-
-			for _, variable := range rule.Variables {
-
-				if variable.Class == "file" || variable.Class == "fileprop" {
-					var f File
-					json.Unmarshal([]byte(variable.Value), &f)
-					fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", proxy.Datadir+"/init", -1)
-					dir := filepath.Dir(fpath)
-					//	proxy.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
-					// create directory
-					if _, err := os.Stat(dir); os.IsNotExist(err) {
-						err := os.MkdirAll(dir, os.FileMode(0775))
-						if err != nil {
-							proxy.ClusterGroup.LogPrintf(LvlErr, "Compliance create directory %q: %s", dir, err)
-						}
-					}
-					proxy.ClusterGroup.LogPrintf(LvlInfo, "rule %s filter %s %t", rule.Name, rule.Filter, proxy.IsFilterInTags(rule.Filter))
-					if fpath[len(fpath)-1:] != "/" && (proxy.IsFilterInTags(rule.Filter) || rule.Filter == "") {
-						content := misc.ExtractKey(f.Content, proxy.GetEnv())
-						outFile, err := os.Create(fpath)
-						if err != nil {
-							proxy.ClusterGroup.LogPrintf(LvlErr, "Compliance create file failed %q: %s", fpath, err)
-						} else {
-							_, err = outFile.WriteString(content)
-
-							if err != nil {
-								proxy.ClusterGroup.LogPrintf(LvlErr, "Compliance writing file failed %q: %s", fpath, err)
-							}
-							outFile.Close()
-							//server.ClusterGroup.LogPrintf(LvlInfo, "Variable name %s", variable.Name)
-
-						}
-
-					}
-				}
-			}
-		}
-	}
-	// processing symlink
-	type Link struct {
-		Symlink string `json:"symlink"`
-		Target  string `json:"target"`
-	}
-	for _, rule := range proxy.ClusterGroup.ProxyModule.Rulesets {
-		if strings.Contains(rule.Name, "mariadb.svc.mrm.proxy.cnf") {
-			for _, variable := range rule.Variables {
-				if variable.Class == "symlink" {
-					if proxy.IsFilterInTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.proxy.cnf" {
-						var f Link
-						json.Unmarshal([]byte(variable.Value), &f)
-						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", proxy.Datadir+"/init", -1)
-						if proxy.ClusterGroup.Conf.LogLevel > 2 {
-							proxy.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
-						}
-						os.Symlink(f.Target, fpath)
-						//	keys := strings.Split(variable.Value, " ")
-					}
-				}
-			}
-		}
-	}
-
-	if proxy.ClusterGroup.HaveProxyTag("docker") {
-		err := misc.ChownR(proxy.Datadir+"/init/data", 999, 999)
-		if err != nil {
-			proxy.ClusterGroup.LogPrintf(LvlErr, "Chown failed %q: %s", proxy.Datadir+"/init/data", err)
-		}
-	}
-	proxy.ClusterGroup.TarGz(proxy.Datadir+"/config.tar.gz", proxy.Datadir+"/init")
-	//server.TarAddDirectory(server.Datadir+"/data", tw)
 	return ""
 }
 
@@ -192,13 +112,13 @@ func (proxy *Proxy) GetBindAddressExtraIPV6() string {
 	return ""
 }
 func (proxy *Proxy) GetUseSSL() string {
-	if proxy.IsFilterInTags("ssl") {
+	if proxy.ClusterGroup.Configurator.IsFilterInProxyTags("ssl") {
 		return "true"
 	}
 	return "false"
 }
 func (proxy *Proxy) GetUseCompression() string {
-	if proxy.IsFilterInTags("nonetworkcompress") {
+	if proxy.ClusterGroup.Configurator.IsFilterInProxyTags("nonetworkcompress") {
 		return "false"
 	}
 	return "true"
@@ -222,7 +142,6 @@ func (proxy *Proxy) GetName() string {
 
 func (proxy *ProxySQLProxy) GetEnv() map[string]string {
 	env := proxy.GetBaseEnv()
-	env["%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%"] = proxy.ProxySQLReadOnMaster()
 	return env
 }
 
@@ -232,45 +151,53 @@ func (proxy *Proxy) GetEnv() map[string]string {
 
 func (proxy *Proxy) GetBaseEnv() map[string]string {
 	return map[string]string{
-		"%%ENV:NODES_CPU_CORES%%":                    proxy.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":             proxy.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":              string(proxy.Id[2:10]),
-		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":             string(proxy.Id[2:10]),
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":   proxy.ClusterGroup.dbPass,
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":       proxy.ClusterGroup.dbUser,
-		"%%ENV:SERVER_IP%%":                          proxy.GetBindAddress(),
-		"%%ENV:EXTRA_BIND_SERVER_IPV6%%":             proxy.GetBindAddressExtraIPV6(),
-		"%%ENV:SVC_CONF_ENV_PROXY_USE_SSL%%":         proxy.GetUseSSL(),
-		"%%ENV:SVC_CONF_ENV_PROXY_USE_COMPRESS%%":    proxy.GetUseCompression(),
-		"%%ENV:SERVER_PORT%%":                        proxy.Port,
-		"%%ENV:SVC_NAMESPACE%%":                      proxy.ClusterGroup.Name,
-		"%%ENV:SVC_NAME%%":                           proxy.Name,
-		"%%ENV:SERVERS_HAPROXY_WRITE%%":              proxy.GetConfigProxyModule("%%ENV:SERVERS_HAPROXY_WRITE%%"),
-		"%%ENV:SERVERS_HAPROXY_READ%%":               proxy.GetConfigProxyModule("%%ENV:SERVERS_HAPROXY_READ%%"),
-		"%%ENV:SERVERS_HAPROXY_WRITE_BACKEND%%":      proxy.ClusterGroup.Conf.HaproxyAPIWriteBackend,
-		"%%ENV:SERVERS_HAPROXY_READ_BACKEND%%":       proxy.ClusterGroup.Conf.HaproxyAPIReadBackend,
-		"%%ENV:SERVERS_PROXYSQL%%":                   proxy.GetConfigProxyModule("%%ENV:SERVERS_PROXYSQL%%"),
-		"%%ENV:SERVERS%%":                            proxy.GetConfigProxyModule("%%ENV:SERVERS%%"),
-		"%%ENV:SERVERS_LIST%%":                       proxy.GetConfigProxyModule("%%ENV:SERVERS_LIST%%"),
-		"%%ENV:SVC_CONF_ENV_PORT_HTTP%%":             "80",
-		"%%ENV:SVC_CONF_ENV_PORT_R_LB%%":             strconv.Itoa(proxy.ReadPort),
-		"%%ENV:SVC_CONF_ENV_PORT_RW%%":               strconv.Itoa(proxy.WritePort),
-		"%%ENV:SVC_CONF_ENV_MAXSCALE_MAXINFO_PORT%%": strconv.Itoa(proxy.ClusterGroup.Conf.MxsMaxinfoPort),
-		"%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%":         strconv.Itoa(proxy.ReadWritePort),
-		"%%ENV:SVC_CONF_ENV_PORT_BINLOG%%":           strconv.Itoa(proxy.ClusterGroup.Conf.MxsBinlogPort),
-		"%%ENV:SVC_CONF_ENV_PORT_TELNET%%":           proxy.Port,
-		"%%ENV:SVC_CONF_ENV_PORT_ADMIN%%":            proxy.Port,
-		"%%ENV:SVC_CONF_ENV_USER_ADMIN%%":            proxy.User,
-		"%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%":        proxy.Pass,
-		"%%ENV:SVC_CONF_ENV_SPHINX_MEM%%":            proxy.ClusterGroup.Conf.ProvSphinxMem,
-		"%%ENV:SVC_CONF_ENV_SPHINX_MAX_CHILDREN%%":   proxy.ClusterGroup.Conf.ProvSphinxMaxChildren,
-		"%%ENV:SVC_CONF_ENV_VIP_ADDR%%":              proxy.ClusterGroup.Conf.ProvProxRouteAddr,
-		"%%ENV:SVC_CONF_ENV_VIP_NETMASK%%":           proxy.ClusterGroup.Conf.ProvProxRouteMask,
-		"%%ENV:SVC_CONF_ENV_VIP_PORT%%":              proxy.ClusterGroup.Conf.ProvProxRoutePort,
-		"%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%":          proxy.ClusterGroup.Conf.MonitorAddress + ":" + proxy.ClusterGroup.Conf.HttpPort,
-		"%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%":      proxy.ClusterGroup.GetClusterName(),
-		"%%ENV:SVC_CONF_ENV_DATADIR%%":               proxy.GetConfigDatadir(),
+		"%%ENV:NODES_CPU_CORES%%":                      proxy.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":               proxy.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                string(proxy.Id[2:10]),
+		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":               string(proxy.Id[2:10]),
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":     proxy.ClusterGroup.dbPass,
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":         proxy.ClusterGroup.dbUser,
+		"%%ENV:SERVER_IP%%":                            proxy.GetBindAddress(),
+		"%%ENV:EXTRA_BIND_SERVER_IPV6%%":               proxy.GetBindAddressExtraIPV6(),
+		"%%ENV:SVC_CONF_ENV_PROXY_USE_SSL%%":           proxy.GetUseSSL(),
+		"%%ENV:SVC_CONF_ENV_PROXY_USE_COMPRESS%%":      proxy.GetUseCompression(),
+		"%%ENV:SERVER_PORT%%":                          proxy.Port,
+		"%%ENV:SVC_NAMESPACE%%":                        proxy.ClusterGroup.Name,
+		"%%ENV:SVC_NAME%%":                             proxy.Name,
+		"%%ENV:SERVERS_HAPROXY_WRITE%%":                proxy.GetConfigProxyModule("%%ENV:SERVERS_HAPROXY_WRITE%%"),
+		"%%ENV:SERVERS_HAPROXY_READ%%":                 proxy.GetConfigProxyModule("%%ENV:SERVERS_HAPROXY_READ%%"),
+		"%%ENV:SERVERS_HAPROXY_WRITE_BACKEND%%":        proxy.ClusterGroup.Conf.HaproxyAPIWriteBackend,
+		"%%ENV:SERVERS_HAPROXY_READ_BACKEND%%":         proxy.ClusterGroup.Conf.HaproxyAPIReadBackend,
+		"%%ENV:SERVERS_PROXYSQL%%":                     proxy.GetConfigProxyModule("%%ENV:SERVERS_PROXYSQL%%"),
+		"%%ENV:SERVERS%%":                              proxy.GetConfigProxyModule("%%ENV:SERVERS%%"),
+		"%%ENV:SERVERS_LIST%%":                         proxy.GetConfigProxyModule("%%ENV:SERVERS_LIST%%"),
+		"%%ENV:SVC_CONF_ENV_PORT_HTTP%%":               "80",
+		"%%ENV:SVC_CONF_ENV_PORT_R_LB%%":               strconv.Itoa(proxy.ReadPort),
+		"%%ENV:SVC_CONF_ENV_PORT_RW%%":                 strconv.Itoa(proxy.WritePort),
+		"%%ENV:SVC_CONF_ENV_MAXSCALE_MAXINFO_PORT%%":   strconv.Itoa(proxy.ClusterGroup.Conf.MxsMaxinfoPort),
+		"%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%":           strconv.Itoa(proxy.ReadWritePort),
+		"%%ENV:SVC_CONF_ENV_PORT_BINLOG%%":             strconv.Itoa(proxy.ClusterGroup.Conf.MxsBinlogPort),
+		"%%ENV:SVC_CONF_ENV_PORT_TELNET%%":             proxy.Port,
+		"%%ENV:SVC_CONF_ENV_PORT_ADMIN%%":              proxy.Port,
+		"%%ENV:SVC_CONF_ENV_USER_ADMIN%%":              proxy.User,
+		"%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%":          proxy.Pass,
+		"%%ENV:SVC_CONF_ENV_SPHINX_MEM%%":              proxy.ClusterGroup.Conf.ProvSphinxMem,
+		"%%ENV:SVC_CONF_ENV_SPHINX_MAX_CHILDREN%%":     proxy.ClusterGroup.Conf.ProvSphinxMaxChildren,
+		"%%ENV:SVC_CONF_ENV_VIP_ADDR%%":                proxy.ClusterGroup.Conf.ProvProxRouteAddr,
+		"%%ENV:SVC_CONF_ENV_VIP_NETMASK%%":             proxy.ClusterGroup.Conf.ProvProxRouteMask,
+		"%%ENV:SVC_CONF_ENV_VIP_PORT%%":                proxy.ClusterGroup.Conf.ProvProxRoutePort,
+		"%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%":            proxy.ClusterGroup.Conf.MonitorAddress + ":" + proxy.ClusterGroup.Conf.HttpPort,
+		"%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%":        proxy.ClusterGroup.GetClusterName(),
+		"%%ENV:SVC_CONF_ENV_DATADIR%%":                 proxy.GetConfigDatadir(),
+		"%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%": proxy.GetConfigProxySQLReadOnMaster(),
 	}
+}
+
+func (proxy *Proxy) GetConfigProxySQLReadOnMaster() string {
+	if proxy.ClusterGroup.Configurator.IsFilterInProxyTags("proxy.route.readonmaster") {
+		return "1"
+	}
+	return "0"
 }
 
 func (proxy *Proxy) GetConfigProxyModule(variable string) string {

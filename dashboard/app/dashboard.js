@@ -48,7 +48,7 @@ function (
   $scope.selectedAcls = [];
   $scope.selectedUserIndex = undefined;
   $scope.newUserAcls = undefined;
-  $scope.refreshInterval = undefined;
+  $scope.refreshInterval = 4000;
   $scope.digestmode = "pfs";
 
   $scope.missingDBTags = undefined;
@@ -342,8 +342,8 @@ function (
             return passedTest;
           }
           $scope.agents = data.agents;
-          $scope.missingDBTags=isInTags(data.configTags,data.dbServersTags,function(currentTag,dbTags){ return (dbTags.indexOf(currentTag)== -1);});
-          $scope.missingProxyTags=isInTags(data.configPrxTags,data.proxyServersTags,function(currentTag,proxyTags){ return (proxyTags.indexOf(currentTag)== -1);});
+          $scope.missingDBTags=isInTags(data.configurator.configTags,data.configurator.dbServersTags,function(currentTag,dbTags){ return (dbTags.indexOf(currentTag)== -1);});
+          $scope.missingProxyTags=isInTags(data.configurator.configPrxTags,data.configurator.proxyServersTags,function(currentTag,proxyTags){ return (proxyTags.indexOf(currentTag)== -1);});
 
 
           $scope.reserror = false;

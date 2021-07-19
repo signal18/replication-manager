@@ -13,7 +13,7 @@ import (
 )
 
 func (proxy *Proxy) delCookie(key string) error {
-	err := os.Remove(proxy.Datadir + "/@/" + key)
+	err := os.Remove(proxy.Datadir + "/@" + key)
 	if err != nil {
 		proxy.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie (%s) %s", key, err)
 	}

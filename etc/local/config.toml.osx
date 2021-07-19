@@ -6,7 +6,7 @@ prov-db-binary-basedir= "/usr/local/bin"
 prov-db-client-basedir= "/usr/local/bin"
 backup-mysqlclient-path ="/usr/local/bin/mysql"
 backup-mysqlbinlog-path = "/usr/local/bin/mysqlbinlog"
-
+backup-mysqldump-options = "--hex-blob --single-transaction --verbose --all-databases --add-drop-database"
 #mysql
 #prov-db-binary-basedir= "/usr/local/mysql/bin"
 #prov-db-client-basedir= "/usr/local/mysql/bin"

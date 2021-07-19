@@ -32,16 +32,16 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 }
 
 func (cluster *Cluster) AddDBTagConfig(tag string) {
-	if !cluster.HaveDBTag(tag) {
-		cluster.DBTags = append(cluster.DBTags, tag)
-		cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
+	if !cluster.Configurator.HaveDBTag(tag) {
+		cluster.Configurator.AddDBTag(tag)
+		cluster.Conf.ProvTags = cluster.Configurator.GetConfigDBTags()
 		cluster.SetClusterVariablesFromConfig()
 	}
 }
 
 func (cluster *Cluster) AddDBTag(tag string) {
 
-	if !cluster.HaveDBTag(tag) {
+	if !cluster.Configurator.HaveDBTag(tag) {
 		cluster.LogPrintf(LvlInfo, "Adding database tag %s ", tag)
 		cluster.AddDBTagConfig(tag)
 		if cluster.Conf.ProvDBApplyDynamicConfig {
@@ -64,8 +64,8 @@ func (cluster *Cluster) AddDBTag(tag string) {
 }
 
 func (cluster *Cluster) AddProxyTag(tag string) {
-	cluster.ProxyTags = append(cluster.ProxyTags, tag)
-	cluster.Conf.ProvProxTags = strings.Join(cluster.ProxyTags, ",")
+	cluster.Configurator.AddProxyTag(tag)
+	cluster.Conf.ProvProxTags = cluster.Configurator.GetConfigProxyTags()
 	cluster.SetClusterVariablesFromConfig()
 	cluster.SetProxiesRestartCookie()
 }
