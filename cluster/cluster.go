@@ -416,12 +416,16 @@ func (cluster *Cluster) Run() {
 				// Heartbeat switchover or failover controller runs only on active repman
 
 				if cluster.runOnceAfterTopology {
-					cluster.initProxies()
+					// Preserved server state in proxy during reload config
+					if !cluster.IsInFailover() {
+						cluster.initProxies()
+					}
 					cluster.initOrchetratorNodes()
 					cluster.ResticFetchRepo()
 					cluster.runOnceAfterTopology = false
 				} else {
 					wg.Add(1)
+					// Preserved server state in proxy during reload config
 					if !cluster.IsInFailover() {
 						go cluster.refreshProxies(wg)
 					}
