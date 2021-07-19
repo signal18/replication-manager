@@ -353,13 +353,14 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	} else {
 		// don't try flashback on old style replication that are ahead jump to SST
 		if server.HasGTIDReplication() == false {
-			return errors.New("Incremental failed")
+			server.ClusterGroup.LogPrintf("INFO", "Incremental canceled caused by old style replication")
+			return errors.New("Incremental canceled caused by old style replication")
 		}
 	}
 	if crash.FailoverIOGtid != nil {
 		// server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0
 		// lookup in crash recorded is the current master
-		if crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ClusterGroup.master.ServerID)) == 0 {
+		if crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
 			server.ClusterGroup.LogPrintf("INFO", "Cascading failover, consider we cannot flashback")
 			server.ClusterGroup.canFlashBack = false
 		} else {
@@ -654,21 +655,25 @@ func (cluster *Cluster) RejoinFixRelay(slave *ServerMonitor, relay *ServerMonito
 
 // UseGtid  check is replication use gtid
 func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
-	ss, errss := server.GetSlaveStatus(server.ReplicationSourceName)
-	if errss != nil {
-		return false
-	}
+	/*
+		ss, errss := server.GetSlaveStatus(server.ReplicationSourceName)
+		if errss != nil {
+			server.ClusterGroup.LogPrintf(LvlInfo, "Failed to check if server was using GTID %s", errss)
+			return false
+		}
 
-	server.ClusterGroup.LogPrintf(LvlDbg, "Rejoin Server use GTID %s", ss.UsingGtid.String)
-
+		server.ClusterGroup.LogPrintf(LvlInfo, "Rejoin server using GTID %s", ss.UsingGtid.String)
+	*/
 	// An old master  master do no have replication
 	if crash.FailoverIOGtid == nil {
-		server.ClusterGroup.LogPrintf(LvlDbg, "Rejoin server cannot find a saved master election GTID")
+		server.ClusterGroup.LogPrintf(LvlInfo, "Rejoin server cannot find a saved master election GTID")
 		return false
 	}
 	if len(crash.FailoverIOGtid.GetSeqNos()) > 0 {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Rejoin server found a crash GTID greater than 0 ")
 		return true
-	} else {
-		return false
 	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Rejoin server can not found a GTID greater than 0 ")
+	return false
+
 }
