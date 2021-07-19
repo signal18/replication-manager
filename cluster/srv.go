@@ -445,10 +445,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected", server.URL)
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				if server.ClusterGroup.master != nil {
-					if server.ClusterGroup.Status == ConstMonitorActif && server.ClusterGroup.master.Id != server.Id && !server.ClusterGroup.IsInIgnoredReadonly(server) {
+					if server.ClusterGroup.Status == ConstMonitorActif && server.ClusterGroup.master.Id != server.Id && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
 						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as active monitor and other master is discovered", server.URL)
 						server.SetReadOnly()
-					} else if server.ClusterGroup.Status == ConstMonitorStandby && server.ClusterGroup.Conf.Arbitration && !server.ClusterGroup.IsInIgnoredReadonly(server) {
+					} else if server.ClusterGroup.Status == ConstMonitorStandby && server.ClusterGroup.Conf.Arbitration && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
 						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as a standby monitor ", server.URL)
 						server.SetReadOnly()
 					}
