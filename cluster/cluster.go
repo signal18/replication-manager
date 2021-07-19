@@ -422,7 +422,9 @@ func (cluster *Cluster) Run() {
 					cluster.runOnceAfterTopology = false
 				} else {
 					wg.Add(1)
-					go cluster.refreshProxies(wg)
+					if !cluster.IsInFailover() {
+						go cluster.refreshProxies(wg)
+					}
 					if cluster.sme.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.sme.IsInSchemaMonitor() {
 						go cluster.MonitorSchema()
 					}

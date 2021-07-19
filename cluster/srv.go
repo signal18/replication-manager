@@ -474,7 +474,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.State = stateUnconn
 				server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
 			}
-			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInIgnoredReadonly(server) {
+			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
 				server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server: %s no master state and replication found", server.URL)
 				server.SetReadOnly()
 			}
