@@ -424,9 +424,10 @@ func (cluster *Cluster) Run() {
 					cluster.ResticFetchRepo()
 					cluster.runOnceAfterTopology = false
 				} else {
-					wg.Add(1)
+
 					// Preserved server state in proxy during reload config
 					if !cluster.IsInFailover() {
+						wg.Add(1)
 						go cluster.refreshProxies(wg)
 					}
 					if cluster.sme.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.sme.IsInSchemaMonitor() {
