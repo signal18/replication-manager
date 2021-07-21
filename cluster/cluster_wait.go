@@ -69,7 +69,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 			cluster.LogPrintf(LvlInfo, "Waiting switchover end")
 			exitloop++
 		case <-cluster.switchoverCond.Recv:
-			return
+			exitloop = 9999999
 		}
 	}
 	if exitloop == 9999999 {
@@ -241,7 +241,7 @@ func (cluster *Cluster) WaitDatabaseSuspect(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) WaitDatabaseFailed(server *ServerMonitor) error {
-	cluster.LogPrintf(LvlInfo, "Wait state failed on %s", server.URL)
+	cluster.LogPrintf(LvlInfo, "Waiting state failed on %s", server.URL)
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
@@ -253,7 +253,7 @@ func (cluster *Cluster) WaitDatabaseFailed(server *ServerMonitor) error {
 			if server.IsInStateFailed() {
 				exitloop = 9999999
 			} else {
-				cluster.LogPrintf(LvlInfo, "Waiting state failed on %s ", server.URL)
+				cluster.LogPrintf(LvlInfo, "Waiting state failed on %s %d current state:%s", server.URL, exitloop, server.State)
 			}
 		}
 	}

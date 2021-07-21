@@ -185,7 +185,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				if cluster.Status == ConstMonitorActif && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
 					//Extra master in master slave topology rejoin it after split brain
 					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
-					cluster.Servers[k].RejoinMaster()
+					//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping
 				} else {
 					cluster.master = cluster.Servers[k]
 					cluster.master.SetMaster()

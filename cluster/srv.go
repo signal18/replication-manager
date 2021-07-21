@@ -160,7 +160,7 @@ type ServerMonitor struct {
 	MonitorTime                 int64                        `json:"-"`
 	PrevMonitorTime             int64                        `json:"-"`
 	maxConn                     string                       `json:"maxConn"` // used to back max connection for failover
-	Datadir                     string                       `json:"-"`
+	Datadir                     string                       `json:"datadir"`
 	SlapOSDatadir               string                       `json:"slaposDatadir"`
 	PostgressDB                 string                       `json:"postgressDB"`
 	CrcTable                    *crc64.Table                 `json:"-"`
@@ -258,7 +258,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		os.MkdirAll(server.Datadir+"/log", os.ModePerm)
 		os.MkdirAll(server.Datadir+"/var", os.ModePerm)
 		os.MkdirAll(server.Datadir+"/init", os.ModePerm)
-		os.MkdirAll(server.Datadir+"/bck", os.ModePerm)
 	}
 
 	errLogFile := server.Datadir + "/log/log_error.log"
@@ -443,7 +442,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	if errss == sql.ErrNoRows || noChannel {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
-		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth {
+		if server.PrevState == stateFailed /*|| server.PrevState == stateErrorAuth*/ {
 			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected", server.URL)
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				if server.ClusterGroup.master != nil {
