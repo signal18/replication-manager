@@ -10,51 +10,96 @@ import "messages.proto";
 option go_package = "github.com/signal18/replication-manager;repmanv3";
 
 service ClusterPublicService {
-    rpc ClusterStatus(Cluster) returns (StatusMessage) {
-        // replaces /api/clusters/{clusterName}/status
-        option (google.api.http) = {
-            get: "/v3/clusters/{name}/status"
-        };
-    }
+  rpc ClusterStatus(Cluster) returns (StatusMessage) {
+    // replaces /api/clusters/{clusterName}/status
+    option (google.api.http) = {
+      get: "/v3/clusters/{name}/status"
+    };
+  }
 
-    rpc MasterPhysicalBackup(Cluster) returns (google.protobuf.Empty) {
-        // replaces /api/clusters/{name}/actions/master-physical-backup
-        option (google.api.http) = {
-            get: "/v3/clusters/{name}/actions/master-physical-backup"
-        };
-    }
+  rpc MasterPhysicalBackup(Cluster) returns (google.protobuf.Empty) {
+    // replaces /api/clusters/{name}/actions/master-physical-backup
+    option (google.api.http) = {
+      get: "/v3/clusters/{name}/actions/master-physical-backup"
+    };
+  }
 }
 
 service ClusterService {
-    rpc GetSettingsForCluster(Cluster) returns (google.protobuf.Struct) {
-        // replaces /api/clusters/{clusterName}/settings
-        option (google.api.http) = {
-            get: "/v3/clusters/{name}/settings"
-        };
-    }
+  rpc GetSettingsForCluster(Cluster) returns (google.protobuf.Struct) {
+    // replaces /api/clusters/{clusterName}/settings
+    option (google.api.http) = {
+      get: "/v3/clusters/{name}/settings"
+    };
+  }
 
-    rpc SetActionForClusterSettings(ClusterSetting) returns (google.protobuf.Empty) {
-        
-        option (google.api.http) = {
-            // /api/clusters/{clusterName}/settings/actions/apply-dynamic-config
-            // /api/clusters/{clusterName}/settings/actions/discover
-            // /api/clusters/{clusterName}/settings/actions/reload
-            get: "/v3/clusters/{cluster.name}/settings/actions/{action}"
-            additional_bindings {
-                // /api/clusters/{clusterName}/settings/actions/add-db-tag/{tagValue}
-                // /api/clusters/{clusterName}/settings/actions/add-proxy-tag/{tagValue}
-                // /api/clusters/{clusterName}/settings/actions/drop-db-tag/{tagValue}
-                // /api/clusters/{clusterName}/settings/actions/drop-proxy-tag/{tagValue}
+  rpc SetActionForClusterSettings(ClusterSetting) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/settings/actions/apply-dynamic-config
+      // /api/clusters/{clusterName}/settings/actions/discover
+      // /api/clusters/{clusterName}/settings/actions/reload
+      get: "/v3/clusters/{cluster.name}/settings/actions/{action}"
+      additional_bindings {
+        // /api/clusters/{clusterName}/settings/actions/add-db-tag/{tagValue}
+        // /api/clusters/{clusterName}/settings/actions/add-proxy-tag/{tagValue}
+        // /api/clusters/{clusterName}/settings/actions/drop-db-tag/{tagValue}
+        // /api/clusters/{clusterName}/settings/actions/drop-proxy-tag/{tagValue}
 				get: "/v3/clusters/{cluster.name}/settings/actions/{action}/{tag_value}"
 			}
-            additional_bindings {
-                // /api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}
+      additional_bindings {
+        // /api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}
 				get: "/v3/clusters/{cluster.name}/settings/actions/set/{setting.name}/{setting.value}"
 			}
-            additional_bindings {
-                // /api/clusters/{clusterName}/settings/actions/switch/{settingName}
+      additional_bindings {
+        // /api/clusters/{clusterName}/settings/actions/switch/{settingName}
 				get: "/v3/clusters/{cluster.name}/settings/actions/switch/{switch.name}"
 			}
-        };
-    }
+    };
+  }
+
+  rpc PerformClusterAction(ClusterAction) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      // /api/clusters/actions/add/{clusterName}
+      get: "/v3/clusters/actions/{action}/{cluster.name}"
+      additional_bindings {
+        // /api/clusters/{clusterName}/actions/add/{clusterShardingName}
+        get: "/v3/clusters/{cluster.name}/actions/{action}/{cluster.clusterShardingName}"
+      }
+      additional_bindings {
+        // /api/clusters/{clusterName}/actions/addserver/{host}/{port}
+        get: "/v3/clusters/{cluster.name}/actions/{action}/{server.host}/{server.port}"
+      }
+      additional_bindings {
+        // /api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type}
+        get: "/v3/clusters/{cluster.name}/actions/{action}/{server.host}/{server.port}/{server.type}"
+      }
+      additional_bindings {
+        // /api/clusters/{clusterName}/actions/replication/bootstrap/{topology}
+        get: "/v3/clusters/{cluster.name}/actions/{action}/{topology}"
+      }
+      additional_bindings {
+        // /api/clusters/{clusterName}/actions/cancel-rolling-reprov
+        // /api/clusters/{clusterName}/actions/cancel-rolling-restart
+        // /api/clusters/{clusterName}/actions/checksum-all-tables
+        // /api/clusters/{clusterName}/actions/failover
+        // /api/clusters/{clusterName}/actions/master-physical-backup
+        // /api/clusters/{clusterName}/actions/optimize
+        // /api/clusters/{clusterName}/actions/reset-failover-control
+        // /api/clusters/{clusterName}/actions/reset-sla
+        // /api/clusters/{clusterName}/actions/rolling
+        // /api/clusters/{clusterName}/actions/rotatekeys
+        // /api/clusters/{clusterName}/actions/start-traffic
+        // /api/clusters/{clusterName}/actions/stop-traffic
+        // /api/clusters/{clusterName}/actions/sysbench
+        // /api/clusters/{clusterName}/actions/waitdatabases
+        // /api/clusters/{clusterName}/actions/replication/cleanup
+        get: "/v3/clusters/{cluster.name}/actions/{action}"
+      }
+      additional_bindings {
+        // /api/clusters/{clusterName}/actions/switchover
+        post: "v3/clusters/{cluster.name}/actions/switchover"
+        body: "{server}"
+      }
+    };
+  }
 }

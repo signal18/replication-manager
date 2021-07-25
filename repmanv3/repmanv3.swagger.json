@@ -19,6 +19,826 @@
     "application/json"
   ],
   "paths": {
+    "/v3/clusters/actions/{action}/{cluster.name}": {
+      "get": {
+        "operationId": "ClusterService_PerformClusterAction",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "ACTION_UNSPECIFIED",
+              "ADD",
+              "ADDSERVER",
+              "CANCEL_ROLLING_REPROV",
+              "CANCEL_ROLLING_RESTART",
+              "CHECKSUM_ALL_TABLES",
+              "FAILOVER",
+              "MASTER_PHYSICAL_BACKUP",
+              "OPTIMIZE",
+              "RESET_FAILOVER_CONTROL",
+              "RESET_SLA",
+              "ROLLING",
+              "ROTATEKEYS",
+              "START_TRAFFIC",
+              "STOP_TRAFFIC",
+              "SWITCHOVER",
+              "SYSBENCH",
+              "WAITDATABASES",
+              "REPLICATION_BOOTSTRAP",
+              "REPLICATION_CLEANUP"
+            ]
+          },
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "cluster.clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "server.host",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "server.port",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "server.type",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "TYPE_UNSPECIFIED",
+              "DATABASE",
+              "PROXY"
+            ],
+            "default": "TYPE_UNSPECIFIED"
+          },
+          {
+            "name": "server.database",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "DATABASE_UNSPECIFIED",
+              "MARIADB",
+              "PERCONA",
+              "MYSQL",
+              "POSTGRESQL"
+            ],
+            "default": "DATABASE_UNSPECIFIED"
+          },
+          {
+            "name": "server.proxy",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "PROXY_UNSPECIFIED",
+              "MAXSCALE",
+              "PROXYSQL",
+              "SHARDPROXY",
+              "HAPROXY",
+              "MYPROXY",
+              "EXTPROXY",
+              "SPHINX"
+            ],
+            "default": "PROXY_UNSPECIFIED"
+          },
+          {
+            "name": "topology",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "RT_UNSPECIFIED",
+              "MASTER_SLAVE",
+              "MASTER_SLAVE_NO_GTID",
+              "MULTI_MASTER",
+              "MULTI_TIER_SLAVE",
+              "MAXSCALE_BINLOG",
+              "MULTI_MASTER_RING",
+              "MULTI_MASTER_WSREP"
+            ],
+            "default": "RT_UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
+    "/v3/clusters/{cluster.name}/actions/{action}": {
+      "get": {
+        "operationId": "ClusterService_PerformClusterAction6",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "ACTION_UNSPECIFIED",
+              "ADD",
+              "ADDSERVER",
+              "CANCEL_ROLLING_REPROV",
+              "CANCEL_ROLLING_RESTART",
+              "CHECKSUM_ALL_TABLES",
+              "FAILOVER",
+              "MASTER_PHYSICAL_BACKUP",
+              "OPTIMIZE",
+              "RESET_FAILOVER_CONTROL",
+              "RESET_SLA",
+              "ROLLING",
+              "ROTATEKEYS",
+              "START_TRAFFIC",
+              "STOP_TRAFFIC",
+              "SWITCHOVER",
+              "SYSBENCH",
+              "WAITDATABASES",
+              "REPLICATION_BOOTSTRAP",
+              "REPLICATION_CLEANUP"
+            ]
+          },
+          {
+            "name": "cluster.clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "server.host",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "server.port",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "server.type",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "TYPE_UNSPECIFIED",
+              "DATABASE",
+              "PROXY"
+            ],
+            "default": "TYPE_UNSPECIFIED"
+          },
+          {
+            "name": "server.database",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "DATABASE_UNSPECIFIED",
+              "MARIADB",
+              "PERCONA",
+              "MYSQL",
+              "POSTGRESQL"
+            ],
+            "default": "DATABASE_UNSPECIFIED"
+          },
+          {
+            "name": "server.proxy",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "PROXY_UNSPECIFIED",
+              "MAXSCALE",
+              "PROXYSQL",
+              "SHARDPROXY",
+              "HAPROXY",
+              "MYPROXY",
+              "EXTPROXY",
+              "SPHINX"
+            ],
+            "default": "PROXY_UNSPECIFIED"
+          },
+          {
+            "name": "topology",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "RT_UNSPECIFIED",
+              "MASTER_SLAVE",
+              "MASTER_SLAVE_NO_GTID",
+              "MULTI_MASTER",
+              "MULTI_TIER_SLAVE",
+              "MAXSCALE_BINLOG",
+              "MULTI_MASTER_RING",
+              "MULTI_MASTER_WSREP"
+            ],
+            "default": "RT_UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
+    "/v3/clusters/{cluster.name}/actions/{action}/{cluster.clusterShardingName}": {
+      "get": {
+        "operationId": "ClusterService_PerformClusterAction2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "ACTION_UNSPECIFIED",
+              "ADD",
+              "ADDSERVER",
+              "CANCEL_ROLLING_REPROV",
+              "CANCEL_ROLLING_RESTART",
+              "CHECKSUM_ALL_TABLES",
+              "FAILOVER",
+              "MASTER_PHYSICAL_BACKUP",
+              "OPTIMIZE",
+              "RESET_FAILOVER_CONTROL",
+              "RESET_SLA",
+              "ROLLING",
+              "ROTATEKEYS",
+              "START_TRAFFIC",
+              "STOP_TRAFFIC",
+              "SWITCHOVER",
+              "SYSBENCH",
+              "WAITDATABASES",
+              "REPLICATION_BOOTSTRAP",
+              "REPLICATION_CLEANUP"
+            ]
+          },
+          {
+            "name": "cluster.clusterShardingName",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "server.host",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "server.port",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "server.type",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "TYPE_UNSPECIFIED",
+              "DATABASE",
+              "PROXY"
+            ],
+            "default": "TYPE_UNSPECIFIED"
+          },
+          {
+            "name": "server.database",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "DATABASE_UNSPECIFIED",
+              "MARIADB",
+              "PERCONA",
+              "MYSQL",
+              "POSTGRESQL"
+            ],
+            "default": "DATABASE_UNSPECIFIED"
+          },
+          {
+            "name": "server.proxy",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "PROXY_UNSPECIFIED",
+              "MAXSCALE",
+              "PROXYSQL",
+              "SHARDPROXY",
+              "HAPROXY",
+              "MYPROXY",
+              "EXTPROXY",
+              "SPHINX"
+            ],
+            "default": "PROXY_UNSPECIFIED"
+          },
+          {
+            "name": "topology",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "RT_UNSPECIFIED",
+              "MASTER_SLAVE",
+              "MASTER_SLAVE_NO_GTID",
+              "MULTI_MASTER",
+              "MULTI_TIER_SLAVE",
+              "MAXSCALE_BINLOG",
+              "MULTI_MASTER_RING",
+              "MULTI_MASTER_WSREP"
+            ],
+            "default": "RT_UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
+    "/v3/clusters/{cluster.name}/actions/{action}/{server.host}/{server.port}": {
+      "get": {
+        "operationId": "ClusterService_PerformClusterAction3",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "ACTION_UNSPECIFIED",
+              "ADD",
+              "ADDSERVER",
+              "CANCEL_ROLLING_REPROV",
+              "CANCEL_ROLLING_RESTART",
+              "CHECKSUM_ALL_TABLES",
+              "FAILOVER",
+              "MASTER_PHYSICAL_BACKUP",
+              "OPTIMIZE",
+              "RESET_FAILOVER_CONTROL",
+              "RESET_SLA",
+              "ROLLING",
+              "ROTATEKEYS",
+              "START_TRAFFIC",
+              "STOP_TRAFFIC",
+              "SWITCHOVER",
+              "SYSBENCH",
+              "WAITDATABASES",
+              "REPLICATION_BOOTSTRAP",
+              "REPLICATION_CLEANUP"
+            ]
+          },
+          {
+            "name": "server.host",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "server.port",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "cluster.clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "server.type",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "TYPE_UNSPECIFIED",
+              "DATABASE",
+              "PROXY"
+            ],
+            "default": "TYPE_UNSPECIFIED"
+          },
+          {
+            "name": "server.database",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "DATABASE_UNSPECIFIED",
+              "MARIADB",
+              "PERCONA",
+              "MYSQL",
+              "POSTGRESQL"
+            ],
+            "default": "DATABASE_UNSPECIFIED"
+          },
+          {
+            "name": "server.proxy",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "PROXY_UNSPECIFIED",
+              "MAXSCALE",
+              "PROXYSQL",
+              "SHARDPROXY",
+              "HAPROXY",
+              "MYPROXY",
+              "EXTPROXY",
+              "SPHINX"
+            ],
+            "default": "PROXY_UNSPECIFIED"
+          },
+          {
+            "name": "topology",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "RT_UNSPECIFIED",
+              "MASTER_SLAVE",
+              "MASTER_SLAVE_NO_GTID",
+              "MULTI_MASTER",
+              "MULTI_TIER_SLAVE",
+              "MAXSCALE_BINLOG",
+              "MULTI_MASTER_RING",
+              "MULTI_MASTER_WSREP"
+            ],
+            "default": "RT_UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
+    "/v3/clusters/{cluster.name}/actions/{action}/{server.host}/{server.port}/{server.type}": {
+      "get": {
+        "operationId": "ClusterService_PerformClusterAction4",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "ACTION_UNSPECIFIED",
+              "ADD",
+              "ADDSERVER",
+              "CANCEL_ROLLING_REPROV",
+              "CANCEL_ROLLING_RESTART",
+              "CHECKSUM_ALL_TABLES",
+              "FAILOVER",
+              "MASTER_PHYSICAL_BACKUP",
+              "OPTIMIZE",
+              "RESET_FAILOVER_CONTROL",
+              "RESET_SLA",
+              "ROLLING",
+              "ROTATEKEYS",
+              "START_TRAFFIC",
+              "STOP_TRAFFIC",
+              "SWITCHOVER",
+              "SYSBENCH",
+              "WAITDATABASES",
+              "REPLICATION_BOOTSTRAP",
+              "REPLICATION_CLEANUP"
+            ]
+          },
+          {
+            "name": "server.host",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "server.port",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "server.type",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "TYPE_UNSPECIFIED",
+              "DATABASE",
+              "PROXY"
+            ]
+          },
+          {
+            "name": "cluster.clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "server.database",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "DATABASE_UNSPECIFIED",
+              "MARIADB",
+              "PERCONA",
+              "MYSQL",
+              "POSTGRESQL"
+            ],
+            "default": "DATABASE_UNSPECIFIED"
+          },
+          {
+            "name": "server.proxy",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "PROXY_UNSPECIFIED",
+              "MAXSCALE",
+              "PROXYSQL",
+              "SHARDPROXY",
+              "HAPROXY",
+              "MYPROXY",
+              "EXTPROXY",
+              "SPHINX"
+            ],
+            "default": "PROXY_UNSPECIFIED"
+          },
+          {
+            "name": "topology",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "RT_UNSPECIFIED",
+              "MASTER_SLAVE",
+              "MASTER_SLAVE_NO_GTID",
+              "MULTI_MASTER",
+              "MULTI_TIER_SLAVE",
+              "MAXSCALE_BINLOG",
+              "MULTI_MASTER_RING",
+              "MULTI_MASTER_WSREP"
+            ],
+            "default": "RT_UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
+    "/v3/clusters/{cluster.name}/actions/{action}/{topology}": {
+      "get": {
+        "operationId": "ClusterService_PerformClusterAction5",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "ACTION_UNSPECIFIED",
+              "ADD",
+              "ADDSERVER",
+              "CANCEL_ROLLING_REPROV",
+              "CANCEL_ROLLING_RESTART",
+              "CHECKSUM_ALL_TABLES",
+              "FAILOVER",
+              "MASTER_PHYSICAL_BACKUP",
+              "OPTIMIZE",
+              "RESET_FAILOVER_CONTROL",
+              "RESET_SLA",
+              "ROLLING",
+              "ROTATEKEYS",
+              "START_TRAFFIC",
+              "STOP_TRAFFIC",
+              "SWITCHOVER",
+              "SYSBENCH",
+              "WAITDATABASES",
+              "REPLICATION_BOOTSTRAP",
+              "REPLICATION_CLEANUP"
+            ]
+          },
+          {
+            "name": "topology",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "RT_UNSPECIFIED",
+              "MASTER_SLAVE",
+              "MASTER_SLAVE_NO_GTID",
+              "MULTI_MASTER",
+              "MULTI_TIER_SLAVE",
+              "MAXSCALE_BINLOG",
+              "MULTI_MASTER_RING",
+              "MULTI_MASTER_WSREP"
+            ]
+          },
+          {
+            "name": "cluster.clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "server.host",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "server.port",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "server.type",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "TYPE_UNSPECIFIED",
+              "DATABASE",
+              "PROXY"
+            ],
+            "default": "TYPE_UNSPECIFIED"
+          },
+          {
+            "name": "server.database",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "DATABASE_UNSPECIFIED",
+              "MARIADB",
+              "PERCONA",
+              "MYSQL",
+              "POSTGRESQL"
+            ],
+            "default": "DATABASE_UNSPECIFIED"
+          },
+          {
+            "name": "server.proxy",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "PROXY_UNSPECIFIED",
+              "MAXSCALE",
+              "PROXYSQL",
+              "SHARDPROXY",
+              "HAPROXY",
+              "MYPROXY",
+              "EXTPROXY",
+              "SPHINX"
+            ],
+            "default": "PROXY_UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
     "/v3/clusters/{cluster.name}/settings/actions/set/{setting.name}/{setting.value}": {
       "get": {
         "operationId": "ClusterService_SetActionForClusterSettings3",
@@ -116,6 +936,12 @@
             "name": "setting.value",
             "in": "path",
             "required": true,
+            "type": "string"
+          },
+          {
+            "name": "cluster.clusterShardingName",
+            "in": "query",
+            "required": false,
             "type": "string"
           },
           {
@@ -311,6 +1137,12 @@
             ]
           },
           {
+            "name": "cluster.clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
             "name": "action",
             "in": "query",
             "required": false,
@@ -458,6 +1290,12 @@
               "ADD_PROXY_TAG",
               "DROP_PROXY_TAG"
             ]
+          },
+          {
+            "name": "cluster.clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
           },
           {
             "name": "tagValue",
@@ -665,6 +1503,12 @@
             "type": "string"
           },
           {
+            "name": "cluster.clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
             "name": "setting.name",
             "in": "query",
             "required": false,
@@ -838,6 +1682,12 @@
             "in": "path",
             "required": true,
             "type": "string"
+          },
+          {
+            "name": "clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
@@ -867,6 +1717,12 @@
             "name": "name",
             "in": "path",
             "required": true,
+            "type": "string"
+          },
+          {
+            "name": "clusterShardingName",
+            "in": "query",
+            "required": false,
             "type": "string"
           }
         ],
@@ -898,6 +1754,12 @@
             "in": "path",
             "required": true,
             "type": "string"
+          },
+          {
+            "name": "clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
@@ -907,21 +1769,49 @@
     }
   },
   "definitions": {
-    "ClusterSettingAction": {
+    "ClusterActionReplicationTopology": {
       "type": "string",
       "enum": [
-        "UNSPECIFIED",
-        "DISCOVER",
-        "APPLY_DYNAMIC_CONFIG",
-        "RELOAD",
-        "SET",
-        "SWITCH",
-        "ADD_DB_TAG",
-        "DROP_DB_TAG",
-        "ADD_PROXY_TAG",
-        "DROP_PROXY_TAG"
+        "RT_UNSPECIFIED",
+        "MASTER_SLAVE",
+        "MASTER_SLAVE_NO_GTID",
+        "MULTI_MASTER",
+        "MULTI_TIER_SLAVE",
+        "MAXSCALE_BINLOG",
+        "MULTI_MASTER_RING",
+        "MULTI_MASTER_WSREP"
       ],
-      "default": "UNSPECIFIED"
+      "default": "RT_UNSPECIFIED"
+    },
+    "ClusterActionServer": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "type": {
+          "$ref": "#/definitions/ClusterActionServerType"
+        },
+        "database": {
+          "$ref": "#/definitions/ServerDatabase"
+        },
+        "proxy": {
+          "$ref": "#/definitions/ServerProxy"
+        }
+      }
+    },
+    "ClusterActionServerType": {
+      "type": "string",
+      "enum": [
+        "TYPE_UNSPECIFIED",
+        "DATABASE",
+        "PROXY"
+      ],
+      "default": "TYPE_UNSPECIFIED"
     },
     "ClusterSettingSetting": {
       "type": "object",
@@ -941,6 +1831,31 @@
           "$ref": "#/definitions/SwitchSwitchName"
         }
       }
+    },
+    "ServerDatabase": {
+      "type": "string",
+      "enum": [
+        "DATABASE_UNSPECIFIED",
+        "MARIADB",
+        "PERCONA",
+        "MYSQL",
+        "POSTGRESQL"
+      ],
+      "default": "DATABASE_UNSPECIFIED"
+    },
+    "ServerProxy": {
+      "type": "string",
+      "enum": [
+        "PROXY_UNSPECIFIED",
+        "MAXSCALE",
+        "PROXYSQL",
+        "SHARDPROXY",
+        "HAPROXY",
+        "MYPROXY",
+        "EXTPROXY",
+        "SPHINX"
+      ],
+      "default": "PROXY_UNSPECIFIED"
     },
     "SettingSettingName": {
       "type": "string",
@@ -1118,8 +2033,53 @@
       "properties": {
         "name": {
           "type": "string"
+        },
+        "clusterShardingName": {
+          "type": "string"
         }
       }
+    },
+    "v3ClusterActionAction": {
+      "type": "string",
+      "enum": [
+        "ACTION_UNSPECIFIED",
+        "ADD",
+        "ADDSERVER",
+        "CANCEL_ROLLING_REPROV",
+        "CANCEL_ROLLING_RESTART",
+        "CHECKSUM_ALL_TABLES",
+        "FAILOVER",
+        "MASTER_PHYSICAL_BACKUP",
+        "OPTIMIZE",
+        "RESET_FAILOVER_CONTROL",
+        "RESET_SLA",
+        "ROLLING",
+        "ROTATEKEYS",
+        "START_TRAFFIC",
+        "STOP_TRAFFIC",
+        "SWITCHOVER",
+        "SYSBENCH",
+        "WAITDATABASES",
+        "REPLICATION_BOOTSTRAP",
+        "REPLICATION_CLEANUP"
+      ],
+      "default": "ACTION_UNSPECIFIED"
+    },
+    "v3ClusterSettingAction": {
+      "type": "string",
+      "enum": [
+        "UNSPECIFIED",
+        "DISCOVER",
+        "APPLY_DYNAMIC_CONFIG",
+        "RELOAD",
+        "SET",
+        "SWITCH",
+        "ADD_DB_TAG",
+        "DROP_DB_TAG",
+        "ADD_PROXY_TAG",
+        "DROP_PROXY_TAG"
+      ],
+      "default": "UNSPECIFIED"
     },
     "v3ServiceStatus": {
       "type": "string",

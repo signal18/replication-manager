@@ -9,16 +9,20 @@ import (
 	"net/http"
 	"strings"
 
+	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -167,7 +171,7 @@ func (s *ReplicationManager) streamInterceptor(srv interface{}, stream grpc.Serv
 	}
 
 	// handle ACL
-	log.Info("grpc stream srv", srv)
+	log.Infof("grpc stream srv: %v", srv)
 	return handler(srv, stream)
 }
 
@@ -177,9 +181,86 @@ func (s *ReplicationManager) unaryInterceptor(ctx context.Context, req interface
 		return handler(ctx, req)
 	}
 
+	log.Infof("grpc unary req: %v", req)
+
+	if cMsg, ok := req.(v3.ContainsClusterMessage); ok {
+		// mycluster, err := s.getClusterFromFromRequest(cMsg)
+		// if err != nil {
+		// 	return nil, err
+		// }
+		// ctx, err = s.authorize(ctx, mycluster)
+		// if err != nil {
+		// 	return nil, v3.NewError(codes.Unauthenticated, err).Err()
+		// }
+
+		// log.Infof("new ctx: %v", ctx)
+		return handler(ctx, cMsg)
+	}
+	return nil, v3.NewError(codes.InvalidArgument, fmt.Errorf("no message sent with a cluster property")).Err()
+
 	// handle ACL
-	log.Info("grpc unary req", req)
-	return handler(ctx, req)
+
+}
+
+func (s *ReplicationManager) getClusterFromFromRequest(req v3.ContainsClusterMessage) (*cluster.Cluster, error) {
+	c, err := req.GetClusterMessage()
+	if err != nil {
+		return nil, err
+	}
+
+	if c.Name == "" {
+		return nil, v3.NewErrorResource(codes.NotFound, v3.ErrClusterNotSet, "Name", c.Name).Err()
+	}
+
+	mycluster := s.getClusterByName(c.Name)
+	if mycluster == nil {
+		return nil, v3.NewErrorResource(codes.NotFound, v3.ErrClusterNotFound, "Name", c.Name).Err()
+	}
+
+	return mycluster, nil
+}
+
+type ContextKey string
+
+func (s *ReplicationManager) getClusterAndUser(ctx context.Context, req v3.ContainsClusterMessage) (cluster.APIUser, *cluster.Cluster, error) {
+	mycluster, err := s.getClusterFromFromRequest(req)
+	if err != nil {
+		return cluster.APIUser{}, nil, err
+	}
+
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return cluster.APIUser{}, nil, fmt.Errorf("metadata missing")
+	}
+	log.Info("md", md)
+
+	auth := md.Get("authorization")
+	if len(auth) == 0 {
+		return cluster.APIUser{}, nil, fmt.Errorf("authorization header missing")
+	}
+
+	if len(auth[0]) > 6 && strings.ToUpper(auth[0][0:7]) == "BEARER " {
+		token, err := jwt.Parse(auth[0][7:], func(token *jwt.Token) (interface{}, error) {
+			vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+			return vk, nil
+		})
+		if err != nil {
+			return cluster.APIUser{}, nil, fmt.Errorf("failed to parse jwt token: %w", err)
+		}
+
+		claims := token.Claims.(jwt.MapClaims)
+		userinfo := claims["CustomUserInfo"]
+		mycutinfo := userinfo.(map[string]interface{})
+
+		user, err := mycluster.GetAPIUser(mycutinfo["Name"].(string), mycutinfo["Password"].(string))
+		if err != nil {
+			return cluster.APIUser{}, nil, err
+		}
+
+		return user, mycluster, nil
+	}
+
+	return cluster.APIUser{}, nil, fmt.Errorf("bearer is missing")
 }
 
 func (s *ReplicationManager) getCredentials() (opts []grpc.ServerOption, dopts []grpc.DialOption, tlsConfig *tls.Config, err error) {
@@ -236,10 +317,10 @@ func grpcHandlerFunc(s *ReplicationManager, otherHandler http.Handler, legacyHan
 	})
 }
 
-func (repman *ReplicationManager) ClusterStatus(ctx context.Context, in *v3.Cluster) (*v3.StatusMessage, error) {
-	mycluster := repman.getClusterByName(in.Name)
-	if mycluster == nil {
-		return nil, v3.NewErrorResource(codes.NotFound, v3.ErrClusterNotFound, "Name", in.Name).Err()
+func (s *ReplicationManager) ClusterStatus(ctx context.Context, in *v3.Cluster) (*v3.StatusMessage, error) {
+	mycluster, err := s.getClusterFromFromRequest(in)
+	if err != nil {
+		return nil, err
 	}
 
 	if mycluster.GetStatus() {
@@ -253,20 +334,23 @@ func (repman *ReplicationManager) ClusterStatus(ctx context.Context, in *v3.Clus
 
 }
 
-func (repman *ReplicationManager) MasterPhysicalBackup(ctx context.Context, in *v3.Cluster) (*emptypb.Empty, error) {
-	mycluster := repman.getClusterByName(in.Name)
-	if mycluster == nil {
-		return nil, v3.NewErrorResource(codes.NotFound, v3.ErrClusterNotFound, "Name", in.Name).Err()
+func (s *ReplicationManager) MasterPhysicalBackup(ctx context.Context, in *v3.Cluster) (*emptypb.Empty, error) {
+	mycluster, err := s.getClusterFromFromRequest(in)
+	if err != nil {
+		return nil, err
 	}
 
 	mycluster.GetMaster().JobBackupPhysical()
 	return &emptypb.Empty{}, nil
 }
 
-func (repman *ReplicationManager) GetSettingsForCluster(ctx context.Context, in *v3.Cluster) (*structpb.Struct, error) {
-	mycluster := repman.getClusterByName(in.Name)
-	if mycluster == nil {
-		return nil, v3.NewErrorResource(codes.NotFound, v3.ErrClusterNotFound, "Name", in.Name).Err()
+func (s *ReplicationManager) GetSettingsForCluster(ctx context.Context, in *v3.Cluster) (*structpb.Struct, error) {
+	user, mycluster, err := s.getClusterAndUser(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	if err = user.Granted(config.GrantClusterSettings); err != nil {
+		return nil, err
 	}
 
 	b, err := json.Marshal(mycluster.Conf)
@@ -274,31 +358,24 @@ func (repman *ReplicationManager) GetSettingsForCluster(ctx context.Context, in 
 		return nil, status.Error(codes.Internal, "could not marshal config")
 	}
 
-	s := &structpb.Struct{}
-	err = protojson.Unmarshal(b, s)
+	out := &structpb.Struct{}
+	err = protojson.Unmarshal(b, out)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "could not unmarshal json config to struct")
 	}
 
-	return s, nil
+	return out, nil
 }
 
-var (
-	StErrTagValueMustBeSet = status.Errorf(codes.InvalidArgument, "Tag value must be set")
-)
-
-func (repman *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in *v3.ClusterSetting) (*emptypb.Empty, error) {
-	if in.Cluster == nil {
-		return nil, status.Errorf(codes.InvalidArgument, "Cluster must be set")
-	}
-	mycluster := repman.getClusterByName(in.Cluster.Name)
-	if mycluster == nil {
-		return nil, v3.NewErrorResource(codes.NotFound, v3.ErrClusterNotFound, "Name", in.Cluster.Name).Err()
+func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in *v3.ClusterSetting) (res *emptypb.Empty, err error) {
+	user, mycluster, err := s.getClusterAndUser(ctx, in)
+	if err != nil {
+		return nil, err
 	}
 
 	if strings.Contains(in.Action.String(), "TAG") {
 		if in.TagValue == "" {
-			return nil, StErrTagValueMustBeSet
+			return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrFieldNotSet, "TagValue", "").Err()
 		}
 	}
 
@@ -314,43 +391,191 @@ func (repman *ReplicationManager) SetActionForClusterSettings(ctx context.Contex
 		}
 	}
 
-	res := &emptypb.Empty{}
-
 	switch in.Action {
 	case v3.ClusterSetting_UNSPECIFIED:
-		return nil, status.Errorf(codes.InvalidArgument, "Action must be set")
-	case v3.ClusterSetting_APPLY_DYNAMIC_CONFIG:
-		go mycluster.SetDBDynamicConfig()
+		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "action", "").Err()
+
 	case v3.ClusterSetting_DISCOVER:
+		if err = user.Granted(config.GrantClusterSettings); err != nil {
+			return nil, err
+		}
 		mycluster.ConfigDiscovery()
+
 	case v3.ClusterSetting_RELOAD:
-		repman.InitConfig(repman.Conf)
-		mycluster.ReloadConfig(repman.Confs[in.Cluster.Name])
-	case v3.ClusterSetting_ADD_DB_TAG:
-		mycluster.AddDBTag(in.TagValue)
-	case v3.ClusterSetting_DROP_DB_TAG:
-		mycluster.DropDBTag(in.TagValue)
+		if err = user.Granted(config.GrantClusterSettings); err != nil {
+			return nil, err
+		}
+		s.InitConfig(s.Conf)
+		mycluster.ReloadConfig(s.Confs[in.Cluster.Name])
+
 	case v3.ClusterSetting_ADD_PROXY_TAG:
+		if err = user.Granted(config.GrantProxyConfigFlag); err != nil {
+			return nil, err
+		}
 		mycluster.AddProxyTag(in.TagValue)
+
 	case v3.ClusterSetting_DROP_PROXY_TAG:
+		if err = user.Granted(config.GrantProxyConfigFlag); err != nil {
+			return nil, err
+		}
 		mycluster.DropProxyTag(in.TagValue)
+
 	case v3.ClusterSetting_SET:
+		if err = user.Granted(config.GrantClusterSettings); err != nil {
+			return nil, err
+		}
 		if in.Setting.Name == v3.ClusterSetting_Setting_UNSPECIFIED {
-			return nil, status.Errorf(codes.InvalidArgument, "Setting name must be set")
+			return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrFieldNotSet, "setting.name", "").Err()
 		}
 
 		if in.Setting.Value == "" {
-			return nil, status.Errorf(codes.InvalidArgument, "Setting value must be set")
+			return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrFieldNotSet, "setting.value", "").Err()
 		}
 
-		repman.setSetting(mycluster, in.Setting.Name.Legacy(), in.Setting.Value)
+		s.setSetting(mycluster, in.Setting.Name.Legacy(), in.Setting.Value)
+
 	case v3.ClusterSetting_SWITCH:
-		if in.Switch.Name == v3.ClusterSetting_Switch_UNSPECIFIED {
-			return nil, status.Errorf(codes.InvalidArgument, "Switch name must be set")
+		if err = user.Granted(config.GrantClusterSettings); err != nil {
+			return nil, err
 		}
 
-		repman.switchSettings(mycluster, in.Switch.Name.Legacy())
+		if in.Switch.Name == v3.ClusterSetting_Switch_UNSPECIFIED {
+			return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "switch", "").Err()
+		}
+
+		s.switchSettings(mycluster, in.Switch.Name.Legacy())
+
+	case v3.ClusterSetting_APPLY_DYNAMIC_CONFIG:
+		if err = user.Granted(config.GrantDBConfigFlag); err != nil {
+			return nil, err
+		}
+		go mycluster.SetDBDynamicConfig()
+
+	case v3.ClusterSetting_ADD_DB_TAG:
+		if err = user.Granted(config.GrantDBConfigFlag); err != nil {
+			return nil, err
+		}
+		mycluster.AddDBTag(in.TagValue)
+
+	case v3.ClusterSetting_DROP_DB_TAG:
+		if err = user.Granted(config.GrantDBConfigFlag); err != nil {
+			return nil, err
+		}
+		mycluster.DropDBTag(in.TagValue)
 	}
 
 	return res, nil
+}
+
+func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.ClusterAction) (res *emptypb.Empty, err error) {
+	if in.Cluster == nil {
+		return nil, v3.NewError(codes.InvalidArgument, v3.ErrClusterNotSet).Err()
+	}
+
+	// WARNING: this one cannot be validated for ACL, as there is no cluster to validate against
+	// special case, the clustername doesn't exist yet
+	if in.Cluster.ClusterShardingName == "" {
+		if in.Action == v3.ClusterAction_ADD {
+			err = s.AddCluster(in.Cluster.Name, "")
+			if err != nil {
+				return nil, v3.NewError(codes.Unknown, err).Err()
+			}
+			return
+		}
+	}
+
+	user, mycluster, err := s.getClusterAndUser(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+
+	switch in.Action {
+	case v3.ClusterAction_ADD:
+		if err = user.Granted(config.GrantProvCluster); err != nil {
+			return nil, err
+		}
+		err = s.AddCluster(in.Cluster.ClusterShardingName, in.Cluster.Name)
+		if err != nil {
+			return nil, v3.NewError(codes.Unknown, err).Err()
+		}
+		err = mycluster.RollingRestart()
+	case v3.ClusterAction_ADDSERVER:
+		switch in.Server.Type {
+		case v3.ClusterAction_Server_TYPE_UNSPECIFIED:
+			err = mycluster.AddSeededServer(in.Server.GetURI())
+		case v3.ClusterAction_Server_PROXY:
+			if in.Server.Proxy == v3.ClusterAction_Server_PROXY_UNSPECIFIED {
+				return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "Proxy", v3.ClusterAction_Server_PROXY_UNSPECIFIED.String()).Err()
+			}
+			err = mycluster.AddSeededProxy(
+				strings.ToLower(in.Server.Proxy.String()),
+				in.Server.Host,
+				fmt.Sprintf("%d", in.Server.Port), "", "")
+		case v3.ClusterAction_Server_DATABASE:
+			switch in.Server.Database {
+			case v3.ClusterAction_Server_DATABASE_UNSPECIFIED:
+				return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "Database", v3.ClusterAction_Server_DATABASE_UNSPECIFIED.String()).Err()
+			case v3.ClusterAction_Server_MARIADB:
+				mycluster.Conf.ProvDbImg = "mariadb:latest"
+			case v3.ClusterAction_Server_PERCONA:
+				mycluster.Conf.ProvDbImg = "percona:latest"
+			case v3.ClusterAction_Server_MYSQL:
+				mycluster.Conf.ProvDbImg = "mysql:latest"
+				// TODO: Postgres is an option but previous code doesn't mention it
+			}
+			err = mycluster.AddSeededServer(in.Server.GetURI())
+		}
+	case v3.ClusterAction_REPLICATION_BOOTSTRAP:
+		if in.Topology == v3.ClusterAction_RT_UNSPECIFIED {
+			return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "Topology", v3.ClusterAction_RT_UNSPECIFIED.String()).Err()
+		}
+		s.bootstrapTopology(mycluster, in.Topology.Legacy())
+		err = mycluster.BootstrapReplication(true)
+	case v3.ClusterAction_CANCEL_ROLLING_REPROV:
+		err = mycluster.CancelRollingReprov()
+	case v3.ClusterAction_CANCEL_ROLLING_RESTART:
+		err = mycluster.CancelRollingRestart()
+	case v3.ClusterAction_CHECKSUM_ALL_TABLES:
+		go mycluster.CheckAllTableChecksum()
+	case v3.ClusterAction_FAILOVER:
+		mycluster.MasterFailover(true)
+	case v3.ClusterAction_MASTER_PHYSICAL_BACKUP:
+		_, err = mycluster.GetMaster().JobBackupPhysical()
+	case v3.ClusterAction_OPTIMIZE:
+		mycluster.RollingOptimize()
+	case v3.ClusterAction_RESET_FAILOVER_CONTROL:
+		mycluster.ResetFailoverCtr()
+	case v3.ClusterAction_RESET_SLA:
+		mycluster.SetEmptySla()
+	case v3.ClusterAction_ROLLING:
+		err = mycluster.RollingRestart()
+	case v3.ClusterAction_ROTATEKEYS:
+		mycluster.KeyRotation()
+	case v3.ClusterAction_START_TRAFFIC:
+		mycluster.SetTraffic(true)
+	case v3.ClusterAction_STOP_TRAFFIC:
+		mycluster.SetTraffic(false)
+	case v3.ClusterAction_SWITCHOVER:
+		mycluster.LogPrintf("INFO", "API force for prefered master: %s", in.Server.GetURI())
+		if mycluster.IsInHostList(in.Server.GetURI()) {
+			mycluster.SetPrefMaster(in.Server.GetURI())
+			mycluster.MasterFailover(false)
+			return
+		} else {
+			return nil, v3.NewErrorResource(codes.NotFound, v3.ErrServerNotFound, "Server", in.Server.GetURI()).Err()
+		}
+	case v3.ClusterAction_SYSBENCH:
+		go mycluster.RunSysbench()
+	case v3.ClusterAction_WAITDATABASES:
+		err = mycluster.WaitDatabaseCanConn()
+	case v3.ClusterAction_REPLICATION_CLEANUP:
+		err = mycluster.BootstrapReplicationCleanup()
+	}
+
+	if err != nil {
+		mycluster.LogPrintf("ERROR", "API Error: %s", err)
+		return nil, v3.NewError(codes.Unknown, err).Err()
+	}
+
+	return
 }

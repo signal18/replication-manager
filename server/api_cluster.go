@@ -461,10 +461,10 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if !repman.IsValidClusterACL(r, mycluster) {
-			repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+		repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
 		mycluster.RollingRestart()
 	} else {
 		http.Error(w, "No cluster", 500)
@@ -559,53 +559,7 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		switch vars["topology"] {
-		case "master-slave":
-			mycluster.SetMultiTierSlave(false)
-			mycluster.SetForceSlaveNoGtid(false)
-			mycluster.SetMultiMaster(false)
-			mycluster.SetBinlogServer(false)
-			mycluster.SetMultiMasterWsrep(false)
-		case "master-slave-no-gtid":
-			mycluster.SetMultiTierSlave(false)
-			mycluster.SetForceSlaveNoGtid(true)
-			mycluster.SetMultiMaster(false)
-			mycluster.SetBinlogServer(false)
-			mycluster.SetMultiMasterWsrep(false)
-		case "multi-master":
-			mycluster.SetMultiTierSlave(false)
-			mycluster.SetForceSlaveNoGtid(false)
-			mycluster.SetMultiMaster(true)
-			mycluster.SetBinlogServer(false)
-			mycluster.SetMultiMasterWsrep(false)
-		case "multi-tier-slave":
-			mycluster.SetMultiTierSlave(true)
-			mycluster.SetForceSlaveNoGtid(false)
-			mycluster.SetMultiMaster(false)
-			mycluster.SetBinlogServer(false)
-			mycluster.SetMultiMasterWsrep(false)
-		case "maxscale-binlog":
-			mycluster.SetMultiTierSlave(false)
-			mycluster.SetForceSlaveNoGtid(false)
-			mycluster.SetMultiMaster(false)
-			mycluster.SetBinlogServer(true)
-			mycluster.SetMultiMasterWsrep(false)
-		case "multi-master-ring":
-			mycluster.SetMultiTierSlave(false)
-			mycluster.SetForceSlaveNoGtid(false)
-			mycluster.SetMultiMaster(false)
-			mycluster.SetBinlogServer(false)
-			mycluster.SetMultiMasterRing(true)
-			mycluster.SetMultiMasterWsrep(false)
-		case "multi-master-wsrep":
-			mycluster.SetMultiTierSlave(false)
-			mycluster.SetForceSlaveNoGtid(false)
-			mycluster.SetMultiMaster(false)
-			mycluster.SetBinlogServer(false)
-			mycluster.SetMultiMasterRing(false)
-			mycluster.SetMultiMasterWsrep(true)
-
-		}
+		repman.bootstrapTopology(mycluster, vars["topology"])
 		err := mycluster.BootstrapReplication(true)
 		if err != nil {
 			mycluster.LogPrintf("ERROR", "Error bootstraping replication %s", err)
@@ -617,6 +571,55 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 		return
 	}
 	return
+}
+
+func (repman *ReplicationManager) bootstrapTopology(mycluster *cluster.Cluster, topology string) {
+	switch topology {
+	case "master-slave":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+		mycluster.SetMultiMasterWsrep(false)
+	case "master-slave-no-gtid":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(true)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+		mycluster.SetMultiMasterWsrep(false)
+	case "multi-master":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(true)
+		mycluster.SetBinlogServer(false)
+		mycluster.SetMultiMasterWsrep(false)
+	case "multi-tier-slave":
+		mycluster.SetMultiTierSlave(true)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+		mycluster.SetMultiMasterWsrep(false)
+	case "maxscale-binlog":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(true)
+		mycluster.SetMultiMasterWsrep(false)
+	case "multi-master-ring":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+		mycluster.SetMultiMasterRing(true)
+		mycluster.SetMultiMasterWsrep(false)
+	case "multi-master-wsrep":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+		mycluster.SetMultiMasterRing(false)
+		mycluster.SetMultiMasterWsrep(true)
+	}
 }
 
 func (repman *ReplicationManager) handlerMuxServicesBootstrap(w http.ResponseWriter, r *http.Request) {

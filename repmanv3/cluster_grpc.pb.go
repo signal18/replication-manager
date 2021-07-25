@@ -144,6 +144,7 @@ var ClusterPublicService_ServiceDesc = grpc.ServiceDesc{
 type ClusterServiceClient interface {
 	GetSettingsForCluster(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*structpb.Struct, error)
 	SetActionForClusterSettings(ctx context.Context, in *ClusterSetting, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	PerformClusterAction(ctx context.Context, in *ClusterAction, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type clusterServiceClient struct {
@@ -172,12 +173,22 @@ func (c *clusterServiceClient) SetActionForClusterSettings(ctx context.Context, 
 	return out, nil
 }
 
+func (c *clusterServiceClient) PerformClusterAction(ctx context.Context, in *ClusterAction, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/signal18.replication_manager.v3.ClusterService/PerformClusterAction", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility
 type ClusterServiceServer interface {
 	GetSettingsForCluster(context.Context, *Cluster) (*structpb.Struct, error)
 	SetActionForClusterSettings(context.Context, *ClusterSetting) (*emptypb.Empty, error)
+	PerformClusterAction(context.Context, *ClusterAction) (*emptypb.Empty, error)
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -190,6 +201,9 @@ func (UnimplementedClusterServiceServer) GetSettingsForCluster(context.Context, 
 }
 func (UnimplementedClusterServiceServer) SetActionForClusterSettings(context.Context, *ClusterSetting) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetActionForClusterSettings not implemented")
+}
+func (UnimplementedClusterServiceServer) PerformClusterAction(context.Context, *ClusterAction) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PerformClusterAction not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 
@@ -240,6 +254,24 @@ func _ClusterService_SetActionForClusterSettings_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterService_PerformClusterAction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClusterAction)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).PerformClusterAction(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/signal18.replication_manager.v3.ClusterService/PerformClusterAction",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).PerformClusterAction(ctx, req.(*ClusterAction))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -254,6 +286,10 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetActionForClusterSettings",
 			Handler:    _ClusterService_SetActionForClusterSettings_Handler,
+		},
+		{
+			MethodName: "PerformClusterAction",
+			Handler:    _ClusterService_PerformClusterAction_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
