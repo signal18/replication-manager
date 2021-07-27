@@ -12,7 +12,7 @@ import (
 
 func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Client, error) {
 	if cluster.IsInFailover() {
-		return nil, errors.New("OnPremise Provisioning cancel during connect")
+		return nil, errors.New("OnPremise provisioning cancel during failover")
 	}
 	if cluster.Conf.OnPremiseSSH {
 		return nil, errors.New("onpremise-ssh disable ")
@@ -27,7 +27,12 @@ func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Clie
 	return client, nil
 }
 
-func (cluster *Cluster) OnPremiseProvisionBootsrap(server *ServerMonitor, client *sshclient.Client) error {
+func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor) {
+	client, err := cluster.OnPremiseConnect(server)
+	if err != nil {
+		cluster.errorChan <- err
+	}
+	defer client.Close()
 	adminuser := "admin"
 	adminpassword := "repman"
 	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
@@ -35,28 +40,19 @@ func (cluster *Cluster) OnPremiseProvisionBootsrap(server *ServerMonitor, client
 	}
 	out, err := client.Cmd("export MYSQL_ROOT_PASSWORD=" + server.Pass).Cmd("export REPLICATION_MANAGER_URL=" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort).Cmd("export REPLICATION_MANAGER_USER=" + adminuser).Cmd("export REPLICATION_MANAGER_PASSWORD=" + adminpassword).Cmd("export REPLICATION_MANAGER_HOST_NAME=" + server.Host).Cmd("export REPLICATION_MANAGER_HOST_PORT=" + server.Port).Cmd("export REPLICATION_MANAGER_CLUSTER_NAME=" + server.ClusterGroup.Name).SmartOutput()
 	if err != nil {
-		return errors.New("OnPremise Bootsrap via SSH %s" + err.Error())
+		cluster.errorChan <- err
 	}
+	dbtype := "mariadb"
 	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise Provisioning  : %s", string(out))
-	out, err = client.Cmd("wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/opensvc/bootstrap | sh").SmartOutput()
-	if err != nil {
-		return errors.New("OnPremise Bootsrap via SSH %s" + err.Error())
+	cmd := "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + dbtype + "/bootstrap | sh"
+	if cluster.Configurator.HaveDBTag("rpm") {
+		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + dbtype + "/bootstrap | sh"
 	}
-	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise Bootsrap  : %s", string(out))
-	return nil
-}
+	if cluster.Configurator.HaveDBTag("package") {
+		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/package/linux/" + dbtype + "/bootstrap | sh"
+	}
 
-func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor) {
-	client, err := cluster.OnPremiseConnect(server)
-	if err != nil {
-		cluster.errorChan <- err
-	}
-	defer client.Close()
-	err = cluster.OnPremiseProvisionBootsrap(server, client)
-	if err != nil {
-		cluster.errorChan <- err
-	}
-	out, err := client.Cmd("rm -rf /etc/mysql").Cmd("cp -rp /bootstrap/etc/mysql /etc").Cmd("cp -rp /bootstrap/data /").Cmd("/bootstrap/init/start").SmartOutput()
+	out, err = client.Cmd(cmd).SmartOutput()
 	if err != nil {
 		cluster.errorChan <- err
 	}
@@ -84,9 +80,28 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 		return err
 	}
 	defer client.Close()
-	out, err := client.Cmd("systemctl start mysql").SmartOutput()
+	adminuser := "admin"
+	adminpassword := "repman"
+
+	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
+		adminpassword = user.Password
+	}
+	out, err := client.Cmd("export MYSQL_ROOT_PASSWORD=" + server.Pass).Cmd("export REPLICATION_MANAGER_URL=" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort).Cmd("export REPLICATION_MANAGER_USER=" + adminuser).Cmd("export REPLICATION_MANAGER_PASSWORD=" + adminpassword).Cmd("export REPLICATION_MANAGER_HOST_NAME=" + server.Host).Cmd("export REPLICATION_MANAGER_HOST_PORT=" + server.Port).Cmd("export REPLICATION_MANAGER_CLUSTER_NAME=" + server.ClusterGroup.Name).SmartOutput()
 	if err != nil {
-		return err
+		cluster.errorChan <- err
+	}
+	dbtype := "mariadb"
+	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise Provisioning  : %s", string(out))
+	cmd := "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + dbtype + "/start | sh"
+	if cluster.Configurator.HaveDBTag("rpm") {
+		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + dbtype + "/start | sh"
+	}
+	if cluster.Configurator.HaveDBTag("package") {
+		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/package/linux/" + dbtype + "/start | sh"
+	}
+	out, err = client.Cmd(cmd).SmartOutput()
+	if err != nil {
+		cluster.errorChan <- err
 	}
 	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise Provisioning  : %s", string(out))
 	return nil
