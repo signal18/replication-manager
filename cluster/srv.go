@@ -351,6 +351,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					}
 					server.ClusterGroup.master.State = stateFailed
 					server.DelWaitStopCookie()
+					server.DelUnprovisionCookie()
 				} else {
 					server.ClusterGroup.master.State = stateSuspect
 
@@ -363,6 +364,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 						server.ClusterGroup.LogPrintf("INFO", "Declaring slave db %s as failed", server.URL)
 						server.State = stateFailed
 						server.DelWaitStopCookie()
+						server.DelUnprovisionCookie()
 						// remove from slave list
 						server.delete(&server.ClusterGroup.slaves)
 						if server.Replications != nil {
@@ -404,6 +406,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	if server.PrevState == stateFailed {
 		server.DelWaitStartCookie()
 		server.DelRestartCookie()
+		server.DelProvisionCookie()
+		server.DelReprovisionCookie()
+
 	}
 
 	// reaffect a global DB pool object if we never get it , ex dynamic seeding

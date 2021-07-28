@@ -25,6 +25,10 @@ func (proxy *Proxy) DelProvisionCookie() error {
 	return proxy.delCookie("cookie_prov")
 }
 
+func (proxy *Proxy) DelUnprovisionCookie() error {
+	return proxy.delCookie("cookie_unprov")
+}
+
 func (proxy *Proxy) DelReprovisionCookie() error {
 	return proxy.delCookie("cookie_reprov")
 }

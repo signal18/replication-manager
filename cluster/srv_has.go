@@ -76,10 +76,6 @@ func (server *ServerMonitor) hasCookie(key string) bool {
 	return true
 }
 
-func (server *ServerMonitor) HasProvisionCookie() bool {
-	return server.hasCookie("cookie_prov")
-}
-
 func (server *ServerMonitor) HasWaitStartCookie() bool {
 	return server.hasCookie("cookie_waitstart")
 }
@@ -96,8 +92,16 @@ func (server *ServerMonitor) HasRestartCookie() bool {
 	return server.hasCookie("cookie_restart")
 }
 
+func (server *ServerMonitor) HasProvisionCookie() bool {
+	return server.hasCookie("cookie_prov")
+}
+
 func (server *ServerMonitor) HasReprovCookie() bool {
 	return server.hasCookie("cookie_reprov")
+}
+
+func (server *ServerMonitor) HasUnprovisionCookie() bool {
+	return server.hasCookie("cookie_unprov")
 }
 
 func (server *ServerMonitor) HasBackupLogicalCookie() bool {

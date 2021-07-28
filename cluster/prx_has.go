@@ -23,6 +23,10 @@ func (proxy *Proxy) HasProvisionCookie() bool {
 	return proxy.hasCookie("cookie_prov")
 }
 
+func (proxy *Proxy) HasUnprovisionCookie() bool {
+	return proxy.hasCookie("cookie_unprov")
+}
+
 func (proxy *Proxy) HasWaitStartCookie() bool {
 	return proxy.hasCookie("cookie_waitstart")
 }

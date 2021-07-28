@@ -292,6 +292,10 @@ func (server *ServerMonitor) SetProvisionCookie() error {
 	return server.createCookie("cookie_prov")
 }
 
+func (server *ServerMonitor) SetUnprovisionCookie() error {
+	return server.createCookie("cookie_unprov")
+}
+
 func (server *ServerMonitor) SetRestartCookie() error {
 	return server.createCookie("cookie_restart")
 }

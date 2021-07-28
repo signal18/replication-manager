@@ -38,6 +38,10 @@ func (server *ServerMonitor) DelReprovisionCookie() error {
 	return server.delCookie("cookie_reprov")
 }
 
+func (server *ServerMonitor) DelUnprovisionCookie() error {
+	return server.delCookie("cookie_unprov")
+}
+
 func (server *ServerMonitor) DelRestartCookie() error {
 	return server.delCookie("cookie_restart")
 }
