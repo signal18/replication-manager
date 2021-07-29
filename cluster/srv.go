@@ -447,7 +447,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	if errss == sql.ErrNoRows || noChannel {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
-		if server.PrevState == stateFailed /*|| server.PrevState == stateErrorAuth*/ {
+		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth || server.PrevState == stateSuspect {
 			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected", server.URL)
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				if server.ClusterGroup.master != nil {
