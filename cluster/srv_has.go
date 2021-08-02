@@ -70,6 +70,9 @@ func (server *ServerMonitor) IsSlaveOfReplicationSource(name string) bool {
 }
 
 func (server *ServerMonitor) hasCookie(key string) bool {
+	if server == nil {
+		return false
+	}
 	if _, err := os.Stat(server.Datadir + "/@" + key); os.IsNotExist(err) {
 		return false
 	}
