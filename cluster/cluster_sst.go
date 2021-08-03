@@ -296,6 +296,7 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 	}
 	defer client.Close()
 	file, err := os.Open(backupfile)
+	cluster.LogPrintf(LvlInfo, "SST sending file: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
 		return
