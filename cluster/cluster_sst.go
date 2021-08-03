@@ -308,13 +308,18 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 	}*/
 
 	sendBuffer := make([]byte, 16384)
-	fmt.Println("Start sending file!")
+	//fmt.Println("Start sending file!")
+	var total uint64
 	for {
 		_, err = file.Read(sendBuffer)
 		if err == io.EOF {
 			break
 		}
-		client.Write(sendBuffer)
+		bts, err := client.Write(sendBuffer)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "SST failed to write chunk %s at position %d", err, total)
+		}
+		total = total + uint64(bts)
 	}
 	cluster.LogPrintf(LvlInfo, "Backup has been sent, closing connection!")
 
