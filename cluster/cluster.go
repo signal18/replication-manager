@@ -639,12 +639,12 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 
 	cluster.SetUnDiscovered()
 	cluster.newServerList()
-	//wg := new(sync.WaitGroup)
-	//wg.Add(1)
-	//cluster.TopologyDiscover(wg)
-	//wg.Wait()
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go cluster.TopologyDiscover(wg)
+	wg.Wait()
 	cluster.newProxyList()
-	cluster.initProxies()
+	//	cluster.initProxies()
 	cluster.sme.RemoveFailoverState()
 }
 
