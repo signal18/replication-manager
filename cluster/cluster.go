@@ -644,6 +644,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	//cluster.TopologyDiscover(wg)
 	//wg.Wait()
 	cluster.newProxyList()
+	cluster.initProxies()
 	cluster.sme.RemoveFailoverState()
 }
 
