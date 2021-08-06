@@ -644,8 +644,8 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	go cluster.TopologyDiscover(wg)
 	wg.Wait()
 	cluster.newProxyList()
-	//	cluster.initProxies()
 	cluster.sme.RemoveFailoverState()
+	cluster.initProxies()
 }
 
 func (cluster *Cluster) FailoverForce() error {
