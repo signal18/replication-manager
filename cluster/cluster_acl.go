@@ -385,6 +385,8 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 		return true
 	case "/api/clusters/" + cluster.Name:
 		return true
+	case "/api/clusters/" + cluster.Name + "/diffvariables":
+		return true
 	}
 	if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/servers") {
 		return cluster.IsURLPassDatabasesACL(strUser, URL)

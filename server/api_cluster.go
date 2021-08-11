@@ -275,6 +275,12 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxOneTest)),
 	))
+
+	// endpoint to fetch Cluster.DiffVariables
+	router.Handle("/api/clusters/{clusterName}/diffvariables", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerDiffVariables)),
+	))
 }
 
 func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *http.Request) {
@@ -1780,4 +1786,31 @@ func (repman *ReplicationManager) handlerMuxClusterSchema(w http.ResponseWriter,
 	}
 	return
 
+}
+
+func (repman *ReplicationManager) handlerDiffVariables(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		vars := mycluster.DiffVariables
+		if vars == nil {
+			vars = []cluster.VariableDiff{}
+		}
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(vars)
+		if err != nil {
+			http.Error(w, "Encoding error for DiffVariables", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
 }
