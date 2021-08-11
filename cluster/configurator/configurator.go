@@ -473,15 +473,15 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 			}
 		}
 	}
-	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/etc/proxyql/ssl/ca-cert.pem")
-	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/etc/proxyql/ssl/server-cert.pem")
-	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/etc/proxyql/ssl/server-key.pem")
-	misc.CopyFile(ClusterDir+"/client-cert.pem", Datadir+"/init/etc/proxyql/ssl/client-cert.pem")
-	misc.CopyFile(ClusterDir+"/client-key.pem", Datadir+"/init/etc/proxyql/ssl/client-key.pem")
-	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/etc/maxscale/ssl/ca-cert.pem")
+	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/etc/proxysql/ssl/ca-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/etc/proxysql/ssl/server-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/etc/proxysql/ssl/server-key.pem")
+	misc.CopyFile(ClusterDir+"/client-cert.pem", Datadir+"/init/etc/proxysql/ssl/client-cert.pem")
+	misc.CopyFile(ClusterDir+"/client-key.pem", Datadir+"/init/etc/proxysql/ssl/client-key.pem")
 	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/data/proxysql-ca.pem")
 	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/data/proxysql-cert.pem")
 	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/data/proxysql-key.pem")
+	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/etc/maxscale/ssl/ca-cert.pem")
 	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/etc/maxscale/ssl/server-cert.pem")
 	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/etc/maxscale/ssl/server-key.pem")
 	misc.CopyFile(ClusterDir+"/client-cert.pem", Datadir+"/init/etc/maxscale/ssl/client-cert.pem")
