@@ -22,10 +22,10 @@ func (cluster *Cluster) OpenSVCGetHaproxyContainerSection(server *HaproxyProxy) 
 		svccontainer["rm"] = "true"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
-			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc:/usr/local/etc/haproxy:rw`
+			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/haproxy:/usr/local/etc/haproxy:rw`
 		} else {
 			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
-			svccontainer["volume_mounts"] = `{env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/etc:/usr/local/etc/haproxy:rw`
+			svccontainer["volume_mounts"] = `{env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/etc/haproxy:/usr/local/etc/haproxy:rw`
 		}
 	}
 

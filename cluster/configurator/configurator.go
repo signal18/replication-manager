@@ -400,7 +400,7 @@ func (configurator *Configurator) ConfigDiscovery(Variables map[string]string, P
 	return nil
 }
 
-func (configurator *Configurator) GenerateProxyConfig(Datadir string, TemplateEnv map[string]string) error {
+func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir string, TemplateEnv map[string]string) error {
 
 	type File struct {
 		Path    string `json:"path"`
@@ -473,6 +473,24 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, TemplateEn
 			}
 		}
 	}
+	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/etc/proxyql/ssl/ca-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/etc/proxyql/ssl/server-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/etc/proxyql/ssl/server-key.pem")
+	misc.CopyFile(ClusterDir+"/client-cert.pem", Datadir+"/init/etc/proxyql/ssl/client-cert.pem")
+	misc.CopyFile(ClusterDir+"/client-key.pem", Datadir+"/init/etc/proxyql/ssl/client-key.pem")
+	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/etc/maxscale/ssl/ca-cert.pem")
+	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/data/proxysql-ca.pem")
+	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/data/proxysql-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/data/proxysql-key.pem")
+	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/etc/maxscale/ssl/server-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/etc/maxscale/ssl/server-key.pem")
+	misc.CopyFile(ClusterDir+"/client-cert.pem", Datadir+"/init/etc/maxscale/ssl/client-cert.pem")
+	misc.CopyFile(ClusterDir+"/client-key.pem", Datadir+"/init/etc/maxscale/ssl/client-key.pem")
+	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/etc/haproxy/ssl/ca-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/etc/haproxy/ssl/server-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/etc/haproxy/ssl/server-key.pem")
+	misc.CopyFile(ClusterDir+"/client-cert.pem", Datadir+"/init/etc/haproxy/ssl/client-cert.pem")
+	misc.CopyFile(ClusterDir+"/client-key.pem", Datadir+"/init/etc/haproxy/ssl/client-key.pem")
 
 	if configurator.HaveProxyTag("docker") {
 		err := misc.ChownR(Datadir+"/init/data", 999, 999)

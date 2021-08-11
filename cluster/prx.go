@@ -112,6 +112,7 @@ type DatabaseProxy interface {
 	GetUseCompression() string
 	GetDatadir() string
 	GetConfigDatadir() string
+	GetConfigConfigdir() string
 	GetEnv() map[string]string
 	GetConfigProxyModule(variable string) string
 	SendStats() error

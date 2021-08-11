@@ -96,6 +96,14 @@ func (cluster *Cluster) AddShardProxy(proxysql *ProxySQLProxy, shardproxy *Maria
 	proxysql.AddShardProxy(shardproxy)
 }
 
+func (proxy *ProxySQLProxy) UseSSL() string {
+	UseSSL := "0"
+	if proxy.ClusterGroup.Configurator.HaveDBTag("ssl") {
+		UseSSL = "1"
+	}
+	return UseSSL
+}
+
 func (proxy *ProxySQLProxy) AddShardProxy(shardproxy *MariadbShardProxy) {
 	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
@@ -107,7 +115,7 @@ func (proxy *ProxySQLProxy) AddShardProxy(shardproxy *MariadbShardProxy) {
 		return
 	}
 	defer psql.Connection.Close()
-	psql.AddShardServer(misc.Unbracket(shardproxy.Host), shardproxy.Port)
+	psql.AddShardServer(misc.Unbracket(shardproxy.Host), shardproxy.Port, proxy.UseSSL())
 }
 
 func (proxy *ProxySQLProxy) AddQueryRulesProxysql(rules []proxysql.QueryRule) error {
@@ -144,7 +152,7 @@ func (proxy *ProxySQLProxy) Init() {
 	for _, s := range cluster.Servers {
 
 		if s.State == stateUnconn || s.IsIgnored() {
-			err = psql.AddOfflineServer(misc.Unbracket(s.Host), s.Port)
+			err = psql.AddOfflineServer(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "ProxySQL could not add server %s as offline (%s)", s.URL, err)
 			}
@@ -152,18 +160,18 @@ func (proxy *ProxySQLProxy) Init() {
 			//weight string, max_replication_lag string, max_connections string, compression string
 
 			if s.State == stateMaster {
-				err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port)
+				err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "ProxySQL could not add writer %s (%s) ", s.URL, err)
 				}
 				if cluster.Conf.ProxysqlMasterIsReader && cluster.Configurator.HaveProxyTag("readonmaster") {
-					err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)))
+					err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
 					}
 				}
 			} else if s.State == stateSlave {
-				err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)))
+				err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
 				}
@@ -206,7 +214,7 @@ func (proxy *ProxySQLProxy) Failover() {
 			}
 		}
 		if s.IsMaster() && !s.IsRelay {
-			err = psql.ReplaceWriter(misc.Unbracket(s.Host), s.Port, misc.Unbracket(cluster.oldMaster.Host), cluster.oldMaster.Port, cluster.Conf.ProxysqlMasterIsReader || cluster.Configurator.HaveProxyTag("readonmaster"))
+			err = psql.ReplaceWriter(misc.Unbracket(s.Host), s.Port, misc.Unbracket(cluster.oldMaster.Host), cluster.oldMaster.Port, cluster.Conf.ProxysqlMasterIsReader || cluster.Configurator.HaveProxyTag("readonmaster"), proxy.UseSSL())
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Failover ProxySQL could not set server %s Master (%s)", s.URL, err)
 			} else {

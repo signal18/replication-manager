@@ -22,10 +22,10 @@ func (cluster *Cluster) OpenSVCGetProxysqlContainerSection(server *ProxySQLProxy
 		svccontainer["rm"] = "true"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
-			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/proxysql.cnf:/etc/proxysql.cnf:rw -v {env.base_dir}/pod01/data:/var/lib/proxysql:rw`
+			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/proxysql/proxysql.cnf:/etc/proxysql.cnf:rw -v {env.base_dir}/pod01/etc/proxysql:/etc/proxysql:rw -v {env.base_dir}/pod01/data:/var/lib/proxysql:rw`
 		} else {
 			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
-			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/etc/proxysql.cnf:/etc/proxysql.cnf:rw {name}/data:/var/lib/proxysql:rw`
+			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/etc/proxysql/proxysql.cnf:/etc/proxysql.cnf:rw {name}/etc/proxysql:/etc/proxysql:rw {name}/data:/var/lib/proxysql:rw`
 		}
 		svccontainer["run_command"] = "proxysql --initial -f -c /etc/proxysql.cnf"
 	}

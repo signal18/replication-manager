@@ -72,7 +72,7 @@ func (prx *Proxy) GetCluster() (*sqlx.DB, error) {
 
 func (proxy *Proxy) GetProxyConfig() string {
 	proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
-	err := proxy.ClusterGroup.Configurator.GenerateProxyConfig(proxy.Datadir, proxy.GetEnv())
+	err := proxy.ClusterGroup.Configurator.GenerateProxyConfig(proxy.Datadir, proxy.ClusterGroup.Conf.WorkingDir+"/"+proxy.ClusterGroup.Name, proxy.GetEnv())
 	if err != nil {
 		proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
 	}
@@ -132,6 +132,13 @@ func (proxy *Proxy) GetConfigDatadir() string {
 	return "/tmp"
 }
 
+func (proxy *Proxy) GetConfigConfigdir() string {
+	if proxy.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+		return proxy.SlapOSDatadir + "/etc/" + proxy.GetType()
+	}
+	return "/etc"
+}
+
 func (proxy *Proxy) GetDatadir() string {
 	return proxy.Datadir
 }
@@ -189,6 +196,7 @@ func (proxy *Proxy) GetBaseEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%":            proxy.ClusterGroup.Conf.MonitorAddress + ":" + proxy.ClusterGroup.Conf.HttpPort,
 		"%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%":        proxy.ClusterGroup.GetClusterName(),
 		"%%ENV:SVC_CONF_ENV_DATADIR%%":                 proxy.GetConfigDatadir(),
+		"%%ENV:SVC_CONF_ENV_CONFDIR%%":                 proxy.GetConfigConfigdir(),
 		"%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%": proxy.GetConfigProxySQLReadOnMaster(),
 	}
 }
@@ -235,8 +243,12 @@ protocol=MySQLBackend
 			confhaproxywrite += `
     server server` + strconv.Itoa(i) + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
 		}
+		UseSSL := "0"
+		if proxy.ClusterGroup.Configurator.HaveDBTag("ssl") {
+			UseSSL = "1"
+		}
 		confproxysql += `
-    { address="` + misc.Unbracket(db.Host) + `" , port=` + db.Port + ` , hostgroup=` + strconv.Itoa(proxy.ReaderHostgroup) + `, max_connections=1024 }`
+    { address="` + misc.Unbracket(db.Host) + `" , port=` + db.Port + ` , hostgroup=` + strconv.Itoa(proxy.ReaderHostgroup) + `, max_connections=1024, use_ssl=` + UseSSL + `, }`
 
 		confmaxscaleserverlist += "server" + strconv.Itoa(i)
 
