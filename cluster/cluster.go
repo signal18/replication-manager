@@ -1005,3 +1005,9 @@ func (cluster *Cluster) ConfigDiscovery() error {
 	cluster.SetTagsFromConfigurator()
 	return nil
 }
+
+func (cluster *Cluster) ReloadCertificats() {
+	for _, srv := range cluster.Servers {
+		srv.FlushSSL()
+	}
+}
