@@ -121,9 +121,13 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxFailover)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/rotatekeys", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/certificates-rotate", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRotateKeys)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/certificates-reload", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterReloadCertificates)),
 	))
 	router.Handle("/api/clusters/{clusterName}/actions/reset-sla", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -1561,6 +1565,20 @@ func (repman *ReplicationManager) handlerMuxClusterApplyDynamicConfig(w http.Res
 			return
 		}
 		go mycluster.SetDBDynamicConfig()
+	}
+	return
+}
+
+func (repman *ReplicationManager) handlerMuxClusterReloadCertificates(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		go mycluster.ReloadCertificates()
 	}
 	return
 }

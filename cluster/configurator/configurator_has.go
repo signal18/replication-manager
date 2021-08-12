@@ -49,7 +49,7 @@ func (configurator *Configurator) IsFilterInProxyTags(filter string) bool {
 	tags := configurator.GetProxyTags()
 	for _, tag := range tags {
 		if strings.HasSuffix(filter, tag) {
-			//	fmt.Println(server.ClusterGroup.Conf.ProvTags + " vs tag: " + tag + "  against " + filter)
+			//fmt.Println("test tag: " + tag + "  against " + filter)
 			return true
 		}
 	}

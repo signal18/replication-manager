@@ -600,66 +600,68 @@ type Grant struct {
 }
 
 const (
-	GrantDBStart                 string = "db-start"
-	GrantDBStop                  string = "db-stop"
-	GrantDBKill                  string = "db-kill"
-	GrantDBOptimize              string = "db-optimize"
-	GrantDBAnalyse               string = "db-analyse"
-	GrantDBReplication           string = "db-replication"
-	GrantDBBackup                string = "db-backup"
-	GrantDBRestore               string = "db-restore"
-	GrantDBReadOnly              string = "db-readonly"
-	GrantDBLogs                  string = "db-logs"
-	GrantDBShowVariables         string = "db-show-variables"
-	GrantDBShowStatus            string = "db-show-status"
-	GrantDBShowSchema            string = "db-show-schema"
-	GrantDBShowProcess           string = "db-show-process"
-	GrantDBShowLogs              string = "db-show-logs"
-	GrantDBCapture               string = "db-capture"
-	GrantDBMaintenance           string = "db-maintenance"
-	GrantDBConfigCreate          string = "db-config-create"
-	GrantDBConfigRessource       string = "db-config-ressource"
-	GrantDBConfigFlag            string = "db-config-flag"
-	GrantDBConfigGet             string = "db-config-get"
-	GrantDBDebug                 string = "db-debug"
-	GrantClusterCreate           string = "cluster-create"
-	GrantClusterDrop             string = "cluster-drop"
-	GrantClusterCreateMonitor    string = "cluster-create-monitor"
-	GrantClusterDropMonitor      string = "cluster-drop-monitor"
-	GrantClusterFailover         string = "cluster-failover"
-	GrantClusterSwitchover       string = "cluster-switchover"
-	GrantClusterRolling          string = "cluster-rolling"
-	GrantClusterSettings         string = "cluster-settings"
-	GrantClusterGrant            string = "cluster-grant"
-	GrantClusterChecksum         string = "cluster-checksum"
-	GrantClusterSharding         string = "cluster-sharding"
-	GrantClusterReplication      string = "cluster-replication"
-	GrantClusterRotateKey        string = "cluster-rotate-keys"
-	GrantClusterBench            string = "cluster-bench"
-	GrantClusterProcess          string = "cluster-process" //Can ssh for jobs
-	GrantClusterTest             string = "cluster-test"
-	GrantClusterTraffic          string = "cluster-traffic"
-	GrantClusterShowBackups      string = "cluster-show-backups"
-	GrantClusterShowRoutes       string = "cluster-show-routes"
-	GrantClusterShowGraphs       string = "cluster-show-graphs"
-	GrantClusterShowAgents       string = "cluster-show-agents"
-	GrantClusterShowCertificates string = "cluster-show-certificates"
-	GrantClusterResetSLA         string = "cluster-reset-sla"
-	GrantClusterDebug            string = "cluster-debug"
-	GrantProxyConfigCreate       string = "proxy-config-create"
-	GrantProxyConfigGet          string = "proxy-config-get"
-	GrantProxyConfigRessource    string = "proxy-config-ressource"
-	GrantProxyConfigFlag         string = "proxy-config-flag"
-	GrantProxyStart              string = "proxy-start"
-	GrantProxyStop               string = "proxy-stop"
-	GrantProvClusterProvision    string = "prov-cluster-provision"
-	GrantProvClusterUnprovision  string = "prov-cluster-unprovision"
-	GrantProvProxyProvision      string = "prov-proxy-provision"
-	GrantProvProxyUnprovision    string = "prov-proxy-unprovision"
-	GrantProvDBProvision         string = "prov-db-provision"
-	GrantProvDBUnprovision       string = "prov-db-unprovision"
-	GrantProvSettings            string = "prov-settings"
-	GrantProvCluster             string = "prov-cluster"
+	GrantDBStart                   string = "db-start"
+	GrantDBStop                    string = "db-stop"
+	GrantDBKill                    string = "db-kill"
+	GrantDBOptimize                string = "db-optimize"
+	GrantDBAnalyse                 string = "db-analyse"
+	GrantDBReplication             string = "db-replication"
+	GrantDBBackup                  string = "db-backup"
+	GrantDBRestore                 string = "db-restore"
+	GrantDBReadOnly                string = "db-readonly"
+	GrantDBLogs                    string = "db-logs"
+	GrantDBShowVariables           string = "db-show-variables"
+	GrantDBShowStatus              string = "db-show-status"
+	GrantDBShowSchema              string = "db-show-schema"
+	GrantDBShowProcess             string = "db-show-process"
+	GrantDBShowLogs                string = "db-show-logs"
+	GrantDBCapture                 string = "db-capture"
+	GrantDBMaintenance             string = "db-maintenance"
+	GrantDBConfigCreate            string = "db-config-create"
+	GrantDBConfigRessource         string = "db-config-ressource"
+	GrantDBConfigFlag              string = "db-config-flag"
+	GrantDBConfigGet               string = "db-config-get"
+	GrantDBDebug                   string = "db-debug"
+	GrantClusterCreate             string = "cluster-create"
+	GrantClusterDrop               string = "cluster-drop"
+	GrantClusterCreateMonitor      string = "cluster-create-monitor"
+	GrantClusterDropMonitor        string = "cluster-drop-monitor"
+	GrantClusterFailover           string = "cluster-failover"
+	GrantClusterSwitchover         string = "cluster-switchover"
+	GrantClusterRolling            string = "cluster-rolling"
+	GrantClusterSettings           string = "cluster-settings"
+	GrantClusterGrant              string = "cluster-grant"
+	GrantClusterChecksum           string = "cluster-checksum"
+	GrantClusterSharding           string = "cluster-sharding"
+	GrantClusterReplication        string = "cluster-replication"
+	GrantClusterCertificatesRotate string = "cluster-certificates-rotate"
+	GrantClusterCertificatesReload string = "cluster-certificates-reload"
+	GrantClusterBench              string = "cluster-bench"
+	GrantClusterProcess            string = "cluster-process" //Can ssh for jobs
+	GrantClusterTest               string = "cluster-test"
+	GrantClusterTraffic            string = "cluster-traffic"
+	GrantClusterShowBackups        string = "cluster-show-backups"
+	GrantClusterShowRoutes         string = "cluster-show-routes"
+	GrantClusterShowGraphs         string = "cluster-show-graphs"
+	GrantClusterShowAgents         string = "cluster-show-agents"
+	GrantClusterShowCertificates   string = "cluster-show-certificates"
+
+	GrantClusterResetSLA        string = "cluster-reset-sla"
+	GrantClusterDebug           string = "cluster-debug"
+	GrantProxyConfigCreate      string = "proxy-config-create"
+	GrantProxyConfigGet         string = "proxy-config-get"
+	GrantProxyConfigRessource   string = "proxy-config-ressource"
+	GrantProxyConfigFlag        string = "proxy-config-flag"
+	GrantProxyStart             string = "proxy-start"
+	GrantProxyStop              string = "proxy-stop"
+	GrantProvClusterProvision   string = "prov-cluster-provision"
+	GrantProvClusterUnprovision string = "prov-cluster-unprovision"
+	GrantProvProxyProvision     string = "prov-proxy-provision"
+	GrantProvProxyUnprovision   string = "prov-proxy-unprovision"
+	GrantProvDBProvision        string = "prov-db-provision"
+	GrantProvDBUnprovision      string = "prov-db-unprovision"
+	GrantProvSettings           string = "prov-settings"
+	GrantProvCluster            string = "prov-cluster"
 )
 
 const (
@@ -841,66 +843,67 @@ func (conf *Config) GetMemoryPctThreaded() (map[string]int, error) {
 
 func (conf *Config) GetGrantType() map[string]string {
 	return map[string]string{
-		GrantDBStart:                 GrantDBStart,
-		GrantDBStop:                  GrantDBStop,
-		GrantDBKill:                  GrantDBKill,
-		GrantDBOptimize:              GrantDBOptimize,
-		GrantDBAnalyse:               GrantDBAnalyse,
-		GrantDBReplication:           GrantDBReplication,
-		GrantDBBackup:                GrantDBBackup,
-		GrantDBRestore:               GrantDBRestore,
-		GrantDBReadOnly:              GrantDBReadOnly,
-		GrantDBLogs:                  GrantDBLogs,
-		GrantDBCapture:               GrantDBCapture,
-		GrantDBMaintenance:           GrantDBMaintenance,
-		GrantDBConfigCreate:          GrantDBConfigCreate,
-		GrantDBConfigRessource:       GrantDBConfigRessource,
-		GrantDBConfigFlag:            GrantDBConfigFlag,
-		GrantDBConfigGet:             GrantDBConfigGet,
-		GrantDBShowVariables:         GrantDBShowVariables,
-		GrantDBShowStatus:            GrantDBShowStatus,
-		GrantDBShowSchema:            GrantDBShowSchema,
-		GrantDBShowProcess:           GrantDBShowProcess,
-		GrantDBShowLogs:              GrantDBShowLogs,
-		GrantDBDebug:                 GrantDBDebug,
-		GrantClusterCreate:           GrantClusterCreate,
-		GrantClusterDrop:             GrantClusterDrop,
-		GrantClusterCreateMonitor:    GrantClusterCreateMonitor,
-		GrantClusterDropMonitor:      GrantClusterDropMonitor,
-		GrantClusterFailover:         GrantClusterFailover,
-		GrantClusterSwitchover:       GrantClusterSwitchover,
-		GrantClusterRolling:          GrantClusterRolling,
-		GrantClusterSettings:         GrantClusterSettings,
-		GrantClusterGrant:            GrantClusterGrant,
-		GrantClusterReplication:      GrantClusterReplication,
-		GrantClusterChecksum:         GrantClusterChecksum,
-		GrantClusterSharding:         GrantClusterSharding,
-		GrantClusterRotateKey:        GrantClusterRotateKey,
-		GrantClusterBench:            GrantClusterBench,
-		GrantClusterTest:             GrantClusterTest,
-		GrantClusterTraffic:          GrantClusterTraffic,
-		GrantClusterProcess:          GrantClusterProcess,
-		GrantClusterDebug:            GrantClusterDebug,
-		GrantClusterShowBackups:      GrantClusterShowBackups,
-		GrantClusterShowAgents:       GrantClusterShowAgents,
-		GrantClusterShowGraphs:       GrantClusterShowGraphs,
-		GrantClusterShowRoutes:       GrantClusterShowRoutes,
-		GrantClusterShowCertificates: GrantClusterShowCertificates,
-		GrantClusterResetSLA:         GrantClusterResetSLA,
-		GrantProxyConfigCreate:       GrantProxyConfigCreate,
-		GrantProxyConfigGet:          GrantProxyConfigGet,
-		GrantProxyConfigRessource:    GrantProxyConfigRessource,
-		GrantProxyConfigFlag:         GrantProxyConfigFlag,
-		GrantProxyStart:              GrantProxyStart,
-		GrantProxyStop:               GrantProxyStop,
-		GrantProvSettings:            GrantProvSettings,
-		GrantProvCluster:             GrantProvCluster,
-		GrantProvClusterProvision:    GrantProvClusterProvision,
-		GrantProvClusterUnprovision:  GrantProvClusterUnprovision,
-		GrantProvDBUnprovision:       GrantProvDBUnprovision,
-		GrantProvDBProvision:         GrantProvDBProvision,
-		GrantProvProxyProvision:      GrantProvProxyProvision,
-		GrantProvProxyUnprovision:    GrantProvProxyUnprovision,
+		GrantDBStart:                   GrantDBStart,
+		GrantDBStop:                    GrantDBStop,
+		GrantDBKill:                    GrantDBKill,
+		GrantDBOptimize:                GrantDBOptimize,
+		GrantDBAnalyse:                 GrantDBAnalyse,
+		GrantDBReplication:             GrantDBReplication,
+		GrantDBBackup:                  GrantDBBackup,
+		GrantDBRestore:                 GrantDBRestore,
+		GrantDBReadOnly:                GrantDBReadOnly,
+		GrantDBLogs:                    GrantDBLogs,
+		GrantDBCapture:                 GrantDBCapture,
+		GrantDBMaintenance:             GrantDBMaintenance,
+		GrantDBConfigCreate:            GrantDBConfigCreate,
+		GrantDBConfigRessource:         GrantDBConfigRessource,
+		GrantDBConfigFlag:              GrantDBConfigFlag,
+		GrantDBConfigGet:               GrantDBConfigGet,
+		GrantDBShowVariables:           GrantDBShowVariables,
+		GrantDBShowStatus:              GrantDBShowStatus,
+		GrantDBShowSchema:              GrantDBShowSchema,
+		GrantDBShowProcess:             GrantDBShowProcess,
+		GrantDBShowLogs:                GrantDBShowLogs,
+		GrantDBDebug:                   GrantDBDebug,
+		GrantClusterCreate:             GrantClusterCreate,
+		GrantClusterDrop:               GrantClusterDrop,
+		GrantClusterCreateMonitor:      GrantClusterCreateMonitor,
+		GrantClusterDropMonitor:        GrantClusterDropMonitor,
+		GrantClusterFailover:           GrantClusterFailover,
+		GrantClusterSwitchover:         GrantClusterSwitchover,
+		GrantClusterRolling:            GrantClusterRolling,
+		GrantClusterSettings:           GrantClusterSettings,
+		GrantClusterGrant:              GrantClusterGrant,
+		GrantClusterReplication:        GrantClusterReplication,
+		GrantClusterChecksum:           GrantClusterChecksum,
+		GrantClusterSharding:           GrantClusterSharding,
+		GrantClusterCertificatesRotate: GrantClusterCertificatesRotate,
+		GrantClusterCertificatesReload: GrantClusterCertificatesReload,
+		GrantClusterBench:              GrantClusterBench,
+		GrantClusterTest:               GrantClusterTest,
+		GrantClusterTraffic:            GrantClusterTraffic,
+		GrantClusterProcess:            GrantClusterProcess,
+		GrantClusterDebug:              GrantClusterDebug,
+		GrantClusterShowBackups:        GrantClusterShowBackups,
+		GrantClusterShowAgents:         GrantClusterShowAgents,
+		GrantClusterShowGraphs:         GrantClusterShowGraphs,
+		GrantClusterShowRoutes:         GrantClusterShowRoutes,
+		GrantClusterShowCertificates:   GrantClusterShowCertificates,
+		GrantClusterResetSLA:           GrantClusterResetSLA,
+		GrantProxyConfigCreate:         GrantProxyConfigCreate,
+		GrantProxyConfigGet:            GrantProxyConfigGet,
+		GrantProxyConfigRessource:      GrantProxyConfigRessource,
+		GrantProxyConfigFlag:           GrantProxyConfigFlag,
+		GrantProxyStart:                GrantProxyStart,
+		GrantProxyStop:                 GrantProxyStop,
+		GrantProvSettings:              GrantProvSettings,
+		GrantProvCluster:               GrantProvCluster,
+		GrantProvClusterProvision:      GrantProvClusterProvision,
+		GrantProvClusterUnprovision:    GrantProvClusterUnprovision,
+		GrantProvDBUnprovision:         GrantProvDBUnprovision,
+		GrantProvDBProvision:           GrantProvDBProvision,
+		GrantProvProxyProvision:        GrantProvProxyProvision,
+		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
 	}
 }
 

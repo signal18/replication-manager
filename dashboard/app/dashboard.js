@@ -963,10 +963,12 @@ function (
       $scope.cancelrollingreprov = function (fail) {
           if (confirm("Confirm cancel rolling reprovision")) httpGetWithoutResponse(getClusterUrl() + '/actions/cancel-rolling-reprov');
       };
-      $scope.rotationkeys = function () {
-        if (confirm("Confirm rotation certificates")) httpGetWithoutResponse(getClusterUrl() + '/actions/rotatekeys');
+      $scope.certificatesrotate = function () {
+        if (confirm("Confirm rotation certificates")) httpGetWithoutResponse(getClusterUrl() + '/actions/certificates-rotate');
       };
-
+      $scope.certificatesrotate = function () {
+        if (confirm("Confirm reload certificates")) httpGetWithoutResponse(getClusterUrl() + '/actions/certificates-reload');
+      };
       $scope.clbootstrap = function (topo) {
         if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/actions/replication/bootstrap/' + topo);
       };

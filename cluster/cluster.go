@@ -1006,7 +1006,7 @@ func (cluster *Cluster) ConfigDiscovery() error {
 	return nil
 }
 
-func (cluster *Cluster) ReloadCertificats() {
+func (cluster *Cluster) ReloadCertificates() {
 	for _, srv := range cluster.Servers {
 		srv.FlushSSL()
 	}
