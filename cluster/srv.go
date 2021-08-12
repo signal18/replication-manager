@@ -1446,3 +1446,19 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 	}
 	return err
 }
+
+func (server *ServerMonitor) FlushSSL() error {
+	if server.Conn == nil {
+		return errors.New("No database connection pool")
+	}
+	cmd := "ALTER INSTANCE RELOAD TLS"
+	if server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 4 {
+		cmd = "FLUSH SSL"
+	}
+	_, err := server.Conn.Exec(cmd)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Reload certificatd %s", err)
+		return err
+	}
+	return nil
+}

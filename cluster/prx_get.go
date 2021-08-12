@@ -248,7 +248,7 @@ protocol=MySQLBackend
 			UseSSL = "1"
 		}
 		confproxysql += `
-    { address="` + misc.Unbracket(db.Host) + `" , port=` + db.Port + ` , hostgroup=` + strconv.Itoa(proxy.ReaderHostgroup) + `, max_connections=1024, use_ssl=` + UseSSL + `, }`
+    { address="` + misc.Unbracket(db.Host) + `" , port=` + db.Port + ` , hostgroup=` + strconv.Itoa(proxy.ReaderHostgroup) + `, max_connections=1024, use_ssl=` + UseSSL + `}`
 
 		confmaxscaleserverlist += "server" + strconv.Itoa(i)
 
