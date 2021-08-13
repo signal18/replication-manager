@@ -5,7 +5,7 @@ WORKDIR /go/src/github.com/signal18/replication-manager
 
 COPY . .
 
-RUN make pro cli
+RUN make osc cli
 
 FROM debian:buster-slim
 
