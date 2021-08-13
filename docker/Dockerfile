@@ -22,7 +22,7 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/dashboard /u
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-osc /usr/bin/replication-manager
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 
-RUN apt-get -y install ca-certificates restic mariadb-client haproxy
+RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client haproxy
 
 CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001
