@@ -1,6 +1,6 @@
 node () {
 	stage ('Checkout') {
-        checkout([$class: 'GitSCM', branches: [[name: 'refs/heads/2.2']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '', url: 'https://github.com/signal18/replication-manager.git']]]) 
+        checkout([$class: 'GitSCM', branches: [[name: 'refs/heads/develop']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '', url: 'https://github.com/signal18/replication-manager.git']]]) 
 	}
     stage ('Build OSC') {
         docker.withRegistry("https://index.docker.io/v1/", "docker-hub") {
