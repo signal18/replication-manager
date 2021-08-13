@@ -1,24 +1,18 @@
-FROM golang:1.16-alpine as builder
-
-RUN apk --no-cache --update add make git
+FROM golang:1.16-buster as builder
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
 
 COPY . .
 
-RUN make osc cli
+RUN make pro cli
 
-
-FROM alpine:3
+FROM debian:buster-slim
 
 RUN mkdir -p \
         /etc/replication-manager \
         /etc/replication-manager/cluster.d \
         /var/lib/replication-manager
-
-RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
-
 
 COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/config.toml.docker /etc/replication-manager/config.toml
 COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/masterslave/haproxy/config.toml /etc/replication-manager/cluster.d/localmasterslavehaproxy.toml
@@ -28,7 +22,7 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/dashboard /u
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-osc /usr/bin/replication-manager
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 
-RUN apk --no-cache --update add ca-certificates restic mariadb-client mariadb haproxy
+RUN apt-get -y install ca-certificates restic mariadb-client haproxy
 
 CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001
