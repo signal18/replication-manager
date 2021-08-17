@@ -73,7 +73,7 @@ type DatabaseProxy interface {
 	SetMaintenance(server *ServerMonitor)
 	BackendsStateChange()
 	GetType() string
-
+	CertificatesReload() error
 	IsRunning() bool
 	SetCredential(credential string)
 

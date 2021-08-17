@@ -1447,7 +1447,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 	return err
 }
 
-func (server *ServerMonitor) FlushSSL() error {
+func (server *ServerMonitor) CertificatesReload() error {
 	if server.Conn == nil {
 		return errors.New("No database connection pool")
 	}

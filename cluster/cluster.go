@@ -1007,7 +1007,11 @@ func (cluster *Cluster) ConfigDiscovery() error {
 }
 
 func (cluster *Cluster) ReloadCertificates() {
+	cluster.LogPrintf(LvlInfo, "Reload cluster TLS certificates")
 	for _, srv := range cluster.Servers {
-		srv.FlushSSL()
+		srv.CertificatesReload()
+	}
+	for _, pri := range cluster.Proxies {
+		pri.CertificatesReload()
 	}
 }

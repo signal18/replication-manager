@@ -966,7 +966,7 @@ function (
       $scope.certificatesrotate = function () {
         if (confirm("Confirm rotation certificates")) httpGetWithoutResponse(getClusterUrl() + '/actions/certificates-rotate');
       };
-      $scope.certificatesrotate = function () {
+      $scope.certificatesreload = function () {
         if (confirm("Confirm reload certificates")) httpGetWithoutResponse(getClusterUrl() + '/actions/certificates-reload');
       };
       $scope.clbootstrap = function (topo) {

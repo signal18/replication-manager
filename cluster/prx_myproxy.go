@@ -71,3 +71,8 @@ func (proxy *MyProxyProxy) Init() {
 	proxy.InternalProxy, _ = myproxy.NewProxyServer("0.0.0.0:"+proxy.GetPort(), proxy.GetUser(), proxy.GetPass(), db)
 	go proxy.InternalProxy.Run()
 }
+
+func (proxy *MyProxyProxy) CertificatesReload() error {
+
+	return nil
+}

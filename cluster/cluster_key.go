@@ -31,7 +31,7 @@ func (cluster *Cluster) loadDBCertificates(path string) error {
 	rootCertPool := x509.NewCertPool()
 	var cacertfile, clicertfile, clikeyfile string
 
-	if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTLSCLI == "" || cluster.Conf.HostsTLSKEY == "" {
+	if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTlsCliCert == "" || cluster.Conf.HostsTlsCliKey == "" {
 		if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.Configurator.HaveDBTag("ssl") {
 			cacertfile = path + "/ca-cert.pem"
 			clicertfile = path + "/client-cert.pem"
@@ -42,8 +42,8 @@ func (cluster *Cluster) loadDBCertificates(path string) error {
 
 	} else {
 		cacertfile = cluster.Conf.HostsTLSCA
-		clicertfile = cluster.Conf.HostsTLSCLI
-		clikeyfile = cluster.Conf.HostsTLSKEY
+		clicertfile = cluster.Conf.HostsTlsCliCert
+		clikeyfile = cluster.Conf.HostsTlsCliKey
 	}
 	pem, err := ioutil.ReadFile(cacertfile)
 	if err != nil {
@@ -71,7 +71,7 @@ func (cluster *Cluster) loadDBOldCertificates(path string) error {
 	rootCertPool := x509.NewCertPool()
 	var cacertfile, clicertfile, clikeyfile string
 
-	if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTLSCLI == "" || cluster.Conf.HostsTLSKEY == "" {
+	if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTlsCliCert == "" || cluster.Conf.HostsTlsCliKey == "" {
 		if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.Configurator.HaveDBTag("ssl") {
 			cacertfile = path + "/ca-cert.pem"
 			clicertfile = path + "/client-cert.pem"
@@ -81,9 +81,15 @@ func (cluster *Cluster) loadDBOldCertificates(path string) error {
 		}
 
 	} else {
+		misc.CopyFile(cluster.Conf.HostsTLSCA, path+"/ca-cert.pem")
+		misc.CopyFile(cluster.Conf.HostsTlsCliCert, path+"/client-cert.pem")
+		misc.CopyFile(cluster.Conf.HostsTlsCliKey, path+"/client-key.pem")
+		misc.CopyFile(cluster.Conf.HostsTlsSrvCert, path+"/server-cert.pem")
+		misc.CopyFile(cluster.Conf.HostsTlsSrvKey, path+"/server-key.pem")
+
 		cacertfile = cluster.Conf.HostsTLSCA
-		clicertfile = cluster.Conf.HostsTLSCLI
-		clikeyfile = cluster.Conf.HostsTLSKEY
+		clicertfile = cluster.Conf.HostsTlsCliCert
+		clikeyfile = cluster.Conf.HostsTlsCliKey
 	}
 	pem, err := ioutil.ReadFile(cacertfile)
 	if err != nil {
@@ -135,7 +141,7 @@ func (cluster *Cluster) createKeys() error {
 			Country:       []string{"FR"},
 			Province:      []string{""},
 			Locality:      []string{"Paris"},
-			StreetAddress: []string{"201 Rue Championnet"},
+			StreetAddress: []string{"16 Villa Saint Michel"},
 			PostalCode:    []string{"75018"},
 		},
 		NotBefore:             notBefore,
@@ -171,7 +177,7 @@ func (cluster *Cluster) createKeys() error {
 			Country:       []string{"FR"},
 			Province:      []string{""},
 			Locality:      []string{"Paris"},
-			StreetAddress: []string{"201 Rue Championnet"},
+			StreetAddress: []string{"16 Villa Saint Michel"},
 			PostalCode:    []string{"75018"},
 		},
 		NotBefore:             notBefore,
@@ -205,7 +211,7 @@ func (cluster *Cluster) createKeys() error {
 			Country:       []string{"FR"},
 			Province:      []string{""},
 			Locality:      []string{"Paris"},
-			StreetAddress: []string{"201 Rue Championnet"},
+			StreetAddress: []string{"16 Villa Saint Michel"},
 			PostalCode:    []string{"75018"},
 		},
 		NotBefore:             notBefore,
