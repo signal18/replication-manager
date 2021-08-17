@@ -366,3 +366,7 @@ func (proxy *HaproxyProxy) Failover() {
 func (proxy *HaproxyProxy) BackendsStateChange() {
 	proxy.Refresh()
 }
+
+func (proxy *HaproxyProxy) CertificatesReload() error {
+	return nil
+}

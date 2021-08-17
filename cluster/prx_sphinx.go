@@ -132,3 +132,7 @@ func (proxy *SphinxProxy) Refresh() error {
 func (proxy *SphinxProxy) SetMaintenance(s *ServerMonitor) {
 	return
 }
+
+func (proxy *SphinxProxy) CertificatesReload() error {
+	return nil
+}

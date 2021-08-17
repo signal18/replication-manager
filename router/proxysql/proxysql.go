@@ -156,6 +156,11 @@ func (psql *ProxySQL) Truncate() error {
 	return err
 }
 
+func (psql *ProxySQL) ReloadTLS() error {
+	_, err := psql.Connection.Exec("PROXYSQL RELOAD TLS")
+	return err
+}
+
 func (psql *ProxySQL) ReplaceWriter(host string, port string, oldhost string, oldport string, masterasreader bool, use_ssl string) error {
 
 	if masterasreader {

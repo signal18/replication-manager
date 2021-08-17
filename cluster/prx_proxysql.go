@@ -195,6 +195,22 @@ func (cluster *Cluster) failoverProxysql(proxy *ProxySQLProxy) {
 	proxy.Failover()
 }
 
+func (proxy *ProxySQLProxy) CertificatesReload() error {
+	cluster := proxy.ClusterGroup
+	psql, err := proxy.Connect()
+	if err != nil {
+		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		return err
+	}
+	defer psql.Connection.Close()
+	err = psql.ReloadTLS()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Reload TLS failed %s", err)
+		return err
+	}
+	return nil
+}
+
 func (proxy *ProxySQLProxy) Failover() {
 	cluster := proxy.ClusterGroup
 	psql, err := proxy.Connect()
