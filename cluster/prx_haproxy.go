@@ -75,7 +75,7 @@ func (proxy *HaproxyProxy) Init() {
 	//haproxysockFile := "haproxy.stats.sock"
 
 	haproxytemplateFile := "haproxy_config.template"
-	haproxyconfigFile := "haproxy/haproxy.cfg"
+	haproxyconfigFile := "haproxy.cfg"
 	haproxyjsonFile := "vamp_router.json"
 	haproxypidFile := "haproxy.pid"
 	haproxyerrorPagesDir := "error_pages"
