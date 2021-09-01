@@ -29,7 +29,6 @@ import (
 	"time"
 
 	sshcli "github.com/helloyi/go-sshclient"
-	"github.com/jmoiron/sqlx"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -64,7 +63,7 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 		return 0, errors.New("In failover can't insert job")
 	}
 	server.JobsCreateTable()
-	conn, err := sqlx.Connect("mysql", server.DSN)
+	conn, err := server.GetNewDBConn()
 	if err != nil {
 		if server.ClusterGroup.Conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf(LvlErr, "Job can't connect")

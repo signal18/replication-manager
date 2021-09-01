@@ -453,7 +453,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "/usr/bin/mydumper", "Path to mydumper binary")
 	monitorCmd.Flags().StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "/usr/bin/myloader", "Path to myloader binary")
 	monitorCmd.Flags().StringVar(&conf.BackupMysqldumpPath, "backup-mysqldump-path", "", "Path to mysqldump binary")
-	monitorCmd.Flags().StringVar(&conf.BackupMysqldumpOptions, "backup-mysqldump-options", "--hex-blob --single-transaction --verbose --all-databases --add-drop-database --system=all", "Extra options")
+	monitorCmd.Flags().StringVar(&conf.BackupMysqldumpOptions, "backup-mysqldump-options", "--hex-blob --single-transaction --verbose --all-databases --system=all", "Extra options")
 	monitorCmd.Flags().StringVar(&conf.BackupMysqlbinlogPath, "backup-mysqlbinlog-path", "", "Path to mysqlbinlog binary")
 	monitorCmd.Flags().StringVar(&conf.BackupMysqlclientPath, "backup-mysqlclient-path", "", "Path to mysql client binary")
 	monitorCmd.Flags().BoolVar(&conf.BackupBinlogs, "backup-binlogs", false, "Archive binlogs")
