@@ -26,6 +26,13 @@ service ClusterPublicService {
 }
 
 service ClusterService {
+  rpc GetCluster(Cluster) returns (google.protobuf.Struct) {
+    // replaces /api/clusters/{clusterName}
+    option (google.api.http) = {
+      get: "/v3/clusters/{name}"
+    };
+  }
+
   rpc GetSettingsForCluster(Cluster) returns (google.protobuf.Struct) {
     // replaces /api/clusters/{clusterName}/settings
     option (google.api.http) = {

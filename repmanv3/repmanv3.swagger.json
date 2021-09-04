@@ -1808,6 +1808,42 @@
         ]
       }
     },
+    "/v3/clusters/{name}": {
+      "get": {
+        "operationId": "ClusterService_GetCluster",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
     "/v3/clusters/{name}/actions/master-physical-backup": {
       "get": {
         "operationId": "ClusterPublicService_MasterPhysicalBackup",

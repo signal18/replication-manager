@@ -142,6 +142,7 @@ var ClusterPublicService_ServiceDesc = grpc.ServiceDesc{
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ClusterServiceClient interface {
+	GetCluster(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*structpb.Struct, error)
 	GetSettingsForCluster(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*structpb.Struct, error)
 	SetActionForClusterSettings(ctx context.Context, in *ClusterSetting, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	PerformClusterAction(ctx context.Context, in *ClusterAction, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -154,6 +155,15 @@ type clusterServiceClient struct {
 
 func NewClusterServiceClient(cc grpc.ClientConnInterface) ClusterServiceClient {
 	return &clusterServiceClient{cc}
+}
+
+func (c *clusterServiceClient) GetCluster(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*structpb.Struct, error) {
+	out := new(structpb.Struct)
+	err := c.cc.Invoke(ctx, "/signal18.replication_manager.v3.ClusterService/GetCluster", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *clusterServiceClient) GetSettingsForCluster(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*structpb.Struct, error) {
@@ -219,6 +229,7 @@ func (x *clusterServiceRetrieveFromTopologyClient) Recv() (*structpb.Struct, err
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility
 type ClusterServiceServer interface {
+	GetCluster(context.Context, *Cluster) (*structpb.Struct, error)
 	GetSettingsForCluster(context.Context, *Cluster) (*structpb.Struct, error)
 	SetActionForClusterSettings(context.Context, *ClusterSetting) (*emptypb.Empty, error)
 	PerformClusterAction(context.Context, *ClusterAction) (*emptypb.Empty, error)
@@ -230,6 +241,9 @@ type ClusterServiceServer interface {
 type UnimplementedClusterServiceServer struct {
 }
 
+func (UnimplementedClusterServiceServer) GetCluster(context.Context, *Cluster) (*structpb.Struct, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetCluster not implemented")
+}
 func (UnimplementedClusterServiceServer) GetSettingsForCluster(context.Context, *Cluster) (*structpb.Struct, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSettingsForCluster not implemented")
 }
@@ -253,6 +267,24 @@ type UnsafeClusterServiceServer interface {
 
 func RegisterClusterServiceServer(s grpc.ServiceRegistrar, srv ClusterServiceServer) {
 	s.RegisterService(&ClusterService_ServiceDesc, srv)
+}
+
+func _ClusterService_GetCluster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Cluster)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).GetCluster(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/signal18.replication_manager.v3.ClusterService/GetCluster",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).GetCluster(ctx, req.(*Cluster))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _ClusterService_GetSettingsForCluster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -337,6 +369,10 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "signal18.replication_manager.v3.ClusterService",
 	HandlerType: (*ClusterServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetCluster",
+			Handler:    _ClusterService_GetCluster_Handler,
+		},
 		{
 			MethodName: "GetSettingsForCluster",
 			Handler:    _ClusterService_GetSettingsForCluster_Handler,

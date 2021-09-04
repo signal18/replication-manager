@@ -318,6 +318,32 @@ func grpcHandlerFunc(s *ReplicationManager, otherHandler http.Handler, legacyHan
 	})
 }
 
+func (s *ReplicationManager) GetCluster(ctx context.Context, in *v3.Cluster) (*structpb.Struct, error) {
+	user, mycluster, err := s.getClusterAndUser(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = user.Granted(config.GrantClusterGrant); err != nil {
+		return nil, err
+	}
+
+	// TODO: note we are not scrubbing the passwords here
+	b, err := json.Marshal(mycluster)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "could not marshal config")
+	}
+
+	out := &structpb.Struct{}
+	err = protojson.Unmarshal(b, out)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "could not unmarshal json config to struct")
+	}
+
+	return out, nil
+}
+
+// ClusterStatus is a public endpoint so it doesn't need to verify a user
 func (s *ReplicationManager) ClusterStatus(ctx context.Context, in *v3.Cluster) (*v3.StatusMessage, error) {
 	mycluster, err := s.getClusterFromFromRequest(in)
 	if err != nil {
@@ -335,6 +361,7 @@ func (s *ReplicationManager) ClusterStatus(ctx context.Context, in *v3.Cluster) 
 
 }
 
+// MasterPhysicalBackup is a public endpoint
 func (s *ReplicationManager) MasterPhysicalBackup(ctx context.Context, in *v3.Cluster) (*emptypb.Empty, error) {
 	mycluster, err := s.getClusterFromFromRequest(in)
 	if err != nil {
