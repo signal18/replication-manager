@@ -222,6 +222,7 @@ func (s *ReplicationManager) getClusterFromFromRequest(req v3.ContainsClusterMes
 
 type ContextKey string
 
+// getClusterAndUser checks if the cluster exists and if the token has a valid user
 func (s *ReplicationManager) getClusterAndUser(ctx context.Context, req v3.ContainsClusterMessage) (cluster.APIUser, *cluster.Cluster, error) {
 	mycluster, err := s.getClusterFromFromRequest(req)
 	if err != nil {
@@ -468,10 +469,6 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 }
 
 func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.ClusterAction) (res *emptypb.Empty, err error) {
-	if in.Cluster == nil {
-		return nil, v3.NewError(codes.InvalidArgument, v3.ErrClusterNotSet).Err()
-	}
-
 	// WARNING: this one cannot be validated for ACL, as there is no cluster to validate against
 	// special case, the clustername doesn't exist yet
 	if in.Cluster.ClusterShardingName == "" {
@@ -578,4 +575,179 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	}
 
 	return
+}
+
+func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stream v3.ClusterService_RetrieveFromTopologyServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in.Cluster)
+	if err != nil {
+		return err
+	}
+
+	// TODO: introduce new Grants for this type of endpoint
+	if err = user.Granted(config.GrantClusterSettings); err != nil {
+		return err
+	}
+
+	if in.Retrieve == v3.TopologyRetrieval_RETRIEVAL_UNSPECIFIED {
+		return v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "retrieve", "").Err()
+	}
+
+	if in.Retrieve == v3.TopologyRetrieval_ALERTS {
+		a := new(cluster.Alerts)
+		a.Errors = mycluster.GetStateMachine().GetOpenErrors()
+		a.Warnings = mycluster.GetStateMachine().GetOpenWarnings()
+
+		return marshalAndSend(a, stream.Send)
+	}
+
+	if in.Retrieve == v3.TopologyRetrieval_CRASHES {
+		cr := mycluster.GetCrashes()
+		if cr == nil {
+			return nil
+		}
+		data, err := json.Marshal(cr)
+		if err != nil {
+			return status.Error(codes.Internal, "could not marshal crashes list")
+		}
+		var crashes []*cluster.Crash
+		err = json.Unmarshal(data, &crashes)
+		if err != nil {
+			return status.Error(codes.Internal, "could not unmarshal crashes list")
+		}
+		return marshalAndSend(crashes, stream.Send)
+	}
+
+	if in.Retrieve == v3.TopologyRetrieval_LOGS {
+		var clusterlogs []string
+		for _, slog := range s.tlog.Buffer {
+			if strings.Contains(slog, mycluster.Name) {
+				clusterlogs = append(clusterlogs, slog)
+			}
+		}
+
+		return marshalAndSend(clusterlogs, stream.Send)
+	}
+
+	if in.Retrieve == v3.TopologyRetrieval_MASTER {
+		m := mycluster.GetMaster()
+		if m == nil {
+			return v3.NewErrorResource(codes.InvalidArgument, v3.ErrClusterMasterNotSet, "cluster", in.Cluster.Name).Err()
+		}
+
+		// note we do a double marshal and unmarshal to prevent dereferencing objects
+		data, err := json.Marshal(m)
+		if err != nil {
+			return status.Error(codes.Internal, "could not marshal master")
+		}
+		var srv *cluster.ServerMonitor
+		srv.Pass = "XXXXXXXX"
+		err = json.Unmarshal(data, &srv)
+		if err != nil {
+			return status.Error(codes.Internal, "could not unmarshal master")
+		}
+
+		return marshalAndSend(srv, stream.Send)
+	}
+
+	if in.Retrieve == v3.TopologyRetrieval_PROXIES {
+		// note we do a double marshal and unmarshal to prevent dereferencing objects
+		data, err := json.Marshal(mycluster.GetProxies())
+		if err != nil {
+			return status.Error(codes.Internal, "could not marshal proxy list")
+		}
+		var prxs []*cluster.Proxy
+
+		err = json.Unmarshal(data, &prxs)
+		if err != nil {
+			return status.Error(codes.Internal, "could not unmarshal proxy list")
+		}
+
+		for _, prx := range prxs {
+			if prx != nil {
+				prx.Pass = "XXXXXXXX"
+				if err := marshalAndSend(prx, stream.Send); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	if in.Retrieve == v3.TopologyRetrieval_SERVERS || in.Retrieve == v3.TopologyRetrieval_SLAVES {
+		// note we do a double marshal and unmarshal to prevent dereferencing objects
+		var data []byte
+		if in.Retrieve == v3.TopologyRetrieval_SERVERS {
+			data, err = json.Marshal(mycluster.GetServers())
+		}
+
+		if in.Retrieve == v3.TopologyRetrieval_SLAVES {
+			data, err = json.Marshal(mycluster.GetServers())
+		}
+		if err != nil {
+			return status.Error(codes.Internal, "could not marshal server list")
+		}
+		var srvs []*cluster.ServerMonitor
+
+		err = json.Unmarshal(data, &srvs)
+		if err != nil {
+			return status.Error(codes.Internal, "could not unmarshal server list")
+		}
+
+		for _, sm := range srvs {
+			if sm != nil {
+				sm.Pass = "XXXXXXXX"
+				if err := marshalAndSend(sm, stream.Send); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func marshalAndSend(in interface{}, send func(*structpb.Struct) error) error {
+	type String struct {
+		String string
+	}
+	var data []byte
+	var err error
+	if s, ok := in.(string); ok {
+		var str String
+		str.String = s
+		data, err = json.Marshal(str)
+		if err != nil {
+			return status.Error(codes.Internal, "could not marshal String to json")
+		}
+	}
+
+	if sl, ok := in.([]string); ok {
+		type Strings struct {
+			Data []string
+		}
+		var strs Strings
+		strs.Data = sl
+		data, err = json.Marshal(strs)
+		if err != nil {
+			return status.Error(codes.Internal, "could not marshal Strings to json")
+		}
+	}
+
+	if len(data) == 0 {
+		data, err = json.Marshal(in)
+		if err != nil {
+			return status.Error(codes.Internal, "could not marshal to json")
+		}
+	}
+
+	out := &structpb.Struct{}
+	err = protojson.Unmarshal(data, out)
+	if err != nil {
+		return status.Error(codes.Internal, "could not unmarshal json to struct")
+	}
+
+	if err := send(out); err != nil {
+		return err
+	}
+
+	return nil
 }

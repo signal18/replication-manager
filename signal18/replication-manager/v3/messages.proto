@@ -251,6 +251,21 @@ message StatusMessage {
   ServiceStatus alive = 1;
 }
 
+message TopologyRetrieval {
+  Cluster cluster = 1;
+  enum Retrieval {
+    RETRIEVAL_UNSPECIFIED = 0;
+    ALERTS = 1;
+    CRASHES = 2;
+    LOGS = 3;
+    MASTER = 4;
+    PROXIES = 5;
+    SERVERS = 6;
+    SLAVES = 7;
+  }
+  Retrieval retrieve = 2;
+}
+
 // message Cluster {
 //   string name = 1;
 //   string tenant = 2;

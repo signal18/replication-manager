@@ -917,6 +917,70 @@ func (ClusterAction_Server_Proxy) EnumDescriptor() ([]byte, []int) {
 	return file_messages_proto_rawDescGZIP(), []int{4, 0, 2}
 }
 
+type TopologyRetrieval_Retrieval int32
+
+const (
+	TopologyRetrieval_RETRIEVAL_UNSPECIFIED TopologyRetrieval_Retrieval = 0
+	TopologyRetrieval_ALERTS                TopologyRetrieval_Retrieval = 1
+	TopologyRetrieval_CRASHES               TopologyRetrieval_Retrieval = 2
+	TopologyRetrieval_LOGS                  TopologyRetrieval_Retrieval = 3
+	TopologyRetrieval_MASTER                TopologyRetrieval_Retrieval = 4
+	TopologyRetrieval_PROXIES               TopologyRetrieval_Retrieval = 5
+	TopologyRetrieval_SERVERS               TopologyRetrieval_Retrieval = 6
+	TopologyRetrieval_SLAVES                TopologyRetrieval_Retrieval = 7
+)
+
+// Enum value maps for TopologyRetrieval_Retrieval.
+var (
+	TopologyRetrieval_Retrieval_name = map[int32]string{
+		0: "RETRIEVAL_UNSPECIFIED",
+		1: "ALERTS",
+		2: "CRASHES",
+		3: "LOGS",
+		4: "MASTER",
+		5: "PROXIES",
+		6: "SERVERS",
+		7: "SLAVES",
+	}
+	TopologyRetrieval_Retrieval_value = map[string]int32{
+		"RETRIEVAL_UNSPECIFIED": 0,
+		"ALERTS":                1,
+		"CRASHES":               2,
+		"LOGS":                  3,
+		"MASTER":                4,
+		"PROXIES":               5,
+		"SERVERS":               6,
+		"SLAVES":                7,
+	}
+)
+
+func (x TopologyRetrieval_Retrieval) Enum() *TopologyRetrieval_Retrieval {
+	p := new(TopologyRetrieval_Retrieval)
+	*p = x
+	return p
+}
+
+func (x TopologyRetrieval_Retrieval) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TopologyRetrieval_Retrieval) Descriptor() protoreflect.EnumDescriptor {
+	return file_messages_proto_enumTypes[9].Descriptor()
+}
+
+func (TopologyRetrieval_Retrieval) Type() protoreflect.EnumType {
+	return &file_messages_proto_enumTypes[9]
+}
+
+func (x TopologyRetrieval_Retrieval) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TopologyRetrieval_Retrieval.Descriptor instead.
+func (TopologyRetrieval_Retrieval) EnumDescriptor() ([]byte, []int) {
+	return file_messages_proto_rawDescGZIP(), []int{6, 0}
+}
+
 type ErrorInfo struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1279,6 +1343,61 @@ func (x *StatusMessage) GetAlive() ServiceStatus {
 	return ServiceStatus_SERVICESTATUS_UNSPECIFIED
 }
 
+type TopologyRetrieval struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Cluster  *Cluster                    `protobuf:"bytes,1,opt,name=cluster,proto3" json:"cluster,omitempty"`
+	Retrieve TopologyRetrieval_Retrieval `protobuf:"varint,2,opt,name=retrieve,proto3,enum=signal18.replication_manager.v3.TopologyRetrieval_Retrieval" json:"retrieve,omitempty"`
+}
+
+func (x *TopologyRetrieval) Reset() {
+	*x = TopologyRetrieval{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_messages_proto_msgTypes[6]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *TopologyRetrieval) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TopologyRetrieval) ProtoMessage() {}
+
+func (x *TopologyRetrieval) ProtoReflect() protoreflect.Message {
+	mi := &file_messages_proto_msgTypes[6]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TopologyRetrieval.ProtoReflect.Descriptor instead.
+func (*TopologyRetrieval) Descriptor() ([]byte, []int) {
+	return file_messages_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *TopologyRetrieval) GetCluster() *Cluster {
+	if x != nil {
+		return x.Cluster
+	}
+	return nil
+}
+
+func (x *TopologyRetrieval) GetRetrieve() TopologyRetrieval_Retrieval {
+	if x != nil {
+		return x.Retrieve
+	}
+	return TopologyRetrieval_RETRIEVAL_UNSPECIFIED
+}
+
 type ClusterSetting_Setting struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1291,7 +1410,7 @@ type ClusterSetting_Setting struct {
 func (x *ClusterSetting_Setting) Reset() {
 	*x = ClusterSetting_Setting{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_messages_proto_msgTypes[6]
+		mi := &file_messages_proto_msgTypes[7]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1304,7 +1423,7 @@ func (x *ClusterSetting_Setting) String() string {
 func (*ClusterSetting_Setting) ProtoMessage() {}
 
 func (x *ClusterSetting_Setting) ProtoReflect() protoreflect.Message {
-	mi := &file_messages_proto_msgTypes[6]
+	mi := &file_messages_proto_msgTypes[7]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1345,7 +1464,7 @@ type ClusterSetting_Switch struct {
 func (x *ClusterSetting_Switch) Reset() {
 	*x = ClusterSetting_Switch{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_messages_proto_msgTypes[7]
+		mi := &file_messages_proto_msgTypes[8]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1358,7 +1477,7 @@ func (x *ClusterSetting_Switch) String() string {
 func (*ClusterSetting_Switch) ProtoMessage() {}
 
 func (x *ClusterSetting_Switch) ProtoReflect() protoreflect.Message {
-	mi := &file_messages_proto_msgTypes[7]
+	mi := &file_messages_proto_msgTypes[8]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1396,7 +1515,7 @@ type ClusterAction_Server struct {
 func (x *ClusterAction_Server) Reset() {
 	*x = ClusterAction_Server{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_messages_proto_msgTypes[8]
+		mi := &file_messages_proto_msgTypes[9]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -1409,7 +1528,7 @@ func (x *ClusterAction_Server) String() string {
 func (*ClusterAction_Server) ProtoMessage() {}
 
 func (x *ClusterAction_Server) ProtoReflect() protoreflect.Message {
-	mi := &file_messages_proto_msgTypes[8]
+	mi := &file_messages_proto_msgTypes[9]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1845,16 +1964,35 @@ var file_messages_proto_rawDesc = []byte{
 	0x73, 0x69, 0x67, 0x6e, 0x61, 0x6c, 0x31, 0x38, 0x2e, 0x72, 0x65, 0x70, 0x6c, 0x69, 0x63, 0x61,
 	0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x6d, 0x61, 0x6e, 0x61, 0x67, 0x65, 0x72, 0x2e, 0x76, 0x33, 0x2e,
 	0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x52, 0x05, 0x61,
-	0x6c, 0x69, 0x76, 0x65, 0x2a, 0x55, 0x0a, 0x0d, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x53,
-	0x74, 0x61, 0x74, 0x75, 0x73, 0x12, 0x1d, 0x0a, 0x19, 0x53, 0x45, 0x52, 0x56, 0x49, 0x43, 0x45,
-	0x53, 0x54, 0x41, 0x54, 0x55, 0x53, 0x5f, 0x55, 0x4e, 0x53, 0x50, 0x45, 0x43, 0x49, 0x46, 0x49,
-	0x45, 0x44, 0x10, 0x00, 0x12, 0x0b, 0x0a, 0x07, 0x52, 0x55, 0x4e, 0x4e, 0x49, 0x4e, 0x47, 0x10,
-	0x01, 0x12, 0x0c, 0x0a, 0x08, 0x53, 0x54, 0x41, 0x52, 0x54, 0x49, 0x4e, 0x47, 0x10, 0x02, 0x12,
-	0x0a, 0x0a, 0x06, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x53, 0x10, 0x03, 0x42, 0x32, 0x5a, 0x30, 0x67,
-	0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x73, 0x69, 0x67, 0x6e, 0x61, 0x6c,
-	0x31, 0x38, 0x2f, 0x72, 0x65, 0x70, 0x6c, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2d, 0x6d,
-	0x61, 0x6e, 0x61, 0x67, 0x65, 0x72, 0x3b, 0x72, 0x65, 0x70, 0x6d, 0x61, 0x6e, 0x76, 0x33, 0x62,
-	0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x6c, 0x69, 0x76, 0x65, 0x22, 0xae, 0x02, 0x0a, 0x11, 0x54, 0x6f, 0x70, 0x6f, 0x6c, 0x6f, 0x67,
+	0x79, 0x52, 0x65, 0x74, 0x72, 0x69, 0x65, 0x76, 0x61, 0x6c, 0x12, 0x42, 0x0a, 0x07, 0x63, 0x6c,
+	0x75, 0x73, 0x74, 0x65, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x28, 0x2e, 0x73, 0x69,
+	0x67, 0x6e, 0x61, 0x6c, 0x31, 0x38, 0x2e, 0x72, 0x65, 0x70, 0x6c, 0x69, 0x63, 0x61, 0x74, 0x69,
+	0x6f, 0x6e, 0x5f, 0x6d, 0x61, 0x6e, 0x61, 0x67, 0x65, 0x72, 0x2e, 0x76, 0x33, 0x2e, 0x43, 0x6c,
+	0x75, 0x73, 0x74, 0x65, 0x72, 0x52, 0x07, 0x63, 0x6c, 0x75, 0x73, 0x74, 0x65, 0x72, 0x12, 0x58,
+	0x0a, 0x08, 0x72, 0x65, 0x74, 0x72, 0x69, 0x65, 0x76, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0e,
+	0x32, 0x3c, 0x2e, 0x73, 0x69, 0x67, 0x6e, 0x61, 0x6c, 0x31, 0x38, 0x2e, 0x72, 0x65, 0x70, 0x6c,
+	0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x6d, 0x61, 0x6e, 0x61, 0x67, 0x65, 0x72, 0x2e,
+	0x76, 0x33, 0x2e, 0x54, 0x6f, 0x70, 0x6f, 0x6c, 0x6f, 0x67, 0x79, 0x52, 0x65, 0x74, 0x72, 0x69,
+	0x65, 0x76, 0x61, 0x6c, 0x2e, 0x52, 0x65, 0x74, 0x72, 0x69, 0x65, 0x76, 0x61, 0x6c, 0x52, 0x08,
+	0x72, 0x65, 0x74, 0x72, 0x69, 0x65, 0x76, 0x65, 0x22, 0x7b, 0x0a, 0x09, 0x52, 0x65, 0x74, 0x72,
+	0x69, 0x65, 0x76, 0x61, 0x6c, 0x12, 0x19, 0x0a, 0x15, 0x52, 0x45, 0x54, 0x52, 0x49, 0x45, 0x56,
+	0x41, 0x4c, 0x5f, 0x55, 0x4e, 0x53, 0x50, 0x45, 0x43, 0x49, 0x46, 0x49, 0x45, 0x44, 0x10, 0x00,
+	0x12, 0x0a, 0x0a, 0x06, 0x41, 0x4c, 0x45, 0x52, 0x54, 0x53, 0x10, 0x01, 0x12, 0x0b, 0x0a, 0x07,
+	0x43, 0x52, 0x41, 0x53, 0x48, 0x45, 0x53, 0x10, 0x02, 0x12, 0x08, 0x0a, 0x04, 0x4c, 0x4f, 0x47,
+	0x53, 0x10, 0x03, 0x12, 0x0a, 0x0a, 0x06, 0x4d, 0x41, 0x53, 0x54, 0x45, 0x52, 0x10, 0x04, 0x12,
+	0x0b, 0x0a, 0x07, 0x50, 0x52, 0x4f, 0x58, 0x49, 0x45, 0x53, 0x10, 0x05, 0x12, 0x0b, 0x0a, 0x07,
+	0x53, 0x45, 0x52, 0x56, 0x45, 0x52, 0x53, 0x10, 0x06, 0x12, 0x0a, 0x0a, 0x06, 0x53, 0x4c, 0x41,
+	0x56, 0x45, 0x53, 0x10, 0x07, 0x2a, 0x55, 0x0a, 0x0d, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65,
+	0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x12, 0x1d, 0x0a, 0x19, 0x53, 0x45, 0x52, 0x56, 0x49, 0x43,
+	0x45, 0x53, 0x54, 0x41, 0x54, 0x55, 0x53, 0x5f, 0x55, 0x4e, 0x53, 0x50, 0x45, 0x43, 0x49, 0x46,
+	0x49, 0x45, 0x44, 0x10, 0x00, 0x12, 0x0b, 0x0a, 0x07, 0x52, 0x55, 0x4e, 0x4e, 0x49, 0x4e, 0x47,
+	0x10, 0x01, 0x12, 0x0c, 0x0a, 0x08, 0x53, 0x54, 0x41, 0x52, 0x54, 0x49, 0x4e, 0x47, 0x10, 0x02,
+	0x12, 0x0a, 0x0a, 0x06, 0x45, 0x52, 0x52, 0x4f, 0x52, 0x53, 0x10, 0x03, 0x42, 0x32, 0x5a, 0x30,
+	0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x73, 0x69, 0x67, 0x6e, 0x61,
+	0x6c, 0x31, 0x38, 0x2f, 0x72, 0x65, 0x70, 0x6c, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2d,
+	0x6d, 0x61, 0x6e, 0x61, 0x67, 0x65, 0x72, 0x3b, 0x72, 0x65, 0x70, 0x6d, 0x61, 0x6e, 0x76, 0x33,
+	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -1869,8 +2007,8 @@ func file_messages_proto_rawDescGZIP() []byte {
 	return file_messages_proto_rawDescData
 }
 
-var file_messages_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_messages_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_messages_proto_enumTypes = make([]protoimpl.EnumInfo, 10)
+var file_messages_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_messages_proto_goTypes = []interface{}{
 	(ServiceStatus)(0),                      // 0: signal18.replication_manager.v3.ServiceStatus
 	(ClusterSetting_Action)(0),              // 1: signal18.replication_manager.v3.ClusterSetting.Action
@@ -1881,37 +2019,41 @@ var file_messages_proto_goTypes = []interface{}{
 	(ClusterAction_Server_Type)(0),          // 6: signal18.replication_manager.v3.ClusterAction.Server.Type
 	(ClusterAction_Server_Database)(0),      // 7: signal18.replication_manager.v3.ClusterAction.Server.Database
 	(ClusterAction_Server_Proxy)(0),         // 8: signal18.replication_manager.v3.ClusterAction.Server.Proxy
-	(*ErrorInfo)(nil),                       // 9: signal18.replication_manager.v3.ErrorInfo
-	(*ErrorResource)(nil),                   // 10: signal18.replication_manager.v3.ErrorResource
-	(*Cluster)(nil),                         // 11: signal18.replication_manager.v3.Cluster
-	(*ClusterSetting)(nil),                  // 12: signal18.replication_manager.v3.ClusterSetting
-	(*ClusterAction)(nil),                   // 13: signal18.replication_manager.v3.ClusterAction
-	(*StatusMessage)(nil),                   // 14: signal18.replication_manager.v3.StatusMessage
-	(*ClusterSetting_Setting)(nil),          // 15: signal18.replication_manager.v3.ClusterSetting.Setting
-	(*ClusterSetting_Switch)(nil),           // 16: signal18.replication_manager.v3.ClusterSetting.Switch
-	(*ClusterAction_Server)(nil),            // 17: signal18.replication_manager.v3.ClusterAction.Server
+	(TopologyRetrieval_Retrieval)(0),        // 9: signal18.replication_manager.v3.TopologyRetrieval.Retrieval
+	(*ErrorInfo)(nil),                       // 10: signal18.replication_manager.v3.ErrorInfo
+	(*ErrorResource)(nil),                   // 11: signal18.replication_manager.v3.ErrorResource
+	(*Cluster)(nil),                         // 12: signal18.replication_manager.v3.Cluster
+	(*ClusterSetting)(nil),                  // 13: signal18.replication_manager.v3.ClusterSetting
+	(*ClusterAction)(nil),                   // 14: signal18.replication_manager.v3.ClusterAction
+	(*StatusMessage)(nil),                   // 15: signal18.replication_manager.v3.StatusMessage
+	(*TopologyRetrieval)(nil),               // 16: signal18.replication_manager.v3.TopologyRetrieval
+	(*ClusterSetting_Setting)(nil),          // 17: signal18.replication_manager.v3.ClusterSetting.Setting
+	(*ClusterSetting_Switch)(nil),           // 18: signal18.replication_manager.v3.ClusterSetting.Switch
+	(*ClusterAction_Server)(nil),            // 19: signal18.replication_manager.v3.ClusterAction.Server
 }
 var file_messages_proto_depIdxs = []int32{
-	10, // 0: signal18.replication_manager.v3.ErrorInfo.resource:type_name -> signal18.replication_manager.v3.ErrorResource
-	11, // 1: signal18.replication_manager.v3.ClusterSetting.cluster:type_name -> signal18.replication_manager.v3.Cluster
+	11, // 0: signal18.replication_manager.v3.ErrorInfo.resource:type_name -> signal18.replication_manager.v3.ErrorResource
+	12, // 1: signal18.replication_manager.v3.ClusterSetting.cluster:type_name -> signal18.replication_manager.v3.Cluster
 	1,  // 2: signal18.replication_manager.v3.ClusterSetting.action:type_name -> signal18.replication_manager.v3.ClusterSetting.Action
-	15, // 3: signal18.replication_manager.v3.ClusterSetting.setting:type_name -> signal18.replication_manager.v3.ClusterSetting.Setting
-	16, // 4: signal18.replication_manager.v3.ClusterSetting.switch:type_name -> signal18.replication_manager.v3.ClusterSetting.Switch
-	11, // 5: signal18.replication_manager.v3.ClusterAction.cluster:type_name -> signal18.replication_manager.v3.Cluster
+	17, // 3: signal18.replication_manager.v3.ClusterSetting.setting:type_name -> signal18.replication_manager.v3.ClusterSetting.Setting
+	18, // 4: signal18.replication_manager.v3.ClusterSetting.switch:type_name -> signal18.replication_manager.v3.ClusterSetting.Switch
+	12, // 5: signal18.replication_manager.v3.ClusterAction.cluster:type_name -> signal18.replication_manager.v3.Cluster
 	4,  // 6: signal18.replication_manager.v3.ClusterAction.action:type_name -> signal18.replication_manager.v3.ClusterAction.Action
-	17, // 7: signal18.replication_manager.v3.ClusterAction.server:type_name -> signal18.replication_manager.v3.ClusterAction.Server
+	19, // 7: signal18.replication_manager.v3.ClusterAction.server:type_name -> signal18.replication_manager.v3.ClusterAction.Server
 	5,  // 8: signal18.replication_manager.v3.ClusterAction.topology:type_name -> signal18.replication_manager.v3.ClusterAction.ReplicationTopology
 	0,  // 9: signal18.replication_manager.v3.StatusMessage.alive:type_name -> signal18.replication_manager.v3.ServiceStatus
-	2,  // 10: signal18.replication_manager.v3.ClusterSetting.Setting.name:type_name -> signal18.replication_manager.v3.ClusterSetting.Setting.SettingName
-	3,  // 11: signal18.replication_manager.v3.ClusterSetting.Switch.name:type_name -> signal18.replication_manager.v3.ClusterSetting.Switch.SwitchName
-	6,  // 12: signal18.replication_manager.v3.ClusterAction.Server.type:type_name -> signal18.replication_manager.v3.ClusterAction.Server.Type
-	7,  // 13: signal18.replication_manager.v3.ClusterAction.Server.database:type_name -> signal18.replication_manager.v3.ClusterAction.Server.Database
-	8,  // 14: signal18.replication_manager.v3.ClusterAction.Server.proxy:type_name -> signal18.replication_manager.v3.ClusterAction.Server.Proxy
-	15, // [15:15] is the sub-list for method output_type
-	15, // [15:15] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	12, // 10: signal18.replication_manager.v3.TopologyRetrieval.cluster:type_name -> signal18.replication_manager.v3.Cluster
+	9,  // 11: signal18.replication_manager.v3.TopologyRetrieval.retrieve:type_name -> signal18.replication_manager.v3.TopologyRetrieval.Retrieval
+	2,  // 12: signal18.replication_manager.v3.ClusterSetting.Setting.name:type_name -> signal18.replication_manager.v3.ClusterSetting.Setting.SettingName
+	3,  // 13: signal18.replication_manager.v3.ClusterSetting.Switch.name:type_name -> signal18.replication_manager.v3.ClusterSetting.Switch.SwitchName
+	6,  // 14: signal18.replication_manager.v3.ClusterAction.Server.type:type_name -> signal18.replication_manager.v3.ClusterAction.Server.Type
+	7,  // 15: signal18.replication_manager.v3.ClusterAction.Server.database:type_name -> signal18.replication_manager.v3.ClusterAction.Server.Database
+	8,  // 16: signal18.replication_manager.v3.ClusterAction.Server.proxy:type_name -> signal18.replication_manager.v3.ClusterAction.Server.Proxy
+	17, // [17:17] is the sub-list for method output_type
+	17, // [17:17] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_messages_proto_init() }
@@ -1993,7 +2135,7 @@ func file_messages_proto_init() {
 			}
 		}
 		file_messages_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ClusterSetting_Setting); i {
+			switch v := v.(*TopologyRetrieval); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -2005,7 +2147,7 @@ func file_messages_proto_init() {
 			}
 		}
 		file_messages_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ClusterSetting_Switch); i {
+			switch v := v.(*ClusterSetting_Setting); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -2017,6 +2159,18 @@ func file_messages_proto_init() {
 			}
 		}
 		file_messages_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ClusterSetting_Switch); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_messages_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*ClusterAction_Server); i {
 			case 0:
 				return &v.state
@@ -2034,8 +2188,8 @@ func file_messages_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_messages_proto_rawDesc,
-			NumEnums:      9,
-			NumMessages:   9,
+			NumEnums:      10,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

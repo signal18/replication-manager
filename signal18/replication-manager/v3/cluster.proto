@@ -97,9 +97,22 @@ service ClusterService {
       }
       additional_bindings {
         // /api/clusters/{clusterName}/actions/switchover
-        post: "v3/clusters/{cluster.name}/actions/switchover"
-        body: "{server}"
+        post: "/v3/clusters/{cluster.name}/actions/switchover"
+        body: "server"
       }
+    };
+  }
+
+  rpc RetrieveFromTopology(TopologyRetrieval) returns (stream google.protobuf.Struct) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/topology/alerts
+      // /api/clusters/{clusterName}/topology/crashes
+      // /api/clusters/{clusterName}/topology/logs
+      // /api/clusters/{clusterName}/topology/master
+      // /api/clusters/{clusterName}/topology/proxies
+      // /api/clusters/{clusterName}/topology/servers
+      // /api/clusters/{clusterName}/topology/slaves
+      get: "/v3/clusters/{cluster.name}/topology/{retrieve}"
     };
   }
 }

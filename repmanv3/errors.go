@@ -8,13 +8,14 @@ import (
 )
 
 var (
-	ErrClusterNotSet   = errors.New("cluster name not set")
-	ErrClusterNotFound = errors.New("cluster not found")
-	ErrEnumNotSet      = errors.New("mandatory enum not set")
-	ErrFieldNotSet     = errors.New("mandatory field not set")
-	ErrServerNotFound  = errors.New("server not found")
-	ErrUserNotGranted  = errors.New("user not granted permission for this action")
-	ErrGrantNotFound   = errors.New("cluster grant not found")
+	ErrClusterNotSet       = errors.New("cluster name not set")
+	ErrClusterNotFound     = errors.New("cluster not found")
+	ErrClusterMasterNotSet = errors.New("cluster has no master set")
+	ErrEnumNotSet          = errors.New("mandatory enum not set")
+	ErrFieldNotSet         = errors.New("mandatory field not set")
+	ErrServerNotFound      = errors.New("server not found")
+	ErrUserNotGranted      = errors.New("user not granted permission for this action")
+	ErrGrantNotFound       = errors.New("cluster grant not found")
 )
 
 func NewErrorResource(code codes.Code, reason error, field string, contents string) *status.Status {

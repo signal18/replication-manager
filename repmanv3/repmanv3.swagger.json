@@ -156,6 +156,96 @@
         ]
       }
     },
+    "/v3/clusters/{cluster.name}/actions/switchover": {
+      "post": {
+        "operationId": "ClusterService_PerformClusterAction7",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "properties": {}
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ClusterActionServer"
+            }
+          },
+          {
+            "name": "cluster.clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "ACTION_UNSPECIFIED",
+              "ADD",
+              "ADDSERVER",
+              "CANCEL_ROLLING_REPROV",
+              "CANCEL_ROLLING_RESTART",
+              "CHECKSUM_ALL_TABLES",
+              "FAILOVER",
+              "MASTER_PHYSICAL_BACKUP",
+              "OPTIMIZE",
+              "RESET_FAILOVER_CONTROL",
+              "RESET_SLA",
+              "ROLLING",
+              "ROTATEKEYS",
+              "START_TRAFFIC",
+              "STOP_TRAFFIC",
+              "SWITCHOVER",
+              "SYSBENCH",
+              "WAITDATABASES",
+              "REPLICATION_BOOTSTRAP",
+              "REPLICATION_CLEANUP"
+            ],
+            "default": "ACTION_UNSPECIFIED"
+          },
+          {
+            "name": "topology",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "RT_UNSPECIFIED",
+              "MASTER_SLAVE",
+              "MASTER_SLAVE_NO_GTID",
+              "MULTI_MASTER",
+              "MULTI_TIER_SLAVE",
+              "MAXSCALE_BINLOG",
+              "MULTI_MASTER_RING",
+              "MULTI_MASTER_WSREP"
+            ],
+            "default": "RT_UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
     "/v3/clusters/{cluster.name}/actions/{action}": {
       "get": {
         "operationId": "ClusterService_PerformClusterAction6",
@@ -1659,6 +1749,65 @@
         ]
       }
     },
+    "/v3/clusters/{cluster.name}/topology/{retrieve}": {
+      "get": {
+        "operationId": "ClusterService_RetrieveFromTopology",
+        "responses": {
+          "200": {
+            "description": "A successful response.(streaming responses)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "result": {},
+                "error": {
+                  "$ref": "#/definitions/rpcStatus"
+                }
+              },
+              "title": "Stream result of protobufStruct"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "retrieve",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "RETRIEVAL_UNSPECIFIED",
+              "ALERTS",
+              "CRASHES",
+              "LOGS",
+              "MASTER",
+              "PROXIES",
+              "SERVERS",
+              "SLAVES"
+            ]
+          },
+          {
+            "name": "cluster.clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
     "/v3/clusters/{name}/actions/master-physical-backup": {
       "get": {
         "operationId": "ClusterPublicService_MasterPhysicalBackup",
@@ -1989,6 +2138,20 @@
         "VERBOSE"
       ],
       "default": "UNSPECIFIED"
+    },
+    "TopologyRetrievalRetrieval": {
+      "type": "string",
+      "enum": [
+        "RETRIEVAL_UNSPECIFIED",
+        "ALERTS",
+        "CRASHES",
+        "LOGS",
+        "MASTER",
+        "PROXIES",
+        "SERVERS",
+        "SLAVES"
+      ],
+      "default": "RETRIEVAL_UNSPECIFIED"
     },
     "protobufAny": {
       "type": "object",

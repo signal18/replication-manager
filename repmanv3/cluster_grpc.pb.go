@@ -145,6 +145,7 @@ type ClusterServiceClient interface {
 	GetSettingsForCluster(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*structpb.Struct, error)
 	SetActionForClusterSettings(ctx context.Context, in *ClusterSetting, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	PerformClusterAction(ctx context.Context, in *ClusterAction, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	RetrieveFromTopology(ctx context.Context, in *TopologyRetrieval, opts ...grpc.CallOption) (ClusterService_RetrieveFromTopologyClient, error)
 }
 
 type clusterServiceClient struct {
@@ -182,6 +183,38 @@ func (c *clusterServiceClient) PerformClusterAction(ctx context.Context, in *Clu
 	return out, nil
 }
 
+func (c *clusterServiceClient) RetrieveFromTopology(ctx context.Context, in *TopologyRetrieval, opts ...grpc.CallOption) (ClusterService_RetrieveFromTopologyClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[0], "/signal18.replication_manager.v3.ClusterService/RetrieveFromTopology", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &clusterServiceRetrieveFromTopologyClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ClusterService_RetrieveFromTopologyClient interface {
+	Recv() (*structpb.Struct, error)
+	grpc.ClientStream
+}
+
+type clusterServiceRetrieveFromTopologyClient struct {
+	grpc.ClientStream
+}
+
+func (x *clusterServiceRetrieveFromTopologyClient) Recv() (*structpb.Struct, error) {
+	m := new(structpb.Struct)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility
@@ -189,6 +222,7 @@ type ClusterServiceServer interface {
 	GetSettingsForCluster(context.Context, *Cluster) (*structpb.Struct, error)
 	SetActionForClusterSettings(context.Context, *ClusterSetting) (*emptypb.Empty, error)
 	PerformClusterAction(context.Context, *ClusterAction) (*emptypb.Empty, error)
+	RetrieveFromTopology(*TopologyRetrieval, ClusterService_RetrieveFromTopologyServer) error
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -204,6 +238,9 @@ func (UnimplementedClusterServiceServer) SetActionForClusterSettings(context.Con
 }
 func (UnimplementedClusterServiceServer) PerformClusterAction(context.Context, *ClusterAction) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PerformClusterAction not implemented")
+}
+func (UnimplementedClusterServiceServer) RetrieveFromTopology(*TopologyRetrieval, ClusterService_RetrieveFromTopologyServer) error {
+	return status.Errorf(codes.Unimplemented, "method RetrieveFromTopology not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 
@@ -272,6 +309,27 @@ func _ClusterService_PerformClusterAction_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterService_RetrieveFromTopology_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(TopologyRetrieval)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ClusterServiceServer).RetrieveFromTopology(m, &clusterServiceRetrieveFromTopologyServer{stream})
+}
+
+type ClusterService_RetrieveFromTopologyServer interface {
+	Send(*structpb.Struct) error
+	grpc.ServerStream
+}
+
+type clusterServiceRetrieveFromTopologyServer struct {
+	grpc.ServerStream
+}
+
+func (x *clusterServiceRetrieveFromTopologyServer) Send(m *structpb.Struct) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -292,6 +350,12 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ClusterService_PerformClusterAction_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "RetrieveFromTopology",
+			Handler:       _ClusterService_RetrieveFromTopology_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "cluster.proto",
 }
