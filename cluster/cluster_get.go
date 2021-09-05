@@ -9,11 +9,7 @@ package cluster
 import (
 	"encoding/json"
 	"errors"
-<<<<<<< HEAD
 	"fmt"
-	"hash/crc32"
-=======
->>>>>>> upstream/develop
 	"io/ioutil"
 	"sort"
 	"strconv"
@@ -655,24 +651,7 @@ func (cluster *Cluster) GetTableDLLNoFK(schema string, table string, srv *Server
 	return ddl, err
 }
 
-<<<<<<< HEAD
-func (cluster *Cluster) GetDBModuleTags() []Tag {
-	var tags []Tag
-	for _, value := range cluster.DBModule.Filtersets {
-		var t Tag
-		t.Id = value.ID
-		s := strings.Split(value.Name, ".")
-		t.Name = s[len(s)-1]
-		t.Category = s[len(s)-2]
-		tags = append(tags, t)
-	}
-	return tags
-}
-
 func (cluster *Cluster) GetBackups() []v3.Backup {
-=======
-func (cluster *Cluster) GetBackups() []Backup {
->>>>>>> upstream/develop
 	return cluster.Backups
 }
 

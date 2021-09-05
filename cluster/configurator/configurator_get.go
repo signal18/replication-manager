@@ -11,14 +11,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signal18/replication-manager/config"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 )
 
-func (configurator *Configurator) GetDBModuleTags() []config.Tag {
-	var tags []config.Tag
+func (configurator *Configurator) GetDBModuleTags() []v3.Tag {
+	var tags []v3.Tag
 	for _, value := range configurator.DBModule.Filtersets {
-		var t config.Tag
-		t.Id = value.ID
+		var t v3.Tag
+		t.Id = uint64(value.ID)
 		s := strings.Split(value.Name, ".")
 		t.Name = s[len(s)-1]
 		t.Category = s[len(s)-2]
@@ -34,11 +34,11 @@ func (configurator *Configurator) GetProxyTags() []string {
 	return configurator.ProxyTags
 }
 
-func (configurator *Configurator) GetProxyModuleTags() []config.Tag {
-	var tags []config.Tag
+func (configurator *Configurator) GetProxyModuleTags() []v3.Tag {
+	var tags []v3.Tag
 	for _, value := range configurator.ProxyModule.Filtersets {
-		var t config.Tag
-		t.Id = value.ID
+		var t v3.Tag
+		t.Id = uint64(value.ID)
 		s := strings.SplitAfter(value.Name, ".")
 		t.Name = s[len(s)-1]
 		tags = append(tags, t)

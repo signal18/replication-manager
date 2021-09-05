@@ -821,3 +821,22 @@ func (s *ReplicationManager) GetBackups(in *v3.Cluster, stream v3.ClusterService
 
 	return nil
 }
+
+func (s *ReplicationManager) GetTags(in *v3.Cluster, stream v3.ClusterService_GetTagsServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in)
+	if err != nil {
+		return err
+	}
+
+	if err = user.Granted(config.GrantClusterShowBackups); err != nil {
+		return err
+	}
+
+	for _, tag := range mycluster.Configurator.GetDBModuleTags() {
+		if err := stream.Send(&tag); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

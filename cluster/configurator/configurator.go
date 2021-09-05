@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 )
@@ -27,8 +28,8 @@ type Configurator struct {
 	ClusterConfig config.Config     `json:"-"`
 	DBModule      config.Compliance `json:"-"`
 	ProxyModule   config.Compliance `json:"-"`
-	ConfigDBTags  []config.Tag      `json:"configTags"`    //from module
-	ConfigPrxTags []config.Tag      `json:"configPrxTags"` //from module
+	ConfigDBTags  []v3.Tag          `json:"configTags"`    //from module
+	ConfigPrxTags []v3.Tag          `json:"configPrxTags"` //from module
 	DBTags        []string          `json:"dbServersTags"` //from conf
 	ProxyTags     []string          `json:"proxyServersTags"`
 	WorkingDir    string            `json:"-"` // working dir is the place to generate the all cluster config

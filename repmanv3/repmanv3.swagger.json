@@ -2032,6 +2032,51 @@
           "ClusterPublicService"
         ]
       }
+    },
+    "/v3/clusters/{name}/tags": {
+      "get": {
+        "operationId": "ClusterService_GetTags",
+        "responses": {
+          "200": {
+            "description": "A successful response.(streaming responses)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "result": {
+                  "$ref": "#/definitions/v3Tag"
+                },
+                "error": {
+                  "$ref": "#/definitions/rpcStatus"
+                }
+              },
+              "title": "Stream result of v3Tag"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
     }
   },
   "definitions": {
@@ -2427,6 +2472,21 @@
       "properties": {
         "alive": {
           "$ref": "#/definitions/v3ServiceStatus"
+        }
+      }
+    },
+    "v3Tag": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "name": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
         }
       }
     }

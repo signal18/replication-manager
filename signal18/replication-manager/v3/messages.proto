@@ -306,9 +306,9 @@ message Backup {
 //   string version = 10;
 // }
 
-// message Tag {
-//   uint64 id = 1;
-//   string name = 2;
-//   string category = 3;
-// }
+message Tag {
+  uint64 id = 1;
+  string name = 2;
+  string category = 3;
+}
 

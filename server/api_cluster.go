@@ -475,10 +475,7 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 			return
 		}
 		repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
-<<<<<<< HEAD
 		mycluster.RollingRestart()
-=======
->>>>>>> upstream/develop
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

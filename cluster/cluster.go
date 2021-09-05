@@ -20,11 +20,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-<<<<<<< HEAD
-
-=======
 	"github.com/signal18/replication-manager/cluster/configurator"
->>>>>>> upstream/develop
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"

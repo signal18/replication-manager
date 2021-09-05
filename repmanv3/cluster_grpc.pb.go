@@ -149,6 +149,7 @@ type ClusterServiceClient interface {
 	RetrieveFromTopology(ctx context.Context, in *TopologyRetrieval, opts ...grpc.CallOption) (ClusterService_RetrieveFromTopologyClient, error)
 	GetClientCertificates(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*Certificate, error)
 	GetBackups(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetBackupsClient, error)
+	GetTags(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetTagsClient, error)
 }
 
 type clusterServiceClient struct {
@@ -268,6 +269,38 @@ func (x *clusterServiceGetBackupsClient) Recv() (*Backup, error) {
 	return m, nil
 }
 
+func (c *clusterServiceClient) GetTags(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetTagsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[2], "/signal18.replication_manager.v3.ClusterService/GetTags", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &clusterServiceGetTagsClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ClusterService_GetTagsClient interface {
+	Recv() (*Tag, error)
+	grpc.ClientStream
+}
+
+type clusterServiceGetTagsClient struct {
+	grpc.ClientStream
+}
+
+func (x *clusterServiceGetTagsClient) Recv() (*Tag, error) {
+	m := new(Tag)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility
@@ -279,6 +312,7 @@ type ClusterServiceServer interface {
 	RetrieveFromTopology(*TopologyRetrieval, ClusterService_RetrieveFromTopologyServer) error
 	GetClientCertificates(context.Context, *Cluster) (*Certificate, error)
 	GetBackups(*Cluster, ClusterService_GetBackupsServer) error
+	GetTags(*Cluster, ClusterService_GetTagsServer) error
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -306,6 +340,9 @@ func (UnimplementedClusterServiceServer) GetClientCertificates(context.Context, 
 }
 func (UnimplementedClusterServiceServer) GetBackups(*Cluster, ClusterService_GetBackupsServer) error {
 	return status.Errorf(codes.Unimplemented, "method GetBackups not implemented")
+}
+func (UnimplementedClusterServiceServer) GetTags(*Cluster, ClusterService_GetTagsServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetTags not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 
@@ -452,6 +489,27 @@ func (x *clusterServiceGetBackupsServer) Send(m *Backup) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _ClusterService_GetTags_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(Cluster)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ClusterServiceServer).GetTags(m, &clusterServiceGetTagsServer{stream})
+}
+
+type ClusterService_GetTagsServer interface {
+	Send(*Tag) error
+	grpc.ServerStream
+}
+
+type clusterServiceGetTagsServer struct {
+	grpc.ServerStream
+}
+
+func (x *clusterServiceGetTagsServer) Send(m *Tag) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -489,6 +547,11 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "GetBackups",
 			Handler:       _ClusterService_GetBackups_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetTags",
+			Handler:       _ClusterService_GetTags_Handler,
 			ServerStreams: true,
 		},
 	},

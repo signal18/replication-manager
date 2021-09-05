@@ -136,4 +136,11 @@ service ClusterService {
       get: "/v3/clusters/{name}/backups"
     };
   }
+
+  rpc GetTags(Cluster) returns (stream Tag) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/tags
+      get: "/v3/clusters/{name}/tags"
+    };
+  }
 }
