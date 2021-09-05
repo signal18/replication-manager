@@ -147,6 +147,7 @@ type ClusterServiceClient interface {
 	SetActionForClusterSettings(ctx context.Context, in *ClusterSetting, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	PerformClusterAction(ctx context.Context, in *ClusterAction, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RetrieveFromTopology(ctx context.Context, in *TopologyRetrieval, opts ...grpc.CallOption) (ClusterService_RetrieveFromTopologyClient, error)
+	GetClientCertificates(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*Certificate, error)
 }
 
 type clusterServiceClient struct {
@@ -225,6 +226,15 @@ func (x *clusterServiceRetrieveFromTopologyClient) Recv() (*structpb.Struct, err
 	return m, nil
 }
 
+func (c *clusterServiceClient) GetClientCertificates(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*Certificate, error) {
+	out := new(Certificate)
+	err := c.cc.Invoke(ctx, "/signal18.replication_manager.v3.ClusterService/GetClientCertificates", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility
@@ -234,6 +244,7 @@ type ClusterServiceServer interface {
 	SetActionForClusterSettings(context.Context, *ClusterSetting) (*emptypb.Empty, error)
 	PerformClusterAction(context.Context, *ClusterAction) (*emptypb.Empty, error)
 	RetrieveFromTopology(*TopologyRetrieval, ClusterService_RetrieveFromTopologyServer) error
+	GetClientCertificates(context.Context, *Cluster) (*Certificate, error)
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -255,6 +266,9 @@ func (UnimplementedClusterServiceServer) PerformClusterAction(context.Context, *
 }
 func (UnimplementedClusterServiceServer) RetrieveFromTopology(*TopologyRetrieval, ClusterService_RetrieveFromTopologyServer) error {
 	return status.Errorf(codes.Unimplemented, "method RetrieveFromTopology not implemented")
+}
+func (UnimplementedClusterServiceServer) GetClientCertificates(context.Context, *Cluster) (*Certificate, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetClientCertificates not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 
@@ -362,6 +376,24 @@ func (x *clusterServiceRetrieveFromTopologyServer) Send(m *structpb.Struct) erro
 	return x.ServerStream.SendMsg(m)
 }
 
+func _ClusterService_GetClientCertificates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Cluster)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).GetClientCertificates(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/signal18.replication_manager.v3.ClusterService/GetClientCertificates",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).GetClientCertificates(ctx, req.(*Cluster))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -384,6 +416,10 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PerformClusterAction",
 			Handler:    _ClusterService_PerformClusterAction_Handler,
+		},
+		{
+			MethodName: "GetClientCertificates",
+			Handler:    _ClusterService_GetClientCertificates_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

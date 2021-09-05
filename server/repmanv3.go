@@ -331,7 +331,7 @@ func (s *ReplicationManager) GetCluster(ctx context.Context, in *v3.Cluster) (*s
 	// TODO: note we are not scrubbing the passwords here
 	b, err := json.Marshal(mycluster)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "could not marshal config")
+		return nil, status.Error(codes.Internal, "could not marshal cluster")
 	}
 
 	out := &structpb.Struct{}
@@ -777,4 +777,28 @@ func marshalAndSend(in interface{}, send func(*structpb.Struct) error) error {
 	}
 
 	return nil
+}
+
+func (s *ReplicationManager) GetClientCertificates(ctx context.Context, in *v3.Cluster) (res *v3.Certificate, err error) {
+	user, mycluster, err := s.getClusterAndUser(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = user.Granted(config.GrantClusterShowCertificates); err != nil {
+		return nil, err
+	}
+
+	certs, err := mycluster.GetClientCertificates()
+	if err != nil {
+		return nil, err
+	}
+
+	res = &v3.Certificate{
+		ClientCertificate: certs["clientCert"],
+		ClientKey:         certs["clientKey"],
+		Authority:         certs["caCert"],
+	}
+
+	return
 }

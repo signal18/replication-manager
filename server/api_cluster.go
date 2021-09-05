@@ -827,7 +827,14 @@ func (repman *ReplicationManager) handlerMuxClusterCertificates(w http.ResponseW
 	if mycluster != nil {
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetClientCertificates())
+		certs, err := mycluster.GetClientCertificates()
+		if err != nil {
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+		}
+		err = e.Encode(certs)
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
