@@ -98,12 +98,14 @@ func (cluster *Cluster) RollingRestart() error {
 			err := cluster.StopDatabaseService(slave)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
+				slave.SwitchMaintenance()
 				return err
 			}
 
 			err = cluster.WaitDatabaseFailed(slave)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Cancel rolling restart slave does not transit suspect %s %s", slave.URL, err)
+				cluster.LogPrintf(LvlErr, "Cancel rolling stop slave does not transit Failed %s %s", slave.URL, err)
+				slave.SwitchMaintenance()
 				return err
 			}
 
@@ -119,11 +121,12 @@ func (cluster *Cluster) RollingRestart() error {
 	cluster.SwitchoverWaitTest()
 	master := cluster.GetServerFromName(masterID)
 	if cluster.master.DSN == master.DSN {
-		cluster.LogPrintf(LvlErr, "Cancel rolling restart master is the same after Switchover")
+		cluster.LogPrintf(LvlErr, "Cancel rolling original master %s is the same %s after switchover", master.URL, cluster.master.URL)
 		return nil
 	}
 	if master.IsDown() {
-		return errors.New("Cancel roolling restart master down")
+		cluster.LogPrintf(LvlErr, "Cancel rolling original master is down %s", master.URL)
+		return errors.New("Cancel rolling restart original master down")
 	}
 	if !master.IsMaintenance {
 		master.SwitchMaintenance()

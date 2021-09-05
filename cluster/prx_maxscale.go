@@ -283,3 +283,7 @@ func (pr *MaxscaleProxy) SetMaintenance(server *ServerMonitor) {
 func (prx *MaxscaleProxy) Failover() {
 	prx.Init()
 }
+
+func (proxy *MaxscaleProxy) CertificatesReload() error {
+	return nil
+}

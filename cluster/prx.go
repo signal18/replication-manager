@@ -73,7 +73,7 @@ type DatabaseProxy interface {
 	SetMaintenance(server *ServerMonitor)
 	BackendsStateChange()
 	GetType() string
-
+	CertificatesReload() error
 	IsRunning() bool
 	SetCredential(credential string)
 
@@ -111,9 +111,10 @@ type DatabaseProxy interface {
 	GetUseSSL() string
 	GetUseCompression() string
 	GetDatadir() string
+	GetConfigDatadir() string
+	GetConfigConfigdir() string
 	GetEnv() map[string]string
 	GetConfigProxyModule(variable string) string
-
 	SendStats() error
 
 	OpenSVCGetProxyDefaultSection() map[string]string
@@ -125,18 +126,21 @@ type DatabaseProxy interface {
 	SetServiceName(namespace string)
 
 	SetProvisionCookie() error
+	SetUnprovisionCookie() error
 	SetReprovCookie() error
 	SetRestartCookie() error
 	SetWaitStartCookie() error
 	SetWaitStopCookie() error
 
 	HasProvisionCookie() bool
+	HasUnprovisionCookie() bool
 	HasReprovCookie() bool
 	HasRestartCookie() bool
 	HasWaitStartCookie() bool
 	HasWaitStopCookie() bool
 
 	DelProvisionCookie() error
+	DelUnprovisionCookie() error
 	DelReprovisionCookie() error
 	DelRestartCookie() error
 	DelWaitStartCookie() error
@@ -321,6 +325,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 				pr.SetState(stateProxyRunning)
 				if pr.HasWaitStartCookie() {
 					pr.DelWaitStartCookie()
+					pr.DelProvisionCookie()
 				}
 			} else {
 				fc := pr.GetFailCount() + 1
@@ -334,6 +339,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 					pr.SetState(stateFailed)
 					pr.DelWaitStopCookie()
 					pr.DelRestartCookie()
+					pr.DelUnprovisionCookie()
 				} else {
 					pr.SetState(stateSuspect)
 				}

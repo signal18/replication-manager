@@ -62,32 +62,16 @@ func (cluster *Cluster) DropDBTag(dtag string) {
 }
 
 func (cluster *Cluster) DropDBTagConfig(dtag string) bool {
-	var newtags []string
-	changed := false
-	for _, tag := range cluster.DBTags {
-		if dtag != tag {
-			newtags = append(newtags, tag)
-		}
-	}
-	if len(cluster.DBTags) != len(newtags) {
-		changed = true
-		cluster.DBTags = newtags
-		cluster.Conf.ProvTags = strings.Join(cluster.DBTags, ",")
-		cluster.SetClusterVariablesFromConfig()
-	}
+	changed := cluster.Configurator.DropDBTagConfig(dtag)
+	cluster.Conf.ProvTags = strings.Join(cluster.Configurator.GetDBTags(), ",")
+	cluster.SetClusterVariablesFromConfig()
 	return changed
 }
 
 func (cluster *Cluster) DropProxyTag(dtag string) {
-	var newtags []string
-	for _, tag := range cluster.ProxyTags {
-		//	cluster.LogPrintf(LvlInfo, "%s %s", tag, dtag)
-		if dtag != tag {
-			newtags = append(newtags, tag)
-		}
-	}
-	cluster.ProxyTags = newtags
-	cluster.Conf.ProvProxTags = strings.Join(cluster.ProxyTags, ",")
+
+	cluster.Configurator.DropProxyTag(dtag)
+	cluster.Conf.ProvProxTags = strings.Join(cluster.Configurator.GetProxyTags(), ",")
 	cluster.SetClusterVariablesFromConfig()
 	cluster.SetProxiesRestartCookie()
 }

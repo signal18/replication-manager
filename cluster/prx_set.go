@@ -69,6 +69,10 @@ func (proxy *Proxy) SetProvisionCookie() error {
 	return proxy.createCookie("cookie_prov")
 }
 
+func (proxy *Proxy) SetUnprovisionCookie() error {
+	return proxy.createCookie("cookie_unprov")
+}
+
 func (proxy *Proxy) SetWaitStartCookie() error {
 	return proxy.createCookie("cookie_waitstart")
 }

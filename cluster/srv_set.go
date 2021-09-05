@@ -292,6 +292,10 @@ func (server *ServerMonitor) SetProvisionCookie() error {
 	return server.createCookie("cookie_prov")
 }
 
+func (server *ServerMonitor) SetUnprovisionCookie() error {
+	return server.createCookie("cookie_unprov")
+}
+
 func (server *ServerMonitor) SetRestartCookie() error {
 	return server.createCookie("cookie_restart")
 }
@@ -306,4 +310,15 @@ func (server *ServerMonitor) SetWaitStopCookie() error {
 
 func (server *ServerMonitor) SetReprovCookie() error {
 	return server.createCookie("cookie_reprov")
+}
+
+func (server *ServerMonitor) SetWaitBackupCookie() error {
+	return server.createCookie("cookie_waitbackup")
+}
+
+func (server *ServerMonitor) SetBackupPhysicalCookie() error {
+	return server.createCookie("cookie_physicalbackup")
+}
+func (server *ServerMonitor) SetBackupLogicalCookie() error {
+	return server.createCookie("cookie_logicalbackup")
 }

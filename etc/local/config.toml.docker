@@ -4,7 +4,7 @@ http-server = true
 http-bind-address = "0.0.0.0"
 monitoring-save-config = true
 
-prov-db-binary-basedir= "/usr/bin"
+prov-db-binary-basedir= "/usr/sbin"
 prov-db-client-basedir= "/usr/bin"
 backup-mysqlclient-path ="/usr/bin/mysql"
 backup-mysqlbinlog-path = "/usr/bin/mysqlbinlog"

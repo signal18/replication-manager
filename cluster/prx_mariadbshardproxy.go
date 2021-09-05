@@ -180,6 +180,11 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MariadbShardProxy) {
 
 }
 
+func (proxy *MariadbShardProxy) CertificatesReload() error {
+	proxy.ShardProxy.CertificatesReload()
+	return nil
+}
+
 func (proxy *MariadbShardProxy) Refresh() error {
 	if proxy.ShardProxy == nil {
 		return errors.New("Sharding proxy no database monitor yet initialize")

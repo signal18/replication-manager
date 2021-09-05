@@ -1,18 +1,18 @@
 [Default]
 prov-orchestrator = "local"
+sysbench-v1 = true
 
 #mariadb
 prov-db-binary-basedir= "/usr/local/bin"
 prov-db-client-basedir= "/usr/local/bin"
 backup-mysqlclient-path ="/usr/local/bin/mysql"
 backup-mysqlbinlog-path = "/usr/local/bin/mysqlbinlog"
-
+backup-mysqldump-options = "--hex-blob --single-transaction --verbose --all-databases --add-drop-database"
 #mysql
 #prov-db-binary-basedir= "/usr/local/mysql/bin"
 #prov-db-client-basedir= "/usr/local/mysql/bin"
 #backup-mysqlclient-path ="/usr/local/mysql/bin/mysql"
 #backup-mysqlbinlog-path = "/usr/local/bin/mysql/mysqlbinlog"
-
 
 haproxy-binary-path= "/usr/local/bin/haproxy"
 sysbench-binary-path = "/usr/local/bin/sysbench"
@@ -31,7 +31,8 @@ backup-mysqldump-path = "/usr/local/bin/mysqldump"
 #include="etc/local/features/graphite"
 #include="etc/local/features/ipv6"
 #include="etc/local/features/scheduler"
-include="etc/local/features/prefered"
+#include="etc/local/features/prefered"
+include="etc/local/features/tls"
 #include="etc/local/masterslave"
 #include="etc/local/masterslave/consul"
 #include="etc/local/masterslave/haproxy"

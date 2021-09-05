@@ -1,0 +1,44 @@
+
+[MasterSlaveHaproxy]
+title = "MasterSlaveHaproxy"
+
+prov-orchestrator = "local"
+db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"
+db-servers-prefered-master = "127.0.0.1:3310"
+db-servers-credential = "root:test"
+db-servers-connect-timeout = 1
+replication-credential = "root:test"
+
+prov-db-tags="semisync,innodb,noquerycache,threadpool,slow,pfs,linux,readonly,diskmonitor,sqlerror,row,logtotable"
+
+haproxy = true
+haproxy-write-port = 3301
+haproxy-read-port = 3302
+
+[[MasterSlaveHaproxy.cdc]]
+# cloud_store address
+type = "kafka"
+hosts = "mixr-fr-2.signal18.io:9092"
+name = "kafkareplication"
+replication-server-id = 10001
+
+# MySQL data source
+[[MasterSlaveHaproxy.cdc.watch]]
+schema = "replication_manager_schema"
+# Only below tables will be synced
+# "test_river_[0-9]{4}" is a wildcard table format, you can use it if you have many sub tables, like table_0000 - table_1023
+# I don't think it is necessary to sync all tables in a database.
+tables = ["jobs","sbtest1" ]
+# Below is for special rule mapping
+
+[[MasterSlaveHaproxy.cdc.rule]]
+from-schema = "replication_manager_schema"
+from-table = "jobs"
+to-kafka-topic = "logs"
+to-kafka-partitions = 1
+
+[[MasterSlaveHaproxy.cdc.rule]]
+from-schema = "replication_manager_schema"
+from-table = "sbtest1"
+to-kafka-topic = "logs"
+to-kafka-partitions = 1

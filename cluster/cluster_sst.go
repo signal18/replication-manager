@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -289,32 +290,74 @@ func (sst *SST) stream_copy_to_restic() <-chan int {
 
 func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 	port, _ := strconv.Atoi(sv.SSTPort)
+
+	if cluster.Conf.SchedulerReceiverUseSSL {
+		cluster.SSTRunSenderSSL(backupfile, sv)
+		return
+	}
 	client, err := net.Dial("tcp", fmt.Sprintf("%s:%d", sv.Host, port))
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "SST Reseed failed connection to port %s server %s %s ", sv.SSTPort, sv.Host, err)
 		return
 	}
+
 	defer client.Close()
 	file, err := os.Open(backupfile)
+	cluster.LogPrintf(LvlInfo, "SST sending file: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
 		return
 	}
-	/*fileInfo, err := file.Stat()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}*/
 
 	sendBuffer := make([]byte, 16384)
-	fmt.Println("Start sending file!")
+	//fmt.Println("Start sending file!")
+	var total uint64
 	for {
 		_, err = file.Read(sendBuffer)
 		if err == io.EOF {
 			break
 		}
-		client.Write(sendBuffer)
+		bts, err := client.Write(sendBuffer)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "SST failed to write chunk %s at position %d", err, total)
+		}
+		total = total + uint64(bts)
 	}
 	cluster.LogPrintf(LvlInfo, "Backup has been sent, closing connection!")
 
+}
+
+func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor) {
+	var (
+		client *tls.Conn
+		err    error
+	)
+	port, _ := strconv.Atoi(sv.SSTPort)
+
+	config := &tls.Config{InsecureSkipVerify: true}
+	if client, err = tls.Dial("tcp", fmt.Sprintf("%s:%d", sv.Host, port), config); err != nil {
+		cluster.LogPrintf(LvlErr, "SST Reseed failed connection via SSL to port %s server %s %s ", sv.SSTPort, sv.Host, err)
+		return
+	}
+	defer client.Close()
+	file, err := os.Open(backupfile)
+	cluster.LogPrintf(LvlInfo, "SST sending file via SSL: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
+		return
+	}
+	sendBuffer := make([]byte, 16384)
+	var total uint64
+	for {
+		_, err = file.Read(sendBuffer)
+		if err == io.EOF {
+			break
+		}
+		bts, err := client.Write(sendBuffer)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "SST failed to write chunk %s at position %d", err, total)
+		}
+		total = total + uint64(bts)
+	}
+	cluster.LogPrintf(LvlInfo, "Backup has been sent via SSL , closing connection!")
 }

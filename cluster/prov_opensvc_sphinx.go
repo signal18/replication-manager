@@ -21,10 +21,10 @@ func (cluster *Cluster) OpenSVCGetSphinxContainerSection(server *SphinxProxy) ma
 		svccontainer["image"] = "{env.sphinx_img}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
-			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/conf:/usr/local/etc:rw	-v {env.base_dir}/pod01/data:/var/lib/sphinx:rw -v {env.base_dir}/pod01/data:/var/idx/sphinx:rw	-v {env.base_dir}/pod01/log:/var/log/sphinx:rw`
+			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/sphinx:/usr/local/etc:rw	-v {env.base_dir}/pod01/data:/var/lib/sphinx:rw -v {env.base_dir}/pod01/data:/var/idx/sphinx:rw	-v {env.base_dir}/pod01/log:/var/log/sphinx:rw`
 		} else {
 			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
-			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/conf:/usr/local/etc:rw	{env.base_dir}/pod01/data:/var/lib/sphinx:rw {env.base_dir}/pod01/data:/var/idx/sphinx:rw	{env.base_dir}/pod01/log:/var/log/sphinx:rw`
+			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/etc/sphinx:/usr/local/etc:rw	{env.base_dir}/pod01/data:/var/lib/sphinx:rw {env.base_dir}/pod01/data:/var/idx/sphinx:rw	{env.base_dir}/pod01/log:/var/log/sphinx:rw`
 		}
 		svccontainer["run_command"] = "indexall.sh"
 	}

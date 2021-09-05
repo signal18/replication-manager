@@ -27,7 +27,15 @@ func (cluster *Cluster) OnPremiseProvisionBootsrapProxy(server DatabaseProxy, cl
 		return errors.New("OnPremise Bootsrap via SSH %s" + err.Error())
 	}
 	cluster.LogPrintf(LvlInfo, "OnPremise Provisioning  : %s", string(out))
-	out, err = client.Cmd("wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/opensvc/bootstrap | sh").SmartOutput()
+	cmd := "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + server.GetType() + "/bootstrap | sh"
+	if cluster.Configurator.HaveDBTag("rpm") {
+		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + server.GetType() + "/bootstrap | sh"
+	}
+	if cluster.Configurator.HaveDBTag("package") {
+		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/package/linux/" + server.GetType() + "/bootstrap | sh"
+	}
+
+	out, err = client.Cmd(cmd).SmartOutput()
 	if err != nil {
 		return errors.New("OnPremise Bootsrap via SSH %s" + err.Error())
 	}

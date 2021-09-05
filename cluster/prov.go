@@ -342,7 +342,7 @@ func (cluster *Cluster) RollingUpgrade() {
 }
 
 func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
-	cluster.LogPrintf(LvlInfo, "Stopping database service %s", cluster.Name+"/svc/"+server.Name)
+	cluster.LogPrintf(LvlInfo, "Stopping database service %s", cluster.Name+"/svc/"+server.URL)
 	var err error
 
 	switch cluster.Conf.ProvOrchestrator {

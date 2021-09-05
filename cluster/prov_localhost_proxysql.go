@@ -75,7 +75,7 @@ func (cluster *Cluster) LocalhostStartProxySQLService(prx *ProxySQLProxy) error 
 			return err
 		}	*/
 
-	mariadbdCmd := exec.Command(cluster.Conf.ProxysqlBinaryPath, "--config", prx.Datadir+"/init/etc/proxysql.cnf", "--datadir", prx.Datadir+"/var", "--initial")
+	mariadbdCmd := exec.Command(cluster.Conf.ProxysqlBinaryPath, "--config", prx.Datadir+"/init/etc/proxysql/proxysql.cnf", "--datadir", prx.Datadir+"/var", "--initial")
 	cluster.LogPrintf(LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 
 	var out bytes.Buffer

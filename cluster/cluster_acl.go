@@ -410,6 +410,8 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 		return true
 	case "/api/clusters/" + cluster.Name:
 		return true
+	case "/api/clusters/" + cluster.Name + "/diffvariables":
+		return true
 	}
 	if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/servers") {
 		return cluster.IsURLPassDatabasesACL(strUser, URL)
@@ -440,6 +442,16 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterCertificatesReload] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/certificates-reload") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterCertificatesRotate] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/certificates-rotate") {
+			return true
+		}
+	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterResetSLA] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/reset-sla") {
 			return true
@@ -455,11 +467,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterRotateKey] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/rotatekeys") {
-			return true
-		}
-	}
+
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterTraffic] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/stop-traffic") {
 			return true

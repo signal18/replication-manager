@@ -121,9 +121,13 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxFailover)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/rotatekeys", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/certificates-rotate", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRotateKeys)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/certificates-reload", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterReloadCertificates)),
 	))
 	router.Handle("/api/clusters/{clusterName}/actions/reset-sla", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -274,6 +278,12 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/tests/actions/run/{testName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxOneTest)),
+	))
+
+	// endpoint to fetch Cluster.DiffVariables
+	router.Handle("/api/clusters/{clusterName}/diffvariables", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerDiffVariables)),
 	))
 }
 
@@ -465,7 +475,10 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 			return
 		}
 		repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
+<<<<<<< HEAD
 		mycluster.RollingRestart()
+=======
+>>>>>>> upstream/develop
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -726,9 +739,12 @@ func (repman *ReplicationManager) handlerMuxSetSettingsDiscover(w http.ResponseW
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.ConfigDiscovery()
+		err := mycluster.ConfigDiscovery()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 	} else {
-
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -853,7 +869,7 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 	if mycluster != nil {
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetDBModuleTags())
+		err := e.Encode(mycluster.Configurator.GetDBModuleTags())
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
@@ -1475,13 +1491,17 @@ func (repman *ReplicationManager) handlerMuxClusterStatus(w http.ResponseWriter,
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	if mycluster.GetStatus() {
-		io.WriteString(w, `{"alive": "running"}`)
+	if mycluster != nil {
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		if mycluster.GetStatus() {
+			io.WriteString(w, `{"alive": "running"}`)
+		} else {
+			io.WriteString(w, `{"alive": "errors"}`)
+		}
 	} else {
-		io.WriteString(w, `{"alive": "errors"}`)
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, "No cluster found:"+vars["clusterName"])
 	}
 }
 
@@ -1565,6 +1585,20 @@ func (repman *ReplicationManager) handlerMuxClusterApplyDynamicConfig(w http.Res
 			return
 		}
 		go mycluster.SetDBDynamicConfig()
+	}
+	return
+}
+
+func (repman *ReplicationManager) handlerMuxClusterReloadCertificates(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		go mycluster.ReloadCertificates()
 	}
 	return
 }
@@ -1790,4 +1824,31 @@ func (repman *ReplicationManager) handlerMuxClusterSchema(w http.ResponseWriter,
 	}
 	return
 
+}
+
+func (repman *ReplicationManager) handlerDiffVariables(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		vars := mycluster.DiffVariables
+		if vars == nil {
+			vars = []cluster.VariableDiff{}
+		}
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(vars)
+		if err != nil {
+			http.Error(w, "Encoding error for DiffVariables", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
 }
