@@ -312,3 +312,14 @@ message Tag {
   string category = 3;
 }
 
+message Table {
+  string table_schema = 1 [json_name="tableSchema"];
+	string table_name = 2 [json_name="tableName"];
+	string engine = 3 [json_name="engine"];
+	int64 table_rows = 4 [json_name="tableRows"];
+	int64 data_length = 5 [json_name="dataLength"];
+	int64 index_length = 6 [json_name="indexLength"];
+	uint64 table_crc = 7 [json_name="tableCrc"];
+	string table_clusters = 8 [json_name="tableClusters"];
+	string table_sync = 9 [json_name="tableSync"];
+}

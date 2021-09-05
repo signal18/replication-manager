@@ -368,8 +368,12 @@ func (s *ReplicationManager) MasterPhysicalBackup(ctx context.Context, in *v3.Cl
 		return nil, err
 	}
 
-	mycluster.GetMaster().JobBackupPhysical()
-	return &emptypb.Empty{}, nil
+	m := mycluster.GetMaster()
+	if m == nil {
+		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrClusterMasterNotSet, "cluster", in.Name).Err()
+	}
+	_, err = m.JobBackupPhysical()
+	return &emptypb.Empty{}, err
 }
 
 func (s *ReplicationManager) GetSettingsForCluster(ctx context.Context, in *v3.Cluster) (*structpb.Struct, error) {
@@ -564,7 +568,11 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	case v3.ClusterAction_FAILOVER:
 		mycluster.MasterFailover(true)
 	case v3.ClusterAction_MASTER_PHYSICAL_BACKUP:
-		_, err = mycluster.GetMaster().JobBackupPhysical()
+		m := mycluster.GetMaster()
+		if m == nil {
+			return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrClusterMasterNotSet, "cluster", in.Cluster.Name).Err()
+		}
+		_, err = m.JobBackupPhysical()
 	case v3.ClusterAction_OPTIMIZE:
 		mycluster.RollingOptimize()
 	case v3.ClusterAction_RESET_FAILOVER_CONTROL:
@@ -834,6 +842,50 @@ func (s *ReplicationManager) GetTags(in *v3.Cluster, stream v3.ClusterService_Ge
 
 	for _, tag := range mycluster.Configurator.GetDBModuleTags() {
 		if err := stream.Send(&tag); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *ReplicationManager) GetQueryRules(in *v3.Cluster, stream v3.ClusterService_GetQueryRulesServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in)
+	if err != nil {
+		return err
+	}
+
+	// TODO: introduce new Grants for this type of endpoint
+	if err = user.Granted(config.GrantClusterGrant); err != nil {
+		return err
+	}
+
+	for _, queryrule := range mycluster.GetQueryRules() {
+		if err := marshalAndSend(queryrule, stream.Send); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *ReplicationManager) GetSchema(in *v3.Cluster, stream v3.ClusterService_GetSchemaServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in)
+	if err != nil {
+		return err
+	}
+
+	if err = user.Granted(config.GrantDBShowSchema); err != nil {
+		return err
+	}
+
+	m := mycluster.GetMaster()
+	if m == nil {
+		return v3.NewErrorResource(codes.InvalidArgument, v3.ErrClusterMasterNotSet, "cluster", in.Name).Err()
+	}
+
+	for _, table := range m.GetDictTables() {
+		if err := stream.Send(&table); err != nil {
 			return err
 		}
 	}

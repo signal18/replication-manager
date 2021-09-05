@@ -143,4 +143,18 @@ service ClusterService {
       get: "/v3/clusters/{name}/tags"
     };
   }
+
+  rpc GetQueryRules(Cluster) returns (stream google.protobuf.Struct) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/queryrules
+      get: "/v3/clusters/{name}/queryrules"
+    };
+  }
+
+  rpc GetSchema(Cluster) returns (stream Table) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/schema
+      get: "/v3/clusters/{name}/schema"
+    };
+  }
 }

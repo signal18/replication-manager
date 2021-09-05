@@ -1961,6 +1961,94 @@
         ]
       }
     },
+    "/v3/clusters/{name}/queryrules": {
+      "get": {
+        "operationId": "ClusterService_GetQueryRules",
+        "responses": {
+          "200": {
+            "description": "A successful response.(streaming responses)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "result": {},
+                "error": {
+                  "$ref": "#/definitions/rpcStatus"
+                }
+              },
+              "title": "Stream result of protobufStruct"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
+    "/v3/clusters/{name}/schema": {
+      "get": {
+        "operationId": "ClusterService_GetSchema",
+        "responses": {
+          "200": {
+            "description": "A successful response.(streaming responses)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "result": {
+                  "$ref": "#/definitions/v3Table"
+                },
+                "error": {
+                  "$ref": "#/definitions/rpcStatus"
+                }
+              },
+              "title": "Stream result of v3Table"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "clusterShardingName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
     "/v3/clusters/{name}/settings": {
       "get": {
         "operationId": "ClusterService_GetSettingsForCluster",
@@ -2472,6 +2560,42 @@
       "properties": {
         "alive": {
           "$ref": "#/definitions/v3ServiceStatus"
+        }
+      }
+    },
+    "v3Table": {
+      "type": "object",
+      "properties": {
+        "tableSchema": {
+          "type": "string"
+        },
+        "tableName": {
+          "type": "string"
+        },
+        "engine": {
+          "type": "string"
+        },
+        "tableRows": {
+          "type": "string",
+          "format": "int64"
+        },
+        "dataLength": {
+          "type": "string",
+          "format": "int64"
+        },
+        "indexLength": {
+          "type": "string",
+          "format": "int64"
+        },
+        "tableCrc": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "tableClusters": {
+          "type": "string"
+        },
+        "tableSync": {
+          "type": "string"
         }
       }
     },

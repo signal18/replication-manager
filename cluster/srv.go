@@ -30,6 +30,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/hpcloud/tail"
 	"github.com/jmoiron/sqlx"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -149,8 +150,8 @@ type ServerMonitor struct {
 	PrevStatus                  map[string]string            `json:"-"`
 	PFSQueries                  map[string]dbhelper.PFSQuery `json:"-"` //PFS queries
 	SlowPFSQueries              map[string]dbhelper.PFSQuery `json:"-"` //PFS queries from slow
-	DictTables                  map[string]dbhelper.Table    `json:"-"`
-	Tables                      []dbhelper.Table             `json:"-"`
+	DictTables                  map[string]v3.Table          `json:"-"`
+	Tables                      []v3.Table                   `json:"-"`
 	Disks                       []dbhelper.Disk              `json:"-"`
 	Plugins                     map[string]dbhelper.Plugin   `json:"-"`
 	Users                       map[string]dbhelper.Grant    `json:"-"`

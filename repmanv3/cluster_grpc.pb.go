@@ -150,6 +150,8 @@ type ClusterServiceClient interface {
 	GetClientCertificates(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*Certificate, error)
 	GetBackups(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetBackupsClient, error)
 	GetTags(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetTagsClient, error)
+	GetQueryRules(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetQueryRulesClient, error)
+	GetSchema(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetSchemaClient, error)
 }
 
 type clusterServiceClient struct {
@@ -301,6 +303,70 @@ func (x *clusterServiceGetTagsClient) Recv() (*Tag, error) {
 	return m, nil
 }
 
+func (c *clusterServiceClient) GetQueryRules(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetQueryRulesClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[3], "/signal18.replication_manager.v3.ClusterService/GetQueryRules", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &clusterServiceGetQueryRulesClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ClusterService_GetQueryRulesClient interface {
+	Recv() (*structpb.Struct, error)
+	grpc.ClientStream
+}
+
+type clusterServiceGetQueryRulesClient struct {
+	grpc.ClientStream
+}
+
+func (x *clusterServiceGetQueryRulesClient) Recv() (*structpb.Struct, error) {
+	m := new(structpb.Struct)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *clusterServiceClient) GetSchema(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetSchemaClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[4], "/signal18.replication_manager.v3.ClusterService/GetSchema", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &clusterServiceGetSchemaClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ClusterService_GetSchemaClient interface {
+	Recv() (*Table, error)
+	grpc.ClientStream
+}
+
+type clusterServiceGetSchemaClient struct {
+	grpc.ClientStream
+}
+
+func (x *clusterServiceGetSchemaClient) Recv() (*Table, error) {
+	m := new(Table)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility
@@ -313,6 +379,8 @@ type ClusterServiceServer interface {
 	GetClientCertificates(context.Context, *Cluster) (*Certificate, error)
 	GetBackups(*Cluster, ClusterService_GetBackupsServer) error
 	GetTags(*Cluster, ClusterService_GetTagsServer) error
+	GetQueryRules(*Cluster, ClusterService_GetQueryRulesServer) error
+	GetSchema(*Cluster, ClusterService_GetSchemaServer) error
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -343,6 +411,12 @@ func (UnimplementedClusterServiceServer) GetBackups(*Cluster, ClusterService_Get
 }
 func (UnimplementedClusterServiceServer) GetTags(*Cluster, ClusterService_GetTagsServer) error {
 	return status.Errorf(codes.Unimplemented, "method GetTags not implemented")
+}
+func (UnimplementedClusterServiceServer) GetQueryRules(*Cluster, ClusterService_GetQueryRulesServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetQueryRules not implemented")
+}
+func (UnimplementedClusterServiceServer) GetSchema(*Cluster, ClusterService_GetSchemaServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetSchema not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 
@@ -510,6 +584,48 @@ func (x *clusterServiceGetTagsServer) Send(m *Tag) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _ClusterService_GetQueryRules_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(Cluster)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ClusterServiceServer).GetQueryRules(m, &clusterServiceGetQueryRulesServer{stream})
+}
+
+type ClusterService_GetQueryRulesServer interface {
+	Send(*structpb.Struct) error
+	grpc.ServerStream
+}
+
+type clusterServiceGetQueryRulesServer struct {
+	grpc.ServerStream
+}
+
+func (x *clusterServiceGetQueryRulesServer) Send(m *structpb.Struct) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _ClusterService_GetSchema_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(Cluster)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ClusterServiceServer).GetSchema(m, &clusterServiceGetSchemaServer{stream})
+}
+
+type ClusterService_GetSchemaServer interface {
+	Send(*Table) error
+	grpc.ServerStream
+}
+
+type clusterServiceGetSchemaServer struct {
+	grpc.ServerStream
+}
+
+func (x *clusterServiceGetSchemaServer) Send(m *Table) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -552,6 +668,16 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "GetTags",
 			Handler:       _ClusterService_GetTags_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetQueryRules",
+			Handler:       _ClusterService_GetQueryRules_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetSchema",
+			Handler:       _ClusterService_GetSchema_Handler,
 			ServerStreams: true,
 		},
 	},
