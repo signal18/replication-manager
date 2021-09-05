@@ -148,6 +148,7 @@ type ClusterServiceClient interface {
 	PerformClusterAction(ctx context.Context, in *ClusterAction, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RetrieveFromTopology(ctx context.Context, in *TopologyRetrieval, opts ...grpc.CallOption) (ClusterService_RetrieveFromTopologyClient, error)
 	GetClientCertificates(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*Certificate, error)
+	GetBackups(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetBackupsClient, error)
 }
 
 type clusterServiceClient struct {
@@ -235,6 +236,38 @@ func (c *clusterServiceClient) GetClientCertificates(ctx context.Context, in *Cl
 	return out, nil
 }
 
+func (c *clusterServiceClient) GetBackups(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetBackupsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[1], "/signal18.replication_manager.v3.ClusterService/GetBackups", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &clusterServiceGetBackupsClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ClusterService_GetBackupsClient interface {
+	Recv() (*Backup, error)
+	grpc.ClientStream
+}
+
+type clusterServiceGetBackupsClient struct {
+	grpc.ClientStream
+}
+
+func (x *clusterServiceGetBackupsClient) Recv() (*Backup, error) {
+	m := new(Backup)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility
@@ -245,6 +278,7 @@ type ClusterServiceServer interface {
 	PerformClusterAction(context.Context, *ClusterAction) (*emptypb.Empty, error)
 	RetrieveFromTopology(*TopologyRetrieval, ClusterService_RetrieveFromTopologyServer) error
 	GetClientCertificates(context.Context, *Cluster) (*Certificate, error)
+	GetBackups(*Cluster, ClusterService_GetBackupsServer) error
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -269,6 +303,9 @@ func (UnimplementedClusterServiceServer) RetrieveFromTopology(*TopologyRetrieval
 }
 func (UnimplementedClusterServiceServer) GetClientCertificates(context.Context, *Cluster) (*Certificate, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetClientCertificates not implemented")
+}
+func (UnimplementedClusterServiceServer) GetBackups(*Cluster, ClusterService_GetBackupsServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetBackups not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 
@@ -394,6 +431,27 @@ func _ClusterService_GetClientCertificates_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterService_GetBackups_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(Cluster)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ClusterServiceServer).GetBackups(m, &clusterServiceGetBackupsServer{stream})
+}
+
+type ClusterService_GetBackupsServer interface {
+	Send(*Backup) error
+	grpc.ServerStream
+}
+
+type clusterServiceGetBackupsServer struct {
+	grpc.ServerStream
+}
+
+func (x *clusterServiceGetBackupsServer) Send(m *Backup) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -426,6 +484,11 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "RetrieveFromTopology",
 			Handler:       _ClusterService_RetrieveFromTopology_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetBackups",
+			Handler:       _ClusterService_GetBackups_Handler,
 			ServerStreams: true,
 		},
 	},

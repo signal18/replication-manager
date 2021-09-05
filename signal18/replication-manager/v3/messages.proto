@@ -266,6 +266,24 @@ message TopologyRetrieval {
   Retrieval retrieve = 2;
 }
 
+message Certificate {
+  string client_certificate = 1;
+  string client_key = 2;
+  string authority = 3;
+}
+
+message Backup {
+  string id = 1;
+  string short_id = 2 [json_name="short_id"];
+  string time = 3;
+  string tree = 4;
+  repeated string paths = 5;
+  string hostname = 6;
+  string username = 7;
+  int64 uid = 8;
+  int64 gid = 9;
+}
+
 // message Cluster {
 //   string name = 1;
 //   string tenant = 2;

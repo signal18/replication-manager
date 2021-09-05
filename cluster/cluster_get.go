@@ -18,6 +18,7 @@ import (
 
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -660,7 +661,7 @@ func (cluster *Cluster) GetDBModuleTags() []Tag {
 	return tags
 }
 
-func (cluster *Cluster) GetBackups() []Backup {
+func (cluster *Cluster) GetBackups() []v3.Backup {
 	return cluster.Backups
 }
 

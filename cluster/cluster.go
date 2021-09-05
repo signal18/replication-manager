@@ -21,8 +21,10 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -137,7 +139,7 @@ type Cluster struct {
 	DBModule                      config.Compliance           `json:"-"`
 	ProxyModule                   config.Compliance           `json:"-"`
 	QueryRules                    map[uint32]config.QueryRule `json:"-"`
-	Backups                       []Backup                    `json:"-"`
+	Backups                       []v3.Backup                 `json:"-"`
 	SLAHistory                    []state.Sla                 `json:"slaHistory"`
 	APIUsers                      map[string]APIUser          `json:"apiUsers"`
 	Schedule                      map[string]cron.Entry       `json:"-"`

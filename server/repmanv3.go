@@ -802,3 +802,22 @@ func (s *ReplicationManager) GetClientCertificates(ctx context.Context, in *v3.C
 
 	return
 }
+
+func (s *ReplicationManager) GetBackups(in *v3.Cluster, stream v3.ClusterService_GetBackupsServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in)
+	if err != nil {
+		return err
+	}
+
+	if err = user.Granted(config.GrantClusterShowBackups); err != nil {
+		return err
+	}
+
+	for _, backup := range mycluster.GetBackups() {
+		if err := stream.Send(&backup); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

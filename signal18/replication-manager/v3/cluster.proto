@@ -122,4 +122,18 @@ service ClusterService {
       get: "/v3/clusters/{cluster.name}/topology/{retrieve}"
     };
   }
+
+  rpc GetClientCertificates(Cluster) returns (Certificate) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/certificates
+      get: "/v3/clusters/{name}/certificates"
+    };
+  }
+
+  rpc GetBackups(Cluster) returns (stream Backup) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/backups
+      get: "/v3/clusters/{name}/backups"
+    };
+  }
 }
