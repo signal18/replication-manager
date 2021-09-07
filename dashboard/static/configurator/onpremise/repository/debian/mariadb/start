@@ -33,4 +33,4 @@ if [ $? -eq 0 ]; then
 	rm -rf  /bootstrap
 fi
 
-systemctl start mysql
+systemctl start mariadb
