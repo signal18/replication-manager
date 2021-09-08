@@ -312,43 +312,47 @@ func (proxy *ProxySQLProxy) Refresh() error {
 		if err == nil {
 			proxy.BackendsRead = append(proxy.BackendsRead, bkeread)
 		}
-		// if ProxySQL and replication-manager states differ, resolve the conflict
-		if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave && !s.IsIgnored() {
-			cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting online rejoining server %s", s.URL)
-			err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
-			if err != nil {
-				cluster.sme.AddState("ERR00069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00069"], s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
-			}
-			updated = true
-		}
+		// nothing should be done if no bootstrap
+		if cluster.Conf.ProxysqlBootstrap {
 
-		// if server is Standalone, set offline in ProxySQL
-		if s.State == stateUnconn && bke.PrxStatus == "ONLINE" {
-			cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting offline standalone server %s", s.URL)
-			err = psql.SetOffline(misc.Unbracket(s.Host), s.Port)
-			if err != nil {
-				cluster.sme.AddState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
-
-			}
-			updated = true
-
-			// if the server comes back from a previously failed or standalone state, reintroduce it in
-			// the appropriate HostGroup
-		} else if s.PrevState == stateUnconn || s.PrevState == stateFailed {
-			if s.State == stateMaster {
-				cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting writer standalone server %s", s.URL)
-				err = psql.SetWriter(misc.Unbracket(s.Host), s.Port)
-				if err != nil {
-					cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
-				}
-				updated = true
-			} else if s.IsSlave && !s.IsIgnored() {
+			// if ProxySQL and replication-manager states differ, resolve the conflict
+			if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave && !s.IsIgnored() {
+				cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting online rejoining server %s", s.URL)
 				err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
-				cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting reader standalone server %s", s.URL)
 				if err != nil {
-					cluster.sme.AddState("ERR00072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00072"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					cluster.sme.AddState("ERR00069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00069"], s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
 				}
 				updated = true
+			}
+
+			// if server is Standalone, set offline in ProxySQL
+			if s.State == stateUnconn && bke.PrxStatus == "ONLINE" {
+				cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting offline standalone server %s", s.URL)
+				err = psql.SetOffline(misc.Unbracket(s.Host), s.Port)
+				if err != nil {
+					cluster.sme.AddState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+
+				}
+				updated = true
+
+				// if the server comes back from a previously failed or standalone state, reintroduce it in
+				// the appropriate HostGroup
+			} else if s.PrevState == stateUnconn || s.PrevState == stateFailed {
+				if s.State == stateMaster {
+					cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting writer standalone server %s", s.URL)
+					err = psql.SetWriter(misc.Unbracket(s.Host), s.Port)
+					if err != nil {
+						cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					}
+					updated = true
+				} else if s.IsSlave && !s.IsIgnored() {
+					err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
+					cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting reader standalone server %s", s.URL)
+					if err != nil {
+						cluster.sme.AddState("ERR00072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00072"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					}
+					updated = true
+				}
 			}
 		}
 		// load the grants
