@@ -150,7 +150,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 
 		cluster.oldMaster.freeze()
-
+		// https://github.com/signal18/replication-manager/issues/378
+		logs, err := dbhelper.FlushBinaryLogs(cluster.oldMaster.Conn)
+		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not flush binary logs on %s", cluster.oldMaster.URL)
 	}
 	// Sync candidate depending on the master status.
 	// If it's a switchover, use MASTER_POS_WAIT to sync.
@@ -224,7 +226,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			ctbinlog := 0
 			for ctbinlog < binlogfiletoreach {
 				ctbinlog++
-				logs, err := dbhelper.FlushLogs(cluster.master.Conn)
+				logs, err := dbhelper.FlushBinaryLogsLocal(cluster.master.Conn)
 				cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlInfo, "Flush Log on new Master %d", ctbinlog)
 			}
 			time.Sleep(2 * time.Second)

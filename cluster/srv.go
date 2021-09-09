@@ -1091,7 +1091,7 @@ func (server *ServerMonitor) FlushLogs() (string, error) {
 	if server.Conn == nil {
 		return "", errors.New("No database connection pool")
 	}
-	return dbhelper.FlushLogs(server.Conn)
+	return dbhelper.FlushBinaryLogsLocal(server.Conn)
 }
 
 func (server *ServerMonitor) FlushTables() (string, error) {

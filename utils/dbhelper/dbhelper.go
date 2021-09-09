@@ -1789,9 +1789,14 @@ func GetVariableByName(db *sqlx.DB, name string, myver *MySQLVersion) (string, s
 	return value, query, nil
 }
 
-func FlushLogs(db *sqlx.DB) (string, error) {
+func FlushBinaryLogsLocal(db *sqlx.DB) (string, error) {
 	_, err := db.Exec("FLUSH LOCAL BINARY LOGS")
 	return "FLUSH LOCAL BINARY LOGS", err
+}
+
+func FlushBinaryLogs(db *sqlx.DB) (string, error) {
+	_, err := db.Exec("FLUSH  BINARY LOGS")
+	return "FLUSH BINARY LOGS", err
 }
 
 func FlushTables(db *sqlx.DB) (string, error) {
