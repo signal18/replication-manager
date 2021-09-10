@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -95,7 +95,7 @@ func main() {
 var rootCmd = &cobra.Command{
 	Use:   "replication-manager",
 	Short: "Replication Manager tool for MariaDB and MySQL",
-	// Copyright 2017 Signal 18 SARL
+	// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 	Long: `replication-manager allows users to monitor interactively MariaDB 10.x and MySQL GTID replication health
 and trigger slave to master promotion (aka switchover), or elect a new master in case of failure (aka failover).`,
 	Run: func(cmd *cobra.Command, args []string) {
