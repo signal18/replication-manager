@@ -26,4 +26,4 @@ It also includes derivative work from the `go-carbon` library by Roman Lomonosov
 
 ## Copyright and Support
 
-Replication Manager for MySQL and MariaDB is developed and supported by [SIGNAL 18 SARL](https://signal18.io/products).
+Replication Manager for MySQL and MariaDB is developed and supported by [SIGNAL18 CLOUD SAS](https://signal18.io/products).
