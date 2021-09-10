@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -7,11 +7,12 @@
 package haproxy
 
 import (
-	"github.com/magneticio/vamp-router/helpers"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"testing"
+
+	"github.com/magneticio/vamp-router/helpers"
 )
 
 var (
