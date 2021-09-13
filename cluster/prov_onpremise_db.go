@@ -14,7 +14,7 @@ func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Clie
 	if cluster.IsInFailover() {
 		return nil, errors.New("OnPremise provisioning cancel during failover")
 	}
-	if cluster.Conf.OnPremiseSSH {
+	if !cluster.Conf.OnPremiseSSH {
 		return nil, errors.New("onpremise-ssh disable ")
 	}
 	user, _ := misc.SplitPair(cluster.Conf.OnPremiseSSHCredential)
@@ -83,6 +83,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 	server.SetWaitStartCookie()
 	client, err := cluster.OnPremiseConnect(server)
 	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
 		return err
 	}
 	defer client.Close()
