@@ -513,6 +513,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.ProvProxyStopScript, "prov-proxy-stop-script", "", "Proxy stop script")
 
 	monitorCmd.Flags().BoolVar(&conf.OnPremiseSSH, "onpremise-ssh", false, "Connect to host via SSH using user private key")
+	monitorCmd.Flags().StringVar(&conf.OnPremiseSSHPrivateKey, "onpremise-ssh-private-key", "", "Private key for ssh if none use the user HOME directory")
 	monitorCmd.Flags().IntVar(&conf.OnPremiseSSHPort, "onpremise-ssh-port", 22, "Connect to host via SSH using ssh port")
 	monitorCmd.Flags().StringVar(&conf.OnPremiseSSHCredential, "onpremise-ssh-credential", "root:", "User:password for ssh if no password using current user private key")
 	if WithProvisioning == "ON" {

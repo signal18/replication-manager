@@ -20,7 +20,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"os/user"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -866,9 +865,9 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	if server.ClusterGroup.IsInFailover() {
 		return errors.New("Cancel dbjob via ssh during failover")
 	}
-	user, err := user.Current()
-	key := os.Getenv("HOME") + "/.ssh/id_rsa"
-	client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":22", user.Username, key)
+	user, _ := misc.SplitPair(server.ClusterGroup.Conf.OnPremiseSSHCredential)
+	key := server.ClusterGroup.OnPremiseGetSSHKey(user)
+	client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":22", user, key)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err)
 		return err

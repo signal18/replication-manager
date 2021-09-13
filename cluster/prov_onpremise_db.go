@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 
@@ -9,6 +10,23 @@ import (
 	sshcli "github.com/helloyi/go-sshclient"
 	"github.com/signal18/replication-manager/utils/misc"
 )
+
+func (cluster *Cluster) OnPremiseGetSSHKey(user string) string {
+
+	repmanuser := os.Getenv("HOME")
+	if repmanuser == "" {
+		repmanuser = "/root"
+		if user != "root" {
+			repmanuser = "/home/" + user
+		}
+	}
+	key := repmanuser + "/.ssh/id_rsa"
+
+	if cluster.Conf.OnPremiseSSHPrivateKey != "" {
+		key = cluster.Conf.OnPremiseSSHPrivateKey
+	}
+	return key
+}
 
 func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Client, error) {
 	if cluster.IsInFailover() {
@@ -18,17 +36,10 @@ func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Clie
 		return nil, errors.New("onpremise-ssh disable ")
 	}
 	user, _ := misc.SplitPair(cluster.Conf.OnPremiseSSHCredential)
-	repmanuser := os.Getenv("HOME")
-	if repmanuser == "" {
-		repmanuser = "/root"
-		if user != "root" {
-			repmanuser = "/home/" + user
-		}
-	}
-	key := repmanuser + "/.ssh/id_rsa"
+	key := cluster.OnPremiseGetSSHKey(user)
 	client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, key)
 	if err != nil {
-		return nil, errors.New("OnPremise Provisioning via SSH %s" + err.Error())
+		return nil, errors.New(fmt.Sprintf("OnPremise Provisioning via SSH %s %s", err.Error(), key))
 	}
 	return client, nil
 }
@@ -96,10 +107,10 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 	out, err := client.Cmd("export MYSQL_ROOT_PASSWORD=" + server.Pass).Cmd("export REPLICATION_MANAGER_URL=" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort).Cmd("export REPLICATION_MANAGER_USER=" + adminuser).Cmd("export REPLICATION_MANAGER_PASSWORD=" + adminpassword).Cmd("export REPLICATION_MANAGER_HOST_NAME=" + server.Host).Cmd("export REPLICATION_MANAGER_HOST_PORT=" + server.Port).Cmd("export REPLICATION_MANAGER_CLUSTER_NAME=" + server.ClusterGroup.Name).SmartOutput()
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
-		//	cluster.errorChan <- err
+		return err
 	}
 	dbtype := "mariadb"
-	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start database  : %s", string(out))
+	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start database install secret: %s", string(out))
 	cmd := "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + dbtype + "/start | sh"
 	if cluster.Configurator.HaveDBTag("rpm") {
 		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + dbtype + "/start | sh"
@@ -109,8 +120,9 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 	}
 	out, err = client.Cmd(cmd).SmartOutput()
 	if err != nil {
-		cluster.errorChan <- err
+		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
+		return err
 	}
-	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise Provisioning  : %s", string(out))
+	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start scipt %s : %s", cmd, string(out))
 	return nil
 }
