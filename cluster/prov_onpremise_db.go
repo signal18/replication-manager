@@ -50,17 +50,12 @@ func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor)
 		cluster.errorChan <- err
 	}
 	defer client.Close()
-	adminuser := "admin"
-	adminpassword := "repman"
-	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
-		adminpassword = user.Password
-	}
-	out, err := client.Cmd("export MYSQL_ROOT_PASSWORD=" + server.Pass).Cmd("export REPLICATION_MANAGER_URL=" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort).Cmd("export REPLICATION_MANAGER_USER=" + adminuser).Cmd("export REPLICATION_MANAGER_PASSWORD=" + adminpassword).Cmd("export REPLICATION_MANAGER_HOST_NAME=" + server.Host).Cmd("export REPLICATION_MANAGER_HOST_PORT=" + server.Port).Cmd("export REPLICATION_MANAGER_CLUSTER_NAME=" + server.ClusterGroup.Name).SmartOutput()
+	err = cluster.OnPremiseSSetEnv(client, server)
 	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database failed in env setup : %s", err)
 		cluster.errorChan <- err
 	}
 	dbtype := "mariadb"
-	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise Provisioning  : %s", string(out))
 	cmd := "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + dbtype + "/bootstrap | sh"
 	if cluster.Configurator.HaveDBTag("rpm") {
 		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + dbtype + "/bootstrap | sh"
@@ -69,7 +64,7 @@ func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor)
 		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/package/linux/" + dbtype + "/bootstrap | sh"
 	}
 
-	out, err = client.Cmd(cmd).SmartOutput()
+	out, err := client.Cmd(cmd).SmartOutput()
 	if err != nil {
 		cluster.errorChan <- err
 	}
@@ -89,6 +84,23 @@ func (cluster *Cluster) OnPremiseStopDatabaseService(server *ServerMonitor) erro
 	return nil
 }
 
+func (cluster *Cluster) OnPremiseSSetEnv(client *sshclient.Client, server *ServerMonitor) error {
+	adminuser := "admin"
+	adminpassword := "repman"
+
+	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
+		adminpassword = user.Password
+	}
+	out, err := client.Cmd("export MYSQL_ROOT_PASSWORD=" + server.Pass).Cmd("export REPLICATION_MANAGER_URL=https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort).Cmd("export REPLICATION_MANAGER_USER=" + adminuser).Cmd("export REPLICATION_MANAGER_PASSWORD=" + adminpassword).Cmd("export REPLICATION_MANAGER_HOST_NAME=" + server.Host).Cmd("export REPLICATION_MANAGER_HOST_PORT=" + server.Port).Cmd("export REPLICATION_MANAGER_CLUSTER_NAME=" + server.ClusterGroup.Name).SmartOutput()
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
+		return err
+	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start database install secret env: %s", string(out))
+
+	return nil
+}
+
 func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) error {
 
 	server.SetWaitStartCookie()
@@ -98,19 +110,13 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 		return err
 	}
 	defer client.Close()
-	adminuser := "admin"
-	adminpassword := "repman"
-
-	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
-		adminpassword = user.Password
-	}
-	out, err := client.Cmd("export MYSQL_ROOT_PASSWORD=" + server.Pass).Cmd("export REPLICATION_MANAGER_URL=" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort).Cmd("export REPLICATION_MANAGER_USER=" + adminuser).Cmd("export REPLICATION_MANAGER_PASSWORD=" + adminpassword).Cmd("export REPLICATION_MANAGER_HOST_NAME=" + server.Host).Cmd("export REPLICATION_MANAGER_HOST_PORT=" + server.Port).Cmd("export REPLICATION_MANAGER_CLUSTER_NAME=" + server.ClusterGroup.Name).SmartOutput()
+	err = cluster.OnPremiseSSetEnv(client, server)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
+		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database failed in env setup : %s", err)
 		return err
 	}
 	dbtype := "mariadb"
-	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start database install secret: %s", string(out))
+
 	cmd := "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + dbtype + "/start | sh"
 	if cluster.Configurator.HaveDBTag("rpm") {
 		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + dbtype + "/start | sh"
@@ -118,7 +124,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 	if cluster.Configurator.HaveDBTag("package") {
 		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/package/linux/" + dbtype + "/start | sh"
 	}
-	out, err = client.Cmd(cmd).SmartOutput()
+	out, err := client.Cmd(cmd).SmartOutput()
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
 		return err
