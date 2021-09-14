@@ -1,10 +1,13 @@
 package cluster
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/helloyi/go-sshclient"
 	sshcli "github.com/helloyi/go-sshclient"
@@ -50,7 +53,7 @@ func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor)
 		cluster.errorChan <- err
 	}
 	defer client.Close()
-	err = cluster.OnPremiseSSetEnv(client, server)
+	err = cluster.OnPremiseSetEnv(client, server)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database failed in env setup : %s", err)
 		cluster.errorChan <- err
@@ -84,19 +87,39 @@ func (cluster *Cluster) OnPremiseStopDatabaseService(server *ServerMonitor) erro
 	return nil
 }
 
-func (cluster *Cluster) OnPremiseSSetEnv(client *sshclient.Client, server *ServerMonitor) error {
+func (cluster *Cluster) OnPremiseSetEnv(client *sshclient.Client, server *ServerMonitor) error {
 	adminuser := "admin"
 	adminpassword := "repman"
 
 	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
 		adminpassword = user.Password
 	}
+	buf := strings.NewReader("export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"")
+	/*	REPLICATION_MANAGER_USER
+		REPLICATION_MANAGER_PASSWORD
+		REPLICATION_MANAGER_URL
+		REPLICATION_MANAGER_CLUSTER_NAME
+		REPLICATION_MANAGER_HOST_NAME
+		REPLICATION_MANAGER_HOST_PORT  */
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+	var err error
+	if client.Shell().SetStdio(buf, &stdout, &stderr).Start(); err != nil {
+		server.ClusterGroup.LogPrintf(LvlWarn, "OnPremise start ssh setup env %s", stderr.String())
+		return err
+	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start database install secret env: %s", stdout.String())
+
+	/*out := stdout.String()
 	out, err := client.Cmd("export MYSQL_ROOT_PASSWORD=" + server.Pass).Cmd("export REPLICATION_MANAGER_URL=https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort).Cmd("export REPLICATION_MANAGER_USER=" + adminuser).Cmd("export REPLICATION_MANAGER_PASSWORD=" + adminpassword).Cmd("export REPLICATION_MANAGER_HOST_NAME=" + server.Host).Cmd("export REPLICATION_MANAGER_HOST_PORT=" + server.Port).Cmd("export REPLICATION_MANAGER_CLUSTER_NAME=" + server.ClusterGroup.Name).SmartOutput()
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
 		return err
-	}
-	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start database install secret env: %s", string(out))
+		server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start database install secret env: %s", string(out))
+
+	}*/
 
 	return nil
 }
@@ -110,25 +133,56 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 		return err
 	}
 	defer client.Close()
-	err = cluster.OnPremiseSSetEnv(client, server)
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database failed in env setup : %s", err)
-		return err
-	}
+	//	err = cluster.OnPremiseSetEnv(client, server)
+
+	//if err != nil {
+	//	server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database failed in env setup : %s", err)
+	//	return err
+	//	}
 	dbtype := "mariadb"
 
-	cmd := "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + dbtype + "/start | sh"
+	cmd := cluster.Conf.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/start"
 	if cluster.Configurator.HaveDBTag("rpm") {
-		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + dbtype + "/start | sh"
+		cmd = cluster.Conf.HttpRoot + "/static/configurator/onpremise/repository/redhat/" + dbtype + "/start"
 	}
 	if cluster.Configurator.HaveDBTag("package") {
-		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/package/linux/" + dbtype + "/start | sh"
+		cmd = cluster.Conf.HttpRoot + "/static/configurator/onpremise/package/linux/" + dbtype + "/start"
 	}
-	out, err := client.Cmd(cmd).SmartOutput()
+
+	filerc, err := os.Open(cmd)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
-		return err
+		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err)
+		return errors.New("can't open script")
 	}
-	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start scipt %s : %s", cmd, string(out))
+
+	defer filerc.Close()
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(filerc)
+
+	adminuser := "admin"
+	adminpassword := "repman"
+	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
+		adminpassword = user.Password
+	}
+	buf2 := strings.NewReader("export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"\n")
+	r := io.MultiReader(buf2, buf)
+
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
+		server.ClusterGroup.LogPrintf(LvlWarn, "OnPremise start database via ssh %s", stderr.String())
+	}
+	out := stdout.String()
+
+	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start scipt: %s ,out: %s ,err: %s", cmd, out, stderr.String())
+	/*	out, err := client.Cmd(cmd).SmartOutput()
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
+			return err
+		}
+
+	*/
 	return nil
 }

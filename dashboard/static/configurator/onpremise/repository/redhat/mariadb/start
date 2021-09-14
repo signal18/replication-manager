@@ -1,4 +1,5 @@
 #!/bin/bash
+echo $REPLICATION_MANAGER_URL >&2
 function help {
 	echo "Required Environment:" >&2
 	echo "  REPLICATION_MANAGER_USER" >&2
