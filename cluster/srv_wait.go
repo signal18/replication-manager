@@ -11,6 +11,17 @@ package cluster
 
 import "github.com/signal18/replication-manager/utils/dbhelper"
 
+func (server *ServerMonitor) StopSlaveAtNewMasterPos() error {
+	server.StopSlave()
+	ms, gtid, logs, err := dbhelper.FlushBinaryLogs(server.ClusterGroup.master.Conn, server.ClusterGroup.master.DBVersion)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlInfo, "Stop replication at a new leader position")
+	server.ClusterGroup.LogPrintf(LvlInfo, "Leader %s flush binary logs  at position %s log file :%s", server.ClusterGroup.master.URL, gtid, ms.File)
+	server.StartSlaveUntil(ms, gtid)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Starting replication on %s replication at position %s log file :%s", server.URL, gtid, ms.File)
+	return nil
+
+}
+
 func (server *ServerMonitor) WaitSyncToMaster(master *ServerMonitor) {
 	server.ClusterGroup.LogPrintf(LvlInfo, "Waiting for slave %s to sync", server.URL)
 	if server.DBVersion.Flavor == "MariaDB" {

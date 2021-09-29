@@ -21,6 +21,7 @@ import (
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -437,6 +438,19 @@ func (cluster *Cluster) IsCurrentGTIDSync(m *ServerMonitor, s *ServerMonitor) bo
 		return true
 	} else {
 		return false
+	}
+}
+
+func (cluster *Cluster) CheckFixReplication(state state.State) {
+	if cluster.IsFixFailureERR01236 {
+		srv := cluster.GetServerFromURL(state.ServerUrl)
+		if srv != nil {
+			if srv.SlaveStatus.LastIOErrno.String == "1236" {
+				iopos := gtid.NewList(ms.GtidIOPos.String)
+				ioposdomaine=iopos.
+				srv.Refresh()
+			}
+		}
 	}
 }
 

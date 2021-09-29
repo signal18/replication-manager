@@ -14,7 +14,7 @@ db-servers-connect-timeout = 1
 
 replication-credential = "root:test"
 replication-source-name = "cluster_a"
-
+force-slave-readonly = false
 haproxy = true
 haproxy-write-port = 3303
 haproxy-read-port = 3302

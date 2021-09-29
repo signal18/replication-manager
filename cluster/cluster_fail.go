@@ -148,11 +148,12 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				}
 			}
 		}
+		// https://github.com/signal18/replication-manager/issues/378
+		cluster.StopReplicationParentClusterFromNewPosition(cluster.oldMaster)
+		//	cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not flush binary logs on %s", cluster.oldMaster.URL)
+		//	logs, err := dbhelper.FlushBinaryLogs(cluster.oldMaster.Conn)
 
 		cluster.oldMaster.freeze()
-		// https://github.com/signal18/replication-manager/issues/378
-		logs, err := dbhelper.FlushBinaryLogs(cluster.oldMaster.Conn)
-		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not flush binary logs on %s", cluster.oldMaster.URL)
 	}
 	// Sync candidate depending on the master status.
 	// If it's a switchover, use MASTER_POS_WAIT to sync.
@@ -990,9 +991,17 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		return false
 	}
 	if ss.SlaveSQLRunning.String == "No" && cluster.Conf.RplChecks {
-		cluster.sme.AddState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		SlaveStatusAsJSON, _ := json.MarshalIndent(sl.SlaveStatus, "", "\t")
+		cluster.sme.AddState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL, SlaveStatusAsJSON), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
+		}
+		return false
+	}
+	if ss.SlaveIORunning.String == "No" && cluster.Conf.RplChecks && ss.LastIOErrno.String == "1236" {
+		cluster.sme.AddState("ERR01236", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR01236"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s IO Thread is stopped GTID not in leader. Skipping", sl.URL)
 		}
 		return false
 	}

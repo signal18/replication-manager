@@ -1794,9 +1794,16 @@ func FlushBinaryLogsLocal(db *sqlx.DB) (string, error) {
 	return "FLUSH LOCAL BINARY LOGS", err
 }
 
-func FlushBinaryLogs(db *sqlx.DB) (string, error) {
-	_, err := db.Exec("FLUSH  BINARY LOGS")
-	return "FLUSH BINARY LOGS", err
+func FlushBinaryLogs(db *sqlx.DB, myver *MySQLVersion) (MasterStatus, string, string, error) {
+	_, err := db.Exec("FLUSH BINARY LOGS")
+	last_gtid := ""
+	if myver.IsMariaDB() {
+		query := "SELECT  @@last_gtid"
+		db.QueryRowx(query).Scan(&last_gtid)
+	}
+	ms, log, _ := GetMasterStatus(db, myver)
+	ms.Position = 4
+	return ms, last_gtid, "FLUSH BINARY LOGS;" + log, err
 }
 
 func FlushTables(db *sqlx.DB) (string, error) {
@@ -1984,6 +1991,46 @@ func StartSlave(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error
 		}
 		if myver.IsMySQLOrPercona() && Channel != "" {
 			cmd += " FOR CHANNEL '" + Channel + "'"
+		}
+	}
+	_, err := db.Exec(cmd)
+	return cmd, err
+}
+
+func StartSlaveUntilGTID(db *sqlx.DB, Channel string, myver *MySQLVersion, gtid string) (string, error) {
+	cmd := ""
+	if myver.IsPPostgreSQL() {
+		if Channel == "" {
+			Channel = "alltables"
+		}
+		cmd += "ALTER SUBSCRIPTION " + Channel + " ENABLE"
+	} else {
+		cmd += "START SLAVE "
+		if myver.IsMariaDB() && Channel != "" {
+			cmd += " '" + Channel + "' UNTIL MASTER_GTID_POS='" + gtid + "'"
+		}
+		if myver.IsMySQLOrPercona() && Channel != "" {
+			cmd += " FOR CHANNEL '" + Channel + "' UNTIL SQL_AFTER_GTIDS =" + gtid
+		}
+	}
+	_, err := db.Exec(cmd)
+	return cmd, err
+}
+
+func StartSlaveUntilLogPos(db *sqlx.DB, Channel string, myver *MySQLVersion, mc MasterStatus) (string, error) {
+	cmd := ""
+	if myver.IsPPostgreSQL() {
+		if Channel == "" {
+			Channel = "alltables"
+		}
+		cmd += "ALTER SUBSCRIPTION " + Channel + " ENABLE"
+	} else {
+		cmd += "START SLAVE "
+		if myver.IsMariaDB() && Channel != "" {
+			cmd += " '" + Channel + "' UNTIL MASTER_LOG_FILE='" + mc.File + "', MASTER_LOG_POS=" + strconv.FormatUint(uint64(mc.Position), 10)
+		}
+		if myver.IsMySQLOrPercona() && Channel != "" {
+			cmd += " FOR CHANNEL '" + Channel + "' UNTIL MASTER_LOG_FILE='" + mc.File + "', MASTER_LOG_POS=" + strconv.FormatUint(uint64(mc.Position), 10)
 		}
 	}
 	_, err := db.Exec(cmd)

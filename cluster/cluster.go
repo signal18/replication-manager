@@ -65,6 +65,7 @@ type Cluster struct {
 	IsValidBackup                 bool                        `json:"isValidBackup"`
 	IsNotMonitoring               bool                        `json:"isNotMonitoring"`
 	IsCapturing                   bool                        `json:"isCapturing"`
+	IsFixFailureERR01236          bool                        `json:"isFixFailureERR01236"`
 	Conf                          config.Config               `json:"config"`
 	CleanAll                      bool                        `json:"cleanReplication"` //used in testing
 	Topology                      string                      `json:"topology"`

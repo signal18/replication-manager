@@ -1058,6 +1058,19 @@ func (server *ServerMonitor) StartSlave() (string, error) {
 
 }
 
+func (server *ServerMonitor) StartSlaveUntil(ms dbhelper.MasterStatus, gtid string) (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No databse connection")
+	}
+	if (server.HasMariaDBGTID() || server.HasMySQLGTID()) && gtid != "" {
+		return dbhelper.StartSlaveUntilGTID(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion, gtid)
+	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Starting replication on %s until new log file: %s", server.URL, ms.File)
+
+	return dbhelper.StartSlaveUntilLogPos(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion, ms)
+
+}
+
 func (server *ServerMonitor) ResetMaster() (string, error) {
 	if server.Conn == nil {
 		return "", errors.New("No database connection pool")

@@ -566,6 +566,26 @@ func (cluster *Cluster) GetParentClusterFromReplicationSource(rep dbhelper.Slave
 	return nil
 }
 
+// StopReplicationMParentClusterFromNewPosition multi source filters increase slave_pos despite filter making sitchover of child cluster failed if last event was filterd
+func (cluster *Cluster) StopReplicationParentClusterFromNewPosition(server *ServerMonitor) error {
+	for _, rep := range server.Replications {
+
+		if rep.ConnectionName.String != cluster.Conf.MasterConn {
+			parentCluster := cluster.GetParentClusterFromReplicationSource(rep)
+			cluster.LogPrintf(LvlInfo, "stop replication source %s ", rep.ConnectionName.String)
+			// need a way to found parent replication password
+			if parentCluster != nil && parentCluster.master != nil {
+				// lookup this server in the parent cluster
+				slave := parentCluster.GetServerFromURL(server.URL)
+				slave.StopSlaveAtNewMasterPos()
+			} else {
+				cluster.LogPrintf(LvlErr, "Unable to found a monitored cluster for replication source %s ", rep.ConnectionName.String)
+			}
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) GetRingChildServer(oldMaster *ServerMonitor) *ServerMonitor {
 	for _, s := range cluster.Servers {
 		if s.ServerID != cluster.oldMaster.ServerID {
