@@ -832,10 +832,16 @@ func (server *ServerMonitor) Refresh() error {
 	if server.HasHighNumberSlowQueries() {
 		server.ClusterGroup.SetState("WARN0088", state.State{ErrType: LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0088"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 	}
-	// monitor plulgins plugins
+	// monitor plugins
 	if !server.DBVersion.IsPPostgreSQL() {
-		if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 && !server.DBVersion.IsPPostgreSQL() {
-			server.Plugins, logs, err = dbhelper.GetPlugins(server.Conn, server.DBVersion)
+		if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 {
+			if server.ClusterGroup.Conf.MonitorPlugins {
+				server.Plugins, logs, err = dbhelper.GetPlugins(server.Conn, server.DBVersion)
+				server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
+				server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")
+				server.HaveDiskMonitor = server.HasInstallPlugin("DISK")
+				server.HaveSQLErrorLog = server.HasInstallPlugin("SQL_ERROR_LOG")
+			}
 			server.BinlogDumpThreads, logs, err = dbhelper.GetBinlogDumpThreads(server.Conn, server.DBVersion)
 			if err != nil {
 				if strings.Contains(err.Error(), "Errcode: 28 ") || strings.Contains(err.Error(), "errno: 28 ") {
@@ -848,11 +854,6 @@ func (server *ServerMonitor) Refresh() error {
 				}
 			}
 			server.IsFull = false
-
-			server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
-			server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")
-			server.HaveDiskMonitor = server.HasInstallPlugin("DISK")
-			server.HaveSQLErrorLog = server.HasInstallPlugin("SQL_ERROR_LOG")
 		}
 		if server.HaveMetaDataLocksLog {
 			server.MetaDataLocks, logs, err = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)
