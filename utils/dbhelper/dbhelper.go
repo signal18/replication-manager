@@ -24,6 +24,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/percona/go-mysql/query"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -90,12 +91,12 @@ func (a PFSQuerySorter) Less(i, j int) bool {
 	return l > r
 }
 
-type TableSizeSorter []Table
+type TableSizeSorter []v3.Table
 
 func (a TableSizeSorter) Len() int      { return len(a) }
 func (a TableSizeSorter) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a TableSizeSorter) Less(i, j int) bool {
-	return a[i].Data_length+a[i].Index_length > a[j].Data_length+a[j].Index_length
+	return a[i].DataLength+a[i].IndexLength > a[j].DataLength+a[j].IndexLength
 }
 
 type Disk struct {
@@ -106,6 +107,7 @@ type Disk struct {
 	Available int32
 }
 
+/* replaced by v3.Table
 type Table struct {
 	Table_schema   string `json:"tableSchema"`
 	Table_name     string `json:"tableName"`
@@ -117,6 +119,7 @@ type Table struct {
 	Table_clusters string `json:"tableClusters"`
 	Table_sync     string `json:"tableSync"`
 }
+*/
 
 type Grant struct {
 	User     string `json:"user"`
@@ -1631,9 +1634,9 @@ func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 	return vars, query, err
 }
 
-func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, string, error) {
-	vars := make(map[string]Table)
-	var tblList []Table
+func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Table, string, error) {
+	vars := make(map[string]v3.Table)
+	var tblList []v3.Table
 	logs := ""
 	query := "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')"
 	if myver.IsPPostgreSQL() {
@@ -1666,9 +1669,9 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 		defer rows.Close()
 		crc64Table := crc64.MakeTable(0xC96C5795D7870F42)
 		for rows.Next() {
-			var v Table
+			var v v3.Table
 
-			err = rows.Scan(&v.Table_schema, &v.Table_name, &v.Engine, &v.Table_rows, &v.Data_length, &v.Index_length, &v.Table_crc)
+			err = rows.Scan(&v.TableSchema, &v.TableName, &v.Engine, &v.TableRows, &v.DataLength, &v.IndexLength, &v.TableCrc)
 			if err != nil {
 				return vars, tblList, logs, err
 			}
@@ -1677,9 +1680,9 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 				err = db.QueryRowx(query).Scan(&crcTable)
 			*/
 
-			query := "SHOW CREATE TABLE `" + schema + "`.`" + v.Table_name + "`"
+			query := "SHOW CREATE TABLE `" + schema + "`.`" + v.TableName + "`"
 			if myver.IsPPostgreSQL() {
-				query = "SELECT 'CREATE TABLE `" + schema + "`.`" + v.Table_name + "` (' || E'\n'|| '' || string_agg(column_list.column_expr, ', ' || E'\n' || '') ||   '' || E'\n' || ') ENGINE=postgress;' FROM (   SELECT '    `' || column_name || '` ' || data_type ||   coalesce('(' || character_maximum_length || ')', '') ||   case when is_nullable = 'YES' then '' else ' NOT NULL' end as column_expr  FROM information_schema.columns  WHERE table_schema = '" + schema + "' AND table_name = '" + v.Table_name + "' ORDER BY ordinal_position) column_list"
+				query = "SELECT 'CREATE TABLE `" + schema + "`.`" + v.TableName + "` (' || E'\n'|| '' || string_agg(column_list.column_expr, ', ' || E'\n' || '') ||   '' || E'\n' || ') ENGINE=postgress;' FROM (   SELECT '    `' || column_name || '` ' || data_type ||   coalesce('(' || character_maximum_length || ')', '') ||   case when is_nullable = 'YES' then '' else ' NOT NULL' end as column_expr  FROM information_schema.columns  WHERE table_schema = '" + schema + "' AND table_name = '" + v.TableName + "' ORDER BY ordinal_position) column_list"
 			}
 			logs += "\n" + query
 			var tbl, ddl string
@@ -1689,10 +1692,10 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 				pos := strings.Index(ddl, "ENGINE=")
 				ddl = ddl[12:pos]
 				crc64Int := crc64.Checksum([]byte(ddl), crc64Table)
-				v.Table_crc = crc64Int
+				v.TableCrc = crc64Int
 			}
 			tblList = append(tblList, v)
-			vars[v.Table_schema+"."+v.Table_name] = v
+			vars[v.TableSchema+"."+v.TableName] = v
 		}
 		rows.Close()
 	}

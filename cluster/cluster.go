@@ -23,6 +23,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -132,7 +133,7 @@ type Cluster struct {
 	tlsoldconf                    *tls.Config                 `json:"-"`
 	tunnel                        *ssh.Client                 `json:"-"`
 	QueryRules                    map[uint32]config.QueryRule `json:"-"`
-	Backups                       []Backup                    `json:"-"`
+	Backups                       []v3.Backup                 `json:"-"`
 	SLAHistory                    []state.Sla                 `json:"slaHistory"`
 	APIUsers                      map[string]APIUser          `json:"apiUsers"`
 	Schedule                      map[string]cron.Entry       `json:"-"`
@@ -859,28 +860,28 @@ func (cluster *Cluster) MonitorSchema() {
 	for _, t := range tables {
 		duplicates = nil
 		tableCluster = nil
-		tottablesize += t.Data_length
-		totindexsize += t.Index_length
-		cluster.LogPrintf(LvlDbg, "Lookup for table %s", t.Table_schema+"."+t.Table_name)
+		tottablesize += t.DataLength
+		totindexsize += t.IndexLength
+		cluster.LogPrintf(LvlDbg, "Lookup for table %s", t.TableSchema+"."+t.TableName)
 
 		duplicates = append(duplicates, cluster.GetMaster())
 		tableCluster = append(tableCluster, cluster.GetName())
-		oldtable, err := cluster.master.GetTableFromDict(t.Table_schema + "." + t.Table_name)
+		oldtable, err := cluster.master.GetTableFromDict(t.TableSchema + "." + t.TableName)
 		haschanged := false
 		if err != nil {
 			if err.Error() == "Empty" {
-				cluster.LogPrintf(LvlDbg, "Init table %s", t.Table_schema+"."+t.Table_name)
+				cluster.LogPrintf(LvlDbg, "Init table %s", t.TableSchema+"."+t.TableName)
 				haschanged = true
 			} else {
-				cluster.LogPrintf(LvlDbg, "New table %s", t.Table_schema+"."+t.Table_name)
+				cluster.LogPrintf(LvlDbg, "New table %s", t.TableSchema+"."+t.TableName)
 				haschanged = true
 			}
 		} else {
-			if oldtable.Table_crc != t.Table_crc {
+			if oldtable.TableCrc != t.TableCrc {
 				haschanged = true
-				cluster.LogPrintf(LvlDbg, "Change table %s", t.Table_schema+"."+t.Table_name)
+				cluster.LogPrintf(LvlDbg, "Change table %s", t.TableSchema+"."+t.TableName)
 			}
-			t.Table_sync = oldtable.Table_sync
+			t.TableSync = oldtable.TableSync
 		}
 		// lookup other clusters
 		for _, cl := range cluster.clusterList {
@@ -888,23 +889,23 @@ func (cluster *Cluster) MonitorSchema() {
 
 				m := cl.GetMaster()
 				if m != nil {
-					cltbldef, _ := m.GetTableFromDict(t.Table_schema + "." + t.Table_name)
-					if cltbldef.Table_name == t.Table_name {
+					cltbldef, _ := m.GetTableFromDict(t.TableSchema + "." + t.TableName)
+					if cltbldef.TableName == t.TableName {
 						duplicates = append(duplicates, cl.GetMaster())
 						tableCluster = append(tableCluster, cl.GetName())
-						cluster.LogPrintf(LvlDbg, "Found duplicate table %s in %s", t.Table_schema+"."+t.Table_name, cl.GetMaster().URL)
+						cluster.LogPrintf(LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, cl.GetMaster().URL)
 					}
 				}
 			}
 		}
-		t.Table_clusters = strings.Join(tableCluster, ",")
-		tables[t.Table_schema+"."+t.Table_name] = t
+		t.TableClusters = strings.Join(tableCluster, ",")
+		tables[t.TableSchema+"."+t.TableName] = t
 		if haschanged && cluster.Conf.MdbsProxyOn {
 			for _, pri := range cluster.Proxies {
 				if prx, ok := pri.(*MariadbShardProxy); ok {
-					if !(t.Table_schema == "replication_manager_schema" || strings.Contains(t.Table_name, "_copy") == true || strings.Contains(t.Table_name, "_back") == true || strings.Contains(t.Table_name, "_old") == true || strings.Contains(t.Table_name, "_reshard") == true) {
-						cluster.LogPrintf(LvlDbg, "blabla table %s %s %s", duplicates, t.Table_schema, t.Table_name)
-						cluster.ShardProxyCreateVTable(prx, t.Table_schema, t.Table_name, duplicates, false)
+					if !(t.TableSchema == "replication_manager_schema" || strings.Contains(t.TableName, "_copy") == true || strings.Contains(t.TableName, "_back") == true || strings.Contains(t.TableName, "_old") == true || strings.Contains(t.TableName, "_reshard") == true) {
+						cluster.LogPrintf(LvlDbg, "blabla table %s %s %s", duplicates, t.TableSchema, t.TableName)
+						cluster.ShardProxyCreateVTable(prx, t.TableSchema, t.TableName, duplicates, false)
 					}
 				}
 			}

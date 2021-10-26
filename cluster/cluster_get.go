@@ -9,6 +9,7 @@ package cluster
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"sort"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -649,7 +651,7 @@ func (cluster *Cluster) GetTableDLLNoFK(schema string, table string, srv *Server
 	return ddl, err
 }
 
-func (cluster *Cluster) GetBackups() []Backup {
+func (cluster *Cluster) GetBackups() []v3.Backup {
 	return cluster.Backups
 }
 
@@ -684,25 +686,25 @@ func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 	return m.Rows
 }
 
-func (cluster *Cluster) GetClientCertificates() map[string]string {
+func (cluster *Cluster) GetClientCertificates() (map[string]string, error) {
 	certs := make(map[string]string)
 	clientCert, err := misc.ReadFile(cluster.WorkingDir + "/client-cert.pem")
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can't load certificate: %s", err)
-		return certs
+		return certs, fmt.Errorf("Can't load certificate: %w", err)
 	}
 	clientkey, err := misc.ReadFile(cluster.WorkingDir + "/client-key.pem")
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can't load certificate: %s", err)
-		return certs
+		return certs, fmt.Errorf("Can't load certificate: %w", err)
 	}
 	caCert, err := misc.ReadFile(cluster.WorkingDir + "/ca-cert.pem")
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can't load certificate: %s", err)
-		return certs
+		return certs, fmt.Errorf("Can't load certificate: %w", err)
 	}
 	certs["clientCert"] = clientCert
 	certs["clientKey"] = clientkey
 	certs["caCert"] = caCert
-	return certs
+	return certs, nil
 }

@@ -7,17 +7,31 @@
 package cluster
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/misc"
+	"google.golang.org/grpc/codes"
 )
 
 type APIUser struct {
 	User     string          `json:"user"`
 	Password string          `json:"-"`
 	Grants   map[string]bool `json:"grants"`
+}
+
+func (u *APIUser) Granted(grant string) error {
+	if value, ok := u.Grants[grant]; ok {
+		if !value {
+			return v3.NewErrorResource(codes.PermissionDenied, v3.ErrUserNotGranted, "user", u.User).Err()
+		}
+		return nil
+	}
+
+	return v3.NewErrorResource(codes.PermissionDenied, v3.ErrGrantNotFound, "grant not found", "").Err()
 }
 
 func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string) bool {
@@ -31,6 +45,17 @@ func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL strin
 	//	for key, value := range cluster.Grants {
 
 	return false
+}
+
+func (cluster *Cluster) GetAPIUser(strUser string, strPassword string) (APIUser, error) {
+	if user, ok := cluster.APIUsers[strUser]; ok {
+		if user.Password == strPassword {
+			return user, nil
+		}
+		return APIUser{}, fmt.Errorf("incorrect password")
+	}
+
+	return APIUser{}, fmt.Errorf("user not found")
 }
 
 func (cluster *Cluster) SaveAcls() {

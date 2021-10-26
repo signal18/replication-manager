@@ -24,7 +24,9 @@ import (
 	"time"
 
 	"github.com/bluele/logrus_slack"
+	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/spf13/viper"
+	"google.golang.org/grpc"
 
 	log "github.com/sirupsen/logrus"
 	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
@@ -36,6 +38,7 @@ import (
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
+	"github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -79,6 +82,14 @@ type ReplicationManager struct {
 	Confs                map[string]config.Config
 	ForcedConfs          map[string]config.Config
 	sync.Mutex
+
+	grpcServer  *grpc.Server
+	grpcWrapped *grpcweb.WrappedGrpcServer
+	repmanv3.UnimplementedClusterPublicServiceServer
+	repmanv3.UnimplementedClusterServiceServer
+
+	V3Up     chan bool
+	v3Config Repmanv3Config
 }
 
 const (

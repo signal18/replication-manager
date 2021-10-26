@@ -506,7 +506,7 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 
 func (cluster *Cluster) CheckAllTableChecksum() {
 	for _, t := range cluster.master.Tables {
-		cluster.CheckTableChecksum(t.Table_schema, t.Table_name)
+		cluster.CheckTableChecksum(t.TableSchema, t.TableName)
 	}
 }
 
@@ -525,7 +525,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	if pk == "" {
 		cluster.master.ClusterGroup.LogPrintf(LvlErr, "Checksum, no primary key for table %s.%s", schema, table)
 		t := cluster.master.DictTables[schema+"."+table]
-		t.Table_sync = "NA"
+		t.TableSync = "NA"
 		cluster.master.DictTables[schema+"."+table] = t
 		return
 	}
@@ -630,7 +630,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 				checkok = false
 				cluster.LogPrintf(LvlInfo, "Checksum table failed chunk(%s,%s) %s.%s %s", chunk.ChunkMinKey, chunk.ChunkMaxKey, schema, table, s.URL)
 				t := cluster.master.DictTables[schema+"."+table]
-				t.Table_sync = "ER"
+				t.TableSync = "ER"
 				cluster.master.DictTables[schema+"."+table] = t
 			}
 
@@ -638,7 +638,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		if checkok {
 			cluster.LogPrintf(LvlInfo, "Checksum table succeed %s.%s %s", schema, table, s.URL)
 			t := cluster.master.DictTables[schema+"."+table]
-			t.Table_sync = "OK"
+			t.TableSync = "OK"
 			cluster.master.DictTables[schema+"."+table] = t
 		}
 	}
