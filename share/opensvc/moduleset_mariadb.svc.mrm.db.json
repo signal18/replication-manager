@@ -2533,8 +2533,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\n\\n!includedir /etc/mysql/custom.d\\n!includedir /etc/mysql/conf.d\\n\\n\"}",
-                    "var_updated": "2021-01-20 17:10:14",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\n!includedir /etc/mysql/conf.d\\n!includedir /etc/mysql/custom.d\\n\\n\\n\"}",
+                    "var_updated": "2021-12-04 09:56:22",
                     "var_name": "db_cnf",
                     "id": 5902
                 },
