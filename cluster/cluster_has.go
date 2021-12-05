@@ -19,7 +19,8 @@ func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
 		//	cluster.LogPrintf(LvlInfo, "HasServer:%s %s, %s %s", sv.Id, srv.Id, sv.URL, srv.URL)
 		// id can not be used for checking equality because  same srv in different clusters
 		// cluster.LogPrintf(LvlInfo, "HasServer check  %s  vs  %s  ", sv.URL, srv.URL)
-		if sv.URL == srv.URL || sv.URL == srv.URL+":3306" {
+		// When server
+		if sv.URL == srv.URL || sv.URL+":3306" == srv.URL {
 			return true
 		}
 	}
