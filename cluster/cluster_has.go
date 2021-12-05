@@ -20,7 +20,7 @@ func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
 		// id can not be used for checking equality because  same srv in different clusters
 		cluster.LogPrintf(LvlInfo, "HasServer check  %s  vs  %s  ", sv.URL, srv.URL)
 		// When server has no port URL has no port then discovery use port
-		if sv.URL == srv.URL || sv.URL+":3306" == srv.URL {
+		if sv.URL == srv.URL || sv.URL == srv.URL+":3306" {
 			return true
 		}
 	}
