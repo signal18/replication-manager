@@ -38,13 +38,23 @@ func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Clie
 	if !cluster.Conf.OnPremiseSSH {
 		return nil, errors.New("onpremise-ssh disable ")
 	}
-	user, _ := misc.SplitPair(cluster.Conf.OnPremiseSSHCredential)
+	user, password := misc.SplitPair(cluster.Conf.OnPremiseSSHCredential)
+
 	key := cluster.OnPremiseGetSSHKey(user)
-	client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, key)
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("OnPremise Provisioning via SSH %s %s", err.Error(), key))
+	if password != "" {
+		client, err := sshcli.DialWithPasswd(misc.Unbracket(server.Host)+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, password)
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("OnPremise Provisioning via SSH %s %s", err.Error(), key))
+		}
+		return client, nil
+	} else {
+		client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, key)
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("OnPremise Provisioning via SSH %s %s", err.Error(), key))
+		}
+		return client, nil
 	}
-	return client, nil
+	return nil, errors.New("onpremise-ssh no key no password ")
 }
 
 func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor) {
@@ -164,7 +174,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
 		adminpassword = user.Password
 	}
-	buf2 := strings.NewReader("export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"\n")
+	buf2 := strings.NewReader("export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"\nsudo -E ")
 	r := io.MultiReader(buf2, buf)
 
 	var (
