@@ -899,7 +899,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 			return errors.New("JobRunViaSSH Setup env variables via SSH %s" + err.Error())
 		}*/
 
-	buf2 := strings.NewReader("export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\"\n")
+	buf2 := strings.NewReader("sudo su - root\nexport MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\"\n")
 	r := io.MultiReader(buf2, buf)
 	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Database jobs run via SSH: %s", stderr.String())
