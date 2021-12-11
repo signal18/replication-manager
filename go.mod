@@ -2,8 +2,6 @@ module github.com/signal18/replication-manager
 
 go 1.12
 
-replace github.com/jacobsa/fuse => github.com/kahing/fusego v0.0.0-20190829004836-cb66eea2377f
-
 replace github.com/kahing/goofys => github.com/georgyo/goofys v0.21.0
 
 require (
@@ -86,7 +84,7 @@ require (
 	github.com/improbable-eng/grpc-web v0.14.0
 	github.com/inconshreveable/mousetrap v1.0.0
 	github.com/iu0v1/gelada v1.2.2
-	github.com/jacobsa/fuse v0.0.0-20180417054321-cd3959611bcb
+	github.com/jacobsa/fuse v0.0.0-20211125163655-ffd6c474e806
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/jordan-wright/email v0.0.0-20160301001728-a62870b0c368
 	github.com/juju/errors v0.0.0-20170703010042-c7d06af17c68
