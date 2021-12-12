@@ -233,6 +233,7 @@ func RunCarbon(ShareDir string, DataDir string, GraphiteCarbonPort int, Graphite
 		os.Exit(1)
 	}
 
+	carbon.Log = log
 	app := carbon.New(DataDir + "/carbon.conf")
 
 	if err = app.ParseConfig(); err != nil {

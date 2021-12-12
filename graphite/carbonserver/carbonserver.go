@@ -35,16 +35,18 @@ import (
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	logger "github.com/sirupsen/logrus"
+	trigram "github.com/dgryski/go-trigram"
 	"github.com/dgryski/httputil"
 	"github.com/gogo/protobuf/proto"
-	pb "github.com/signal18/replication-manager/graphite/carbonzipperpb"
-	trigram "github.com/dgryski/go-trigram"
-	"github.com/signal18/replication-manager/graphite/helper"
 	pickle "github.com/kisielk/og-rek"
+	pb "github.com/signal18/replication-manager/graphite/carbonzipperpb"
+	"github.com/signal18/replication-manager/graphite/helper"
 	"github.com/signal18/replication-manager/graphite/points"
 	whisper "github.com/signal18/replication-manager/graphite/whisper"
+	"github.com/sirupsen/logrus"
 )
+
+var Log = logrus.New()
 
 type metricStruct struct {
 	RenderRequests       uint64
@@ -146,7 +148,7 @@ func (listener *CarbonserverListener) fileListUpdater(dir string, tick <-chan ti
 
 		err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
 			if err != nil {
-				logger.Infof("[carbonserver] error processing %q: %v", p, err)
+				Log.Infof("[carbonserver] error processing %q: %v", p, err)
 				return nil
 			}
 
@@ -157,16 +159,16 @@ func (listener *CarbonserverListener) fileListUpdater(dir string, tick <-chan ti
 			return nil
 		})
 
-		logger.Debugln("[carbonserver] file scan took", time.Since(t0), ",", len(files), "items")
+		Log.Debugln("[carbonserver] file scan took", time.Since(t0), ",", len(files), "items")
 		t0 = time.Now()
 
 		idx := trigram.NewIndex(files)
 
-		logger.Debugln("[carbonserver] indexing took", time.Since(t0), len(idx), "trigrams")
+		Log.Debugln("[carbonserver] indexing took", time.Since(t0), len(idx), "trigrams")
 
 		pruned := idx.Prune(0.95)
 
-		logger.Debugln("[carbonserver] pruned", pruned, "common trigrams")
+		Log.Debugln("[carbonserver] pruned", pruned, "common trigrams")
 
 		if err == nil {
 			listener.UpdateFileIndex(&fileIndex{idx, files})
@@ -316,7 +318,7 @@ func (listener *CarbonserverListener) findHandler(wr http.ResponseWriter, req *h
 
 	if format != "json" && format != "pickle" && format != "protobuf" {
 		atomic.AddUint64(&listener.metrics.FindErrors, 1)
-		logger.Infof("[carbonserver] dropping invalid uri (format=%s): %s",
+		Log.Infof("[carbonserver] dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
 			http.StatusBadRequest)
@@ -325,7 +327,7 @@ func (listener *CarbonserverListener) findHandler(wr http.ResponseWriter, req *h
 
 	if query == "" {
 		atomic.AddUint64(&listener.metrics.FindErrors, 1)
-		logger.Infof("[carbonserver] dropping invalid request (query=): %s", req.URL.RequestURI())
+		Log.Infof("[carbonserver] dropping invalid request (query=): %s", req.URL.RequestURI())
 		http.Error(wr, "Bad request (no query)", http.StatusBadRequest)
 		return
 	}
@@ -353,7 +355,7 @@ func (listener *CarbonserverListener) findHandler(wr http.ResponseWriter, req *h
 		}
 		if err != nil {
 			atomic.AddUint64(&listener.metrics.FindErrors, 1)
-			logger.Infof("[carbonserver] failed to create %s data for glob %s: %s",
+			Log.Infof("[carbonserver] failed to create %s data for glob %s: %s",
 				format, *response.Name, err)
 			return
 		}
@@ -388,7 +390,7 @@ func (listener *CarbonserverListener) findHandler(wr http.ResponseWriter, req *h
 		atomic.AddUint64(&listener.metrics.FindZero, 1)
 	}
 
-	logger.Debugf("[carbonserver] find: %d hits for %s in %v", len(files), req.FormValue("query"), time.Since(t0))
+	Log.Debugf("[carbonserver] find: %d hits for %s in %v", len(files), req.FormValue("query"), time.Since(t0))
 	return
 }
 
@@ -408,13 +410,13 @@ func (listener *CarbonserverListener) fetchHandler(wr http.ResponseWriter, req *
 		if r := recover(); r != nil {
 			var buf [4096]byte
 			runtime.Stack(buf[:], false)
-			logger.Infof("[carbonserver] panic handling request: %v\n%s\n%s", r, req.RequestURI, string(buf[:]))
+			Log.Infof("[carbonserver] panic handling request: %v\n%s\n%s", r, req.RequestURI, string(buf[:]))
 		}
 	}()
 
 	if format != "json" && format != "pickle" && format != "protobuf" {
 		atomic.AddUint64(&listener.metrics.RenderErrors, 1)
-		logger.Infof("[carbonserver] dropping invalid uri (format=%s): %s",
+		Log.Infof("[carbonserver] dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
 			http.StatusBadRequest)
@@ -425,13 +427,13 @@ func (listener *CarbonserverListener) fetchHandler(wr http.ResponseWriter, req *
 
 	i, err := strconv.Atoi(from)
 	if err != nil {
-		logger.Infof("[carbonserver] fromTime (%s) invalid: %s (in %s)", from, err, req.URL.RequestURI())
+		Log.Infof("[carbonserver] fromTime (%s) invalid: %s (in %s)", from, err, req.URL.RequestURI())
 		badTime = true
 	}
 	fromTime := int32(i)
 	i, err = strconv.Atoi(until)
 	if err != nil {
-		logger.Infof("[carbonserver] untilTime (%s) invalid: %s (in %s)", from, err, req.URL.RequestURI())
+		Log.Infof("[carbonserver] untilTime (%s) invalid: %s (in %s)", from, err, req.URL.RequestURI())
 		badTime = true
 	}
 	untilTime := int32(i)
@@ -445,7 +447,7 @@ func (listener *CarbonserverListener) fetchHandler(wr http.ResponseWriter, req *
 	multi, err := listener.fetchData(metric, fromTime, untilTime)
 	if err != nil {
 		atomic.AddUint64(&listener.metrics.RenderErrors, 1)
-		logger.Infof("[carbonserver] %s", err)
+		Log.Infof("[carbonserver] %s", err)
 		http.Error(wr, fmt.Sprintf("Bad request (%s)", err),
 			http.StatusBadRequest)
 	}
@@ -499,12 +501,12 @@ func (listener *CarbonserverListener) fetchHandler(wr http.ResponseWriter, req *
 
 	if err != nil {
 		atomic.AddUint64(&listener.metrics.RenderErrors, 1)
-		logger.Infof("[carbonserver] failed to create %s data for %s: %s", format, "<metric>", err)
+		Log.Infof("[carbonserver] failed to create %s data for %s: %s", format, "<metric>", err)
 		return
 	}
 	wr.Write(b)
 
-	logger.Debugf("[carbonserver] fetch: served %q from %s to %s in %v", metric, from, until, time.Since(t0))
+	Log.Debugf("[carbonserver] fetch: served %q from %s to %s in %v", metric, from, until, time.Since(t0))
 
 }
 
@@ -518,7 +520,7 @@ func (listener *CarbonserverListener) fetchSingleMetric(metric string, fromTime,
 		// the FE/carbonzipper often requests metrics we don't have
 		// We shouldn't really see this any more -- expandGlobs() should filter them out
 		atomic.AddUint64(&listener.metrics.NotFound, 1)
-		logger.Infof("[carbonserver] error opening %q: %v", path, err)
+		Log.Infof("[carbonserver] error opening %q: %v", path, err)
 		return nil, errors.New("Can't open metric")
 	}
 
@@ -526,7 +528,7 @@ func (listener *CarbonserverListener) fetchSingleMetric(metric string, fromTime,
 	now := int32(time.Now().Unix())
 	diff := now - fromTime
 
-	logger.Infof("[carbonserver] Time %d: %d", now, fromTime)
+	Log.Infof("[carbonserver] Time %d: %d", now, fromTime)
 	bestStep := int32(retentions[0].SecondsPerPoint())
 	for _, retention := range retentions {
 		if int32(retention.MaxRetention()) >= diff {
@@ -537,13 +539,13 @@ func (listener *CarbonserverListener) fetchSingleMetric(metric string, fromTime,
 
 	if step == 0 {
 		atomic.AddUint64(&listener.metrics.RenderErrors, 1)
-		logger.Infof("[carbonserver] Can't find proper archive for the request for metric %q", path)
+		Log.Infof("[carbonserver] Can't find proper archive for the request for metric %q", path)
 		return nil, errors.New("Can't find proper archive")
 	}
 
 	var cacheData []points.Point
 	if step != bestStep {
-		logger.Debugf("[carbonserver] Cache is not supported for this query (required step != best step). path=%q fromTime=%v untilTime=%v step=%v bestStep=%v", path, fromTime, untilTime, step, bestStep)
+		Log.Debugf("[carbonserver] Cache is not supported for this query (required step != best step). path=%q fromTime=%v untilTime=%v step=%v bestStep=%v", path, fromTime, untilTime, step, bestStep)
 	} else {
 		// query cache
 		cacheStartTime := time.Now()
@@ -552,21 +554,21 @@ func (listener *CarbonserverListener) fetchSingleMetric(metric string, fromTime,
 		atomic.AddUint64(&listener.metrics.CacheWaitTimeFetchNS, waitTime)
 	}
 
-	logger.Debugf("[carbonserver] fetching disk metric=%v from=%v until=%v", metric, fromTime, untilTime)
+	Log.Debugf("[carbonserver] fetching disk metric=%v from=%v until=%v", metric, fromTime, untilTime)
 	atomic.AddUint64(&listener.metrics.DiskRequests, 1)
 	diskStartTime := time.Now()
 	points, err := w.Fetch(int(fromTime), int(untilTime))
 	w.Close()
 	if err != nil {
 		atomic.AddUint64(&listener.metrics.RenderErrors, 1)
-		logger.Infof("[carbonserver] failed to fetch points from %s: %s", path, err)
+		Log.Infof("[carbonserver] failed to fetch points from %s: %s", path, err)
 		return nil, errors.New("failed to fetch points")
 	}
 
 	// Should never happen, because we have a check for proper archive now
 	if points == nil {
 		atomic.AddUint64(&listener.metrics.RenderErrors, 1)
-		logger.Infof("[carbonserver] Metric time range not found: metric=%s from=%d to=%d ", metric, fromTime, untilTime)
+		Log.Infof("[carbonserver] Metric time range not found: metric=%s from=%d to=%d ", metric, fromTime, untilTime)
 		return nil, errors.New("time range not found")
 	}
 	atomic.AddUint64(&listener.metrics.MetricsReturned, 1)
@@ -622,7 +624,7 @@ func (listener *CarbonserverListener) fetchData(metric string, fromTime, untilTi
 	var multi pb.MultiFetchResponse
 	for i, metric := range files {
 		if !leafs[i] {
-			logger.Debugf("[carbonserver] skipping directory = %q", metric)
+			Log.Debugf("[carbonserver] skipping directory = %q", metric)
 			// can't fetch a directory
 			continue
 		}
@@ -648,7 +650,7 @@ func (listener *CarbonserverListener) infoHandler(wr http.ResponseWriter, req *h
 
 	if format != "json" && format != "protobuf" {
 		atomic.AddUint64(&listener.metrics.InfoErrors, 1)
-		logger.Infof("[carbonserver] dropping invalid uri (format=%s): %s",
+		Log.Infof("[carbonserver] dropping invalid uri (format=%s): %s",
 			format, req.URL.RequestURI())
 		http.Error(wr, "Bad request (unsupported format)",
 			http.StatusBadRequest)
@@ -660,7 +662,7 @@ func (listener *CarbonserverListener) infoHandler(wr http.ResponseWriter, req *h
 
 	if err != nil {
 		atomic.AddUint64(&listener.metrics.NotFound, 1)
-		logger.Debugf("[carbonserver] failed to %s", err)
+		Log.Debugf("[carbonserver] failed to %s", err)
 		http.Error(wr, "Metric not found", http.StatusNotFound)
 		return
 	}
@@ -696,12 +698,12 @@ func (listener *CarbonserverListener) infoHandler(wr http.ResponseWriter, req *h
 	}
 	if err != nil {
 		atomic.AddUint64(&listener.metrics.RenderErrors, 1)
-		logger.Infof("[carbonserver] failed to create %s data for %s: %s", format, path, err)
+		Log.Infof("[carbonserver] failed to create %s data for %s: %s", format, path, err)
 		return
 	}
 	wr.Write(b)
 
-	logger.Debugf("[carbonserver] served info for %s", metric)
+	Log.Debugf("[carbonserver] served info for %s", metric)
 	return
 }
 
@@ -749,15 +751,15 @@ func (listener *CarbonserverListener) Stop() error {
 }
 
 func (listener *CarbonserverListener) Listen(listen string) error {
-	logger.Warnln("[carbonserver] carbonserver support is still experimental, use at your own risk")
-	logger.Infoln("[carbonserver] starting carbonserver")
+	Log.Warnln("[carbonserver] carbonserver support is still experimental, use at your own risk")
+	Log.Infoln("[carbonserver] starting carbonserver")
 
-	logger.Infof("[carbonserver] reading whisper files from: %s", listener.whisperData)
+	Log.Infof("[carbonserver] reading whisper files from: %s", listener.whisperData)
 
-	logger.Infof("[carbonserver] maximum brace expansion set to: %d", listener.maxGlobs)
+	Log.Infof("[carbonserver] maximum brace expansion set to: %d", listener.maxGlobs)
 
 	if listener.scanFrequency != 0 {
-		logger.Infoln("[carbonserver] use file cache with scan frequency", listener.scanFrequency)
+		Log.Infoln("[carbonserver] use file cache with scan frequency", listener.scanFrequency)
 		force := make(chan struct{})
 		listener.exitChan = make(chan struct{})
 		go listener.fileListUpdater(listener.whisperData, time.Tick(listener.scanFrequency), force, listener.exitChan)
@@ -776,7 +778,7 @@ func (listener *CarbonserverListener) Listen(listen string) error {
 		fmt.Fprintln(w, "User-agent: *\nDisallow: /")
 	})
 
-	logger.Infof("[carbonserver] listening on %s", listen)
+	Log.Infof("[carbonserver] listening on %s", listen)
 	tcpAddr, err := net.ResolveTCPAddr("tcp", listen)
 	if err != nil {
 		return err
@@ -815,7 +817,7 @@ func (listener *CarbonserverListener) bucketRequestTimes(req *http.Request, t ti
 	} else {
 		// Too big? Increment overflow bucket and log
 		atomic.AddUint64(&listener.timeBuckets[listener.buckets], 1)
-		logger.Infof("[carbonserver] Slow Request: %s: %s", t.String(), req.URL.String())
+		Log.Infof("[carbonserver] Slow Request: %s: %s", t.String(), req.URL.String())
 	}
 }
 
