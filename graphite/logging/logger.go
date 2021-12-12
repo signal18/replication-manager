@@ -1,4 +1,3 @@
-
 package logging
 
 import (
@@ -16,10 +15,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var Log = logrus.New()
 var std = NewFileLogger()
 
 func init() {
-	logrus.SetFormatter(&TextFormatter{})
+	Log.SetFormatter(&TextFormatter{})
 
 	// signal watcher
 	signalChan := make(chan os.Signal, 16)
@@ -30,9 +30,9 @@ func init() {
 			select {
 			case <-signalChan:
 				err := std.Reopen()
-				logrus.Infof("HUP received, reopen log %#v", std.Filename())
+				Log.Infof("HUP received, reopen log %#v", std.Filename())
 				if err != nil {
-					logrus.Errorf("Reopen log %#v failed: %s", std.Filename(), err.Error())
+					Log.Errorf("Reopen log %#v failed: %s", std.Filename(), err.Error())
 				}
 			}
 		}
@@ -76,7 +76,7 @@ func (l *FileLogger) Open(filename string) error {
 func (l *FileLogger) fsWatch(filename string, quit chan bool) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		logrus.Warningf("fsnotify.NewWatcher(): %s", err)
+		Log.Warningf("fsnotify.NewWatcher(): %s", err)
 		return
 	}
 
@@ -86,7 +86,7 @@ func (l *FileLogger) fsWatch(filename string, quit chan bool) {
 
 	subscribe := func() {
 		if err := watcher.WatchFlags(filename, fsnotify.FSN_CREATE|fsnotify.FSN_DELETE|fsnotify.FSN_RENAME); err != nil {
-			logrus.Warningf("fsnotify.Watcher.Watch(%s): %s", filename, err)
+			Log.Warningf("fsnotify.Watcher.Watch(%s): %s", filename, err)
 		}
 	}
 
@@ -101,9 +101,9 @@ func (l *FileLogger) fsWatch(filename string, quit chan bool) {
 				l.Reopen()
 				subscribe()
 
-				logrus.Infof("Reopen log %#v by fsnotify event", std.Filename())
+				Log.Infof("Reopen log %#v by fsnotify event", std.Filename())
 				if err != nil {
-					logrus.Errorf("Reopen log %#v failed: %s", std.Filename(), err.Error())
+					Log.Errorf("Reopen log %#v failed: %s", std.Filename(), err.Error())
 				}
 
 			case <-quit:
@@ -141,7 +141,7 @@ func (l *FileLogger) Reopen() error {
 	} else {
 		loggerOut = os.Stderr
 	}
-	logrus.SetOutput(loggerOut)
+	Log.SetOutput(loggerOut)
 
 	if oldFd != nil {
 		oldFd.Close()
@@ -168,7 +168,7 @@ func SetLevel(lvl string) error {
 	if err != nil {
 		return err
 	}
-	logrus.SetLevel(level)
+	Log.SetLevel(level)
 	return nil
 }
 
@@ -235,7 +235,7 @@ func (b *buffer) String() string {
 // Test run callable with changed logging output
 func Test(callable func(TestOut)) {
 	buf := &buffer{}
-	logrus.SetOutput(buf)
+	Log.SetOutput(buf)
 
 	callable(buf)
 
@@ -246,13 +246,13 @@ func Test(callable func(TestOut)) {
 		loggerOut = os.Stderr
 	}
 
-	logrus.SetOutput(loggerOut)
+	Log.SetOutput(loggerOut)
 }
 
 // TestWithLevel run callable with changed logging output and log level
 func TestWithLevel(level string, callable func(TestOut)) {
-	originalLevel := logrus.GetLevel()
-	defer logrus.SetLevel(originalLevel)
+	originalLevel := Log.GetLevel()
+	defer Log.SetLevel(originalLevel)
 	SetLevel(level)
 
 	Test(callable)
