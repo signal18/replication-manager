@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -15,8 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	//log "github.com/sirupsen/logrus"
-
 	"github.com/signal18/replication-manager/graphite/carbon"
 	logging "github.com/signal18/replication-manager/graphite/logging"
 	"github.com/sirupsen/logrus"
@@ -24,7 +21,7 @@ import (
 	_ "net/http/pprof"
 )
 
-//var log = logrus.New()
+var log = logrus.New()
 
 // Graphite is a struct that defines the relevant properties of a graphite
 // connection
@@ -214,6 +211,8 @@ func httpServe(addr string) (func(), error) {
 func RunCarbon(ShareDir string, DataDir string, GraphiteCarbonPort int, GraphiteCarbonLinkPort int, GraphiteCarbonPicklePort int, GraphiteCarbonPprofPort int, GraphiteCarbonServerPort int) error {
 	var err error
 
+	logging.Log = log
+
 	input, err := ioutil.ReadFile(ShareDir + "/carbon.conf.template")
 	if err != nil {
 		return err
@@ -257,24 +256,24 @@ func RunCarbon(ShareDir string, DataDir string, GraphiteCarbonPort int, Graphite
 	}
 
 	if err := logging.PrepareFile(cfg.Common.Logfile, runAsUser); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	if err := logging.SetFile(cfg.Common.Logfile); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
 	if cfg.Pprof.Enabled {
 		_, err = httpServe(cfg.Pprof.Listen)
 		if err != nil {
-			logrus.Fatal(err)
+			log.Fatal(err)
 		}
 	}
 
 	if err = app.Start(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	} else {
-		logrus.Info("started")
+		log.Info("started")
 	}
 
 	go func() {
@@ -291,17 +290,17 @@ func RunCarbon(ShareDir string, DataDir string, GraphiteCarbonPort int, Graphite
 		signal.Notify(c, syscall.SIGHUP)
 		for {
 			<-c
-			logrus.Info("HUP received. Reload config")
+			log.Info("HUP received. Reload config")
 			if err := app.ReloadConfig(); err != nil {
-				logrus.Errorf("Config reload failed: %s", err.Error())
+				log.Errorf("Config reload failed: %s", err.Error())
 			} else {
-				logrus.Info("Config successfully reloaded")
+				log.Info("Config successfully reloaded")
 			}
 		}
 	}()
 
 	app.Loop()
 
-	logrus.Info("stopped")
+	log.Info("stopped")
 	return nil
 }
