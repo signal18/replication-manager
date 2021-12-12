@@ -145,6 +145,11 @@ func (fs FusePanicLogger) SetXattr(ctx context.Context, op *fuseops.SetXattrOp) 
 	return fs.Fs.SetXattr(ctx, op)
 }
 
+func (fs FusePanicLogger) Fallocate(ctx context.Context, op *fuseops.FallocateOp) (err error) {
+	defer LogPanic(&err)
+	return fs.Fs.Fallocate(ctx, op)
+}
+
 func (fs FusePanicLogger) Destroy() {
 	fs.Fs.Destroy()
 }
