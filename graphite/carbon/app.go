@@ -1,4 +1,3 @@
-
 package carbon
 
 import (
@@ -10,12 +9,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sirupsen/logrus"
 	"github.com/signal18/replication-manager/graphite/cache"
 	"github.com/signal18/replication-manager/graphite/carbonserver"
 	"github.com/signal18/replication-manager/graphite/persister"
 	"github.com/signal18/replication-manager/graphite/receiver"
+	"github.com/sirupsen/logrus"
 )
+
+var Log = logrus.New()
 
 type App struct {
 	sync.RWMutex
@@ -142,31 +143,31 @@ func (app *App) stopListeners() {
 	if app.TCP != nil {
 		app.TCP.Stop()
 		app.TCP = nil
-		logrus.Debug("[tcp] finished")
+		Log.Debug("[tcp] finished")
 	}
 
 	if app.Pickle != nil {
 		app.Pickle.Stop()
 		app.Pickle = nil
-		logrus.Debug("[pickle] finished")
+		Log.Debug("[pickle] finished")
 	}
 
 	if app.UDP != nil {
 		app.UDP.Stop()
 		app.UDP = nil
-		logrus.Debug("[udp] finished")
+		Log.Debug("[udp] finished")
 	}
 
 	if app.CarbonLink != nil {
 		app.CarbonLink.Stop()
 		app.CarbonLink = nil
-		logrus.Debug("[carbonlink] finished")
+		Log.Debug("[carbonlink] finished")
 	}
 
 	if app.Carbonserver != nil {
 		app.Carbonserver.Stop()
 		app.Carbonserver = nil
-		logrus.Debug("[carbonserver] finished")
+		Log.Debug("[carbonserver] finished")
 	}
 }
 
@@ -176,25 +177,25 @@ func (app *App) stopAll() {
 	if app.Persister != nil {
 		app.Persister.Stop()
 		app.Persister = nil
-		logrus.Debug("[persister] finished")
+		Log.Debug("[persister] finished")
 	}
 
 	if app.Cache != nil {
 		app.Cache.Stop()
 		app.Cache = nil
-		logrus.Debug("[cache] finished")
+		Log.Debug("[cache] finished")
 	}
 
 	if app.Collector != nil {
 		app.Collector.Stop()
 		app.Collector = nil
-		logrus.Debug("[stat] finished")
+		Log.Debug("[stat] finished")
 	}
 
 	if app.exit != nil {
 		close(app.exit)
 		app.exit = nil
-		logrus.Debug("[app] close(exit)")
+		Log.Debug("[app] close(exit)")
 	}
 }
 
@@ -299,6 +300,7 @@ func (app *App) Start() (err error) {
 			return
 		}
 
+		carbonserver.Log = Log
 		carbonserver := carbonserver.NewCarbonserverListener(core.Get)
 		carbonserver.SetWhisperData(conf.Whisper.DataDir)
 		carbonserver.SetMaxGlobs(conf.Carbonserver.MaxGlobs)
