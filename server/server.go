@@ -140,6 +140,15 @@ type Settings struct {
 	//	Scheduler           []cron.Entry `json:"scheduler"`
 }
 
+// A Heartbeat returns a quick overview of the cluster status
+//
+// swagger:response heartbeat
+type HeartbeatResponse struct {
+	// Heartbeat message
+	// in: body
+	Body Heartbeat
+}
+
 type Heartbeat struct {
 	UUID    string `json:"uuid"`
 	Secret  string `json:"secret"`

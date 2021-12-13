@@ -11,6 +11,8 @@ package s18log
 
 import "sync"
 
+// Collection of log messages
+// swagger:response httplog
 type HttpLog struct {
 	Buffer []HttpMessage `json:"buffer"`
 	Len    int           `json:"len"`
@@ -18,6 +20,9 @@ type HttpLog struct {
 	L      sync.Mutex    `json:"-"`
 }
 
+// Log message
+// in: HttpMessage
+// swagger:response httpmessage
 type HttpMessage struct {
 	Group     string `json:"group"`
 	Level     string `json:"level"`

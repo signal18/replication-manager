@@ -1484,6 +1484,19 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 
 }
 
+// swagger:operation GET /api/clusters/{clusterName}/status clusterStatus
+// Shows the status for that specific named cluster
+//
+// ---
+// parameters:
+// - name: clusterName
+//   in: path
+//   description: cluster to filter by
+//   required: true
+//   type: string
+// responses:
+//   '200':
+//     "$ref": "#/responses/status"
 func (repman *ReplicationManager) handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1501,6 +1514,43 @@ func (repman *ReplicationManager) handlerMuxClusterStatus(w http.ResponseWriter,
 		io.WriteString(w, "No cluster found:"+vars["clusterName"])
 	}
 }
+
+// swagger:operation GET /api/clusters/{clusterName}/actions/master-physical-backup master-physical-backup
+//
+//
+// ---
+// parameters:
+// - name: clusterName
+//   in: path
+//   description: cluster to filter by
+//   required: true
+//   type: string
+// produces:
+//  - text/plain
+// responses:
+//   '200':
+//     description: OK
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '400':
+//     description: No cluster found
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No cluster found:cluster_1
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '403':
+//     description: No valid ACL
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No valid ACL
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
 
 func (repman *ReplicationManager) handlerMuxClusterMasterPhysicalBackup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")

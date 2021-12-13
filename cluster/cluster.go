@@ -35,6 +35,25 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// A Clusters is a collection of Cluster objects
+//
+// swagger:response clusters
+type ClustersResponse struct {
+	// Cluster information message
+	// in: body
+	Body []Cluster
+}
+
+// A Cluster has all the information associated with the configured cluster model
+// and its servers.
+//
+// swagger:response cluster
+type ClusterResponse struct {
+	// Cluster information message
+	// in: body
+	Body Cluster
+}
+
 type Cluster struct {
 	Name                          string                      `json:"name"`
 	Tenant                        string                      `json:"tenant"`
@@ -168,6 +187,8 @@ func (a QueryRuleSorter) Len() int           { return len(a) }
 func (a QueryRuleSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a QueryRuleSorter) Less(i, j int) bool { return a[i].Id < a[j].Id }
 
+// The Agent describes the server where the cluster runs on.
+// swagger:response agent
 type Agent struct {
 	Id           string `json:"id"`
 	HostName     string `json:"hostName"`

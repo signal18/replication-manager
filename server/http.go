@@ -7,6 +7,27 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
+// Package server replication-manager
+//
+// Replication Manager Monitoring and CLI for MariaDB and MySQL
+//
+//     Schemes: https
+//     Host: localhost
+//     BasePath: /
+//     Version: 0.0.1
+//     License: GPL http://opensource.org/licenses/GPL
+//     Contact: Stephane Varoqui  <svaroqui@gmail.com>
+//
+//     Consumes:
+//     - application/json
+//
+//     Produces:
+//     - application/json
+//
+//     Security:
+//       api_key:
+//
+// swagger:meta
 package server
 
 import (
