@@ -136,6 +136,7 @@ require (
 	github.com/spf13/pflag v1.0.3
 	github.com/spf13/viper v1.4.0
 	github.com/stretchr/testify v1.5.1
+	github.com/swaggest/swgui v1.4.2 // indirect
 	github.com/tebeka/strftime v0.1.5
 	github.com/urfave/cli v1.22.3
 	github.com/walle/lll v1.0.1 // indirect
@@ -144,9 +145,9 @@ require (
 	github.com/yoheimuta/protolint v0.32.0
 	go.uber.org/zap v1.14.0
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
-	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4
-	golang.org/x/sys v0.0.0-20210510120138-977fb7262007
-	golang.org/x/text v0.3.5
+	golang.org/x/net v0.0.0-20211105192438-b53810dc28af
+	golang.org/x/sys v0.0.0-20210809222454-d867a43fc93e
+	golang.org/x/text v0.3.6
 	google.golang.org/appengine v1.6.6
 	google.golang.org/genproto v0.0.0-20210617175327-b9e0b3197ced
 	google.golang.org/grpc v1.38.0
