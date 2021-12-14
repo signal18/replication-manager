@@ -28,7 +28,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/regtest"
-	v3 "github.com/swaggest/swgui/v3"
 )
 
 //RSA KEYS AND INITIALISATION
@@ -109,7 +108,7 @@ func (repman *ReplicationManager) apiserver() {
 	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 	router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 	router.HandleFunc("/api/login", repman.loginHandler)
-	router.Handle("/api", v3.NewHandler("My API", "/swagger.json", "/api"))
+	//router.Handle("/api", v3.NewHandler("My API", "/swagger.json", "/api"))
 
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
@@ -151,6 +150,11 @@ func (repman *ReplicationManager) apiserver() {
 
 	tlsConfig := Repmanv3TLS{
 		Enabled: false,
+	}
+	// Add default unsecure cert if not set
+	if repman.Conf.MonitoringSSLCert == "" {
+		repman.Conf.MonitoringSSLCert = repman.Conf.ShareDir + "/server.crt"
+		repman.Conf.MonitoringSSLKey = repman.Conf.ShareDir + "/server.key"
 	}
 
 	if repman.Conf.MonitoringSSLCert != "" {
