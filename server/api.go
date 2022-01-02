@@ -143,7 +143,6 @@ func (repman *ReplicationManager) apiserver() {
 	repman.apiClusterProtectedHandler(router)
 	repman.apiProxyProtectedHandler(router)
 
-	log.Info("Starting HTTPS & JWT API on " + repman.Conf.APIBind + ":" + repman.Conf.APIPort)
 	var err error
 
 	tlsConfig := Repmanv3TLS{
@@ -151,11 +150,14 @@ func (repman *ReplicationManager) apiserver() {
 	}
 
 	if repman.Conf.MonitoringSSLCert != "" {
+		log.Info("Starting HTTPS & JWT API on " + repman.Conf.APIBind + ":" + repman.Conf.APIPort)
 		tlsConfig = Repmanv3TLS{
 			Enabled:            true,
 			CertificatePath:    repman.Conf.MonitoringSSLCert,
 			CertificateKeyPath: repman.Conf.MonitoringSSLKey,
 		}
+	} else {
+		log.Info("Starting HTTP & JWT API on " + repman.Conf.APIBind + ":" + repman.Conf.APIPort)
 	}
 
 	repman.SetV3Config(Repmanv3Config{
