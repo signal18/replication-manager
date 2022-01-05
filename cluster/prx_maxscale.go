@@ -24,7 +24,7 @@ type MaxscaleProxy struct {
 }
 
 func (cluster *Cluster) refreshMaxscale(proxy *MaxscaleProxy) error {
-	return proxy.refresh()
+	return proxy.Refresh()
 }
 
 func NewMaxscaleProxy(placement int, cluster *Cluster, proxyHost string) *MaxscaleProxy {
@@ -75,7 +75,7 @@ func (proxy *MaxscaleProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 	flags.StringVar(&conf.MxsHostsIPV6, "maxscale-servers-ipv6", "", "ipv6 bind address ")
 }
 
-func (proxy *MaxscaleProxy) refresh() error {
+func (proxy *MaxscaleProxy) Refresh() error {
 	cluster := proxy.ClusterGroup
 	if cluster.Conf.MxsOn == false {
 		return nil
