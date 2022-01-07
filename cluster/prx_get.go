@@ -294,6 +294,14 @@ func (p *Proxy) GetWritePort() int {
 	return p.WritePort
 }
 
+func (p *Proxy) GetReadWritePort() int {
+	return p.ReadWritePort
+}
+
+func (p *Proxy) GetReadPort() int {
+	return p.ReadPort
+}
+
 func (p *Proxy) GetId() string {
 	return p.Id
 }

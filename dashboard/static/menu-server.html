@@ -11,7 +11,7 @@
                 Maintenance Mode
             </md-button>
         </md-menu-item>
-        <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true">
+        <md-menu-item>
             <md-menu>
                 <md-button ng-click="$mdMenu.open($event)">
          <span md-menu-align-target>
@@ -20,35 +20,35 @@
          </span>
                 </md-button>
                 <md-menu-content>
-                    <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+                    <md-menu-item
                                   ng-click="dbstop(server.id)">
                         <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-stop']==false">
                             <md-icon md-menu-align-target class="fas fa-stop"></md-icon>
                             Stop Database
                         </md-button>
                     </md-menu-item>
-                    <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+                    <md-menu-item
                                   ng-click="dbstart(server.id)">
                         <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-start']==false">
                             <md-icon md-menu-align-target class="fas fa-play"></md-icon>
                             Start Database
                         </md-button>
                     </md-menu-item>
-                    <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+                    <md-menu-item
                                   ng-click="dbprovision(server.id)">
                         <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['prov-db-provision']==false">
                             <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
                             Provision Database
                         </md-button>
                     </md-menu-item>
-                    <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+                    <md-menu-item
                                   ng-click="dbunprovision(server.id)">
                         <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['prov-db-unprovision']==false">
                             <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
                             Unprovision Database
                         </md-button>
                     </md-menu-item>
-                    <md-menu-item ng-if="settings.config.enterprise==true || settings.config.test==true"
+                    <md-menu-item
                                   ng-click="dbjobs(server.id)">
                         <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['prov-db-unprovision']==false">
                             <md-icon md-menu-align-target class="fas fa-trash"></md-icon>

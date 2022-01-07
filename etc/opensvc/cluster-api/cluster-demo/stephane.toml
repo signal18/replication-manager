@@ -1,0 +1,60 @@
+[Default]
+opensvc-use-collector-api = false
+opensvc-p12-certificate = "etc/opensvc/cluster-api/cluster-demo/demo.p12"
+opensvc-host = "vpn.mixr.net:1215"
+opensvc-p12-secret = "679ebed7-352e-4b00-bb9e-87305b50e16e"
+
+# include ="etc/opensvc/cluster-api/cluster-demo/cluster.d"
+# log-heartbeat = true
+
+log-file="/var/log/replication-manager/replication-manager.log"
+http-bind-address = "0.0.0.0"
+
+#VPN Address
+monitoring-address = "10.8.0.50"
+
+
+prov-orchestrator = "opensvc"
+prov-orchestrator-cluster = "cloud18"
+
+prov-net-cni = true
+prov-net-cni-cluster = "repman"
+
+prov-docker-daemon-private=false
+
+prov-db-agents = "s18-fr-1,s18-fr-2"
+prov-db-service-type = "docker"
+prov-db-disk-type = "volume"
+prov-db-volume-data = "db"
+
+prov-proxy-agents = "s18-fr-1,s18-fr-2"
+prov-proxy-service-type = "docker"
+prov-proxy-disk-type = "volume"
+prov-proxy-volume-data = "tank"
+
+
+
+[bench]
+title = "bench"
+db-servers-hosts = "db1,db2"
+db-servers-prefered-master = "db1"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+force-slave-readonly = true
+prov-db-docker-img = "mariadb:10.5"
+prov-db-tags = "docker,linux,innodb,noquerycache,threadpool,slow,ssd,localinfile,nodoublewrite,compressbinlog,noadaptiveflush,relayspacelimit,optimistic"
+prov-db-disk-size = "2"
+prov-db-memory = "256"
+prov-db-disk-iops = "10000"
+prov-db-cpu-cores = "8"
+monitoring-scheduler = false
+# backup-restic = true
+
+proxysql=true
+proxysql-port = 3306
+proxysql-servers = "proxysql1,proxysql2"
+proxysql-user ="external"
+proxysql-bootstrap= true
+proxysql-copy-grants = true
+prov-proxy-disk-size = "1"

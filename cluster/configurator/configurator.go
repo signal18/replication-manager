@@ -493,12 +493,12 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 	misc.CopyFile(ClusterDir+"/client-cert.pem", Datadir+"/init/etc/haproxy/ssl/client-cert.pem")
 	misc.CopyFile(ClusterDir+"/client-key.pem", Datadir+"/init/etc/haproxy/ssl/client-key.pem")
 
-	if configurator.HaveProxyTag("docker") {
+	/*if configurator.HaveProxyTag("docker") {
 		err := misc.ChownR(Datadir+"/init/data", 999, 999)
 		if err != nil {
 			return errors.New(fmt.Sprintf("Chown failed %q: %s", Datadir+"/init/data", err))
 		}
-	}
+	}*/
 	configurator.TarGz(Datadir+"/config.tar.gz", Datadir+"/init")
 
 	return nil
@@ -615,17 +615,17 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 		}
 	}
 
-	if configurator.HaveDBTag("docker") {
-		err := misc.ChownR(Datadir+"/init/data", 999, 999)
-		if err != nil {
-			return errors.New(fmt.Sprintf("Chown failed %q: %s", Datadir+"/init/data", err))
+	/*	if configurator.HaveDBTag("docker") {
+			err := misc.ChownR(Datadir+"/init/data", 999, 999)
+			if err != nil {
+				return errors.New(fmt.Sprintf("Chown failed %q: %s", Datadir+"/init/data", err))
+			}
+			err = misc.ChmodR(Datadir+"/init/init", 0755)
+			if err != nil {
+				return errors.New(fmt.Sprintf("Chown failed %q: %s", Datadir+"/init/init", err))
+			}
 		}
-		err = misc.ChmodR(Datadir+"/init/init", 0755)
-		if err != nil {
-			return errors.New(fmt.Sprintf("Chown failed %q: %s", Datadir+"/init/init", err))
-		}
-	}
-
+	*/
 	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/etc/mysql/ssl/ca-cert.pem")
 	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/etc/mysql/ssl/server-cert.pem")
 	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/etc/mysql/ssl/server-key.pem")
