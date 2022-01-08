@@ -152,8 +152,14 @@ func (repman *ReplicationManager) apiserver() {
 	}
 	// Add default unsecure cert if not set
 	if repman.Conf.MonitoringSSLCert == "" {
+		log.Info("No SSL certificate provided using insecured from " + repman.Conf.ShareDir + "/server.crt")
 		repman.Conf.MonitoringSSLCert = repman.Conf.ShareDir + "/server.crt"
 		repman.Conf.MonitoringSSLKey = repman.Conf.ShareDir + "/server.key"
+		tlsConfig = Repmanv3TLS{
+			Enabled:            true,
+			CertificatePath:    repman.Conf.MonitoringSSLCert,
+			CertificateKeyPath: repman.Conf.MonitoringSSLKey,
+		}
 	}
 
 	if repman.Conf.MonitoringSSLCert != "" {

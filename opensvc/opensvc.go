@@ -1082,12 +1082,12 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 	return nil
 }
 
-func (collector *Collector) CreateSecretV2(namespace string, service string) error {
+func (collector *Collector) CreateSecretV2(namespace string, service string, agent string) error {
 
-	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_create"
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
 
 	// just create or replace
-	jsondata := `{"path": "` + namespace + `/sec/` + service + `"}`
+	jsondata := `{"data": {"` + namespace + `/sec/` + service + `": {}}}`
 	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
@@ -1098,7 +1098,11 @@ func (collector *Collector) CreateSecretV2(namespace string, service string) err
 	}
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("o-node", "ANY")
+	myagent := "ANY"
+	if agent != "" {
+		myagent = agent
+	}
+	req.Header.Set("o-node", myagent)
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("Api Error: ", err)
@@ -1110,10 +1114,10 @@ func (collector *Collector) CreateSecretV2(namespace string, service string) err
 	return nil
 }
 
-func (collector *Collector) CreateConfigV2(namespace string, service string) error {
+func (collector *Collector) CreateConfigV2(namespace string, service string, agent string) error {
 
-	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_create"
-	jsondata := `{"path": "` + namespace + `/cfg/` + service + `"}`
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
+	jsondata := `{"data": {"` + namespace + `/cfg/` + service + `": {}}}`
 	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
@@ -1124,7 +1128,11 @@ func (collector *Collector) CreateConfigV2(namespace string, service string) err
 	}
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("o-node", "ANY")
+	myagent := "ANY"
+	if agent != "" {
+		myagent = agent
+	}
+	req.Header.Set("o-node", myagent)
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("Api Error: ", err)
@@ -1141,7 +1149,37 @@ func (collector *Collector) CreateConfigV2(namespace string, service string) err
 func (collector *Collector) CreateTemplateV2(cluster string, srv string, node string, template string) error {
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
-	jsondata := `{"namespace": "` + cluster + `", "provision": true, "sync": true, "data": {"` + srv + `": ` + template + `}}`
+	// jsondata := `{"namespace": "` + cluster + `", "provision": true, "sync": true, "data": {"` + srv + `": ` + template + `}}`
+	jsondata := `{"namespace": "` + cluster + `", "sync": true, "data": {"` + srv + `": ` + template + `}}`
+
+	log.Println("OpenSVC API Request: ", urlpost, " Payload: ", jsondata)
+	client := collector.GetHttpClient()
+	b := bytes.NewBuffer([]byte(jsondata))
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		log.Println("OpenSVC API Error: ", err)
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", node)
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("OpenSVC API Error: ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("OpenSVC API Response: ", string(body))
+	collector.CreateTemplateV2Monitor(srv, node)
+	return nil
+}
+
+func (collector *Collector) CreateTemplateV2Monitor(srv string, node string) error {
+
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_monitor"
+	jsondata := `{"path": "` + srv + `", "global_expect": "provisioned", "options": {}}`
+
 	log.Println("OpenSVC API Request: ", urlpost, " Payload: ", jsondata)
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
