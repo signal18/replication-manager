@@ -191,7 +191,12 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 
 		err := opensvc.PurgeServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Can not unprovision database:  %s ", err)
+			cluster.LogPrintf(LvlErr, "Can not unprovision database service:  %s ", err)
+			cluster.errorChan <- err
+		}
+		err = opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+server.Name, server.Agent)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Can not unprovision database volume:  %s ", err)
 			cluster.errorChan <- err
 		}
 	}

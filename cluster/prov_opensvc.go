@@ -394,3 +394,11 @@ info = 50
 	}
 	return vm
 }
+
+func (cluster *Cluster) OpenSVCUnprovisionSecret() {
+	opensvc := cluster.OpenSVCConnect()
+	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
+		opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/sec/env", "")
+		opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/cfg/env", "")
+	}
+}

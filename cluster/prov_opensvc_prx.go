@@ -19,6 +19,35 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx DatabaseProxy) {
+	opensvc := cluster.OpenSVCConnect()
+	//agents := opensvc.GetNodes()
+	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
+		err := opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/svc/"+prx.GetName(), prx.GetAgent())
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Can not unprovision proxy service:  %s ", err)
+			cluster.errorChan <- err
+		}
+		err = opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+prx.GetName(), prx.GetAgent())
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Can not unprovision proxy volume:  %s ", err)
+			cluster.errorChan <- err
+		}
+	} else {
+		node, _ := cluster.FoundProxyAgent(prx)
+		for _, svc := range node.Svc {
+			if cluster.Name+"/svc/"+prx.GetName() == svc.Svc_name {
+				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
+				err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "Can't unprovision proxy %s, %s", prx.GetId(), err)
+				}
+			}
+		}
+	}
+	cluster.errorChan <- nil
+}
+
 func (cluster *Cluster) OpenSVCStopProxyService(server DatabaseProxy) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
@@ -364,22 +393,6 @@ func (cluster *Cluster) OpenSVCGetProxyVolumeDataSection() map[string]string {
 	svcvol["pool"] = cluster.Conf.ProvProxVolumeData
 	svcvol["size"] = "{env.size}"
 	return svcvol
-}
-
-func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx DatabaseProxy) {
-	opensvc := cluster.OpenSVCConnect()
-	//agents := opensvc.GetNodes()
-	node, _ := cluster.FoundProxyAgent(prx)
-	for _, svc := range node.Svc {
-		if cluster.Name+"/svc/"+prx.GetName() == svc.Svc_name {
-			idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
-			err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "Can't unprovision proxy %s, %s", prx.GetId(), err)
-			}
-		}
-	}
-	cluster.errorChan <- nil
 }
 
 func (cluster *Cluster) FoundProxyAgent(proxy DatabaseProxy) (opensvc.Host, error) {

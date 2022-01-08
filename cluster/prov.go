@@ -76,11 +76,11 @@ func (cluster *Cluster) ProvisionServices() error {
 			go cluster.OnPremiseProvisionDatabaseService(server)
 
 		default:
-			cluster.sme.RemoveFailoverState()
-			return nil
+
 		}
 		cluster.ProvisionDatabaseScript(server)
 	}
+
 	for _, server := range cluster.Servers {
 		select {
 		case err := <-cluster.errorChan:
@@ -95,11 +95,7 @@ func (cluster *Cluster) ProvisionServices() error {
 		}
 	}
 
-	for _, pri := range cluster.Proxies {
-		prx, ok := pri.(*Proxy)
-		if !ok {
-			continue
-		}
+	for _, prx := range cluster.Proxies {
 		switch cluster.Conf.ProvOrchestrator {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCProvisionProxyService(prx)
@@ -112,9 +108,7 @@ func (cluster *Cluster) ProvisionServices() error {
 		case config.ConstOrchestratorOnPremise:
 			go cluster.OnPremiseProvisionProxyService(prx)
 		default:
-			// TODO: wtf? it never hits the second loop
-			cluster.sme.RemoveFailoverState()
-			return nil
+
 		}
 		cluster.ProvisionProxyScript(prx)
 	}
@@ -215,8 +209,6 @@ func (cluster *Cluster) Unprovision() error {
 		case config.ConstOrchestratorOnPremise:
 			go cluster.OnPremiseUnprovisionDatabaseService(server)
 		default:
-			cluster.sme.RemoveFailoverState()
-			return nil
 		}
 		cluster.UnprovisionDatabaseScript(server)
 	}
@@ -233,11 +225,17 @@ func (cluster *Cluster) Unprovision() error {
 			}
 		}
 	}
-	for _, pri := range cluster.Proxies {
-		prx, ok := pri.(*Proxy)
-		if !ok {
-			continue
-		}
+	cluster.slaves = nil
+	cluster.master = nil
+	cluster.vmaster = nil
+	cluster.IsAllDbUp = false
+	cluster.sme.RemoveFailoverState()
+
+	for _, prx := range cluster.Proxies {
+		/*	prx, ok := pri.(*Proxy)
+			if !ok {
+				continue
+			}*/
 		switch cluster.Conf.ProvOrchestrator {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCUnprovisionProxyService(prx)
@@ -250,16 +248,16 @@ func (cluster *Cluster) Unprovision() error {
 		case config.ConstOrchestratorOnPremise:
 			go cluster.OnPremiseUnprovisionProxyService(prx)
 		default:
-			cluster.sme.RemoveFailoverState()
-			return nil
+
 		}
 		cluster.UnprovisionProxyScript(prx)
 	}
-	for _, pri := range cluster.Proxies {
-		prx, ok := pri.(*Proxy)
-		if !ok {
-			continue
-		}
+	for _, prx := range cluster.Proxies {
+		/*	prx, ok := pri.(*Proxy)
+			if !ok {
+				cluster.LogPrintf(LvlErr, "Unprovision proxy continue ")
+				continue
+			}*/
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
@@ -272,13 +270,12 @@ func (cluster *Cluster) Unprovision() error {
 			}
 		}
 	}
+	switch cluster.Conf.ProvOrchestrator {
+	case config.ConstOrchestratorOpenSVC:
+		cluster.OpenSVCUnprovisionSecret()
+	default:
+	}
 
-	cluster.slaves = nil
-	cluster.master = nil
-	cluster.vmaster = nil
-	cluster.IsAllDbUp = false
-	cluster.sme.UnDiscovered()
-	cluster.sme.RemoveFailoverState()
 	return nil
 }
 
