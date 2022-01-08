@@ -1,176 +1,169 @@
 <md-menu >
-    <md-button  class="md-raised" aria-label="Open server interactions menu"
-               ng-click="$mdMenu.open($event)"
-               style="min-width:20px;margin: 2px 2px 2px 2px;padding: 0 2px 0 2px;">
-        <md-span md-menu-origin class="fas fa-1x fa-bars" comment="fa-ellipsis-h"></md-span>
-    </md-button>
-    <md-menu-content>
-        <md-menu-item ng-click="dbmaintenance(server.id)">
-            <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-maintenance']==false">
-                <md-icon md-menu-align-target class="fas fa-pause"></md-icon>
-                Maintenance Mode
-            </md-button>
-        </md-menu-item>
-        <md-menu-item>
-            <md-menu>
-                <md-button ng-click="$mdMenu.open($event)">
-         <span md-menu-align-target>
-            Provision
-            <md-icon class="fas fa-arrow-right"></md-icon>
-         </span>
-                </md-button>
-                <md-menu-content>
-                    <md-menu-item
-                                  ng-click="dbstop(server.id)">
-                        <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-stop']==false">
-                            <md-icon md-menu-align-target class="fas fa-stop"></md-icon>
-                            Stop Database
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item
-                                  ng-click="dbstart(server.id)">
-                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-start']==false">
-                            <md-icon md-menu-align-target class="fas fa-play"></md-icon>
-                            Start Database
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item
-                                  ng-click="dbprovision(server.id)">
-                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['prov-db-provision']==false">
-                            <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
-                            Provision Database
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item
-                                  ng-click="dbunprovision(server.id)">
-                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['prov-db-unprovision']==false">
-                            <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
-                            Unprovision Database
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item
-                                  ng-click="dbjobs(server.id)">
-                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['prov-db-unprovision']==false">
-                            <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
-                            Run Remote Jobs
-                        </md-button>
-                    </md-menu-item>
-                </md-menu-content>
-            </md-menu>
-        </md-menu-item>
-        <md-menu-item>
-            <md-menu>
-                <md-button ng-click="$mdMenu.open($event)">
-         <span md-menu-align-target>
-            Backup
-            <md-icon class="fas fa-arrow-right"></md-icon>
-         </span>
-                </md-button>
-                <md-menu-content>
-                    <md-menu-item ng-if="server.id==master.id" ng-click="backupphysical(server.id)">
-                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false">
-                            <md-icon md-menu-align-target class="fas fa-save"></md-icon>
-                            Physical Backup
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item ng-if="server.id==master.id" ng-click="dbdump(server.id)">
-                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false">
-                            <md-icon md-menu-align-target class="fas fa-save"></md-icon>
-                            Logical Backup
-                        </md-button>
-                    </md-menu-item>
+   <md-button  class="md-raised" aria-label="Open server interactions menu"ng-click="$mdMenu.open($event)"style="min-width:20px;margin: 2px 2px 2px 2px;padding: 0 2px 0 2px;">
+      <md-span md-menu-origin class="fas fa-1x fa-bars" comment="fa-ellipsis-h"></md-span>
+   </md-button>
+   <md-menu-content>
+   <md-menu-item ng-click="dbmaintenance(server.id)">
+      <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-maintenance']==false">
+         <md-icon md-menu-align-target class="fas fa-pause"></md-icon>
+         Maintenance Mode
+      </md-button>
+   </md-menu-item>
 
-                    <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedmysqldump(server.id)">
-                        <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false">
-                            <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
-                            Reseed Logical From Backup
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item ng-if="server.id!=master.id" ng-click="  dbreseedmysqldumpmaster(server.id)">
-                        <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false">
-                            <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
-                            Reseed Logical From Master
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedxtrabackup(server.id)">
-                        <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false">
-                            <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
-                            Reseed Physical From Backup
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item ng-click="flushlogs(server.id)">
-                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false">
-                            <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
-                            Flush logs
-                      </md-button>
-                    </md-menu-item>
-                </md-menu-content>
-            </md-menu>
-        </md-menu-item>
-        <md-menu-item>
-            <md-menu>
-                <md-button ng-click="$mdMenu.open($event)">
-         <span md-menu-align-target>
-            DB Utils
-         </span>
-                    <md-icon class="fas fa-arrow-right"></md-icon>
-                </md-button>
-                <md-menu-content>
-                    <md-menu-item ng-click="dboptimize(server.id)">
-                        <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-optimize']==false">
-                            <md-icon md-menu-align-target class="fas fa-compress"></md-icon>
-                            Optimize
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item ng-if="server.id!=master.id" ng-click="dbskipreplicationevent(server.id)">
-                        <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-replication']==false">
-                            <md-icon md-menu-align-target class="fas fa-hospital-symbol"></md-icon>
-                            Skip 1 Replication Event
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item ng-click="dbtoogleinnodbmonitor(server.id)">
-                        <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-logs']==false">
-                            <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
-                            Toogle InnoDB Monitor
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item ng-click="dbtoogleslowquerycapture(server.id)">
-                        <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-capture']==false">
-                            <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
-                            Toogle Slow Query Capture
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item ng-click="dbstartslave(server.id)">
-                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-replication']==false">
-                            <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
-                            Start slave
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item ng-click="dbstopslave(server.id)">
-                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-replication']==false">
-                            <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
-                            Stop slave
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item ng-click="dbtooglereadonly(server.id)">
-                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-readonly']==false">
-                            <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
-                            Toogle read only
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item ng-click="dbresetmaster(server.id)">
-                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-replication']==false">
-                            <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
-                            Reset master
-                        </md-button>
-                    </md-menu-item>
-                    <md-menu-item ng-click="dbresetslaveall(server.id)">
-                        <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-replication']==false">
-                            <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
-                            Reset slave
-                        </md-button>
-                    </md-menu-item>
-            </md-menu>
-        </md-menu-item>
-    </md-menu-content>
+   <md-menu-item>
+      <md-menu>
+         <md-button ng-click="$mdMenu.open($event)">
+            <span md-menu-align-target>
+               Backup
+               <md-icon class="fas fa-arrow-right"></md-icon>
+            </span>
+         </md-button>
+         <md-menu-content>
+            <md-menu-item ng-if="server.id==master.id" ng-click="backupphysical(server.id)">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false">
+                  <md-icon md-menu-align-target class="fas fa-save"></md-icon>
+                  Physical Backup
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-if="server.id==master.id" ng-click="dbdump(server.id)">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false">
+                  <md-icon md-menu-align-target class="fas fa-save"></md-icon>
+                  Logical Backup
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedmysqldump(server.id)">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false">
+                  <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
+                  Reseed Logical From Backup
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-if="server.id!=master.id" ng-click="  dbreseedmysqldumpmaster(server.id)">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false">
+                  <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
+                  Reseed Logical From Master
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedxtrabackup(server.id)">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false">
+                  <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
+                  Reseed Physical From Backup
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-click="flushlogs(server.id)">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false">
+                  <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                  Flush logs
+               </md-button>
+            </md-menu-item>
+         </md-menu-content>
+      </md-menu>
+   </md-menu-item>
+
+   <md-menu-item >
+      <md-menu>
+         <md-button ng-click="$mdMenu.open($event)">
+            <span md-menu-align-target>
+               Provision
+               <md-icon class="fas fa-arrow-right"></md-icon>
+            </span>
+         </md-button>
+         <md-menu-content>
+            <md-menu-item ng-click="dbstop(server.id)">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-stop']==false">
+                  <md-icon md-menu-align-target class="fas fa-stop"></md-icon>
+                  Stop Database
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-click="dbstart(server.id)">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-start']==false">
+                  <md-icon md-menu-align-target class="fas fa-play"></md-icon>
+                  Start Database
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-click="dbprovision(server.id)">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['prov-db-provision']==false">
+                  <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
+                  Provision Database
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-click="dbunprovision(server.id)">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['prov-db-unprovision']==false">
+                  <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
+                  Unprovision Database
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-click="dbjobs(server.id)">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['prov-db-unprovision']==false">
+                  <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
+                  Run Remote Jobs
+               </md-button>
+            </md-menu-item>
+         </md-menu-content>
+      </md-menu>
+   </md-menu-item>
+
+   <md-menu-item>
+      <md-menu>
+         <md-button ng-click="$mdMenu.open($event)">
+            <span md-menu-align-target>DB Utils</span>
+            <md-icon class="fas fa-arrow-right"></md-icon>
+         </md-button>
+         <md-menu-content>
+            <md-menu-item ng-click="dboptimize(server.id)">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-optimize']==false">
+                  <md-icon md-menu-align-target class="fas fa-compress"></md-icon>
+                  Optimize
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-if="server.id!=master.id" ng-click="dbskipreplicationevent(server.id)">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-replication']==false">
+                  <md-icon md-menu-align-target class="fas fa-hospital-symbol"></md-icon>
+                  Skip 1 Replication Event
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-click="dbtoogleinnodbmonitor(server.id)">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-logs']==false">
+                  <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                  Toogle InnoDB Monitor
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-click="dbtoogleslowquerycapture(server.id)">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-capture']==false">
+                  <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                  Toogle Slow Query Capture
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-click="dbstartslave(server.id)">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-replication']==false">
+                  <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                  Start slave
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-click="dbstopslave(server.id)">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-replication']==false">
+                  <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                  Stop slave
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-click="dbtooglereadonly(server.id)">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-readonly']==false">
+                  <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                  Toogle read only
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-click="dbresetmaster(server.id)">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-replication']==false">
+                  <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                  Reset master
+               </md-button>
+            </md-menu-item>
+            <md-menu-item ng-click="dbresetslaveall(server.id)">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-replication']==false">
+                  <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
+                  Reset slave
+               </md-button>
+            </md-menu-item>
+      </md-menu>
+   </md-menu-item>
+   </md-menu-content>
 </md-menu>
