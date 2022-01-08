@@ -643,7 +643,7 @@ func (repman *ReplicationManager) handlerMuxServicesBootstrap(w http.ResponseWri
 		}
 		err := mycluster.ProvisionServices()
 		if err != nil {
-			mycluster.LogPrintf(cluster.LvlErr, "API Error Bootstrap Micro Services: ", err)
+			mycluster.LogPrintf(cluster.LvlErr, "API Error Bootstrap Micro Services: %s", err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -665,7 +665,7 @@ func (repman *ReplicationManager) handlerMuxServicesProvision(w http.ResponseWri
 		}
 		err := mycluster.Bootstrap()
 		if err != nil {
-			mycluster.LogPrintf(cluster.LvlErr, "API Error Bootstrap Micro Services + replication ", err)
+			mycluster.LogPrintf(cluster.LvlErr, "API Error Bootstrap Micro Services + replication: %s", err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
