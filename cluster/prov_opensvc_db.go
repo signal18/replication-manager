@@ -384,9 +384,9 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection(port string) map[string]s
 	svccontainer["secrets_environment"] = "env/REPLICATION_MANAGER_PASSWORD"
 	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_USER env/REPLICATION_MANAGER_URL"
 	svccontainer["environment"] = "REPLICATION_MANAGER_CLUSTER_NAME={namespace} REPLICATION_MANAGER_HOST_NAME={fqdn} REPLICATION_MANAGER_HOST_PORT=" + port
-	svccontainer["# Debug"] = ""
-	svccontainer["# interactive"] = "true"
-	svccontainer["# tty"] = "true"
+	//	svccontainer["# Debug"] = ""
+	//	svccontainer["# interactive"] = "true"
+	//	svccontainer["# tty"] = "true"
 	return svccontainer
 }
 

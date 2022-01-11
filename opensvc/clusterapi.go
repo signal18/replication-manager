@@ -98,12 +98,10 @@ func (collector *Collector) StopServiceV2(cluster string, srv string, node strin
 func (collector *Collector) PurgeServiceV2(cluster string, srv string, node string) error {
 
 	client := collector.GetHttpClient()
-
-	//	{  "path": "bench/svc/proxysql1",  "global_expect": "purged"}
-	jsondata := `{"path": "` + srv + `", "action": "purge", "options": {}}`
-	//	jsondata := `{"action": "service_action", "node": "` + node + `", "options": {"path": "` + srv + `", "action": "purge", "options": {}}}`
+	jsondata := `{"path": "` + srv + `", "global_expect": "purged", "options": {}}`
+	//jsondata := `{"path": "` + srv + `", "action": "purge", "options": {}}`
 	b := bytes.NewBuffer([]byte(jsondata))
-	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_monitor"
 	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
@@ -263,7 +261,12 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
+
+	collector.WaitServiceAvailable(srv, node)
+	collector.WaitServicePropagate(srv, node)
+
 	collector.CreateTemplateV2Monitor(srv, node)
+
 	return nil
 }
 
@@ -292,6 +295,64 @@ func (collector *Collector) CreateTemplateV2Monitor(srv string, node string) err
 	body, _ := ioutil.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
 	return nil
+}
+
+func (collector *Collector) WaitServiceAvailable(srv string, node string) error {
+
+	//jsondata := "{\".monitor.services.'" + srv + "'.avail=up\",   \"duration\": \"30s\"}"
+	urlget := "https://" + collector.Host + ":" + collector.Port + "/wait?condition=.monitor.services.'" + srv + "'.avail&duration=30s"
+
+	client := collector.GetHttpClient()
+	//b := bytes.NewBuffer([]byte(jsondata))
+	//	req, err := http.NewRequest("GET", urlget, b)
+	req, err := http.NewRequest("GET", urlget, nil)
+	if err != nil {
+		log.Println("OpenSVC API Error: ", err)
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", node)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("OpenSVC API Error: ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("OpenSVC API Response: ", string(body))
+	return nil
+
+}
+
+func (collector *Collector) WaitServicePropagate(srv string, node string) error {
+
+	//jsondata := "{\".monitor.services.'" + srv + "'.avail=up\",   \"duration\": \"30s\"}"
+	urlget := "https://" + collector.Host + ":" + collector.Port + "/wait?condition=.monitor.nodes." + node + ".services.config.'" + srv + "'.csum&duration=30s"
+
+	client := collector.GetHttpClient()
+	//b := bytes.NewBuffer([]byte(jsondata))
+	//	req, err := http.NewRequest("GET", urlget, b)
+	req, err := http.NewRequest("GET", urlget, nil)
+	if err != nil {
+		log.Println("OpenSVC API Error: ", err)
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", node)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("OpenSVC API Error: ", err)
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := ioutil.ReadAll(resp.Body)
+	log.Println("OpenSVC API Response: ", string(body))
+	return nil
+
 }
 
 func (collector *Collector) GetNodes() ([]Host, error) {

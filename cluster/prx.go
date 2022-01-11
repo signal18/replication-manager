@@ -328,12 +328,12 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 					pr.DelProvisionCookie()
 				}
 			} else {
-				fc := pr.GetFailCount() + 1
+				pr.SetFailCount(pr.GetFailCount() + 1)
 				// TODO: Can pr.ClusterGroup be different from cluster *Cluster? code doesn't imply it. if not change to
 				// cl, err := pr.GetCluster()
 				// cl.Conf.MaxFail
-				if fc >= cluster.Conf.MaxFail {
-					if fc == cluster.Conf.MaxFail {
+				if pr.GetFailCount() >= cluster.Conf.MaxFail {
+					if pr.GetFailCount() == cluster.Conf.MaxFail {
 						cluster.LogPrintf("INFO", "Declaring %s proxy as failed %s:%s %s", pr.GetType(), pr.GetHost(), pr.GetPort(), err)
 					}
 					pr.SetState(stateFailed)

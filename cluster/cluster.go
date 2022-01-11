@@ -436,6 +436,7 @@ func (cluster *Cluster) Run() {
 				wg.Add(1)
 				go cluster.Heartbeat(wg)
 				// Heartbeat switchover or failover controller runs only on active repman
+				wg.Wait()
 
 				if cluster.runOnceAfterTopology {
 					// Preserved server state in proxy during reload config
