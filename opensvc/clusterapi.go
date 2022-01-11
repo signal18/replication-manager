@@ -239,8 +239,8 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 func (collector *Collector) CreateTemplateV2(cluster string, srv string, node string, template string) error {
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
-	// jsondata := `{"namespace": "` + cluster + `", "provision": true, "sync": true, "data": {"` + srv + `": ` + template + `}}`
-	jsondata := `{"namespace": "` + cluster + `", "sync": true, "data": {"` + srv + `": ` + template + `}}`
+	jsondata := `{"namespace": "` + cluster + `", "provision": true, "sync": true, "data": {"` + srv + `": ` + template + `}}`
+	//jsondata := `{"namespace": "` + cluster + `", "sync": true, "data": {"` + srv + `": ` + template + `}}`
 
 	log.Println("OpenSVC API Request: ", urlpost, " Payload: ", jsondata)
 	client := collector.GetHttpClient()
@@ -262,10 +262,10 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 	body, _ := ioutil.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
 
-	collector.WaitServiceAvailable(srv, node)
-	collector.WaitServicePropagate(srv, node)
+	//	collector.WaitServiceAvailable(srv, node)
+	//	collector.WaitServicePropagate(srv, node)
 
-	collector.CreateTemplateV2Monitor(srv, node)
+	//	collector.CreateTemplateV2Monitor(srv, node)
 
 	return nil
 }
