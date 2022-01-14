@@ -25,7 +25,7 @@ func (cluster *Cluster) OpenSVCGetMaxscaleContainerSection(server *MaxscaleProxy
 			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v {env.base_dir}/pod01/etc/maxscale:/etc/maxscale.d:rw`
 		} else {
 			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
-			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/etc/maxscale:/etc/maxscale.d:rw`
+			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/etc/maxscale/maxscale.cnf:/etc/maxscale.cnf:rw`
 		}
 	}
 	return svccontainer

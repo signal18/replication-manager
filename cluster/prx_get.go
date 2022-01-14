@@ -125,6 +125,14 @@ func (proxy *Proxy) GetUseCompression() string {
 
 }
 
+func (proxy *Proxy) GetCausalRead() string {
+	if proxy.ClusterGroup.Configurator.IsFilterInProxyTags("causalread") {
+		return "causal_reads = local"
+	}
+	return ""
+
+}
+
 func (proxy *Proxy) GetConfigDatadir() string {
 	if proxy.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
 		return proxy.SlapOSDatadir
@@ -167,6 +175,7 @@ func (proxy *Proxy) GetBaseEnv() map[string]string {
 		"%%ENV:SERVER_IP%%":                            proxy.GetBindAddress(),
 		"%%ENV:EXTRA_BIND_SERVER_IPV6%%":               proxy.GetBindAddressExtraIPV6(),
 		"%%ENV:SVC_CONF_ENV_PROXY_USE_SSL%%":           proxy.GetUseSSL(),
+		"%%ENV:CAUSAL_READ%%":                          proxy.GetCausalRead(),
 		"%%ENV:SVC_CONF_ENV_PROXY_USE_COMPRESS%%":      proxy.GetUseCompression(),
 		"%%ENV:SERVER_PORT%%":                          proxy.Port,
 		"%%ENV:SVC_NAMESPACE%%":                        proxy.ClusterGroup.Name,
@@ -225,9 +234,10 @@ func (proxy *Proxy) GetConfigProxyModule(variable string) string {
 		confmaxscale += `
 [server` + strconv.Itoa(i) + `]
 type=server
-address="` + misc.Unbracket(db.Host) + `
+address=` + misc.Unbracket(db.Host) + `
 port=` + db.Port + `
-protocol=MySQLBackend
+protocol=MariaDBBackend
+# protocol=MySQLBackend
 `
 		if proxy.ClusterGroup.Conf.HaproxyMode == "runtimeapi" {
 			confhaproxyread += `

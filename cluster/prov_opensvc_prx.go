@@ -447,6 +447,7 @@ func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, prx DatabasePr
 	svcenv["haproxy_img"] = cluster.Conf.ProvProxHaproxyImg
 	svcenv["proxysql_img"] = cluster.Conf.ProvProxProxysqlImg
 	svcenv["maxscale_img"] = cluster.Conf.ProvProxMaxscaleImg
+	svcenv["shardproxy_img"] = cluster.Conf.ProvProxShardingImg
 	svcenv["maxscale_maxinfo_port"] = strconv.Itoa(cluster.Conf.MxsMaxinfoPort)
 	svcenv["vip_addr"] = cluster.Conf.ProvProxRouteAddr
 	svcenv["vip_port"] = cluster.Conf.ProvProxRoutePort

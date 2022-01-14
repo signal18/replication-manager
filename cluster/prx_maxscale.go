@@ -69,7 +69,7 @@ func (proxy *MaxscaleProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 	flags.IntVar(&conf.MxsReadPort, "maxscale-read-port", 3307, "MaxScale load balance read port to all nodes")
 	flags.IntVar(&conf.MxsReadWritePort, "maxscale-read-write-port", 3308, "MaxScale load balance read port to all nodes")
 	flags.IntVar(&conf.MxsMaxinfoPort, "maxscale-maxinfo-port", 3309, "MaxScale maxinfo plugin http port")
-	flags.IntVar(&conf.MxsBinlogPort, "maxscale-binlog-port", 3309, "MaxScale maxinfo plugin http port")
+	flags.IntVar(&conf.MxsBinlogPort, "maxscale-binlog-port", 3310, "MaxScale maxinfo plugin http port")
 	flags.BoolVar(&conf.MxsServerMatchPort, "maxscale-server-match-port", false, "Match servers running on same host with different port")
 	flags.StringVar(&conf.MxsBinaryPath, "maxscale-binary-path", "/usr/sbin/maxscale", "Maxscale binary location")
 	flags.StringVar(&conf.MxsHostsIPV6, "maxscale-servers-ipv6", "", "ipv6 bind address ")
@@ -165,6 +165,10 @@ func (proxy *MaxscaleProxy) Init() {
 		return
 	}
 	defer m.Close()
+	master := cluster.GetMaster()
+	if master == nil {
+		return
+	}
 	if cluster.GetMaster().MxsServerName == "" {
 		return
 	}

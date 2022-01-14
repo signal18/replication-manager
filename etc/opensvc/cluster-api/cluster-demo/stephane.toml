@@ -58,3 +58,13 @@ proxysql-user ="external"
 proxysql-bootstrap= true
 proxysql-copy-grants = true
 prov-proxy-disk-size = "1"
+
+#maxscale=true
+#maxscale-servers = "maxscale1"
+
+#haproxy=true
+#haproxy-servers = "haproxy1"
+
+shardproxy=true
+shardproxy-servers = "shardproxy1"
+# prov-proxy-docker-shardproxy-img="mariadb:10.4.22-focal"
