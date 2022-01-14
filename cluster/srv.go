@@ -30,6 +30,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/hpcloud/tail"
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/gtid"
@@ -216,12 +217,15 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.ClusterGroup = cluster
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 
-	if cluster.Conf.ProvNetCNI {
-		/*	if server.IsCompute && cluster.Conf.ClusterHead != "" {
+	if cluster.Conf.ProvNetCNI && cluster.Conf.ProvOrchestrator == config.ConstOrchestratorOpenSVC {
+		// OpenSVC and Sharding proxy monitoring
+		if server.IsCompute {
+			if cluster.Conf.ClusterHead != "" {
 				url = server.Name + "." + cluster.Conf.ClusterHead + ".svc." + server.ClusterGroup.Conf.ProvOrchestratorCluster + ":3306"
 			} else {
 				url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvOrchestratorCluster + ":3306"
-			}*/
+			}
+		}
 		url = server.Name + server.Domain + ":3306"
 	}
 	server.CrcTable = crc64.MakeTable(crc64.ECMA)

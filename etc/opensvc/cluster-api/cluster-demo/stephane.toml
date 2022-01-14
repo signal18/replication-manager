@@ -65,6 +65,6 @@ prov-proxy-disk-size = "1"
 #haproxy=true
 #haproxy-servers = "haproxy1"
 
-shardproxy=true
-shardproxy-servers = "shardproxy1"
-# prov-proxy-docker-shardproxy-img="mariadb:10.4.22-focal"
+#shardproxy=true
+#shardproxy-servers = "shardproxy1"
+#prov-proxy-docker-shardproxy-img="signal18/mariadb-spider:latest"

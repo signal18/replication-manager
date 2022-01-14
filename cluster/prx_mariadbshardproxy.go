@@ -187,10 +187,13 @@ func (proxy *MariadbShardProxy) CertificatesReload() error {
 
 func (proxy *MariadbShardProxy) Refresh() error {
 	if proxy.ShardProxy == nil {
-		return errors.New("Sharding proxy no database monitor yet initialize")
+		proxy.ClusterGroup.LogPrintf(LvlErr, "Sharding proxy refresh no database monitor yet initialize")
+
+		return errors.New("Sharding proxy refresh no database monitor yet initialize")
 	}
 	err := proxy.ShardProxy.Refresh()
 	if err != nil {
+		proxy.ClusterGroup.LogPrintf(LvlErr, "Sharding proxy refresh error (%s)", err)
 
 		return err
 	}

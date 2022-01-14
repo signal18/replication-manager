@@ -432,9 +432,10 @@ func (cluster *Cluster) Run() {
 				}
 				wg := new(sync.WaitGroup)
 				wg.Add(1)
-				cluster.TopologyDiscover(wg)
+				go cluster.TopologyDiscover(wg)
 				wg.Add(1)
 				go cluster.Heartbeat(wg)
+				wg.Wait()
 				// Heartbeat switchover or failover controller runs only on active repman
 
 				if cluster.runOnceAfterTopology {
