@@ -266,7 +266,6 @@ type Config struct {
 	ProxysqlBootstrapVariables                bool   `mapstructure:"proxysql-bootstrap-variables" toml:"proxysql-bootstrap-variables" json:"proxysqlBootstrapVariables"`
 	ProxysqlBootstrapHG                       bool   `mapstructure:"proxysql-bootstrap-hostgroups" toml:"proxysql-bootstrap-hostgroups" json:"proxysqlBootstrapHostgroups"`
 	ProxysqlBootstrapQueryRules               bool   `mapstructure:"proxysql-bootstrap-query-rules" toml:"proxysql-bootstrap-query-rules" json:"proxysqlBootstrapQueryRules"`
-	ProxysqlMasterIsReader                    bool   `mapstructure:"proxysql-master-is-reader" toml:"proxysql-master-is-reader" json:"proxysqlMasterIsReader"`
 	ProxysqlMultiplexing                      bool   `mapstructure:"proxysql-multiplexing" toml:"proxysql-multiplexing" json:"proxysqlMultiplexing"`
 	ProxysqlBinaryPath                        string `mapstructure:"proxysql-binary-path" toml:"proxysql-binary-path" json:"proxysqlBinaryPath"`
 	MysqlRouterOn                             bool   `mapstructure:"mysqlrouter" toml:"mysqlrouter" json:"mysqlrouter"`

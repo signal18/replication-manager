@@ -67,3 +67,13 @@ func (configurator *Configurator) IsFilterInDBTags(filter string) bool {
 	}
 	return false
 }
+
+func (configurator *Configurator) HasProxyReadLeader() bool {
+	if configurator.IsFilterInProxyTags("readonmaster") {
+		return true
+	}
+	if configurator.ClusterConfig.PRXServersReadOnMaster {
+		return true
+	}
+	return false
+}

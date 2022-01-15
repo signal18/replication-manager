@@ -541,6 +541,7 @@ func (server *ServerMonitor) ProcessFailedSlave() {
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
 	var err error
+
 	if server.Conn == nil {
 		return errors.New("Connection is nil, server unreachable")
 	}
@@ -548,7 +549,6 @@ func (server *ServerMonitor) Refresh() error {
 		//	server.State = stateFailed
 		return errors.New("Connection is unsafe, server unreachable")
 	}
-
 	err = server.Conn.Ping()
 	if err != nil {
 		return err

@@ -157,6 +157,12 @@ func (psql *ProxySQL) SetReader(host string, port string) error {
 	return err
 }
 
+func (psql *ProxySQL) DropReader(host string, port string) error {
+	sql := fmt.Sprintf("DELETE FROM mysql_servers WHERE  hostgroup_id='%s' AND hostname='%s' AND port='%s' ", psql.ReaderHG, host, port)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
 func (psql *ProxySQL) Truncate() error {
 	_, err := psql.Connection.Exec("DELETE FROM mysql_servers WHERE hostgroup_id in ('%s','%s')", psql.ReaderHG, psql.WriterHG)
 	return err

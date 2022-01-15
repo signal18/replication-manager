@@ -14,6 +14,7 @@ import (
 	"hash/crc64"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -774,6 +775,10 @@ func (cluster *Cluster) ShardProxyBootstrap(proxy *MariadbShardProxy) error {
 	} else {
 		proxy.ShardProxy, err = cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass, true, "")
 	}
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go proxy.ShardProxy.Ping(wg)
+	wg.Wait()
 	proxy.ShardProxy.SlapOSDatadir = proxy.SlapOSDatadir
 	return err
 }
