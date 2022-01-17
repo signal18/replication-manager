@@ -17,7 +17,7 @@ func (configurator *Configurator) DropProxyTag(dtag string) {
 	configurator.ProxyTags = newtags
 }
 
-func (configurator *Configurator) DropDBTagConfig(dtag string) bool {
+func (configurator *Configurator) DropDBTag(dtag string) bool {
 
 	var newtags []string
 	changed := false

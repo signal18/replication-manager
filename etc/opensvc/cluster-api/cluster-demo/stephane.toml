@@ -62,8 +62,8 @@ prov-proxy-disk-size = "1"
 #maxscale=true
 #maxscale-servers = "maxscale1"
 
-#haproxy=true
-#haproxy-servers = "haproxy1"
+haproxy=true
+haproxy-servers = "haproxy1"
 
 shardproxy=true
 shardproxy-servers = "shardproxy1"

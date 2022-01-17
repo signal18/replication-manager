@@ -42,7 +42,16 @@ func (configurator *Configurator) Init(conf config.Config) error {
 	configurator.LoadProxyModules()
 	configurator.ConfigDBTags = configurator.GetDBModuleTags()
 	configurator.ConfigPrxTags = configurator.GetProxyModuleTags()
-
+	if conf.PRXServersReadOnMaster && !configurator.IsFilterInProxyTags("readonmaster") {
+		configurator.AddProxyTag("readonmaster")
+	} else {
+		configurator.DropProxyTag("readonmaster")
+	}
+	if conf.ReadOnly && !configurator.IsFilterInProxyTags("readonly") {
+		configurator.AddDBTag("readonly")
+	} else {
+		configurator.DropDBTag("readonly")
+	}
 	return err
 }
 

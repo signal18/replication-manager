@@ -62,7 +62,7 @@ func (cluster *Cluster) DropDBTag(dtag string) {
 }
 
 func (cluster *Cluster) DropDBTagConfig(dtag string) bool {
-	changed := cluster.Configurator.DropDBTagConfig(dtag)
+	changed := cluster.Configurator.DropDBTag(dtag)
 	cluster.Conf.ProvTags = strings.Join(cluster.Configurator.GetDBTags(), ",")
 	cluster.SetClusterVariablesFromConfig()
 	return changed
