@@ -28,6 +28,10 @@ func (r *Runtime) ApiCmd(cmd string) (string, error) {
 }
 
 func (r *Runtime) SetMaster(host string, port string) (string, error) {
+
+	if net.ParseIP(host) == nil {
+		return r.SetMasterFQDN(host, port)
+	}
 	conn, err := net.DialTimeout("tcp", r.Host+":"+r.Port, DefaultTimeout)
 	if err != nil {
 		return "", err
@@ -38,6 +42,27 @@ func (r *Runtime) SetMaster(host string, port string) (string, error) {
 
 		return "", err
 	}
+
+	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
+	result, err := ioutil.ReadAll(conn)
+	if err != nil {
+		return "", err
+	}
+	return string(result), nil
+}
+
+func (r *Runtime) SetMasterFQDN(host string, port string) (string, error) {
+	conn, err := net.DialTimeout("tcp", r.Host+":"+r.Port, DefaultTimeout)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+	_, err = conn.Write([]byte("set server service_write/leader fqdn " + host + " port " + port + "\n"))
+	if err != nil {
+
+		return "", err
+	}
+
 	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
 	result, err := ioutil.ReadAll(conn)
 	if err != nil {

@@ -273,7 +273,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 				if !srv.IsMaster() {
 					master := cluster.GetMaster()
 					if master != nil {
-						cluster.LogPrintf(LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s", proxy.Host+":"+proxy.Port, master.URL)
+						cluster.LogPrintf(LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
 						haRuntime.SetMaster(master.Host, master.Port)
 					}
 				}
