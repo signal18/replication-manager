@@ -84,11 +84,9 @@ type Sla struct {
 }
 
 func (sla *Sla) Init() {
-	sla = &Sla{
-		Uptime:         0,
-		UptimeFailable: 0,
-		UptimeSemisync: 0,
-	}
+	sla.Uptime = 0
+	sla.UptimeFailable = 0
+	sla.UptimeSemisync = 0
 	sla.Lasttime = time.Now().Unix()
 	sla.Firsttime = sla.Lasttime
 }
