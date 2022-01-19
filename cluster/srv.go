@@ -79,7 +79,7 @@ type ServerMonitor struct {
 	Process                     *os.Process                  `json:"process"`
 	SemiSyncMasterStatus        bool                         `json:"semiSyncMasterStatus"`
 	SemiSyncSlaveStatus         bool                         `json:"semiSyncSlaveStatus"`
-	RplMasterStatus             bool                         `json:"rplMasterStatus"`
+	HaveHealthyReplica             bool                         `json:"HaveHealthyReplica"`
 	HaveEventScheduler          bool                         `json:"eventScheduler"`
 	HaveSemiSync                bool                         `json:"haveSemiSync"`
 	HaveInnodbTrxCommit         bool                         `json:"haveInnodbTrxCommit"`

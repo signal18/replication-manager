@@ -345,9 +345,14 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				// the appropriate HostGroup
 			} else if s.State == stateMaster && (s.PrevState == stateUnconn || s.PrevState == stateFailed || (len(proxy.BackendsWrite) == 0 || !isFoundBackendWrite)) {
 				cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting online failed server %s", s.URL)
-				err = psql.SetOnline(misc.Unbracket(s.Host), s.Port)
-				if err != nil {
-					cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+				if psql.ExistAsWriterOrOffline(misc.Unbracket(s.Host), s.Port) {
+					err = psql.SetOnline(misc.Unbracket(s.Host), s.Port)
+					if err != nil {
+						cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					}
+				} else {
+					//scenario restart with failed leader
+					err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
 				}
 				updated = true
 

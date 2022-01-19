@@ -316,7 +316,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			cluster.SetState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00012"]), ErrFrom: "TOPO"})
 		}
 	} else {
-		cluster.master.RplMasterStatus = false
+		cluster.master.HaveHealthyReplica = false
 		// End of autodetection code
 		if !cluster.master.IsDown() {
 			cluster.master.CheckMasterSettings()
@@ -341,8 +341,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					}
 
 				}
-				if sl.GetReplicationDelay() <= cluster.Conf.FailMaxDelay && sl.IsSQLThreadRunning() {
-					cluster.master.RplMasterStatus = true
+				if sl.GetReplicationDelay() <= cluster.Conf.FailMaxDelay && sl.IsSQLThreadRunning() && !sl.IsIgnored() {
+					//If one slave has replication under delay
+					cluster.master.HaveHealthyReplica = true
 				}
 
 			}

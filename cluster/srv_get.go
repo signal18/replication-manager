@@ -51,6 +51,9 @@ func (server *ServerMonitor) GetProcessListReplicationLongQuery() string {
 }
 
 func (server *ServerMonitor) GetSchemas() ([]string, string, error) {
+	if server.Conn == nil {
+		return nil, "", errors.New("No available connection")
+	}
 	return dbhelper.GetSchemas(server.Conn)
 }
 
