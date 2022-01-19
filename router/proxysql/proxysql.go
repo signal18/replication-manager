@@ -121,6 +121,17 @@ func (psql *ProxySQL) SetOffline(host string, port string) error {
 	return err
 }
 
+func (psql *ProxySQL) ExistAsWriterOrOffline(host string, port string) bool {
+	var exist int
+	sql := fmt.Sprintf("SELECT 1 FROM mysql_servers WHERE srv_host='%s' AND srv_port='%s' AND hostgroup_id in (666,'%s')", host, port, psql.WriterHG)
+	row := psql.Connection.QueryRow(sql)
+	err := row.Scan(&exist)
+	if err == nil {
+		return true
+	}
+	return false
+}
+
 func (psql *ProxySQL) SetOnline(host string, port string) error {
 	sql := fmt.Sprintf("UPDATE mysql_servers SET hostgroup_id='%s' WHERE hostname='%s' AND port='%s'  AND hostgroup_id in (666)", psql.WriterHG, host, port)
 	_, err := psql.Connection.Exec(sql)

@@ -307,7 +307,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 	}
 	if !foundMasterInStat {
 		master := cluster.GetMaster()
-		if master != nil {
+		if master != nil && master.State == stateMaster {
 			res, err := haRuntime.SetMaster(master.Host, master.Port)
 			cluster.LogPrintf(LvlInfo, "Have leader in cluster but not in haproxy %s fixing it to master %s return %s", proxy.Host+":"+proxy.Port, master.URL, res)
 			if err != nil {

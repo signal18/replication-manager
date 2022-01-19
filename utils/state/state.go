@@ -84,11 +84,9 @@ type Sla struct {
 }
 
 func (sla *Sla) Init() {
-	sla = &Sla{
-		Uptime:         0,
-		UptimeFailable: 0,
-		UptimeSemisync: 0,
-	}
+	sla.Uptime = 0
+	sla.UptimeFailable = 0
+	sla.UptimeSemisync = 0
 	sla.Lasttime = time.Now().Unix()
 	sla.Firsttime = sla.Lasttime
 }
@@ -228,15 +226,15 @@ func (SM *StateMachine) IsFailable() bool {
 
 }
 
-func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsNotDelay bool) {
+func (SM *StateMachine) SetMasterUpAndSync(IsValidMaster bool, IsSemiSynced bool, IsNotDelay bool) {
 	timenow := time.Now().Unix()
-	if IsSemiSynced && SM.IsFailable() {
+	if IsSemiSynced {
 		SM.sla.UptimeSemisync = SM.sla.UptimeSemisync + (timenow - SM.sla.Lasttime)
 	}
-	if IsNotDelay && SM.IsFailable() {
+	if IsNotDelay {
 		SM.sla.UptimeFailable = SM.sla.UptimeFailable + (timenow - SM.sla.Lasttime)
 	}
-	if SM.IsFailable() {
+	if IsValidMaster {
 		SM.sla.Uptime = SM.sla.Uptime + (timenow - SM.sla.Lasttime)
 	}
 	SM.sla.Lasttime = timenow

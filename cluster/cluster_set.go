@@ -29,9 +29,9 @@ import (
 
 func (cluster *Cluster) SetStatus() {
 	if cluster.master == nil {
-		cluster.sme.SetMasterUpAndSync(false, false)
+		cluster.sme.SetMasterUpAndSync(false, false, false)
 	} else {
-		cluster.sme.SetMasterUpAndSync(cluster.master.SemiSyncMasterStatus, cluster.master.RplMasterStatus)
+		cluster.sme.SetMasterUpAndSync(!cluster.master.IsDown(), cluster.master.SemiSyncMasterStatus, cluster.master.HaveHealthyReplica)
 	}
 	cluster.Uptime = cluster.GetStateMachine().GetUptime()
 	cluster.UptimeFailable = cluster.GetStateMachine().GetUptimeFailable()
@@ -259,24 +259,24 @@ func (cluster *Cluster) SetInteractive(check bool) {
 
 func (cluster *Cluster) SetDBDiskSize(value string) {
 
-  cluster.Configurator.SetDBDisk(value)
+	cluster.Configurator.SetDBDisk(value)
 	cluster.Conf.ProvDisk = cluster.Configurator.GetConfigDBDisk()
 
-cluster.SetDBReprovCookie()
+	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBCores(value string) {
 
-  cluster.Configurator.SetDBCores(value)
+	cluster.Configurator.SetDBCores(value)
 	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
-  cluster.SetDBReprovCookie()
+	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBMemorySize(value string) {
 
-  cluster.Configurator.SetDBMemory(value)
+	cluster.Configurator.SetDBMemory(value)
 	cluster.Conf.ProvMem = cluster.Configurator.GetConfigDBMemory()
-  cluster.SetDBReprovCookie()
+	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBCoresFromConfigurator() {
@@ -291,8 +291,8 @@ func (cluster *Cluster) SetDBMemoryFromConfigurator() {
 }
 
 func (cluster *Cluster) SetDBIOPSFromConfigurator() {
-		cluster.Conf.ProvIops=cluster.Configurator.GetConfigDBDiskIOPS()
-		cluster.SetDBRestartCookie()
+	cluster.Conf.ProvIops = cluster.Configurator.GetConfigDBDiskIOPS()
+	cluster.SetDBRestartCookie()
 }
 
 func (cluster *Cluster) SetTagsFromConfigurator() {
@@ -302,13 +302,13 @@ func (cluster *Cluster) SetTagsFromConfigurator() {
 
 func (cluster *Cluster) SetDBDiskIOPS(value string) {
 	cluster.Configurator.SetDBDiskIOPS(value)
-  cluster.Conf.ProvIops = cluster.Configurator.GetConfigDBDiskIOPS()
+	cluster.Conf.ProvIops = cluster.Configurator.GetConfigDBDiskIOPS()
 	cluster.SetDBRestartCookie()
 }
 
 func (cluster *Cluster) SetDBMaxConnections(value string) {
 	cluster.Configurator.SetDBMaxConnections(value)
-	cluster.Conf.ProvMaxConnections =cluster.Configurator.GetConfigDBMaxConnections()
+	cluster.Conf.ProvMaxConnections = cluster.Configurator.GetConfigDBMaxConnections()
 	cluster.SetDBRestartCookie()
 }
 
@@ -320,7 +320,7 @@ func (cluster *Cluster) SetDBExpireLogDays(value string) {
 
 func (cluster *Cluster) SetProxyCores(value string) {
 	cluster.Configurator.SetProxyCores(value)
-	cluster.Conf.ProvProxCores =cluster.Configurator.GetConfigProxyCores()
+	cluster.Conf.ProvProxCores = cluster.Configurator.GetConfigProxyCores()
 	cluster.SetProxiesRestartCookie()
 }
 
