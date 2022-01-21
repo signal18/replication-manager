@@ -1,3 +1,0 @@
-[submodule "share/sysbench-tpcc"]
-	path = share/sysbench-tpcc
-	url = https://github.com/Percona-Lab/sysbench-tpcc.git
