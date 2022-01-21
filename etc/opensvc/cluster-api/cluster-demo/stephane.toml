@@ -42,7 +42,7 @@ db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-credential = "root:mariadb"
 force-slave-readonly = true
-prov-db-docker-img = "mariadb:10.5"
+prov-db-docker-img = "mariadb-foundation/mariadb-devel:10.8-mdev-11675-rpl-lag-free-alter"
 prov-db-tags = "docker,linux,innodb,noquerycache,threadpool,slow,ssd,localinfile,nodoublewrite,compressbinlog,noadaptiveflush,relayspacelimit,optimistic"
 prov-db-disk-size = "2"
 prov-db-memory = "256"
@@ -62,8 +62,8 @@ prov-proxy-disk-size = "1"
 #maxscale=true
 #maxscale-servers = "maxscale1"
 
-haproxy=true
-haproxy-servers = "haproxy1"
+# haproxy=true
+# haproxy-servers = "haproxy1"
 
 shardproxy=true
 shardproxy-servers = "shardproxy1"
