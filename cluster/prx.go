@@ -93,8 +93,10 @@ type DatabaseProxy interface {
 	GetUser() string
 	GetPass() string
 	GetServiceName() string
+	GetOrchestrator() string
 
 	GetPrevState() string
+
 	SetPrevState(state string)
 
 	GetCluster() (*sqlx.DB, error)
@@ -138,6 +140,7 @@ type DatabaseProxy interface {
 	HasRestartCookie() bool
 	HasWaitStartCookie() bool
 	HasWaitStopCookie() bool
+	HasDNS() bool
 
 	DelProvisionCookie() error
 	DelUnprovisionCookie() error

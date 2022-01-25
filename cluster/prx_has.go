@@ -9,7 +9,10 @@
 package cluster
 
 import (
+	"net"
 	"os"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 func (proxy *Proxy) hasCookie(key string) bool {
@@ -49,6 +52,13 @@ func (proxy *Proxy) IsRunning() bool {
 
 func (proxy *Proxy) IsDown() bool {
 	if proxy.State == stateFailed || proxy.State == stateSuspect || proxy.State == stateErrorAuth {
+		return true
+	}
+	return false
+}
+
+func (proxy *Proxy) HasDNS() bool {
+	if net.ParseIP(proxy.Host) == nil || proxy.ClusterGroup.Configurator.HaveProxyTag("dns") || proxy.GetOrchestrator() == config.ConstOrchestratorOpenSVC || proxy.GetOrchestrator() == config.ConstOrchestratorKubernetes {
 		return true
 	}
 	return false

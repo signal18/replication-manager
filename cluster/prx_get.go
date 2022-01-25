@@ -134,14 +134,14 @@ func (proxy *Proxy) GetCausalRead() string {
 }
 
 func (proxy *Proxy) GetConfigDatadir() string {
-	if proxy.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+	if proxy.GetOrchestrator() == config.ConstOrchestratorSlapOS {
 		return proxy.SlapOSDatadir
 	}
 	return "/tmp"
 }
 
 func (proxy *Proxy) GetConfigConfigdir() string {
-	if proxy.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+	if proxy.GetOrchestrator() == config.ConstOrchestratorSlapOS {
 		return proxy.SlapOSDatadir + "/etc/" + proxy.GetType()
 	}
 	return "/etc"
@@ -184,6 +184,7 @@ func (proxy *Proxy) GetBaseEnv() map[string]string {
 		"%%ENV:SERVERS_HAPROXY_READ%%":                 proxy.GetConfigProxyModule("%%ENV:SERVERS_HAPROXY_READ%%"),
 		"%%ENV:SERVERS_HAPROXY_WRITE_BACKEND%%":        proxy.ClusterGroup.Conf.HaproxyAPIWriteBackend,
 		"%%ENV:SERVERS_HAPROXY_READ_BACKEND%%":         proxy.ClusterGroup.Conf.HaproxyAPIReadBackend,
+		"%%ENV:SVC_CONF_HAPROXY_DNS%%":                 proxy.GetConfigProxyDNS(),
 		"%%ENV:SERVERS_PROXYSQL%%":                     proxy.GetConfigProxyModule("%%ENV:SERVERS_PROXYSQL%%"),
 		"%%ENV:SERVERS%%":                              proxy.GetConfigProxyModule("%%ENV:SERVERS%%"),
 		"%%ENV:SERVERS_LIST%%":                         proxy.GetConfigProxyModule("%%ENV:SERVERS_LIST%%"),
@@ -217,6 +218,18 @@ func (proxy *Proxy) GetConfigProxySQLReadOnMaster() string {
 	return "0"
 }
 
+func (proxy *Proxy) GetConfigProxyDNS() string {
+	if proxy.HasDNS() {
+		return `
+resolvers dns
+		parse-resolv-conf
+		hold valid 1s
+`
+	}
+
+	return ""
+}
+
 func (proxy *Proxy) GetConfigProxyModule(variable string) string {
 	confmaxscale := ""
 	confmaxscaleserverlist := ""
@@ -239,12 +252,16 @@ port=` + db.Port + `
 protocol=MariaDBBackend
 # protocol=MySQLBackend
 `
+		DNS := ""
+		if proxy.HasDNS() {
+			DNS = " resolvers dns"
+		}
 		if proxy.ClusterGroup.Conf.HaproxyMode == "runtimeapi" {
 			confhaproxyread += `
-    server ` + db.Id + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
+    server ` + db.Id + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + DNS + ` weight 100 maxconn 2000 check inter 1000`
 			if db.IsMaster() {
 				confhaproxywrite += `
-    server leader ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
+    server leader ` + misc.Unbracket(db.Host) + `:` + db.Port + DNS + `  weight 100 maxconn 2000 check inter 1000`
 			}
 		} else {
 
@@ -334,4 +351,8 @@ func (p *Proxy) GetFailCount() int {
 
 func (p *Proxy) GetPrevState() string {
 	return p.PrevState
+}
+
+func (p *Proxy) GetOrchestrator() string {
+	return p.ClusterGroup.Conf.ProvOrchestrator
 }

@@ -296,9 +296,12 @@ type Config struct {
 	GraphiteCarbonPicklePort                  int    `mapstructure:"graphite-carbon-pickle-port" toml:"graphite-carbon-pickle-port" json:"graphiteCarbonPicklePort"`
 	GraphiteCarbonPprofPort                   int    `mapstructure:"graphite-carbon-pprof-port" toml:"graphite-carbon-pprof-port" json:"graphiteCarbonPprofPort"`
 	SysbenchBinaryPath                        string `mapstructure:"sysbench-binary-path" toml:"sysbench-binary-path" json:"sysbenchBinaryPath"`
+	SysbenchTest                              string `mapstructure:"sysbench-test" toml:"sysbench-test" json:"sysbenchBinaryTest"`
 	SysbenchV1                                bool   `mapstructure:"sysbench-v1" toml:"sysbench-v1" json:"sysbenchV1"`
 	SysbenchTime                              int    `mapstructure:"sysbench-time" toml:"sysbench-time" json:"sysbenchTime"`
 	SysbenchThreads                           int    `mapstructure:"sysbench-threads" toml:"sysbench-threads" json:"sysbenchThreads"`
+	SysbenchTables                            int    `mapstructure:"sysbench-tables" toml:"sysbench-tables" json:"sysbenchTables"`
+	SysbenchScale                             int    `mapstructure:"sysbench-scale" toml:"sysbench-scale" json:"sysbenchScale"`
 	Arbitration                               bool   `mapstructure:"arbitration-external" toml:"arbitration-external" json:"arbitrationExternal"`
 	ArbitrationSasSecret                      string `mapstructure:"arbitration-external-secret" toml:"arbitration-external-secret" json:"arbitrationExternalSecret"`
 	ArbitrationSasHosts                       string `mapstructure:"arbitration-external-hosts" toml:"arbitration-external-hosts" json:"arbitrationExternalHosts"`
@@ -777,6 +780,16 @@ func (conf *Config) GetFSType() map[string]bool {
 		"xfs":  true,
 		"aufs": true,
 		"nfs":  false,
+	}
+}
+
+func (conf *Config) GetSysbenchTests() map[string]bool {
+	return map[string]bool{
+		"oltp_read_write":       true,
+		"oltp_read_only":        true,
+		"oltp_update_non_index": true,
+		"oltp_update_index":     true,
+		"tpcc":                  true,
 	}
 }
 

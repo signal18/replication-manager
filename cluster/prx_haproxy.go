@@ -177,17 +177,18 @@ func (proxy *HaproxyProxy) Init() {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not create haproxy config %s", err)
 	}
-	if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
-		cluster.LogPrintf(LvlInfo, "Haproxy set pid %s", err)
-	} else {
-		cluster.LogPrintf(LvlInfo, "Haproxy reload config on pid %s", haConfig.PidFile)
-	}
+	if cluster.Conf.HaproxyMode == "standby" {
+		if err := haRuntime.SetPid(haConfig.PidFile); err != nil {
+			cluster.LogPrintf(LvlInfo, "Haproxy set pid %s", err)
+		} else {
+			cluster.LogPrintf(LvlInfo, "Haproxy reload config on pid %s", haConfig.PidFile)
+		}
 
-	err = haRuntime.Reload(&haConfig)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "Can't reload haproxy config %s", err)
+		err = haRuntime.Reload(&haConfig)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Can't reload haproxy config %s", err)
+		}
 	}
-
 }
 
 func (proxy *HaproxyProxy) Refresh() error {
@@ -227,6 +228,42 @@ func (proxy *HaproxyProxy) Refresh() error {
 		Host:     proxy.Host,
 	}
 
+	backend_ip_host := make(map[string]string)
+	if proxy.HasDNS() {
+		cmd := "show servers state"
+		//	cluster.LogPrintf(LvlInfo, "command %s", cmd)
+		showleaderstate, err := haRuntime.ApiCmd(cmd)
+		if err != nil {
+			cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
+			return err
+		}
+		// api return a first row with return code make it as comment
+		showleaderstate = "# " + showleaderstate
+
+		// api return space sparator convet to csv
+		showleaderstate = strings.Replace(showleaderstate, " ", ",", -1)
+		//	cluster.LogPrintf(LvlInfo, "haproxy :%s", showleaderstate)
+		showleaderstatereader := ioutil.NopCloser(bytes.NewReader([]byte(showleaderstate)))
+
+		defer showleaderstatereader.Close()
+		reader := csv.NewReader(showleaderstatereader)
+		reader.Comment = '#'
+		for {
+			line, error := reader.Read()
+			if error == io.EOF {
+				break
+			} else if error != nil {
+				cluster.LogPrintf(LvlErr, "Could not read csv from haproxy response")
+				return err
+			}
+			if len(line) > 17 {
+				//	cluster.LogPrintf(LvlInfo, "ligne %s %s", line[4], line[17])
+				backend_ip_host[line[4]] = line[17]
+			}
+		}
+
+	}
+
 	result, err := haRuntime.ApiCmd("show stat")
 
 	if err != nil {
@@ -255,8 +292,12 @@ func (proxy *HaproxyProxy) Refresh() error {
 			return errors.New(clusterError["WARN0078"])
 		}
 		if strings.Contains(strings.ToLower(line[0]), "write") {
+			host := line[73]
+			if !proxy.HasDNS() {
+				host = backend_ip_host[line[73]]
+			}
+			srv := cluster.GetServerFromURL(host)
 
-			srv := cluster.GetServerFromURL(line[73])
 			if srv != nil {
 				foundMasterInStat = true
 				proxy.BackendsWrite = append(proxy.BackendsWrite, Backend{
@@ -280,7 +321,12 @@ func (proxy *HaproxyProxy) Refresh() error {
 			}
 		}
 		if strings.Contains(strings.ToLower(line[0]), "read") {
-			srv := cluster.GetServerFromURL(line[73])
+			host := line[73]
+			if !proxy.HasDNS() {
+				host = backend_ip_host[line[73]]
+			}
+			srv := cluster.GetServerFromURL(host)
+
 			if srv != nil {
 
 				proxy.BackendsRead = append(proxy.BackendsRead, Backend{
