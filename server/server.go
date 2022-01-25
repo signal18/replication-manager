@@ -46,50 +46,48 @@ import (
 
 // Global variables
 type ReplicationManager struct {
-	OpenSVC              opensvc.Collector           `json:"-"`
-	Version              string                      `json:"version"`
-	Fullversion          string                      `json:"fullVersion"`
-	Os                   string                      `json:"os"`
-	Arch                 string                      `json:"arch"`
-	MemProfile           string                      `json:"memprofile"`
-	Clusters             map[string]*cluster.Cluster `json:"-"`
-	Agents               []opensvc.Host              `json:"agents"`
-	UUID                 string                      `json:"uuid"`
-	Hostname             string                      `json:"hostname"`
-	Status               string                      `json:"status"`
-	SplitBrain           bool                        `json:"spitBrain"`
-	ClusterList          []string                    `json:"clusters"`
-	Tests                []string                    `json:"tests"`
-	Conf                 config.Config               `json:"config"`
-	Logs                 s18log.HttpLog              `json:"logs"`
-	ServicePlans         []config.ServicePlan        `json:"servicePlans"`
-	ServiceOrchestrators []config.ConfigVariableType `json:"serviceOrchestrators"`
-	ServiceAcl           []config.Grant              `json:"serviceAcl"`
-	ServiceRepos         []config.DockerRepo         `json:"serviceRepos"`
-	ServiceTarballs      []config.Tarball            `json:"serviceTarballs"`
-	ServiceFS            map[string]bool             `json:"serviceFS"`
-	ServiceVM            map[string]bool             `json:"serviceVM"`
-	ServiceDisk          map[string]string           `json:"serviceDisk"`
-	ServicePool          map[string]bool             `json:"servicePool"`
-	BackupLogicalList    map[string]bool             `json:"backupLogicalList"`
-	BackupPhysicalList   map[string]bool             `json:"backupPhysicalList"`
-	tlog                 s18log.TermLog
-	termlength           int
-	exitMsg              string
-	exit                 bool
-	currentCluster       *cluster.Cluster
-	isStarted            bool
-	Confs                map[string]config.Config
-	ForcedConfs          map[string]config.Config
+	OpenSVC                                          opensvc.Collector           `json:"-"`
+	Version                                          string                      `json:"version"`
+	Fullversion                                      string                      `json:"fullVersion"`
+	Os                                               string                      `json:"os"`
+	Arch                                             string                      `json:"arch"`
+	MemProfile                                       string                      `json:"memprofile"`
+	Clusters                                         map[string]*cluster.Cluster `json:"-"`
+	Agents                                           []opensvc.Host              `json:"agents"`
+	UUID                                             string                      `json:"uuid"`
+	Hostname                                         string                      `json:"hostname"`
+	Status                                           string                      `json:"status"`
+	SplitBrain                                       bool                        `json:"spitBrain"`
+	ClusterList                                      []string                    `json:"clusters"`
+	Tests                                            []string                    `json:"tests"`
+	Conf                                             config.Config               `json:"config"`
+	Logs                                             s18log.HttpLog              `json:"logs"`
+	ServicePlans                                     []config.ServicePlan        `json:"servicePlans"`
+	ServiceOrchestrators                             []config.ConfigVariableType `json:"serviceOrchestrators"`
+	ServiceAcl                                       []config.Grant              `json:"serviceAcl"`
+	ServiceRepos                                     []config.DockerRepo         `json:"serviceRepos"`
+	ServiceTarballs                                  []config.Tarball            `json:"serviceTarballs"`
+	ServiceFS                                        map[string]bool             `json:"serviceFS"`
+	ServiceVM                                        map[string]bool             `json:"serviceVM"`
+	ServiceDisk                                      map[string]string           `json:"serviceDisk"`
+	ServicePool                                      map[string]bool             `json:"servicePool"`
+	BackupLogicalList                                map[string]bool             `json:"backupLogicalList"`
+	BackupPhysicalList                               map[string]bool             `json:"backupPhysicalList"`
+	currentCluster                                   *cluster.Cluster            `json:"-"`
+	tlog                                             s18log.TermLog
+	termlength                                       int
+	exitMsg                                          string
+	exit                                             bool
+	isStarted                                        bool
+	Confs                                            map[string]config.Config
+	ForcedConfs                                      map[string]config.Config
+	grpcServer                                       *grpc.Server               `json:"-"`
+	grpcWrapped                                      *grpcweb.WrappedGrpcServer `json:"-"`
+	V3Up                                             chan bool                  `json:"-"`
+	v3Config                                         Repmanv3Config             `json:"-"`
+	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
+	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
-
-	grpcServer  *grpc.Server
-	grpcWrapped *grpcweb.WrappedGrpcServer
-	repmanv3.UnimplementedClusterPublicServiceServer
-	repmanv3.UnimplementedClusterServiceServer
-
-	V3Up     chan bool
-	v3Config Repmanv3Config
 }
 
 const (
