@@ -222,8 +222,16 @@ func (proxy *Proxy) GetConfigProxyDNS() string {
 	if proxy.HasDNS() {
 		return `
 resolvers dns
-		parse-resolv-conf
-		hold valid 1s
+ parse-resolv-conf
+ resolve_retries       3
+ timeout resolve       1s
+ timeout retry         1s
+ hold other           30s
+ hold refused         30s
+ hold nx              30s
+ hold timeout         30s
+ hold valid           10s
+ hold obsolete        30s
 `
 	}
 

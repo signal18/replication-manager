@@ -24,9 +24,9 @@ func (cluster *Cluster) OpenSVCGetHaproxyContainerSection(server *HaproxyProxy) 
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
 			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/haproxy:/usr/local/etc/haproxy:rw`
 		} else {
-			svccontainer["post_provision"] = "chown -R 99:99 {env.base_dir}/data"
+			//	svccontainer["post_provision"] = "chown -R 99:99 {env.base_dir}/data"
 			svccontainer["run_args"] = "--ulimit nofile=262144:262144 --sysctl net.ipv4.ip_unprivileged_port_start=0"
-			svccontainer["volume_mounts"] = `{name}/init/checkslave:/usr/bin/checkslave:rw {name}/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {name}/etc/haproxy:/usr/local/etc/haproxy:rw {name}/data:/run/haproxy:rw`
+			svccontainer["volume_mounts"] = `{name}/init/checkslave:/usr/bin/checkslave:rw {name}/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {name}/etc/haproxy:/usr/local/etc/haproxy:rw`
 		}
 	}
 
