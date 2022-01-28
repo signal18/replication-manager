@@ -1,7 +1,7 @@
 #e!/bin/sh
-echo '{"repos": [' > share/repo/repos.json  
+echo '{"repos": [' > share/repo/repos.json
 
-echo '{"name": "mariadb", "image": "mariadb", "tags":' >> share/repo/repos.json 
+echo '{"name": "mariadb", "image": "mariadb", "tags":' >> share/repo/repos.json
 wget -q https://registry.hub.docker.com/v1/repositories/mariadb/tags -O - >> share/repo/repos.json
 echo '},' >> share/repo/repos.json
 
@@ -25,7 +25,7 @@ echo '{"name": "maxscale", "image": "mariadb/maxscale", "tags":' >> share/repo/r
 wget -q https://registry.hub.docker.com/v1/repositories/mariadb/maxscale/tags -O - >> share/repo/repos.json
 echo '},' >> share/repo/repos.json
 
-echo '{"name": "haproxy", "image": "haproxy", "tags":' >> share/repo/repos.json
+echo '{"name": "haproxy", "image": "haproxytech/haproxy-alpine", "tags":' >> share/repo/repos.json
 wget -q https://registry.hub.docker.com/v1/repositories/haproxy/tags -O - >> share/repo/repos.json
 echo '},' >> share/repo/repos.json
 
@@ -38,4 +38,3 @@ wget -q https://registry.hub.docker.com/v1/repositories/postgres/tags -O - >> sh
 echo '}' >> share/repo/repos.json
 
 echo ']}' >> share/repo/repos.json
-

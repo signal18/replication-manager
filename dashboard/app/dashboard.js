@@ -1138,9 +1138,9 @@ function (
         if (confirm("Confirm sysbench run !")) httpGetWithoutResponse(getClusterUrl() + '/actions/sysbench');
       };
 
-      $scope.runonetest = function () {
-        if (confirm("Confirm run one test !"+$scope.tests)) {
-          httpGetWithoutResponse(getClusterUrl() + '/tests/actions/run/' + $scope.tests);
+      $scope.runonetest = function (test) {
+        if (confirm("Confirm run one test !"+test)) {
+          httpGetWithoutResponse(getClusterUrl() + '/tests/actions/run/' + test);
           $scope.tests = "";
         }
       };
