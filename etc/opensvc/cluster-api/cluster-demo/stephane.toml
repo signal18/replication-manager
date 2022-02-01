@@ -48,24 +48,28 @@ prov-db-disk-size = "2"
 prov-db-memory = "256"
 prov-db-disk-iops = "10000"
 prov-db-cpu-cores = "8"
+prov-proxy-disk-size = "1"
+
 monitoring-scheduler = false
+sysbench-binary-path ="/usr/local/bin/sysbench"
+sysbench-v1 = true
+
 # backup-restic = true
 
-proxysql=true
-proxysql-port = 3306
-proxysql-servers = "proxysql1,proxysql2"
-proxysql-user ="external"
-proxysql-bootstrap= true
-proxysql-copy-grants = true
-prov-proxy-disk-size = "1"
+#proxysql=true
+#proxysql-port = 3306
+#proxysql-servers = "proxysql1,proxysql2"
+#proxysql-user ="external"
+#proxysql-bootstrap= true
+#proxysql-copy-grants = true
+
 
 #maxscale=true
 #maxscale-servers = "maxscale1"
 
 haproxy=true
 haproxy-servers = "haproxy1"
-sysbench-binary-path ="/usr/local/bin/sysbench"
-sysbench-v1 = true
-shardproxy=true
-shardproxy-servers = "shardproxy1"
-prov-proxy-docker-shardproxy-img="signal18/mariadb-spider:latest"
+
+#shardproxy=true
+#shardproxy-servers = "shardproxy1"
+#prov-proxy-docker-shardproxy-img="signal18/mariadb-spider:latest"

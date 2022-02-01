@@ -34,7 +34,7 @@ func (cluster *Cluster) Bootstrap() error {
 		return err
 	}
 	if cluster.Conf.Test {
-		cluster.initProxies()
+		//cluster.initProxies()
 		err = cluster.WaitProxyEqualMaster()
 		if err != nil {
 			return err

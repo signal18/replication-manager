@@ -206,7 +206,7 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 	if exitloop == 9999999 {
 		cluster.LogPrintf(LvlInfo, "Waiting state running reach on %s", server.URL)
 	} else {
-		cluster.LogPrintf("Wait state running on %s", server.URL)
+		cluster.LogPrintf(LvlErr, "Wait state running on %s", server.URL)
 		return errors.New("Failed to wait running database server")
 	}
 	return nil

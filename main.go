@@ -175,7 +175,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.MonitorProcessList, "monitoring-processlist", true, "Enable capture 50 longuest process via processlist")
 	monitorCmd.Flags().StringVar(&conf.MonitorAddress, "monitoring-address", "localhost", "How to contact this monitoring")
 	monitorCmd.Flags().StringVar(&conf.MonitorTenant, "monitoring-tenant", "default", "Can be use to store multi tenant identifier")
-	monitorCmd.Flags().Int64Var(&conf.MonitorWaitRetry, "monitoring-wait-retry", 30, "Retry this number of time before giving up state transition <999999")
+	monitorCmd.Flags().Int64Var(&conf.MonitorWaitRetry, "monitoring-wait-retry", 60, "Retry this number of time before giving up state transition <999999")
 	monitorCmd.Flags().BoolVar(&conf.LogSST, "log-sst", false, "Log open and close SST transfert")
 	monitorCmd.Flags().BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
 	monitorCmd.Flags().BoolVar(&conf.LogFailedElection, "log-failed-election", false, "Log failed election")
