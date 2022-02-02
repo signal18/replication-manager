@@ -358,18 +358,30 @@ func (proxy *HaproxyProxy) Refresh() error {
 					PrxLatency:     line[61],
 				})
 				if (srv.State == stateSlaveErr || srv.State == stateRelayErr || srv.State == stateSlaveLate || srv.State == stateRelayLate || srv.IsIgnored()) && line[17] == "UP" {
-					cluster.LogPrintf(LvlInfo, "Detecting broken resplication and UP state in haproxy %s drain  server %s", proxy.Host+":"+proxy.Port, srv.URL)
+					cluster.LogPrintf(LvlInfo, "HaProxy detecting broken resplication and UP state in haproxy %s drain  server %s", proxy.Host+":"+proxy.Port, srv.URL)
 					haRuntime.SetDrain(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
 				}
 				if (srv.State == stateSlave || srv.State == stateRelay) && line[17] == "DRAIN" && !srv.IsIgnored() {
-					cluster.LogPrintf(LvlInfo, "Detecting valid resplication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL)
+					cluster.LogPrintf(LvlInfo, "HaProxy valid resplication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL)
 					haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+				}
+				if srv.IsMaster() {
+					if !cluster.Configurator.HasProxyReadLeader() && line[17] == "UP" {
+						cluster.LogPrintf(LvlInfo, "HaProxy master is not configure as reader but state UP in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL)
+						haRuntime.SetDrain(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+					}
+					if cluster.Configurator.HasProxyReadLeader() && line[17] == "DRAIN" {
+						cluster.LogPrintf(LvlInfo, "HaProxy master is  configure as reader but state DRAIN in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL)
+						haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+					}
+
 				}
 				if srv.IsMaintenance && line[17] == "UP" {
 					cluster.LogPrintf(LvlInfo, "HaProxy detecting server %s in maintenance but proxy %s report UP  ", srv.URL, proxy.Host+":"+proxy.Port)
 					proxy.SetMaintenance(srv)
 				}
 				if !srv.IsMaintenance && line[17] == "MAINT" {
+					cluster.LogPrintf(LvlInfo, "HaProxy detecting server %s up but proxy %s report in maintenance ", srv.URL, proxy.Host+":"+proxy.Port)
 					proxy.SetMaintenance(srv)
 				}
 			}
