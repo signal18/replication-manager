@@ -365,6 +365,13 @@ func (proxy *HaproxyProxy) Refresh() error {
 					cluster.LogPrintf(LvlInfo, "Detecting valid resplication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL)
 					haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
 				}
+				if srv.IsMaintenance && line[17] == "UP" {
+					cluster.LogPrintf(LvlInfo, "HaProxy detecting server %s in maintenance but proxy %s report UP  ", srv.URL, proxy.Host+":"+proxy.Port)
+					proxy.SetMaintenance(srv)
+				}
+				if !srv.IsMaintenance && line[17] == "MAINT" {
+					proxy.SetMaintenance(srv)
+				}
 			}
 		}
 	}
@@ -372,9 +379,9 @@ func (proxy *HaproxyProxy) Refresh() error {
 		master := cluster.GetMaster()
 		if master != nil && master.State == stateMaster {
 			res, err := haRuntime.SetMaster(master.Host, master.Port)
-			cluster.LogPrintf(LvlInfo, "Have leader in cluster but not in haproxy %s fixing it to master %s return %s", proxy.Host+":"+proxy.Port, master.URL, res)
+			cluster.LogPrintf(LvlInfo, "Haproxy have leader in cluster but not in haproxy %s fixing it to master %s return %s", proxy.Host+":"+proxy.Port, master.URL, res)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Can add leader %s in cluster but not in haproxy %s : %s", master.URL, proxy.Host+":"+proxy.Port, err)
+				cluster.LogPrintf(LvlErr, "Haproxy can not add leader %s in cluster but not in haproxy %s : %s", master.URL, proxy.Host+":"+proxy.Port, err)
 			}
 		}
 	}
@@ -387,14 +394,16 @@ func (cluster *Cluster) setMaintenanceHaproxy(pr *Proxy, server *ServerMonitor) 
 
 func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
 	cluster := proxy.ClusterGroup
-	if cluster.Conf.HaproxyOn {
+	if !cluster.Conf.HaproxyOn {
 		return
 	}
 	if cluster.Conf.HaproxyMode == "standby" {
 		proxy.Init()
 		return
 	}
-
+	//if cluster.Conf.HaproxyDebug {
+	cluster.LogPrintf(LvlInfo, "HaProxy set maintenance for server %s ", server.URL)
+	//}
 	haRuntime := haproxy.Runtime{
 		Binary:   cluster.Conf.HaproxyBinaryPath,
 		SockFile: filepath.Join(proxy.Datadir+"/var", "/haproxy.stats.sock"),
@@ -403,15 +412,47 @@ func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
 	}
 
 	if server.IsMaintenance {
-		haRuntime.SetMaintenance(server.Id, cluster.Conf.HaproxyAPIReadBackend)
+		cluster.LogPrintf(LvlInfo, "HaProxy set server %s/%s state maint ", server.Id, cluster.Conf.HaproxyAPIReadBackend)
+		res, err := haRuntime.SetMaintenance(server.Id, cluster.Conf.HaproxyAPIReadBackend)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "HaProxy can not set maintenance %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, err)
+		}
+		if cluster.Conf.HaproxyDebug {
+			cluster.LogPrintf(LvlInfo, "HaProxy set maintenance %s backend %s result: %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, res)
+		}
 	} else {
-		haRuntime.SetReady(server.Id, cluster.Conf.HaproxyAPIReadBackend)
+		cluster.LogPrintf(LvlInfo, "HaProxy set server %s/%s state ready ", server.Id, cluster.Conf.HaproxyAPIReadBackend)
+		res, err := haRuntime.SetReady(server.Id, cluster.Conf.HaproxyAPIReadBackend)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "HaProxy can not set ready %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, err)
+		}
+		if cluster.Conf.HaproxyDebug {
+			cluster.LogPrintf(LvlInfo, "HaProxy set ready %s backend %s result: %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, res)
+		}
+
 	}
 	if server.IsMaster() {
 		if server.IsMaintenance {
-			haRuntime.SetMaintenance("leader", cluster.Conf.HaproxyAPIReadBackend)
+			cluster.LogPrintf(LvlInfo, "HaProxy set maintenance for server %s ", server.URL)
+
+			res, err := haRuntime.SetMaintenance("leader", cluster.Conf.HaproxyAPIWriteBackend)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "HaProxy can not set maintenance %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, err)
+			}
+			if cluster.Conf.HaproxyDebug {
+				cluster.LogPrintf(LvlInfo, "HaProxy set maintenance result: %s", res)
+			}
+
 		} else {
-			haRuntime.SetReady("leader", cluster.Conf.HaproxyAPIReadBackend)
+			cluster.LogPrintf(LvlInfo, "HaProxy set ready for server %s ", server.URL)
+
+			res, err := haRuntime.SetReady("leader", cluster.Conf.HaproxyAPIWriteBackend)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Haproxy can not set ready %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIWriteBackend, err)
+			}
+			if cluster.Conf.HaproxyDebug {
+				cluster.LogPrintf(LvlInfo, "HaProxy set ready %s backend %s result: %s", server.URL, cluster.Conf.HaproxyAPIWriteBackend, res)
+			}
 		}
 	}
 }
