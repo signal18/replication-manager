@@ -237,6 +237,7 @@ type Config struct {
 	MyproxyUser                               string `mapstructure:"myproxy-user" toml:"myproxy-user" json:"myproxyUser"`
 	MyproxyPassword                           string `mapstructure:"myproxy-password" toml:"myproxy-password" json:"myproxyPassword"`
 	HaproxyOn                                 bool   `mapstructure:"haproxy" toml:"haproxy" json:"haproxy"`
+	HaproxyDebug                              bool   `mapstructure:"haproxy-debug" toml:"haproxy-debug" json:"haproxyDebug"`
 	HaproxyUser                               string `mapstructure:"haproxy-user" toml:"haproxy-user" json:"haproxylUser"`
 	HaproxyPassword                           string `mapstructure:"haproxy-password" toml:"haproxy-password" json:"haproxyPassword"`
 	HaproxyMode                               string `mapstructure:"haproxy-mode" toml:"haproxy-mode" json:"haproxyMode"`
@@ -252,6 +253,7 @@ type Config struct {
 	HaproxyAPIReadBackend                     string `mapstructure:"haproxy-api-read-backend"  toml:"haproxy-api-read-backend" json:"haproxyAPIReadBackend"`
 	HaproxyAPIWriteBackend                    string `mapstructure:"haproxy-api-write-backend"  toml:"haproxy-api-write-backend" json:"haproxyAPIWriteBackend"`
 	ProxysqlOn                                bool   `mapstructure:"proxysql" toml:"proxysql" json:"proxysql"`
+	ProxysqlDebug                             bool   `mapstructure:"proxysql-debug" toml:"proxysql-debug" json:"proxysqlDebug"`
 	ProxysqlSaveToDisk                        bool   `mapstructure:"proxysql-save-to-disk" toml:"proxysql-save-to-disk" json:"proxysqlSaveToDisk"`
 	ProxysqlHosts                             string `mapstructure:"proxysql-servers" toml:"proxysql-servers" json:"proxysqlServers"`
 	ProxysqlHostsIPV6                         string `mapstructure:"proxysql-servers-ipv6" toml:"proxysql-servers-ipv6" json:"proxysqlServers-ipv6"`

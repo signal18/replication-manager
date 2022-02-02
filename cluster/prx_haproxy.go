@@ -49,6 +49,7 @@ func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *Haproxy
 func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HaProxy on same host")
 	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HaProxy mode [standby|runtimeapi|dataplaneapi]")
+	flags.BoolVar(&conf.HaproxyDebug, "haproxy-debug", false, "Extra info on monitoring backend")
 	flags.StringVar(&conf.HaproxyUser, "haproxy-user", "admin", "Haproxy API user")
 	flags.StringVar(&conf.HaproxyPassword, "haproxy-password", "admin", "Haproxy API password")
 	flags.StringVar(&conf.HaproxyHosts, "haproxy-servers", "127.0.0.1", "HaProxy hosts")
@@ -230,19 +231,23 @@ func (proxy *HaproxyProxy) Refresh() error {
 
 	backend_ip_host := make(map[string]string)
 	if proxy.HasDNS() {
+		// When using FQDN map server state host->IP to locate in show stats where it's only IPs
 		cmd := "show servers state"
-		//	cluster.LogPrintf(LvlInfo, "command %s", cmd)
+
 		showleaderstate, err := haRuntime.ApiCmd(cmd)
 		if err != nil {
 			cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
 			return err
 		}
-		// api return a first row with return code make it as comment
+
+		// API return a first row with return code make it as comment
 		showleaderstate = "# " + showleaderstate
 
-		// api return space sparator convet to csv
+		// API return space sparator conveting to csv
 		showleaderstate = strings.Replace(showleaderstate, " ", ",", -1)
-		//	cluster.LogPrintf(LvlInfo, "haproxy :%s", showleaderstate)
+		if cluster.Conf.HaproxyDebug {
+			cluster.LogPrintf(LvlInfo, "haproxy show servers state response :%s", showleaderstate)
+		}
 		showleaderstatereader := ioutil.NopCloser(bytes.NewReader([]byte(showleaderstate)))
 
 		defer showleaderstatereader.Close()
@@ -257,7 +262,9 @@ func (proxy *HaproxyProxy) Refresh() error {
 				return err
 			}
 			if len(line) > 17 {
-				//	cluster.LogPrintf(LvlInfo, "ligne %s %s", line[4], line[17])
+				if cluster.Conf.HaproxyDebug {
+					cluster.LogPrintf(LvlInfo, "HaProxy adding IP map %s %s", line[4], line[17])
+				}
 				backend_ip_host[line[4]] = line[17]
 			}
 		}
@@ -270,8 +277,9 @@ func (proxy *HaproxyProxy) Refresh() error {
 		cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
 		return err
 	}
-
-	//cluster.LogPrintf(LvlInfo, "Stats: %s", result)
+	if cluster.Conf.HaproxyDebug {
+		cluster.LogPrintf(LvlInfo, "Haproxy show stat result: %s", result)
+	}
 	r := ioutil.NopCloser(bytes.NewReader([]byte(result)))
 	defer r.Close()
 	reader := csv.NewReader(r)
@@ -293,11 +301,16 @@ func (proxy *HaproxyProxy) Refresh() error {
 		}
 		if strings.Contains(strings.ToLower(line[0]), "write") {
 			host := line[73]
-			if !proxy.HasDNS() {
-				host = backend_ip_host[line[73]]
+			if proxy.HasDNS() {
+				// After provisioning the stats may arrive with IP:Port while sometime not
+				host = strings.Split(line[73], ":")[0]
+				host = backend_ip_host[host]
 			}
-			srv := cluster.GetServerFromURL(host)
 
+			srv := cluster.GetServerFromURL(host)
+			if cluster.Conf.HaproxyDebug {
+				cluster.LogPrintf(LvlInfo, "HaProxy stat lookup writer: host %s translated to %s", line[73], host)
+			}
 			if srv != nil {
 				foundMasterInStat = true
 				proxy.BackendsWrite = append(proxy.BackendsWrite, Backend{
@@ -322,11 +335,15 @@ func (proxy *HaproxyProxy) Refresh() error {
 		}
 		if strings.Contains(strings.ToLower(line[0]), "read") {
 			host := line[73]
-			if !proxy.HasDNS() {
-				host = backend_ip_host[line[73]]
+			if proxy.HasDNS() {
+				// After provisioning the stats may arrive with  IP:Port while sometime not
+				host = strings.Split(line[73], ":")[0]
+				host = backend_ip_host[host]
 			}
 			srv := cluster.GetServerFromURL(host)
-
+			if cluster.Conf.HaproxyDebug {
+				cluster.LogPrintf(LvlInfo, "HaProxy stat lookup reader: host %s translated to %s", line[73], host)
+			}
 			if srv != nil {
 
 				proxy.BackendsRead = append(proxy.BackendsRead, Backend{

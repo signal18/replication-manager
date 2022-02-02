@@ -245,6 +245,7 @@ func (proxy *Proxy) GetConfigProxyModule(variable string) string {
 	confhaproxywrite := ""
 	confproxysql := ""
 	i := 0
+	DNS := ""
 	for _, db := range proxy.ClusterGroup.Servers {
 
 		i++
@@ -260,9 +261,9 @@ port=` + db.Port + `
 protocol=MariaDBBackend
 # protocol=MySQLBackend
 `
-		DNS := ""
+
 		if proxy.HasDNS() {
-			DNS = " resolvers dns"
+			DNS = " init-addr last,libc,none resolvers dns"
 		}
 		if proxy.ClusterGroup.Conf.HaproxyMode == "runtimeapi" {
 			confhaproxyread += `
@@ -290,7 +291,7 @@ protocol=MariaDBBackend
 	}
 	if confhaproxywrite == "" && proxy.ClusterGroup.Conf.HaproxyMode == "runtimeapi" {
 		confhaproxywrite += `
-server leader unknown:3306  weight 100 maxconn 2000 check inter 1000`
+server leader none:3306 ` + DNS + ` weight 100 maxconn 2000 check inter 1000`
 	}
 	switch variable {
 	case "%%ENV:SERVERS_HAPROXY_WRITE%%":
