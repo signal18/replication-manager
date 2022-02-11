@@ -97,8 +97,6 @@ do
     cp -r etc/* "$builddir"/tar/etc/
     if [ "$flavor" != "pro" ]; then
       rm -f "$builddir"/tar/etc/config.toml.sample.opensvc.*
-    else
-      cp -rp test/opensvc "$builddir"/tar/share/tests
     fi
     cp "$builddir"/binaries/replication-manager-$flavor-basedir "$builddir"/tar/bin/replication-manager-$flavor
     cp service/replication-manager-$flavor-basedir.service "$builddir"/tar/share/replication-manager.service
