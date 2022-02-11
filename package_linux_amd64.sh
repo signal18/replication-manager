@@ -83,8 +83,6 @@ do
     cp -r etc/* "$builddir"/package/etc/replication-manager/
     if [ "$flavor" != "pro" ]; then
       rm -f "$builddir"/package/etc/replication-manager/config.toml.sample.opensvc.*
-    else
-      cp -rp test/opensvc "$builddir"/package/usr/share/replication-manager/tests
     fi
 
     cp "$builddir"/binaries/replication-manager-$flavor "$builddir"/package/usr/bin/

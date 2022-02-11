@@ -349,7 +349,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	//Loading configuration compliances
 	cluster.Configurator.Init(cluster.Conf)
 
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorLocalhost:
 		cluster.DropDBTagConfig("docker")
 		cluster.DropDBTagConfig("threadpool")
@@ -361,7 +361,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 func (cluster *Cluster) initOrchetratorNodes() {
 
 	//cluster.LogPrintf(LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		cluster.Agents, _ = cluster.OpenSVCGetNodes()
 	case config.ConstOrchestratorKubernetes:

@@ -217,7 +217,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.ClusterGroup = cluster
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 
-	if cluster.Conf.ProvNetCNI && cluster.Conf.ProvOrchestrator == config.ConstOrchestratorOpenSVC {
+	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator()  == config.ConstOrchestratorOpenSVC {
 		// OpenSVC and Sharding proxy monitoring
 		if server.IsCompute {
 			if cluster.Conf.ClusterHead != "" {

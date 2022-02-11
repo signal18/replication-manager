@@ -1,0 +1,8 @@
+2017/08/03 19:56:06 [bench] INFO  - hostlist: 127.0.0.1:3310,127.0.0.1:3311 [127.0.0.1:3310 127.0.0.1:3311]
+2017/08/03 19:56:06 [bench] INFO  - Loading 1 proxies
+2017/08/03 19:56:06 [bench] INFO  - Loading Maxscale...
+2017/08/03 19:56:06 [bench] INFO  - Failover in automatic mode
+2017/08/03 19:56:06 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/03 19:56:08 [bench] TESTI - testSwitchoverReplAllDelay
+2017/08/03 19:56:08 [bench] TESTI - testSwitchoverReplAllDelay

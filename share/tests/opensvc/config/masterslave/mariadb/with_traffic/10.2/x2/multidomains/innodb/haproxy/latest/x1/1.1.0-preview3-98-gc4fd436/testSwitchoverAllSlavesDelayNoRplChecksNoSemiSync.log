@@ -1,0 +1,700 @@
+2017/08/03 13:58:40 [bench] INFO  - hostlist: db1,db2 [db1 db2]
+2017/08/03 13:58:40 [bench] INFO  - Loading 1 proxies
+2017/08/03 13:58:40 [bench] INFO  - Loading Maxscale...
+2017/08/03 13:58:40 [bench] INFO  - Failover in automatic mode
+2017/08/03 13:58:40 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/03 13:58:42 [bench] TESTI - testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync
+2017/08/03 13:58:42 [bench] ALERT - Server db1 state changed from  to Suspect
+2017/08/03 13:58:43 [bench] ALERT - Server db2 state changed from  to Suspect
+2017/08/03 13:58:43 [bench] INFO  - Provisioning delete service f09b686a-0fc0-4903-aa76-04f9f3170a0c
+2017/08/03 13:58:46 [bench] STATE - INF00001 Server db1 is down
+2017/08/03 13:58:46 [bench] STATE - ERR00010 Could not find a slave in topology
+2017/08/03 13:58:46 [bench] STATE - ERR00012 Could not find a master in topology
+2017/08/03 13:58:46 [bench] STATE - ERR00021 All cluster down in non-interactive mode
+2017/08/03 13:58:50 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/03 13:58:50 [bench] INFO  - Declaring server db1 as failed
+2017/08/03 13:58:50 [bench] ALERT - Server db1 state changed from Suspect to Failed
+2017/08/03 13:58:51 [bench] INFO  - Declaring server db2 as failed
+2017/08/03 13:58:51 [bench] ALERT - Server db2 state changed from Suspect to Failed
+2017/08/03 13:58:55 [bench] INFO  - 11:58:47,181 disk#00        INFO    create file /srv/4832677178583133704_docker.dsk, size 1G
+11:58:47,182 disk#00        INFO    provisioned
+11:58:47,185 disk#00        INFO    /sbin/losetup -f /srv/4832677178583133704_docker.dsk
+11:58:47,239 disk#00        INFO    /dev/loop0 now loops to /srv/4832677178583133704_docker.dsk
+11:58:47,270 disk#0000      INFO    zpool create -m legacy zp4832677178583133704_00 /srv/4832677178583133704_docker.dsk
+11:58:47,341 disk#0000      INFO    provisioned
+11:58:47,349 disk#0000      INFO    zp4832677178583133704_00 is already up
+11:58:47,357 disk#01        INFO    create file /srv/4832677178583133704_pod01.dsk, size 1G
+11:58:47,358 disk#01        INFO    provisioned
+11:58:47,379 disk#01        INFO    /sbin/losetup -f /srv/4832677178583133704_pod01.dsk
+11:58:47,456 disk#01        INFO    /dev/loop1 now loops to /srv/4832677178583133704_pod01.dsk
+11:58:47,500 disk#1001      INFO    zpool create -m legacy zp4832677178583133704_pod01 /srv/4832677178583133704_pod01.dsk
+11:58:47,563 disk#1001      INFO    provisioned
+11:58:47,571 disk#1001      INFO    zp4832677178583133704_pod01 is already up
+11:58:47,583 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
+11:58:47,605 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
+11:58:47,615 fs#00          INFO    provisioned
+11:58:47,633 fs#00          INFO    /sbin/ext4 mount zp4832677178583133704_00/docker
+11:58:47,658 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
+11:58:47,681 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
+11:58:47,689 fs#01          INFO    provisioned
+11:58:47,708 fs#01          INFO    /sbin/ext4 mount zp4832677178583133704_pod01/pod01
+11:58:47,718 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
+11:58:50,078 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.db attached
+=========================== mariadb.svc.mrm.db.cnf ===========================
+ACTION:   check
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+ERR: failed to concatenate  to rules list
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/tmp/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/aria/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/repl/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/custom/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/security.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/my.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/tokudb/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/launcher does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/ does not exist
+ERR: file /srv/4832677178583133704/pod01/init/start does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/logs/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/network.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/multidomains.cnf does not exist
+STATUS:   nok
+ACTION:   fixable
+STATUS:   n/a
+ACTION:   fix
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf rewritten
+ERR: failed to concatenate  to rules list
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql/rc.d/
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/tmp/
+file /srv/4832677178583133704/pod01/data/.system/tmp/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/tmp/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/aria/
+file /srv/4832677178583133704/pod01/data/.system/aria/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/aria/ ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/repl/
+file /srv/4832677178583133704/pod01/data/.system/repl/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/repl/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql/custom/
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/innodb/redo/
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/.system/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/init/
+file /srv/4832677178583133704/pod01/init/ mode set to 775
+file /srv/4832677178583133704/pod01/init/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/ mode set to 775
+file /srv/4832677178583133704/pod01/data/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/tokudb/
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/innodb/undo/
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/launcher rewritten
+file /srv/4832677178583133704/pod01/init/launcher mode set to 755
+file /srv/4832677178583133704/pod01/init/launcher ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/.system/innodb/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/start rewritten
+file /srv/4832677178583133704/pod01/init/start mode set to 755
+file /srv/4832677178583133704/pod01/init/start ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD rewritten
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD mode set to 660
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/logs/
+file /srv/4832677178583133704/pod01/data/.system/logs/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/logs/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf ownership set to 999:999
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/multidomains.cnf -> ../multidomains.cnf created
+STATUS:   ok
+ACTION:   check
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf is ok
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf is ok
+ERR: failed to concatenate  to rules list
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tmp/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/aria/ is ok
+file /srv/4832677178583133704/pod01/data/.system/repl/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf is ok
+file /srv/4832677178583133704/pod01/init/ is ok
+file /srv/4832677178583133704/pod01/data/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf is ok
+file /srv/4832677178583133704/pod01/init/launcher is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/ is ok
+file /srv/4832677178583133704/pod01/init/start is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf is ok
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD is ok
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/logs/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/multidomains.cnf -> ../multidomains.cnf is ok
+STATUS:   ok
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.db.cnf
+0 error
+total duration: 0:00:00.531023
+11:58:50,158 container#0001 INFO    docker start c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
+11:58:50,344 container#0001 INFO    output:
+c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
+11:58:50,360 container#0001 INFO    wait for up status
+11:58:50,389 container#0001 INFO    wait for container operational
+11:58:50,433 ip#01          INFO    skip allocate: an ip is already defined
+11:58:50,503 ip#01          INFO    checking db1 availability
+11:58:53,570 ip#01          INFO    bridge mode
+11:58:53,600 ip#01          INFO    create symlink /var/run/netns/29136 -> /proc/29136/ns/net
+11:58:53,671 ip#01          INFO    /sbin/ip link add name veth1pl29136 mtu 1500 type veth peer name veth1pg29136 mtu 1500
+11:58:53,676 ip#01          INFO    /sbin/ip link set veth1pl29136 master br-prd
+11:58:53,682 ip#01          INFO    /sbin/ip link set veth1pl29136 up
+11:58:53,685 ip#01          INFO    /sbin/ip link set veth1pg29136 netns 29136
+11:58:53,696 ip#01          INFO    /sbin/ip netns exec 29136 ip link set veth1pg29136 name eth1
+11:58:53,744 ip#01          INFO    /sbin/ip netns exec 29136 ip addr add db1/24 dev eth1
+11:58:53,807 ip#01          INFO    /sbin/ip netns exec 29136 ip link set eth1 up
+11:58:53,844 ip#01          INFO    /sbin/ip netns exec 29136 ip route replace default via 192.168.100.254
+11:58:53,900 ip#01          INFO    remove /var/run/netns/29136
+11:58:54,046 container#2001 INFO    docker run -d --name=4832677178583133704.container.2001 --net=container:4832677178583133704.container.0001 -e MYSQL_ROOT_PASSWORD=mariadb -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v /srv/4832677178583133704/pod01/data:/var/lib/mysql:rw -v /srv/4832677178583133704/pod01/etc/mysql:/etc/mysql:rw -v /srv/4832677178583133704/pod01/init:/docker-entrypoint-initdb.d:rw --rm --cgroup-parent /4832677178583133704/container.docker/container.2001 mariadb:10.2
+11:58:54,277 container#2001 INFO    output:
+00b207c00d078e43bbf241635ceff924f4cd3c7b943e55120b9dcc963fc55521
+11:58:54,296 container#2001 INFO    wait for up status
+11:58:54,323 container#2001 INFO    wait for container operational
+11:58:54,557                INFO    send /etc/opensvc/4832677178583133704.conf to collector
+11:58:54,558                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/03 13:58:57 [bench] INFO  - Waiting for database start
+2017/08/03 13:58:59 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 13:58:59 [bench] INFO  - Waiting for database start
+2017/08/03 13:59:01 [bench] INFO  - Waiting for database start
+2017/08/03 13:59:03 [bench] INFO  - Waiting for database start
+2017/08/03 13:59:05 [bench] INFO  - Waiting for database start
+2017/08/03 13:59:07 [bench] INFO  - Waiting for database start
+2017/08/03 13:59:09 [bench] INFO  - Waiting for database start
+2017/08/03 13:59:11 [bench] INFO  - Waiting for database start
+2017/08/03 13:59:12 [bench] INFO  - Trying to rejoin restarted server db1
+2017/08/03 13:59:13 [bench] INFO  - Waiting for database start
+2017/08/03 13:59:13 [bench] INFO  - Database started
+2017/08/03 13:59:15 [bench] INFO  - Provisioning delete service 7a366af8-23d6-4931-99fd-ff7605eb39b5
+2017/08/03 13:59:20 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 13:59:22 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 13:59:24 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 13:59:40 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 13:59:44 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:00:10 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:00:12 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:00:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:00:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:00:40 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:00:44 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:01:10 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:01:12 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:01:22 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:01:24 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:01:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:01:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:02:00 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:02:02 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:02:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:02:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:02:38 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:02:44 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:02:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:02:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:02:58 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:03:00 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:03:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:03:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:03:34 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:03:36 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:03:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:03:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:03:54 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:03:56 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:04:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:04:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:04:34 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:04:36 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:04:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:04:54 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:05:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:05:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:05:32 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:05:34 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:05:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:05:54 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:06:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:06:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:06:30 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:06:32 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:06:46 [bench] INFO  - 
+2017/08/03 14:06:48 [bench] INFO  - Waiting for database start
+2017/08/03 14:06:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:06:50 [bench] INFO  - Waiting for database start
+2017/08/03 14:06:52 [bench] INFO  - Waiting for database start
+2017/08/03 14:06:54 [bench] INFO  - Waiting for database start
+2017/08/03 14:06:56 [bench] INFO  - Waiting for database start
+2017/08/03 14:06:58 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:00 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:02 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:04 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:06 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:08 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:10 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:12 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:14 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:16 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:18 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:20 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:22 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:24 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:26 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:28 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:30 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:32 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:34 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:36 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:38 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:40 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:42 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:44 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:46 [bench] INFO  - Waiting for database start
+2017/08/03 14:07:48 [bench] INFO  - Database start timeout
+2017/08/03 14:07:54 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:08:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:08:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:08:30 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:08:32 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:08:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:08:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:09:08 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:09:14 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:09:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:09:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:09:28 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:09:30 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:09:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:09:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:10:06 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:10:08 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:10:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:10:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:10:26 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:10:28 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:10:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:10:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:11:06 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:11:08 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:11:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:11:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:11:24 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:11:26 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:11:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:11:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:12:04 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:12:06 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:12:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:12:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:12:24 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:12:26 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:12:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:12:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:13:04 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:13:06 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:13:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:13:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:13:24 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:13:26 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:13:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:13:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:14:04 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:14:06 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:14:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:14:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:14:24 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:14:26 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:14:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:14:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:15:02 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:15:04 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:15:18 [bench] INFO  - 
+2017/08/03 14:15:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:15:21 [bench] INFO  - Cleaning up replication on existing servers
+2017/08/03 14:15:31 [bench] TESTI - testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync
+2017/08/03 14:15:32 [bench] INFO  - Provisioning delete service 6a9fe04c-a2d8-4933-b1df-9e40514f34b2
+2017/08/03 14:15:38 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/03 14:15:40 [bench] INFO  - 12:15:36,127 disk#00        INFO    already provisionned
+12:15:36,159 disk#00        INFO    loop /srv/4832677178583133704_docker.dsk is already up
+12:15:36,200 disk#0000      INFO    already provisionned
+12:15:36,208 disk#0000      INFO    zp4832677178583133704_00 is already up
+12:15:36,215 disk#01        INFO    already provisionned
+12:15:36,247 disk#01        INFO    loop /srv/4832677178583133704_pod01.dsk is already up
+12:15:36,289 disk#1001      INFO    already provisionned
+12:15:36,296 disk#1001      INFO    zp4832677178583133704_pod01 is already up
+12:15:36,311 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
+12:15:36,327 fs#00          INFO    provisioned
+12:15:36,337 fs#00          INFO    ext4 zp4832677178583133704_00/docker@/srv/4832677178583133704/docker is already mounted
+12:15:36,355 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
+12:15:36,367 fs#01          INFO    provisioned
+12:15:36,376 fs#01          INFO    ext4 zp4832677178583133704_pod01/pod01@/srv/4832677178583133704/pod01 is already mounted
+12:15:36,377 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
+12:15:38,566 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.db attached
+=========================== mariadb.svc.mrm.db.cnf ===========================
+ACTION:   check
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf is ok
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf is ok
+ERR: failed to concatenate  to rules list
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tmp/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/aria/ is ok
+file /srv/4832677178583133704/pod01/data/.system/repl/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf is ok
+file /srv/4832677178583133704/pod01/init/ is ok
+file /srv/4832677178583133704/pod01/data/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf is ok
+file /srv/4832677178583133704/pod01/init/launcher is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/ is ok
+file /srv/4832677178583133704/pod01/init/start is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf is ok
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD is ok
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/logs/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/multidomains.cnf -> ../multidomains.cnf is ok
+STATUS:   ok
+check passed, skip fix
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.db.cnf
+0 error
+total duration: 0:00:00.208365
+12:15:38,643 container#0001 INFO    container docker container 4832677178583133704.container.0001@busybox:latest already started on node-1-1.vdc.opensvc.com
+12:15:38,685 ip#01          INFO    skip allocate: an ip is already defined
+12:15:38,747 ip#01          INFO    db1 is already up on br-prd
+12:15:38,885 container#2001 INFO    container docker container 4832677178583133704.container.2001@mariadb:10.2 already started on node-1-1.vdc.opensvc.com
+12:15:39,111                INFO    send /etc/opensvc/4832677178583133704.conf to collector
+12:15:39,112                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/03 14:15:42 [bench] INFO  - Waiting for database start
+2017/08/03 14:15:42 [bench] INFO  - Database started
+2017/08/03 14:15:43 [bench] INFO  - Provisioning delete service 70c5e3ac-514b-44dc-bef3-456985984b00
+2017/08/03 14:15:44 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 14:15:48 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:15:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:15:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:16:08 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:16:14 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:16:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:16:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:16:30 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:16:32 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:16:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:16:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:17:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:17:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:17:30 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:17:32 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:17:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:17:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:18:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:18:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:18:30 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:18:32 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:18:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:18:54 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:19:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:19:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:19:32 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:19:34 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:19:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:19:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:19:54 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:19:56 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:20:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:20:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:20:34 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:20:36 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:20:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:20:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:20:54 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:20:56 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:21:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:21:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:21:34 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:21:36 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:21:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:21:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:21:56 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:21:58 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:22:20 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:22:22 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:22:36 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:22:38 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:22:50 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:22:52 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:22:58 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:23:00 [bench] STATE - ERR0046 Provision task is in queue
+2017/08/03 14:23:12 [bench] INFO  - 
+2017/08/03 14:23:14 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:16 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:18 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:18 [bench] STATE - ERR0046 CLOSING Provision task is in queue
+2017/08/03 14:23:20 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:22 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:24 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:26 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:28 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:30 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:32 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:34 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:36 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:38 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:40 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:42 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:44 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:46 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:48 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:50 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:52 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:54 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:56 [bench] INFO  - Waiting for database start
+2017/08/03 14:23:58 [bench] INFO  - Waiting for database start
+2017/08/03 14:24:00 [bench] INFO  - Waiting for database start
+2017/08/03 14:24:02 [bench] INFO  - Waiting for database start
+2017/08/03 14:24:04 [bench] INFO  - Waiting for database start
+2017/08/03 14:24:06 [bench] INFO  - Waiting for database start
+2017/08/03 14:24:08 [bench] INFO  - Waiting for database start
+2017/08/03 14:24:10 [bench] INFO  - Waiting for database start
+2017/08/03 14:24:12 [bench] INFO  - Waiting for database start
+2017/08/03 14:24:14 [bench] INFO  - Database start timeout
+2017/08/03 14:24:18 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/03 14:24:20 [bench] INFO  - 12:24:16,541 disk#00        INFO    already provisionned
+12:24:16,574 disk#00        INFO    loop /srv/10940044185188150515_docker.dsk is already up
+12:24:16,623 disk#0000      INFO    already provisionned
+12:24:16,631 disk#0000      INFO    zp10940044185188150515_00 is already up
+12:24:16,639 disk#01        INFO    already provisionned
+12:24:16,682 disk#01        INFO    loop /srv/10940044185188150515_pod01.dsk is already up
+12:24:16,727 disk#1001      INFO    already provisionned
+12:24:16,736 disk#1001      INFO    zp10940044185188150515_pod01 is already up
+12:24:16,751 fs#00          INFO    /sbin/ext4 set refquota=2048M zp10940044185188150515_00/docker
+12:24:16,762 fs#00          INFO    provisioned
+12:24:16,771 fs#00          INFO    ext4 zp10940044185188150515_00/docker@/srv/10940044185188150515/docker is already mounted
+12:24:16,788 fs#01          INFO    /sbin/ext4 set refquota=1024M zp10940044185188150515_pod01/pod01
+12:24:16,798 fs#01          INFO    provisioned
+12:24:16,809 fs#01          INFO    ext4 zp10940044185188150515_pod01/pod01@/srv/10940044185188150515/pod01 is already mounted
+12:24:16,809 fs#01          INFO    /usr/bin/svcmgr -s 10940044185188150515 push service status;/usr/bin/svcmgr -s 10940044185188150515 compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+12:24:18,744 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.proxy is already attached to this service
+========================= mariadb.svc.mrm.proxy.cnf ==========================
+ACTION:   check
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf is ok
+file /srv/10940044185188150515/pod01/init/launcher is ok
+file //srv/10940044185188150515/pod01/log/ is ok
+file //srv/10940044185188150515/pod01/data/ is ok
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml is ok
+file //srv/10940044185188150515/pod01/init/ is ok
+file //srv/10940044185188150515/pod01/conf/ is ok
+file //srv/10940044185188150515/pod01/conf/keepalived.conf is ok
+file //srv/10940044185188150515/pod01/conf/config.toml is ok
+STATUS:   ok
+check passed, skip fix
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.proxy.cnf
+0 error
+total duration: 0:00:00.111713
+12:24:18,821 container#0001 INFO    container docker container 10940044185188150515.container.0001@busybox:latest already started on node-1-2.vdc.opensvc.com
+12:24:18,865 ip#01          INFO    skip allocate: an ip is already defined
+12:24:18,930 ip#01          INFO    proxy1 is already up on br-prd
+12:24:19,075 container#2001 INFO    container docker container 10940044185188150515.container.2001@asosso/maxscale:latest already started on node-1-2.vdc.opensvc.com
+12:24:19,305                INFO    send /etc/opensvc/10940044185188150515.conf to collector
+12:24:19,306                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
+
+2017/08/03 14:24:20 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 14:24:23 [bench] INFO  - Cleaning up replication on existing servers

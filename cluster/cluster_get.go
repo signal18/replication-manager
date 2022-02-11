@@ -24,37 +24,41 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+func (cluster *Cluster) GetShareDir() string {
+	return cluster.Conf.ShareDir
+}
+
 func (cluster *Cluster) GetMysqlDumpPath() string {
 	if cluster.Conf.BackupMysqldumpPath == "" {
-		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqldump"
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqldump"
 	}
 	return cluster.Conf.BackupMysqldumpPath
 }
 
 func (cluster *Cluster) GetMyDumperPath() string {
 	if cluster.Conf.BackupMyDumperPath == "" {
-		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mydumper"
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mydumper"
 	}
 	return cluster.Conf.BackupMyDumperPath
 }
 
 func (cluster *Cluster) GetMyLoaderPath() string {
 	if cluster.Conf.BackupMyDumperPath == "" {
-		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/myloader"
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/myloader"
 	}
 	return cluster.Conf.BackupMyLoaderPath
 }
 
 func (cluster *Cluster) GetMysqlBinlogPath() string {
 	if cluster.Conf.BackupMysqlbinlogPath == "" {
-		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqlbinlog"
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqlbinlog"
 	}
 	return cluster.Conf.BackupMysqlbinlogPath
 }
 
 func (cluster *Cluster) GetMysqlclientPath() string {
 	if cluster.Conf.BackupMysqlclientPath == "" {
-		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysql"
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysql"
 	}
 	return cluster.Conf.BackupMysqlclientPath
 }
@@ -64,6 +68,10 @@ func (cluster *Cluster) GetDomain() string {
 		return "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 	}
 	return ""
+}
+
+func (cluster *Cluster) GetOrchestrator() string {
+	return cluster.Conf.ProvOrchestrator
 }
 
 func (cluster *Cluster) GetDomainHeadCluster() string {

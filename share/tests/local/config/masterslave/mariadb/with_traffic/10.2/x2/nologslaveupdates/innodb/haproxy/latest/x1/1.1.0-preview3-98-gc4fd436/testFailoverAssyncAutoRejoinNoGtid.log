@@ -1,0 +1,1195 @@
+2017/08/03 18:33:08 [bench] INFO  - hostlist: 127.0.0.1:3310,127.0.0.1:3311 [127.0.0.1:3310 127.0.0.1:3311]
+2017/08/03 18:33:08 [bench] INFO  - Loading 1 proxies
+2017/08/03 18:33:08 [bench] INFO  - Loading Maxscale...
+2017/08/03 18:33:08 [bench] INFO  - Failover in automatic mode
+2017/08/03 18:33:08 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/03 18:33:10 [bench] TESTI - testFailoverAssyncAutoRejoinNoGtid
+2017/08/03 18:33:10 [bench] ALERT - Server 127.0.0.1:3310 state changed from  to Suspect
+2017/08/03 18:33:11 [bench] ALERT - Server 127.0.0.1:3311 state changed from  to Suspect
+2017/08/03 18:33:11 [bench] INFO  - Provisioning delete service 76203c7e-f28f-475d-8458-65b795d69504
+2017/08/03 18:33:14 [bench] STATE - INF00001 Server 127.0.0.1:3310 is down
+2017/08/03 18:33:14 [bench] STATE - ERR00010 Could not find a slave in topology
+2017/08/03 18:33:14 [bench] STATE - ERR00012 Could not find a master in topology
+2017/08/03 18:33:14 [bench] STATE - ERR00021 All cluster down in non-interactive mode
+2017/08/03 18:33:19 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/03 18:33:20 [bench] INFO  - Declaring server 127.0.0.1:3311 as failed
+2017/08/03 18:33:20 [bench] ALERT - Server 127.0.0.1:3311 state changed from Suspect to Failed
+2017/08/03 18:33:20 [bench] INFO  - Declaring server 127.0.0.1:3310 as failed
+2017/08/03 18:33:20 [bench] ALERT - Server 127.0.0.1:3310 state changed from Suspect to Failed
+2017/08/03 18:33:22 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 18:33:23 [bench] INFO  - 16:33:15,519 disk#00        INFO    create file /srv/4832677178583133704_docker.dsk, size 1G
+16:33:15,519 disk#00        INFO    provisioned
+16:33:15,522 disk#00        INFO    /sbin/losetup -f /srv/4832677178583133704_docker.dsk
+16:33:15,543 disk#00        INFO    /dev/loop0 now loops to /srv/4832677178583133704_docker.dsk
+16:33:15,582 disk#0000      INFO    zpool create -m legacy zp4832677178583133704_00 /srv/4832677178583133704_docker.dsk
+16:33:15,643 disk#0000      INFO    provisioned
+16:33:15,651 disk#0000      INFO    zp4832677178583133704_00 is already up
+16:33:15,659 disk#01        INFO    create file /srv/4832677178583133704_pod01.dsk, size 1G
+16:33:15,660 disk#01        INFO    provisioned
+16:33:15,675 disk#01        INFO    /sbin/losetup -f /srv/4832677178583133704_pod01.dsk
+16:33:15,720 disk#01        INFO    /dev/loop1 now loops to /srv/4832677178583133704_pod01.dsk
+16:33:15,761 disk#1001      INFO    zpool create -m legacy zp4832677178583133704_pod01 /srv/4832677178583133704_pod01.dsk
+16:33:15,820 disk#1001      INFO    provisioned
+16:33:15,827 disk#1001      INFO    zp4832677178583133704_pod01 is already up
+16:33:15,838 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
+16:33:15,861 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
+16:33:15,870 fs#00          INFO    provisioned
+16:33:15,887 fs#00          INFO    /sbin/ext4 mount zp4832677178583133704_00/docker
+16:33:15,911 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
+16:33:15,933 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
+16:33:15,945 fs#01          INFO    provisioned
+16:33:15,962 fs#01          INFO    /sbin/ext4 mount zp4832677178583133704_pod01/pod01
+16:33:15,972 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
+16:33:18,326 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.db attached
+=========================== mariadb.svc.mrm.db.cnf ===========================
+ACTION:   check
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+ERR: failed to concatenate  to rules list
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/tmp/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/aria/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/repl/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/custom/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/security.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/my.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/tokudb/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/launcher does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/ does not exist
+ERR: file /srv/4832677178583133704/pod01/init/start does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/logs/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/network.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/nologslaveupdates.cnf does not exist
+STATUS:   nok
+ACTION:   fixable
+STATUS:   n/a
+ACTION:   fix
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf rewritten
+ERR: failed to concatenate  to rules list
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql/rc.d/
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/tmp/
+file /srv/4832677178583133704/pod01/data/.system/tmp/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/tmp/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/aria/
+file /srv/4832677178583133704/pod01/data/.system/aria/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/aria/ ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/repl/
+file /srv/4832677178583133704/pod01/data/.system/repl/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/repl/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql/custom/
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/innodb/redo/
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/.system/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/init/
+file /srv/4832677178583133704/pod01/init/ mode set to 775
+file /srv/4832677178583133704/pod01/init/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/ mode set to 775
+file /srv/4832677178583133704/pod01/data/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/tokudb/
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/innodb/undo/
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/launcher rewritten
+file /srv/4832677178583133704/pod01/init/launcher mode set to 755
+file /srv/4832677178583133704/pod01/init/launcher ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/.system/innodb/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/start rewritten
+file /srv/4832677178583133704/pod01/init/start mode set to 755
+file /srv/4832677178583133704/pod01/init/start ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD rewritten
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD mode set to 660
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/logs/
+file /srv/4832677178583133704/pod01/data/.system/logs/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/logs/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf ownership set to 999:999
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/nologslaveupdates.cnf -> ../nologslaveupdates.cnf created
+STATUS:   ok
+ACTION:   check
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf is ok
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf is ok
+ERR: failed to concatenate  to rules list
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tmp/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/aria/ is ok
+file /srv/4832677178583133704/pod01/data/.system/repl/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf is ok
+file /srv/4832677178583133704/pod01/init/ is ok
+file /srv/4832677178583133704/pod01/data/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf is ok
+file /srv/4832677178583133704/pod01/init/launcher is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/ is ok
+file /srv/4832677178583133704/pod01/init/start is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf is ok
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD is ok
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/logs/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/nologslaveupdates.cnf -> ../nologslaveupdates.cnf is ok
+STATUS:   ok
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.db.cnf
+0 error
+total duration: 0:00:00.534222
+16:33:18,408 container#0001 INFO    docker start c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
+16:33:18,588 container#0001 INFO    output:
+c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
+16:33:18,602 container#0001 INFO    wait for up status
+16:33:18,629 container#0001 INFO    wait for container operational
+16:33:18,674 ip#01          INFO    skip allocate: an ip is already defined
+16:33:18,739 ip#01          INFO    checking 127.0.0.1:3310 availability
+16:33:21,825 ip#01          INFO    bridge mode
+16:33:21,852 ip#01          INFO    create symlink /var/run/netns/15580 -> /proc/15580/ns/net
+16:33:21,923 ip#01          INFO    /sbin/ip link add name veth1pl15580 mtu 1500 type veth peer name veth1pg15580 mtu 1500
+16:33:21,930 ip#01          INFO    /sbin/ip link set veth1pl15580 master br-prd
+16:33:21,934 ip#01          INFO    /sbin/ip link set veth1pl15580 up
+16:33:21,937 ip#01          INFO    /sbin/ip link set veth1pg15580 netns 15580
+16:33:21,952 ip#01          INFO    /sbin/ip netns exec 15580 ip link set veth1pg15580 name eth1
+16:33:22,004 ip#01          INFO    /sbin/ip netns exec 15580 ip addr add 127.0.0.1:3310/24 dev eth1
+16:33:22,068 ip#01          INFO    /sbin/ip netns exec 15580 ip link set eth1 up
+16:33:22,104 ip#01          INFO    /sbin/ip netns exec 15580 ip route replace default via 192.168.100.254
+16:33:22,147 ip#01          INFO    remove /var/run/netns/15580
+16:33:22,281 container#2001 INFO    docker run -d --name=4832677178583133704.container.2001 --net=container:4832677178583133704.container.0001 -e MYSQL_ROOT_PASSWORD=mariadb -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v /srv/4832677178583133704/pod01/data:/var/lib/mysql:rw -v /srv/4832677178583133704/pod01/etc/mysql:/etc/mysql:rw -v /srv/4832677178583133704/pod01/init:/docker-entrypoint-initdb.d:rw --rm --cgroup-parent /4832677178583133704/container.docker/container.2001 mariadb:10.2
+16:33:22,480 container#2001 INFO    output:
+688013ffdfecac1bfc163cdfc3be37504f535b57cb2db90c8a2822379a3f8439
+16:33:22,497 container#2001 INFO    wait for up status
+16:33:22,522 container#2001 INFO    wait for container operational
+16:33:22,728                INFO    send /etc/opensvc/4832677178583133704.conf to collector
+16:33:22,729                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/03 18:33:25 [bench] INFO  - Waiting for database start
+2017/08/03 18:33:27 [bench] INFO  - Waiting for database start
+2017/08/03 18:33:29 [bench] INFO  - Waiting for database start
+2017/08/03 18:33:31 [bench] INFO  - Waiting for database start
+2017/08/03 18:33:33 [bench] INFO  - Waiting for database start
+2017/08/03 18:33:35 [bench] INFO  - Waiting for database start
+2017/08/03 18:33:37 [bench] INFO  - Waiting for database start
+2017/08/03 18:33:39 [bench] INFO  - Waiting for database start
+2017/08/03 18:33:40 [bench] INFO  - Trying to rejoin restarted server 127.0.0.1:3310
+2017/08/03 18:33:41 [bench] INFO  - Waiting for database start
+2017/08/03 18:33:41 [bench] INFO  - Database started
+2017/08/03 18:33:42 [bench] INFO  - Provisioning delete service 525d9855-ece6-428f-9d2d-e7a4aa286794
+2017/08/03 18:33:50 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/03 18:33:51 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 18:33:52 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/03 18:33:54 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 18:33:54 [bench] INFO  - 16:33:46,787 disk#00        INFO    create file /srv/17311646700765639015_docker.dsk, size 1G
+16:33:46,788 disk#00        INFO    provisioned
+16:33:46,791 disk#00        INFO    /sbin/losetup -f /srv/17311646700765639015_docker.dsk
+16:33:46,822 disk#00        INFO    /dev/loop0 now loops to /srv/17311646700765639015_docker.dsk
+16:33:46,862 disk#0000      INFO    zpool create -m legacy zp17311646700765639015_00 /srv/17311646700765639015_docker.dsk
+16:33:46,916 disk#0000      INFO    provisioned
+16:33:46,924 disk#0000      INFO    zp17311646700765639015_00 is already up
+16:33:46,933 disk#01        INFO    create file /srv/17311646700765639015_pod01.dsk, size 1G
+16:33:46,934 disk#01        INFO    provisioned
+16:33:46,954 disk#01        INFO    /sbin/losetup -f /srv/17311646700765639015_pod01.dsk
+16:33:47,022 disk#01        INFO    /dev/loop1 now loops to /srv/17311646700765639015_pod01.dsk
+16:33:47,063 disk#1001      INFO    zpool create -m legacy zp17311646700765639015_pod01 /srv/17311646700765639015_pod01.dsk
+16:33:47,121 disk#1001      INFO    provisioned
+16:33:47,131 disk#1001      INFO    zp17311646700765639015_pod01 is already up
+16:33:47,143 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/17311646700765639015/docker -o canmount=noauto zp17311646700765639015_00/docker
+16:33:47,164 fs#00          INFO    /sbin/ext4 set refquota=2048M zp17311646700765639015_00/docker
+16:33:47,173 fs#00          INFO    provisioned
+16:33:47,192 fs#00          INFO    /sbin/ext4 mount zp17311646700765639015_00/docker
+16:33:47,218 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/17311646700765639015/pod01 -o canmount=noauto zp17311646700765639015_pod01/pod01
+16:33:47,236 fs#01          INFO    /sbin/ext4 set refquota=1024M zp17311646700765639015_pod01/pod01
+16:33:47,245 fs#01          INFO    provisioned
+16:33:47,261 fs#01          INFO    /sbin/ext4 mount zp17311646700765639015_pod01/pod01
+16:33:47,271 fs#01          INFO    /usr/bin/svcmgr -s 17311646700765639015 push service status;/usr/bin/svcmgr -s 17311646700765639015 compliance fix --attach --moduleset mariadb.svc.mrm.db
+16:33:49,567 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.db attached
+=========================== mariadb.svc.mrm.db.cnf ===========================
+ACTION:   check
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+ERR: failed to concatenate  to rules list
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/rc.d/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/tmp/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/aria/ does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/repl/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/custom/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/security.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/innodb/redo/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/my.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/init/ does not exist
+ERR: file /srv/17311646700765639015/pod01/data/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/tokudb/ does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/innodb/undo/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/init/launcher does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/innodb/ does not exist
+ERR: file /srv/17311646700765639015/pod01/init/start does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/logs/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/network.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/smallredolog.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/logslow.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/threadpool.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/noquerycache.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/semisync.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/innodb.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/nologslaveupdates.cnf does not exist
+STATUS:   nok
+ACTION:   fixable
+STATUS:   n/a
+ACTION:   fix
+file: mkdir /srv/17311646700765639015/pod01/etc/mysql
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf rewritten
+ERR: failed to concatenate  to rules list
+file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/etc/mysql/rc.d/
+file /srv/17311646700765639015/pod01/etc/mysql/rc.d/ mode set to 775
+file /srv/17311646700765639015/pod01/etc/mysql/rc.d/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/tmp/
+file /srv/17311646700765639015/pod01/data/.system/tmp/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/tmp/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/ mode set to 775
+file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/aria/
+file /srv/17311646700765639015/pod01/data/.system/aria/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/aria/ ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/repl/
+file /srv/17311646700765639015/pod01/data/.system/repl/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/repl/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/etc/mysql/custom/
+file /srv/17311646700765639015/pod01/etc/mysql/custom/ mode set to 775
+file /srv/17311646700765639015/pod01/etc/mysql/custom/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/security.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/security.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/security.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/innodb/redo/
+file /srv/17311646700765639015/pod01/data/.system/innodb/redo/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/innodb/redo/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/data/.system/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/my.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/my.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/my.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/init/
+file /srv/17311646700765639015/pod01/init/ mode set to 775
+file /srv/17311646700765639015/pod01/init/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/data/ mode set to 775
+file /srv/17311646700765639015/pod01/data/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/tokudb/
+file /srv/17311646700765639015/pod01/data/.system/tokudb/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/tokudb/ ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/innodb/undo/
+file /srv/17311646700765639015/pod01/data/.system/innodb/undo/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/innodb/undo/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/init/launcher rewritten
+file /srv/17311646700765639015/pod01/init/launcher mode set to 755
+file /srv/17311646700765639015/pod01/init/launcher ownership set to 999:999
+file /srv/17311646700765639015/pod01/data/.system/innodb/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/innodb/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/init/start rewritten
+file /srv/17311646700765639015/pod01/init/start mode set to 755
+file /srv/17311646700765639015/pod01/init/start ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD rewritten
+file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD mode set to 660
+file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/logs/
+file /srv/17311646700765639015/pod01/data/.system/logs/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/logs/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/network.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/network.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/network.cnf ownership set to 999:999
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/nologslaveupdates.cnf -> ../nologslaveupdates.cnf created
+STATUS:   ok
+ACTION:   check
+file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf is ok
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf is ok
+ERR: failed to concatenate  to rules list
+file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/rc.d/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/tmp/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/aria/ is ok
+file /srv/17311646700765639015/pod01/data/.system/repl/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/custom/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/security.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/innodb/redo/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/my.cnf is ok
+file /srv/17311646700765639015/pod01/init/ is ok
+file /srv/17311646700765639015/pod01/data/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/tokudb/ is ok
+file /srv/17311646700765639015/pod01/data/.system/innodb/undo/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf is ok
+file /srv/17311646700765639015/pod01/init/launcher is ok
+file /srv/17311646700765639015/pod01/data/.system/innodb/ is ok
+file /srv/17311646700765639015/pod01/init/start is ok
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf is ok
+file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD is ok
+file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/logs/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/network.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/nologslaveupdates.cnf -> ../nologslaveupdates.cnf is ok
+STATUS:   ok
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.db.cnf
+0 error
+total duration: 0:00:00.536226
+16:33:49,648 container#0001 INFO    docker start 83c9084e17f7480d19a674f489d0f06de582c125eae653481663682c891a577c
+16:33:49,849 container#0001 INFO    output:
+83c9084e17f7480d19a674f489d0f06de582c125eae653481663682c891a577c
+16:33:49,863 container#0001 INFO    wait for up status
+16:33:49,890 container#0001 INFO    wait for container operational
+16:33:49,937 ip#01          INFO    skip allocate: an ip is already defined
+16:33:50,013 ip#01          INFO    checking 127.0.0.1:3311 availability
+16:33:53,100 ip#01          INFO    bridge mode
+16:33:53,127 ip#01          INFO    create symlink /var/run/netns/831 -> /proc/831/ns/net
+16:33:53,197 ip#01          INFO    /sbin/ip link add name veth1pl831 mtu 1500 type veth peer name veth1pg831 mtu 1500
+16:33:53,202 ip#01          INFO    /sbin/ip link set veth1pl831 master br-prd
+16:33:53,208 ip#01          INFO    /sbin/ip link set veth1pl831 up
+16:33:53,211 ip#01          INFO    /sbin/ip link set veth1pg831 netns 831
+16:33:53,226 ip#01          INFO    /sbin/ip netns exec 831 ip link set veth1pg831 name eth1
+16:33:53,274 ip#01          INFO    /sbin/ip netns exec 831 ip addr add 127.0.0.1:3311/24 dev eth1
+16:33:53,358 ip#01          INFO    /sbin/ip netns exec 831 ip link set eth1 up
+16:33:53,398 ip#01          INFO    /sbin/ip netns exec 831 ip route replace default via 192.168.100.254
+16:33:53,438 ip#01          INFO    remove /var/run/netns/831
+16:33:53,582 container#2001 INFO    docker run -d --name=17311646700765639015.container.2001 --net=container:17311646700765639015.container.0001 -e MYSQL_ROOT_PASSWORD=mariadb -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v /srv/17311646700765639015/pod01/data:/var/lib/mysql:rw -v /srv/17311646700765639015/pod01/etc/mysql:/etc/mysql:rw -v /srv/17311646700765639015/pod01/init:/docker-entrypoint-initdb.d:rw --rm --cgroup-parent /17311646700765639015/container.docker/container.2001 mariadb:10.2
+16:33:53,806 container#2001 INFO    output:
+ddd5f30a502c9c5877bb17a3ff621720cf47f378e9aa0820db559b6ba780f216
+16:33:53,822 container#2001 INFO    wait for up status
+16:33:53,854 container#2001 INFO    wait for container operational
+16:33:54,066                INFO    send /etc/opensvc/17311646700765639015.conf to collector
+16:33:54,067                INFO    update /var/lib/opensvc/17311646700765639015/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/03 18:33:56 [bench] INFO  - Waiting for database start
+2017/08/03 18:33:58 [bench] INFO  - Waiting for database start
+2017/08/03 18:34:00 [bench] INFO  - Waiting for database start
+2017/08/03 18:34:02 [bench] INFO  - Waiting for database start
+2017/08/03 18:34:04 [bench] INFO  - Waiting for database start
+2017/08/03 18:34:06 [bench] INFO  - Waiting for database start
+2017/08/03 18:34:08 [bench] INFO  - Waiting for database start
+2017/08/03 18:34:10 [bench] INFO  - Waiting for database start
+2017/08/03 18:34:12 [bench] INFO  - Trying to rejoin restarted server 127.0.0.1:3311
+2017/08/03 18:34:12 [bench] INFO  - Waiting for database start
+2017/08/03 18:34:12 [bench] INFO  - Database started
+2017/08/03 18:34:12 [bench] STATE - INF00001 CLOSING Server 127.0.0.1:3311 is down
+2017/08/03 18:34:16 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/03 18:34:20 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 18:34:22 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/03 18:34:23 [bench] INFO  - 16:34:14,888 disk#00        INFO    create file /srv/10940044185188150515_docker.dsk, size 1G
+16:34:14,889 disk#00        INFO    provisioned
+16:34:14,926 disk#00        INFO    /sbin/losetup -f /srv/10940044185188150515_docker.dsk
+16:34:15,006 disk#00        INFO    /dev/loop2 now loops to /srv/10940044185188150515_docker.dsk
+16:34:15,072 disk#0000      INFO    zpool create -m legacy zp10940044185188150515_00 /srv/10940044185188150515_docker.dsk
+16:34:15,135 disk#0000      INFO    provisioned
+16:34:15,142 disk#0000      INFO    zp10940044185188150515_00 is already up
+16:34:15,150 disk#01        INFO    create file /srv/10940044185188150515_pod01.dsk, size 1G
+16:34:15,150 disk#01        INFO    provisioned
+16:34:15,202 disk#01        INFO    /sbin/losetup -f /srv/10940044185188150515_pod01.dsk
+16:34:15,298 disk#01        INFO    /dev/loop3 now loops to /srv/10940044185188150515_pod01.dsk
+16:34:15,375 disk#1001      INFO    zpool create -m legacy zp10940044185188150515_pod01 /srv/10940044185188150515_pod01.dsk
+16:34:15,439 disk#1001      INFO    provisioned
+16:34:15,447 disk#1001      INFO    zp10940044185188150515_pod01 is already up
+16:34:15,457 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/10940044185188150515/docker -o canmount=noauto zp10940044185188150515_00/docker
+16:34:15,481 fs#00          INFO    /sbin/ext4 set refquota=2048M zp10940044185188150515_00/docker
+16:34:15,491 fs#00          INFO    provisioned
+16:34:15,508 fs#00          INFO    /sbin/ext4 mount zp10940044185188150515_00/docker
+16:34:15,530 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/10940044185188150515/pod01 -o canmount=noauto zp10940044185188150515_pod01/pod01
+16:34:15,550 fs#01          INFO    /sbin/ext4 set refquota=1024M zp10940044185188150515_pod01/pod01
+16:34:15,560 fs#01          INFO    provisioned
+16:34:15,577 fs#01          INFO    /sbin/ext4 mount zp10940044185188150515_pod01/pod01
+16:34:15,586 fs#01          INFO    /usr/bin/svcmgr -s 10940044185188150515 push service status;/usr/bin/svcmgr -s 10940044185188150515 compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+16:34:17,786 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.proxy is already attached to this service
+========================= mariadb.svc.mrm.proxy.cnf ==========================
+ACTION:   check
+ERR: file //srv/10940044185188150515/pod01/conf/maxscale.cnf does not exist
+ERR: file /srv/10940044185188150515/pod01/init/launcher does not exist
+ERR: file //srv/10940044185188150515/pod01/log/ does not exist
+ERR: file //srv/10940044185188150515/pod01/data/ does not exist
+ERR: file //srv/10940044185188150515/pod01/conf/config-haproxy.toml does not exist
+ERR: file //srv/10940044185188150515/pod01/init/ does not exist
+ERR: file //srv/10940044185188150515/pod01/conf/ does not exist
+ERR: file //srv/10940044185188150515/pod01/conf/keepalived.conf does not exist
+ERR: file //srv/10940044185188150515/pod01/conf/config.toml does not exist
+STATUS:   nok
+ACTION:   fixable
+STATUS:   n/a
+ACTION:   fix
+file: mkdir //srv/10940044185188150515/pod01/conf
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf rewritten
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf mode set to 775
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf ownership set to 999:999
+file: mkdir /srv/10940044185188150515/pod01/init
+file /srv/10940044185188150515/pod01/init/launcher rewritten
+file /srv/10940044185188150515/pod01/init/launcher mode set to 755
+file /srv/10940044185188150515/pod01/init/launcher ownership set to 999:999
+file: mkdir //srv/10940044185188150515/pod01/log/
+file //srv/10940044185188150515/pod01/log/ mode set to 775
+file //srv/10940044185188150515/pod01/log/ ownership set to 999:999
+file: mkdir //srv/10940044185188150515/pod01/data/
+file //srv/10940044185188150515/pod01/data/ mode set to 775
+file //srv/10940044185188150515/pod01/data/ ownership set to 999:999
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml rewritten
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml mode set to 775
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml ownership set to 999:999
+file //srv/10940044185188150515/pod01/init/ mode set to 775
+file //srv/10940044185188150515/pod01/conf/ mode set to 775
+file //srv/10940044185188150515/pod01/conf/keepalived.conf rewritten
+file //srv/10940044185188150515/pod01/conf/keepalived.conf mode set to 775
+file //srv/10940044185188150515/pod01/conf/keepalived.conf ownership set to 999:999
+file //srv/10940044185188150515/pod01/conf/config.toml rewritten
+file //srv/10940044185188150515/pod01/conf/config.toml mode set to 775
+file //srv/10940044185188150515/pod01/conf/config.toml ownership set to 999:999
+STATUS:   ok
+ACTION:   check
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf is ok
+file /srv/10940044185188150515/pod01/init/launcher is ok
+file //srv/10940044185188150515/pod01/log/ is ok
+file //srv/10940044185188150515/pod01/data/ is ok
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml is ok
+file //srv/10940044185188150515/pod01/init/ is ok
+file //srv/10940044185188150515/pod01/conf/ is ok
+file //srv/10940044185188150515/pod01/conf/keepalived.conf is ok
+file //srv/10940044185188150515/pod01/conf/config.toml is ok
+STATUS:   ok
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.proxy.cnf
+0 error
+total duration: 0:00:00.429604
+16:34:17,862 container#0001 INFO    docker start 32e4221d38e52d77ad0c9fee50fa306cdf03e0442b4d0b62855c755ffcb4422d
+16:34:18,044 container#0001 INFO    output:
+32e4221d38e52d77ad0c9fee50fa306cdf03e0442b4d0b62855c755ffcb4422d
+16:34:18,058 container#0001 INFO    wait for up status
+16:34:18,085 container#0001 INFO    wait for container operational
+16:34:18,130 ip#01          INFO    skip allocate: an ip is already defined
+16:34:18,198 ip#01          INFO    checking proxy1 availability
+16:34:21,261 ip#01          INFO    bridge mode
+16:34:21,287 ip#01          INFO    create symlink /var/run/netns/2463 -> /proc/2463/ns/net
+16:34:21,358 ip#01          INFO    /sbin/ip link add name veth1pl2463 mtu 1500 type veth peer name veth1pg2463 mtu 1500
+16:34:21,362 ip#01          INFO    /sbin/ip link set veth1pl2463 master br-prd
+16:34:21,366 ip#01          INFO    /sbin/ip link set veth1pl2463 up
+16:34:21,369 ip#01          INFO    /sbin/ip link set veth1pg2463 netns 2463
+16:34:21,387 ip#01          INFO    /sbin/ip netns exec 2463 ip link set veth1pg2463 name eth1
+16:34:21,459 ip#01          INFO    /sbin/ip netns exec 2463 ip addr add proxy1/24 dev eth1
+16:34:21,541 ip#01          INFO    /sbin/ip netns exec 2463 ip link set eth1 up
+16:34:21,578 ip#01          INFO    /sbin/ip netns exec 2463 ip route replace default via 192.168.100.254
+16:34:21,618 ip#01          INFO    remove /var/run/netns/2463
+16:34:21,757 container#2001 INFO    docker run -d --name=10940044185188150515.container.2001 --net=container:10940044185188150515.container.0001 -v /etc/localtime:/etc/localtime:ro -v /srv/10940044185188150515/pod01/conf:/etc/maxscale.d:rw --rm --cgroup-parent /10940044185188150515/container.docker/container.2001 asosso/maxscale:latest
+16:34:21,975 container#2001 INFO    output:
+8dfe824f0cc68a36a33d0872b61b316c7db8b8766b280b63d2e01b1e7453612d
+16:34:21,996 container#2001 INFO    wait for up status
+16:34:22,033 container#2001 INFO    wait for container operational
+16:34:22,258                INFO    send /etc/opensvc/10940044185188150515.conf to collector
+16:34:22,259                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/03 18:34:24 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/03 18:34:26 [bench] INFO  - Cleaning up replication on existing servers
+2017/08/03 18:34:36 [bench] INFO  - Environment bootstrapped with old replication style and 127.0.0.1:3310 as master
+2017/08/03 18:34:36 [bench] TEST: Waiting Bootstrap and discovery
+2017/08/03 18:34:36 [bench] INFO  - Init maxscale proxy1 3307
+2017/08/03 18:34:36 [bench] ERROR - Could not connect to MaxScale:Connection failed to address proxy1:3307
+2017/08/03 18:34:36 [bench] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/03 18:34:36 [bench] STATE - ERR00012 CLOSING Could not find a master in topology
+2017/08/03 18:34:36 [bench] STATE - ERR00021 CLOSING All cluster down in non-interactive mode
+2017/08/03 18:34:36 [bench] STATE - WARN0051 No GTID replication on slave 127.0.0.1:3311
+2017/08/03 18:34:36 [bench] STATE - WARN0056 No compression of binlog on slave 127.0.0.1:3311
+2017/08/03 18:34:36 [bench] STATE - WARN0058 No GTID strict mode on slave 127.0.0.1:3311
+2017/08/03 18:34:36 [bench] STATE - WARN0068 No compression of binlog on slave 127.0.0.1:3310
+2017/08/03 18:34:36 [bench] STATE - WARN0070 No GTID strict mode on master 127.0.0.1:3310
+2017/08/03 18:34:36 [bench] STATE - WARN0050 No Heartbeat <= 1s on slave 127.0.0.1:3311
+2017/08/03 18:34:38 [bench] TEST  - Waiting Bootstrap and discovery
+2017/08/03 18:34:38 [bench] TEST  - Cluster is Bootstraped and discovery
+2017/08/03 18:34:38 [bench] INFO  - Init maxscale proxy1 3307
+2017/08/03 18:34:38 [bench] ERROR - Could not connect to MaxScale:Connection failed to address proxy1:3307
+2017/08/03 18:34:38 [bench] TEST  - Starting Test testFailoverAssyncAutoRejoinNoGtid
+2017/08/03 18:34:38 [bench] BENCH - /usr/local/bin/sysbench --test=oltp --oltp-table-size=10000 --mysql-db=test --mysql-user=root --mysql-password=mariadb --mysql-host=127.0.0.1 --mysql-port=3306 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 cleanup
+2017/08/03 18:34:38 [bench] ERROR - exit status 1
+2017/08/03 18:34:38 [bench] BENCH - /usr/local/bin/sysbench --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=root --mysql-password=mariadb --mysql-host=127.0.0.1 --mysql-port=3306 --max-time=60 --oltp-test-mode=complex  --max-requests=0 --num-threads=4 prepare
+2017/08/03 18:34:38 [bench] ERROR - exit status 1
+2017/08/03 18:34:38 [bench] BENCH - /usr/local/bin/sysbench --test=oltp --oltp-table-size=1000000 --mysql-db=test --mysql-user=root --mysql-password=mariadb --mysql-host=127.0.0.1 --mysql-port=3306 --max-time=60--oltp-test-mode=complex --max-requests=0 --num-threads=4 run
+2017/08/03 18:34:38 [bench] ERROR - exit status 1
+2017/08/03 18:34:38 [bench] STATE - ERR00018 Could not connect to MaxScale: Connection failed to address proxy1:3307
+2017/08/03 18:34:42 [bench] STATE - ERR00018 CLOSING Could not connect to MaxScale: Connection failed to address proxy1:3307
+2017/08/03 18:34:44 [bench] TEST  - Waiting Failover end
+2017/08/03 18:34:46 [bench] TEST  - Waiting Failover end
+2017/08/03 18:34:46 [bench] INFO  - Master Failure detected! Retry 1/3
+2017/08/03 18:34:46 [bench] ALERT - Server 127.0.0.1:3310 state changed from Master to Suspect
+2017/08/03 18:34:46 [bench] STATE - WARN0068 CLOSING No compression of binlog on slave 127.0.0.1:3310
+2017/08/03 18:34:46 [bench] STATE - WARN0070 CLOSING No GTID strict mode on master 127.0.0.1:3310
+2017/08/03 18:34:46 [bench] STATE - INF00001 Server 127.0.0.1:3310 is down
+2017/08/03 18:34:46 [bench] ERROR - Error 1045: failed to create new session
+2017/08/03 18:34:48 [bench] TEST  - Waiting Failover end
+2017/08/03 18:34:49 [bench] INFO  - Master Failure detected! Retry 2/3
+2017/08/03 18:34:50 [bench] TEST  - Waiting Failover end
+2017/08/03 18:34:52 [bench] TEST  - Waiting Failover end
+2017/08/03 18:34:52 [bench] ERROR - Error 1045: failed to create new session
+2017/08/03 18:34:53 [bench] INFO  - Master Failure detected! Retry 3/3
+2017/08/03 18:34:53 [bench] INFO  - Declaring master as failed
+2017/08/03 18:34:53 [bench] ALERT - Server 127.0.0.1:3310 state changed from Suspect to Failed
+2017/08/03 18:34:54 [bench] TEST  - Waiting Failover end
+2017/08/03 18:34:56 [bench] TEST  - Waiting Failover end
+2017/08/03 18:34:56 [bench] ERROR - Error 1045: failed to create new session
+2017/08/03 18:34:56 [bench] INFO : Starting master switch
+2017/08/03 18:34:56 [bench] INFO  - Electing a new master
+2017/08/03 18:34:56 [bench] DEBUG - Checking eligibility of slave server 127.0.0.1:3311 [0]
+2017/08/03 18:34:56 [bench] DEBUG - Got sequence(s) [] for server [0]
+2017/08/03 18:34:56 [bench] INFO  - Slave 127.0.0.1:3311 [0] has been elected as a new master
+2017/08/03 18:34:56 [bench] INFO  - Waiting for candidate master to apply relay log
+2017/08/03 18:34:56 [bench] INFO  - Reading all relay logs on 127.0.0.1:3311
+2017/08/03 18:34:57 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:34:57 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:34:58 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:34:58 [bench] TEST  - Waiting Failover end
+2017/08/03 18:34:58 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:34:59 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:34:59 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:00 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:00 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:00 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:01 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:01 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:02 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:02 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:02 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:03 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:03 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:04 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:04 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:04 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:05 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:05 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:06 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:06 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:06 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:07 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:07 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:08 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:08 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:08 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:09 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:09 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:10 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:10 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:10 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:11 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:11 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:12 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:12 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:12 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:13 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:13 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:14 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:14 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:14 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:15 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:15 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:16 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:16 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:16 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:17 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:17 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:18 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:18 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:18 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:19 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:19 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:20 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:20 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:20 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:21 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:21 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:22 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:22 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:22 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:23 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:24 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:24 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:24 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:25 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:25 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:26 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:26 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:26 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:27 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:27 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:28 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:28 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:28 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:29 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:29 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:30 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:30 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:30 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:31 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:31 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:32 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:32 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:32 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:33 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:33 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:34 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:34 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:34 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:35 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:35 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:36 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:36 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:36 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:37 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:37 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:38 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:38 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:38 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:39 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:39 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:40 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:40 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:40 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:41 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:41 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:42 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:42 [bench] TEST  - Waiting Failover end
+2017/08/03 18:35:42 [bench] TEST  - Failover end timeout
+2017/08/03 18:35:42 [bench] TEST  - Starting Database service 4832677178583133704
+2017/08/03 18:35:42 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:43 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:43 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:44 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:44 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:35:44 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:45 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:45 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:46 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:46 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:35:46 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:47 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:47 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:48 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:48 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:35:48 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:49 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:49 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:50 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:50 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:35:50 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:51 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:51 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:52 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:52 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:35:52 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:53 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:53 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:54 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:54 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:35:54 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:55 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:55 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:56 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:56 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:35:56 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:57 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:57 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:58 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:58 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:35:58 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:59 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:35:59 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:00 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:00 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:00 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:01 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:01 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:02 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:02 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:02 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:03 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:03 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:04 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:04 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:04 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:05 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:05 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:06 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:06 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:06 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:07 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:07 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:08 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:08 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:08 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:09 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:09 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:10 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:10 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:10 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:11 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:11 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:12 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:12 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:12 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:13 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:13 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:14 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:14 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:14 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:15 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:15 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:16 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:16 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:17 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:17 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:18 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:18 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:18 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:19 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:19 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:20 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:20 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:20 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:21 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:21 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:22 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:22 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:22 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:23 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:23 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:24 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:24 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:24 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:25 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:25 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:26 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:26 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:26 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:27 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:27 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:28 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:28 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:28 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:29 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:29 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:30 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:30 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:30 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:31 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:31 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:32 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:32 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:32 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:33 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:33 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:34 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:34 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:34 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:35 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:35 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:36 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:36 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:36 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:37 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:37 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:38 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:38 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:38 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:39 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:39 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:40 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:40 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:40 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:41 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:41 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:42 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:42 [bench] TEST  - Waiting Rejoin
+2017/08/03 18:36:42 [bench] INFO  - Rejoin timeout
+2017/08/03 18:36:42 [bench] ERROR - Failed to take master checksum table 
+2017/08/03 18:36:42 [bench] ERROR - Could count record in bench table
+%!(EXTRA *mysql.MySQLError=Error 1146: Table 'test.sbtest' doesn't exist)2017/08/03 18:36:42 [bench] ERROR - No slaves while checking consistancy
+2017/08/03 18:36:42 [bench] ERROR - Inconsitant slave
+2017/08/03 18:36:42 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:43 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:43 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:44 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:44 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:45 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:45 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:46 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:46 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:47 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:47 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:48 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:48 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:49 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:49 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:50 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:50 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:51 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:51 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:52 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:52 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:53 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:53 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:54 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:54 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:55 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:55 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:56 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:56 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:57 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:57 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:58 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:58 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:59 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:36:59 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:00 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:00 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:01 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:01 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:02 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:02 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:03 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:03 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:04 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:04 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:05 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:05 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:06 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:06 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:07 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:07 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:08 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:08 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:09 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:10 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:10 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:11 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:11 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:12 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:12 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:13 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:13 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:14 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:14 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:15 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:15 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:16 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:16 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:17 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:17 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:18 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:18 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:19 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:19 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:20 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:20 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:21 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:21 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:22 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:22 [bench] INFO  - Status IO_Pos:, Slave_Pos:0-3232261190-19
+2017/08/03 18:37:22 [bench] ERROR - Error while reading relay logs on candidate: dial tcp 127.0.0.1:3311:3306: getsockopt: connection refused
+2017/08/03 18:37:22 [bench] INFO  - Save replication status before electing
+2017/08/03 18:37:22 [bench] INFO  - master_log_file=mariadb-bin.000001
+2017/08/03 18:37:22 [bench] INFO  - master_log_pos=5431
+2017/08/03 18:37:22 [bench] INFO  - Candidate was in sync=true
+2017/08/03 18:37:22 [bench] INFO  - Stopping slave thread on new master
+2017/08/03 18:37:22 [bench] ERROR - Stopping slave failed on new master
+2017/08/03 18:37:22 [bench] INFO  - Init maxscale proxy1 3307
+2017/08/03 18:37:23 [bench] ERROR - Could not connect to MaxScale:Connection failed to address proxy1:3307
+2017/08/03 18:37:23 [bench] INFO  - Resetting slave on new master and set read/write mode on
+2017/08/03 18:37:23 [bench] ERROR - Reset slave failed on new master, reason:dial tcp 127.0.0.1:3311:3306: getsockopt: connection refused 
+2017/08/03 18:37:23 [bench] ERROR - Could not set new master as read-write
+2017/08/03 18:37:23 [bench] INFO  - Inject fake transaction on new master 127.0.0.1:3311 
+2017/08/03 18:37:23 [bench] ERROR - Could not flush tables on new master for fake trx dial tcp 127.0.0.1:3311:3306: getsockopt: connection refused
+2017/08/03 18:37:23 [bench] INFO  - Switching other slaves to the new master
+2017/08/03 18:37:23 [bench] INFO  - Master switch on 127.0.0.1:3311 complete
+2017/08/03 18:37:23 [bench] STATE - WARN0023 Failover number of master pings failure has been reached
+2017/08/03 18:37:23 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/03 18:37:23 [bench] INFO  - Master Failure detected! Retry 1/3
+2017/08/03 18:37:23 [bench] ALERT - Server 127.0.0.1:3311 state changed from Slave to Suspect
+2017/08/03 18:37:29 [bench] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 127.0.0.1:3311
+2017/08/03 18:37:29 [bench] STATE - WARN0051 CLOSING No GTID replication on slave 127.0.0.1:3311
+2017/08/03 18:37:29 [bench] STATE - WARN0056 CLOSING No compression of binlog on slave 127.0.0.1:3311
+2017/08/03 18:37:29 [bench] STATE - WARN0058 CLOSING No GTID strict mode on slave 127.0.0.1:3311
+2017/08/03 18:37:29 [bench] STATE - WARN0023 CLOSING Failover number of master pings failure has been reached
+2017/08/03 18:37:29 [bench] STATE - ERR00018 Could not connect to MaxScale: Connection failed to address proxy1:3307
+2017/08/03 18:37:29 [bench] STATE - ERR00010 Could not find a slave in topology
+2017/08/03 18:37:30 [bench] ERROR - dial tcp proxy1:4007: i/o timeout
+2017/08/03 18:37:30 [bench] INFO  - Master Failure detected! Retry 2/3
+2017/08/03 18:37:36 [bench] INFO  - Master Failure detected! Retry 3/3
+2017/08/03 18:37:36 [bench] INFO  - Declaring master as failed
+2017/08/03 18:37:36 [bench] ALERT - Server 127.0.0.1:3311 state changed from Suspect to Failed
+2017/08/03 18:37:36 [bench] ERROR - dial tcp proxy1:4007: i/o timeout
+2017/08/03 18:37:37 [bench] INFO  - hostlist: 127.0.0.1:3310,127.0.0.1:3311 [127.0.0.1:3310 127.0.0.1:3311]
+2017/08/03 18:37:37 [bench] INFO  - Loading 1 proxies
+2017/08/03 18:37:37 [bench] INFO  - Loading Maxscale...
+2017/08/03 18:37:37 [bench] TEST  - Result FailoverAssyncAutoRejoinNoGtid                           -> {testFailoverAssyncAutoRejoinNoGtid FAIL ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 127.0.0.1:3310,127.0.0.1:3311     root:mariadb %!s(bool=false) %!s(bool=false)    127.0.0.1:3310  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testFailoverAssyncAutoRejoinNoGtid.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) proxy1 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) unknown %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,nologslaveupdates 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 127.0.0.1:3310,127.0.0.1:3311     root:mariadb %!s(bool=false) %!s(bool=false)    127.0.0.1:3310  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/1.1.0-preview3-98-gc4fd436/testFailoverAssyncAutoRejoinNoGtid.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) proxy1 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=true) master-slave %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,nologslaveupdates 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/with_traffic/10.2/x2/nologslaveupdates/innodb/maxscale/latest/x1/replication-manager.conf}}

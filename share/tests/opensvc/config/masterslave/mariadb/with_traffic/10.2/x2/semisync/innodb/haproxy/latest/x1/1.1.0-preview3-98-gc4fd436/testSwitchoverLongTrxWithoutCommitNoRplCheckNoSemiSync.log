@@ -1,0 +1,14 @@
+2017/08/03 19:56:03 [bench] INFO  - hostlist: db1,db2 [db1 db2]
+2017/08/03 19:56:03 [bench] INFO  - Loading 1 proxies
+2017/08/03 19:56:03 [bench] INFO  - Loading Maxscale...
+2017/08/03 19:56:03 [bench] INFO  - Failover in automatic mode
+2017/08/03 19:56:03 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/03 19:56:05 [bench] ALERT - Server db1 state changed from  to Suspect
+2017/08/03 19:56:05 [bench] STATE - INF00001 Server db1 is down
+2017/08/03 19:56:05 [bench] STATE - WARN0050 No Heartbeat <= 1s on slave db2
+2017/08/03 19:56:05 [bench] STATE - WARN0056 No compression of binlog on slave db2
+2017/08/03 19:56:05 [bench] STATE - WARN0058 No GTID strict mode on slave db2
+2017/08/03 19:56:05 [bench] STATE - ERR00012 Could not find a master in topology
+2017/08/03 19:56:05 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/03 19:56:05 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync

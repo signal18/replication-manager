@@ -1,0 +1,60 @@
+2017/08/04 08:22:22 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 08:22:22 [bench] INFO  - Loading 1 proxies
+2017/08/04 08:22:22 [bench] INFO  - Loading Maxscale...
+2017/08/04 08:22:22 [bench] INFO  - Failover in automatic mode
+2017/08/04 08:22:22 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 08:22:24 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/04 08:22:24 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/04 08:45:09 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 08:45:09 [bench] INFO  - Loading 1 proxies
+2017/08/04 08:45:09 [bench] INFO  - Loading Maxscale...
+2017/08/04 08:45:09 [bench] INFO  - Failover in automatic mode
+2017/08/04 08:45:09 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 08:45:10 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/04 08:45:10 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/04 09:11:56 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 09:11:56 [bench] INFO  - Loading 1 proxies
+2017/08/04 09:11:56 [bench] INFO  - Loading Maxscale...
+2017/08/04 09:11:56 [bench] INFO  - Failover in automatic mode
+2017/08/04 09:11:56 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 09:11:57 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/04 09:11:57 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/04 09:40:29 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 09:40:29 [bench] INFO  - Loading 1 proxies
+2017/08/04 09:40:29 [bench] INFO  - Loading Maxscale...
+2017/08/04 09:40:29 [bench] INFO  - Failover in automatic mode
+2017/08/04 09:40:29 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 09:40:31 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/04 09:40:31 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/04 11:48:32 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 11:48:32 [bench] INFO  - Loading 1 proxies
+2017/08/04 11:48:32 [bench] INFO  - Loading Maxscale...
+2017/08/04 11:48:32 [bench] INFO  - Failover in automatic mode
+2017/08/04 11:48:32 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 11:48:34 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/04 13:09:10 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 13:09:10 [bench] INFO  - Loading 1 proxies
+2017/08/04 13:09:10 [bench] INFO  - Loading Maxscale...
+2017/08/04 13:09:10 [bench] INFO  - Failover in automatic mode
+2017/08/04 13:09:10 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 13:09:12 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/04 15:55:31 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 15:55:31 [bench] INFO  - Loading 1 proxies
+2017/08/04 15:55:31 [bench] INFO  - Loading Maxscale...
+2017/08/04 15:55:31 [bench] INFO  - Failover in automatic mode
+2017/08/04 15:55:31 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 15:55:33 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync
+2017/08/04 16:59:59 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 16:59:59 [bench] INFO  - Loading 1 proxies
+2017/08/04 16:59:59 [bench] INFO  - Loading Maxscale...
+2017/08/04 16:59:59 [bench] INFO  - Failover in automatic mode
+2017/08/04 16:59:59 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 17:00:01 [bench] TESTI - testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync

@@ -1,0 +1,60 @@
+2017/08/04 08:22:26 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 08:22:26 [bench] INFO  - Loading 1 proxies
+2017/08/04 08:22:26 [bench] INFO  - Loading Maxscale...
+2017/08/04 08:22:26 [bench] INFO  - Failover in automatic mode
+2017/08/04 08:22:26 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 08:22:27 [bench] TESTI - testSwitchoverReplAllDelay
+2017/08/04 08:22:28 [bench] TESTI - testSwitchoverReplAllDelay
+2017/08/04 08:45:11 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 08:45:11 [bench] INFO  - Loading 1 proxies
+2017/08/04 08:45:11 [bench] INFO  - Loading Maxscale...
+2017/08/04 08:45:11 [bench] INFO  - Failover in automatic mode
+2017/08/04 08:45:11 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 08:45:12 [bench] TESTI - testSwitchoverReplAllDelay
+2017/08/04 08:45:12 [bench] TESTI - testSwitchoverReplAllDelay
+2017/08/04 09:11:58 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 09:11:58 [bench] INFO  - Loading 1 proxies
+2017/08/04 09:11:58 [bench] INFO  - Loading Maxscale...
+2017/08/04 09:11:58 [bench] INFO  - Failover in automatic mode
+2017/08/04 09:11:58 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 09:11:59 [bench] TESTI - testSwitchoverReplAllDelay
+2017/08/04 09:11:59 [bench] TESTI - testSwitchoverReplAllDelay
+2017/08/04 09:40:32 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 09:40:32 [bench] INFO  - Loading 1 proxies
+2017/08/04 09:40:32 [bench] INFO  - Loading Maxscale...
+2017/08/04 09:40:32 [bench] INFO  - Failover in automatic mode
+2017/08/04 09:40:32 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 09:40:34 [bench] TESTI - testSwitchoverReplAllDelay
+2017/08/04 09:40:34 [bench] TESTI - testSwitchoverReplAllDelay
+2017/08/04 11:48:35 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 11:48:35 [bench] INFO  - Loading 1 proxies
+2017/08/04 11:48:35 [bench] INFO  - Loading Maxscale...
+2017/08/04 11:48:35 [bench] INFO  - Failover in automatic mode
+2017/08/04 11:48:35 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 11:48:37 [bench] TESTI - testSwitchoverReplAllDelay
+2017/08/04 13:09:13 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 13:09:13 [bench] INFO  - Loading 1 proxies
+2017/08/04 13:09:13 [bench] INFO  - Loading Maxscale...
+2017/08/04 13:09:13 [bench] INFO  - Failover in automatic mode
+2017/08/04 13:09:13 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 13:09:15 [bench] TESTI - testSwitchoverReplAllDelay
+2017/08/04 15:55:35 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 15:55:35 [bench] INFO  - Loading 1 proxies
+2017/08/04 15:55:35 [bench] INFO  - Loading Maxscale...
+2017/08/04 15:55:35 [bench] INFO  - Failover in automatic mode
+2017/08/04 15:55:35 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 15:55:36 [bench] TESTI - testSwitchoverReplAllDelay
+2017/08/04 17:00:02 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 17:00:02 [bench] INFO  - Loading 1 proxies
+2017/08/04 17:00:02 [bench] INFO  - Loading Maxscale...
+2017/08/04 17:00:02 [bench] INFO  - Failover in automatic mode
+2017/08/04 17:00:02 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 17:00:04 [bench] TESTI - testSwitchoverReplAllDelay

@@ -1371,7 +1371,7 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 			mycluster.SetTestStopCluster(true)
 		}
 		regtest := new(regtest.RegTest)
-		res := regtest.RunAllTests(mycluster, vars["testName"])
+		res := regtest.RunAllTests(mycluster, vars["testName"], "")
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 
@@ -1420,7 +1420,7 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 		}
 		regtest := new(regtest.RegTest)
 
-		res := regtest.RunAllTests(mycluster, "ALL")
+		res := regtest.RunAllTests(mycluster, "ALL", "")
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(res)

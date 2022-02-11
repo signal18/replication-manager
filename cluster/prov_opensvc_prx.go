@@ -23,7 +23,7 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx DatabaseProxy) {
 	opensvc := cluster.OpenSVCConnect()
 	//agents := opensvc.GetNodes()
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-		err := opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/svc/"+prx.GetName(), prx.GetAgent())
+		err := opensvc.PurgeServiceV2(cluster.GetName(), prx.GetServiceName(), prx.GetAgent())
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Can not unprovision proxy service:  %s ", err)
 			cluster.errorChan <- err
@@ -36,7 +36,7 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx DatabaseProxy) {
 	} else {
 		node, _ := cluster.FoundProxyAgent(prx)
 		for _, svc := range node.Svc {
-			if cluster.Name+"/svc/"+prx.GetName() == svc.Svc_name {
+			if prx.GetServiceName() == svc.Svc_name {
 				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 				err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 				if err != nil {
@@ -157,13 +157,13 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 					cluster.errorChan <- err
 					return err
 				}
-				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.GetName(), res)
+				idtemplate, err := svc.CreateTemplate(prx.GetServiceName(), res)
 				if err != nil {
 					cluster.errorChan <- err
 					return err
 				}
 
-				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.GetName())
+				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.GetServiceName())
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
@@ -202,13 +202,13 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 					cluster.errorChan <- err
 					return err
 				}
-				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.GetName(), res)
+				idtemplate, err := svc.CreateTemplate(prx.GetServiceName(), res)
 				if err != nil {
 					cluster.errorChan <- err
 					return err
 				}
 
-				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.GetName())
+				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.GetServiceName())
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
@@ -238,13 +238,13 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 					cluster.errorChan <- err
 					return err
 				}
-				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.GetName(), res)
+				idtemplate, err := svc.CreateTemplate(prx.GetServiceName(), res)
 				if err != nil {
 					cluster.errorChan <- err
 					return err
 				}
 
-				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.GetName())
+				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.GetServiceName())
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
@@ -274,13 +274,13 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 					cluster.errorChan <- err
 					return err
 				}
-				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.GetName(), res)
+				idtemplate, err := svc.CreateTemplate(prx.GetServiceName(), res)
 				if err != nil {
 					cluster.errorChan <- err
 					return err
 				}
 
-				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.GetName())
+				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.GetServiceName())
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
@@ -310,13 +310,13 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 					cluster.errorChan <- err
 					return err
 				}
-				idtemplate, err := svc.CreateTemplate(cluster.Name+"/svc/"+prx.GetName(), res)
+				idtemplate, err := svc.CreateTemplate(prx.GetServiceName(), res)
 				if err != nil {
 					cluster.errorChan <- err
 					return err
 				}
 
-				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+prx.GetName())
+				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.GetServiceName())
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {

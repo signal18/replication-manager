@@ -1,0 +1,8 @@
+2017/08/04 18:44:58 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 18:44:58 [bench] INFO  - Loading 1 proxies
+2017/08/04 18:44:58 [bench] INFO  - Loading Maxscale...
+2017/08/04 18:44:58 [bench] INFO  - Failover in automatic mode
+2017/08/04 18:44:58 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 18:45:00 [bench] ALERT - Server 192.168.100.80 state changed from  to Suspect
+2017/08/04 18:45:00 [bench] TESTI - testFailoverNoRplChecksNoSemiSyncMasterHeartbeat

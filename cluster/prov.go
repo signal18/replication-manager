@@ -63,7 +63,7 @@ func (cluster *Cluster) ProvisionServices() error {
 	os.Remove(path)
 	cluster.ResetCrashes()
 	for _, server := range cluster.Servers {
-		switch cluster.Conf.ProvOrchestrator {
+		switch cluster.GetOrchestrator()  {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCProvisionDatabaseService(server)
 		case config.ConstOrchestratorKubernetes:
@@ -96,7 +96,7 @@ func (cluster *Cluster) ProvisionServices() error {
 	}
 
 	for _, prx := range cluster.Proxies {
-		switch cluster.Conf.ProvOrchestrator {
+		switch cluster.GetOrchestrator()  {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCProvisionProxyService(prx)
 		case config.ConstOrchestratorKubernetes:
@@ -136,7 +136,7 @@ func (cluster *Cluster) ProvisionServices() error {
 
 func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 	cluster.sme.SetFailoverState()
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionDatabaseService(server)
 	case config.ConstOrchestratorKubernetes:
@@ -166,7 +166,7 @@ func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionProxyService(prx)
 	case config.ConstOrchestratorKubernetes:
@@ -197,7 +197,7 @@ func (cluster *Cluster) Unprovision() error {
 
 	cluster.sme.SetFailoverState()
 	for _, server := range cluster.Servers {
-		switch cluster.Conf.ProvOrchestrator {
+		switch cluster.GetOrchestrator()  {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCUnprovisionDatabaseService(server)
 		case config.ConstOrchestratorKubernetes:
@@ -236,7 +236,7 @@ func (cluster *Cluster) Unprovision() error {
 			if !ok {
 				continue
 			}*/
-		switch cluster.Conf.ProvOrchestrator {
+		switch cluster.GetOrchestrator()  {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCUnprovisionProxyService(prx)
 		case config.ConstOrchestratorKubernetes:
@@ -270,7 +270,7 @@ func (cluster *Cluster) Unprovision() error {
 			}
 		}
 	}
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		cluster.OpenSVCUnprovisionSecret()
 	default:
@@ -280,7 +280,7 @@ func (cluster *Cluster) Unprovision() error {
 }
 
 func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCUnprovisionProxyService(prx)
 	case config.ConstOrchestratorKubernetes:
@@ -308,7 +308,7 @@ func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
 
 func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error {
 	cluster.ResetCrashes()
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCUnprovisionDatabaseService(server)
 	case config.ConstOrchestratorKubernetes:
@@ -342,7 +342,7 @@ func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 	cluster.LogPrintf(LvlInfo, "Stopping database service %s", cluster.Name+"/svc/"+server.URL)
 	var err error
 
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		err = cluster.OpenSVCStopDatabaseService(server)
 	case config.ConstOrchestratorKubernetes:
@@ -367,7 +367,7 @@ func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 	cluster.LogPrintf(LvlInfo, "Stopping Proxy service %s", cluster.Name+"/svc/"+server.GetName())
 	var err error
 
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		err = cluster.OpenSVCStopProxyService(server)
 	case config.ConstOrchestratorKubernetes:
@@ -391,7 +391,7 @@ func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
 	cluster.LogPrintf(LvlInfo, "Starting Proxy service %s", cluster.Name+"/svc/"+server.GetName())
 	var err error
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		err = cluster.OpenSVCStartProxyService(server)
 	case config.ConstOrchestratorKubernetes:
@@ -421,7 +421,7 @@ func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
 func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	cluster.LogPrintf(LvlInfo, "Starting Database service %s", cluster.Name+"/svc/"+server.Name)
 	var err error
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		err = cluster.OpenSVCStartDatabaseService(server)
 	case config.ConstOrchestratorKubernetes:

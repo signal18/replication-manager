@@ -98,8 +98,8 @@ type DatabaseProxy interface {
 	GetPrevState() string
 
 	SetPrevState(state string)
-
-	GetCluster() (*sqlx.DB, error)
+	GetCluster() *Cluster
+	GetClusterConnection() (*sqlx.DB, error)
 
 	SetMaintenanceHaproxy(server *ServerMonitor)
 
@@ -239,7 +239,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 				// Does not yet understand CREATE OR REPLACE VIEW
 				continue
 			}
-			db, err := pr.GetCluster()
+			db, err := pr.GetClusterConnection()
 			if err != nil {
 				cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 			} else {
@@ -265,7 +265,7 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 	// Found server from ServerId
 	if cluster.GetMaster() != nil {
 		for _, pr := range cluster.Proxies {
-			db, err := pr.GetCluster()
+			db, err := pr.GetClusterConnection()
 			if err != nil {
 				if cluster.IsVerbose() {
 					cluster.LogPrintf(LvlErr, "Can't get a proxy connection: %s", err)
@@ -333,7 +333,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 			} else {
 				pr.SetFailCount(pr.GetFailCount() + 1)
 				// TODO: Can pr.ClusterGroup be different from cluster *Cluster? code doesn't imply it. if not change to
-				// cl, err := pr.GetCluster()
+				// cl, err := pr.GetClusterConnection()
 				// cl.Conf.MaxFail
 				if pr.GetFailCount() >= cluster.Conf.MaxFail {
 					if pr.GetFailCount() == cluster.Conf.MaxFail {

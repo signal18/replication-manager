@@ -50,7 +50,7 @@ func (cluster *Cluster) HasSchedulerEntry(myname string) bool {
 }
 
 func (cluster *Cluster) IsProvisioned() bool {
-	if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorOnPremise {
+	if cluster.GetOrchestrator()  == config.ConstOrchestratorOnPremise {
 		return true
 	}
 	if cluster.Conf.Hosts == "" {

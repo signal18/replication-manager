@@ -1,0 +1,968 @@
+2017/08/04 18:56:28 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 18:56:28 [bench] INFO  - Loading 1 proxies
+2017/08/04 18:56:28 [bench] INFO  - Loading Maxscale...
+2017/08/04 18:56:28 [bench] INFO  - Failover in automatic mode
+2017/08/04 18:56:28 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
+
+2017/08/04 18:56:30 [bench] TESTI - testFailoverAssyncAutoRejoinNowrites
+2017/08/04 18:56:30 [bench] ALERT - Server 192.168.100.80 state changed from  to Suspect
+2017/08/04 18:56:31 [bench] ALERT - Server 192.168.100.81 state changed from  to Suspect
+2017/08/04 18:56:32 [bench] INFO  - Provisioning delete service de52070d-2952-4a3a-914b-f0d19dfc43d0
+2017/08/04 18:56:35 [bench] STATE - INF00001 Server 192.168.100.81 is down
+2017/08/04 18:56:35 [bench] STATE - ERR00010 Could not find a slave in topology
+2017/08/04 18:56:35 [bench] STATE - ERR00012 Could not find a master in topology
+2017/08/04 18:56:35 [bench] STATE - ERR00021 All cluster down in non-interactive mode
+2017/08/04 18:56:40 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:56:41 [bench] INFO  - Declaring server 192.168.100.81 as failed
+2017/08/04 18:56:41 [bench] ALERT - Server 192.168.100.81 state changed from Suspect to Failed
+2017/08/04 18:56:41 [bench] INFO  - Declaring server 192.168.100.80 as failed
+2017/08/04 18:56:41 [bench] ALERT - Server 192.168.100.80 state changed from Suspect to Failed
+2017/08/04 18:56:50 [bench] INFO  - 16:56:36,313 disk#00        INFO    create file /srv/4832677178583133704_docker.dsk, size 1G
+16:56:36,314 disk#00        INFO    provisioned
+16:56:36,317 disk#00        INFO    /sbin/losetup -f /srv/4832677178583133704_docker.dsk
+16:56:36,341 disk#00        INFO    /dev/loop0 now loops to /srv/4832677178583133704_docker.dsk
+16:56:36,381 disk#0000      INFO    zpool create -m legacy zp4832677178583133704_00 /srv/4832677178583133704_docker.dsk
+16:56:36,435 disk#0000      INFO    provisioned
+16:56:36,444 disk#0000      INFO    zp4832677178583133704_00 is already up
+16:56:36,452 disk#01        INFO    create file /srv/4832677178583133704_pod01.dsk, size 1G
+16:56:36,453 disk#01        INFO    provisioned
+16:56:36,472 disk#01        INFO    /sbin/losetup -f /srv/4832677178583133704_pod01.dsk
+16:56:36,551 disk#01        INFO    /dev/loop1 now loops to /srv/4832677178583133704_pod01.dsk
+16:56:36,597 disk#1001      INFO    zpool create -m legacy zp4832677178583133704_pod01 /srv/4832677178583133704_pod01.dsk
+16:56:36,663 disk#1001      INFO    provisioned
+16:56:36,670 disk#1001      INFO    zp4832677178583133704_pod01 is already up
+16:56:36,682 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/docker -o canmount=noauto zp4832677178583133704_00/docker
+16:56:36,707 fs#00          INFO    /sbin/ext4 set refquota=2048M zp4832677178583133704_00/docker
+16:56:36,717 fs#00          INFO    provisioned
+16:56:36,733 fs#00          INFO    /sbin/ext4 mount zp4832677178583133704_00/docker
+16:56:36,758 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/4832677178583133704/pod01 -o canmount=noauto zp4832677178583133704_pod01/pod01
+16:56:36,784 fs#01          INFO    /sbin/ext4 set refquota=1024M zp4832677178583133704_pod01/pod01
+16:56:36,796 fs#01          INFO    provisioned
+16:56:36,814 fs#01          INFO    /sbin/ext4 mount zp4832677178583133704_pod01/pod01
+16:56:36,824 fs#01          INFO    /usr/bin/svcmgr -s 4832677178583133704 push service status;/usr/bin/svcmgr -s 4832677178583133704 compliance fix --attach --moduleset mariadb.svc.mrm.db
+16:56:39,248 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.db attached
+=========================== mariadb.svc.mrm.db.cnf ===========================
+ACTION:   check
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+ERR: failed to concatenate  to rules list
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/tmp/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/aria/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/repl/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/custom/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/security.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/my.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/tokudb/ does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/launcher does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/innodb/ does not exist
+ERR: file /srv/4832677178583133704/pod01/init/start does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/data/.system/logs/ does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf does not exist
+ERR: file /srv/4832677178583133704/pod01/etc/mysql/network.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf does not exist
+ERR: symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/multidomains.cnf does not exist
+STATUS:   nok
+ACTION:   fixable
+STATUS:   n/a
+ACTION:   fix
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf rewritten
+ERR: failed to concatenate  to rules list
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql/rc.d/
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/tmp/
+file /srv/4832677178583133704/pod01/data/.system/tmp/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/tmp/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/aria/
+file /srv/4832677178583133704/pod01/data/.system/aria/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/aria/ ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/repl/
+file /srv/4832677178583133704/pod01/data/.system/repl/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/repl/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/etc/mysql/custom/
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ mode set to 775
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/innodb/redo/
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/.system/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/init/
+file /srv/4832677178583133704/pod01/init/ mode set to 775
+file /srv/4832677178583133704/pod01/init/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/ mode set to 775
+file /srv/4832677178583133704/pod01/data/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/tokudb/
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/innodb/undo/
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/launcher rewritten
+file /srv/4832677178583133704/pod01/init/launcher mode set to 755
+file /srv/4832677178583133704/pod01/init/launcher ownership set to 999:999
+file /srv/4832677178583133704/pod01/data/.system/innodb/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/innodb/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/start rewritten
+file /srv/4832677178583133704/pod01/init/start mode set to 755
+file /srv/4832677178583133704/pod01/init/start ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD rewritten
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD mode set to 660
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf ownership set to 999:999
+file: mkdir /srv/4832677178583133704/pod01/data/.system/logs/
+file /srv/4832677178583133704/pod01/data/.system/logs/ mode set to 775
+file /srv/4832677178583133704/pod01/data/.system/logs/ ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf ownership set to 999:999
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf rewritten
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf mode set to 660
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf ownership set to 999:999
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf created
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/multidomains.cnf -> ../multidomains.cnf created
+STATUS:   ok
+ACTION:   check
+file /srv/4832677178583133704/pod01/etc/mysql/spider.cnf is ok
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/4832677178583133704/pod01/etc/mysql/myrock.cnf is ok
+ERR: failed to concatenate  to rules list
+file /srv/4832677178583133704/pod01/etc/mysql/compress.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rc.d/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/threadpool.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tmp/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/aria.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/tokudb.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/noquerycache.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/mysqlgtid.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/aria/ is ok
+file /srv/4832677178583133704/pod01/data/.system/repl/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/loggeneral.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/custom/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/security.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/redo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/nomogslaveupdates.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/semisync.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/audit.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/multidomains.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/my.cnf is ok
+file /srv/4832677178583133704/pod01/init/ is ok
+file /srv/4832677178583133704/pod01/data/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/rpl_ptr.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/tokudb/ is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/undo/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/innodb.cnf is ok
+file /srv/4832677178583133704/pod01/init/launcher is ok
+file /srv/4832677178583133704/pod01/data/.system/innodb/ is ok
+file /srv/4832677178583133704/pod01/init/start is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/sharedpool.cnf is ok
+file /srv/4832677178583133704/pod01/init/MYSQL_ROOT_PASSWORD is ok
+file /srv/4832677178583133704/pod01/etc/mysql/smallredolog.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logsqlerror.cnf is ok
+file /srv/4832677178583133704/pod01/data/.system/logs/ is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logs.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/logslow.cnf is ok
+file /srv/4832677178583133704/pod01/etc/mysql/network.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf is ok
+symlink /srv/4832677178583133704/pod01/etc/mysql/rc.d/multidomains.cnf -> ../multidomains.cnf is ok
+STATUS:   ok
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.db.cnf
+0 error
+total duration: 0:00:00.537070
+16:56:39,326 container#0001 INFO    docker start c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
+16:56:39,504 container#0001 INFO    output:
+c04b5718ab756b17665a6b37c4ccba4c84b32f027e453f31294bb3b6f110de27
+16:56:39,518 container#0001 INFO    wait for up status
+16:56:39,546 container#0001 INFO    wait for container operational
+16:56:39,591 ip#01          INFO    skip allocate: an ip is already defined
+16:56:39,661 ip#01          INFO    checking 192.168.100.80 availability
+16:56:44,671 ip#01          INFO    bridge mode
+16:56:44,699 ip#01          INFO    create symlink /var/run/netns/22657 -> /proc/22657/ns/net
+16:56:44,767 ip#01          INFO    /sbin/ip link add name veth1pl22657 mtu 1500 type veth peer name veth1pg22657 mtu 1500
+16:56:44,772 ip#01          INFO    /sbin/ip link set veth1pl22657 master br-prd
+16:56:44,776 ip#01          INFO    /sbin/ip link set veth1pl22657 up
+16:56:44,779 ip#01          INFO    /sbin/ip link set veth1pg22657 netns 22657
+16:56:44,792 ip#01          INFO    /sbin/ip netns exec 22657 ip link set veth1pg22657 name eth1
+16:56:44,840 ip#01          INFO    /sbin/ip netns exec 22657 ip addr add 192.168.100.80/24 dev eth1
+16:56:44,916 ip#01          INFO    /sbin/ip netns exec 22657 ip link set eth1 up
+16:56:44,956 ip#01          INFO    /sbin/ip netns exec 22657 ip route replace default via 192.168.100.254
+16:56:48,016 ip#01          INFO    remove /var/run/netns/22657
+16:56:48,156 container#2001 INFO    docker run -d --name=4832677178583133704.container.2001 --net=container:4832677178583133704.container.0001 -e MYSQL_ROOT_PASSWORD=mariadb -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v /srv/4832677178583133704/pod01/data:/var/lib/mysql:rw -v /srv/4832677178583133704/pod01/etc/mysql:/etc/mysql:rw -v /srv/4832677178583133704/pod01/init:/docker-entrypoint-initdb.d:rw --rm --cgroup-parent /4832677178583133704/container.docker/container.2001 mariadb:10.2
+16:56:48,359 container#2001 INFO    output:
+bd330d3b3f4f6277d0fe2fe032a9751d4be6a4ea11f289530d9b95a2e1373308
+16:56:48,378 container#2001 INFO    wait for up status
+16:56:48,403 container#2001 INFO    wait for container operational
+16:56:48,638                INFO    send /etc/opensvc/4832677178583133704.conf to collector
+16:56:48,639                INFO    update /var/lib/opensvc/4832677178583133704/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/04 18:56:51 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/04 18:56:52 [bench] INFO  - Waiting for database start
+2017/08/04 18:56:54 [bench] INFO  - Waiting for database start
+2017/08/04 18:56:56 [bench] INFO  - Waiting for database start
+2017/08/04 18:56:58 [bench] INFO  - Waiting for database start
+2017/08/04 18:57:00 [bench] INFO  - Waiting for database start
+2017/08/04 18:57:02 [bench] INFO  - Waiting for database start
+2017/08/04 18:57:04 [bench] INFO  - Trying to rejoin restarted server 192.168.100.80
+2017/08/04 18:57:04 [bench] INFO  - Waiting for database start
+2017/08/04 18:57:04 [bench] INFO  - Database started
+2017/08/04 18:57:06 [bench] INFO  - Provisioning delete service ede322d2-4680-49b7-bc57-e7b5f9f37266
+2017/08/04 18:57:16 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:57:17 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/04 18:57:18 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:57:20 [bench] INFO  - 16:57:10,447 disk#00        INFO    create file /srv/17311646700765639015_docker.dsk, size 1G
+16:57:10,448 disk#00        INFO    provisioned
+16:57:10,451 disk#00        INFO    /sbin/losetup -f /srv/17311646700765639015_docker.dsk
+16:57:10,476 disk#00        INFO    /dev/loop0 now loops to /srv/17311646700765639015_docker.dsk
+16:57:10,516 disk#0000      INFO    zpool create -m legacy zp17311646700765639015_00 /srv/17311646700765639015_docker.dsk
+16:57:10,578 disk#0000      INFO    provisioned
+16:57:10,586 disk#0000      INFO    zp17311646700765639015_00 is already up
+16:57:10,595 disk#01        INFO    create file /srv/17311646700765639015_pod01.dsk, size 1G
+16:57:10,596 disk#01        INFO    provisioned
+16:57:10,618 disk#01        INFO    /sbin/losetup -f /srv/17311646700765639015_pod01.dsk
+16:57:10,710 disk#01        INFO    /dev/loop1 now loops to /srv/17311646700765639015_pod01.dsk
+16:57:10,755 disk#1001      INFO    zpool create -m legacy zp17311646700765639015_pod01 /srv/17311646700765639015_pod01.dsk
+16:57:10,826 disk#1001      INFO    provisioned
+16:57:10,834 disk#1001      INFO    zp17311646700765639015_pod01 is already up
+16:57:10,847 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/17311646700765639015/docker -o canmount=noauto zp17311646700765639015_00/docker
+16:57:10,875 fs#00          INFO    /sbin/ext4 set refquota=2048M zp17311646700765639015_00/docker
+16:57:10,884 fs#00          INFO    provisioned
+16:57:10,903 fs#00          INFO    /sbin/ext4 mount zp17311646700765639015_00/docker
+16:57:10,928 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/17311646700765639015/pod01 -o canmount=noauto zp17311646700765639015_pod01/pod01
+16:57:10,959 fs#01          INFO    /sbin/ext4 set refquota=1024M zp17311646700765639015_pod01/pod01
+16:57:10,969 fs#01          INFO    provisioned
+16:57:10,988 fs#01          INFO    /sbin/ext4 mount zp17311646700765639015_pod01/pod01
+16:57:10,998 fs#01          INFO    /usr/bin/svcmgr -s 17311646700765639015 push service status;/usr/bin/svcmgr -s 17311646700765639015 compliance fix --attach --moduleset mariadb.svc.mrm.db
+16:57:13,361 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.db attached
+=========================== mariadb.svc.mrm.db.cnf ===========================
+ACTION:   check
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+ERR: failed to concatenate  to rules list
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/rc.d/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/tmp/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/aria/ does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/repl/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/custom/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/security.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/innodb/redo/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/my.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/init/ does not exist
+ERR: file /srv/17311646700765639015/pod01/data/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/tokudb/ does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/innodb/undo/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/init/launcher does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/innodb/ does not exist
+ERR: file /srv/17311646700765639015/pod01/init/start does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/data/.system/logs/ does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf does not exist
+ERR: file /srv/17311646700765639015/pod01/etc/mysql/network.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/smallredolog.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/logslow.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/threadpool.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/noquerycache.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/semisync.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/innodb.cnf does not exist
+ERR: symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/multidomains.cnf does not exist
+STATUS:   nok
+ACTION:   fixable
+STATUS:   n/a
+ACTION:   fix
+file: mkdir /srv/17311646700765639015/pod01/etc/mysql
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf rewritten
+ERR: failed to concatenate  to rules list
+file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/etc/mysql/rc.d/
+file /srv/17311646700765639015/pod01/etc/mysql/rc.d/ mode set to 775
+file /srv/17311646700765639015/pod01/etc/mysql/rc.d/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/tmp/
+file /srv/17311646700765639015/pod01/data/.system/tmp/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/tmp/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/ mode set to 775
+file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/aria/
+file /srv/17311646700765639015/pod01/data/.system/aria/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/aria/ ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/repl/
+file /srv/17311646700765639015/pod01/data/.system/repl/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/repl/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/etc/mysql/custom/
+file /srv/17311646700765639015/pod01/etc/mysql/custom/ mode set to 775
+file /srv/17311646700765639015/pod01/etc/mysql/custom/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/security.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/security.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/security.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/innodb/redo/
+file /srv/17311646700765639015/pod01/data/.system/innodb/redo/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/innodb/redo/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/data/.system/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/my.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/my.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/my.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/init/
+file /srv/17311646700765639015/pod01/init/ mode set to 775
+file /srv/17311646700765639015/pod01/init/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/data/ mode set to 775
+file /srv/17311646700765639015/pod01/data/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/tokudb/
+file /srv/17311646700765639015/pod01/data/.system/tokudb/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/tokudb/ ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/innodb/undo/
+file /srv/17311646700765639015/pod01/data/.system/innodb/undo/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/innodb/undo/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/init/launcher rewritten
+file /srv/17311646700765639015/pod01/init/launcher mode set to 755
+file /srv/17311646700765639015/pod01/init/launcher ownership set to 999:999
+file /srv/17311646700765639015/pod01/data/.system/innodb/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/innodb/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/init/start rewritten
+file /srv/17311646700765639015/pod01/init/start mode set to 755
+file /srv/17311646700765639015/pod01/init/start ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD rewritten
+file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD mode set to 660
+file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf ownership set to 999:999
+file: mkdir /srv/17311646700765639015/pod01/data/.system/logs/
+file /srv/17311646700765639015/pod01/data/.system/logs/ mode set to 775
+file /srv/17311646700765639015/pod01/data/.system/logs/ ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf ownership set to 999:999
+file /srv/17311646700765639015/pod01/etc/mysql/network.cnf rewritten
+file /srv/17311646700765639015/pod01/etc/mysql/network.cnf mode set to 660
+file /srv/17311646700765639015/pod01/etc/mysql/network.cnf ownership set to 999:999
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf created
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/multidomains.cnf -> ../multidomains.cnf created
+STATUS:   ok
+ACTION:   check
+file /srv/17311646700765639015/pod01/etc/mysql/spider.cnf is ok
+ERR: OSVC_COMP_DB_CNF_WSREP undefined substitution variable: GCOMM
+file /srv/17311646700765639015/pod01/etc/mysql/myrock.cnf is ok
+ERR: failed to concatenate  to rules list
+file /srv/17311646700765639015/pod01/etc/mysql/compress.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/rc.d/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/threadpool.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/tmp/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/aria.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/tokudb.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/noquerycache.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/mysqlgtid.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/aria/ is ok
+file /srv/17311646700765639015/pod01/data/.system/repl/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/loggeneral.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/custom/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/security.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/innodb/redo/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/nomogslaveupdates.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/semisync.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/audit.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/multidomains.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/my.cnf is ok
+file /srv/17311646700765639015/pod01/init/ is ok
+file /srv/17311646700765639015/pod01/data/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/rpl_ptr.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/tokudb/ is ok
+file /srv/17311646700765639015/pod01/data/.system/innodb/undo/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/innodb.cnf is ok
+file /srv/17311646700765639015/pod01/init/launcher is ok
+file /srv/17311646700765639015/pod01/data/.system/innodb/ is ok
+file /srv/17311646700765639015/pod01/init/start is ok
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/optimizer.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/sharedpool.cnf is ok
+file /srv/17311646700765639015/pod01/init/MYSQL_ROOT_PASSWORD is ok
+file /srv/17311646700765639015/pod01/etc/mysql/smallredolog.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/logsqlerror.cnf is ok
+file /srv/17311646700765639015/pod01/data/.system/logs/ is ok
+file /srv/17311646700765639015/pod01/etc/mysql/logs.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/logslow.cnf is ok
+file /srv/17311646700765639015/pod01/etc/mysql/network.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/smallredolog.cnf -> ../smallredolog.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/logslow.cnf -> ../logslow.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/threadpool.cnf -> ../threadpool.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/noquerycache.cnf -> ../noquerycache.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/semisync.cnf -> ../semisync.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/innodb.cnf -> ../innodb.cnf is ok
+symlink /srv/17311646700765639015/pod01/etc/mysql/rc.d/multidomains.cnf -> ../multidomains.cnf is ok
+STATUS:   ok
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.db.cnf
+0 error
+total duration: 0:00:00.534242
+16:57:13,435 container#0001 INFO    docker start 83c9084e17f7480d19a674f489d0f06de582c125eae653481663682c891a577c
+16:57:13,606 container#0001 INFO    output:
+83c9084e17f7480d19a674f489d0f06de582c125eae653481663682c891a577c
+16:57:13,625 container#0001 INFO    wait for up status
+16:57:13,656 container#0001 INFO    wait for container operational
+16:57:13,701 ip#01          INFO    skip allocate: an ip is already defined
+16:57:13,762 ip#01          INFO    checking 192.168.100.81 availability
+16:57:16,845 ip#01          INFO    bridge mode
+16:57:16,873 ip#01          INFO    create symlink /var/run/netns/19140 -> /proc/19140/ns/net
+16:57:16,950 ip#01          INFO    /sbin/ip link add name veth1pl19140 mtu 1500 type veth peer name veth1pg19140 mtu 1500
+16:57:16,957 ip#01          INFO    /sbin/ip link set veth1pl19140 master br-prd
+16:57:16,961 ip#01          INFO    /sbin/ip link set veth1pl19140 up
+16:57:16,964 ip#01          INFO    /sbin/ip link set veth1pg19140 netns 19140
+16:57:16,987 ip#01          INFO    /sbin/ip netns exec 19140 ip link set veth1pg19140 name eth1
+16:57:17,046 ip#01          INFO    /sbin/ip netns exec 19140 ip addr add 192.168.100.81/24 dev eth1
+16:57:17,126 ip#01          INFO    /sbin/ip netns exec 19140 ip link set eth1 up
+16:57:17,174 ip#01          INFO    /sbin/ip netns exec 19140 ip route replace default via 192.168.100.254
+16:57:17,219 ip#01          INFO    remove /var/run/netns/19140
+16:57:17,363 container#2001 INFO    docker run -d --name=17311646700765639015.container.2001 --net=container:17311646700765639015.container.0001 -e MYSQL_ROOT_PASSWORD=mariadb -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v /srv/17311646700765639015/pod01/data:/var/lib/mysql:rw -v /srv/17311646700765639015/pod01/etc/mysql:/etc/mysql:rw -v /srv/17311646700765639015/pod01/init:/docker-entrypoint-initdb.d:rw --rm --cgroup-parent /17311646700765639015/container.docker/container.2001 mariadb:10.2
+16:57:17,605 container#2001 INFO    output:
+d64eb443bd08f2182c906ed6a9da613377317c657a532c4ceb63844e0c9df33c
+16:57:17,618 container#2001 INFO    wait for up status
+16:57:17,661 container#2001 INFO    wait for container operational
+16:57:17,892                INFO    send /etc/opensvc/17311646700765639015.conf to collector
+16:57:17,893                INFO    update /var/lib/opensvc/17311646700765639015/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/04 18:57:20 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/04 18:57:22 [bench] INFO  - Waiting for database start
+2017/08/04 18:57:24 [bench] INFO  - Waiting for database start
+2017/08/04 18:57:26 [bench] INFO  - Waiting for database start
+2017/08/04 18:57:28 [bench] INFO  - Waiting for database start
+2017/08/04 18:57:30 [bench] INFO  - Waiting for database start
+2017/08/04 18:57:32 [bench] INFO  - Waiting for database start
+2017/08/04 18:57:34 [bench] INFO  - Waiting for database start
+2017/08/04 18:57:34 [bench] INFO  - Trying to rejoin restarted server 192.168.100.81
+2017/08/04 18:57:34 [bench] STATE - INF00001 CLOSING Server 192.168.100.81 is down
+2017/08/04 18:57:36 [bench] INFO  - Waiting for database start
+2017/08/04 18:57:36 [bench] INFO  - Database started
+2017/08/04 18:57:40 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:57:44 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/04 18:57:46 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:57:49 [bench] INFO  - 16:57:39,455 disk#00        INFO    create file /srv/10940044185188150515_docker.dsk, size 1G
+16:57:39,456 disk#00        INFO    provisioned
+16:57:39,495 disk#00        INFO    /sbin/losetup -f /srv/10940044185188150515_docker.dsk
+16:57:39,574 disk#00        INFO    /dev/loop2 now loops to /srv/10940044185188150515_docker.dsk
+16:57:39,628 disk#0000      INFO    zpool create -m legacy zp10940044185188150515_00 /srv/10940044185188150515_docker.dsk
+16:57:39,687 disk#0000      INFO    provisioned
+16:57:39,694 disk#0000      INFO    zp10940044185188150515_00 is already up
+16:57:39,702 disk#01        INFO    create file /srv/10940044185188150515_pod01.dsk, size 1G
+16:57:39,703 disk#01        INFO    provisioned
+16:57:39,754 disk#01        INFO    /sbin/losetup -f /srv/10940044185188150515_pod01.dsk
+16:57:39,845 disk#01        INFO    /dev/loop3 now loops to /srv/10940044185188150515_pod01.dsk
+16:57:39,919 disk#1001      INFO    zpool create -m legacy zp10940044185188150515_pod01 /srv/10940044185188150515_pod01.dsk
+16:57:39,979 disk#1001      INFO    provisioned
+16:57:39,987 disk#1001      INFO    zp10940044185188150515_pod01 is already up
+16:57:39,999 fs#00          INFO    /sbin/ext4 create -p -o mountpoint=/srv/10940044185188150515/docker -o canmount=noauto zp10940044185188150515_00/docker
+16:57:40,022 fs#00          INFO    /sbin/ext4 set refquota=2048M zp10940044185188150515_00/docker
+16:57:40,031 fs#00          INFO    provisioned
+16:57:40,048 fs#00          INFO    /sbin/ext4 mount zp10940044185188150515_00/docker
+16:57:40,071 fs#01          INFO    /sbin/ext4 create -p -o mountpoint=/srv/10940044185188150515/pod01 -o canmount=noauto zp10940044185188150515_pod01/pod01
+16:57:40,090 fs#01          INFO    /sbin/ext4 set refquota=1024M zp10940044185188150515_pod01/pod01
+16:57:40,100 fs#01          INFO    provisioned
+16:57:40,116 fs#01          INFO    /sbin/ext4 mount zp10940044185188150515_pod01/pod01
+16:57:40,126 fs#01          INFO    /usr/bin/svcmgr -s 10940044185188150515 push service status;/usr/bin/svcmgr -s 10940044185188150515 compliance fix --attach --moduleset mariadb.svc.mrm.proxy
+16:57:42,604 fs#01          INFO    output:
+moduleset mariadb.svc.mrm.proxy is already attached to this service
+========================= mariadb.svc.mrm.proxy.cnf ==========================
+ACTION:   check
+ERR: file //srv/10940044185188150515/pod01/conf/maxscale.cnf does not exist
+ERR: file /srv/10940044185188150515/pod01/init/launcher does not exist
+ERR: file //srv/10940044185188150515/pod01/log/ does not exist
+ERR: file //srv/10940044185188150515/pod01/data/ does not exist
+ERR: file //srv/10940044185188150515/pod01/conf/config-haproxy.toml does not exist
+ERR: file //srv/10940044185188150515/pod01/init/ does not exist
+ERR: file //srv/10940044185188150515/pod01/conf/ does not exist
+ERR: file //srv/10940044185188150515/pod01/conf/keepalived.conf does not exist
+ERR: file //srv/10940044185188150515/pod01/conf/config.toml does not exist
+STATUS:   nok
+ACTION:   fixable
+STATUS:   n/a
+ACTION:   fix
+file: mkdir //srv/10940044185188150515/pod01/conf
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf rewritten
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf mode set to 775
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf ownership set to 999:999
+file: mkdir /srv/10940044185188150515/pod01/init
+file /srv/10940044185188150515/pod01/init/launcher rewritten
+file /srv/10940044185188150515/pod01/init/launcher mode set to 755
+file /srv/10940044185188150515/pod01/init/launcher ownership set to 999:999
+file: mkdir //srv/10940044185188150515/pod01/log/
+file //srv/10940044185188150515/pod01/log/ mode set to 775
+file //srv/10940044185188150515/pod01/log/ ownership set to 999:999
+file: mkdir //srv/10940044185188150515/pod01/data/
+file //srv/10940044185188150515/pod01/data/ mode set to 775
+file //srv/10940044185188150515/pod01/data/ ownership set to 999:999
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml rewritten
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml mode set to 775
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml ownership set to 999:999
+file //srv/10940044185188150515/pod01/init/ mode set to 775
+file //srv/10940044185188150515/pod01/conf/ mode set to 775
+file //srv/10940044185188150515/pod01/conf/keepalived.conf rewritten
+file //srv/10940044185188150515/pod01/conf/keepalived.conf mode set to 775
+file //srv/10940044185188150515/pod01/conf/keepalived.conf ownership set to 999:999
+file //srv/10940044185188150515/pod01/conf/config.toml rewritten
+file //srv/10940044185188150515/pod01/conf/config.toml mode set to 775
+file //srv/10940044185188150515/pod01/conf/config.toml ownership set to 999:999
+STATUS:   ok
+ACTION:   check
+file //srv/10940044185188150515/pod01/conf/maxscale.cnf is ok
+file /srv/10940044185188150515/pod01/init/launcher is ok
+file //srv/10940044185188150515/pod01/log/ is ok
+file //srv/10940044185188150515/pod01/data/ is ok
+file //srv/10940044185188150515/pod01/conf/config-haproxy.toml is ok
+file //srv/10940044185188150515/pod01/init/ is ok
+file //srv/10940044185188150515/pod01/conf/ is ok
+file //srv/10940044185188150515/pod01/conf/keepalived.conf is ok
+file //srv/10940044185188150515/pod01/conf/config.toml is ok
+STATUS:   ok
+=================================== digest ===================================
+0 n/a
+1 passed
+ mariadb.svc.mrm.proxy.cnf
+0 error
+total duration: 0:00:00.429390
+16:57:42,682 container#0001 INFO    docker start 32e4221d38e52d77ad0c9fee50fa306cdf03e0442b4d0b62855c755ffcb4422d
+16:57:42,863 container#0001 INFO    output:
+32e4221d38e52d77ad0c9fee50fa306cdf03e0442b4d0b62855c755ffcb4422d
+16:57:42,877 container#0001 INFO    wait for up status
+16:57:42,904 container#0001 INFO    wait for container operational
+16:57:42,950 ip#01          INFO    skip allocate: an ip is already defined
+16:57:43,018 ip#01          INFO    checking 192.168.100.85 availability
+16:57:46,092 ip#01          INFO    bridge mode
+16:57:46,120 ip#01          INFO    create symlink /var/run/netns/20664 -> /proc/20664/ns/net
+16:57:46,189 ip#01          INFO    /sbin/ip link add name veth1pl20664 mtu 1500 type veth peer name veth1pg20664 mtu 1500
+16:57:46,194 ip#01          INFO    /sbin/ip link set veth1pl20664 master br-prd
+16:57:46,198 ip#01          INFO    /sbin/ip link set veth1pl20664 up
+16:57:46,201 ip#01          INFO    /sbin/ip link set veth1pg20664 netns 20664
+16:57:46,218 ip#01          INFO    /sbin/ip netns exec 20664 ip link set veth1pg20664 name eth1
+16:57:46,262 ip#01          INFO    /sbin/ip netns exec 20664 ip addr add 192.168.100.85/24 dev eth1
+16:57:46,334 ip#01          INFO    /sbin/ip netns exec 20664 ip link set eth1 up
+16:57:46,366 ip#01          INFO    /sbin/ip netns exec 20664 ip route replace default via 192.168.100.254
+16:57:46,410 ip#01          INFO    remove /var/run/netns/20664
+16:57:46,558 container#2001 INFO    docker run -d --name=10940044185188150515.container.2001 --net=container:10940044185188150515.container.0001 -v /etc/localtime:/etc/localtime:ro -v /srv/10940044185188150515/pod01/conf:/etc/maxscale.d:rw --rm --cgroup-parent /10940044185188150515/container.docker/container.2001 asosso/maxscale:latest
+16:57:46,780 container#2001 INFO    output:
+e4049d239a27b521f1572ba0f67f156a47c71127.0.0.1:33108d2b404aee7ed81ad671ec32
+16:57:46,808 container#2001 INFO    wait for up status
+16:57:46,845 container#2001 INFO    wait for container operational
+16:57:47,098                INFO    send /etc/opensvc/10940044185188150515.conf to collector
+16:57:47,099                INFO    update /var/lib/opensvc/10940044185188150515/last_pushed_config timestamp
+a stack has been saved to the rpc log
+
+2017/08/04 18:57:50 [bench] STATE - WARN0045 CLOSING Provision task is in queue
+2017/08/04 18:57:52 [bench] INFO  - Cleaning up replication on existing servers
+2017/08/04 18:57:52 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:57:52 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:57:52 [bench] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/04 18:57:52 [bench] STATE - ERR00012 CLOSING Could not find a master in topology
+2017/08/04 18:57:52 [bench] STATE - ERR00021 CLOSING All cluster down in non-interactive mode
+2017/08/04 18:58:02 [bench] INFO  - Environment bootstrapped with 192.168.100.80 as master
+2017/08/04 18:58:02 [bench] INFO  - Init maxscale 192.168.100.85 3307
+2017/08/04 18:58:02 [bench] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.85:3307
+2017/08/04 18:58:02 [bench] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/04 18:58:02 [bench] STATE - ERR00012 CLOSING Could not find a master in topology
+2017/08/04 18:58:02 [bench] STATE - ERR00021 CLOSING All cluster down in non-interactive mode
+2017/08/04 18:58:02 [bench] STATE - WARN0058 No GTID strict mode on slave 192.168.100.81
+2017/08/04 18:58:02 [bench] STATE - WARN0068 No compression of binlog on slave 192.168.100.80
+2017/08/04 18:58:02 [bench] STATE - WARN0070 No GTID strict mode on master 192.168.100.80
+2017/08/04 18:58:02 [bench] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 18:58:02 [bench] STATE - WARN0056 No compression of binlog on slave 192.168.100.81
+2017/08/04 18:58:02 [bench] TEST: Waiting Bootstrap and discovery
+2017/08/04 18:58:04 [bench] STATE - ERR00018 Could not connect to MaxScale: Connection failed to address 192.168.100.85:3307
+2017/08/04 18:58:04 [bench] TEST  - Waiting Bootstrap and discovery
+2017/08/04 18:58:04 [bench] TEST  - Cluster is Bootstraped and discovery
+2017/08/04 18:58:04 [bench] INFO  - Init maxscale 192.168.100.85 3307
+2017/08/04 18:58:04 [bench] ERROR - Could not connect to MaxScale:Connection failed to address 192.168.100.85:3307
+2017/08/04 18:58:04 [bench] TEST  - Starting Test testFailoverAssyncAutoRejoinNowrites
+2017/08/04 18:58:08 [bench] STATE - ERR00018 CLOSING Could not connect to MaxScale: Connection failed to address 192.168.100.85:3307
+2017/08/04 18:58:10 [bench] TEST  - Waiting Failover end
+2017/08/04 18:58:12 [bench] INFO  - Master Failure detected! Retry 1/3
+2017/08/04 18:58:12 [bench] ALERT - Server 192.168.100.80 state changed from Master to Suspect
+2017/08/04 18:58:12 [bench] STATE - WARN0068 CLOSING No compression of binlog on slave 192.168.100.80
+2017/08/04 18:58:12 [bench] STATE - WARN0070 CLOSING No GTID strict mode on master 192.168.100.80
+2017/08/04 18:58:12 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:58:12 [bench] TEST  - Waiting Failover end
+2017/08/04 18:58:14 [bench] TEST  - Waiting Failover end
+2017/08/04 18:58:15 [bench] INFO  - Master Failure detected! Retry 2/3
+2017/08/04 18:58:16 [bench] TEST  - Waiting Failover end
+2017/08/04 18:58:18 [bench] TEST  - Waiting Failover end
+2017/08/04 18:58:19 [bench] INFO  - Master Failure detected! Retry 3/3
+2017/08/04 18:58:19 [bench] INFO  - Declaring master as failed
+2017/08/04 18:58:19 [bench] ALERT - Server 192.168.100.80 state changed from Suspect to Failed
+2017/08/04 18:58:20 [bench] TEST  - Waiting Failover end
+2017/08/04 18:58:22 [bench] INFO : Starting master switch
+2017/08/04 18:58:22 [bench] INFO  - Electing a new master
+2017/08/04 18:58:22 [bench] DEBUG - Checking eligibility of slave server 192.168.100.81 [0]
+2017/08/04 18:58:22 [bench] DEBUG - Got sequence(s) [15] for server [0]
+2017/08/04 18:58:22 [bench] INFO  - Slave 192.168.100.81 [0] has been elected as a new master
+2017/08/04 18:58:22 [bench] INFO  - Waiting for candidate master to apply relay log
+2017/08/04 18:58:22 [bench] INFO  - Reading all relay logs on 192.168.100.81
+2017/08/04 18:58:22 [bench] INFO  - Save replication status before electing
+2017/08/04 18:58:22 [bench] INFO  - master_log_file=mariadb-bin.000001
+2017/08/04 18:58:22 [bench] INFO  - master_log_pos=4323
+2017/08/04 18:58:22 [bench] INFO  - Candidate was in sync=true
+2017/08/04 18:58:22 [bench] INFO  - Stopping slave thread on new master
+2017/08/04 18:58:22 [bench] INFO  - Init maxscale 192.168.100.85 3307
+2017/08/04 18:58:22 [bench] TEST  - Waiting Failover end
+2017/08/04 18:58:24 [bench] TEST  - Waiting Failover end
+2017/08/04 18:58:26 [bench] INFO  - Resetting slave on new master and set read/write mode on
+2017/08/04 18:58:26 [bench] INFO  - Inject fake transaction on new master 192.168.100.81 
+2017/08/04 18:58:26 [bench] INFO  - Switching other slaves to the new master
+2017/08/04 18:58:26 [bench] INFO  - Master switch on 192.168.100.81 complete
+2017/08/04 18:58:26 [bench] STATE - WARN0023 Failover number of master pings failure has been reached
+2017/08/04 18:58:26 [bench] STATE - ERR00017 Unable to fetch MaxScale monitoring information
+2017/08/04 18:58:26 [bench] TEST  - Starting Database service 4832677178583133704
+2017/08/04 18:58:28 [bench] TEST  - Waiting Rejoin
+2017/08/04 18:58:30 [bench] TEST  - Waiting Rejoin
+2017/08/04 18:58:30 [bench] STATE - WARN0056 CLOSING No compression of binlog on slave 192.168.100.81
+2017/08/04 18:58:30 [bench] STATE - WARN0058 CLOSING No GTID strict mode on slave 192.168.100.81
+2017/08/04 18:58:30 [bench] STATE - WARN0023 CLOSING Failover number of master pings failure has been reached
+2017/08/04 18:58:30 [bench] STATE - ERR00017 CLOSING Unable to fetch MaxScale monitoring information
+2017/08/04 18:58:30 [bench] STATE - WARN0050 CLOSING No Heartbeat <= 1s on slave 192.168.100.81
+2017/08/04 18:58:30 [bench] STATE - WARN0070 No GTID strict mode on master 192.168.100.81
+2017/08/04 18:58:30 [bench] STATE - ERR00010 Could not find a slave in topology
+2017/08/04 18:58:30 [bench] STATE - WARN0068 No compression of binlog on slave 192.168.100.81
+2017/08/04 18:58:32 [bench] TEST  - Waiting Rejoin
+2017/08/04 18:58:34 [bench] TEST  - Waiting Rejoin
+2017/08/04 18:58:34 [bench] INFO  - Trying to rejoin restarted server 192.168.100.80
+2017/08/04 18:58:34 [bench] INFO  - Rejoining failed server 192.168.100.80 to master 192.168.100.81
+2017/08/04 18:58:34 [bench] ERROR - WorkingDir does not exist /usr/local/mysql/bin/mysqlbinlog check param working-directory
+2017/08/04 18:58:34 [bench] INFO  - Rejoin master incremental 192.168.100.80
+2017/08/04 18:58:34 [bench] INFO  - Crash info &{192.168.100.80 mariadb-bin.000001 4323 %!s(bool=true) %!s(*gtid.List=&[{3232261190 3232261190 15}]) 192.168.100.81}
+2017/08/04 18:58:34 [bench] INFO  - Setting Read Only on rejoined 192.168.100.80
+2017/08/04 18:58:34 [bench] INFO  - Rejoined GTID sequence 15
+2017/08/04 18:58:34 [bench] INFO  - Crash Saved GTID sequence 15 for master id 3232261190
+2017/08/04 18:58:34 [bench] INFO  - Found same or lower GTID 3232261190-3232261190-15 and new elected master was 3232261190-3232261190-15
+2017/08/04 18:58:34 [bench] STATE - INF00001 CLOSING Server 192.168.100.80 is down
+2017/08/04 18:58:34 [bench] STATE - ERR00010 CLOSING Could not find a slave in topology
+2017/08/04 18:58:34 [bench] STATE - WARN0050 No Heartbeat <= 1s on slave 192.168.100.80
+2017/08/04 18:58:34 [bench] STATE - WARN0056 No compression of binlog on slave 192.168.100.80
+2017/08/04 18:58:34 [bench] STATE - WARN0058 No GTID strict mode on slave 192.168.100.80
+2017/08/04 18:58:36 [bench] ERROR - Failed to take master checksum table 
+2017/08/04 18:58:36 [bench] ERROR - Could count record in bench table
+%!(EXTRA *mysql.MySQLError=Error 1146: Table 'test.sbtest' doesn't exist)2017/08/04 18:58:36 [bench] ERROR - Failed to take slave checksum table 
+2017/08/04 18:58:38 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:58:40 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:58:40 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:58:42 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:58:42 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:58:42 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:58:42 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:58:44 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:58:44 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:58:44 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:58:44 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:58:46 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:58:46 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:58:46 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:58:46 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:58:49 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:58:49 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:58:49 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:58:49 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:58:51 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:58:51 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:58:51 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:58:51 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:58:53 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:58:53 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:58:53 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:58:53 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:58:55 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:58:55 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:58:55 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:58:55 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:58:57 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:58:57 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:58:57 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:58:57 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:58:59 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:58:59 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:58:59 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:58:59 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:01 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:05 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:05 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:05 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:05 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:06 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:07 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:07 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:07 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:07 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:08 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:09 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:09 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:09 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:09 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:10 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:11 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:11 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:11 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:11 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:12 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:13 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:13 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:13 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:13 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:14 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:15 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:15 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:15 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:15 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:15 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:16 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:16 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:16 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:16 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:16 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:17 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:17 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:17 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:17 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:18 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:19 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:19 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:19 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:19 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:20 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:21 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:21 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:21 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:21 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:22 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:23 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:23 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:23 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:23 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:25 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:26 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:26 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:26 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:26 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:27 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:28 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:28 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:28 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:28 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:29 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:30 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:30 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:30 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:30 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:31 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:32 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:32 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:32 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:32 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:33 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:34 [bench] INFO  - In Failover, skip checking failed master
+2017/08/04 18:59:34 [bench] STATE - WARN0045 Provision task is in queue
+2017/08/04 18:59:34 [bench] STATE - INF00001 Server 192.168.100.80 is down
+2017/08/04 18:59:34 [bench] STATE - ERR00018 Could not connect to MaxScale: Error reading from buffer
+2017/08/04 18:59:35 [bench] DEBUG - In Failover skip topology detection
+2017/08/04 18:59:36 [bench] INFO  - hostlist: 192.168.100.80,192.168.100.81 [192.168.100.80 192.168.100.81]
+2017/08/04 18:59:36 [bench] INFO  - Loading 1 proxies
+2017/08/04 18:59:36 [bench] INFO  - Loading Maxscale...
+2017/08/04 18:59:36 [bench] TEST  - Result FailoverAssyncAutoRejoinNowrites                         -> {testFailoverAssyncAutoRejoinNowrites PASS ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.80,192.168.100.81     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.80  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/1.1.0-preview3-99-gc75a256/testFailoverAssyncAutoRejoinNowrites.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=true)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.85 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=false)  %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,multidomains 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf} {/var/lib/replication-manager /usr/local/share/mrm root:mariadb 192.168.100.80,192.168.100.81     root:mariadb %!s(bool=false) %!s(bool=false)    192.168.100.80  %!s(int64=5000) %!s(int64=10) %!s(int=10) %!s(bool=false) %!s(bool=false) %!s(int64=0) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) ./config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/1.1.0-preview3-99-gc75a256/testFailoverAssyncAutoRejoinNowrites.log %!s(int64=2) %!s(int=1) tcp %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(int=3) %!s(int=5) %!s(bool=false) %!s(bool=false) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(uint64=1000000000) %!s(bool=true) %!s(bool=true) %!s(bool=false) %!s(bool=false)  %!s(bool=false) %!s(bool=false) %!s(bool=false) localhost 10001 %!s(bool=true) ../../dashboard %!s(bool=false) %!s(bool=true) %!s(int=3600) %!s(bool=true) mrm@localhost  localhost:25 %!s(int=10) %!s(int=999) %!s(int64=1) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int64=300) %!s(int64=0) %!s(bool=false) %!s(bool=false) %!s(int=3) %!s(int=14) %!s(bool=false) %!s(int=80) %!s(bool=false) %!s(bool=false) 127.0.0.1:3307 admin %!s(bool=true) 192.168.100.85 3307 admin mariadb %!s(int=4007) %!s(int=4008) %!s(int=4006) %!s(int=3307) %!s(bool=false) %!s(int=3309) %!s(bool=false) maxadmin %!s(bool=false) %!s(bool=false) %!s(int=3306) %!s(int=3307) %!s(int=1988) 0.0.0.0 0.0.0.0 /usr/sbin/haproxy /etc/replication-manager/.replication-manager.key %!s(int=0) %!s(bool=true) %!s(bool=false)  %!s(bool=false) %!s(bool=false) 127.0.0.1 %!s(int=2003) %!s(int=10002) %!s(int=10003) %!s(int=7002) %!s(int=2004) %!s(int=7007) /usr/local/bin/sysbench %!s(int=60) %!s(int=4) /usr/local/mysql/bin %!s(bool=false)  88.191.151.84:80 %!s(int=0) 127.0.0.1:10002 %!s(bool=false) %!s(bool=true) %!s(bool=false) %!s(bool=true) 192.168.100.101:443 root@localhost.localdomain:opensvc replication-manager@localhost.localdomain:mariadb docker node-1-1.vdc.opensvc.com,node-1-2.vdc.opensvc.com 256 300 smallredolog,semisync,innodb,noquerycache,threadpool,logslow,multidomains 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254 docker node-1-2.vdc.opensvc.com 1G ext4 zpool /srv loopback br-prd 255.255.255.0 192.168.100.254     mariadb:10.2 asosso/maxscale:latest admin:mariadb 3000 ././config/masterslave/mariadb/without_traffic/10.2/x2/multidomains/innodb/maxscale/latest/x1/replication-manager.conf}}

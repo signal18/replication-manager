@@ -51,7 +51,7 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 
 }
 
-func (prx *Proxy) GetCluster() (*sqlx.DB, error) {
+func (prx *Proxy) GetClusterConnection() (*sqlx.DB, error) {
 	cluster := prx.ClusterGroup
 	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
 	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
@@ -212,7 +212,7 @@ func (proxy *Proxy) GetBaseEnv() map[string]string {
 }
 
 func (proxy *Proxy) GetConfigProxySQLReadOnMaster() string {
-	if proxy.ClusterGroup.Configurator.IsFilterInProxyTags("proxy.route.readonmaster") {
+	if proxy.GetCluster().Configurator.IsFilterInProxyTags("proxy.route.readonmaster") {
 		return "1"
 	}
 	return "0"
@@ -363,5 +363,13 @@ func (p *Proxy) GetPrevState() string {
 }
 
 func (p *Proxy) GetOrchestrator() string {
-	return p.ClusterGroup.Conf.ProvOrchestrator
+	return p.GetCluster().Conf.ProvOrchestrator
+}
+
+func (p *Proxy) GetServiceName() string {
+	return p.GetCluster().GetName() + "/svc/" + p.GetName()
+}
+
+func (p *Proxy) GetCluster() *Cluster {
+	return p.ClusterGroup
 }

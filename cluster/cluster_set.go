@@ -734,7 +734,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 				cluster.Conf.RplUser = "repl:repman"
 			}
 			cluster.LogPrintf(LvlInfo, "Adding %s database monitor on %s", string(strings.TrimPrefix(theplan, "x")[0]), cluster.Conf.ProvOrchestrator)
-			if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost || cluster.Conf.ProvOrchestrator == config.ConstOrchestratorOnPremise {
+			if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost || cluster.GetOrchestrator() == config.ConstOrchestratorOnPremise {
 				cluster.DropDBTag("docker")
 				cluster.DropDBTag("threadpool")
 				cluster.AddDBTag("pkg")
@@ -747,7 +747,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			hosts := []string{}
 			for i := 1; i <= srvcount; i++ {
 				cluster.LogPrintf(LvlInfo, "'%s' '%s'", cluster.Conf.ProvOrchestrator, config.ConstOrchestratorLocalhost)
-				if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+				if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost {
 					port, err := cluster.LocalhostGetFreePort()
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Adding DB monitor on 127.0.0.1 %s", err)
@@ -755,7 +755,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 						cluster.LogPrintf(LvlInfo, "Adding DB monitor 127.0.0.1:%s", port)
 					}
 					hosts = append(hosts, "127.0.0.1:"+port)
-				} else if cluster.Conf.ProvOrchestrator != config.ConstOrchestratorOnPremise {
+				} else if cluster.GetOrchestrator() != config.ConstOrchestratorOnPremise {
 					hosts = append(hosts, "db"+strconv.Itoa(i))
 				}
 			}
@@ -775,7 +775,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			cluster.Conf.MdbsProxyHosts = ""
 			// cluster head is used to copy exiting proxy from an other cluster
 			if cluster.Conf.ClusterHead == "" {
-				if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+				if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost {
 					portproxysql, err := cluster.LocalhostGetFreePort()
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Adding proxysql monitor on 127.0.0.1 %s", err)
@@ -805,7 +805,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 							cluster.AddSeededProxy(oriProxy.GetType(), oriProxy.GetHost(), oriProxy.GetPort(), oriProxy.GetUser(), oriProxy.GetPass())
 						}
 					}
-					if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+					if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost {
 						portproxysql, err := cluster.LocalhostGetFreePort()
 						if err != nil {
 							cluster.LogPrintf(LvlErr, "Adding proxysql monitor on 127.0.0.1 %s", err)
