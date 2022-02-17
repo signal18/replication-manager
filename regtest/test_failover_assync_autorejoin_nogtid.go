@@ -13,7 +13,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 )
 
-func testFailoverAssyncAutoRejoinNoGtid(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
+func (regtest *RegTest) TestFailoverAssyncAutoRejoinNoGtid(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	cluster.SetForceSlaveNoGtid(true)
 	cluster.SetFailSync(false)
 	cluster.SetInteractive(false)

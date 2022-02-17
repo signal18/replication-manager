@@ -4,7 +4,7 @@ opensvc-p12-certificate = "etc/opensvc/cluster-api/cluster-demo/signal18.p12"
 opensvc-host = "10.8.0.15:1215"
 opensvc-p12-secret = "36vf2cczf8rms8hh"
 
-include ="etc/opensvc/cluster-api/cluster-demo/stephane.d"
+#include ="etc/opensvc/cluster-api/cluster-demo/stephane.d"
 # log-heartbeat = true
 
 log-file="/var/log/replication-manager/replication-manager.log"
@@ -32,3 +32,26 @@ prov-proxy-agents = "s18-fr-1,s18-fr-2"
 prov-proxy-service-type = "docker"
 prov-proxy-disk-type = "volume"
 prov-proxy-volume-data = "tank"
+
+
+
+[test]
+title = "test"
+db-servers-hosts = "db1,db2"
+db-servers-prefered-master = "db1"
+db-servers-connect-timeout = 1
+#failover-mode = "automatic"
+#autorejoin-mysqldump = true
+#autorejoin-flashback = true
+#failover-falsepositive-heartbeat = false
+#force-slave-semisync = true
+#force-sync-binlog = true
+#force-sync-innodb = true
+#force-slave-failover-readonly-state = true
+#failover-falsepositive-ping-counter = 3
+#failover-limit = 999
+#failover-time-limit = 1
+prov-db-docker-img = "mariadb:10.5"
+prov-db-tags = "smallredolog,semisync,innodb,noquerycache,threadpool,logslow"
+haproxy=true
+haproxy-servers = "haproxy1"

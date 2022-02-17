@@ -8,7 +8,7 @@ package regtest
 
 import "github.com/signal18/replication-manager/cluster"
 
-func testFailoverManual(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
+func (regtest *RegTest) TestFailoverManual(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
 	cluster.SetFailSync(false)
 	cluster.SetInteractive(true)

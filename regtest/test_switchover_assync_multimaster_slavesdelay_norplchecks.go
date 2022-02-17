@@ -12,7 +12,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 )
 
-func testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
+func (regtest *RegTest) TestSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	cluster.SetMultiMaster(true)
 	cluster.SetRplMaxDelay(8)
 	cluster.SetRplChecks(false)

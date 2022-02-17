@@ -1,6 +1,6 @@
 # config.toml
 # Example replication-manager configuration file
-[bench]
+[test]
 title = "test"
 db-servers-hosts = "127.0.0.1:3310,127.0.0.1:3311"
 db-servers-prefered-master = "127.0.0.1:3310"

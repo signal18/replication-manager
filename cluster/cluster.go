@@ -251,6 +251,7 @@ const (
 
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, log *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+
 	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 	cluster.switchoverChan = make(chan bool)
 	// should use buffered channels or it will block
@@ -349,7 +350,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	//Loading configuration compliances
 	cluster.Configurator.Init(cluster.Conf)
 
-	switch cluster.GetOrchestrator()  {
+	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorLocalhost:
 		cluster.DropDBTagConfig("docker")
 		cluster.DropDBTagConfig("threadpool")
@@ -361,7 +362,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 func (cluster *Cluster) initOrchetratorNodes() {
 
 	//cluster.LogPrintf(LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
-	switch cluster.GetOrchestrator()  {
+	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		cluster.Agents, _ = cluster.OpenSVCGetNodes()
 	case config.ConstOrchestratorKubernetes:

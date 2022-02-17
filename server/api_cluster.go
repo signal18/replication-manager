@@ -19,7 +19,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/regtest"
 )
 
 func (repman *ReplicationManager) apiClusterUnprotectedHandler(router *mux.Router) {
@@ -1370,8 +1369,8 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 		if r.Form.Get("unprovision") == "true" {
 			mycluster.SetTestStopCluster(true)
 		}
-		regtest := new(regtest.RegTest)
-		res := regtest.RunAllTests(mycluster, vars["testName"], "")
+
+		res := repman.RunAllTests(mycluster, vars["testName"], "")
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 
@@ -1418,9 +1417,8 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		regtest := new(regtest.RegTest)
 
-		res := regtest.RunAllTests(mycluster, "ALL", "")
+		res := repman.RunAllTests(mycluster, "ALL", "")
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(res)

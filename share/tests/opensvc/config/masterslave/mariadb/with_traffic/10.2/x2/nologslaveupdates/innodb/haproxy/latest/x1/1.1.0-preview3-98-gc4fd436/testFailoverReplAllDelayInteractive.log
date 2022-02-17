@@ -1,8 +1,0 @@
-2017/08/03 18:53:00 [bench] INFO  - hostlist: db1,db2 [db1 db2]
-2017/08/03 18:53:00 [bench] INFO  - Loading 1 proxies
-2017/08/03 18:53:00 [bench] INFO  - Loading Maxscale...
-2017/08/03 18:53:00 [bench] INFO  - Failover in automatic mode
-2017/08/03 18:53:00 [bench] ERROR - File error: open /var/lib/replication-manager/bench.json: no such file or directory
-
-2017/08/03 18:53:02 [bench] TESTI - testFailoverReplAllDelayInteractive
-2017/08/03 18:53:02 [bench] TESTI - testFailoverReplAllDelayInteractive

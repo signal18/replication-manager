@@ -13,7 +13,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
-func testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
+func (regtest *RegTest) TestSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	cluster.SetRplMaxDelay(8)
 	cluster.SetRplChecks(false)
 

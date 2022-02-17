@@ -13,7 +13,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 )
 
-func testFailoverSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
+func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
 	cluster.SetFailSync(false)
 	cluster.SetInteractive(false)

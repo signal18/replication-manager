@@ -12,7 +12,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 )
 
-func testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
+func (regtest *RegTest) TestFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
 	cluster.SetFailoverCtr(0)
 	cluster.SetFailSync(false)

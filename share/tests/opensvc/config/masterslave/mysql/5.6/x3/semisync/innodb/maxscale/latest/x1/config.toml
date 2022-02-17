@@ -1,9 +1,9 @@
 # config.toml
 # Example replication-manager configuration file
-[bench]
+[test]
 title = "test"
-db-servers-hosts = "192.168.100.90,192.168.100.91,192.168.100.92"
-db-servers-prefered-master = "192.168.100.90"
+db-servers-hosts = "db1,db2,db3"
+db-servers-prefered-master = "db1"
 db-servers-connect-timeout = 1
 failover-mode = "automatic"
 autorejoin-mysqldump = true
@@ -22,4 +22,4 @@ prov-db-disk-size = "1G"
 prov-proxy-disk-size ="1G"
 haproxy=true
 
-haproxy-servers = "192.168.100.95"
+haproxy-servers = "haproxy1"

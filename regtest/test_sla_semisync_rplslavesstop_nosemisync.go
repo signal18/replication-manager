@@ -12,7 +12,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 )
 
-func testSlaReplAllSlavesStopNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
+func (regtest *RegTest) TestSlaReplAllSlavesStopNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()

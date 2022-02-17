@@ -13,7 +13,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 )
 
-func testFailoverAssyncAutoRejoinDump(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
+func (regtest *RegTest) TestFailoverAssyncAutoRejoinDump(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
 	cluster.SetFailSync(false)
 	cluster.SetInteractive(false)

@@ -186,7 +186,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			}
 		} else {
 			if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
-				//log.Fatal("No config file /etc/replication-manager/config.toml")
 				log.Warning("No config file /etc/replication-manager/config.toml ")
 			}
 		}
@@ -202,7 +201,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	}
 	if _, ok := err.(viper.ConfigParseError); ok {
 		//log.WithError(err).Fatal("Could not parse config file")
-		log.Warningf("Could not parse config file: %s", err)
+		log.Errorf("Could not parse config file: %s", err)
 	}
 
 	// Proceed include files
@@ -613,14 +612,6 @@ func (repman *ReplicationManager) Run() error {
 
 }
 
-func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Cluster {
-	var c *cluster.Cluster
-	repman.Lock()
-	c = repman.Clusters[clname]
-	repman.Unlock()
-	return c
-}
-
 func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Cluster, error) {
 
 	k, err := crypto.ReadKey(repman.Conf.MonitoringKeyPath)
@@ -636,7 +627,6 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 			apiPass = p.PlainText
 		}*/
 	repman.currentCluster = new(cluster.Cluster)
-
 	myClusterConf := repman.Confs[clusterName]
 	if myClusterConf.MonitorAddress == "localhost" {
 		myClusterConf.MonitorAddress = repman.resolveHostIp()
@@ -654,39 +644,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 	go repman.currentCluster.Run()
-
 	return repman.currentCluster, nil
-}
-
-func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead string) error {
-	var myconf = make(map[string]config.Config)
-
-	myconf[clusterName] = repman.Conf
-	repman.Lock()
-	repman.ClusterList = append(repman.ClusterList, clusterName)
-	//repman.ClusterList = repman.ClusterList
-	repman.Confs[clusterName] = repman.Conf
-	repman.Unlock()
-	/*file, err := os.OpenFile(repman.Conf.ClusterConfigPath+"/"+clusterName+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-	if err != nil {
-		if os.IsPermission(err) {
-			log.Errorf("Read file permission denied: %s", repman.Conf.ClusterConfigPath+"/"+clusterName+".toml")
-		}
-		return err
-	}
-	defer file.Close()
-	err = toml.NewEncoder(file).Encode(myconf)
-	if err != nil {
-		return err
-	}*/
-
-	cluster, _ := repman.StartCluster(clusterName)
-	cluster.SetClusterHead(clusterHead)
-	cluster.SetClusterList(repman.Clusters)
-	cluster.Save()
-
-	return nil
-
 }
 
 func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {

@@ -13,7 +13,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
-func testSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
+func (regtest *RegTest) TestSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
 	cluster.SetRplChecks(false)
 	cluster.SetRplMaxDelay(0)

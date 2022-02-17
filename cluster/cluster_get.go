@@ -163,6 +163,10 @@ func (cluster *Cluster) GetFailoverCtr() int {
 	return cluster.FailoverCtr
 }
 
+func (cluster *Cluster) GetIncludeDir() string {
+	return cluster.Conf.Include
+}
+
 func (cluster *Cluster) GetFailoverTs() int64 {
 	return cluster.FailoverTs
 }
