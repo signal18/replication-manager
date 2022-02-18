@@ -719,7 +719,11 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 	splitip := strings.Split(ip, ".")
 
 	iprange1 := splitip[0] + ".%.%.%"
+	iprange4 := splitip[0] + ".%"
+
 	iprange2 := splitip[0] + "." + splitip[1] + ".%.%"
+	iprange5 := splitip[0] + "." + splitip[1] + ".%"
+
 	iprange3 := splitip[0] + "." + splitip[1] + "." + splitip[2] + ".%"
 
 	if myver.IsPPostgreSQL() {
@@ -731,8 +735,8 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 		}
 
 	} else {
-		stmt := "SELECT COALESCE(MAX(Select_priv),'N') as Select_priv, COALESCE(MAX(Process_priv),'N') as Process_priv, COALESCE(MAX(Super_priv),'N') as Super_priv, COALESCE(MAX(Repl_slave_priv),'N') as Repl_slave_priv, COALESCE(MAX(Repl_client_priv),'N') as Repl_client_priv, COALESCE(MAX(Reload_priv),'N') as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
-		row := db.QueryRowx(stmt, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3)
+		stmt := "SELECT COALESCE(MAX(Select_priv),'N') as Select_priv, COALESCE(MAX(Process_priv),'N') as Process_priv, COALESCE(MAX(Super_priv),'N') as Super_priv, COALESCE(MAX(Repl_slave_priv),'N') as Repl_slave_priv, COALESCE(MAX(Repl_client_priv),'N') as Repl_client_priv, COALESCE(MAX(Reload_priv),'N') as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?,?,?)"
+		row := db.QueryRowx(stmt, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3, iprange4, iprange5)
 		err = row.StructScan(&priv)
 		if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
 			return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
