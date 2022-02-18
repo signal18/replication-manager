@@ -22,10 +22,11 @@ epoch=$(date +%s)
 description="Replication Manager for MariaDB and MySQL"
 maintainer="info@signal18.io"
 license="GPLv3"
+architecture=${architecture:-amd64}
 
 if [ $nobuild -eq 0 ]; then
-  echo "# Building"
-  make
+  echo "# Building for $architecture"
+  ARCH=$architecture make
 fi
 
 echo "# Cleaning up previous builds"
@@ -34,7 +35,7 @@ mkdir -p "$builddir"/package/usr/bin
 
 echo "# Building packages replication-manager-cli"
 
-cflags=(-m "$maintainer" --license "$license" -v $version)
+cflags=(-a "$architecture" -m "$maintainer" --license "$license" -v $version)
 
 cp "$builddir"/binaries/replication-manager-cli "$builddir"/package/usr/bin/
 fpm ${cflags[@]} --rpm-os linux -C "$builddir"/package -s dir -t rpm -n replication-manager-client --description "$description - client package" -p "$builddir/release"
@@ -60,13 +61,10 @@ cp -r share/* "$builddir"/package/usr/share/replication-manager/
 rm -rf "$builddir"/package/usr/share/replication-manager/opensvc/*.tar.gz
 
 
-for flavor in arm osc tst pro osc-cgo
+for flavor in osc tst pro osc-cgo
 do
     echo "# Building packages replication-manager-$flavor"
     case $flavor in
-        arm)
-            extra_desc="Arm version"
-            ;;
         osc)
             extra_desc="Open source version"
             ;;
