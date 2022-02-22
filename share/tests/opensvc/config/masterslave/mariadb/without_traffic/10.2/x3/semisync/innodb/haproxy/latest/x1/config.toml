@@ -1,9 +1,9 @@
 # config.toml
 # Example replication-manager configuration file
-[test]
+[regtest]
 title = "test"
-db-servers-hosts = "192.168.100.80,192.168.100.81,192.168.100.82"
-db-servers-prefered-master = "192.168.100.80"
+db-servers-hosts = "db1,db2,db3"
+db-servers-prefered-master = "db1"
 db-servers-connect-timeout = 1
 failover-mode = "automatic"
 autorejoin-mysqldump = true
@@ -17,9 +17,9 @@ failover-falsepositive-ping-counter = 3
 failover-limit = 999
 failover-time-limit = 1
 prov-db-docker-img = "mariadb:10.2"
-prov-db-tags = "smallredolog,semisync,innodb,noquerycache,threadpool,logslow"
+prov-db-tags = "docker,smallredolog,semisync,innodb,noquerycache,threadpool,logslow"
 prov-db-disk-size = "1G"
 prov-proxy-disk-size ="1G"
 maxscale=false
 
-haproxy-servers = "192.168.100.85"
+haproxy-servers = "haproxy1"

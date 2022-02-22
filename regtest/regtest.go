@@ -132,6 +132,7 @@ func (regtest *RegTest) CopyConfig(cl *cluster.Cluster, test cluster.Test) error
 	}
 	dstFile := cl.GetIncludeDir() + "/" + filepath.Base(srcFile)
 	cl.LogPrintf("INFO", "Copy from %s to %s", srcFile, dstFile)
+	os.Remove(dstFile)
 	misc.CopyFile(srcFile, dstFile)
 	return nil
 }

@@ -59,8 +59,8 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if testExp == "SUITE" {
 			regtest.CopyConfig(cl, test)
 			repman.InitConfig(repman.Conf)
-			cl.ReloadConfig(repman.Confs["test"])
-			cl = repman.getClusterByName("test")
+			cl.ReloadConfig(repman.Confs["regtest"])
+			cl = repman.getClusterByName("regtest")
 			if !cl.InitTestCluster(test.ConfigFile, &test) {
 				test.Result = "ERR"
 				continue

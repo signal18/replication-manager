@@ -1,6 +1,6 @@
 # config.toml
 # Example replication-manager configuration file
-[test]
+[regtest]
 title = "test"
 db-servers-hosts = "192.168.100.100,192.168.100.101"
 db-servers-prefered-master = "192.168.100.100"
@@ -17,7 +17,7 @@ failover-falsepositive-ping-counter = 3
 failover-limit = 999
 failover-time-limit = 1
 prov-db-docker-img = "mysql-server:5.6"
-prov-db-tags = "smallredolog,semisync,innodb,noquerycache,threadpool,logslow"
+prov-db-tags = "docker,smallredolog,semisync,innodb,noquerycache,threadpool,logslow"
 prov-db-disk-size = "1G"
 prov-proxy-disk-size ="1G"
 haproxy=true
