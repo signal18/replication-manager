@@ -223,7 +223,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			if !f.IsDir() && strings.HasSuffix(f.Name(), ".toml") {
 				viper.SetConfigName(f.Name())
 				viper.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
-				//	viper.Debug()
+				viper.Debug()
 				viper.AutomaticEnv()
 				viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 
@@ -270,6 +270,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 			if strings.Contains(k, ".") {
 				mycluster := strings.Split(k, ".")[0]
+				log.Infof("Evaluate key %s %s", mycluster, k)
 				if strings.ToLower(mycluster) != "default" {
 					if strings.HasPrefix(mycluster, "saved-") {
 						mycluster = strings.TrimPrefix(mycluster, "saved-")
