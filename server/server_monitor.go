@@ -10,7 +10,7 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-package main
+package server
 
 import (
 	"bytes"
@@ -22,7 +22,6 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/signal18/replication-manager/cluster"
-	"github.com/signal18/replication-manager/server"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -39,7 +38,7 @@ func init() {
 	if WithDeprecate == "ON" {
 		//	initDeprecated() // not needed used alias in main
 	}
-	initRepmgrFlags(monitorCmd)
+
 	if WithTarball == "ON" {
 		monitorCmd.Flags().StringVar(&conf.BaseDir, "monitoring-basedir", "/usr/local/replication-manager", "Path to a basedir where data and share sub directory can be found")
 		monitorCmd.Flags().StringVar(&conf.ConfDir, "monitoring-confdir", "/usr/local/replication-manager/etc", "Path to a config directory")
@@ -626,7 +625,7 @@ For interacting with this daemon use,
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		RepMan = new(server.ReplicationManager)
+		RepMan = new(ReplicationManager)
 		RepMan.InitConfig(conf)
 		RepMan.Run()
 	},

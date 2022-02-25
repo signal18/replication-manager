@@ -1638,11 +1638,22 @@ func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 	return vars, query, err
 }
 
+func GetNoBlockOnMedataLock(db *sqlx.DB, myver *MySQLVersion) string {
+	if myver.IsPPostgreSQL() {
+		return ""
+	}
+	noBlockOnMedataLock := "/*replication-manager*/ "
+	if myver.IsMariaDB() && ((myver.Major == 10 && myver.Minor > 0) || myver.Major > 10) {
+		noBlockOnMedataLock += "SET STATEMENT LOCK_WAIT_TIMEOUT=0 FOR "
+	}
+	return noBlockOnMedataLock
+}
 func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Table, string, error) {
 	vars := make(map[string]v3.Table)
 	var tblList []v3.Table
+
 	logs := ""
-	query := "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')"
+	query := GetNoBlockOnMedataLock(db, myver) + "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')"
 	if myver.IsPPostgreSQL() {
 		query = `SELECT SCHEMA_NAME AS "SCHEMA_NAME" FROM information_schema.schemata  WHERE SCHEMA_NAME not in ('information_schema','pg_catalog')`
 	}
@@ -1652,13 +1663,14 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Tabl
 	}
 	defer databases.Close()
 	logs += query
+
 	for databases.Next() {
 		var schema string
 		err = databases.Scan(&schema)
 		if err != nil {
 			return vars, tblList, query, err
 		}
-		query := "SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name, COALESCE(a.ENGINE,'') as Engine,a.TABLE_ROWS as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length , 0 as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' AND  a.TABLE_SCHEMA='" + schema + "'"
+		query := GetNoBlockOnMedataLock(db, myver) + "SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name, COALESCE(a.ENGINE,'') as Engine,a.TABLE_ROWS as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length , 0 as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' AND  a.TABLE_SCHEMA='" + schema + "'"
 		if myver.IsPPostgreSQL() {
 			query = `SELECT a.schemaname as "Table_schema" ,  a.tablename as "Table_name" ,'postgres' as "Engine",COALESCE(b.n_live_tup,0) as "Table_rows" ,0 as "Data_length",0 as "Index_length" , 0 as "Table_crc"  FROM pg_catalog.pg_tables  a LEFT JOIN pg_catalog.pg_stat_user_tables b ON (a.schemaname=b.schemaname AND a.tablename=b.relname )  WHERE  a.schemaname='` + schema + `'`
 		}
@@ -1684,7 +1696,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Tabl
 				err = db.QueryRowx(query).Scan(&crcTable)
 			*/
 
-			query := "SHOW CREATE TABLE `" + schema + "`.`" + v.TableName + "`"
+			query := GetNoBlockOnMedataLock(db, myver) + "SHOW CREATE TABLE `" + schema + "`.`" + v.TableName + "`"
 			if myver.IsPPostgreSQL() {
 				query = "SELECT 'CREATE TABLE `" + schema + "`.`" + v.TableName + "` (' || E'\n'|| '' || string_agg(column_list.column_expr, ', ' || E'\n' || '') ||   '' || E'\n' || ') ENGINE=postgress;' FROM (   SELECT '    `' || column_name || '` ' || data_type ||   coalesce('(' || character_maximum_length || ')', '') ||   case when is_nullable = 'YES' then '' else ' NOT NULL' end as column_expr  FROM information_schema.columns  WHERE table_schema = '" + schema + "' AND table_name = '" + v.TableName + "' ORDER BY ordinal_position) column_list"
 			}

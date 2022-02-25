@@ -6,6 +6,16 @@
 // Author: Stephane Varoqui  <svaroqui@gmail.com>
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
+package clients
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
+)
 
 var statusCmd = &cobra.Command{
 	Use:   "status",

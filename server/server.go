@@ -44,6 +44,8 @@ import (
 	"github.com/signal18/replication-manager/utils/s18log"
 )
 
+var RepMan *ReplicationManager
+
 // Global variables
 type ReplicationManager struct {
 	OpenSVC                                          opensvc.Collector           `json:"-"`

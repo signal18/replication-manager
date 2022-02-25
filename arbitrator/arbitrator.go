@@ -7,7 +7,7 @@
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-package main
+package arbitrator
 
 import (
 	"encoding/json"
@@ -20,10 +20,27 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/server"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+)
+
+var (
+	RepMan     *server.ReplicationManager
+	memprofile string
+	// Version is the semantic version number, e.g. 1.0.1
+	Version string
+	// Provisoning to add flags for compile
+	// FullVersion is the semantic version number + git commit hash
+	FullVersion string
+	// Build is the build date of replication-manager
+	Build       string
+	GoOS        string = "linux"
+	GoArch      string = "amd64"
+	conf        config.Config
+	WithTarball string
 )
 
 type route struct {

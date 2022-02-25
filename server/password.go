@@ -4,7 +4,7 @@
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
-package main
+package server
 
 import (
 	"fmt"

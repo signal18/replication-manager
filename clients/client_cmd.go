@@ -7,7 +7,7 @@
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-package main
+package clients
 
 import (
 	"bytes"
@@ -21,12 +21,9 @@ import (
 	"os"
 	"syscall"
 
-	"runtime/pprof"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/jmoiron/sqlx"
 	termbox "github.com/nsf/termbox-go"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/server"
@@ -38,6 +35,9 @@ import (
 )
 
 var (
+	Version                      string
+	FullVersion                  string
+	Build                        string
 	cliUser                      string
 	cliPassword                  string
 	cliHost                      string
@@ -75,11 +75,42 @@ var (
 	cliConsoleServerIndex        int
 	cliShowObjects               string
 	cliConfirm                   string
+	cfgGroup                     string
+	memprofile                   string
 )
 
 type RequetParam struct {
 	key   string
 	value string
+}
+
+var rootClientCmd = &cobra.Command{
+	Use:   "replication-manager-cli",
+	Short: "Replication Manager tool for MariaDB and MySQL",
+	// Copyright 2017-2021 SIGNAL18 CLOUD SAS
+	Long: `replication-manager allows users to monitor interactively MariaDB 10.x and MySQL GTID replication health
+and trigger slave to master promotion (aka switchover), or elect a new master in case of failure (aka failover).`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cmd.Usage()
+	},
+}
+
+func Execute() error {
+	if err := rootClientCmd.Execute(); err != nil {
+		return err
+	}
+	return nil
+}
+
+var versionClientCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print the replication manager client version number",
+	Long:  `All software has versions. This is ours`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("Replication Manager " + Version + " for MariaDB 10.x and MySQL 5.7 Series")
+		fmt.Println("Full Version: ", FullVersion)
+		fmt.Println("Build Time: ", Build)
+	},
 }
 
 var cliConn = http.Client{
@@ -149,10 +180,10 @@ func cliClusterInServerList() bool {
 			return false
 		}
 	}
-
 	return true
 }
-func initCliCommonFlags(cmd *cobra.Command) {
+
+func initServerApiFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
 	cmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
 	cmd.Flags().StringVar(&cliPort, "port", "10005", "TLS port of  replication-manager")
@@ -160,284 +191,109 @@ func initCliCommonFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	cmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 	viper.BindPFlags(cmd.Flags())
-
 }
 
-func init() {
+func initBootstrapFlags(cmd *cobra.Command) {
+	initServerApiFlags(bootstrapCmd)
+	bootstrapCmd.Flags().StringVar(&cliBootstrapTopology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring,multi-master-wsrep")
+	bootstrapCmd.Flags().BoolVar(&cliBootstrapCleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
+	bootstrapCmd.Flags().BoolVar(&cliBootstrapWithProvisioning, "with-provisioning", false, "Provision the culster for replication-manager-tst or Provision the culster for replication-manager-pro")
+	viper.BindPFlags(cmd.Flags())
+}
 
-	rootCmd.AddCommand(clientCmd)
-	initCliCommonFlags(clientCmd)
-	rootCmd.AddCommand(switchoverCmd)
-	initCliCommonFlags(switchoverCmd)
-	rootCmd.AddCommand(failoverCmd)
-	initCliCommonFlags(failoverCmd)
-	rootCmd.AddCommand(topologyCmd)
-	initCliCommonFlags(topologyCmd)
-	rootCmd.AddCommand(apiCmd)
-	initCliCommonFlags(apiCmd)
-	rootCmd.AddCommand(testCmd)
-	initCliCommonFlags(testCmd)
-	rootCmd.AddCommand(statusCmd)
-	initCliCommonFlags(statusCmd)
-	rootCmd.AddCommand(bootstrapCmd)
-	initCliCommonFlags(bootstrapCmd)
-	rootCmd.AddCommand(serverCmd)
-	initCliCommonFlags(serverCmd)
-	rootCmd.AddCommand(showCmd)
-	initCliCommonFlags(showCmd)
+func initFailoverFlags(cmd *cobra.Command) {
+	initServerApiFlags(failoverCmd)
+	viper.BindPFlags(cmd.Flags())
+}
 
+func initRegTestFlags(cmd *cobra.Command) {
+	initServerApiFlags(regTestCmd)
+	regTestCmd.Flags().StringVar(&cliTTestRun, "run-tests", "", "tests list to be run ")
+	regTestCmd.Flags().StringVar(&cliTestResultDBServer, "result-db-server", "", "MariaDB MySQL host to store result")
+	regTestCmd.Flags().StringVar(&cliTestResultDBCredential, "result-db-credential", "", "MariaDB MySQL user:password to store result")
+	regTestCmd.Flags().BoolVar(&cliTestShowTests, "show-tests", false, "display tests list")
+	regTestCmd.Flags().BoolVar(&cliTeststartcluster, "test-provision-cluster", true, "start the cluster between tests")
+	regTestCmd.Flags().BoolVar(&cliTeststopcluster, "test-unprovision-cluster", true, "stop the cluster between tests")
+	regTestCmd.Flags().BoolVar(&cliTestConvert, "convert", false, "convert test result to html")
+	regTestCmd.Flags().StringVar(&cliTestConvertFile, "file", "", "test result.json")
+	viper.BindPFlags(cmd.Flags())
+}
+
+func initShowFlags(cmd *cobra.Command) {
+	initServerApiFlags(showCmd)
+	showCmd.Flags().StringVar(&cliShowObjects, "get", "settings,clusters,servers,master,slaves,crashes,alerts", "get the following objects")
+	viper.BindPFlags(cmd.Flags())
+}
+
+func initStatusFlags(cmd *cobra.Command) {
+	initServerApiFlags(statusCmd)
+	statusCmd.Flags().BoolVar(&cliStatusErrors, "with-errors", false, "Add json errors reporting")
+	viper.BindPFlags(cmd.Flags())
+}
+
+func initConfiguratorFlags(cmd *cobra.Command) {
+	initServerApiFlags(configuratorCmd)
+	viper.BindPFlags(cmd.Flags())
+}
+
+func initSwitchoverFlags(cmd *cobra.Command) {
+	initServerApiFlags(switchoverCmd)
+	switchoverCmd.Flags().StringVar(&cliPrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
+	viper.BindPFlags(cmd.Flags())
+}
+
+func initApiFlags(cmd *cobra.Command) {
+	initServerApiFlags(apiCmd)
+	apiCmd.Flags().StringVar(&cliUrl, "url", "https://127.0.0.1:10005/api/clusters", "Url to rest API")
+	viper.BindPFlags(cmd.Flags())
+}
+
+func initServerFlags(cmd *cobra.Command) {
+	initServerApiFlags(serverCmd)
 	serverCmd.Flags().StringVar(&cliServerID, "id", "", "server id")
 	serverCmd.Flags().BoolVar(&cliServerMaintenance, "maintenance", false, "Toggle maintenance")
 	serverCmd.Flags().BoolVar(&cliServerStop, "stop", false, "Start server")
 	serverCmd.Flags().BoolVar(&cliServerStart, "start", false, "Stop server")
-
-	apiCmd.Flags().StringVar(&cliUrl, "url", "https://127.0.0.1:10005/api/clusters", "Url to rest API")
-
-	switchoverCmd.Flags().StringVar(&cliPrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
-
-	testCmd.Flags().StringVar(&cliTTestRun, "run-tests", "", "tests list to be run ")
-	testCmd.Flags().StringVar(&cliTestResultDBServer, "result-db-server", "", "MariaDB MySQL host to store result")
-	testCmd.Flags().StringVar(&cliTestResultDBCredential, "result-db-credential", "", "MariaDB MySQL user:password to store result")
-	testCmd.Flags().BoolVar(&cliTestShowTests, "show-tests", false, "display tests list")
-	testCmd.Flags().BoolVar(&cliTeststartcluster, "test-provision-cluster", true, "start the cluster between tests")
-	testCmd.Flags().BoolVar(&cliTeststopcluster, "test-unprovision-cluster", true, "stop the cluster between tests")
-	testCmd.Flags().BoolVar(&cliTestConvert, "convert", false, "convert test result to html")
-
-	testCmd.Flags().StringVar(&cliTestConvertFile, "file", "", "test result.json")
-
-	bootstrapCmd.Flags().StringVar(&cliBootstrapTopology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring,multi-master-wsrep")
-	bootstrapCmd.Flags().BoolVar(&cliBootstrapCleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
-	bootstrapCmd.Flags().BoolVar(&cliBootstrapWithProvisioning, "with-provisioning", false, "Provision the culster for replication-manager-tst or Provision the culster for replication-manager-pro")
-
-	statusCmd.Flags().BoolVar(&cliStatusErrors, "with-errors", false, "Add json errors reporting")
-
-	showCmd.Flags().StringVar(&cliShowObjects, "get", "settings,clusters,servers,master,slaves,crashes,alerts", "get the following objects")
-
+	viper.BindPFlags(cmd.Flags())
 }
 
-var serverCmd = &cobra.Command{
-	Use:   "server",
-	Short: "Run some actions on a server",
-	Long:  `The server command is used to stop , start or put a server in maintenace`,
-	Run: func(cmd *cobra.Command, args []string) {
-		log.SetFormatter(&log.TextFormatter{})
-		cliInit(true)
-		urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/servers/" + cliServerID + "/actions/maintenance"
-		_, err := cliAPICmd(urlpost, nil)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s", err)
-			os.Exit(1)
-		}
-		os.Exit(0)
-	},
+func init() {
+
+	rootClientCmd.AddCommand(clientConsoleCmd)
+	//initApiServerFlags(clientConsoleCmd)
+
+	rootClientCmd.AddCommand(switchoverCmd)
+	initSwitchoverFlags(switchoverCmd)
+
+	rootClientCmd.AddCommand(failoverCmd)
+	initFailoverFlags(failoverCmd)
+
+	rootClientCmd.AddCommand(topologyCmd)
+
+	rootClientCmd.AddCommand(apiCmd)
+	initApiFlags(apiCmd)
+
+	rootClientCmd.AddCommand(regTestCmd)
+	initRegTestFlags(regTestCmd)
+
+	rootClientCmd.AddCommand(statusCmd)
+	initStatusFlags(statusCmd)
+
+	rootClientCmd.AddCommand(bootstrapCmd)
+	initBootstrapFlags(bootstrapCmd)
+
+	rootClientCmd.AddCommand(serverCmd)
+	initServerFlags(serverCmd)
+
+	rootClientCmd.AddCommand(showCmd)
+	initShowFlags(showCmd)
+
+	rootClientCmd.AddCommand(configuratorCmd)
+	initConfiguratorFlags(showCmd)
+
+	rootClientCmd.AddCommand(versionClientCmd)
+
 }
-
-
-
-
-
-
-
-
-
-
-
-var testCmd = &cobra.Command{
-	Use:   "test",
-	Short: "Perform regression test",
-	Long:  `Perform named tests passed with argument --run-tests=test1,test2`,
-	Run: func(cmd *cobra.Command, args []string) {
-
-		if cliTestConvert {
-
-			type TestResults struct {
-				Results []cluster.Test `json:"results"`
-			}
-			var cltests TestResults
-			file, err := ioutil.ReadFile(cliTestConvertFile)
-			if err != nil {
-				fmt.Printf("File error: %v\n", err)
-				return
-			}
-			err = json.Unmarshal(file, &cltests)
-			if err != nil {
-				fmt.Printf("File error: %v\n", err)
-				return
-			}
-			var tmplgreen = "<tr><td>%s</td><td bgcolor=\"#adebad\">%s</td></tr>"
-			var tmplred = "<tr><td>%s</td><td  bgcolor=\"##ff8080\">%s</td></tr>"
-			fmt.Printf("<table>")
-			for _, v := range cltests.Results {
-				if v.Result == "FAIL" {
-					fmt.Printf(tmplred, v.Name, v.Result)
-				} else {
-					fmt.Printf(tmplgreen, v.Name, v.Result)
-				}
-			}
-			fmt.Printf("</table>")
-			return
-		}
-		cliInit(true)
-		//cliGetTopology()
-
-		if cliTestShowTests == true {
-			cliMonitor, _ = cliGetMonitor()
-			log.Println(cliMonitor.Tests)
-		}
-		if cliTestShowTests == false {
-
-			todotests := strings.Split(cliTTestRun, ",")
-
-			for _, test := range todotests {
-				var thistest cluster.Test
-				thistest.Result = "TIMEOUT"
-				thistest.Name = test
-				data, _ := json.MarshalIndent(thistest, "", "\t")
-				urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/tests/actions/run/" + test
-
-				var startcluster RequetParam
-				var stopcluster RequetParam
-				var params []RequetParam
-
-				startcluster.key = "provision"
-				startcluster.value = strconv.FormatBool(cliTeststartcluster)
-				params = append(params, startcluster)
-				stopcluster.key = "unprovision"
-				stopcluster.value = strconv.FormatBool(cliTeststopcluster)
-				params = append(params, stopcluster)
-
-				res, err := cliAPICmd(urlpost, params)
-				if err != nil {
-					fmt.Printf(string(data))
-					log.Fatal("Error in API call")
-				} else {
-					if res != "" {
-						fmt.Printf(res)
-
-						err = json.Unmarshal([]byte(res), &thistest)
-						if err != nil {
-							fmt.Printf("No valid json in test result: %v\n", err)
-							return
-						}
-						// post result in database
-						if cliTestResultDBServer != "" {
-							params := fmt.Sprintf("?timeout=2s")
-							dsn := cliTestResultDBCredential + "@"
-							dsn += "tcp(" + cliTestResultDBServer + ")/" + params
-							c, err := sqlx.Open("mysql", dsn)
-							if err != nil {
-								fmt.Printf("Could not connect to result database %s", err)
-							}
-							err = c.Ping()
-							if err != nil {
-								fmt.Printf("Could not connect to result database %s", err)
-							}
-							_, err = c.Query("REPLACE INTO result.tests (version,test,path,result) VALUES('" + FullVersion + "','" + thistest.Name + "','" + thistest.ConfigFile + "','" + thistest.Result + "')")
-							if err != nil {
-								fmt.Printf("Could play sql to result database %s", err)
-							}
-
-							c.Close()
-						}
-
-					} else {
-						fmt.Printf(string(data))
-					}
-				}
-			}
-		}
-	},
-	PostRun: func(cmd *cobra.Command, args []string) {
-		// Close connections on exit.
-	},
-}
-
-var showCmd = &cobra.Command{
-	Use:   "show",
-	Short: "Print json informations",
-	Long:  `To use for support issues`,
-	Run: func(cmd *cobra.Command, args []string) {
-		//cliClusters, err = cliGetClusters()
-		cliInit(false)
-		urlpost := ""
-		type Objects struct {
-			Name     string
-			Settings server.Settings         `json:"settings"`
-			Servers  []cluster.ServerMonitor `json:"servers"`
-			Master   cluster.ServerMonitor   `json:"master"`
-			Slaves   []cluster.ServerMonitor `json:"slaves"`
-			Crashes  []cluster.Crash         `json:"crashes"`
-			Alerts   cluster.Alerts          `json:"alerts"`
-		}
-		type Report struct {
-			Clusters []Objects `json:"clusters"`
-		}
-		var myReport Report
-
-		for _, cluster := range cliClusters {
-
-			var myObjects Objects
-			myObjects.Name = cluster
-			if strings.Contains(cliShowObjects, "settings") {
-				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster
-				res, err := cliAPICmd(urlpost, nil)
-				if err == nil {
-
-					json.Unmarshal([]byte(res), &myObjects.Settings)
-				}
-			}
-			if strings.Contains(cliShowObjects, "servers") {
-				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster + "/topology/servers"
-				res, err := cliAPICmd(urlpost, nil)
-				if err == nil {
-					json.Unmarshal([]byte(res), &myObjects.Servers)
-				}
-			}
-			if strings.Contains(cliShowObjects, "master") {
-				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster + "/topology/master"
-				res, err := cliAPICmd(urlpost, nil)
-				if err == nil {
-					json.Unmarshal([]byte(res), &myObjects.Master)
-				}
-			}
-			if strings.Contains(cliShowObjects, "slaves") {
-				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster + "/topology/master"
-				res, err := cliAPICmd(urlpost, nil)
-				if err == nil {
-					json.Unmarshal([]byte(res), &myObjects.Slaves)
-				}
-			}
-			if strings.Contains(cliShowObjects, "crashes") {
-				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster + "/topology/crashes"
-				res, err := cliAPICmd(urlpost, nil)
-				if err == nil {
-					json.Unmarshal([]byte(res), &myObjects.Crashes)
-				}
-			}
-			if strings.Contains(cliShowObjects, "alerts") {
-				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster + "/topology/alerts"
-				res, err := cliAPICmd(urlpost, nil)
-				if err == nil {
-					json.Unmarshal([]byte(res), &myObjects.Alerts)
-				}
-			}
-			myReport.Clusters = append(myReport.Clusters, myObjects)
-
-		}
-		data, err := json.MarshalIndent(myReport, "", "\t")
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(10)
-		}
-
-		fmt.Fprintf(os.Stdout, "%s\n", data)
-	},
-	PostRun: func(cmd *cobra.Command, args []string) {
-
-	},
-}
-
-
 
 func cliGetClusters() ([]string, error) {
 	var cl []string
@@ -458,91 +314,6 @@ func cliNewTbChan() chan termbox.Event {
 		}
 	}()
 	return termboxChan
-}
-
-
-
-func cliDisplay() {
-
-	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
-	headstr := fmt.Sprintf(" Replication Manager Client ")
-
-	if cliClusters[cliClusterIndex] != "" {
-		headstr += fmt.Sprintf("| Group: %s", cliClusters[cliClusterIndex])
-	}
-	if cliSettings.Conf.Interactive == false {
-		headstr += " |  Mode: Automatic "
-	} else {
-		headstr += " |  Mode: Manual "
-	}
-	cliPrintfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
-	cliPrintfTb(0, 1, termbox.ColorRed, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, cliConfirm)
-	cliPrintfTb(0, 2, termbox.ColorWhite|termbox.AttrBold, termbox.ColorBlack, "%1s%15s %6s %15s %10s %12s %20s %20s %30s %6s %3s", " ", "Host", "Port", "Status", "Failures", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
-	cliTlog.Line = 3
-	for i, server := range cliServers {
-		var gtidCurr string
-		var gtidSlave string
-		if server.CurrentGtid != nil {
-			gtidCurr = server.CurrentGtid.Sprint()
-		} else {
-			gtidCurr = ""
-		}
-		if server.SlaveGtid != nil {
-			gtidSlave = server.SlaveGtid.Sprint()
-		} else {
-			gtidSlave = ""
-		}
-
-		var fgCol termbox.Attribute
-		switch server.State {
-		case "Master":
-			fgCol = termbox.ColorGreen
-		case "Failed":
-			fgCol = termbox.ColorRed
-		case "Unconnected":
-			fgCol = termbox.ColorBlue
-		case "Suspect":
-			fgCol = termbox.ColorMagenta
-		case "SlaveErr":
-			fgCol = termbox.ColorMagenta
-		case "SlaveLate":
-			fgCol = termbox.ColorYellow
-		default:
-			fgCol = termbox.ColorWhite
-		}
-		mystatus := server.State
-		if server.IsVirtualMaster {
-			mystatus = mystatus + "*VM"
-		}
-		myServerPointer := " "
-		if i == cliConsoleServerIndex {
-			myServerPointer = ">"
-		}
-		cliPrintfTb(1, cliTlog.Line, fgCol, termbox.ColorBlack, "%1s%15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", myServerPointer, server.Host, server.Port, mystatus, server.FailCount, server.GetReplicationUsingGtid(), gtidCurr, gtidSlave, server.ReplicationHealth, server.GetReplicationDelay(), server.ReadOnly)
-		cliTlog.Line++
-	}
-	cliTlog.Line++
-	if cliMaster.State != "Failed" {
-		cliPrintTb(0, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, " Ctrl-Q to quit, Ctrl-S to switchover, Ctrl-(N|P) to change Cluster,Ctrl-H to help")
-	} else {
-		cliPrintTb(0, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, " Ctrl-Q to quit, Ctrl-F to failover, Ctrl-(N|P) to change Cluster,Ctrl-H to help")
-	}
-	cliTlog.Line = cliTlog.Line + 3
-	cliTlog.Print()
-
-	termbox.Flush()
-	_, newlen := termbox.Size()
-	if newlen == 0 {
-		// pass
-	} else if newlen > cliTermlength {
-		cliTermlength = newlen
-		cliTlog.Len = cliTermlength - 9 - (len(cliClusters) * 3)
-		cliTlog.Extend()
-	} else if newlen < cliTermlength {
-		cliTermlength = newlen
-		cliTlog.Len = cliTermlength - 9 - (len(cliClusters) * 3)
-		cliTlog.Shrink()
-	}
 }
 
 func cliAddTlog(dlogs []string) {
@@ -584,17 +355,6 @@ func cliPrintTb(x, y int, fg, bg termbox.Attribute, msg string) {
 func cliPrintfTb(x, y int, fg, bg termbox.Attribute, format string, args ...interface{}) {
 	s := fmt.Sprintf(format, args...)
 	cliPrintTb(x, y, fg, bg, s)
-}
-
-func cliLogPrint(msg ...interface{}) {
-	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
-
-	if cliTlog.Len > 0 {
-		s := fmt.Sprint(stamp, "[", cliClusters[cliClusterIndex], "] ", fmt.Sprint(msg...))
-		cliTlog.Add(s)
-		cliDisplay()
-	}
-
 }
 
 func cliLogin() (string, error) {

@@ -9,24 +9,27 @@
 package clients
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/spf13/cobra"
+
+	log "github.com/sirupsen/logrus"
 )
 
-var failoverCmd = &cobra.Command{
-	Use:   "failover",
-	Short: "Failover a dead master",
-	Long:  `Trigger failover on a dead master by promoting a slave.`,
+var serverCmd = &cobra.Command{
+	Use:   "server",
+	Short: "Run some actions on a server",
+	Long:  `The server command is used to stop , start or put a server in maintenace`,
 	Run: func(cmd *cobra.Command, args []string) {
-		var slogs []string
+		log.SetFormatter(&log.TextFormatter{})
 		cliInit(true)
-		cliGetTopology()
-		cliClusterCmd("actions/failover", nil)
-		slogs, _ = cliGetLogs()
-		cliPrintLog(slogs)
-		cliServers, _ = cliGetServers()
-		cliGetTopology()
-	},
-	PostRun: func(cmd *cobra.Command, args []string) {
-
+		urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/servers/" + cliServerID + "/actions/maintenance"
+		_, err := cliAPICmd(urlpost, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
 	},
 }
