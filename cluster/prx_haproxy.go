@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -19,11 +20,8 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/haproxy"
-<<<<<<< HEAD
-=======
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/pflag"
->>>>>>> develop
 )
 
 type HaproxyProxy struct {
@@ -276,7 +274,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 	result, err := haRuntime.ApiCmd("show stat")
 
 	if err != nil {
-		cluster.SetSugarState("ERR00052", "MON", "", err)
+		cluster.AddSugarState("ERR00052", "MON", "", err)
 		return err
 	}
 	if cluster.Conf.HaproxyDebug {

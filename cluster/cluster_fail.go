@@ -660,7 +660,7 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 
 		/* If server is in the ignore list, do not elect it in switchover */
 		if sl.IsIgnored() {
-			cluster.SetSugarState("ERR00037", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00037", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 		if sl.IsFull {
@@ -668,27 +668,27 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 		}
 		//Need comment//
 		if sl.IsRelay {
-			cluster.SetSugarState("ERR00036", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00036", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 		if !sl.HasBinlog() && !sl.IsIgnored() {
-			cluster.SetSugarState("ERR00013", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00013", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 		if cluster.Conf.MultiMaster == true && sl.State == stateMaster {
-			cluster.SetSugarState("ERR00035", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00035", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 
 		// The tests below should run only in case of a switchover as they require the master to be up.
 
 		if cluster.isSlaveElectableForSwitchover(sl, forcingLog) == false {
-			cluster.SetSugarState("ERR00034", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00034", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 		/* binlog + ping  */
 		if cluster.isSlaveElectable(sl, forcingLog) == false {
-			cluster.SetSugarState("ERR00039", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00039", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 
@@ -700,14 +700,14 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 			return i
 		}
 		if sl.HaveNoMasterOnStart == true && cluster.Conf.FailRestartUnsafe == false {
-			cluster.SetSugarState("ERR00084", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00084", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 		ss, errss := sl.GetSlaveStatus(sl.ReplicationSourceName)
 		// not a slave
 		if errss != nil && cluster.Conf.FailRestartUnsafe == false {
 			//Skip slave in election %s have no master log file, slave might have failed
-			cluster.SetSugarState("ERR00033", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00033", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 		// Fake position if none as new slave
@@ -795,23 +795,23 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 
 		//Need comment//
 		if sl.IsRelay {
-			cluster.SetSugarState("ERR00036", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00036", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 		if sl.IsFull {
 			continue
 		}
 		if cluster.Conf.MultiMaster == true && sl.State == stateMaster {
-			cluster.SetSugarState("ERR00035", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00035", "CHECK", sl.URL, sl.URL)
 			trackposList[i].Ignoredmultimaster = true
 			continue
 		}
 		if sl.HaveNoMasterOnStart == true && cluster.Conf.FailRestartUnsafe == false {
-			cluster.SetSugarState("ERR00084", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00084", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 		if !sl.HasBinlog() && !sl.IsIgnored() {
-			cluster.SetSugarState("ERR00013", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00013", "CHECK", sl.URL, sl.URL)
 			continue
 		}
 		if cluster.GetTopology() == topoMultiMasterWsrep && cluster.vmaster != nil {
@@ -830,7 +830,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		ss, errss := sl.GetSlaveStatus(sl.ReplicationSourceName)
 		// not a slave
 		if errss != nil && cluster.Conf.FailRestartUnsafe == false {
-			cluster.SetSugarState("ERR00033", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00033", "CHECK", sl.URL, sl.URL)
 			trackposList[i].Ignoredreplication = true
 			continue
 		}
@@ -967,14 +967,14 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	}
 	/* binlog + ping  */
 	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host, sl.DBVersion) == false {
-		cluster.SetSugarState("ERR00040", "CHECK", sl.URL, sl.URL)
+		cluster.AddSugarState("ERR00040", "CHECK", sl.URL, sl.URL)
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Slave %s does not ping or has no binlogs. Skipping", sl.URL)
 		}
 		return false
 	}
 	if sl.IsMaintenance {
-		cluster.SetSugarState("ERR00047", "CHECK", sl.URL, sl.URL)
+		cluster.AddSugarState("ERR00047", "CHECK", sl.URL, sl.URL)
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
 		}
@@ -991,14 +991,14 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		return false
 	}
 	if ss.SlaveSQLRunning.String == "No" && cluster.Conf.RplChecks {
-		cluster.SetSugarState("ERR00042", "CHECK", sl.URL, sl.URL)
+		cluster.AddSugarState("ERR00042", "CHECK", sl.URL, sl.URL)
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		}
 		return false
 	}
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.FailSync && cluster.Conf.RplChecks {
-		cluster.SetSugarState("ERR00043", "CHECK", sl.URL, sl.URL)
+		cluster.AddSugarState("ERR00043", "CHECK", sl.URL, sl.URL)
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		}
@@ -1270,7 +1270,7 @@ func (cluster *Cluster) electVirtualCandidate(oldMaster *ServerMonitor, forcingL
 	for i, sl := range cluster.Servers {
 		/* If server is in the ignore list, do not elect it */
 		if sl.IsIgnored() {
-			cluster.SetSugarState("ERR00037", "CHECK", sl.URL, sl.URL)
+			cluster.AddSugarState("ERR00037", "CHECK", sl.URL, sl.URL)
 			if cluster.Conf.LogLevel > 1 || forcingLog {
 				cluster.LogPrintf(LvlDbg, "%s is in the ignore list. Skipping", sl.URL)
 			}

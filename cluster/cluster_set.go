@@ -670,6 +670,30 @@ func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
 // Based on WARN/ERR it will set the ErrType correctly.
 // desc is optional, if there are parameters missing for the error message they'll be blanked
 func (cluster *Cluster) SetSugarState(key, from, url string, desc ...interface{}) {
+	s := cluster.createState(key, from, url, desc...)
+
+	cluster.SetState(key, s)
+}
+
+// AddSugarState calls sme.AddState without needing to create the state.State{} struct yourself.
+// Key sets the ErrKey
+// From sets the ErrFrom
+// URL is optional, will be set to the state if present
+// Based on WARN/ERR it will set the ErrType correctly.
+// desc is optional, if there are parameters missing for the error message they'll be blanked
+func (cluster *Cluster) AddSugarState(key, from, url string, desc ...interface{}) {
+	s := cluster.createState(key, from, url, desc...)
+
+	cluster.sme.AddState(key, s)
+}
+
+// createState creates a state.State
+// Key sets the ErrKey
+// From sets the ErrFrom
+// URL is optional, will be set to the state if present
+// Based on WARN/ERR it will set the ErrType correctly.
+// desc is optional, if there are parameters missing for the error message they'll be blanked
+func (cluster *Cluster) createState(key, from, url string, desc ...interface{}) state.State {
 	s := state.State{
 		ErrKey:  key,
 		ErrFrom: from,
@@ -695,7 +719,7 @@ func (cluster *Cluster) SetSugarState(key, from, url string, desc ...interface{}
 		s.ErrDesc = clusterError[key]
 	}
 
-	cluster.SetState(key, s)
+	return s
 }
 
 func (cluster *Cluster) SetState(key string, s state.State) {

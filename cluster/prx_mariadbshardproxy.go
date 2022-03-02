@@ -22,11 +22,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
-<<<<<<< HEAD:cluster/prx_shardproxy.go
-=======
-	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/pflag"
->>>>>>> develop:cluster/prx_mariadbshardproxy.go
 )
 
 type MariadbShardProxy struct {
@@ -148,7 +144,7 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MariadbShardProxy) {
 	}
 	schemas, _, err := cluster.master.GetSchemas()
 	if err != nil {
-		cluster.SetSugarState("WARN0089", "PROXY", cluster.master.URL, cluster.master.URL)
+		cluster.AddSugarState("WARN0089", "PROXY", cluster.master.URL, cluster.master.URL)
 		return
 	}
 	foundReplicationManagerSchema := false

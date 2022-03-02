@@ -147,10 +147,10 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 		time.Sleep(2 * time.Second)
 		status := svc.GetActionStatus(strconv.Itoa(idaction))
 		if status == "Q" {
-			cluster.SetSugarState("WARN0045", "TOPO", "")
+			cluster.AddSugarState("WARN0045", "TOPO", "")
 		}
 		if status == "W" {
-			cluster.SetSugarState("WARN0046", "TOPO", "")
+			cluster.AddSugarState("WARN0046", "TOPO", "")
 		}
 		if status == "T" {
 			return nil

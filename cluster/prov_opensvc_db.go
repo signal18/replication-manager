@@ -16,11 +16,6 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/opensvc"
-<<<<<<< HEAD
-	"github.com/signal18/replication-manager/utils/misc"
-=======
-	"github.com/signal18/replication-manager/utils/state"
->>>>>>> develop
 )
 
 func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {

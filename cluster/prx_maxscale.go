@@ -13,12 +13,8 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/maxscale"
-<<<<<<< HEAD
-=======
 	"github.com/signal18/replication-manager/utils/crypto"
-	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/pflag"
->>>>>>> develop
 )
 
 type MaxscaleProxy struct {
@@ -92,7 +88,7 @@ func (proxy *MaxscaleProxy) Refresh() error {
 	if cluster.Conf.MxsOn {
 		err := m.Connect()
 		if err != nil {
-			cluster.SetSugarState("ERR00018", "CONF", "", err)
+			cluster.AddSugarState("ERR00018", "CONF", "", err)
 			cluster.sme.CopyOldStateFromUnknowServer(proxy.Name)
 			return err
 		}
@@ -110,7 +106,7 @@ func (proxy *MaxscaleProxy) Refresh() error {
 		if cluster.Conf.MxsGetInfoMethod == "maxinfo" {
 			_, err := m.GetMaxInfoServers("http://" + proxy.Host + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/servers")
 			if err != nil {
-				cluster.SetSugarState("ERR00020", "MON", proxy.Name, server.URL)
+				cluster.AddSugarState("ERR00020", "MON", proxy.Name, server.URL)
 			}
 			srvport, _ := strconv.Atoi(server.Port)
 			mxsConnections := 0
@@ -122,7 +118,7 @@ func (proxy *MaxscaleProxy) Refresh() error {
 		} else {
 			_, err := m.ListServers()
 			if err != nil {
-				cluster.SetSugarState("ERR00019", "MON", proxy.Name, server.URL)
+				cluster.AddSugarState("ERR00019", "MON", proxy.Name, server.URL)
 			} else {
 
 				if proxy.Tunnel {
@@ -201,7 +197,7 @@ func (proxy *MaxscaleProxy) Init() {
 			cluster.LogPrintf(LvlErr, "MaxScale client could not shutdown monitor:%s", err)
 		}
 	} else {
-		cluster.SetSugarState("ERR00017", "TOPO", proxy.Name)
+		cluster.AddSugarState("ERR00017", "TOPO", proxy.Name)
 	}
 
 	err = m.SetServer(cluster.GetMaster().MxsServerName, "master")
@@ -271,7 +267,7 @@ func (pr *MaxscaleProxy) SetMaintenance(server *ServerMonitor) {
 	m := maxscale.MaxScale{Host: pr.Host, Port: pr.Port, User: pr.User, Pass: pr.Pass}
 	err := m.Connect()
 	if err != nil {
-		cluster.SetSugarState("ERR00018", "CONF", "", err)
+		cluster.AddSugarState("ERR00018", "CONF", "", err)
 	}
 	if server.IsMaintenance {
 		err = m.SetServer(server.MxsServerName, "maintenance")

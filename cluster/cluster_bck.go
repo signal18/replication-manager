@@ -62,7 +62,7 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 
 		err := resticcmd.Wait()
 		if err != nil {
-			cluster.SetSugarState("WARN0094", "CHECK", "", err, stdoutBuf.Bytes(), stderrBuf.Bytes())
+			cluster.AddSugarState("WARN0094", "CHECK", "", err, stdoutBuf.Bytes(), stderrBuf.Bytes())
 			return err
 		}
 		if errStdout != nil || errStderr != nil {
@@ -120,7 +120,7 @@ func (cluster *Cluster) ResticInitRepo() error {
 
 		err := resticcmd.Wait()
 		if err != nil {
-			cluster.SetSugarState("WARN0095", "CHECK", "", err, stdoutBuf.Bytes(), stderrBuf.Bytes())
+			cluster.AddSugarState("WARN0095", "CHECK", "", err, stdoutBuf.Bytes(), stderrBuf.Bytes())
 		}
 		if errStdout != nil || errStderr != nil {
 			return errors.New("failed to capture stdout or stderr\n")
@@ -157,7 +157,7 @@ func (cluster *Cluster) ResticFetchRepo() error {
 
 		err := resticcmd.Wait()
 		if err != nil {
-			cluster.SetSugarState("WARN0093", "CHECK", "", err, stdoutBuf.Bytes(), stderrBuf.Bytes())
+			cluster.AddSugarState("WARN0093", "CHECK", "", err, stdoutBuf.Bytes(), stderrBuf.Bytes())
 			cluster.ResticInitRepo()
 			return err
 		}

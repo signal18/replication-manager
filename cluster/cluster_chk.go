@@ -26,7 +26,7 @@ import (
 func (cluster *Cluster) CheckFailed() {
 	// Don't trigger a failover if a switchover is happening
 	if cluster.sme.IsInFailover() {
-		cluster.SetSugarState("ERR00001", "CHECK", "")
+		cluster.AddSugarState("ERR00001", "CHECK", "")
 		return
 	}
 	if cluster.master == nil {
@@ -114,7 +114,7 @@ func (cluster *Cluster) isAutomaticFailover() bool {
 	if cluster.Conf.Interactive == false {
 		return true
 	}
-	cluster.SetSugarState("ERR00002", "CHECK", "")
+	cluster.AddSugarState("ERR00002", "CHECK", "")
 	return false
 }
 
@@ -130,7 +130,7 @@ func (cluster *Cluster) isMaxMasterFailedCountReached() bool {
 	// no illimited failed count
 
 	if cluster.master.FailCount >= cluster.Conf.MaxFail {
-		cluster.SetSugarState("WARN0023", "CHECK", "")
+		cluster.AddSugarState("WARN0023", "CHECK", "")
 		return true
 	} else {
 		//	cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%d", cluster.master.State, cluster.Conf.Interactive, cluster.Conf.MaxFail), ErrFrom: "CONF"})
@@ -145,7 +145,7 @@ func (cluster *Cluster) isMaxClusterFailoverCountNotReached() bool {
 		return true
 	}
 	if cluster.FailoverCtr == cluster.Conf.FailLimit {
-		cluster.SetSugarState("ERR00027", "CHECK", "")
+		cluster.AddSugarState("ERR00027", "CHECK", "")
 		return false
 	}
 	return true
@@ -159,7 +159,7 @@ func (cluster *Cluster) isBetweenFailoverTimeValid() bool {
 	}
 	//	cluster.LogPrintf("CHECK: Failover Time to short with previous failover")
 	if rem > 0 {
-		cluster.SetSugarState("ERR00029", "CHECK", "")
+		cluster.AddSugarState("ERR00029", "CHECK", "")
 		return false
 	}
 	return true
@@ -188,7 +188,7 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				}
 				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
-					cluster.SetSugarState("ERR00028", "CHECK", s.URL, s.URL)
+					cluster.AddSugarState("ERR00028", "CHECK", s.URL, s.URL)
 					return true
 				}
 			}
@@ -248,7 +248,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 
 	time.Sleep(time.Duration(cluster.Conf.CheckFalsePositiveMaxscaleTimeout) * time.Second)
 	if strings.Contains(cluster.master.MxsServerStatus, "Running") {
-		cluster.SetSugarState("ERR00030", "CHECK", "", cluster.master.MxsServerStatus)
+		cluster.AddSugarState("ERR00030", "CHECK", "", cluster.master.MxsServerStatus)
 		return true
 	}
 	return false
@@ -258,7 +258,7 @@ func (cluster *Cluster) isFoundCandidateMaster() bool {
 
 	key := cluster.electFailoverCandidate(cluster.slaves, false)
 	if key == -1 {
-		cluster.SetSugarState("ERR00032", "CHECK", "")
+		cluster.AddSugarState("ERR00032", "CHECK", "")
 		return false
 	}
 	return true
@@ -285,7 +285,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	resp, err := client.Do(req)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "%s", err.Error())
-		cluster.SetSugarState("ERR00022", "CHECK", "")
+		cluster.AddSugarState("ERR00022", "CHECK", "")
 		return false
 	}
 	defer resp.Body.Close()
@@ -299,14 +299,14 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Arbitrator sent invalid JSON")
-		cluster.SetSugarState("ERR00022", "CHECK", "")
+		cluster.AddSugarState("ERR00022", "CHECK", "")
 		return false
 	}
 	if r.Arbitration == "winner" {
 		cluster.LogPrintf(LvlInfo, "Arbitrator says: winner")
 		return true
 	}
-	cluster.SetSugarState("ERR00022", "CHECK", "")
+	cluster.AddSugarState("ERR00022", "CHECK", "")
 	return false
 }
 
@@ -324,7 +324,7 @@ func (cluster *Cluster) isExternalOk() bool {
 		return false
 	}
 	if req.StatusCode == 200 {
-		cluster.SetSugarState("ERR00031", "CHECK", "")
+		cluster.AddSugarState("ERR00031", "CHECK", "")
 		return true
 	}
 	return false
@@ -335,7 +335,7 @@ func (cluster *Cluster) isArbitratorAlive() bool {
 		return true
 	}
 	if cluster.IsFailedArbitrator {
-		cluster.SetSugarState("ERR00055", "CHECK", "", cluster.Conf.ArbitrationSasHosts)
+		cluster.AddSugarState("ERR00055", "CHECK", "", cluster.Conf.ArbitrationSasHosts)
 		return false
 	}
 	return true
@@ -350,7 +350,7 @@ func (cluster *Cluster) isNotFirstSlave() bool {
 	// - first replication-manager start on no topology
 	// - all cluster down
 	if cluster.master == nil {
-		cluster.SetSugarState("ERR00026", "CHECK", "")
+		cluster.AddSugarState("ERR00026", "CHECK", "")
 		return false
 	}
 
