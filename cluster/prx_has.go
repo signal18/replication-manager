@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -9,54 +9,41 @@
 package cluster
 
 import (
+	"net"
 	"os"
-	"strings"
+
+	"github.com/signal18/replication-manager/config"
 )
 
-func (proxy *Proxy) IsFilterInTags(filter string) bool {
-	tags := proxy.ClusterGroup.GetProxyTags()
-	for _, tag := range tags {
-		if strings.Contains(filter, "."+tag) {
-			//	fmt.Println(server.ClusterGroup.Conf.ProvTags + " vs tag: " + tag + "  against " + filter)
-			return true
-		}
+func (proxy *Proxy) hasCookie(key string) bool {
+	if _, err := os.Stat(proxy.Datadir + "/@" + key); os.IsNotExist(err) {
+		return false
 	}
-	return false
+	return true
 }
 
 func (proxy *Proxy) HasProvisionCookie() bool {
-	if _, err := os.Stat(proxy.Datadir + "/@cookie_prov"); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	return proxy.hasCookie("cookie_prov")
+}
+
+func (proxy *Proxy) HasUnprovisionCookie() bool {
+	return proxy.hasCookie("cookie_unprov")
 }
 
 func (proxy *Proxy) HasWaitStartCookie() bool {
-	if _, err := os.Stat(proxy.Datadir + "/@cookie_waitstart"); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	return proxy.hasCookie("cookie_waitstart")
 }
 
 func (proxy *Proxy) HasWaitStopCookie() bool {
-	if _, err := os.Stat(proxy.Datadir + "/@cookie_waitstop"); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	return proxy.hasCookie("cookie_waitstop")
 }
 
 func (proxy *Proxy) HasRestartCookie() bool {
-	if _, err := os.Stat(proxy.Datadir + "/@cookie_restart"); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	return proxy.hasCookie("cookie_restart")
 }
 
 func (proxy *Proxy) HasReprovCookie() bool {
-	if _, err := os.Stat(proxy.Datadir + "/@cookie_reprov"); os.IsNotExist(err) {
-		return false
-	}
-	return true
+	return proxy.hasCookie("cookie_reprov")
 }
 
 func (proxy *Proxy) IsRunning() bool {
@@ -65,6 +52,13 @@ func (proxy *Proxy) IsRunning() bool {
 
 func (proxy *Proxy) IsDown() bool {
 	if proxy.State == stateFailed || proxy.State == stateSuspect || proxy.State == stateErrorAuth {
+		return true
+	}
+	return false
+}
+
+func (proxy *Proxy) HasDNS() bool {
+	if net.ParseIP(proxy.Host) == nil || proxy.ClusterGroup.Configurator.HaveProxyTag("dns") || proxy.GetOrchestrator() == config.ConstOrchestratorOpenSVC || proxy.GetOrchestrator() == config.ConstOrchestratorKubernetes {
 		return true
 	}
 	return false

@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -13,10 +13,10 @@ var clusterError = map[string]string{
 	"ERR00002": "Waiting for a user manual failover",
 	"ERR00004": "Database %s access denied: %s",
 	"ERR00005": "Could not get privileges for user %s@%s: %s",
-	"ERR00006": "User must have REPLICATION CLIENT privilege",
-	"ERR00007": "User must have REPLICATION SLAVE privilege",
-	"ERR00008": "User must have SUPER privilege",
-	"ERR00009": "User must have RELOAD privilege",
+	"ERR00006": "User must have REPLICATION CLIENT privilege on %s",
+	"ERR00007": "User must have REPLICATION SLAVE privilege on %s",
+	"ERR00008": "User must have SUPER privilege %s",
+	"ERR00009": "User must have RELOAD privilege %s",
 	"ERR00010": "Could not find a slave in topology",
 	"ERR00011": "Found multiple masters in topology but not explicitely setup",
 	"ERR00012": "Could not find a master in topology",
@@ -153,4 +153,5 @@ var clusterError = map[string]string{
 	"WARN0004": "RO server count > 1 in multi-master mode.  switching to preferred master.",
 	"WARN0006": "Multi-master need a preferred master.",
 	"WARN0007": "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1",
+	"WARN0101": "Cluster does not have backup",
 }

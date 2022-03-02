@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -10,17 +10,19 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"hash/crc64"
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -31,6 +33,25 @@ import (
 	logsqlgen "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 )
+
+// A Clusters is a collection of Cluster objects
+//
+// swagger:response clusters
+type ClustersResponse struct {
+	// Cluster information message
+	// in: body
+	Body []Cluster
+}
+
+// A Cluster has all the information associated with the configured cluster model
+// and its servers.
+//
+// swagger:response cluster
+type ClusterResponse struct {
+	// Cluster information message
+	// in: body
+	Body Cluster
+}
 
 type Cluster struct {
 	Name                          string                      `json:"name"`
@@ -60,14 +81,11 @@ type Cluster struct {
 	IsNeedDatabasesRollingRestart bool                        `json:"isNeedDatabasesRollingRestart"`
 	IsNeedDatabasesRollingReprov  bool                        `json:"isNeedDatabasesRollingReprov"`
 	IsNeedDatabasesReprov         bool                        `json:"isNeedDatabasesReprov"`
+	IsValidBackup                 bool                        `json:"isValidBackup"`
 	IsNotMonitoring               bool                        `json:"isNotMonitoring"`
 	IsCapturing                   bool                        `json:"isCapturing"`
 	Conf                          config.Config               `json:"config"`
 	CleanAll                      bool                        `json:"cleanReplication"` //used in testing
-	ConfigDBTags                  []Tag                       `json:"configTags"`       //from module
-	ConfigPrxTags                 []Tag                       `json:"configPrxTags"`    //from module
-	DBTags                        []string                    `json:"dbServersTags"`    //from conf
-	ProxyTags                     []string                    `json:"proxyServersTags"`
 	Topology                      string                      `json:"topology"`
 	Uptime                        string                      `json:"uptime"`
 	UptimeFailable                string                      `json:"uptimeFailable"`
@@ -132,10 +150,8 @@ type Cluster struct {
 	tlsconf                       *tls.Config                 `json:"-"`
 	tlsoldconf                    *tls.Config                 `json:"-"`
 	tunnel                        *ssh.Client                 `json:"-"`
-	DBModule                      config.Compliance           `json:"-"`
-	ProxyModule                   config.Compliance           `json:"-"`
 	QueryRules                    map[uint32]config.QueryRule `json:"-"`
-	Backups                       []Backup                    `json:"-"`
+	Backups                       []v3.Backup                 `json:"-"`
 	SLAHistory                    []state.Sla                 `json:"slaHistory"`
 	APIUsers                      map[string]APIUser          `json:"apiUsers"`
 	Schedule                      map[string]cron.Entry       `json:"-"`
@@ -152,7 +168,10 @@ type Cluster struct {
 	WaitingRejoin                 int                         `json:"waitingRejoin"`
 	WaitingSwitchover             int                         `json:"waitingSwitchover"`
 	WaitingFailover               int                         `json:"waitingFailover"`
+	Configurator                  configurator.Configurator   `json:"configurator"`
+	DiffVariables                 []VariableDiff              `json:"diffVariables"`
 	sync.Mutex
+	crcTable *crc64.Table
 }
 
 type ClusterSorter []*Cluster
@@ -167,6 +186,8 @@ func (a QueryRuleSorter) Len() int           { return len(a) }
 func (a QueryRuleSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a QueryRuleSorter) Less(i, j int) bool { return a[i].Id < a[j].Id }
 
+// The Agent describes the server where the cluster runs on.
+// swagger:response agent
 type Agent struct {
 	Id           string `json:"id"`
 	HostName     string `json:"hostName"`
@@ -185,12 +206,6 @@ type Alerts struct {
 	Warnings []state.StateHttp `json:"warnings"`
 }
 
-type Tag struct {
-	Id       uint   `json:"id"`
-	Name     string `json:"name"`
-	Category string `json:"category"`
-}
-
 type JobResult struct {
 	Xtrabackup            bool `json:"xtrabackup"`
 	Mariabackup           bool `json:"mariabackup"`
@@ -205,6 +220,16 @@ type JobResult struct {
 	Stop                  bool `json:"stop"`
 	Start                 bool `json:"start"`
 	Restart               bool `json:"restart"`
+}
+
+type Diff struct {
+	Server        string `json:"serverName"`
+	VariableValue string `json:"variableValue"`
+}
+
+type VariableDiff struct {
+	VariableName string `json:"variableName"`
+	DiffValues   []Diff `json:"diffValues"`
 }
 
 const (
@@ -225,6 +250,8 @@ const (
 
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, log *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+
+	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 	cluster.switchoverChan = make(chan bool)
 	// should use buffered channels or it will block
 	cluster.statecloseChan = make(chan state.State, 100)
@@ -320,12 +347,9 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		cluster.LogPrintf(LvlErr, "Could not set proxy list %s", err)
 	}
 	//Loading configuration compliances
-	cluster.LoadDBModules()
-	cluster.LoadPrxModules()
-	cluster.ConfigDBTags = cluster.GetDBModuleTags()
-	cluster.ConfigPrxTags = cluster.GetProxyModuleTags()
+	cluster.Configurator.Init(cluster.Conf)
 
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorLocalhost:
 		cluster.DropDBTagConfig("docker")
 		cluster.DropDBTagConfig("threadpool")
@@ -337,7 +361,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 func (cluster *Cluster) initOrchetratorNodes() {
 
 	//cluster.LogPrintf(LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		cluster.Agents, _ = cluster.OpenSVCGetNodes()
 	case config.ConstOrchestratorKubernetes:
@@ -411,16 +435,24 @@ func (cluster *Cluster) Run() {
 				go cluster.TopologyDiscover(wg)
 				wg.Add(1)
 				go cluster.Heartbeat(wg)
+				wg.Wait()
 				// Heartbeat switchover or failover controller runs only on active repman
 
 				if cluster.runOnceAfterTopology {
-					cluster.initProxies()
+					// Preserved server state in proxy during reload config
+					if !cluster.IsInFailover() {
+						cluster.initProxies()
+					}
 					cluster.initOrchetratorNodes()
 					cluster.ResticFetchRepo()
 					cluster.runOnceAfterTopology = false
 				} else {
-					wg.Add(1)
-					go cluster.refreshProxies(wg)
+
+					// Preserved server state in proxy during reload config
+					if !cluster.IsInFailover() {
+						wg.Add(1)
+						go cluster.refreshProxies(wg)
+					}
 					if cluster.sme.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.sme.IsInSchemaMonitor() {
 						go cluster.MonitorSchema()
 					}
@@ -432,12 +464,14 @@ func (cluster *Cluster) Run() {
 						cluster.MonitorQueryRules()
 						cluster.MonitorVariablesDiff()
 						cluster.ResticFetchRepo()
+						cluster.IsValidBackup = cluster.HasValidBackup()
 
 					} else {
 						cluster.sme.PreserveState("WARN0093")
 						cluster.sme.PreserveState("WARN0084")
 						cluster.sme.PreserveState("WARN0095")
 						cluster.sme.PreserveState("ERR00082")
+						cluster.sme.PreserveState("WARN0101")
 					}
 					if cluster.sme.GetHeartbeats()%36000 == 0 {
 						cluster.ResticPurgeRepo()
@@ -447,6 +481,8 @@ func (cluster *Cluster) Run() {
 				}
 
 				wg.Wait()
+				// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so elelection win but server is ignored see electFailoverCandidate
+				cluster.AddChildServers()
 
 				cluster.IsFailable = cluster.GetStatus()
 				// CheckFailed trigger failover code if passing all false positiv and constraints
@@ -512,8 +548,19 @@ func (cluster *Cluster) StateProcessing() {
 					go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed)
 				}
 			}
+			if s.ErrKey == "WARN0101" {
+				cluster.LogPrintf(LvlInfo, "Cluster have  backup")
+				for _, srv := range cluster.Servers {
+					if srv.HasWaitBackupCookie() {
+						cluster.LogPrintf(LvlInfo, "Server %s was waiting for backup", srv.URL)
+						go srv.ReseedMasterSST()
+					}
+				}
+
+			}
 			//		cluster.statecloseChan <- s
 		}
+
 		states := cluster.sme.GetStates()
 		for i := range states {
 			cluster.LogPrintf("STATE", states[i])
@@ -523,6 +570,11 @@ func (cluster *Cluster) StateProcessing() {
 		for _, s := range ostates {
 			cluster.CheckCapture(s)
 		}
+
+		for _, s := range cluster.sme.GetLastOpenedStates() {
+			cluster.CheckAlert(s)
+		}
+
 		cluster.sme.ClearState()
 		if cluster.sme.GetHeartbeats()%60 == 0 {
 			cluster.Save()
@@ -604,14 +656,19 @@ func (cluster *Cluster) InitAgent(conf config.Config) {
 
 func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Conf = conf
+	cluster.Configurator.SetConfig(conf)
 	cluster.sme.SetFailoverState()
+	cluster.runOnceAfterTopology = true
+
+	cluster.SetUnDiscovered()
 	cluster.newServerList()
-	cluster.newProxyList()
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
-	cluster.TopologyDiscover(wg)
+	go cluster.TopologyDiscover(wg)
 	wg.Wait()
+	cluster.newProxyList()
 	cluster.sme.RemoveFailoverState()
+	cluster.initProxies()
 }
 
 func (cluster *Cluster) FailoverForce() error {
@@ -760,21 +817,42 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		"SOCKET":              true,
 		"DATADIR":             true,
 		"THREAD_POOL_SIZE":    true,
+		"RELAY_LOG":           true,
 	}
 	variablesdiff := ""
+	var alldiff []VariableDiff
 	for k, v := range masterVariables {
-
+		var myvardiff VariableDiff
+		var myvalues []Diff
+		var mastervalue Diff
+		mastervalue.Server = cluster.GetMaster().URL
+		mastervalue.VariableValue = v
+		myvalues = append(myvalues, mastervalue)
 		for _, s := range cluster.slaves {
 			slaveVariables := s.Variables
 			if slaveVariables[k] != v && exceptVariables[k] != true {
+				var slavevalue Diff
+				slavevalue.Server = s.URL
+				slavevalue.VariableValue = slaveVariables[k]
+				myvalues = append(myvalues, slavevalue)
 				variablesdiff += "+ Master Variable: " + k + " -> " + v + "\n"
 				variablesdiff += "- Slave: " + s.URL + " -> " + slaveVariables[k] + "\n"
 			}
-
+		}
+		if len(myvalues) > 1 {
+			myvardiff.VariableName = k
+			myvardiff.DiffValues = myvalues
+			alldiff = append(alldiff, myvardiff)
 		}
 	}
 	if variablesdiff != "" {
-		cluster.SetSugarState("WARN0084", "MON", cluster.GetMaster().URL, variablesdiff)
+		cluster.DiffVariables = alldiff
+		jtext, err := json.MarshalIndent(alldiff, " ", "\t")
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Encoding variables diff %s", err)
+			return
+		}
+		cluster.SetSugarState("WARN0084", "MON", cluster.GetMaster().URL, string(jtext))
 	}
 }
 
@@ -785,7 +863,10 @@ func (cluster *Cluster) MonitorSchema() {
 	if cluster.master == nil {
 		return
 	}
-	if cluster.master.State == stateFailed || cluster.master.State == stateMaintenance {
+	if cluster.master.State == stateFailed || cluster.master.State == stateMaintenance || cluster.master.State == stateUnconn {
+		return
+	}
+	if cluster.master.Conn == nil {
 		return
 	}
 	cluster.sme.SetMonitorSchemaState()
@@ -801,28 +882,28 @@ func (cluster *Cluster) MonitorSchema() {
 	for _, t := range tables {
 		duplicates = nil
 		tableCluster = nil
-		tottablesize += t.Data_length
-		totindexsize += t.Index_length
-		cluster.LogPrintf(LvlDbg, "Lookup for table %s", t.Table_schema+"."+t.Table_name)
+		tottablesize += t.DataLength
+		totindexsize += t.IndexLength
+		cluster.LogPrintf(LvlDbg, "Lookup for table %s", t.TableSchema+"."+t.TableName)
 
 		duplicates = append(duplicates, cluster.GetMaster())
 		tableCluster = append(tableCluster, cluster.GetName())
-		oldtable, err := cluster.master.GetTableFromDict(t.Table_schema + "." + t.Table_name)
+		oldtable, err := cluster.master.GetTableFromDict(t.TableSchema + "." + t.TableName)
 		haschanged := false
 		if err != nil {
 			if err.Error() == "Empty" {
-				cluster.LogPrintf(LvlDbg, "Init table %s", t.Table_schema+"."+t.Table_name)
+				cluster.LogPrintf(LvlDbg, "Init table %s", t.TableSchema+"."+t.TableName)
 				haschanged = true
 			} else {
-				cluster.LogPrintf(LvlDbg, "New table %s", t.Table_schema+"."+t.Table_name)
+				cluster.LogPrintf(LvlDbg, "New table %s", t.TableSchema+"."+t.TableName)
 				haschanged = true
 			}
 		} else {
-			if oldtable.Table_crc != t.Table_crc {
+			if oldtable.TableCrc != t.TableCrc {
 				haschanged = true
-				cluster.LogPrintf(LvlDbg, "Change table %s", t.Table_schema+"."+t.Table_name)
+				cluster.LogPrintf(LvlDbg, "Change table %s", t.TableSchema+"."+t.TableName)
 			}
-			t.Table_sync = oldtable.Table_sync
+			t.TableSync = oldtable.TableSync
 		}
 		// lookup other clusters
 		for _, cl := range cluster.clusterList {
@@ -830,23 +911,23 @@ func (cluster *Cluster) MonitorSchema() {
 
 				m := cl.GetMaster()
 				if m != nil {
-					cltbldef, _ := m.GetTableFromDict(t.Table_schema + "." + t.Table_name)
-					if cltbldef.Table_name == t.Table_name {
+					cltbldef, _ := m.GetTableFromDict(t.TableSchema + "." + t.TableName)
+					if cltbldef.TableName == t.TableName {
 						duplicates = append(duplicates, cl.GetMaster())
 						tableCluster = append(tableCluster, cl.GetName())
-						cluster.LogPrintf(LvlDbg, "Found duplicate table %s in %s", t.Table_schema+"."+t.Table_name, cl.GetMaster().URL)
+						cluster.LogPrintf(LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, cl.GetMaster().URL)
 					}
 				}
 			}
 		}
-		t.Table_clusters = strings.Join(tableCluster, ",")
-		tables[t.Table_schema+"."+t.Table_name] = t
-		if haschanged {
-			for _, pr := range cluster.Proxies {
-				if cluster.Conf.MdbsProxyOn && pr.Type == config.ConstProxySpider {
-					if !(t.Table_schema == "replication_manager_schema" || strings.Contains(t.Table_name, "_copy") == true || strings.Contains(t.Table_name, "_back") == true || strings.Contains(t.Table_name, "_old") == true || strings.Contains(t.Table_name, "_reshard") == true) {
-						cluster.LogPrintf(LvlDbg, "blabla table %s %s %s", duplicates, t.Table_schema, t.Table_name)
-						cluster.ShardProxyCreateVTable(pr, t.Table_schema, t.Table_name, duplicates, false)
+		t.TableClusters = strings.Join(tableCluster, ",")
+		tables[t.TableSchema+"."+t.TableName] = t
+		if haschanged && cluster.Conf.MdbsProxyOn {
+			for _, pri := range cluster.Proxies {
+				if prx, ok := pri.(*MariadbShardProxy); ok {
+					if !(t.TableSchema == "replication_manager_schema" || strings.Contains(t.TableName, "_copy") == true || strings.Contains(t.TableName, "_back") == true || strings.Contains(t.TableName, "_old") == true || strings.Contains(t.TableName, "_reshard") == true) {
+						cluster.LogPrintf(LvlDbg, "blabla table %s %s %s", duplicates, t.TableSchema, t.TableName)
+						cluster.ShardProxyCreateVTable(prx, t.TableSchema, t.TableName, duplicates, false)
 					}
 				}
 			}
@@ -862,8 +943,12 @@ func (cluster *Cluster) MonitorQueryRules() {
 	if !cluster.Conf.MonitorQueryRules {
 		return
 	}
-	for _, prx := range cluster.Proxies {
-		if cluster.Conf.ProxysqlOn && prx.Type == config.ConstProxySqlproxy {
+	// exit early
+	if !cluster.Conf.ProxysqlOn {
+		return
+	}
+	for _, pri := range cluster.Proxies {
+		if prx, ok := pri.(*ProxySQLProxy); ok {
 			qr := prx.QueryRules
 			for _, rule := range qr {
 				var myRule config.QueryRule
@@ -920,365 +1005,36 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 	}
 }
 
-func (cluster *Cluster) LoadDBModules() {
-	file := cluster.Conf.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.json"
-	jsonFile, err := os.Open(file)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "Failed opened module %s %s", file, err)
-	}
-	cluster.LogPrintf(LvlInfo, "Loading database configurator config %s", file)
-	// defer the closing of our jsonFile so that we can parse it later on
-	defer jsonFile.Close()
-
-	byteValue, _ := ioutil.ReadAll(jsonFile)
-
-	err = json.Unmarshal([]byte(byteValue), &cluster.DBModule)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "Failed unmarshal file %s %s", file, err)
-	}
-
-}
-
-func (cluster *Cluster) LoadPrxModules() {
-
-	file := cluster.Conf.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.proxy.json"
-	jsonFile, err := os.Open(file)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "Failed opened module %s %s", file, err)
-	}
-	cluster.LogPrintf(LvlInfo, "Loading proxies configurator config %s", file)
-	// defer the closing of our jsonFile so that we can parse it later on
-	defer jsonFile.Close()
-
-	byteValue, _ := ioutil.ReadAll(jsonFile)
-
-	err = json.Unmarshal([]byte(byteValue), &cluster.ProxyModule)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "Failed unmarshal file %s %s", file, err)
-	}
-
+func (c *Cluster) AddProxy(prx DatabaseProxy) {
+	prx.SetCluster(c)
+	prx.SetID()
+	prx.SetDataDir()
+	prx.SetServiceName(c.Name)
+	c.LogPrintf(LvlInfo, "New proxy monitored %s: %s:%s", prx.GetType(), prx.GetHost(), prx.GetPort())
+	prx.SetState(stateSuspect)
+	c.Proxies = append(c.Proxies, prx)
 }
 
 func (cluster *Cluster) ConfigDiscovery() error {
-
-	if cluster.master == nil {
-		return errors.New("No master in topology")
-	}
-	innodbmem, err := strconv.ParseUint(cluster.master.Variables["INNODB_BUFFER_POOL_SIZE"], 10, 64)
-	if err != nil {
-		return err
-	}
-	totalmem := innodbmem
-	myisammem, err := strconv.ParseUint(cluster.master.Variables["KEY_BUFFER_SIZE"], 10, 64)
-	if err != nil {
-		return err
-	}
-	totalmem += myisammem
-	qcmem, err := strconv.ParseUint(cluster.master.Variables["QUERY_CACHE_SIZE"], 10, 64)
-	if err != nil {
-		return err
-	}
-	if qcmem == 0 {
-		cluster.AddDBTag("noquerycache")
-	}
-	totalmem += qcmem
-	ariamem := uint64(0)
-	if _, ok := cluster.master.Variables["ARIA_PAGECACHE_BUFFER_SIZE"]; ok {
-		ariamem, err = strconv.ParseUint(cluster.master.Variables["ARIA_PAGECACHE_BUFFER_SIZE"], 10, 64)
-		if err != nil {
-			return err
-		}
-		totalmem += ariamem
-	}
-	tokumem := uint64(0)
-	if _, ok := cluster.master.Variables["TOKUDB_CACHE_SIZE"]; ok {
-		cluster.AddDBTag("tokudb")
-		tokumem, err = strconv.ParseUint(cluster.master.Variables["TOKUDB_CACHE_SIZE"], 10, 64)
-		if err != nil {
-			return err
-		}
-		totalmem += tokumem
-	}
-	s3mem := uint64(0)
-	if _, ok := cluster.master.Variables["S3_PAGECACHE_BUFFER_SIZE"]; ok {
-		cluster.AddDBTag("s3")
-		tokumem, err = strconv.ParseUint(cluster.master.Variables["S3_PAGECACHE_BUFFER_SIZE"], 10, 64)
-		if err != nil {
-			return err
-		}
-		totalmem += s3mem
-	}
-
-	rocksmem := uint64(0)
-	if _, ok := cluster.master.Variables["ROCKSDB_BLOCK_CACHE_SIZE"]; ok {
-		cluster.AddDBTag("myrocks")
-		tokumem, err = strconv.ParseUint(cluster.master.Variables["ROCKSDB_BLOCK_CACHE_SIZE"], 10, 64)
-		if err != nil {
-			return err
-		}
-		totalmem += rocksmem
-	}
-
-	sharedmempcts, _ := cluster.Conf.GetMemoryPctShared()
-	totalmem = totalmem + totalmem*uint64(sharedmempcts["threads"])/100
-	cluster.SetDBMemorySize(strconv.FormatUint((totalmem / 1024 / 1024), 10))
-	cluster.SetDBCores(cluster.master.Variables["THREAD_POOL_SIZE"])
-
-	if cluster.master.Variables["INNODB_DOUBLEWRITE"] == "OFF" {
-		cluster.AddDBTag("nodoublewrite")
-	}
-	if cluster.master.Variables["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" && cluster.master.Variables["SYNC_BINLOG"] != "1" {
-		cluster.AddDBTag("nodurable")
-	}
-	if cluster.master.Variables["INNODB_FLUSH_METHOD"] != "O_DIRECT" {
-		cluster.AddDBTag("noodirect")
-	}
-	if cluster.master.Variables["LOG_BIN_COMPRESS"] == "ON" {
-		cluster.AddDBTag("compressbinlog")
-	}
-	if cluster.master.Variables["INNODB_DEFRAGMENT"] == "ON" {
-		cluster.AddDBTag("autodefrag")
-	}
-	if cluster.master.Variables["INNODB_COMPRESSION_DEFAULT"] == "ON" {
-		cluster.AddDBTag("compresstable")
-	}
-
-	if cluster.master.HasInstallPlugin("BLACKHOLE") {
-		cluster.AddDBTag("blackhole")
-	}
-	if cluster.master.HasInstallPlugin("QUERY_RESPONSE_TIME") {
-		cluster.AddDBTag("userstats")
-	}
-	if cluster.master.HasInstallPlugin("SQL_ERROR_LOG") {
-		cluster.AddDBTag("sqlerror")
-	}
-	if cluster.master.HasInstallPlugin("METADATA_LOCK_INFO") {
-		cluster.AddDBTag("metadatalocks")
-	}
-	if cluster.master.HasInstallPlugin("SERVER_AUDIT") {
-		cluster.AddDBTag("audit")
-	}
-	if cluster.master.Variables["SLOW_QUERY_LOG"] == "ON" {
-		cluster.AddDBTag("slow")
-	}
-	if cluster.master.Variables["GENERAL_LOG"] == "ON" {
-		cluster.AddDBTag("general")
-	}
-	if cluster.master.Variables["PERFORMANCE_SCHEMA"] == "ON" {
-		cluster.AddDBTag("pfs")
-	}
-	if cluster.master.Variables["LOG_OUTPUT"] == "TABLE" {
-		cluster.AddDBTag("logtotable")
-	}
-
-	if cluster.master.HasInstallPlugin("CONNECT") {
-		cluster.AddDBTag("connect")
-	}
-	if cluster.master.HasInstallPlugin("SPIDER") {
-		cluster.AddDBTag("spider")
-	}
-	if cluster.master.HasInstallPlugin("SPHINX") {
-		cluster.AddDBTag("sphinx")
-	}
-	if cluster.master.HasInstallPlugin("MROONGA") {
-		cluster.AddDBTag("mroonga")
-	}
-	if cluster.master.HasWsrep() {
-		cluster.AddDBTag("wsrep")
-	}
-	//missing in compliance
-	if cluster.master.HasInstallPlugin("ARCHIVE") {
-		cluster.AddDBTag("archive")
-	}
-
-	if cluster.master.HasInstallPlugin("CRACKLIB_PASSWORD_CHECK") {
-		cluster.AddDBTag("pwdcheckcracklib")
-	}
-	if cluster.master.HasInstallPlugin("SIMPLE_PASSWORD_CHECK") {
-		cluster.AddDBTag("pwdchecksimple")
-	}
-
-	if cluster.master.Variables["LOCAL_INFILE"] == "ON" {
-		cluster.AddDBTag("localinfile")
-	}
-	if cluster.master.Variables["SKIP_NAME_RESOLVE"] == "OFF" {
-		cluster.AddDBTag("resolvdns")
-	}
-	if cluster.master.Variables["READ_ONLY"] == "ON" {
-		cluster.AddDBTag("readonly")
-	}
-	if cluster.master.Variables["HAVE_SSL"] == "YES" {
-		cluster.AddDBTag("ssl")
-	}
-
-	if cluster.master.Variables["BINLOG_FORMAT"] == "STATEMENT" {
-		cluster.AddDBTag("statement")
-	}
-	if cluster.master.Variables["BINLOG_FORMAT"] == "ROW" {
-		cluster.AddDBTag("row")
-	}
-	if cluster.master.Variables["LOG_BIN"] == "OFF" {
-		cluster.AddDBTag("nobinlog")
-	}
-	if cluster.master.Variables["LOG_BIN"] == "OFF" {
-		cluster.AddDBTag("nobinlog")
-	}
-	if cluster.master.Variables["LOG_SLAVE_UPDATES"] == "OFF" {
-		cluster.AddDBTag("nologslaveupdates")
-	}
-	if cluster.master.Variables["RPL_SEMI_SYNC_MASTER_ENABLED"] == "ON" {
-		cluster.AddDBTag("semisync")
-	}
-	if cluster.master.Variables["GTID_STRICT_MODE"] == "ON" {
-		cluster.AddDBTag("gtidstrict")
-	}
-	if strings.Contains(cluster.master.Variables["SLAVE_TYPE_COVERSIONS"], "ALL_NON_LOSSY") || strings.Contains(cluster.master.Variables["SLAVE_TYPE_COVERSIONS"], "ALL_LOSSY") {
-		cluster.AddDBTag("lossyconv")
-	}
-	if cluster.master.Variables["SLAVE_EXEC_MODE"] == "IDEMPOTENT" {
-		cluster.AddDBTag("idempotent")
-	}
-
-	//missing in compliance
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "SUBQUERY_CACHE=ON") {
-		cluster.AddDBTag("subquerycache")
-	}
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "SEMIJOIN_WITH_CACHE=ON") {
-		cluster.AddDBTag("semijoincache")
-	}
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "FIRSTMATCH=ON") {
-		cluster.AddDBTag("firstmatch")
-	}
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "EXTENDED_KEYS=ON") {
-		cluster.AddDBTag("extendedkeys")
-	}
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "LOOSESCAN=ON") {
-		cluster.AddDBTag("loosescan")
-	}
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "INDEX_CONDITION_PUSHDOWN=OFF") {
-		cluster.AddDBTag("noicp")
-	}
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "IN_TO_EXISTS=OFF") {
-		cluster.AddDBTag("nointoexists")
-	}
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "DERIVED_MERGE=OFF") {
-		cluster.AddDBTag("noderivedmerge")
-	}
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "DERIVED_WITH_KEYS=OFF") {
-		cluster.AddDBTag("noderivedwithkeys")
-	}
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "MRR=OFF") {
-		cluster.AddDBTag("nomrr")
-	}
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "OUTER_JOIN_WITH_CACHE=OFF") {
-		cluster.AddDBTag("noouterjoincache")
-	}
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "SEMI_JOIN_WITH_CACHE=OFF") {
-		cluster.AddDBTag("nosemijoincache")
-	}
-	if strings.Contains(cluster.master.Variables["OPTIMIZER_SWITCH"], "TABLE_ELIMINATION=OFF") {
-		cluster.AddDBTag("notableelimination")
-	}
-	if strings.Contains(cluster.master.Variables["SQL_MODE"], "ORACLE") {
-		cluster.AddDBTag("sqlmodeoracle")
-	}
-	if cluster.master.Variables["SQL_MODE"] == "" {
-		cluster.AddDBTag("sqlmodeunstrict")
-	}
-	//index_merge=on
-	//index_merge_union=on,
-	//index_merge_sort_union=on
-	//index_merge_intersection=on
-	//index_merge_sort_intersection=off
-	//engine_condition_pushdown=on
-	//materialization=on
-	//semijoin=on
-	//partial_match_rowid_merge=on
-	//partial_match_table_scan=on,
-	//mrr_cost_based=off
-	//mrr_sort_keys=on,
-	//join_cache_incremental=on,
-	//join_cache_hashed=on,
-	//join_cache_bka=on,
-	//optimize_join_buffer_size=on,
-	//orderby_uses_equalities=on
-	//condition_pushdown_for_derived=on
-	//split_materialized=on//
-	//condition_pushdown_for_subquery=on,
-	//rowid_filter=on
-	//condition_pushdown_from_having=on
-
-	if cluster.master.Variables["TX_ISOLATION"] == "READ-COMMITTED" {
-		cluster.AddDBTag("readcommitted")
-	}
-	//missing
-	if cluster.master.Variables["TX_ISOLATION"] == "READ-UNCOMMITTED" {
-		cluster.AddDBTag("readuncommitted")
-	}
-	if cluster.master.Variables["TX_ISOLATION"] == "REPEATABLE-READ" {
-		cluster.AddDBTag("reapeatableread")
-	}
-	if cluster.master.Variables["TX_ISOLATION"] == "SERIALIZED" {
-		cluster.AddDBTag("serialized")
-	}
-
-	if cluster.master.Variables["JOIN_CACHE_LEVEL"] == "8" {
-		cluster.AddDBTag("hashjoin")
-	}
-	if cluster.master.Variables["JOIN_CACHE_LEVEL"] == "6" {
-		cluster.AddDBTag("mrrjoin")
-	}
-	if cluster.master.Variables["JOIN_CACHE_LEVEL"] == "2" {
-		cluster.AddDBTag("nestedjoin")
-	}
-	if cluster.master.Variables["LOWER_CASE_TABLE_NAMES"] == "1" {
-		cluster.AddDBTag("lowercasetable")
-	}
-	if cluster.master.Variables["USER_STAT_TABLES"] == "PREFERABLY_FOR_QUERIES" {
-		cluster.AddDBTag("eits")
-	}
-
-	if cluster.master.Variables["CHARACTER_SET_SERVER"] == "UTF8MB4" {
-		if strings.Contains(cluster.master.Variables["COLLATION_SERVER"], "_ci") {
-			cluster.AddDBTag("bm4ci")
-		} else {
-			cluster.AddDBTag("bm4cs")
-		}
-	}
-	if cluster.master.Variables["CHARACTER_SET_SERVER"] == "UTF8" {
-		if strings.Contains(cluster.master.Variables["COLLATION_SERVER"], "_ci") {
-			cluster.AddDBTag("utf8ci")
-		} else {
-			cluster.AddDBTag("utf8cs")
-		}
-	}
-
-	//slave_parallel_mode = optimistic
-	/*
-
-		tmpmem, err := strconv.ParseUint(cluster.master.Variables["TMP_TABLE_SIZE"], 10, 64)
-		if err != nil {
-			return err
-		}
-			qttmp, err := strconv.ParseUint(cluster.master.Variables["MAX_TMP_TABLES"], 10, 64)
-			if err != nil {
-				return err
-			}
-			tmpmem = tmpmem * qttmp
-			totalmem += tmpmem
-
-			cores, err := strconv.ParseUint(cluster.master.Variables["THREAD_POOL_SIZE"], 10, 64)
-			if err != nil {
-				return err
-			}
-
-			joinmem, err := strconv.ParseUint(cluster.master.Variables["JOIN_BUFFER_SPACE_LIMIT"], 10, 64)
-			joinmem = joinmem * cores
-
-			sortmem, err := strconv.ParseUint(cluster.master.Variables["SORT_BUFFER_SIZE"], 10, 64)
-	*/
-	//
-	//	containermem = containermem * int64(sharedmempcts["innodb"]) / 100
-
+	server := cluster.GetMaster()
+	if server != nil {
+		cluster.LogPrintf(LvlErr, "Cluster configurartion discovery can ony be done on a valid leader")
+		return errors.New("Cluster configurartion discovery can ony be done on a valid leader")
+	}
+	cluster.Configurator.ConfigDiscovery(server.Variables, server.Plugins)
+	cluster.SetDBCoresFromConfigurator()
+	cluster.SetDBMemoryFromConfigurator()
+	cluster.SetDBIOPSFromConfigurator()
+	cluster.SetTagsFromConfigurator()
 	return nil
+}
+
+func (cluster *Cluster) ReloadCertificates() {
+	cluster.LogPrintf(LvlInfo, "Reload cluster TLS certificates")
+	for _, srv := range cluster.Servers {
+		srv.CertificatesReload()
+	}
+	for _, pri := range cluster.Proxies {
+		pri.CertificatesReload()
+	}
 }

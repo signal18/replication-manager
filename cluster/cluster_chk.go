@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -12,11 +12,13 @@ import (
 	"errors"
 	"io/ioutil"
 	"net/http"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/router/maxscale"
+	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -27,42 +29,31 @@ func (cluster *Cluster) CheckFailed() {
 		cluster.SetSugarState("ERR00001", "CHECK", "")
 		return
 	}
-	if cluster.master != nil {
-		if cluster.isFoundCandidateMaster() {
-			if cluster.isBetweenFailoverTimeValid() {
-				if cluster.IsNotHavingMySQLErrantTransaction() {
-					if cluster.IsSameWsrepUUID() {
-						if cluster.isMaxMasterFailedCountReached() {
-							if cluster.isActiveArbitration() {
-								if cluster.isMaxClusterFailoverCountNotReached() {
-									if cluster.isAutomaticFailover() {
-										if cluster.isMasterFailed() {
-											if cluster.isNotFirstSlave() {
-												if cluster.isArbitratorAlive() {
+	if cluster.master == nil {
+		cluster.LogPrintf(LvlDbg, "Master not discovered, skipping failover check")
+	}
 
-													// False Positive
-													if cluster.isExternalOk() == false {
-														if cluster.isOneSlaveHeartbeatIncreasing() == false {
-															if cluster.isMaxscaleSupectRunning() == false {
-																cluster.MasterFailover(true)
-																cluster.failoverCond.Send <- true
-															}
-														}
-													}
-												}
+	if cluster.isFoundCandidateMaster() &&
+		cluster.isBetweenFailoverTimeValid() &&
+		cluster.IsNotHavingMySQLErrantTransaction() &&
+		cluster.IsSameWsrepUUID() &&
+		cluster.isMaxMasterFailedCountReached() &&
+		cluster.isActiveArbitration() &&
+		cluster.isMaxClusterFailoverCountNotReached() &&
+		cluster.isAutomaticFailover() &&
+		cluster.isMasterFailed() &&
+		cluster.isNotFirstSlave() &&
+		cluster.isArbitratorAlive() {
 
-											}
-										}
-									}
-								}
-							}
-						}
-					}
+		// False Positive
+		if cluster.isExternalOk() == false {
+			if cluster.isOneSlaveHeartbeatIncreasing() == false {
+				if cluster.isMaxscaleSupectRunning() == false {
+					cluster.MasterFailover(true)
+					cluster.failoverCond.Send <- true
 				}
 			}
 		}
-	} else {
-		cluster.LogPrintf(LvlDbg, "Master not discovered, skipping failover check")
 	}
 }
 
@@ -79,13 +70,13 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		}
 		return false
 	}
-	if hasBinLogs == false && cluster.Conf.CheckBinFilter == true {
+	if hasBinLogs == false && cluster.Conf.CheckBinFilter == true && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") {
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Binlog filters differ on master and slave %s. Skipping", sl.URL)
 		}
 		return false
 	}
-	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && cluster.Conf.CheckReplFilter == true {
+	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") && cluster.Conf.CheckReplFilter == true {
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Replication filters differ on master and slave %s. Skipping", sl.URL)
 		}
@@ -462,9 +453,59 @@ func (cluster *Cluster) CheckCapture(state state.State) {
 	}
 }
 
+func (cluster *Cluster) CheckAlert(state state.State) {
+	if cluster.Conf.MonitoringAlertTrigger == "" {
+		return
+	}
+
+	// exit even earlier
+	if cluster.Conf.MailTo == "" && cluster.Conf.AlertScript == "" {
+		return
+	}
+
+	if strings.Contains(cluster.Conf.MonitoringAlertTrigger, state.ErrKey) {
+		a := alert.Alert{
+			State:  state.ErrKey,
+			Origin: cluster.Name,
+		}
+
+		err := cluster.SendAlert(a)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Could not send alert: %s ", err)
+		}
+	}
+}
+
+func (cluster *Cluster) SendAlert(alert alert.Alert) error {
+	if cluster.Conf.MailTo != "" {
+		alert.From = cluster.Conf.MailFrom
+		alert.To = cluster.Conf.MailTo
+		alert.Destination = cluster.Conf.MailSMTPAddr
+		alert.User = cluster.Conf.MailSMTPUser
+		alert.Password = cluster.Conf.MailSMTPPassword
+		alert.TlsVerify = cluster.Conf.MailSMTPTLSSkipVerify
+		err := alert.Email()
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
+		}
+	}
+	if cluster.Conf.AlertScript != "" {
+		cluster.LogPrintf("INFO", "Calling alert script")
+		var out []byte
+		out, err := exec.Command(cluster.Conf.AlertScript, alert.Origin, alert.PrevState, alert.State).CombinedOutput()
+		if err != nil {
+			cluster.LogPrintf("ERROR", "%s", err)
+		}
+
+		cluster.LogPrintf("INFO", "Alert script complete:", string(out))
+	}
+
+	return nil
+}
+
 func (cluster *Cluster) CheckAllTableChecksum() {
 	for _, t := range cluster.master.Tables {
-		cluster.CheckTableChecksum(t.Table_schema, t.Table_name)
+		cluster.CheckTableChecksum(t.TableSchema, t.TableName)
 	}
 }
 
@@ -483,7 +524,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	if pk == "" {
 		cluster.master.ClusterGroup.LogPrintf(LvlErr, "Checksum, no primary key for table %s.%s", schema, table)
 		t := cluster.master.DictTables[schema+"."+table]
-		t.Table_sync = "NA"
+		t.TableSync = "NA"
 		cluster.master.DictTables[schema+"."+table] = t
 		return
 	}
@@ -588,7 +629,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 				checkok = false
 				cluster.LogPrintf(LvlInfo, "Checksum table failed chunk(%s,%s) %s.%s %s", chunk.ChunkMinKey, chunk.ChunkMaxKey, schema, table, s.URL)
 				t := cluster.master.DictTables[schema+"."+table]
-				t.Table_sync = "ER"
+				t.TableSync = "ER"
 				cluster.master.DictTables[schema+"."+table] = t
 			}
 
@@ -596,7 +637,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		if checkok {
 			cluster.LogPrintf(LvlInfo, "Checksum table succeed %s.%s %s", schema, table, s.URL)
 			t := cluster.master.DictTables[schema+"."+table]
-			t.Table_sync = "OK"
+			t.TableSync = "OK"
 			cluster.master.DictTables[schema+"."+table] = t
 		}
 	}

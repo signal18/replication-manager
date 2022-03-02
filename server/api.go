@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Author: Stephane Varoqui  <svaroqui@gmail.com>
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
@@ -25,7 +25,6 @@ import (
 	"github.com/codegangsta/negroni"
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
-	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/regtest"
@@ -109,6 +108,8 @@ func (repman *ReplicationManager) apiserver() {
 	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 	router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 	router.HandleFunc("/api/login", repman.loginHandler)
+	//router.Handle("/api", v3.NewHandler("My API", "/swagger.json", "/api"))
+
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
 	))
@@ -144,15 +145,46 @@ func (repman *ReplicationManager) apiserver() {
 	repman.apiClusterProtectedHandler(router)
 	repman.apiProxyProtectedHandler(router)
 
-	log.Info("Starting HTTPS & JWT API on " + repman.Conf.APIBind + ":" + repman.Conf.APIPort)
 	var err error
 
-	if repman.Conf.MonitoringSSLCert == "" {
-		//	err = http.ListenAndServeTLS(repman.Conf.APIBind+":"+repman.Conf.APIPort, repman.Conf.ShareDir+"/server.crt", repman.Conf.ShareDir+"/server.key", router)
-		err = http.ListenAndServeTLS(repman.Conf.APIBind+":"+repman.Conf.APIPort, repman.Conf.ShareDir+"/server.crt", repman.Conf.ShareDir+"/server.key", handlers.CORS(handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}), handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}), handlers.AllowedOrigins([]string{"*"}))(router))
-	} else {
-		err = http.ListenAndServeTLS(repman.Conf.APIBind+":"+repman.Conf.APIPort, repman.Conf.MonitoringSSLCert, repman.Conf.MonitoringSSLKey, handlers.CORS(handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}), handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}), handlers.AllowedOrigins([]string{"*"}))(router))
+	tlsConfig := Repmanv3TLS{
+		Enabled: false,
 	}
+	// Add default unsecure cert if not set
+	if repman.Conf.MonitoringSSLCert == "" {
+		log.Info("No SSL certificate provided using insecured from " + repman.Conf.ShareDir + "/server.crt")
+		repman.Conf.MonitoringSSLCert = repman.Conf.ShareDir + "/server.crt"
+		repman.Conf.MonitoringSSLKey = repman.Conf.ShareDir + "/server.key"
+		tlsConfig = Repmanv3TLS{
+			Enabled:            true,
+			CertificatePath:    repman.Conf.MonitoringSSLCert,
+			CertificateKeyPath: repman.Conf.MonitoringSSLKey,
+		}
+	}
+
+	if repman.Conf.MonitoringSSLCert != "" {
+		log.Info("Starting HTTPS & JWT API on " + repman.Conf.APIBind + ":" + repman.Conf.APIPort)
+		tlsConfig = Repmanv3TLS{
+			Enabled:            true,
+			CertificatePath:    repman.Conf.MonitoringSSLCert,
+			CertificateKeyPath: repman.Conf.MonitoringSSLKey,
+		}
+	} else {
+		log.Info("Starting HTTP & JWT API on " + repman.Conf.APIBind + ":" + repman.Conf.APIPort)
+	}
+
+	repman.SetV3Config(Repmanv3Config{
+		Listen: Repmanv3ListenAddress{
+			Address: repman.Conf.APIBind,
+			Port:    repman.Conf.APIPort,
+		},
+		TLS: tlsConfig,
+	})
+
+	// pass the router to the V3 server that will multiplex the legacy API and the
+	// new gRPC + JSON Gateway API.
+	err = repman.StartServerV3(true, router)
+
 	if err != nil {
 		log.Errorf("JWT API can't start: %s", err)
 	}
@@ -282,8 +314,13 @@ func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *ht
 
 }
 
+// swagger:route GET /api/clusters clusters
+//
+// This will show all the available clusters
+//
+//     Responses:
+//       200: clusters
 func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
-
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	var clusters []*cluster.Cluster
@@ -350,6 +387,21 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 
 }
 
+// swagger:operation GET /api/prometheus prometheus
+// Returns the Prometheus metrics for all database instances on the server
+// in the Prometheus text format
+//
+// ---
+// produces:
+//  - text/plain; version=0.0.4
+// responses:
+//   '200':
+//     description: Prometheus file format
+//     schema:
+//       type: string
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
 func (repman *ReplicationManager) handlerMuxPrometheus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -376,6 +428,30 @@ func (repman *ReplicationManager) handlerMuxClustersOld(w http.ResponseWriter, r
 	}
 }
 
+// The Status contains string value for the alive status.
+// Possible values are: running, starting, errors
+//
+// swagger:response status
+type StatusResponse struct {
+	// Example: *
+	AccessControlAllowOrigin string `json:"Access-Control-Allow-Origin"`
+	// The status message
+	// in: body
+	Body struct {
+		// Example: running
+		// Example: starting
+		// Example: errors
+		Alive string `json:"alive"`
+	}
+}
+
+// swagger:route GET /api/status status
+//
+// This will show the status of the cluster
+//
+//     Responses:
+//       200: status
+
 func (repman *ReplicationManager) handlerMuxStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
@@ -387,6 +463,11 @@ func (repman *ReplicationManager) handlerMuxStatus(w http.ResponseWriter, r *htt
 	}
 }
 
+// swagger:route GET /api/timeout timeout
+//
+//     Responses:
+//       200: status
+
 func (repman *ReplicationManager) handlerMuxTimeout(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
@@ -394,6 +475,11 @@ func (repman *ReplicationManager) handlerMuxTimeout(w http.ResponseWriter, r *ht
 	time.Sleep(1200 * time.Second)
 	io.WriteString(w, `{"alive": "running"}`)
 }
+
+// swagger:route GET /api/heartbeat heartbeat
+//
+//     Responses:
+//       200: heartbeat
 
 func (repman *ReplicationManager) handlerMuxMonitorHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var send Heartbeat

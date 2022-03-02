@@ -2144,6 +2144,139 @@
                 }
             ],
             "fset_name": "mariadb.engine.archive"
+        },
+        {
+            "fset_stats": false,
+            "id": 402,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "deb",
+                        "f_table": "v_tags",
+                        "id": 359
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "system.deb"
+        },
+        {
+            "fset_stats": false,
+            "id": 403,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "rpm",
+                        "f_table": "v_tags",
+                        "id": 360
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "system.rpm"
+        },
+        {
+            "fset_stats": false,
+            "id": 404,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "trace",
+                        "f_table": "v_tags",
+                        "id": 361
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.trace"
+        },
+        {
+            "fset_stats": false,
+            "id": 406,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "noauth",
+                        "f_table": "v_tags",
+                        "id": 363
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.security.noauth"
+        },
+        {
+            "fset_stats": false,
+            "id": 407,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "interleave",
+                        "f_table": "v_tags",
+                        "id": 364
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.memory.interleave"
+        },
+        {
+            "fset_stats": false,
+            "id": 408,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "splitundolog",
+                        "f_table": "v_tags",
+                        "id": 365
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.disk.splitundolog"
+        },
+        {
+            "fset_stats": false,
+            "id": 409,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "nosplitpath",
+                        "f_table": "v_tags",
+                        "id": 366
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.disk.nosplitpath"
         }
     ],
     "rulesets": [
@@ -2400,8 +2533,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\n\\n!includedir /etc/mysql/custom.d\\n!includedir /etc/mysql/conf.d\\n\\n\"}",
-                    "var_updated": "2021-01-20 17:10:14",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\n!includedir /etc/mysql/conf.d\\n!includedir /etc/mysql/custom.d\\n\\n\\n\"}",
+                    "var_updated": "2021-12-04 09:56:22",
                     "var_name": "db_cnf",
                     "id": 5902
                 },
@@ -2466,8 +2599,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/dbjobs_new\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\nUSER=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\nPASSWORD=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nMYSQL_PORT=%%ENV:SERVER_PORT%%\\nMYSQL_SERVER=%%ENV:SERVER_HOST%%\\nCLUSTER_NAME=%%ENV:SVC_NAMESPACE%%\\nREPLICATION_MANAGER_ADDR=%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%\\nMYSQL_CONF=%%ENV:SVC_CONF_ENV_MYSQL_CONFDIR%%\\nDATADIR=%%ENV:SVC_CONF_ENV_MYSQL_DATADIR%%\\nMYSQL_CLIENT=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysql\\nMYSQL_CHECK=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqlcheck\\nMYSQL_DUMP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqldump\\nSST_RECEIVER_PORT=%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%\\nSOCAT_BIND=%%ENV:SERVER_IP%%\\nMARIADB_BACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mariabackup\\nXTRABACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/xtrabackup\\nINNODBACKUPEX=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/innobackupex\\n\\nERROLOG=$DATADIR/.system/logs/error.log\\nSLOWLOG=$DATADIR/.system/logs/slow-query.log\\nBACKUPDIR=$DATADIR/.system/backup\\n\\nJOBS=( \\\"xtrabackup\\\" \\\"mariabackup\\\" \\\"error\\\" \\\"slowquery\\\" \\\"zfssnapback\\\" \\\"optimize\\\" \\\"reseedxtrabackup\\\" \\\"reseedmariabackup\\\" \\\"reseedmysqldump\\\" \\\"flashbackxtrabackup\\\" \\\"flashbackmariadbackup\\\" \\\"flashbackmysqldump\\\" \\\"stop\\\" \\\"restart\\\" \\\"start\\\")\\n\\nsocatCleaner()\\n{\\n  kill -9 $(lsof -t -i:$SST_RECEIVER_PORT -sTCP:LISTEN)\\n}\\n\\ndoneJob()\\n{\\n $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), result=LOAD_FILE('/tmp/dbjob.out') WHERE id='$ID';\\\" &\\n}\\n\\npauseJob()\\n{\\n $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"select sleep(6);set sql_log_bin=0;UPDATE replication_manager_schema.jobs set result=LOAD_FILE('/tmp/dbjob.out') WHERE id='$ID';\\\" &\\n}\\n\\npartialRestore()\\n{\\n chown -R mysql:mysql $BACKUPDIR\\n $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;install plugin BLACKHOLE soname 'ha_blackhole.so'\\\"\\n for dir in $(ls -d $BACKUPDIR/*/ | xargs -n 1 basename | grep -vE 'mysql|performance_schema|replication_manager_schema') ; do\\n $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;drop database IF EXISTS $dir; CREATE DATABASE $dir;\\\"\\n\\n\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.exp\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   cat $BACKUPDIR/$dir/$file.frm | sed -e 's/\\\\x06\\\\x00\\\\x49\\\\x6E\\\\x6E\\\\x6F\\\\x44\\\\x42\\\\x00\\\\x00\\\\x00/\\\\x09\\\\x00\\\\x42\\\\x4C\\\\x41\\\\x43\\\\x4B\\\\x48\\\\x4F\\\\x4C\\\\x45/g' > $DATADIR/$dir/mrm_pivo.frm\\n   chown mysql:mysql $DATADIR/$dir/mrm_pivo.frm\\n   $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;ALTER TABLE $dir.mrm_pivo  engine=innodb;RENAME TABLE $dir.mrm_pivo TO $dir.$file; ALTER TABLE $dir.$file DISCARD TABLESPACE;\\\"\\n   mv $BACKUPDIR/$dir/$file.ibd $DATADIR/$dir/$file.ibd\\n   mv $BACKUPDIR/$dir/$file.exp $DATADIR/$dir/$file.exp\\n   mv $BACKUPDIR/$dir/$file.cfg $DATADIR/$dir/$file.cfg\\n   mv $BACKUPDIR/$dir/$file.TRG $DATADIR/$dir/$file.TRG\\n   $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;ALTER TABLE $dir.$file IMPORT TABLESPACE\\\"\\n  done\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.MYD\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/$dir/$file.* $DATADIR/$dir/\\n   $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;FLUSH TABLE $dir.$file\\\"\\n  done\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.CSV\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/$dir/$file.* $DATADIR/$dir/\\n   $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;FLUSH TABLE $dir.$file\\\"\\n  done\\n done\\n for file in $(find $BACKUPDIR/mysql/ -name \\\"*.MYD\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/mysql/$file.* $DATADIR/mysql/\\n   $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;FLUSH TABLE mysql.$file\\\"\\n done\\n cat $BACKUPDIR/xtrabackup_info | grep binlog_pos | awk  -F, '{ print $3 }' | sed -e 's/GTID of the last change/set sql_log_bin=0;set global gtid_slave_pos=/g' | $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf\\n $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf   -e\\\"flush privileges;start slave;\\\"\\n}\\n\\nfor job in \\\"${JOBS[@]}\\\"\\ndo\\n\\n TASK=($(echo \\\"select concat(id,'@',server,':',port) from replication_manager_schema.jobs WHERE task='$job' and done=0 order by task desc limit 1\\\" | $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf -N))\\n\\n ADDRESS=($(echo $TASK | awk -F@ '{ print $2 }'))\\n ID=($(echo $TASK | awk -F@ '{ print $1 }'))\\n #purge de past\\n $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set done=1 WHERE done=0 AND task='$job';\\\"\\n\\n  if [ \\\"$ADDRESS\\\" == \\\"\\\" ]; then\\n    echo \\\"No $job needed\\\"\\n    case \\\"$job\\\" in \\n    start)\\n       if [ \\\"curl -so /dev/null -w '%{response_code}'   http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/need-start\\\" == \\\"200\\\" ]; then\\n          curl http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config|tar xzvf etc/* - -C $CONFDIR/../..\\n    systemctl start mysql \\n       fi\\n    ;;\\n   esac\\n  else\\n    echo \\\"Processing $job\\\"\\n    case \\\"$job\\\" in\\n      reseedmysqldump)\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socatCleaner\\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | gunzip | $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf --init-command=\\\"reset master;set sql_log_bin=0;\\\" > /tmp/dbjob.out 2>&1\\n        $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e 'start slave;'\\n      ;;\\n      flashbackmysqldump)\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socatCleaner\\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | gunzip | $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf --init-command=\\\"set sql_log_bin=0\\\" > /tmp/dbjob.out 2>&1\\n        $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e 'start slave;'\\n      ;;\\n      reseedxtrabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socatCleaner\\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR\\n       $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR\\n       partialRestore\\n      ;;\\n      reseedmariabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socatCleaner\\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | mbstream -x -C $BACKUPDIR\\n       # mbstream -p, --parallel\\n       $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR\\n       partialRestore\\n      ;;\\n      flashbackxtrabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socatCleaner \\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR\\n       $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR\\n       partialRestore\\n      ;;\\n      flashbackmariadbackup)\\n       rm -rf $BACKUPDIR\\n       mkdir $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socatCleaner\\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR\\n       $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR\\n       partialRestore\\n      ;;\\n      xtrabackup)\\n       cd /docker-entrypoint-initdb.d\\n       $INNODBACKUPEX  --defaults-file=$MYSQL_CONF/my.cnf --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  --no-version-check  --stream=xbstream /tmp/ | socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n      ;;\\n      mariabackup)\\n       cd /docker-entrypoint-initdb.d\\n       $MARIADB_BACKUP --innobackupex --defaults-file=$MYSQL_CONF/my.cnf --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  --no-version-check --stream=xbstream /tmp/ | socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n      ;;\\n      error)\\n       cat $ERROLOG| socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n       > $ERROLOG\\n      ;;\\n      slowquery)\\n       cat $SLOWLOG| socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n       > $SLOWLOG\\n      ;;\\n      zfssnapback)\\n       LASTSNAP=`zfs list -r -t all |grep zp%%ENV:SERVICES_SVCNAME%%_pod01 | grep daily | sort -r | head -n 1  | cut -d\\\" \\\" -f1`\\n       %%ENV:SERVICES_SVCNAME%% stop\\n       zfs rollback $LASTSNAP\\n       %%ENV:SERVICES_SVCNAME%% start\\n      ;;\\n      optimize)\\n       $MYSQL_CHECK -o --defaults-extra-file=$MYSQL_CONF/dbjob.cnf --all-databases --skip-write-binlog &>/tmp/dbjob.out\\n      ;;\\n      restart)\\n       systemctl restart mysql  \\n       journalctl -u mysql > /tmp/dbjob.out \\n      ;;\\n      stop)\\n       systemctl stop mysql \\n       journalctl -u mysql > /tmp/dbjob.out \\n      ;;\\n  esac\\n  doneJob\\n  fi\\n\\ndone\\n\"}",
-                    "var_updated": "2021-02-06 09:19:15",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/dbjobs_new\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\nset -x\\nUSER=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\nPASSWORD=$MYSQL_ROOT_PASSWORD\\nMYSQL_PORT=%%ENV:SERVER_PORT%%\\nMYSQL_SERVER=%%ENV:SERVER_HOST%%\\nCLUSTER_NAME=%%ENV:SVC_NAMESPACE%%\\nREPLICATION_MANAGER_ADDR=%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%\\nMYSQL_CONF=%%ENV:SVC_CONF_ENV_MYSQL_CONFDIR%%\\nDATADIR=%%ENV:SVC_CONF_ENV_MYSQL_DATADIR%%\\nMYSQL_CLIENT=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysql\\nMYSQL_CHECK=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqlcheck\\nMYSQL_DUMP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqldump\\nSST_RECEIVER_PORT=%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%\\nSOCAT_BIND=%%ENV:SERVER_IP%%\\nMARIADB_BACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mariabackup\\nXTRABACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/xtrabackup\\nINNODBACKUPEX=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/innobackupex\\n\\nERROLOG=$DATADIR/.system/logs/error.log\\nSLOWLOG=$DATADIR/.system/logs/slow-query.log\\nBACKUPDIR=$DATADIR/.system/backup\\n\\nJOBS=( \\\"xtrabackup\\\" \\\"mariabackup\\\" \\\"error\\\" \\\"slowquery\\\" \\\"zfssnapback\\\" \\\"optimize\\\" \\\"reseedxtrabackup\\\" \\\"reseedmariabackup\\\" \\\"reseedmysqldump\\\" \\\"flashbackxtrabackup\\\" \\\"flashbackmariadbackup\\\" \\\"flashbackmysqldump\\\" \\\"stop\\\" \\\"restart\\\" \\\"start\\\")\\n\\n# OSX need socat extra path\\nexport PATH=$PATH:/usr/local/bin\\n \\nsocatCleaner()\\n{\\n lsof -t -i:$SST_RECEIVER_PORT -sTCP:LISTEN | kill -9\\n}\\n\\ndoneJob()\\n{\\n $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), result=LOAD_FILE('/tmp/dbjob.out') WHERE id='$ID';\\\" &\\n}\\n\\npauseJob()\\n{\\n $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"select sleep(20);set sql_log_bin=0;UPDATE replication_manager_schema.jobs set set done=1,result=LOAD_FILE('/tmp/dbjob.out') WHERE id='$ID';\\\" &\\n}\\n\\npartialRestore()\\n{\\n chown -R mysql:mysql $BACKUPDIR\\n $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;install plugin BLACKHOLE soname 'ha_blackhole.so'\\\"\\n for dir in $(ls -d $BACKUPDIR/*/ | xargs -n 1 basename | grep -vE 'mysql|performance_schema|replication_manager_schema') ; do\\n $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;drop database IF EXISTS $dir; CREATE DATABASE $dir;\\\"\\n\\n\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.exp\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   cat $BACKUPDIR/$dir/$file.frm | sed -e 's/\\\\x06\\\\x00\\\\x49\\\\x6E\\\\x6E\\\\x6F\\\\x44\\\\x42\\\\x00\\\\x00\\\\x00/\\\\x09\\\\x00\\\\x42\\\\x4C\\\\x41\\\\x43\\\\x4B\\\\x48\\\\x4F\\\\x4C\\\\x45/g' > $DATADIR/$dir/mrm_pivo.frm\\n   chown mysql:mysql $DATADIR/$dir/mrm_pivo.frm\\n   $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;ALTER TABLE $dir.mrm_pivo  engine=innodb;RENAME TABLE $dir.mrm_pivo TO $dir.$file; ALTER TABLE $dir.$file DISCARD TABLESPACE;\\\"\\n   mv $BACKUPDIR/$dir/$file.ibd $DATADIR/$dir/$file.ibd\\n   mv $BACKUPDIR/$dir/$file.exp $DATADIR/$dir/$file.exp\\n   mv $BACKUPDIR/$dir/$file.cfg $DATADIR/$dir/$file.cfg\\n   mv $BACKUPDIR/$dir/$file.TRG $DATADIR/$dir/$file.TRG\\n   $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;ALTER TABLE $dir.$file IMPORT TABLESPACE\\\"\\n  done\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.MYD\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/$dir/$file.* $DATADIR/$dir/\\n   $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;FLUSH TABLE $dir.$file\\\"\\n  done\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.CSV\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/$dir/$file.* $DATADIR/$dir/\\n   $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;FLUSH TABLE $dir.$file\\\"\\n  done\\n done\\n for file in $(find $BACKUPDIR/mysql/ -name \\\"*.MYD\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/mysql/$file.* $DATADIR/mysql/\\n   $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;FLUSH TABLE mysql.$file\\\"\\n done\\n cat $BACKUPDIR/xtrabackup_info | grep binlog_pos | awk  -F, '{ print $3 }' | sed -e 's/GTID of the last change/set sql_log_bin=0;set global gtid_slave_pos=/g' | $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf\\n $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf   -e\\\"flush privileges;start slave;\\\"\\n}\\n\\nfor job in \\\"${JOBS[@]}\\\"\\ndo\\n\\n TASK=($(echo \\\"select concat(id,'@',server,':',port) from replication_manager_schema.jobs WHERE task='$job' and done=0 order by task desc limit 1\\\" | $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf -N))\\n\\n ADDRESS=($(echo $TASK | awk -F@ '{ print $2 }'))\\n ID=($(echo $TASK | awk -F@ '{ print $1 }'))\\n #purge de past\\n $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set done=1 WHERE done=0 AND task='$job' AND ID<>$ID;\\\"\\n\\n  if [ \\\"$ADDRESS\\\" == \\\"\\\" ]; then\\n    echo \\\"No $job needed\\\"\\n    case \\\"$job\\\" in \\n    start)\\n       if [ \\\"curl -so /dev/null -w '%{response_code}'   http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/need-start\\\" == \\\"200\\\" ]; then\\n          curl http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config|tar xzvf etc/* - -C $CONFDIR/../..\\n    systemctl start mysql \\n       fi\\n    ;;\\n   esac\\n  else\\n    echo \\\"Processing $job\\\"\\n    case \\\"$job\\\" in\\n      reseedmysqldump)\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socatCleaner\\n       time socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | gunzip | $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf --init-command=\\\"reset master;set sql_log_bin=0;\\\" > /tmp/dbjob.out 2>&1\\n        $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e 'start slave;'\\n      ;;\\n      flashbackmysqldump)\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socatCleaner\\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | gunzip | $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf --init-command=\\\"set sql_log_bin=0\\\" > /tmp/dbjob.out 2>&1\\n        $MYSQL_CLIENT --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  -e 'start slave;'\\n      ;;\\n      reseedxtrabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socatCleaner\\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR\\n       $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR\\n       partialRestore\\n      ;;\\n      reseedmariabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socatCleaner\\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | mbstream -x -C $BACKUPDIR\\n       # mbstream -p, --parallel\\n       $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR\\n       partialRestore\\n      ;;\\n      flashbackxtrabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socatCleaner \\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR\\n       $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR\\n       partialRestore\\n      ;;\\n      flashbackmariadbackup)\\n       rm -rf $BACKUPDIR\\n       mkdir $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  /tmp/dbjob.out\\n       pauseJob\\n       socatCleaner\\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR\\n       $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR\\n       partialRestore\\n      ;;\\n      xtrabackup)\\n       cd /docker-entrypoint-initdb.d\\n       $INNODBACKUPEX  --defaults-file=$MYSQL_CONF/my.cnf --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  --no-version-check  --stream=xbstream /tmp/ | socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n      ;;\\n      mariabackup)\\n       cd /docker-entrypoint-initdb.d\\n       $MARIADB_BACKUP --innobackupex --defaults-file=$MYSQL_CONF/my.cnf --defaults-extra-file=$MYSQL_CONF/dbjob.cnf  --no-version-check --stream=xbstream /tmp/ | socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n      ;;\\n      error)\\n       cat $ERROLOG| socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n       > $ERROLOG\\n      ;;\\n      slowquery)\\n       cat $SLOWLOG| socat -u stdio TCP:$ADDRESS &>/tmp/dbjob.out\\n       > $SLOWLOG\\n      ;;\\n      zfssnapback)\\n       LASTSNAP=`zfs list -r -t all |grep zp%%ENV:SERVICES_SVCNAME%%_pod01 | grep daily | sort -r | head -n 1  | cut -d\\\" \\\" -f1`\\n       %%ENV:SERVICES_SVCNAME%% stop\\n       zfs rollback $LASTSNAP\\n       %%ENV:SERVICES_SVCNAME%% start\\n      ;;\\n      optimize)\\n       $MYSQL_CHECK -o --defaults-extra-file=$MYSQL_CONF/dbjob.cnf --all-databases --skip-write-binlog &>/tmp/dbjob.out\\n      ;;\\n      restart)\\n       systemctl restart mysql  \\n       journalctl -u mysql > /tmp/dbjob.out \\n      ;;\\n      stop)\\n       systemctl stop mysql \\n       journalctl -u mysql > /tmp/dbjob.out \\n      ;;\\n  esac\\n  doneJob\\n  fi\\n\\ndone\\n\"}",
+                    "var_updated": "2021-07-13 17:59:40",
                     "var_name": "db_cnf_script_dbjobs_new",
                     "id": 6270
                 }
@@ -2475,7 +2608,9 @@
             "ruleset_public": false,
             "ruleset_type": "contextual",
             "rulesets": [
-                "mariadb.svc.mrm.db.cnf.package.ssl"
+                "mariadb.svc.mrm.db.cnf.package.ssl",
+                "mariadb.svc.mrm.db.cnf.package.deb",
+                "mariadb.svc.mrm.db.cnf.package.rpm"
             ],
             "publications": [
                 "replication-manager"
@@ -2516,8 +2651,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_spider.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'ha_spider';SET GLOBAL innodb_large_prefix = 1;SET GLOBAL spider_same_server_link=1;SET GLOBAL spider_auto_increment_mode=1;SET GLOBAL spider_semi_table_lock  = 0;SET GLOBAL spider_support_xa=0;SET GLOBAL spider_direct_dup_insert = 1;SET GLOBAL spider_remote_sql_log_off=1;SET GLOBAL spider_casual_read=0;SET GLOBAL spider_bka_mode = 0;SET GLOBAL spider_quick_mode=3 ;SET GLOBAL spider_quick_page_size=1000;SET GLOBAL spider_sync_trx_isolation=1;SET GLOBAL spider_sync_autocommit=1;SET GLOBAL spider_sts_sync=1;SET GLOBAL spider_sts_bg_mode=0;SET GLOBAL spider_sts_mode=1 ;SET GLOBAL spider_sts_interval=10;SET GLOBAL spider_store_last_sts=1;SET GLOBAL spider_reset_sql_alloc=1;SET GLOBAL spider_bgs_mode=0;SET GLOBAL spider_use_pushdown_udf=0;SET GLOBAL spider_crd_mode=1;SET GLOBAL spider_crd_sync=1;SET GLOBAL spider_crd_bg_mode=0;SET GLOBAL spider_crd_interval=10;SET GLOBAL spider_store_last_crd=1;SET GLOBAL spider_connect_mutex = 0;SET GLOBAL spider_conn_recycle_mode=0;SET GLOBAL spider_conn_recycle_strict = 0;SET GLOBAL spider_local_lock_table=0;SET GLOBAL spider_connect_retry_count = 10;SET GLOBAL spider_connect_retry_interval = 1000 ;SET GLOBAL \\nspider_partition_skip_pk_sort_for_non_clustered_pk_table=1;\\n\\n[mariadb]\\nplugin_load_add=ha_spider.so\\n\\n[mariadb 10.4]\\ninnodb_large_prefix = 1\\n[mysqld]\\nloose_spider_same_server_link=1\\nloose_spider_auto_increment_mode=1\\nloose_spider_semi_table_lock  = 0\\nloose_spider_support_xa=0\\nloose_spider_direct_dup_insert = 1\\nloose_spider_remote_sql_log_off=1\\nloose_spider_casual_read=0\\nloose_spider_bka_mode = 0\\nloose_spider_quick_mode=3 \\nloose_spider_quick_page_size=1000\\nloose_spider_sync_trx_isolation=1\\nloose_spider_sync_autocommit=1\\n\\nloose_spider_sts_sync=1\\nloose_spider_sts_bg_mode=0\\nloose_spider_sts_mode=1 \\nloose_spider_sts_interval=10\\nloose_spider_store_last_sts=1\\n#show table  \\n\\n\\nloose_spider_reset_sql_alloc=1\\nloose_spider_bgs_mode=0\\nloose_spider_use_pushdown_udf=0\\n\\nloose_spider_crd_mode=1\\nloose_spider_crd_sync=1\\nloose_spider_crd_bg_mode=0\\nloose_spider_crd_interval=10\\nloose_spider_store_last_crd=1\\nloose_spider_connect_mutex = 0\\nloose_spider_conn_recycle_mode=0\\nloose_spider_conn_recycle_strict = 0\\nloose_spider_local_lock_table=0\\nloose_spider_connect_retry_count = 10   \\nloose_spider_connect_retry_interval = 1000 \\n[mariadb 10.3]\\nloose_spider_partition_skip_pk_sort_for_non_clustered_pk_table=1\"}",
-                    "var_updated": "2020-12-23 18:05:27",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_spider.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'ha_spider';SET GLOBAL innodb_large_prefix = 1;SET GLOBAL spider_same_server_link=1;SET GLOBAL spider_auto_increment_mode=1;SET GLOBAL spider_semi_table_lock  = 0;SET GLOBAL spider_support_xa=0;SET GLOBAL spider_direct_dup_insert = 1;SET GLOBAL spider_remote_sql_log_off=1;SET GLOBAL spider_casual_read=0;SET GLOBAL spider_bka_mode = 0;SET GLOBAL spider_quick_mode=3 ;SET GLOBAL spider_quick_page_size=1000;SET GLOBAL spider_sync_trx_isolation=1;SET GLOBAL spider_sync_autocommit=1;SET GLOBAL spider_sts_sync=1;SET GLOBAL spider_sts_bg_mode=0;SET GLOBAL spider_sts_mode=1 ;SET GLOBAL spider_sts_interval=10;SET GLOBAL spider_store_last_sts=1;SET GLOBAL spider_reset_sql_alloc=1;SET GLOBAL spider_bgs_mode=0;SET GLOBAL spider_use_pushdown_udf=0;SET GLOBAL spider_crd_mode=1;SET GLOBAL spider_crd_sync=1;SET GLOBAL spider_crd_bg_mode=0;SET GLOBAL spider_crd_interval=10;SET GLOBAL spider_store_last_crd=1;SET GLOBAL spider_connect_mutex = 0;SET GLOBAL spider_conn_recycle_mode=0;SET GLOBAL spider_conn_recycle_strict = 0;SET GLOBAL spider_local_lock_table=0;SET GLOBAL spider_connect_retry_count = 10;SET GLOBAL spider_connect_retry_interval = 1000 ;SET GLOBAL spider_partition_skip_pk_sort_for_non_clustered_pk_table=1;\\n\\n[mariadb]\\n# plugin_load_add=ha_spider.so\\n\\n[mariadb 10.4]\\ninnodb_large_prefix = 1\\n[mysqld]\\nloose_spider_same_server_link=1\\nloose_spider_auto_increment_mode=1\\nloose_spider_semi_table_lock  = 0\\nloose_spider_support_xa=0\\nloose_spider_direct_dup_insert = 1\\nloose_spider_remote_sql_log_off=1\\nloose_spider_casual_read=0\\nloose_spider_bka_mode = 0\\nloose_spider_quick_mode=3 \\nloose_spider_quick_page_size=1000\\nloose_spider_sync_trx_isolation=1\\nloose_spider_sync_autocommit=1\\n\\nloose_spider_sts_sync=1\\nloose_spider_sts_bg_mode=0\\nloose_spider_sts_mode=1 \\nloose_spider_sts_interval=10\\nloose_spider_store_last_sts=1\\n#show table  \\n\\n\\nloose_spider_reset_sql_alloc=1\\nloose_spider_bgs_mode=0\\nloose_spider_use_pushdown_udf=0\\n\\nloose_spider_crd_mode=1\\nloose_spider_crd_sync=1\\nloose_spider_crd_bg_mode=0\\nloose_spider_crd_interval=10\\nloose_spider_store_last_crd=1\\nloose_spider_connect_mutex = 0\\nloose_spider_conn_recycle_mode=0\\nloose_spider_conn_recycle_strict = 0\\nloose_spider_local_lock_table=0\\nloose_spider_connect_retry_count = 10   \\nloose_spider_connect_retry_interval = 1000 \\n[mariadb 10.3]\\nloose_spider_partition_skip_pk_sort_for_non_clustered_pk_table=1\"}",
+                    "var_updated": "2022-01-14 18:42:54",
                     "var_name": "db_cnf_engine_spider",
                     "id": 5909
                 },
@@ -2548,8 +2683,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_optimizer.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL max_prepared_stmt_count=200000;SET GLOBAL optimizer_search_depth = 0;SET GLOBAL join_cache_level = 6;SET GLOBAL optimizer_switch ='extended_keys=off';SET GLOBAL optimizer_switch ='index_condition_pushdown=on';SET GLOBAL optimizer_switch ='engine_condition_pushdown=on';SET GLOBAL optimizer_switch ='derived_merge=on';SET GLOBAL optimizer_switch ='derived_with_keys=on';SET GLOBAL optimizer_switch ='firstmatch=off';SET GLOBAL optimizer_switch ='loosescan=off';SET GLOBAL optimizer_switch ='materialization=on';SET GLOBAL optimizer_switch ='in_to_exists=on';SET GLOBAL optimizer_switch ='semijoin=on';SET GLOBAL optimizer_switch ='partial_match_rowid_merge=on';SET GLOBAL optimizer_switch ='partial_match_table_scan=on';SET GLOBAL optimizer_switch ='subquery_cache=off';SET GLOBAL optimizer_switch ='mrr=on';SET GLOBAL optimizer_switch ='mrr_cost_based=off';SET GLOBAL optimizer_switch ='mrr_sort_keys=on';SET GLOBAL optimizer_switch ='outer_join_with_cache=on';SET GLOBAL optimizer_switch ='semijoin_with_cache=off';SET GLOBAL optimizer_switch ='join_cache_incremental=on';SET GLOBAL optimizer_switch ='join_cache_hashed=on';SET GLOBAL optimizer_switch ='join_cache_bka=on';SET GLOBAL optimizer_switch ='optimize_join_buffer_size=on';SET GLOBAL optimizer_switch ='table_elimination=on';SET GLOBAL eq_range_index_dive_limit=10;SET GLOBAL in_predicate_conversion_threshold=1000;SET GLOBAL optimizer_switch='orderby_uses_equalities=on';SET GLOBAL max_prepared_stmt_count=200000;SET GLOBAL eq_range_index_dive_limit=10;SET GLOBAL in_predicate_conversion_threshold=1000;\\n\\n# mysql_command: SET GLOBAL max_prepared_stmt_count=200000;SET GLOBAL optimizer_search_depth = 0;SET GLOBAL join_cache_level = 6;SET GLOBAL optimizer_switch ='extended_keys=off';SET GLOBAL optimizer_switch ='index_condition_pushdown=on';SET GLOBAL optimizer_switch ='engine_condition_pushdown=on';SET GLOBAL optimizer_switch ='derived_merge=on';SET GLOBAL optimizer_switch ='derived_with_keys=on';SET GLOBAL optimizer_switch ='firstmatch=off';SET GLOBAL optimizer_switch ='loosescan=off';SET GLOBAL optimizer_switch ='materialization=on';SET GLOBAL optimizer_switch ='in_to_exists=on';SET GLOBAL optimizer_switch ='semijoin=on';SET GLOBAL optimizer_switch ='partial_match_rowid_merge=on';SET GLOBAL optimizer_switch ='partial_match_table_scan=on';SET GLOBAL optimizer_switch ='subquery_cache=off';SET GLOBAL optimizer_switch ='mrr=on';SET GLOBAL optimizer_switch ='mrr_cost_based=off';SET GLOBAL optimizer_switch ='mrr_sort_keys=on';SET GLOBAL optimizer_switch ='outer_join_with_cache=on';SET GLOBAL optimizer_switch ='semijoin_with_cache=off';SET GLOBAL optimizer_switch ='join_cache_incremental=on';SET GLOBAL optimizer_switch ='join_cache_hashed=on';SET GLOBAL optimizer_switch ='join_cache_bka=on';SET GLOBAL optimizer_switch ='optimize_join_buffer_size=on';SET GLOBAL optimizer_switch ='table_elimination=on';SET GLOBAL eq_range_index_dive_limit=10;SET GLOBAL in_predicate_conversion_threshold=1000;SET GLOBAL optimizer_switch='orderby_uses_equalities=on';SET GLOBAL optimizer_switch='use_index_extensions=off'; SET GLOBAL optimizer_switch='duplicateweedout=on'; \\n\\n[mysqld]\\nloose_optimizer_switch='use_index_extensions=off'\\nloose_optimizer_switch ='index_condition_pushdown=on'\\nloose_optimizer_switch ='engine_condition_pushdown=on'\\nloose_optimizer_switch ='derived_merge=on'\\nloose_optimizer_switch ='mrr=on'\\nloose_optimizer_switch ='mrr_cost_based=off'\\nloose_optimizer_switch ='firstmatch=off'\\nloose_optimizer_switch ='loosescan=off'\\nloose_optimizer_switch ='semijoin=on'\\nloose_optimizer_switch ='duplicateweedout=on'\\nloose_optimizer_switch ='materialization=on'\\n\\n[mariadb]\\nloose_optimizer_search_depth = 0\\nloose_join_cache_level = 6\\nloose_optimizer_switch ='extended_keys=off'\\nloose_optimizer_switch ='derived_with_keys=on'\\nloose_optimizer_switch ='in_to_exists=on'\\nloose_optimizer_switch ='partial_match_rowid_merge=on'\\nloose_optimizer_switch ='partial_match_table_scan=on'\\nloose_optimizer_switch ='subquery_cache=off'\\nloose_optimizer_switch ='mrr_sort_keys=on'\\nloose_optimizer_switch ='outer_join_with_cache=on'\\nloose_optimizer_switch ='semijoin_with_cache=off'\\nloose_optimizer_switch ='join_cache_incremental=on'\\nloose_optimizer_switch ='join_cache_hashed=on'\\nloose_optimizer_switch ='join_cache_bka=on'\\nloose_optimizer_switch ='optimize_join_buffer_size=on'\\nloose_optimizer_switch ='table_elimination=on'\\n#10.1.16\\nloose_optimizer_switch='orderby_uses_equalities=on'\\n#10.3.18, 10.4.8\\nloose_optimizer_switch ='in_predicate_conversion=on'\\nloose_eq_range_index_dive_limit=10\\nloose_in_predicate_conversion_threshold=1000\\n#10.4\\nloose_max_prepared_stmt_count=200000\\n\"}",
-                    "var_updated": "2021-01-15 16:10:13",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_optimizer.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL max_prepared_stmt_count=200000;SET GLOBAL optimizer_search_depth = 0;SET GLOBAL join_cache_level = 6;SET GLOBAL optimizer_switch ='extended_keys=off';SET GLOBAL optimizer_switch ='index_condition_pushdown=on';SET GLOBAL optimizer_switch ='engine_condition_pushdown=on';SET GLOBAL optimizer_switch ='derived_merge=on';SET GLOBAL optimizer_switch ='derived_with_keys=on';SET GLOBAL optimizer_switch ='firstmatch=off';SET GLOBAL optimizer_switch ='loosescan=off';SET GLOBAL optimizer_switch ='materialization=on';SET GLOBAL optimizer_switch ='in_to_exists=on';SET GLOBAL optimizer_switch ='semijoin=on';SET GLOBAL optimizer_switch ='partial_match_rowid_merge=on';SET GLOBAL optimizer_switch ='partial_match_table_scan=on';SET GLOBAL optimizer_switch ='subquery_cache=off';SET GLOBAL optimizer_switch ='mrr=on';SET GLOBAL optimizer_switch ='mrr_cost_based=off';SET GLOBAL optimizer_switch ='mrr_sort_keys=on';SET GLOBAL optimizer_switch ='outer_join_with_cache=on';SET GLOBAL optimizer_switch ='semijoin_with_cache=off';SET GLOBAL optimizer_switch ='join_cache_incremental=on';SET GLOBAL optimizer_switch ='join_cache_hashed=on';SET GLOBAL optimizer_switch ='join_cache_bka=on';SET GLOBAL optimizer_switch ='optimize_join_buffer_size=on';SET GLOBAL optimizer_switch ='table_elimination=on';SET GLOBAL eq_range_index_dive_limit=10;SET GLOBAL in_predicate_conversion_threshold=1000;SET GLOBAL optimizer_switch='orderby_uses_equalities=on';SET GLOBAL max_prepared_stmt_count=200000;SET GLOBAL eq_range_index_dive_limit=10;SET GLOBAL in_predicate_conversion_threshold=1000;\\n\\n# mysql_command: SET GLOBAL max_prepared_stmt_count=200000;SET GLOBAL optimizer_search_depth = 0;SET GLOBAL join_cache_level = 6;SET GLOBAL optimizer_switch ='extended_keys=off';SET GLOBAL optimizer_switch ='index_condition_pushdown=on';SET GLOBAL optimizer_switch ='engine_condition_pushdown=on';SET GLOBAL optimizer_switch ='derived_merge=on';SET GLOBAL optimizer_switch ='derived_with_keys=on';SET GLOBAL optimizer_switch ='firstmatch=off';SET GLOBAL optimizer_switch ='loosescan=off';SET GLOBAL optimizer_switch ='materialization=on';SET GLOBAL optimizer_switch ='in_to_exists=on';SET GLOBAL optimizer_switch ='semijoin=on';SET GLOBAL optimizer_switch ='partial_match_rowid_merge=on';SET GLOBAL optimizer_switch ='partial_match_table_scan=on';SET GLOBAL optimizer_switch ='subquery_cache=off';SET GLOBAL optimizer_switch ='mrr=on';SET GLOBAL optimizer_switch ='mrr_cost_based=off';SET GLOBAL optimizer_switch ='mrr_sort_keys=on';SET GLOBAL optimizer_switch ='outer_join_with_cache=on';SET GLOBAL optimizer_switch ='semijoin_with_cache=off';SET GLOBAL optimizer_switch ='join_cache_incremental=on';SET GLOBAL optimizer_switch ='join_cache_hashed=on';SET GLOBAL optimizer_switch ='join_cache_bka=on';SET GLOBAL optimizer_switch ='optimize_join_buffer_size=on';SET GLOBAL optimizer_switch ='table_elimination=on';SET GLOBAL eq_range_index_dive_limit=10;SET GLOBAL in_predicate_conversion_threshold=1000;SET GLOBAL optimizer_switch='orderby_uses_equalities=on';SET GLOBAL optimizer_switch='use_index_extensions=off'; SET GLOBAL optimizer_switch='duplicateweedout=on'; \\n\\n[mysqld]\\nloose_optimizer_switch='use_index_extensions=off'\\nloose_optimizer_switch ='index_condition_pushdown=on'\\nloose_optimizer_switch ='engine_condition_pushdown=on'\\nloose_optimizer_switch ='derived_merge=on'\\nloose_optimizer_switch ='mrr=on'\\nloose_optimizer_switch ='mrr_cost_based=off'\\nloose_optimizer_switch ='firstmatch=off'\\nloose_optimizer_switch ='loosescan=off'\\nloose_optimizer_switch ='semijoin=on'\\nloose_optimizer_switch ='duplicateweedout=on'\\nloose_optimizer_switch ='materialization=on'\\n\\n[mariadb]\\nloose_optimizer_search_depth = 0\\nloose_join_cache_level = 6\\nloose_optimizer_switch ='extended_keys=off'\\nloose_optimizer_switch ='derived_with_keys=on'\\nloose_optimizer_switch ='in_to_exists=on'\\nloose_optimizer_switch ='partial_match_rowid_merge=on'\\nloose_optimizer_switch ='partial_match_table_scan=on'\\nloose_optimizer_switch ='subquery_cache=off'\\nloose_optimizer_switch ='mrr_sort_keys=on'\\nloose_optimizer_switch ='outer_join_with_cache=on'\\nloose_optimizer_switch ='semijoin_with_cache=off'\\nloose_optimizer_switch ='join_cache_incremental=on'\\nloose_optimizer_switch ='join_cache_hashed=on'\\nloose_optimizer_switch ='join_cache_bka=on'\\nloose_optimizer_switch ='optimize_join_buffer_size=on'\\nloose_optimizer_switch ='table_elimination=on'\\n#10.1.16\\nloose_optimizer_switch='orderby_uses_equalities=on'\\n# 10.3.18, 10.4.8\\nloose_optimizer_switch ='in_predicate_conversion=on'\\nloose_eq_range_index_dive_limit=10\\nloose_in_predicate_conversion_threshold=1000\\n\\n# 10.6\\nloose_optimizer_switch ='not_null_range_scan=off'\\nloose_optimizer_switch ='cost_based_order_by_limit=on'\\n\\n# 10.4\\nloose_max_prepared_stmt_count=200000\\n\"}",
+                    "var_updated": "2021-02-09 11:19:57",
                     "var_name": "db_cnf_default_optimizer",
                     "id": 5913
                 },
@@ -2564,8 +2699,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_network.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# NETWORK\\n# ------- \\n\\n# mariadb_command: SET GLOBAL max_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%;SET GLOBAL max_user_connections = 450;SET GLOBAL thread_cache_size = 128;EXECUTE IMMEDIATE IF(@@back_log=128,\\\"SELECT 'Unchanged back_log'\\\", \\\"SET GLOBAL back_log = 128\\\");EXECUTE IMMEDIATE IF(@@skip_name_resolve=1,\\\"SELECT 'Unchanged skip_name_resolve'\\\", \\\"SET GLOBAL skip_name_resolve = 1\\\");SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL query_cache_size = %%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%*1024*1024;\\n\\n# mysql_command: SET GLOBAL max_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%;SET GLOBAL max_user_connections = 450;SET GLOBAL thread_cache_size = 128;SET GLOBAL back_log = 128;SET GLOBAL skip_name_resolve = 1;SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL query_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%*1024*1024;\\n\\n[mysqld]\\n\\nport=%%ENV:SERVER_PORT%%\\nmax_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%% \\nmax_user_connections = 450\\nthread_cache_size = 128\\nback_log = 128 \\nskip_name_resolve = 1\\nmax_allowed_packet = 512M\\nloose_query_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%M \"}",
-                    "var_updated": "2021-01-29 13:13:32",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_network.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# NETWORK\\n# ------- \\n\\n# mariadb_command: SET GLOBAL max_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%;SET GLOBAL max_user_connections = 450;SET GLOBAL thread_cache_size = 128;EXECUTE IMMEDIATE IF(@@back_log=128,\\\"SELECT 'Unchanged back_log'\\\", \\\"SET GLOBAL back_log = 128\\\");EXECUTE IMMEDIATE IF(@@skip_name_resolve=1,\\\"SELECT 'Unchanged skip_name_resolve'\\\", \\\"SET GLOBAL skip_name_resolve = 1\\\");SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL query_cache_size = %%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%*1024*1024;\\n\\n# mysql_command: SET GLOBAL max_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%;SET GLOBAL max_user_connections = 450;SET GLOBAL thread_cache_size = 128;SET GLOBAL back_log = 128;SET GLOBAL skip_name_resolve = 1;SET GLOBAL max_allowed_packet = 512*1024*1024;SET GLOBAL query_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%*1024*1024;\\n\\n[mysqld]\\n\\nport=%%ENV:SERVER_PORT%%\\nmax_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%% \\nmax_user_connections = 450\\nthread_cache_size = 128\\nback_log = 128 \\nskip_name_resolve = 1\\nmax_allowed_packet = 512M\\nloose_query_cache_size=%%ENV:SVC_CONF_ENV_QUERY_CACHE_SIZE%%M \\n\\n[mariadb]\\nloose_session_track_system_variables=last_gtid\"}",
+                    "var_updated": "2021-12-15 13:48:35",
                     "var_name": "db_cnf_default_network",
                     "id": 5915
                 },
@@ -2580,8 +2715,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_innodb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# INNODB\\n# ------\\n# mariadb_command: SET GLOBAL innodb_adaptive_hash_index=0;SET GLOBAL innodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%*1024*1024;SET GLOBAL innodb_io_capacity = %%ENV:CHECKPOINTIOPS%%;SET GLOBAL innodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%;SET GLOBAL innodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%;SET GLOBAL innodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%;SET GLOBAL innodb_flush_neighbors = 1;EXECUTE IMMEDIATE IF(@@innodb_buffer_pool_instances=%%ENV:IBPINSTANCES%%,\\\"SELECT 'Unchanged innodb_buffer_pool_instances'\\\", \\\"SET GLOBAL innodb_buffer_pool_instances =%%ENV:IBPINSTANCES%%\\\"); EXECUTE IMMEDIATE IF(@@innodb_read_io_threads=%%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%,\\\"SELECT 'Unchanged innodb_read_io_threads'\\\", \\\"SET GLOBAL innodb_read_io_threads = %%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%\\\");EXECUTE IMMEDIATE IF(@@innodb_write_io_threads=%%ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%,\\\"SELECT 'Unchanged innodb_write_io_threads'\\\", \\\"SET GLOBAL innodb_write_io_threads = %%ENV:ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%\\\");EXECUTE IMMEDIATE  IF(@@innodb_log_buffer_size=%%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%*1024*1024,\\\"SELECT 'Unchanged innodb_log_buffer_size'\\\", \\\"SET GLOBAL innodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%*1024*1024\\\");SET GLOBAL innodb_thread_concurrency = 0;EXECUTE IMMEDIATE  IF(@@innodb_autoinc_lock_mode=2,\\\"SELECT 'Unchanged innodb_autoinc_lock_mode'\\\", \\\"SET GLOBAL innodb_autoinc_lock_mode=2\\\");SET GLOBAL innodb_stats_on_metadata = 0;SET GLOBAL innodb_buffer_pool_dump_at_shutdown = 1;EXECUTE IMMEDIATE  IF(@@innodb_buffer_pool_load_at_startup=1,\\\"SELECT 'Unchanged innodb_buffer_pool_load_at_startup'\\\", \\\"SET GLOBAL innodb_buffer_pool_load_at_startup=1\\\");EXECUTE IMMEDIATE  IF(@@innodb_open_files=16384,\\\"SELECT 'Unchanged innodb_open_files'\\\", \\\"SET GLOBAL innodb_open_files=16384\\\");EXECUTE IMMEDIATE  IF(@@innodb_purge_threads=%%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%,\\\"SELECT 'Unchanged innodb_purge_threads'\\\", \\\"SET GLOBAL innodb_purge_threads = %%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%\\\");SET GLOBAL innodb_concurrency_tickets = 5000;SET GLOBAL innodb_print_all_deadlocks = 1; EXECUTE IMMEDIATE  IF(@@innodb_large_prefix=1 OR @@innodb_large_prefix IS NULL,\\\"SELECT 'Unchanged innodb_large_prefix'\\\", \\\"SET GLOBAL innodb_large_prefix = 1\\\"); EXECUTE IMMEDIATE  IF(@@innodb_file_format='barracuda' OR @@innodb_file_format IS NULL,\\\"SELECT 'Unchanged barracuda'\\\", \\\"SET GLOBAL innodb_file_format='barracuda'\\\");SET GLOBAL innodb_default_row_format=dynamic;\\n \\n[mysqld-5.5]\\ninnodb_file_format = barracuda\\n[mysqld-5.6]\\ninnodb_file_format = barracuda\\n[mysqld-5.7]\\ninnodb_file_format = barracuda \\n#deprecated in 5.8\\n\\n[mariadb]\\n#innodb_buffer_pool_populate=0 \\n[mariadb 5.5]\\ninnodb_file_format = barracuda\\n[mariadb 10.0]\\ninnodb_file_format = barracuda\\n \\n[mariadb 10.1]\\ninnodb_force_primary_key = 1\\ninnodb_default_row_format=dynamic\\n#innodb_defragment = 1\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.2]\\ninnodb_lock_schedule_algorithm=fcfs\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.3]\\ninnodb-page-cleaners= %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld]\\ntransaction-isolation = READ-COMMITTED\\ndefault_storage_engine = InnoDB\\ninnodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_SIZE%%M\\ninnodb_buffer_pool_instances = %%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_INSTANCES%%\\ninnodb_read_io_threads = %%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%\\ninnodb_write_io_threads = %%ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%\\ninnodb_io_capacity = %%ENV:CHECKPOINTIOPS%%\\ninnodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%\\ninnodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%\\ninnodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%\\ninnodb_log_file_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_FILE_SIZE%%M\\n# innodb_log_buffer_size change Crash 10.2.14\\ninnodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%M\\nloose_innodb_purge_threads = ENV:%%SVC_CONF_ENV_INNODB_PURGE_THREADS%%\\ninnodb_adaptive_hash_index = 0\\ninnodb_file_per_table= 1\\ninnodb_log_files_in_group = 1\\ninnodb_flush_neighbors = 1\\ninnodb_thread_concurrency = 0\\ninnodb_flush_method = O_DIRECT\\n#innodb_undo_tablespaces = 4\\ninnodb_autoinc_lock_mode = 2\\ninnodb_stats_on_metadata = 0\\ninnodb_buffer_pool_dump_at_shutdown = 1\\ninnodb_buffer_pool_load_at_startup = 1\\ninnodb_open_files = 16384\\ninnodb_concurrency_tickets = 5000\\ninnodb_print_all_deadlocks = 1  \\n# innodb_monitor_enable = all // cost perf  \\n\\n[mariadb 10.4]\\ninnodb_large_prefix = 1\\ninnodb_file_format = barracuda\\ninnodb_default_row_format=dynamic\\n\"}",
-                    "var_updated": "2021-01-15 15:44:23",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_innodb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# INNODB\\n# ------\\n# mariadb_command: SET GLOBAL innodb_adaptive_hash_index=0;SET GLOBAL innodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_MAX_MEM%%*1024*1024;SET GLOBAL innodb_io_capacity = %%ENV:CHECKPOINTIOPS%%;SET GLOBAL innodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%;SET GLOBAL innodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%;SET GLOBAL innodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%;SET GLOBAL innodb_flush_neighbors = 1;EXECUTE IMMEDIATE IF(@@innodb_buffer_pool_instances=%%ENV:IBPINSTANCES%%,\\\"SELECT 'Unchanged innodb_buffer_pool_instances'\\\", \\\"SET GLOBAL innodb_buffer_pool_instances =%%ENV:IBPINSTANCES%%\\\"); EXECUTE IMMEDIATE IF(@@innodb_read_io_threads=%%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%,\\\"SELECT 'Unchanged innodb_read_io_threads'\\\", \\\"SET GLOBAL innodb_read_io_threads = %%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%\\\");EXECUTE IMMEDIATE IF(@@innodb_write_io_threads=%%ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%,\\\"SELECT 'Unchanged innodb_write_io_threads'\\\", \\\"SET GLOBAL innodb_write_io_threads = %%ENV:ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%\\\");EXECUTE IMMEDIATE  IF(@@innodb_log_buffer_size=%%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%*1024*1024,\\\"SELECT 'Unchanged innodb_log_buffer_size'\\\", \\\"SET GLOBAL innodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%*1024*1024\\\");SET GLOBAL innodb_thread_concurrency = 0;EXECUTE IMMEDIATE  IF(@@innodb_autoinc_lock_mode=2,\\\"SELECT 'Unchanged innodb_autoinc_lock_mode'\\\", \\\"SET GLOBAL innodb_autoinc_lock_mode=2\\\");SET GLOBAL innodb_stats_on_metadata = 0;SET GLOBAL innodb_buffer_pool_dump_at_shutdown = 1;EXECUTE IMMEDIATE  IF(@@innodb_buffer_pool_load_at_startup=1,\\\"SELECT 'Unchanged innodb_buffer_pool_load_at_startup'\\\", \\\"SET GLOBAL innodb_buffer_pool_load_at_startup=1\\\");EXECUTE IMMEDIATE  IF(@@innodb_open_files=16384,\\\"SELECT 'Unchanged innodb_open_files'\\\", \\\"SET GLOBAL innodb_open_files=16384\\\");EXECUTE IMMEDIATE  IF(@@innodb_purge_threads=%%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%,\\\"SELECT 'Unchanged innodb_purge_threads'\\\", \\\"SET GLOBAL innodb_purge_threads = %%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%\\\");SET GLOBAL innodb_concurrency_tickets = 5000;SET GLOBAL innodb_print_all_deadlocks = 1; EXECUTE IMMEDIATE  IF(@@innodb_large_prefix=1 OR @@innodb_large_prefix IS NULL,\\\"SELECT 'Unchanged innodb_large_prefix'\\\", \\\"SET GLOBAL innodb_large_prefix = 1\\\"); EXECUTE IMMEDIATE  IF(@@innodb_file_format='barracuda' OR @@innodb_file_format IS NULL,\\\"SELECT 'Unchanged barracuda'\\\", \\\"SET GLOBAL innodb_file_format='barracuda'\\\");SET GLOBAL innodb_default_row_format=dynamic;\\n \\n[mysqld-5.5]\\ninnodb_file_format = barracuda\\n[mysqld-5.6]\\ninnodb_file_format = barracuda\\n[mysqld-5.7]\\ninnodb_file_format = barracuda \\n#deprecated in 5.8\\n\\n[mariadb]\\n#innodb_buffer_pool_populate=0 \\n[mariadb 5.5]\\ninnodb_file_format = barracuda\\n[mariadb 10.0]\\ninnodb_file_format = barracuda\\n \\n[mariadb 10.1]\\nloose_innodb_default_row_format=dynamic\\nloose_innodb_file_format = barracuda\\n\\n[mariadb 10.2]\\ninnodb_lock_schedule_algorithm=fcfs\\ninnodb_file_format = barracuda\\n\\n[mariadb 10.3]\\ninnodb-page-cleaners= %%ENV:NODES_CPU_CORES%%\\n\\n[mysqld]\\ntransaction-isolation = READ-COMMITTED\\ndefault_storage_engine = InnoDB\\nloose_innodb_buffer_pool_size = %%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_SIZE%%M\\ninnodb_buffer_pool_instances = %%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_INSTANCES%%\\nloose_innodb_read_io_threads = %%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%\\ninnodb_write_io_threads = %%ENV:SVC_CONF_ENV_INNODB_WRITE_IO_THREADS%%\\nloose_innodb_io_capacity = %%ENV:CHECKPOINTIOPS%%\\nloose_innodb_io_capacity_max = %%ENV:SVC_CONF_ENV_MAX_IOPS%%\\nloose_innodb_max_dirty_pages_pct = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT%%\\nloose_innodb_max_dirty_pages_pct_lwm = %%ENV:SVC_CONF_ENV_INNODB_MAX_DIRTY_PAGE_PCT_LWM%%\\nloose_innodb_log_file_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_FILE_SIZE%%M\\n# innodb_log_buffer_size change Crash 10.2.14\\nloose_innodb_log_buffer_size = %%ENV:SVC_CONF_ENV_INNODB_LOG_BUFFER_SIZE%%M\\nloose_innodb_purge_threads = %%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%\\nloose_innodb_lru_flush_size = %%ENV:SVC_CONF_ENV_INNODB_LRU_FLUSH_SIZE%%\\nloose_innodb_adaptive_hash_index = 0\\nloose_innodb_file_per_table= 1\\nloose_innodb_log_files_in_group = 1\\nloose_innodb_flush_neighbors = 1\\ninnodb_thread_concurrency = 0\\nloose_innodb_flush_method = O_DIRECT\\n#loose_innodb_undo_tablespaces = 4\\nloose_innodb_autoinc_lock_mode = 2\\nloose_innodb_stats_on_metadata = 0\\nloose_innodb_buffer_pool_dump_at_shutdown = 1\\nloose_innodb_buffer_pool_load_at_startup = 1\\nloose_innodb_open_files = 16384\\nloose_innodb_concurrency_tickets = 5000\\nloose_innodb_print_all_deadlocks = 1  \\n# innodb_monitor_enable = all // cost perf  \\nloose_innodb_rollback_on_timeout = 1\\nloose_innodb_force_primary_key = 1\\n\\n[mariadb 10.4]\\nloose_innodb_large_prefix = 1\\nloose_innodb_file_format = barracuda\\nloose_innodb_default_row_format=dynamic\\n\"}",
+                    "var_updated": "2021-10-22 10:29:31",
                     "var_name": "db_cnf_engine_innodb",
                     "id": 5917
                 },
@@ -2724,8 +2859,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_myrock.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'ha_myrocks';\\n\\n[mariadb]\\nplugin-load-add=ha_rocksdb.so\\nloose_rocksdb_max_open_files=-1\\nloose_rocksdb_base_background_compactions=1\\nloose_rocksdb_max_background_compactions=8\\nloose_rocksdb_max_total_wal_size=4G\\nloose_rocksdb_max_background_flushes=4\\nloose_rocksdb_block_size=16384\\nloose_rocksdb_block_cache_size=%%ENV:SVC_CONF_ENV_ROCKSDB_CACHE_SIZE%%M\\nloose_rocksdb_table_cache_numshardbits=6\\n\\n# rate limiter\\nloose_rocksdb_bytes_per_sync=4194304\\nloose_rocksdb_wal_bytes_per_sync=4194304\\nloose_rocksdb_rate_limiter_bytes_per_sec=104857600 #100MB/s\\n\\n# triggering compaction if there are many sequential deletes\\nloose_rocksdb_compaction_sequential_deletes_count_sd=1\\nloose_rocksdb_compaction_sequential_deletes=199999\\nloose_rocksdb_compaction_sequential_deletes_window=200000\\n\\n# read free replication\\n#rocksdb_rpl_lookup_rows=0\\n\\nloose_rocksdb_default_cf_options=write_buffer_size=128m;target_file_size_base=32m;max_bytes_for_level_base=512m;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=10;level0_stop_writes_trigger=15;max_write_buffer_number=4;compression_per_level=kLZ4Compression;bottommost_compression=kZSTD;compression_opts=-14:1:0;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=0};level_compaction_dynamic_level_bytes=true;optimize_filters_for_hits=true;memtable_prefix_bloom_size_ratio=0.05;prefix_extractor=capped:12;compaction_pri=kMinOverlappingRatio\\n\\nloose_rocksdb_override_cf_options=cf_link_pk={prefix_extractor=capped:20};rev:cf_link_id1_type={prefix_extractor=capped:20}\\n \\nloose_rocksdb_allow_concurrent_memtable_write=1\\nloose_rocksdb_enable_write_thread_adaptive_yield=1\"}",
-                    "var_updated": "2020-12-23 17:59:05",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_myrock.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'ha_myrocks';\\n\\n[mariadb]\\nplugin-load-add=ha_rocksdb.so\\nloose_rocksdb_max_open_files=-1\\nloose_rocksdb_base_background_compactions=1\\nloose_rocksdb_max_background_compactions=8\\nloose_rocksdb_max_total_wal_size=4G\\nloose_rocksdb_max_background_flushes=4\\nloose_rocksdb_block_size=16384\\nloose_rocksdb_block_cache_size=%%ENV:SVC_CONF_ENV_ROCKSDB_CACHE_SIZE%%M\\nloose_rocksdb_table_cache_numshardbits=6\\n\\n# rate limiter\\nloose_rocksdb_bytes_per_sync=4194304\\nloose_rocksdb_wal_bytes_per_sync=4194304\\nloose_rocksdb_rate_limiter_bytes_per_sec=104857600 #100MB/s\\n\\n# triggering compaction if there are many sequential deletes\\nloose_rocksdb_compaction_sequential_deletes_count_sd=1\\nloose_rocksdb_compaction_sequential_deletes=199999\\nloose_rocksdb_compaction_sequential_deletes_window=200000\\n\\n# read free replication\\n#rocksdb_rpl_lookup_rows=0\\n\\n# From benchmark \\n#rocksdb_default_cf_options=\\\"write_buffer_size=256m;target_file_size_base=32m;max_bytes_for_level_base=512m;max_write_buffer_number=4;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=20;level0_stop_writes_trigger=30;max_write_buffer_number=4;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=0};level_compaction_dynamic_level_bytes=true;optimize_filters_for_hits=true;memtable_prefix_bloom_size_ratio=0.05;prefix_extractor=capped:12;compaction_pri=kMinOverlappingRatio;compression=kZSTD;bottommost_compression=kZSTD;compression_opts=-14:1:0\\\"\\n\\n\\nloose_rocksdb_default_cf_options=write_buffer_size=128m;target_file_size_base=32m;max_bytes_for_level_base=512m;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=10;level0_stop_writes_trigger=15;max_write_buffer_number=4;compression_per_level=kLZ4Compression;bottommost_compression=kZSTD;compression_opts=-14:1:0;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=0};level_compaction_dynamic_level_bytes=true;optimize_filters_for_hits=true;memtable_prefix_bloom_size_ratio=0.05;prefix_extractor=capped:12;compaction_pri=kMinOverlappingRatio\\n\\nloose_rocksdb_override_cf_options=cf_link_pk={prefix_extractor=capped:20};rev:cf_link_id1_type={prefix_extractor=capped:20}\\n \\nloose_rocksdb_allow_concurrent_memtable_write=1\\nloose_rocksdb_enable_write_thread_adaptive_yield=1\"}",
+                    "var_updated": "2021-03-17 11:38:53",
                     "var_name": "db_cnf_engine_myrocks",
                     "id": 5937
                 },
@@ -2764,8 +2899,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_disk_doublewrite.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.0\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-doublewrite-buffer/\\n# mariadb_command: set global innodb_doublewrite=0;\\n# mariadb_default: set global innodb_doublewrite=1;\\n\\n# mariadb_command_since: \\n# mysql_version: 5.0\\n# mysql_command: set global innodb_doublewrite=0;\\n# mysql_default: set global innodb_doublewrite=1;\\n# mysql_command_since: \\n# mariadb_command: SET GLOBAL innodb_doublewrite = 0;\\n# mysql_command: SET GLOBAL innodb_doublewrite = 0;\\n\\n[mysqld]\\ninnodb_doublewrite=0\\ninnodb_checksum_algorithm = none\"}",
-                    "var_updated": "2021-01-02 09:58:26",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_disk_doublewrite.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 5.0\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-doublewrite-buffer/\\n# mariadb_command: set global innodb_doublewrite=0;\\n# mariadb_default: set global innodb_doublewrite=1;\\n\\n# mariadb_command_since: \\n# mysql_version: 5.0\\n# mysql_command: set global innodb_doublewrite=0;\\n# mysql_default: set global innodb_doublewrite=1;\\n# mysql_command_since: \\n# mariadb_command: SET GLOBAL innodb_doublewrite = 0;\\n# mysql_command: SET GLOBAL innodb_doublewrite = 0;\\n\\n[mysqld]\\ninnodb_doublewrite=0\\nloose_innodb_checksum_algorithm = none\"}",
+                    "var_updated": "2021-05-18 19:05:37",
                     "var_name": "db_cnf_disk_no_doublewrite",
                     "id": 5942
                 },
@@ -2940,8 +3075,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_sec_keyfileencrypt.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mariadb]\\n# File Key Management\\nplugin-load-add = file_key_management\\nloose_file_key_management_filename = %%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl/keys\\nloose_file-key-management-encryption-algorithm = aes_ctr\\n# InnoDB encryption setup\\nloose_innodb-encrypt-tables=ON\\nloose_innodb-encrypt-log=ON\\nloose_innodb-encryption-rotate-key-age=1024\\nloose_innodb-encryption-threads=4\\nloose_innodb-tablespaces-encryption\\n\\nloose_encrypt_tmp_files = ON\\nloose_encrypt_binlog = ON\\nloose_encrypt_tmp_disk_tables = 1\\n\\n\"}",
-                    "var_updated": "2021-02-06 08:54:16",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_sec_keyfileencrypt.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_alert:10.5.9 MDEV-25121\\n\\n[mariadb]\\n# File Key Management\\nplugin-load-add = file_key_management\\nloose_file_key_management_filename = %%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl/keys\\nloose_file-key-management-encryption-algorithm = aes_ctr\\n# InnoDB encryption setup\\nloose_innodb-encrypt-tables=ON\\nloose_innodb-encrypt-log=ON\\nloose_innodb-encryption-rotate-key-age=1024\\nloose_innodb-encryption-threads=4\\nloose_innodb-tablespaces-encryption\\n\\nloose_encrypt_tmp_files = ON\\nloose_encrypt_binlog = ON\\nloose_encrypt_tmp_disk_tables = 1\\n\\n\"}",
+                    "var_updated": "2021-05-19 19:18:31",
                     "var_name": "db_cnf_sec_with_keyfileencrypt",
                     "id": 6013
                 },
@@ -3100,8 +3235,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_defrag.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.1.1  \\n# mariadb_documentation: https://mariadb.com/kb/en/defragmenting-innodb-tablespaces/\\n# mariadb_command: SET GLOBAL innodb_defragment = ON;SET GLOBAL innodb_defragment_fill_factor = 0.9;SET GLOBAL innodb_defragment_fill_factor_n_recs = 20;SET GLOBAL innodb_defragment_frequency = 40;SET GLOBAL innodb_defragment_n_pages = 7;SET GLOBAL innodb_defragment_stats_accuracy = 0;\\nmariadb_default: SET GLOBAL innodb_defragment = 0;\\n\\n\\n[mariadb]\\nloose_innodb_defragment = ON\\nloose_innodb_defragment_fill_factor = 0.9\\nloose_innodb_defragment_fill_factor_n_recs = 20\\nloose_innodb_defragment_frequency = 40\\nloose_innodb_defragment_n_pages = 7\\nloose_innodb_defragment_stats_accuracy = 0\"}",
-                    "var_updated": "2021-01-02 09:58:51",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_defrag.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_version: 10.1.1  \\n# mariadb_documentation: https://mariadb.com/kb/en/defragmenting-innodb-tablespaces/\\n# mariadb_command: SET GLOBAL innodb_defragment = ON;SET GLOBAL innodb_defragment_fill_factor = 0.9;SET GLOBAL innodb_defragment_fill_factor_n_recs = 20;SET GLOBAL innodb_defragment_frequency = 40;SET GLOBAL innodb_defragment_n_pages = 7;SET GLOBAL innodb_defragment_stats_accuracy = 0;\\n# mariadb_default: SET GLOBAL innodb_defragment = 0;\\n\\n\\n[mariadb]\\nloose_innodb_defragment = ON\\nloose_innodb_defragment_fill_factor = 0.9\\nloose_innodb_defragment_fill_factor_n_recs = 20\\nloose_innodb_defragment_frequency = 40\\nloose_innodb_defragment_n_pages = 7\\nloose_innodb_defragment_stats_accuracy = 0\"}",
+                    "var_updated": "2021-12-03 12:47:15",
                     "var_name": "db_cnf_disk_with_defrag",
                     "id": 6073
                 },
@@ -3478,7 +3613,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_idempotent.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#mariadb_command: SET GLOBAL slave_exec_mode='IDEMPOTENT';\\n#mariadb_default: SET GLOBAL slave_exec_mode='STRICT';\\n\\n#mysql_command: SET GLOBAL slave_exec_mode='IDEMPOTENT';\\n#mysql_default: SET GLOBAL slave_exec_mode='STRICT';\\n\\n[mysqld]\\nloose_slave_exec_mode=IDEMPOTENT\"}",
                     "var_updated": "2021-01-03 22:47:04",
-                    "var_name": "db_cnf_rep_idempotent",
+                    "var_name": "db_cnf_rep_with_idempotent",
                     "id": 6183
                 },
                 {
@@ -3486,7 +3621,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_loosy.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL loose_slave_type_conversions='ALL_NON_LOSSY,ALL_LOSSY';\\n# mariadb_default: SET GLOBAL loose_slave_type_conversions='ALL_NON_LOSSY';\\n\\n[mysqld]\\nloose_slave_type_conversions='ALL_NON_LOSSY,ALL_LOSSY'\"}",
                     "var_updated": "2021-01-13 18:26:15",
-                    "var_name": "db_cnf_rep_lossy",
+                    "var_name": "db_cnf_rep_with_ossy",
                     "id": 6184
                 },
                 {
@@ -3726,7 +3861,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_rep_slavestatement.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL replicate_annotate_row_events = 0;SET GLOBAL binlog_annotate_row_events = 0;\\n# mariadb_default: SET GLOBAL replicate_annotate_row_events = 1;SET GLOBAL binlog_annotate_row_events = 1;\\n\\n# mysql_command: SET GLOBAL binlog_row_query_log_events = 0;\\n# mysql_default: SET GLOBAL binlog_row_query_log_events = 1;\\n\\n[mariadb]\\nloose_replicate_annotate_row_events = 0\\nloose_binlog_annotate_row_events = 0\\n\\n[mysqld]\\nbinlog_row_query_log_events = 0\"}",
                     "var_updated": "2021-01-03 22:43:45",
-                    "var_name": "db_cnf_repl_no_logslavestatement",
+                    "var_name": "db_cnf_rep_no_logslavestatement",
                     "id": 6257
                 },
                 {
@@ -3734,7 +3869,7 @@
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_rep_syncbinlog.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL sync_binlog = 0;\\n# mariadb_default: SET GLOBAL sync_binlog = 1;\\n\\n# mysql_command: SET GLOBAL sync_binlog = 0;\\n# mysql_default: SET GLOBAL sync_binlog = 1;\\n\\n[mysqld]\\nsync_binlog = 0\"}",
                     "var_updated": "2021-01-03 22:44:24",
-                    "var_name": "db_cnf_repl_no_syncbinlog",
+                    "var_name": "db_cnf_rep_no_syncbinlog",
                     "id": 6258
                 },
                 {
@@ -3768,26 +3903,74 @@
                     "var_updated": "2021-02-05 21:00:18",
                     "var_name": "db_cnf_script_bootstrap",
                     "id": 6267
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_opt_trace.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_documentation: https://mariadb.com/kb/en/optimizer-trace-overview/\\n# mariadb_version: 10.4.4\\n# mariadb_command: SET GLOBAL optimizer_trace='enabled=on';\\n\\n# mysql_documentation: https://dev.mysql.com/doc/dev/mysql-server/latest/PAGE_OPT_TRACE.html\\n# mysql_version: 7.0\\n# mysql_command: SET GLOBAL optimizer_trace='enabled=on';\\n\\n\\n[mysqld]\\nloose_optimizer_trace='enabled=on'\"}",
+                    "var_updated": "2021-02-15 10:31:28",
+                    "var_name": "db_cnf_opt_with_trace",
+                    "id": 6273
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_networkcompress.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_documantation: https://mariadb.com/kb/en/replication-and-binary-log-system-variables/#slave_compressed_protocol\\n# mariadb_version: 5.5 \\n# mariadb_command: SET GLOBAL slave_compressed_protocol=1; \\n# mariadb_default: SET GLOBAL slave_compressed_protocol=0; \\n\\n# mysql_version: 5.5\\n\\n[mysqld]\\nloose_slave_compressed_protocol=1\"}",
+                    "var_updated": "2021-03-01 11:56:21",
+                    "var_name": "db_cnf_rep_with_compression",
+                    "id": 6275
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_sec_auth.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nskip-grant-tables\"}",
+                    "var_updated": "2021-05-12 09:05:30",
+                    "var_name": "db_cnf_sec_no_auth",
+                    "id": 6276
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_rowminimal.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: set global binlog_format='ROW';set global binlog_row_image=MINIMAL;\\n# mariadb_default: set global binlog_format='MIXED';set global binlog_row_image=MINIMAL;\\n\\n# mysql_command: set global binlog_format='ROW';set global binlog_row_image=MINIMAL;\\n# mysql_default: set global binlog_format='MIXED';set global binlog_row_image=MINIMAL;\\n\\n[mysqld]\\nloose_binlog_format=ROW\\nloose_binlog_row_image=MINIMAL\"}",
+                    "var_updated": "2021-05-12 09:23:07",
+                    "var_name": "db_cnf_rep_with_formatrowmin",
+                    "id": 6277
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_mem_interleave.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nloose_innodb_numa_interleave=1\"}",
+                    "var_updated": "2021-05-12 09:20:43",
+                    "var_name": "db_cnf_mem_with_interleave",
+                    "id": 6278
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_disk_splitundolog.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_alert: from:10.5.0;to:;label:MDEV-25801;trigger: SELECT IF(variable_value=\\\"ON\\\", 1,0) FROM INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME= \\\"innodb_undo_log_truncate\\\";\\n# mariadb_alert: from:10.6.0 to: label:MDEV-25801\\n\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-system-variables/#innodb_undo_log_truncate\\n# mariadb_documentation: https://mariadb.com/kb/en/innodb-system-variables/#innodb_rollback_segments\\n# mariadb_documentation: https://mysqlonarm.github.io/2x-mysql-performance/\\n\\n[mysqld]\\nloose_innodb_undo_tablespaces=64\\nloose_innodb_undo_log_truncate=1\"}",
+                    "var_updated": "2021-06-10 13:51:46",
+                    "var_name": "db_cnf_disk_splitundo",
+                    "id": 6282
                 }
             ],
             "ruleset_public": false,
             "ruleset_type": "explicit",
             "rulesets": [
-                "mariadb.svc.mrm.db.cnf.generic.disk_withinnodbpagecompression",
-                "mariadb.svc.mrm.db.cnf.generic.withlogaudit",
-                "mariadb.svc.mrm.db.cnf.generic.engineinnodb",
-                "mariadb.svc.mrm.db.cnf.generic.net_noquerycache",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withsemisync",
+                "mariadb.svc.mrm.db.cnf.generic.engineinnodb",
+                "mariadb.svc.mrm.db.cnf.generic.ent_withthreadpool",
+                "mariadb.svc.mrm.db.cnf.generic.net_noquerycache",
+                "mariadb.svc.mrm.db.cnf.generic.disk_withinnodbpagecompression",
+                "mariadb.svc.mrm.db.cnf.generic.enginespider",
+                "mariadb.svc.mrm.db.cnf.generic.enginetokudb",
+                "mariadb.svc.mrm.db.cnf.generic.enginerocksdb",
                 "mariadb.svc.mrm.db.cnf.generic.withloggeneral",
                 "mariadb.svc.mrm.db.cnf.generic.withlogmetadatalock",
+                "mariadb.svc.mrm.db.cnf.generic.withlogaudit",
                 "mariadb.svc.mrm.db.cnf.generic.withlogsqlerror",
-                "mariadb.svc.mrm.db.cnf.generic.enginerocksdb",
-                "mariadb.svc.mrm.db.cnf.generic.enginespider",
-                "mariadb.svc.mrm.db.cnf.generic.ent_withthreadpool",
-                "mariadb.svc.mrm.db.cnf.generic.enginetokudb",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withmultidomains",
-                "mariadb.svc.mrm.db.cnf.generic.rep_nologslaveupdates",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withmysqlgtid",
+                "mariadb.svc.mrm.db.cnf.generic.rep_nologslaveupdates",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withsmallredolog",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withwsrep",
                 "mariadb.svc.mrm.db.cnf.generic.opt_noautocommit",
@@ -3804,19 +3987,20 @@
                 "mariadb.svc.mrm.db.cnf.generic.opt_witheits",
                 "mariadb.svc.mrm.db.cnf.generic.disk_noodirect",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withdefrag",
-                "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdsimple",
-                "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdcracklib",
+                "mariadb.svc.mrm.db.cnf.generic.engineblackhole",
                 "mariadb.svc.mrm.db.cnf.generic.engineoqgraph",
                 "mariadb.svc.mrm.db.cnf.generic.engineconnect",
-                "mariadb.svc.mrm.db.cnf.generic.engineblackhole",
+                "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdsimple",
+                "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdcracklib",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withssd",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withzfs",
                 "mariadb.svc.mrm.db.cnf.generic.sec_withkeyfileencrypt",
-                "mariadb.svc.mrm.db.cnf.generic.net_withproxyprotocol",
                 "mariadb.svc.mrm.db.cnf.generic.net_withresolvdns",
+                "mariadb.svc.mrm.db.cnf.generic.net_withproxyprotocol",
                 "mariadb.svc.mrm.db.cnf.generic.withlogtable",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withdiskmonitor",
                 "mariadb.svc.mrm.db.cnf.generic.sec_withssl",
+                "mariadb.svc.mrm.db.cnf.generic.charset_nohandshake",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withgtidstrict",
                 "mariadb.svc.mrm.db.cnf.generic.sec_withlocalinfile",
                 "mariadb.svc.mrm.db.cnf.generic.opt_noicp",
@@ -3828,41 +4012,40 @@
                 "mariadb.svc.mrm.db.cnf.generic.withcharsetmb4cs",
                 "mariadb.svc.mrm.db.cnf.generic.withcharsetutf8cs",
                 "mariadb.svc.mrm.db.cnf.generic.withcharsetutf8ci",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withnestedjoin",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withhashjoin",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withextendedkeys",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withsubquerycache",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withnestedjoin",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withfirstmatch",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withloosescan",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withsemijoincache",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withloosescan",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withextendedkeys",
                 "mariadb.svc.mrm.db.cnf.generic.opt_noderivedmerge",
+                "mariadb.svc.mrm.db.cnf.generic.opt_notableelimination",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nosemijoin",
                 "mariadb.svc.mrm.db.cnf.generic.opt_noderivedwithkeys",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nointoexists",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nomaterialization",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nomrr",
                 "mariadb.svc.mrm.db.cnf.generic.opt_noouterjoincache",
-                "mariadb.svc.mrm.db.cnf.generic.opt_nosemijoin",
-                "mariadb.svc.mrm.db.cnf.generic.opt_notableelimination",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withsubquerycache",
                 "mariadb.svc.mrm.db.cnf.generic.engines3",
-                "mariadb.svc.mrm.db.cnf.generic.enginemroonga",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withutctime",
-                "mariadb.svc.mrm.db.cnf.generic.charset_nohandshake",
+                "mariadb.svc.mrm.db.cnf.generic.enginemroonga",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withreadcommitted",
-                "mariadb.svc.mrm.db.cnf.generic.rep_withstatement",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withlossyconv",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withidempotent",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withrow",
-                "mariadb.svc.mrm.db.cnf.generic.rep_withlossyconv",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withstatement",
                 "mariadb.svc.mrm.db.cnf.generic.enginemcs",
                 "mariadb.svc.mrm.db.cnf.generic.sec_withed25519",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withsequence",
-                "mariadb.svc.mrm.db.cnf.generic.opt_nodcp",
                 "mariadb.svc.mrm.db.cnf.generic.opt_noecp",
+                "mariadb.svc.mrm.db.cnf.generic.opt_noscp",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nohcp",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nodcp",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nointosubquery",
                 "mariadb.svc.mrm.db.cnf.generic.opt_nolateralderived",
-                "mariadb.svc.mrm.db.cnf.generic.opt_noscp",
-                "mariadb.svc.mrm.db.cnf.generic.opt_nobloomfilter",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withimsi",
+                "mariadb.svc.mrm.db.cnf.generic.opt_nobloomfilter",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withtrustfunctioncreators",
                 "mariadb.svc.mrm.db.cnf.generic.net_nobind",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withrelayspacelimit",
@@ -3871,18 +4054,24 @@
                 "mariadb.svc.mrm.db.cnf.generic.rep_withminimal",
                 "mariadb.svc.mrm.db.cnf.generic.disk_noadaptativeflush",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withhistograms",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withreadsnapshot",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withreaddirty",
                 "mariadb.svc.mrm.db.cnf.generic.opt_withreadserialized",
-                "mariadb.svc.mrm.db.cnf.generic.opt_withreadsnapshot",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withaggressive",
                 "mariadb.svc.mrm.db.cnf.generic.log_nodeadlocks",
-                "mariadb.svc.mrm.db.cnf.generic.log_noslowddlqueries",
                 "mariadb.svc.mrm.db.cnf.generic.log_noslowqueries",
+                "mariadb.svc.mrm.db.cnf.generic.log_noslowddlqueries",
                 "mariadb.svc.mrm.db.cnf.generic.log_noslowslavequeries",
                 "mariadb.svc.mrm.db.cnf.generic.log_nowarnings",
                 "mariadb.svc.mrm.db.cnf.generic.rep_nologslavestatement",
                 "mariadb.svc.mrm.db.cnf.generic.rep_nosyncbinlog",
-                "mariadb.svc.mrm.db.cnf.generic.enginearchive"
+                "mariadb.svc.mrm.db.cnf.generic.enginearchive",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withtrace",
+                "mariadb.svc.mrm.db.cnf.generic.sec_noauth",
+                "mariadb.svc.mrm.db.cnf.generic.mem_withinterleave",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withrowminimal",
+                "mariadb.svc.mrm.db.cnf.generic.disk_withsplitundolog",
+                "mariadb.svc.mrm.db.cnf.generic.disk_nosplitpath"
             ],
             "publications": [
                 "replication-manager"
@@ -5211,8 +5400,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/01_with_net_bind.cnf\",\"target\":\"../with_net_bind.cnf\"}",
-                    "var_updated": "2021-01-04 16:04:13",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/99_with_net_bind.cnf\",\"target\":\"../with_net_bind.cnf\"}",
+                    "var_updated": "2021-06-11 12:51:23",
                     "var_name": "db_link_withnetbind",
                     "id": 6122
                 }
@@ -5829,6 +6018,30 @@
             ]
         },
         {
+            "fset_name": "system.deb",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.package.deb",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/post_bootstrap\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_UID%%\"}",
+                    "var_updated": "2021-02-09 12:53:54",
+                    "var_name": "post_bootstrap",
+                    "id": 6272
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1111,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
             "fset_name": "mariadb.replication.row",
             "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withrow",
             "variables": [
@@ -6173,8 +6386,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "symlink",
-                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/99_no_net_bind.cnf\",\"target\":\"../no_net_bind.cnf\"}",
-                    "var_updated": "2021-01-04 16:04:32",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/10_no_net_bind.cnf\",\"target\":\"../no_net_bind.cnf\"}",
+                    "var_updated": "2021-06-11 12:50:01",
                     "var_name": "db_link_nobind",
                     "id": 6217
                 }
@@ -6618,6 +6831,174 @@
                 "replication-manager"
             ],
             "id": 1145,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "system.rpm",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.package.rpm",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/post_bootstrap\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\"}",
+                    "var_updated": "2021-02-09 12:53:48",
+                    "var_name": "post_bootstrap",
+                    "id": 6271
+                }
+            ],
+            "ruleset_public": true,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1146,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.trace",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withtrace",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/99_with_opt_trace.cnf\",\"target\":\"../with_opt_trace.cnf\"}",
+                    "var_updated": "2021-02-15 10:34:16",
+                    "var_name": "db_link_with_eits",
+                    "id": 6274
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1147,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.security.noauth",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.sec_noauth",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/20_no_sec_auth.cnf\",\"target\":\"../no_sec_auth.cnf\"}",
+                    "var_updated": "2021-05-12 09:35:40",
+                    "var_name": "symlink_withsecnoauth",
+                    "id": 6279
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1148,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.memory.interleave",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.mem_withinterleave",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/30_with_mem_interleave.cnf\",\"target\":\"../with_mem_interleave.cnf\"}",
+                    "var_updated": "2021-05-12 09:33:17",
+                    "var_name": "symlink_withinterleave",
+                    "id": 6280
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1149,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.replication.minimal",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withrowminimal",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/30_with_rep_rowminimal.cnf\",\"target\":\"../with_rep_rowminimal.cnf\"}",
+                    "var_updated": "2021-05-12 09:45:28",
+                    "var_name": "symlink_withrowminimal",
+                    "id": 6281
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1150,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.disk.splitundolog",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_withsplitundolog",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/50_with_disk_splitundolog.cnf\",\"target\":\"../with_disk_splitundolog.cnf\"}",
+                    "var_updated": "2021-05-20 10:23:08",
+                    "var_name": "db_link_spllitundolog",
+                    "id": 6283
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1151,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.disk.nosplitpath",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_nosplitpath",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_path.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ntmpdir = %%ENV:SVC_CONF_ENV_MYSQL_TMPDIR%%\\nslave_load_tmpdir = %%ENV:SVC_CONF_ENV_MYSQL_SLAVE_LOAD_TMPDIR%%\\nlog_error = %%ENV:SVC_CONF_ENV_MYSQL_LOG_ERROR%%\\nslow_query_log_file = %%ENV:SVC_CONF_ENV_MYSQL_SLOW_QUERY_LOG_FILE%%\\ngeneral_log_file= %%ENV:SVC_CONF_ENV_MYSQL_GENERAL_LOG_FILE%%\\ninnodb_data_home_dir = %%ENV:SVC_CONF_ENV_MYSQL_INNODB_DATA_HOME_DIR%%\\ninnodb_log_group_home_dir =  %%ENV:SVC_CONF_ENV_MYSQL_INNODB_LOG_GROUP_HOME_DIR%%\\nloose_innodb_undo_directory  = %%ENV:SVC_CONF_ENV_MYSQL_INNODB_UNDO_DIRECTORY%%\\nlog_bin= %%ENV:SVC_CONF_ENV_MYSQL_LOG_BIN%%\\nlog_bin_index= %%ENV:SVC_CONF_ENV_MYSQL_LOG_BIN_INDEX%%\\nrelay_log = %%ENV:SVC_CONF_ENV_MYSQL_RELAY_LOG%%\\nrelay_log_index = %%ENV:SVC_CONF_ENV_MYSQL_RELAY_LOG_INDEX%%\\n\\n[mariadb]\\n# Bug aria_log_dir_path is not available in variables \\n# aria_log_dir_path = %%ENV:SVC_CONF_ENV_MYSQL_ARIA_LOG_DIR_PATH%%\"}",
+                    "var_updated": "2021-07-15 15:36:26",
+                    "var_name": "db_cnf_default_path",
+                    "id": 6285
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1152,
             "responsibles": [
                 "replication-manager"
             ]

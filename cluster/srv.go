@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -30,6 +30,8 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/hpcloud/tail"
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/config"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -41,8 +43,9 @@ import (
 type ServerMonitor struct {
 	Id                          string                       `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
 	Name                        string                       `json:"name"`
-	Domain                      string                       `json:"domain"`
+	Domain                      string                       `json:"domain"` // Use to store orchestrator CNI domain .<cluster_name>.svc.<cluster_name>
 	ServiceName                 string                       `json:"serviceName"`
+	SourceClusterName           string                       `json:"sourceClusterName"` //Used to idenfied server added from other clusters linked with multi source
 	Conn                        *sqlx.DB                     `json:"-"`
 	User                        string                       `json:"user"`
 	Pass                        string                       `json:"-"`
@@ -54,6 +57,7 @@ type ServerMonitor struct {
 	IP                          string                       `json:"ip"`
 	Strict                      string                       `json:"strict"`
 	ServerID                    uint64                       `json:"serverId"`
+	DomainID                    uint64                       `json:"domainId"`
 	GTIDBinlogPos               *gtid.List                   `json:"gtidBinlogPos"`
 	CurrentGtid                 *gtid.List                   `json:"currentGtid"`
 	SlaveGtid                   *gtid.List                   `json:"slaveGtid"`
@@ -75,7 +79,7 @@ type ServerMonitor struct {
 	Process                     *os.Process                  `json:"process"`
 	SemiSyncMasterStatus        bool                         `json:"semiSyncMasterStatus"`
 	SemiSyncSlaveStatus         bool                         `json:"semiSyncSlaveStatus"`
-	RplMasterStatus             bool                         `json:"rplMasterStatus"`
+	HaveHealthyReplica             bool                         `json:"HaveHealthyReplica"`
 	HaveEventScheduler          bool                         `json:"eventScheduler"`
 	HaveSemiSync                bool                         `json:"haveSemiSync"`
 	HaveInnodbTrxCommit         bool                         `json:"haveInnodbTrxCommit"`
@@ -147,8 +151,8 @@ type ServerMonitor struct {
 	PrevStatus                  map[string]string            `json:"-"`
 	PFSQueries                  map[string]dbhelper.PFSQuery `json:"-"` //PFS queries
 	SlowPFSQueries              map[string]dbhelper.PFSQuery `json:"-"` //PFS queries from slow
-	DictTables                  map[string]dbhelper.Table    `json:"-"`
-	Tables                      []dbhelper.Table             `json:"-"`
+	DictTables                  map[string]v3.Table          `json:"-"`
+	Tables                      []v3.Table                   `json:"-"`
 	Disks                       []dbhelper.Disk              `json:"-"`
 	Plugins                     map[string]dbhelper.Plugin   `json:"-"`
 	Users                       map[string]dbhelper.Grant    `json:"-"`
@@ -158,7 +162,7 @@ type ServerMonitor struct {
 	MonitorTime                 int64                        `json:"-"`
 	PrevMonitorTime             int64                        `json:"-"`
 	maxConn                     string                       `json:"maxConn"` // used to back max connection for failover
-	Datadir                     string                       `json:"-"`
+	Datadir                     string                       `json:"datadir"`
 	SlapOSDatadir               string                       `json:"slaposDatadir"`
 	PostgressDB                 string                       `json:"postgressDB"`
 	CrcTable                    *crc64.Table                 `json:"-"`
@@ -207,24 +211,30 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.IsCompute = compute
 	server.Domain = domain
 	server.TLSConfigUsed = ConstTLSCurrentConfig
-	server.CrcTable = crc64.MakeTable(crc64.ECMA)
 	server.ClusterGroup = cluster
 	server.DBVersion = dbhelper.NewMySQLVersion("Unknowed-0.0.0", "")
 	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
 	server.ClusterGroup = cluster
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
-	if cluster.Conf.ProvNetCNI {
-		/*	if server.IsCompute && cluster.Conf.ClusterHead != "" {
+
+	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator()  == config.ConstOrchestratorOpenSVC {
+		// OpenSVC and Sharding proxy monitoring
+		if server.IsCompute {
+			if cluster.Conf.ClusterHead != "" {
 				url = server.Name + "." + cluster.Conf.ClusterHead + ".svc." + server.ClusterGroup.Conf.ProvOrchestratorCluster + ":3306"
 			} else {
 				url = server.Name + "." + cluster.Name + ".svc." + server.ClusterGroup.Conf.ProvOrchestratorCluster + ":3306"
-			}*/
+			}
+		}
 		url = server.Name + server.Domain + ":3306"
 	}
-	server.Id = "db" + strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+server.Name+server.Port), crcTable), 10)
+	server.CrcTable = crc64.MakeTable(crc64.ECMA)
 	var sid uint64
+	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id
 	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.CrcTable), 10), 10, 64)
 	server.ServerID = sid
+	server.Id = fmt.Sprintf("%s%d", "db", sid)
+
 	if cluster.Conf.TunnelHost != "" {
 		go server.Tunnel()
 	}
@@ -253,7 +263,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		os.MkdirAll(server.Datadir+"/log", os.ModePerm)
 		os.MkdirAll(server.Datadir+"/var", os.ModePerm)
 		os.MkdirAll(server.Datadir+"/init", os.ModePerm)
-		os.MkdirAll(server.Datadir+"/bck", os.ModePerm)
 	}
 
 	errLogFile := server.Datadir + "/log/log_error.log"
@@ -275,6 +284,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SetIgnored(cluster.IsInIgnoredHosts(server))
 	server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
+	server.ReloadSaveInfosVariables()
 	/*if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
 		server.Conn, err = sqlx.Open("postgres", server.DSN)
 	} else {
@@ -346,6 +356,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					}
 					server.ClusterGroup.master.State = stateFailed
 					server.DelWaitStopCookie()
+					server.DelUnprovisionCookie()
 				} else {
 					server.ClusterGroup.master.State = stateSuspect
 
@@ -358,6 +369,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 						server.ClusterGroup.LogPrintf("INFO", "Declaring slave db %s as failed", server.URL)
 						server.State = stateFailed
 						server.DelWaitStopCookie()
+						server.DelUnprovisionCookie()
 						// remove from slave list
 						server.delete(&server.ClusterGroup.slaves)
 						if server.Replications != nil {
@@ -395,6 +407,15 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skiping refresh")
 		return
 	}
+	// For orchestrator to trigger a start via tracking state URL
+	if server.PrevState == stateFailed {
+		server.DelWaitStartCookie()
+		server.DelRestartCookie()
+		server.DelProvisionCookie()
+		server.DelReprovisionCookie()
+
+	}
+
 	// reaffect a global DB pool object if we never get it , ex dynamic seeding
 	if server.Conn == nil {
 		server.Conn = conn
@@ -410,11 +431,6 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 	defer conn.Close()
 
-	// For orchestrator to trigger a start via tracking state URL
-	if server.PrevState == stateFailed {
-		server.DelWaitStartCookie()
-		server.DelRestartCookie()
-	}
 	// Reset FailCount
 	if (server.State != stateFailed && server.State != stateErrorAuth && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
 		server.FailCount = 0
@@ -436,14 +452,14 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	if errss == sql.ErrNoRows || noChannel {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.
-		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth {
+		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth /*|| server.PrevState == stateSuspect*/ {
 			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected", server.URL)
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
 				if server.ClusterGroup.master != nil {
-					if server.ClusterGroup.Status == ConstMonitorActif && server.ClusterGroup.master.Id != server.Id && !server.ClusterGroup.IsInIgnoredReadonly(server) {
+					if server.ClusterGroup.Status == ConstMonitorActif && server.ClusterGroup.master.Id != server.Id && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
 						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as active monitor and other master is discovered", server.URL)
 						server.SetReadOnly()
-					} else if server.ClusterGroup.Status == ConstMonitorStandby && server.ClusterGroup.Conf.Arbitration && !server.ClusterGroup.IsInIgnoredReadonly(server) {
+					} else if server.ClusterGroup.Status == ConstMonitorStandby && server.ClusterGroup.Conf.Arbitration && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
 						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as a standby monitor ", server.URL)
 						server.SetReadOnly()
 					}
@@ -461,13 +477,13 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.ClusterGroup.LogPrintf("INFO", "Auto Rejoin is disabled")
 			}
 
-		} else if server.State != stateMaster && server.PrevState != stateUnconn {
+		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State == stateUnconn {
 			// Master will never get discovery in topology if it does not get unconnected first it default to suspect
 			if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
 				server.State = stateUnconn
 				server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
 			}
-			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInIgnoredReadonly(server) {
+			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
 				server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server: %s no master state and replication found", server.URL)
 				server.SetReadOnly()
 			}
@@ -525,6 +541,7 @@ func (server *ServerMonitor) ProcessFailedSlave() {
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
 	var err error
+
 	if server.Conn == nil {
 		return errors.New("Connection is nil, server unreachable")
 	}
@@ -532,7 +549,6 @@ func (server *ServerMonitor) Refresh() error {
 		//	server.State = stateFailed
 		return errors.New("Connection is unsafe, server unreachable")
 	}
-
 	err = server.Conn.Ping()
 	if err != nil {
 		return err
@@ -600,6 +616,13 @@ func (server *ServerMonitor) Refresh() error {
 				server.CurrentGtid = gtid.NewList(server.Variables["GTID_CURRENT_POS"])
 				server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
 
+				sid, err := strconv.ParseUint(server.Variables["GTID_DOMAIN_ID"], 10, 64)
+				if err != nil {
+					server.ClusterGroup.LogPrintf(LvlErr, "Could not parse domain_id, reason: %s", err)
+				} else {
+					server.DomainID = uint64(sid)
+				}
+
 			} else {
 				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
 				server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
@@ -620,7 +643,15 @@ func (server *ServerMonitor) Refresh() error {
 				server.ClusterGroup.SetState("ERR00073", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
 			}
 			if server.ClusterGroup.sme.GetHeartbeats()%30 == 0 {
+				server.SaveInfos()
 				server.CheckPrivileges()
+			} else {
+				server.ClusterGroup.sme.PreserveState("ERR00007")
+				server.ClusterGroup.sme.PreserveState("ERR00006")
+				server.ClusterGroup.sme.PreserveState("ERR00008")
+				server.ClusterGroup.sme.PreserveState("ERR00015")
+				server.ClusterGroup.sme.PreserveState("ERR00078")
+				server.ClusterGroup.sme.PreserveState("ERR00009")
 			}
 			if server.ClusterGroup.Conf.FailEventScheduler && server.IsMaster() && !server.HasEventScheduler() {
 				server.ClusterGroup.LogPrintf(LvlInfo, "Enable Event Scheduler on master")
@@ -732,7 +763,7 @@ func (server *ServerMonitor) Refresh() error {
 		if server.DBVersion.IsPPostgreSQL() {
 			//PostgresQL as no server_id concept mimic via internal server id for topology detection
 			var sid uint64
-			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), server.CrcTable), 10), 10, 64)
+			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), server.ClusterGroup.crcTable), 10), 10, 64)
 			if err != nil {
 				server.ClusterGroup.LogPrintf(LvlWarn, "PG Could not assign server_id s", err)
 			}
@@ -806,10 +837,16 @@ func (server *ServerMonitor) Refresh() error {
 	if server.HasHighNumberSlowQueries() {
 		server.ClusterGroup.SetState("WARN0088", state.State{ErrType: LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0088"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 	}
-	// monitor plulgins plugins
+	// monitor plugins
 	if !server.DBVersion.IsPPostgreSQL() {
-		if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 && !server.DBVersion.IsPPostgreSQL() {
-			server.Plugins, logs, err = dbhelper.GetPlugins(server.Conn, server.DBVersion)
+		if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 {
+			if server.ClusterGroup.Conf.MonitorPlugins {
+				server.Plugins, logs, err = dbhelper.GetPlugins(server.Conn, server.DBVersion)
+				server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
+				server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")
+				server.HaveDiskMonitor = server.HasInstallPlugin("DISK")
+				server.HaveSQLErrorLog = server.HasInstallPlugin("SQL_ERROR_LOG")
+			}
 			server.BinlogDumpThreads, logs, err = dbhelper.GetBinlogDumpThreads(server.Conn, server.DBVersion)
 			if err != nil {
 				if strings.Contains(err.Error(), "Errcode: 28 ") || strings.Contains(err.Error(), "errno: 28 ") {
@@ -822,11 +859,6 @@ func (server *ServerMonitor) Refresh() error {
 				}
 			}
 			server.IsFull = false
-
-			server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
-			server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")
-			server.HaveDiskMonitor = server.HasInstallPlugin("DISK")
-			server.HaveSQLErrorLog = server.HasInstallPlugin("SQL_ERROR_LOG")
 		}
 		if server.HaveMetaDataLocksLog {
 			server.MetaDataLocks, logs, err = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)
@@ -842,34 +874,50 @@ func (server *ServerMonitor) Refresh() error {
 	return nil
 }
 
-/* Handles write freeze and existing transactions on a server */
+/* Handles write freeze and shoot existing transactions on a server */
 func (server *ServerMonitor) freeze() bool {
-	logs, err := dbhelper.SetReadOnly(server.Conn, true)
+	if server.ClusterGroup.Conf.FailEventScheduler {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes from Event Scheduler on %s", server.URL)
+		logs, err := server.SetEventScheduler(false)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not disable event scheduler on %s", server.URL)
+	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes stopping all slaves on %s", server.URL)
+	logs, err := server.StopAllSlaves()
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not stop replicas source on %s ", server.URL)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes set read only on %s", server.URL)
+	logs, err = dbhelper.SetReadOnly(server.Conn, true)
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlInfo, "Could not set %s as read-only: %s", server.URL, err)
 	if err != nil {
 		return false
 	}
 	for i := server.ClusterGroup.Conf.SwitchWaitKill; i > 0; i -= 500 {
 		threads, logs, err := dbhelper.CheckLongRunningWrites(server.Conn, 0)
-		server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not check long running Writes %s as read-only: %s", server.URL, err)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not check long running writes %s as read-only: %s", server.URL, err)
 		if threads == 0 {
 			break
 		}
-		server.ClusterGroup.LogPrintf(LvlInfo, "Waiting for %d write threads to complete on %s", threads, server.URL)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes Waiting for %d write threads to complete %s", threads, server.URL)
 		time.Sleep(500 * time.Millisecond)
 	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes saving max_connections on %s ", server.URL)
+
 	server.maxConn, logs, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS", server.DBVersion)
-	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not get max_connections value on demoted leader")
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not save max_connections value on %s", server.URL)
 	if err != nil {
 
 	} else {
 		if server.ClusterGroup.Conf.SwitchDecreaseMaxConn {
+			server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes decreasing max_connections to 1 on %s ", server.URL)
 			logs, err := dbhelper.SetMaxConnections(server.Conn, strconv.FormatInt(server.ClusterGroup.Conf.SwitchDecreaseMaxConnValue, 10), server.DBVersion)
-			server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not set max_connections to 1 on demoted leader %s %s", server.URL, err)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not set max_connections to 1 on %s %s", server.URL, err)
 		}
 	}
-	server.ClusterGroup.LogPrintf("INFO", "Terminating all threads on %s", server.URL)
+	server.ClusterGroup.LogPrintf("INFO", "Freezing writes killing all other remaining threads on  %s", server.URL)
 	dbhelper.KillThreads(server.Conn, server.DBVersion)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes rejecting writes via FTWRL on %s ", server.URL)
+	logs, err = dbhelper.FlushTablesWithReadLock(server.Conn, server.DBVersion)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Could not lock tables on %s : %s", server.URL, err)
+
 	return true
 }
 
@@ -972,6 +1020,42 @@ func (server *ServerMonitor) StopSlave() (string, error) {
 	return dbhelper.StopSlave(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 }
 
+func (server *ServerMonitor) StopAllSlaves() (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
+	sql := ""
+	var lasterror error
+	for _, rep := range server.Replications {
+		res, errslave := dbhelper.StopSlave(server.Conn, rep.ConnectionName.String, server.DBVersion)
+		sql += res
+		if errslave != nil {
+			lasterror = errslave
+		}
+	}
+
+	return sql, lasterror
+}
+
+func (server *ServerMonitor) StopAllExtraSourceSlaves() (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
+	sql := ""
+	var lasterror error
+	for _, rep := range server.Replications {
+		if rep.ConnectionName.String != server.ClusterGroup.Conf.MasterConn {
+			res, errslave := dbhelper.StopSlave(server.Conn, rep.ConnectionName.String, server.DBVersion)
+			sql += res
+			if errslave != nil {
+				lasterror = errslave
+			}
+		}
+	}
+
+	return sql, lasterror
+}
+
 func (server *ServerMonitor) StartSlave() (string, error) {
 	if server.Conn == nil {
 		return "", errors.New("No databse connection")
@@ -1013,7 +1097,7 @@ func (server *ServerMonitor) FlushLogs() (string, error) {
 	if server.Conn == nil {
 		return "", errors.New("No database connection pool")
 	}
-	return dbhelper.FlushLogs(server.Conn)
+	return dbhelper.FlushBinaryLogsLocal(server.Conn)
 }
 
 func (server *ServerMonitor) FlushTables() (string, error) {
@@ -1139,6 +1223,49 @@ func (server *ServerMonitor) Capture() error {
 
 	go server.CaptureLoop(server.ClusterGroup.GetStateMachine().GetHeartbeats())
 	go server.JobCapturePurge(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name, server.ClusterGroup.Conf.MonitorCaptureFileKeep)
+	return nil
+}
+
+func (server *ServerMonitor) SaveInfos() error {
+	type Save struct {
+		Variables   map[string]string      `json:"variables"`
+		ProcessList []dbhelper.Processlist `json:"processlist"`
+		Status      map[string]string      `json:"status"`
+		SlaveStatus []dbhelper.SlaveStatus `json:"slavestatus"`
+	}
+	var clsave Save
+	clsave.Variables = server.Variables
+	clsave.Status = server.Status
+	clsave.ProcessList = server.FullProcessList
+	clsave.SlaveStatus = server.LastSeenReplications
+	saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
+	err := ioutil.WriteFile(server.Datadir+"/serverstate.json", saveJSON, 0644)
+	if err != nil {
+		return errors.New("SaveInfos" + err.Error())
+	}
+	return nil
+}
+
+func (server *ServerMonitor) ReloadSaveInfosVariables() error {
+	type Save struct {
+		Variables   map[string]string      `json:"variables"`
+		ProcessList []dbhelper.Processlist `json:"processlist"`
+		Status      map[string]string      `json:"status"`
+		SlaveStatus []dbhelper.SlaveStatus `json:"slavestatus"`
+	}
+
+	var clsave Save
+	file, err := ioutil.ReadFile(server.Datadir + "/serverstate.json")
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlInfo, "No file found %s: %v\n", server.Datadir+"/serverstate.json", err)
+		return err
+	}
+	err = json.Unmarshal(file, &clsave)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "File error: %v\n", err)
+		return err
+	}
+	server.Variables = clsave.Variables
 	return nil
 }
 
@@ -1324,4 +1451,20 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		err = errors.New(fmt.Sprintln("Can't start slave: ", err))
 	}
 	return err
+}
+
+func (server *ServerMonitor) CertificatesReload() error {
+	if server.Conn == nil {
+		return errors.New("No database connection pool")
+	}
+	cmd := "ALTER INSTANCE RELOAD TLS"
+	if server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 4 {
+		cmd = "FLUSH SSL"
+	}
+	_, err := server.Conn.Exec(cmd)
+	if err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "Reload certificatd %s", err)
+		return err
+	}
+	return nil
 }

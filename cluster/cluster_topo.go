@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -67,22 +67,45 @@ func (cluster *Cluster) newServerList() error {
 
 // AddChildServers Add child clusters nodes  if they get same  source name
 func (cluster *Cluster) AddChildServers() error {
+
 	mychilds := cluster.GetChildClusters()
+
 	for _, c := range mychilds {
 		for _, sv := range c.Servers {
-
+			cluster.LogPrintf(LvlDbg, "AddChildServers checking %s of %s ", sv.URL, c.Name)
 			if sv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
-				mymaster, _ := cluster.GetMasterFromReplication(sv)
-				if mymaster != nil {
-					//	cluster.slaves = append(cluster.slaves, sv)
-					if !cluster.HasServer(sv) {
-						srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.dbUser, sv.ClusterGroup.dbPass, false, c.GetDomain())
-						if err != nil {
-							return err
-						}
-						srv.Ignored = true
-						cluster.Servers = append(cluster.Servers, srv)
+				cluster.LogPrintf(LvlDbg, "Inter cluster multi-source check %s IsSlaveOfReplicationSource  %s  ", sv.URL, cluster.Conf.MasterConn)
+				if !cluster.HasServer(sv) {
+					cluster.LogPrintf(LvlInfo, "Inter cluster multi-source  %s add server not yet discovered  %s  ", sv.URL, cluster.Conf.MasterConn)
+
+					srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.dbUser, sv.ClusterGroup.dbPass, false, c.GetDomain())
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Inter cluster multi-source %s add server not yet discovered  %s error %s", sv.URL, cluster.Conf.MasterConn, err)
+
+						return err
 					}
+
+					srv.SetSourceClusterName(c.Name)
+					srv.SetIgnored(true)
+					cluster.Servers = append(cluster.Servers, srv)
+					wg := new(sync.WaitGroup)
+					wg.Add(1)
+					cluster.TopologyDiscover(wg)
+					wg.Wait()
+					return nil
+					// leave for next monitor loop to remove the sever if no more link
+				}
+			}
+		}
+	}
+	for _, sv := range cluster.Servers {
+		if sv != nil {
+			cluster.LogPrintf(LvlDbg, "Inter cluster multi-source check drop unlinked server %s source cluster  %s vs this cluster %s  ", sv.URL, sv.GetSourceClusterName(), cluster.Name)
+			if sv.GetSourceClusterName() != cluster.Name && sv.GetSourceClusterName() != "" {
+
+				if !sv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
+					cluster.LogPrintf(LvlInfo, "Inter cluster multi-source %s drop unlinked server %s  ", sv.URL, cluster.Conf.MasterConn)
+					cluster.RemoveServerFromIndex(cluster.GetServerIndice(sv))
 				}
 			}
 		}
@@ -95,7 +118,6 @@ func (cluster *Cluster) AddChildServers() error {
 // Create a connection to each host and build list of slaves.
 func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	defer wcg.Done()
-	cluster.AddChildServers()
 	//monitor ignored server fist so that their replication position get oldest
 	wg := new(sync.WaitGroup)
 	if cluster.Conf.Hosts == "" {
@@ -157,10 +179,10 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				if cluster.Conf.LogLevel > 2 {
 					cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
 				}
-				if cluster.Status == ConstMonitorActif && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
+				if cluster.IsActive() && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
 					//Extra master in master slave topology rejoin it after split brain
 					cluster.SetSugarState("ERR00063", "TOPO", "")
-					cluster.Servers[k].RejoinMaster()
+					//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping
 				} else {
 					cluster.master = cluster.Servers[k]
 					cluster.master.SetMaster()
@@ -233,8 +255,8 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 		}
 		if srw > 1 {
-			cluster.SetSugarState("WARN0004", "TOPO", "")
-			server := cluster.getPreferedMaster()
+			cluster.SetSugarState("WARN0004", "TOPO", "RO server count > 1 in multi-master mode.  switching to preferred master.")
+			server := cluster.getOnePreferedMaster()
 			if server != nil {
 				server.SetReadWrite()
 			} else {
@@ -291,7 +313,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			cluster.SetSugarState("ERR00012", "TOPO", "")
 		}
 	} else {
-		cluster.master.RplMasterStatus = false
+		cluster.master.HaveHealthyReplica = false
 		// End of autodetection code
 		if !cluster.master.IsDown() {
 			cluster.master.CheckMasterSettings()
@@ -316,8 +338,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					}
 
 				}
-				if sl.GetReplicationDelay() <= cluster.Conf.FailMaxDelay && sl.IsSQLThreadRunning() {
-					cluster.master.RplMasterStatus = true
+				if sl.GetReplicationDelay() <= cluster.Conf.FailMaxDelay && sl.IsSQLThreadRunning() && !sl.IsIgnored() {
+					//If one slave has replication under delay
+					cluster.master.HaveHealthyReplica = true
 				}
 
 			}

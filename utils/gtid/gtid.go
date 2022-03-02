@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -163,6 +163,17 @@ func (gl List) GetSeqNos() []uint64 {
 	var d []uint64
 	for _, g := range gl {
 		d = append(d, g.SeqNo)
+	}
+	return d
+}
+
+// GetSeqNos returns a slice of sequence integers per domaine
+func (gl List) GetSeqDomainIdNos(domainId uint64) []uint64 {
+	var d []uint64
+	for _, g := range gl {
+		if g.DomainID == domainId {
+			d = append(d, g.SeqNo)
+		}
 	}
 	return d
 }

@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -11,6 +11,8 @@ package s18log
 
 import "sync"
 
+// Collection of log messages
+// swagger:response httplog
 type HttpLog struct {
 	Buffer []HttpMessage `json:"buffer"`
 	Len    int           `json:"len"`
@@ -18,6 +20,9 @@ type HttpLog struct {
 	L      sync.Mutex    `json:"-"`
 }
 
+// Log message
+// in: HttpMessage
+// swagger:response httpmessage
 type HttpMessage struct {
 	Group     string `json:"group"`
 	Level     string `json:"level"`

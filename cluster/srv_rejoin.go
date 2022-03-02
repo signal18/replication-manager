@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -66,6 +66,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 					return nil
 				} else {
 					server.ClusterGroup.rejoinCond.Send <- true
+					server.ClusterGroup.LogPrintf("INFO", "No auto seeding %s", server.URL)
 					return errors.New("No Autoseed")
 				}
 			}
@@ -150,6 +151,7 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 }
 
 func (server *ServerMonitor) ReseedMasterSST() error {
+	server.DelWaitBackupCookie()
 	if server.ClusterGroup.Conf.AutorejoinMysqldump == true {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoin dump restore %s", server.URL)
 		err := server.RejoinDirectDump()
@@ -157,21 +159,23 @@ func (server *ServerMonitor) ReseedMasterSST() error {
 			server.ClusterGroup.LogPrintf("ERROR", "mysqldump restore failed %s", err)
 			return errors.New("Dump from master failed")
 		}
-	} else if server.ClusterGroup.Conf.AutorejoinLogicalBackup {
-		server.JobReseedLogicalBackup()
-	} else if server.ClusterGroup.Conf.AutorejoinPhysicalBackup {
-		server.JobReseedPhysicalBackup()
-	} else if server.ClusterGroup.Conf.RejoinScript != "" {
-		server.ClusterGroup.LogPrintf("INFO", "Calling rejoin script")
-		var out []byte
-		out, err := exec.Command(server.ClusterGroup.Conf.RejoinScript, misc.Unbracket(server.Host), misc.Unbracket(server.ClusterGroup.master.Host)).CombinedOutput()
-		if err != nil {
-			server.ClusterGroup.LogPrintf("ERROR", "%s", err)
-		}
-		server.ClusterGroup.LogPrintf("INFO", "Rejoin script complete %s", string(out))
 	} else {
-		server.ClusterGroup.LogPrintf("INFO", "No SST reseed method found")
-		return errors.New("No SST reseed method found")
+		if server.ClusterGroup.Conf.AutorejoinLogicalBackup {
+			server.JobReseedLogicalBackup()
+		} else if server.ClusterGroup.Conf.AutorejoinPhysicalBackup {
+			server.JobReseedPhysicalBackup()
+		} else if server.ClusterGroup.Conf.RejoinScript != "" {
+			server.ClusterGroup.LogPrintf("INFO", "Calling rejoin script")
+			var out []byte
+			out, err := exec.Command(server.ClusterGroup.Conf.RejoinScript, misc.Unbracket(server.Host), misc.Unbracket(server.ClusterGroup.master.Host)).CombinedOutput()
+			if err != nil {
+				server.ClusterGroup.LogPrintf("ERROR", "%s", err)
+			}
+			server.ClusterGroup.LogPrintf("INFO", "Rejoin script complete %s", string(out))
+		} else {
+			server.ClusterGroup.LogPrintf("INFO", "No SST reseed method found")
+			return errors.New("No SST reseed method found")
+		}
 	}
 
 	return nil
@@ -352,13 +356,14 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	} else {
 		// don't try flashback on old style replication that are ahead jump to SST
 		if server.HasGTIDReplication() == false {
-			return errors.New("Incremental failed")
+			server.ClusterGroup.LogPrintf("INFO", "Incremental canceled caused by old style replication")
+			return errors.New("Incremental canceled caused by old style replication")
 		}
 	}
 	if crash.FailoverIOGtid != nil {
 		// server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0
 		// lookup in crash recorded is the current master
-		if crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ClusterGroup.master.ServerID)) == 0 {
+		if crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
 			server.ClusterGroup.LogPrintf("INFO", "Cascading failover, consider we cannot flashback")
 			server.ClusterGroup.canFlashBack = false
 		} else {
@@ -651,23 +656,27 @@ func (cluster *Cluster) RejoinFixRelay(slave *ServerMonitor, relay *ServerMonito
 	return nil
 }
 
-// UseGtid  check is replication use gtid
+// UseGtid check is replication use gtid
 func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
-	ss, errss := server.GetSlaveStatus(server.ReplicationSourceName)
-	if errss != nil {
-		return false
-	}
+	/*
+		ss, errss := server.GetSlaveStatus(server.ReplicationSourceName)
+		if errss != nil {
+			server.ClusterGroup.LogPrintf(LvlInfo, "Failed to check if server was using GTID %s", errss)
+			return false
+		}
 
-	server.ClusterGroup.LogPrintf(LvlDbg, "Rejoin Server use GTID %s", ss.UsingGtid.String)
 
-	// An old master  master do no have replication
+		server.ClusterGroup.LogPrintf(LvlInfo, "Rejoin server using GTID %s", ss.UsingGtid.String)
+	*/
 	if crash.FailoverIOGtid == nil {
-		server.ClusterGroup.LogPrintf(LvlDbg, "Rejoin server cannot find a saved master election GTID")
+		server.ClusterGroup.LogPrintf(LvlInfo, "Rejoin server cannot find a saved master election GTID")
 		return false
 	}
 	if len(crash.FailoverIOGtid.GetSeqNos()) > 0 {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Rejoin server found a crash GTID greater than 0 ")
 		return true
-	} else {
-		return false
 	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Rejoin server can not found a GTID greater than 0 ")
+	return false
+
 }

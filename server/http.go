@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -7,6 +7,27 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
+// Package server replication-manager
+//
+// Replication Manager Monitoring and CLI for MariaDB and MySQL
+//
+//     Schemes: https
+//     Host: localhost
+//     BasePath: /
+//     Version: 0.0.1
+//     License: GPL http://opensource.org/licenses/GPL
+//     Contact: Stephane Varoqui  <svaroqui@gmail.com>
+//
+//     Consumes:
+//     - application/json
+//
+//     Produces:
+//     - application/json
+//
+//     Security:
+//       api_key:
+//
+// swagger:meta
 package server
 
 import (
@@ -44,7 +65,7 @@ func (repman *ReplicationManager) httpserver() {
 
 	// before starting the http server, check that the dashboard is present
 	if err := repman.testFile("app.html"); err != nil {
-		log.Println("ERROR", "Dashboard app.html file missing - will not start http server %s", err)
+		log.Printf("ERROR: Dashboard app.html file missing - will not start http server %s\n", err)
 		return
 	}
 

@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Author: Stephane Varoqui  <svaroqui@gmail.com>
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
@@ -19,7 +19,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/regtest"
 )
 
 func (repman *ReplicationManager) apiClusterUnprotectedHandler(router *mux.Router) {
@@ -121,9 +120,13 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxFailover)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/rotatekeys", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/certificates-rotate", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRotateKeys)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/certificates-reload", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterReloadCertificates)),
 	))
 	router.Handle("/api/clusters/{clusterName}/actions/reset-sla", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -274,6 +277,12 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/tests/actions/run/{testName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxOneTest)),
+	))
+
+	// endpoint to fetch Cluster.DiffVariables
+	router.Handle("/api/clusters/{clusterName}/diffvariables", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerDiffVariables)),
 	))
 }
 
@@ -461,10 +470,10 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if !repman.IsValidClusterACL(r, mycluster) {
-			repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+		repman.AddCluster(vars["clusterShardingName"], vars["clusterName"])
 		mycluster.RollingRestart()
 	} else {
 		http.Error(w, "No cluster", 500)
@@ -559,53 +568,7 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		switch vars["topology"] {
-		case "master-slave":
-			mycluster.SetMultiTierSlave(false)
-			mycluster.SetForceSlaveNoGtid(false)
-			mycluster.SetMultiMaster(false)
-			mycluster.SetBinlogServer(false)
-			mycluster.SetMultiMasterWsrep(false)
-		case "master-slave-no-gtid":
-			mycluster.SetMultiTierSlave(false)
-			mycluster.SetForceSlaveNoGtid(true)
-			mycluster.SetMultiMaster(false)
-			mycluster.SetBinlogServer(false)
-			mycluster.SetMultiMasterWsrep(false)
-		case "multi-master":
-			mycluster.SetMultiTierSlave(false)
-			mycluster.SetForceSlaveNoGtid(false)
-			mycluster.SetMultiMaster(true)
-			mycluster.SetBinlogServer(false)
-			mycluster.SetMultiMasterWsrep(false)
-		case "multi-tier-slave":
-			mycluster.SetMultiTierSlave(true)
-			mycluster.SetForceSlaveNoGtid(false)
-			mycluster.SetMultiMaster(false)
-			mycluster.SetBinlogServer(false)
-			mycluster.SetMultiMasterWsrep(false)
-		case "maxscale-binlog":
-			mycluster.SetMultiTierSlave(false)
-			mycluster.SetForceSlaveNoGtid(false)
-			mycluster.SetMultiMaster(false)
-			mycluster.SetBinlogServer(true)
-			mycluster.SetMultiMasterWsrep(false)
-		case "multi-master-ring":
-			mycluster.SetMultiTierSlave(false)
-			mycluster.SetForceSlaveNoGtid(false)
-			mycluster.SetMultiMaster(false)
-			mycluster.SetBinlogServer(false)
-			mycluster.SetMultiMasterRing(true)
-			mycluster.SetMultiMasterWsrep(false)
-		case "multi-master-wsrep":
-			mycluster.SetMultiTierSlave(false)
-			mycluster.SetForceSlaveNoGtid(false)
-			mycluster.SetMultiMaster(false)
-			mycluster.SetBinlogServer(false)
-			mycluster.SetMultiMasterRing(false)
-			mycluster.SetMultiMasterWsrep(true)
-
-		}
+		repman.bootstrapTopology(mycluster, vars["topology"])
 		err := mycluster.BootstrapReplication(true)
 		if err != nil {
 			mycluster.LogPrintf("ERROR", "Error bootstraping replication %s", err)
@@ -619,6 +582,55 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 	return
 }
 
+func (repman *ReplicationManager) bootstrapTopology(mycluster *cluster.Cluster, topology string) {
+	switch topology {
+	case "master-slave":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+		mycluster.SetMultiMasterWsrep(false)
+	case "master-slave-no-gtid":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(true)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+		mycluster.SetMultiMasterWsrep(false)
+	case "multi-master":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(true)
+		mycluster.SetBinlogServer(false)
+		mycluster.SetMultiMasterWsrep(false)
+	case "multi-tier-slave":
+		mycluster.SetMultiTierSlave(true)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+		mycluster.SetMultiMasterWsrep(false)
+	case "maxscale-binlog":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(true)
+		mycluster.SetMultiMasterWsrep(false)
+	case "multi-master-ring":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+		mycluster.SetMultiMasterRing(true)
+		mycluster.SetMultiMasterWsrep(false)
+	case "multi-master-wsrep":
+		mycluster.SetMultiTierSlave(false)
+		mycluster.SetForceSlaveNoGtid(false)
+		mycluster.SetMultiMaster(false)
+		mycluster.SetBinlogServer(false)
+		mycluster.SetMultiMasterRing(false)
+		mycluster.SetMultiMasterWsrep(true)
+	}
+}
+
 func (repman *ReplicationManager) handlerMuxServicesBootstrap(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -630,7 +642,7 @@ func (repman *ReplicationManager) handlerMuxServicesBootstrap(w http.ResponseWri
 		}
 		err := mycluster.ProvisionServices()
 		if err != nil {
-			mycluster.LogPrintf(cluster.LvlErr, "API Error Bootstrap Micro Services: ", err)
+			mycluster.LogPrintf(cluster.LvlErr, "API Error Bootstrap Micro Services: %s", err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -652,7 +664,7 @@ func (repman *ReplicationManager) handlerMuxServicesProvision(w http.ResponseWri
 		}
 		err := mycluster.Bootstrap()
 		if err != nil {
-			mycluster.LogPrintf(cluster.LvlErr, "API Error Bootstrap Micro Services + replication ", err)
+			mycluster.LogPrintf(cluster.LvlErr, "API Error Bootstrap Micro Services + replication: %s", err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -723,9 +735,12 @@ func (repman *ReplicationManager) handlerMuxSetSettingsDiscover(w http.ResponseW
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.ConfigDiscovery()
+		err := mycluster.ConfigDiscovery()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 	} else {
-
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -769,7 +784,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 		}
 		r.ParseForm() // Parses the request body
 		newPrefMaster := r.Form.Get("prefmaster")
-		mycluster.LogPrintf(cluster.LvlInfo, "Was ask for prefered master: %s", newPrefMaster)
+		mycluster.LogPrintf(cluster.LvlInfo, "API force for prefered master: %s", newPrefMaster)
 		if mycluster.IsInHostList(newPrefMaster) {
 			mycluster.SetPrefMaster(newPrefMaster)
 		} else {
@@ -824,7 +839,14 @@ func (repman *ReplicationManager) handlerMuxClusterCertificates(w http.ResponseW
 	if mycluster != nil {
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetClientCertificates())
+		certs, err := mycluster.GetClientCertificates()
+		if err != nil {
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+		}
+		err = e.Encode(certs)
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
@@ -843,7 +865,7 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 	if mycluster != nil {
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetDBModuleTags())
+		err := e.Encode(mycluster.Configurator.GetDBModuleTags())
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
@@ -933,132 +955,135 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 		}
 		setting := vars["settingName"]
 		mycluster.LogPrintf("INFO", "API receive switch setting %s", setting)
-		switch setting {
-		case "verbose":
-			mycluster.SwitchVerbosity()
-		case "failover-mode":
-			mycluster.SwitchInteractive()
-		case "failover-readonly-state":
-			mycluster.SwitchReadOnly()
-		case "failover-restart-unsafe":
-			mycluster.SwitchFailoverRestartUnsafe()
-		case "failover-at-sync":
-			mycluster.SwitchFailSync()
-		case "force-slave-no-gtid-mode":
-			mycluster.SwitchForceSlaveNoGtid()
-		case "failover-event-status":
-			mycluster.SwitchFailoverEventStatus()
-		case "failover-event-scheduler":
-			mycluster.SwitchFailoverEventScheduler()
-		case "autorejoin":
-			mycluster.SwitchRejoin()
-		case "autoseed":
-			mycluster.SwitchAutoseed()
-		case "autorejoin-backup-binlog":
-			mycluster.SwitchRejoinBackupBinlog()
-		case "autorejoin-flashback":
-			mycluster.SwitchRejoinFlashback()
-		case "autorejoin-flashback-on-sync":
-			mycluster.SwitchRejoinSemisync()
-		case "autorejoin-flashback-on-unsync": //?????
-		case "autorejoin-slave-positional-heartbeat":
-			mycluster.SwitchRejoinPseudoGTID()
-		case "autorejoin-zfs-flashback":
-			mycluster.SwitchRejoinZFSFlashback()
-		case "autorejoin-mysqldump":
-			mycluster.SwitchRejoinDump()
-		case "autorejoin-logical-backup":
-			mycluster.SwitchRejoinLogicalBackup()
-		case "autorejoin-physical-backup":
-			mycluster.SwitchRejoinPhysicalBackup()
-		case "switchover-at-sync":
-			mycluster.SwitchSwitchoverSync()
-		case "check-replication-filters":
-			mycluster.SwitchCheckReplicationFilters()
-		case "check-replication-state":
-			mycluster.SwitchRplChecks()
-		case "scheduler-db-servers-logical-backup":
-			mycluster.SwitchSchedulerBackupLogical()
-		case "scheduler-db-servers-physical-backup":
-			mycluster.SwitchSchedulerBackupPhysical()
-		case "scheduler-db-servers-logs":
-			mycluster.SwitchSchedulerDatabaseLogs()
-		case "scheduler-jobs-ssh":
-			mycluster.SwitchSchedulerDbJobsSsh()
-		case "scheduler-db-servers-logs-table-rotate":
-			mycluster.SwitchSchedulerDatabaseLogsTableRotate()
-		case "scheduler-rolling-restart":
-			mycluster.SwitchSchedulerRollingRestart()
-		case "scheduler-rolling-reprov":
-			mycluster.SwitchSchedulerRollingReprov()
-		case "scheduler-db-servers-optimize":
-			mycluster.SwitchSchedulerDatabaseOptimize()
-		case "graphite-metrics":
-			mycluster.SwitchGraphiteMetrics()
-		case "graphite-embedded":
-			mycluster.SwitchGraphiteEmbedded()
-		case "shardproxy-copy-grants":
-			mycluster.SwitchProxysqlCopyGrants()
-
-		case "proxysql-copy-grants":
-			mycluster.SwitchProxysqlCopyGrants()
-		case "proxysql-bootstrap-users":
-			mycluster.SwitchProxysqlCopyGrants()
-		case "proxysql-bootstrap-variables":
-			mycluster.SwitchProxysqlBootstrapVariables()
-		case "proxysql-bootstrap-hostgroups":
-			mycluster.SwitchProxysqlBootstrapHostgroups()
-		case "proxysql-bootstrap-servers":
-			mycluster.SwitchProxysqlBootstrapServers()
-		case "proxysql-bootstrap-query-rules":
-			mycluster.SwitchProxysqlBootstrapQueryRules()
-		case "proxysql-bootstrap":
-			mycluster.SwitchProxysqlBootstrap()
-		case "proxysql":
-			mycluster.SwitchProxySQL()
-		case "proxy-servers-read-on-master":
-			mycluster.SwitchProxyServersReadOnMaster()
-		case "proxy-servers-backend-compression":
-			mycluster.SwitchProxyServersBackendCompression()
-		case "database-heartbeat":
-			mycluster.SwitchTraffic()
-		case "test":
-			mycluster.SwitchTestMode()
-		case "prov-net-cni":
-			mycluster.SwitchProvNetCNI()
-		case "prov-db-apply-dynamic-config":
-			mycluster.SwitchDBApplyDynamicConfig()
-		case "prov-docker-daemon-private":
-			mycluster.SwitchProvDockerDaemonPrivate()
-		case "backup-restic":
-			mycluster.SwitchBackupRestic()
-		case "backup-binlogs":
-			mycluster.SwitchBackupBinlogs()
-		case "monitoring-pause":
-			mycluster.SwitchMonitoringPause()
-		case "monitoring-save-config":
-			mycluster.SwitchMonitoringSaveConfig()
-		case "monitoring-queries":
-			mycluster.SwitchMonitoringQueries()
-		case "monitoring-scheduler":
-			mycluster.SwitchMonitoringScheduler()
-		case "monitoring-schema-change":
-			mycluster.SwitchMonitoringSchemaChange()
-		case "monitoring-capture":
-			mycluster.SwitchMonitoringCapture()
-		case "monitoring-innodb-status":
-			mycluster.SwitchMonitoringInnoDBStatus()
-		case "monitoring-variable-diff":
-			mycluster.SwitchMonitoringVariableDiff()
-		case "monitoring-processlist":
-			mycluster.SwitchMonitoringProcesslist()
-		}
-
+		repman.switchSettings(mycluster, setting)
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}
 	return
+}
+
+func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, setting string) {
+	switch setting {
+	case "verbose":
+		mycluster.SwitchVerbosity()
+	case "failover-mode":
+		mycluster.SwitchInteractive()
+	case "failover-readonly-state":
+		mycluster.SwitchReadOnly()
+	case "failover-restart-unsafe":
+		mycluster.SwitchFailoverRestartUnsafe()
+	case "failover-at-sync":
+		mycluster.SwitchFailSync()
+	case "force-slave-no-gtid-mode":
+		mycluster.SwitchForceSlaveNoGtid()
+	case "failover-event-status":
+		mycluster.SwitchFailoverEventStatus()
+	case "failover-event-scheduler":
+		mycluster.SwitchFailoverEventScheduler()
+	case "autorejoin":
+		mycluster.SwitchRejoin()
+	case "autoseed":
+		mycluster.SwitchAutoseed()
+	case "autorejoin-backup-binlog":
+		mycluster.SwitchRejoinBackupBinlog()
+	case "autorejoin-flashback":
+		mycluster.SwitchRejoinFlashback()
+	case "autorejoin-flashback-on-sync":
+		mycluster.SwitchRejoinSemisync()
+	case "autorejoin-flashback-on-unsync": //?????
+	case "autorejoin-slave-positional-heartbeat":
+		mycluster.SwitchRejoinPseudoGTID()
+	case "autorejoin-zfs-flashback":
+		mycluster.SwitchRejoinZFSFlashback()
+	case "autorejoin-mysqldump":
+		mycluster.SwitchRejoinDump()
+	case "autorejoin-logical-backup":
+		mycluster.SwitchRejoinLogicalBackup()
+	case "autorejoin-physical-backup":
+		mycluster.SwitchRejoinPhysicalBackup()
+	case "switchover-at-sync":
+		mycluster.SwitchSwitchoverSync()
+	case "check-replication-filters":
+		mycluster.SwitchCheckReplicationFilters()
+	case "check-replication-state":
+		mycluster.SwitchRplChecks()
+	case "scheduler-db-servers-logical-backup":
+		mycluster.SwitchSchedulerBackupLogical()
+	case "scheduler-db-servers-physical-backup":
+		mycluster.SwitchSchedulerBackupPhysical()
+	case "scheduler-db-servers-logs":
+		mycluster.SwitchSchedulerDatabaseLogs()
+	case "scheduler-jobs-ssh":
+		mycluster.SwitchSchedulerDbJobsSsh()
+	case "scheduler-db-servers-logs-table-rotate":
+		mycluster.SwitchSchedulerDatabaseLogsTableRotate()
+	case "scheduler-rolling-restart":
+		mycluster.SwitchSchedulerRollingRestart()
+	case "scheduler-rolling-reprov":
+		mycluster.SwitchSchedulerRollingReprov()
+	case "scheduler-db-servers-optimize":
+		mycluster.SwitchSchedulerDatabaseOptimize()
+	case "graphite-metrics":
+		mycluster.SwitchGraphiteMetrics()
+	case "graphite-embedded":
+		mycluster.SwitchGraphiteEmbedded()
+	case "shardproxy-copy-grants":
+		mycluster.SwitchProxysqlCopyGrants()
+
+	case "proxysql-copy-grants":
+		mycluster.SwitchProxysqlCopyGrants()
+	case "proxysql-bootstrap-users":
+		mycluster.SwitchProxysqlCopyGrants()
+	case "proxysql-bootstrap-variables":
+		mycluster.SwitchProxysqlBootstrapVariables()
+	case "proxysql-bootstrap-hostgroups":
+		mycluster.SwitchProxysqlBootstrapHostgroups()
+	case "proxysql-bootstrap-servers":
+		mycluster.SwitchProxysqlBootstrapServers()
+	case "proxysql-bootstrap-query-rules":
+		mycluster.SwitchProxysqlBootstrapQueryRules()
+	case "proxysql-bootstrap":
+		mycluster.SwitchProxysqlBootstrap()
+	case "proxysql":
+		mycluster.SwitchProxySQL()
+	case "proxy-servers-read-on-master":
+		mycluster.SwitchProxyServersReadOnMaster()
+	case "proxy-servers-backend-compression":
+		mycluster.SwitchProxyServersBackendCompression()
+	case "database-heartbeat":
+		mycluster.SwitchTraffic()
+	case "test":
+		mycluster.SwitchTestMode()
+	case "prov-net-cni":
+		mycluster.SwitchProvNetCNI()
+	case "prov-db-apply-dynamic-config":
+		mycluster.SwitchDBApplyDynamicConfig()
+	case "prov-docker-daemon-private":
+		mycluster.SwitchProvDockerDaemonPrivate()
+	case "backup-restic":
+		mycluster.SwitchBackupRestic()
+	case "backup-binlogs":
+		mycluster.SwitchBackupBinlogs()
+	case "monitoring-pause":
+		mycluster.SwitchMonitoringPause()
+	case "monitoring-save-config":
+		mycluster.SwitchMonitoringSaveConfig()
+	case "monitoring-queries":
+		mycluster.SwitchMonitoringQueries()
+	case "monitoring-scheduler":
+		mycluster.SwitchMonitoringScheduler()
+	case "monitoring-schema-change":
+		mycluster.SwitchMonitoringSchemaChange()
+	case "monitoring-capture":
+		mycluster.SwitchMonitoringCapture()
+	case "monitoring-innodb-status":
+		mycluster.SwitchMonitoringInnoDBStatus()
+	case "monitoring-variable-diff":
+		mycluster.SwitchMonitoringVariableDiff()
+	case "monitoring-processlist":
+		mycluster.SwitchMonitoringProcesslist()
+	}
 }
 
 func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {
@@ -1072,136 +1097,139 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 		}
 		setting := vars["settingName"]
 		mycluster.LogPrintf("INFO", "API receive set setting %s", setting)
-		switch setting {
-		case "replication-credential":
-			mycluster.SetReplicationCredential(vars["settingValue"])
-		case "failover-max-slave-delay":
-			val, _ := strconv.ParseInt(vars["settingValue"], 10, 64)
-			mycluster.SetRplMaxDelay(val)
-		case "switchover-wait-route-change":
-			mycluster.SetSwitchoverWaitRouteChange(vars["settingValue"])
-		case "failover-limit":
-			val, _ := strconv.Atoi(vars["settingValue"])
-			mycluster.SetFailLimit(val)
-		case "backup-keep-hourly":
-			mycluster.SetBackupKeepHourly(vars["settingValue"])
-		case "backup-keep-daily":
-			mycluster.SetBackupKeepDaily(vars["settingValue"])
-		case "backup-keep-monthly":
-			mycluster.SetBackupKeepMonthly(vars["settingValue"])
-		case "backup-keep-weekly":
-			mycluster.SetBackupKeepWeekly(vars["settingValue"])
-		case "backup-keep-yearly":
-			mycluster.SetBackupKeepYearly(vars["settingValue"])
-		case "backup-logical-type":
-			mycluster.SetBackupLogicalType(vars["settingValue"])
-		case "backup-physical-type":
-			mycluster.SetBackupPhysicalType(vars["settingValue"])
-		case "db-servers-hosts":
-			mycluster.SetDbServerHosts(vars["settingValue"])
-		case "db-servers-credential":
-			mycluster.SetDbServersCredential(vars["settingValue"])
-		case "prov-service-plan":
-			mycluster.SetServicePlan(vars["settingValue"])
-		case "prov-net-cni-cluster":
-			mycluster.SetProvNetCniCluster(vars["settingValue"])
-		case "prov-orchestrator-cluster":
-			mycluster.SetProvOrchestratorCluster(vars["settingValue"])
-		case "prov-db-disk-size":
-			mycluster.SetDBDiskSize(vars["settingValue"])
-		case "prov-db-cpu-cores":
-			mycluster.SetDBCores(vars["settingValue"])
-		case "prov-db-memory":
-			mycluster.SetDBMemorySize(vars["settingValue"])
-		case "prov-db-disk-iops":
-			mycluster.SetDBDiskIOPS(vars["settingValue"])
-		case "prov-db-max-connections":
-			mycluster.SetDBMaxConnections(vars["settingValue"])
-		case "prov-db-expire-log-days":
-			mycluster.SetDBExpireLogDays(vars["settingValue"])
-		case "prov-db-agents":
-			mycluster.SetProvDbAgents(vars["settingValue"])
-		case "prov-proxy-agents":
-			mycluster.SetProvProxyAgents(vars["settingValue"])
-		case "prov-orchestrator":
-			mycluster.SetProvOrchestrator(vars["settingValue"])
-		case "prov-sphinx-img":
-			mycluster.SetProvSphinxImage(vars["settingValue"])
-		case "prov-db-image":
-			mycluster.SetProvDBImage(vars["settingValue"])
-		case "prov-db-disk-type":
-			mycluster.SetProvDbDiskType(vars["settingValue"])
-		case "prov-db-disk-fs":
-			mycluster.SetProvDbDiskFS(vars["settingValue"])
-		case "prov-db-disk-pool":
-			mycluster.SetProvDbDiskPool(vars["settingValue"])
-		case "prov-db-disk-device":
-			mycluster.SetProvDbDiskDevice(vars["settingValue"])
-		case "prov-db-service-type":
-			mycluster.SetProvDbServiceType(vars["settingValue"])
-		case "proxysql-servers-credential":
-			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxySqlproxy)
-		case "proxy-servers-backend-max-connections":
-			mycluster.SetProxyServersBackendMaxConnections(vars["settingValue"])
-		case "proxy-servers-backend-max-replication-lag":
-			mycluster.SetProxyServersBackendMaxReplicationLag(vars["settingValue"])
-		case "maxscale-servers-credential":
-			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxyMaxscale)
-		case "shardproxy-servers-credential":
-			mycluster.SetProxyServersCredential(vars["settingValue"], config.ConstProxySpider)
-		case "prov-proxy-disk-size":
-			mycluster.SetProxyDiskSize(vars["settingValue"])
-		case "prov-proxy-cpu-cores":
-			mycluster.SetProxyCores(vars["settingValue"])
-		case "prov-proxy-memory":
-			mycluster.SetProxyMemorySize(vars["settingValue"])
-		case "prov-proxy-docker-proxysql-img":
-			mycluster.SetProvProxySQLImage(vars["settingValue"])
-		case "prov-proxy-docker-maxscale-img":
-			mycluster.SetProvMaxscaleImage(vars["settingValue"])
-		case "prov-proxy-docker-haproxy-img":
-			mycluster.SetProvHaproxyImage(vars["settingValue"])
-		case "prov-proxy-docker-shardproxy-img":
-			mycluster.SetProvShardproxyImage(vars["settingValue"])
-		case "prov-proxy-disk-type":
-			mycluster.SetProvProxyDiskType(vars["settingValue"])
-		case "prov-proxy-disk-fs":
-			mycluster.SetProvProxyDiskFS(vars["settingValue"])
-		case "prov-proxy-disk-pool":
-			mycluster.SetProvProxyDiskPool(vars["settingValue"])
-		case "prov-proxy-disk-device":
-			mycluster.SetProvProxyDiskDevice(vars["settingValue"])
-		case "prov-proxy-service-type":
-			mycluster.SetProvProxyServiceType(vars["settingValue"])
-		case "monitoring-address":
-			mycluster.SetMonitoringAddress(vars["settingValue"])
-		case "scheduler-db-servers-logical-backup-cron":
-			mycluster.SetSchedulerDbServersLogicalBackupCron(vars["settingValue"])
-		case "scheduler-db-servers-logs-cron":
-			mycluster.SetSchedulerDbServersLogsCron(vars["settingValue"])
-		case "scheduler-db-servers-logs-table-rotate-cron":
-			mycluster.SetSchedulerDbServersLogsTableRotateCron(vars["settingValue"])
-		case "scheduler-db-servers-optimize-cron":
-			mycluster.SetSchedulerDbServersOptimizeCron(vars["settingValue"])
-		case "scheduler-db-servers-physical-backup-cron":
-			mycluster.SetSchedulerDbServersPhysicalBackupCron(vars["settingValue"])
-		case "scheduler-rolling-reprov-cron":
-			mycluster.SetSchedulerRollingReprovCron(vars["settingValue"])
-		case "scheduler-rolling-restart-cron":
-			mycluster.SetSchedulerRollingRestartCron(vars["settingValue"])
-		case "scheduler-sla-rotate-cron":
-			mycluster.SetSchedulerSlaRotateCron(vars["settingValue"])
-		case "scheduler-jobs-ssh-cron":
-			mycluster.SetSchedulerJobsSshCron(vars["settingValue"])
-		case "backup-binlogs-keep":
-			mycluster.SetBackupBinlogsKeep(vars["settingValue"])
-
-		}
+		repman.setSetting(mycluster, setting, vars["settingValue"])
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}
 	return
+}
+
+func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name string, value string) {
+	switch name {
+	case "replication-credential":
+		mycluster.SetReplicationCredential(value)
+	case "failover-max-slave-delay":
+		val, _ := strconv.ParseInt(value, 10, 64)
+		mycluster.SetRplMaxDelay(val)
+	case "switchover-wait-route-change":
+		mycluster.SetSwitchoverWaitRouteChange(value)
+	case "failover-limit":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetFailLimit(val)
+	case "backup-keep-hourly":
+		mycluster.SetBackupKeepHourly(value)
+	case "backup-keep-daily":
+		mycluster.SetBackupKeepDaily(value)
+	case "backup-keep-monthly":
+		mycluster.SetBackupKeepMonthly(value)
+	case "backup-keep-weekly":
+		mycluster.SetBackupKeepWeekly(value)
+	case "backup-keep-yearly":
+		mycluster.SetBackupKeepYearly(value)
+	case "backup-logical-type":
+		mycluster.SetBackupLogicalType(value)
+	case "backup-physical-type":
+		mycluster.SetBackupPhysicalType(value)
+	case "db-servers-hosts":
+		mycluster.SetDbServerHosts(value)
+	case "db-servers-credential":
+		mycluster.SetDbServersCredential(value)
+	case "prov-service-plan":
+		mycluster.SetServicePlan(value)
+	case "prov-net-cni-cluster":
+		mycluster.SetProvNetCniCluster(value)
+	case "prov-orchestrator-cluster":
+		mycluster.SetProvOrchestratorCluster(value)
+	case "prov-db-disk-size":
+		mycluster.SetDBDiskSize(value)
+	case "prov-db-cpu-cores":
+		mycluster.SetDBCores(value)
+	case "prov-db-memory":
+		mycluster.SetDBMemorySize(value)
+	case "prov-db-disk-iops":
+		mycluster.SetDBDiskIOPS(value)
+	case "prov-db-max-connections":
+		mycluster.SetDBMaxConnections(value)
+	case "prov-db-expire-log-days":
+		mycluster.SetDBExpireLogDays(value)
+	case "prov-db-agents":
+		mycluster.SetProvDbAgents(value)
+	case "prov-proxy-agents":
+		mycluster.SetProvProxyAgents(value)
+	case "prov-orchestrator":
+		mycluster.SetProvOrchestrator(value)
+	case "prov-sphinx-img":
+		mycluster.SetProvSphinxImage(value)
+	case "prov-db-image":
+		mycluster.SetProvDBImage(value)
+	case "prov-db-disk-type":
+		mycluster.SetProvDbDiskType(value)
+	case "prov-db-disk-fs":
+		mycluster.SetProvDbDiskFS(value)
+	case "prov-db-disk-pool":
+		mycluster.SetProvDbDiskPool(value)
+	case "prov-db-disk-device":
+		mycluster.SetProvDbDiskDevice(value)
+	case "prov-db-service-type":
+		mycluster.SetProvDbServiceType(value)
+	case "proxysql-servers-credential":
+		mycluster.SetProxyServersCredential(value, config.ConstProxySqlproxy)
+	case "proxy-servers-backend-max-connections":
+		mycluster.SetProxyServersBackendMaxConnections(value)
+	case "proxy-servers-backend-max-replication-lag":
+		mycluster.SetProxyServersBackendMaxReplicationLag(value)
+	case "maxscale-servers-credential":
+		mycluster.SetProxyServersCredential(value, config.ConstProxyMaxscale)
+	case "shardproxy-servers-credential":
+		mycluster.SetProxyServersCredential(value, config.ConstProxySpider)
+	case "prov-proxy-disk-size":
+		mycluster.SetProxyDiskSize(value)
+	case "prov-proxy-cpu-cores":
+		mycluster.SetProxyCores(value)
+	case "prov-proxy-memory":
+		mycluster.SetProxyMemorySize(value)
+	case "prov-proxy-docker-proxysql-img":
+		mycluster.SetProvProxySQLImage(value)
+	case "prov-proxy-docker-maxscale-img":
+		mycluster.SetProvMaxscaleImage(value)
+	case "prov-proxy-docker-haproxy-img":
+		mycluster.SetProvHaproxyImage(value)
+	case "prov-proxy-docker-shardproxy-img":
+		mycluster.SetProvShardproxyImage(value)
+	case "prov-proxy-disk-type":
+		mycluster.SetProvProxyDiskType(value)
+	case "prov-proxy-disk-fs":
+		mycluster.SetProvProxyDiskFS(value)
+	case "prov-proxy-disk-pool":
+		mycluster.SetProvProxyDiskPool(value)
+	case "prov-proxy-disk-device":
+		mycluster.SetProvProxyDiskDevice(value)
+	case "prov-proxy-service-type":
+		mycluster.SetProvProxyServiceType(value)
+	case "monitoring-address":
+		mycluster.SetMonitoringAddress(value)
+	case "scheduler-db-servers-logical-backup-cron":
+		mycluster.SetSchedulerDbServersLogicalBackupCron(value)
+	case "scheduler-db-servers-logs-cron":
+		mycluster.SetSchedulerDbServersLogsCron(value)
+	case "scheduler-db-servers-logs-table-rotate-cron":
+		mycluster.SetSchedulerDbServersLogsTableRotateCron(value)
+	case "scheduler-db-servers-optimize-cron":
+		mycluster.SetSchedulerDbServersOptimizeCron(value)
+	case "scheduler-db-servers-physical-backup-cron":
+		mycluster.SetSchedulerDbServersPhysicalBackupCron(value)
+	case "scheduler-rolling-reprov-cron":
+		mycluster.SetSchedulerRollingReprovCron(value)
+	case "scheduler-rolling-restart-cron":
+		mycluster.SetSchedulerRollingRestartCron(value)
+	case "scheduler-sla-rotate-cron":
+		mycluster.SetSchedulerSlaRotateCron(value)
+	case "scheduler-jobs-ssh-cron":
+		mycluster.SetSchedulerJobsSshCron(value)
+	case "backup-binlogs-keep":
+		mycluster.SetBackupBinlogsKeep(value)
+	}
 }
 
 func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *http.Request) {
@@ -1341,8 +1369,8 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 		if r.Form.Get("unprovision") == "true" {
 			mycluster.SetTestStopCluster(true)
 		}
-		regtest := new(regtest.RegTest)
-		res := regtest.RunAllTests(mycluster, vars["testName"])
+
+		res := repman.RunAllTests(mycluster, vars["testName"], "")
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 
@@ -1389,9 +1417,8 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		regtest := new(regtest.RegTest)
 
-		res := regtest.RunAllTests(mycluster, "ALL")
+		res := repman.RunAllTests(mycluster, "ALL", "")
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(res)
@@ -1455,19 +1482,73 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 
 }
 
+// swagger:operation GET /api/clusters/{clusterName}/status clusterStatus
+// Shows the status for that specific named cluster
+//
+// ---
+// parameters:
+// - name: clusterName
+//   in: path
+//   description: cluster to filter by
+//   required: true
+//   type: string
+// responses:
+//   '200':
+//     "$ref": "#/responses/status"
 func (repman *ReplicationManager) handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	if mycluster.GetStatus() {
-		io.WriteString(w, `{"alive": "running"}`)
+	if mycluster != nil {
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		if mycluster.GetStatus() {
+			io.WriteString(w, `{"alive": "running"}`)
+		} else {
+			io.WriteString(w, `{"alive": "errors"}`)
+		}
 	} else {
-		io.WriteString(w, `{"alive": "errors"}`)
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, "No cluster found:"+vars["clusterName"])
 	}
 }
+
+// swagger:operation GET /api/clusters/{clusterName}/actions/master-physical-backup master-physical-backup
+//
+//
+// ---
+// parameters:
+// - name: clusterName
+//   in: path
+//   description: cluster to filter by
+//   required: true
+//   type: string
+// produces:
+//  - text/plain
+// responses:
+//   '200':
+//     description: OK
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '400':
+//     description: No cluster found
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No cluster found:cluster_1
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '403':
+//     description: No valid ACL
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No valid ACL
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
 
 func (repman *ReplicationManager) handlerMuxClusterMasterPhysicalBackup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1549,6 +1630,20 @@ func (repman *ReplicationManager) handlerMuxClusterApplyDynamicConfig(w http.Res
 			return
 		}
 		go mycluster.SetDBDynamicConfig()
+	}
+	return
+}
+
+func (repman *ReplicationManager) handlerMuxClusterReloadCertificates(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		go mycluster.ReloadCertificates()
 	}
 	return
 }
@@ -1671,8 +1766,8 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaUniversalTable(w http.R
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		for _, pr := range mycluster.Proxies {
-			if mycluster.Conf.MdbsProxyOn {
+		for _, pri := range mycluster.Proxies {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
 				go mycluster.ShardSetUniversalTable(pr, vars["schemaName"], vars["tableName"])
 			}
 		}
@@ -1694,8 +1789,8 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaReshardTable(w http.Res
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		for _, pr := range mycluster.Proxies {
-			if mycluster.Conf.MdbsProxyOn {
+		for _, pri := range mycluster.Proxies {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
 				clusters := mycluster.GetClusterListFromShardProxy(mycluster.Conf.MdbsProxyHosts)
 				if vars["clusterList"] == "" {
 					mycluster.ShardProxyReshardTable(pr, vars["schemaName"], vars["tableName"], clusters)
@@ -1729,8 +1824,8 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaMoveTable(w http.Respon
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		for _, pr := range mycluster.Proxies {
-			if mycluster.Conf.MdbsProxyOn {
+		for _, pri := range mycluster.Proxies {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
 				if vars["clusterShard"] != "" {
 					destcluster := repman.getClusterByName(vars["clusterShard"])
 					if mycluster != nil {
@@ -1774,4 +1869,31 @@ func (repman *ReplicationManager) handlerMuxClusterSchema(w http.ResponseWriter,
 	}
 	return
 
+}
+
+func (repman *ReplicationManager) handlerDiffVariables(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		vars := mycluster.DiffVariables
+		if vars == nil {
+			vars = []cluster.VariableDiff{}
+		}
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(vars)
+		if err != nil {
+			http.Error(w, "Encoding error for DiffVariables", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
 }

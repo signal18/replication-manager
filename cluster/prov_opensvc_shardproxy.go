@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -15,27 +15,31 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (cluster *Cluster) OpenSVCGetShardproxyContainerSection(server *Proxy) map[string]string {
+func (cluster *Cluster) OpenSVCGetShardproxyContainerSection(server *MariadbShardProxy) map[string]string {
 
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
-		svccontainer["netns"] = "container#prx"
+		svccontainer["netns"] = "container#01"
 		svccontainer["image"] = " {env.shardproxy_img}"
+		svccontainer["rm"] = "true"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
-			svccontainer["run_args"] = `-e MYSQL_ROOT_PASSWORD={env.mysql_root_password} -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/data:/var/lib/mysql:rw -v {env.base_dir}/pod01/etc/mysql:/etc/mysql:rw -v {env.base_dir}/pod01/init:/docker-entrypoint-initdb.d:rw
+			svccontainer["run_args"] = `-e MYSQL_ROOT_PASSWORD={env.mysql_root_password} -e MYSQL_INITDB_SKIP_TZINFO=yes -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/data:/var/lib/mysql:rw -v {name}/pod01/etc/mysql:/etc/mysql:rw -v {name}/init:/docker-entrypoint-initdb.d:rw
 `
 		} else {
-			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}-data/data:/var/lib/mysql:rw {name}-system/data/.system:/var/lib/mysql/.system:rw {name}-temp/data/.system/tmp:/var/lib/mysql/.system/tmp:rw {name}-data/etc/mysql:/etc/mysql:rw {name}-data/init:/docker-entrypoint-initdb.d:rw`
-			svccontainer["environment"] = `MYSQL_ROOT_PASSWORD={env.mysql_root_password} MYSQL_INITDB_SKIP_TZINFO=yes`
+			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
+			svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+			svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
+			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
+			svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 		}
 
 	}
 	return svccontainer
 }
 
-func (cluster *Cluster) GetShardproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+func (cluster *Cluster) GetShardproxyTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *MariadbShardProxy) (string, error) {
 
 	ipPods := ""
 
@@ -92,10 +96,7 @@ gcomm	 = ` + cluster.GetGComm() + `
 mrm_api_addr = ` + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + `
 mrm_cluster_name = ` + cluster.GetClusterName() + `
 server_id = ` + string(prx.Id[2:10]) + `
-innodb_buffer_pool_size = ` + cluster.GetConfigInnoDBBPSize() + `
-innodb_log_file_size = ` + cluster.GetConfigInnoDBLogFileSize() + `
-innodb_buffer_pool_instances = ` + cluster.GetConfigInnoDBBPInstances() + `
-innodb_log_buffer_size = 8
+
 `
 	log.Println(conf)
 	return conf, nil

@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Author: Guillaume Lefranc <guillaume@signal18.io>
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
@@ -24,7 +24,9 @@ import (
 	"time"
 
 	"github.com/bluele/logrus_slack"
+	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/spf13/viper"
+	"google.golang.org/grpc"
 
 	log "github.com/sirupsen/logrus"
 	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
@@ -36,48 +38,57 @@ import (
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
+	"github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 )
 
+var RepMan *ReplicationManager
+
 // Global variables
 type ReplicationManager struct {
-	OpenSVC              opensvc.Collector           `json:"-"`
-	Version              string                      `json:"version"`
-	Fullversion          string                      `json:"fullVersion"`
-	Os                   string                      `json:"os"`
-	Arch                 string                      `json:"arch"`
-	MemProfile           string                      `json:"memprofile"`
-	Clusters             map[string]*cluster.Cluster `json:"-"`
-	Agents               []opensvc.Host              `json:"agents"`
-	UUID                 string                      `json:"uuid"`
-	Hostname             string                      `json:"hostname"`
-	Status               string                      `json:"status"`
-	SplitBrain           bool                        `json:"spitBrain"`
-	ClusterList          []string                    `json:"clusters"`
-	Tests                []string                    `json:"tests"`
-	Conf                 config.Config               `json:"config"`
-	Logs                 s18log.HttpLog              `json:"logs"`
-	ServicePlans         []config.ServicePlan        `json:"servicePlans"`
-	ServiceOrchestrators []config.ConfigVariableType `json:"serviceOrchestrators"`
-	ServiceAcl           []config.Grant              `json:"serviceAcl"`
-	ServiceRepos         []config.DockerRepo         `json:"serviceRepos"`
-	ServiceTarballs      []config.Tarball            `json:"serviceTarballs"`
-	ServiceFS            map[string]bool             `json:"serviceFS"`
-	ServiceVM            map[string]bool             `json:"serviceVM"`
-	ServiceDisk          map[string]string           `json:"serviceDisk"`
-	ServicePool          map[string]bool             `json:"servicePool"`
-	BackupLogicalList    map[string]bool             `json:"backupLogicalList"`
-	BackupPhysicalList   map[string]bool             `json:"backupPhysicalList"`
-	tlog                 s18log.TermLog
-	termlength           int
-	exitMsg              string
-	exit                 bool
-	currentCluster       *cluster.Cluster
-	isStarted            bool
-	Confs                map[string]config.Config
-	ForcedConfs          map[string]config.Config
+	OpenSVC                                          opensvc.Collector           `json:"-"`
+	Version                                          string                      `json:"version"`
+	Fullversion                                      string                      `json:"fullVersion"`
+	Os                                               string                      `json:"os"`
+	Arch                                             string                      `json:"arch"`
+	MemProfile                                       string                      `json:"memprofile"`
+	Clusters                                         map[string]*cluster.Cluster `json:"-"`
+	Agents                                           []opensvc.Host              `json:"agents"`
+	UUID                                             string                      `json:"uuid"`
+	Hostname                                         string                      `json:"hostname"`
+	Status                                           string                      `json:"status"`
+	SplitBrain                                       bool                        `json:"spitBrain"`
+	ClusterList                                      []string                    `json:"clusters"`
+	Tests                                            []string                    `json:"tests"`
+	Conf                                             config.Config               `json:"config"`
+	Logs                                             s18log.HttpLog              `json:"logs"`
+	ServicePlans                                     []config.ServicePlan        `json:"servicePlans"`
+	ServiceOrchestrators                             []config.ConfigVariableType `json:"serviceOrchestrators"`
+	ServiceAcl                                       []config.Grant              `json:"serviceAcl"`
+	ServiceRepos                                     []config.DockerRepo         `json:"serviceRepos"`
+	ServiceTarballs                                  []config.Tarball            `json:"serviceTarballs"`
+	ServiceFS                                        map[string]bool             `json:"serviceFS"`
+	ServiceVM                                        map[string]bool             `json:"serviceVM"`
+	ServiceDisk                                      map[string]string           `json:"serviceDisk"`
+	ServicePool                                      map[string]bool             `json:"servicePool"`
+	BackupLogicalList                                map[string]bool             `json:"backupLogicalList"`
+	BackupPhysicalList                               map[string]bool             `json:"backupPhysicalList"`
+	currentCluster                                   *cluster.Cluster            `json:"-"`
+	tlog                                             s18log.TermLog
+	termlength                                       int
+	exitMsg                                          string
+	exit                                             bool
+	isStarted                                        bool
+	Confs                                            map[string]config.Config
+	ForcedConfs                                      map[string]config.Config
+	grpcServer                                       *grpc.Server               `json:"-"`
+	grpcWrapped                                      *grpcweb.WrappedGrpcServer `json:"-"`
+	V3Up                                             chan bool                  `json:"-"`
+	v3Config                                         Repmanv3Config             `json:"-"`
+	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
+	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
 }
 
@@ -129,6 +140,15 @@ type Settings struct {
 	//	Scheduler           []cron.Entry `json:"scheduler"`
 }
 
+// A Heartbeat returns a quick overview of the cluster status
+//
+// swagger:response heartbeat
+type HeartbeatResponse struct {
+	// Heartbeat message
+	// in: body
+	Body Heartbeat
+}
+
 type Heartbeat struct {
 	UUID    string `json:"uuid"`
 	Secret  string `json:"secret"`
@@ -168,7 +188,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			}
 		} else {
 			if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
-				//log.Fatal("No config file /etc/replication-manager/config.toml")
 				log.Warning("No config file /etc/replication-manager/config.toml ")
 			}
 		}
@@ -184,7 +203,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	}
 	if _, ok := err.(viper.ConfigParseError); ok {
 		//log.WithError(err).Fatal("Could not parse config file")
-		log.Warningf("Could not parse config file: %s", err)
+		log.Errorf("Could not parse config file: %s", err)
 	}
 
 	// Proceed include files
@@ -253,6 +272,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 			if strings.Contains(k, ".") {
 				mycluster := strings.Split(k, ".")[0]
+				//	log.Infof("Evaluate key %s %s", mycluster, k)
 				if strings.ToLower(mycluster) != "default" {
 					if strings.HasPrefix(mycluster, "saved-") {
 						mycluster = strings.TrimPrefix(mycluster, "saved-")
@@ -275,13 +295,13 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 	cf1 := viper.Sub("Default")
 	//cf1.Debug()
-	cf1.AutomaticEnv()
-	cf1.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
-	cf1.SetEnvPrefix("DEFAULT")
 	if cf1 == nil {
 		//log.Fatal("config.toml has no [Default] configuration group and config group has not been specified")
 		log.Warning("config.toml has no [Default] configuration group and config group has not been specified")
 	} else {
+		cf1.AutomaticEnv()
+		cf1.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+		cf1.SetEnvPrefix("DEFAULT")
 
 		cf1.Unmarshal(&conf)
 
@@ -595,14 +615,6 @@ func (repman *ReplicationManager) Run() error {
 
 }
 
-func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Cluster {
-	var c *cluster.Cluster
-	repman.Lock()
-	c = repman.Clusters[clname]
-	repman.Unlock()
-	return c
-}
-
 func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Cluster, error) {
 
 	k, err := crypto.ReadKey(repman.Conf.MonitoringKeyPath)
@@ -618,7 +630,6 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 			apiPass = p.PlainText
 		}*/
 	repman.currentCluster = new(cluster.Cluster)
-
 	myClusterConf := repman.Confs[clusterName]
 	if myClusterConf.MonitorAddress == "localhost" {
 		myClusterConf.MonitorAddress = repman.resolveHostIp()
@@ -636,39 +647,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 	go repman.currentCluster.Run()
-
 	return repman.currentCluster, nil
-}
-
-func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead string) error {
-	var myconf = make(map[string]config.Config)
-
-	myconf[clusterName] = repman.Conf
-	repman.Lock()
-	repman.ClusterList = append(repman.ClusterList, clusterName)
-	//repman.ClusterList = repman.ClusterList
-	repman.Confs[clusterName] = repman.Conf
-	repman.Unlock()
-	/*file, err := os.OpenFile(repman.Conf.ClusterConfigPath+"/"+clusterName+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-	if err != nil {
-		if os.IsPermission(err) {
-			log.Errorf("Read file permission denied: %s", repman.Conf.ClusterConfigPath+"/"+clusterName+".toml")
-		}
-		return err
-	}
-	defer file.Close()
-	err = toml.NewEncoder(file).Encode(myconf)
-	if err != nil {
-		return err
-	}*/
-
-	cluster, _ := repman.StartCluster(clusterName)
-	cluster.SetClusterHead(clusterHead)
-	cluster.SetClusterList(repman.Clusters)
-	cluster.Save()
-
-	return nil
-
 }
 
 func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitbrain bool) bool {
@@ -827,18 +806,21 @@ func (repman *ReplicationManager) DownloadFile(url string, file string) error {
 
 func (repman *ReplicationManager) InitServicePlans() error {
 	if repman.Conf.ProvServicePlanRegistry == "" {
-		return nil
-	}
-
-	err := repman.DownloadFile(repman.Conf.ProvServicePlanRegistry, repman.Conf.WorkingDir+"/serviceplan.csv")
-	if err != nil {
-		log.Errorf("GetServicePlans download csv  %s", err)
+		err := repman.DownloadFile(repman.Conf.ProvServicePlanRegistry, repman.Conf.WorkingDir+"/serviceplan.csv")
+		if err != nil {
+			log.Errorf("GetServicePlans download csv  %s", err)
+			// copy from share if not downloadable
+			if _, err := os.Stat(repman.Conf.WorkingDir + "/serviceplan.csv"); os.IsNotExist(err) {
+				misc.CopyFile(repman.Conf.ShareDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.csv")
+			}
+		}
+	} else {
 		// copy from share if not downloadable
 		if _, err := os.Stat(repman.Conf.WorkingDir + "/serviceplan.csv"); os.IsNotExist(err) {
 			misc.CopyFile(repman.Conf.ShareDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.csv")
 		}
 	}
-	err = misc.ConvertCSVtoJSON(repman.Conf.WorkingDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.json", ",")
+	err := misc.ConvertCSVtoJSON(repman.Conf.WorkingDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.json", ",")
 	if err != nil {
 		log.Errorf("GetServicePlans ConvertCSVtoJSON %s", err)
 		return err

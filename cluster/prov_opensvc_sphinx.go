@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -13,7 +13,7 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (cluster *Cluster) OpenSVCGetSphinxContainerSection(server *Proxy) map[string]string {
+func (cluster *Cluster) OpenSVCGetSphinxContainerSection(server *SphinxProxy) map[string]string {
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvProxType == "docker" || server.ClusterGroup.Conf.ProvProxType == "podman" || server.ClusterGroup.Conf.ProvProxType == "oci" {
 		svccontainer["tags"] = ""
@@ -21,17 +21,17 @@ func (cluster *Cluster) OpenSVCGetSphinxContainerSection(server *Proxy) map[stri
 		svccontainer["image"] = "{env.sphinx_img}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
-			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/conf:/usr/local/etc:rw	-v {env.base_dir}/pod01/data:/var/lib/sphinx:rw -v {env.base_dir}/pod01/data:/var/idx/sphinx:rw	-v {env.base_dir}/pod01/log:/var/log/sphinx:rw`
+			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/sphinx:/usr/local/etc:rw	-v {env.base_dir}/pod01/data:/var/lib/sphinx:rw -v {env.base_dir}/pod01/data:/var/idx/sphinx:rw	-v {env.base_dir}/pod01/log:/var/log/sphinx:rw`
 		} else {
 			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
-			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/conf:/usr/local/etc:rw	{env.base_dir}/pod01/data:/var/lib/sphinx:rw {env.base_dir}/pod01/data:/var/idx/sphinx:rw	{env.base_dir}/pod01/log:/var/log/sphinx:rw`
+			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {env.base_dir}/pod01/etc/sphinx:/usr/local/etc:rw	{env.base_dir}/pod01/data:/var/lib/sphinx:rw {env.base_dir}/pod01/data:/var/idx/sphinx:rw	{env.base_dir}/pod01/log:/var/log/sphinx:rw`
 		}
 		svccontainer["run_command"] = "indexall.sh"
 	}
 	return svccontainer
 }
 
-func (cluster *Cluster) OpenSVCGetSphinxTaskSection(server *Proxy) map[string]string {
+func (cluster *Cluster) OpenSVCGetSphinxTaskSection(server *SphinxProxy) map[string]string {
 	svccontainer := make(map[string]string)
 	svccontainer["schedule"] = cluster.Conf.ProvSphinxCron
 	svccontainer["command"] = "{env.base_dir}/{namespace}-{svcname}/pod01/init/reindex.sh"
@@ -40,7 +40,7 @@ func (cluster *Cluster) OpenSVCGetSphinxTaskSection(server *Proxy) map[string]st
 	return svccontainer
 }
 
-func (cluster *Cluster) GetSphinxTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *Proxy) (string, error) {
+func (cluster *Cluster) GetSphinxTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, prx *SphinxProxy) (string, error) {
 
 	conf := `
 [DEFAULT]

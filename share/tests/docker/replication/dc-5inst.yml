@@ -1,0 +1,69 @@
+version: '2'
+services:
+
+  db1:
+    image: mariadb:latest
+    environment:
+      - MYSQL_ROOT_PASSWORD=admin
+    command: mysqld --server-id=1
+    volumes:
+      - ./mariadb.cnf:/etc/mysql/conf.d/mariadb.cnf
+    networks:
+      nw1:
+        ipv4_address: 172.16.1.1
+
+  db2:
+    image: mariadb:latest
+    environment:
+      - MYSQL_ROOT_PASSWORD=admin
+    command: mysqld --server-id=2
+    volumes:
+      - ./mariadb.cnf:/etc/mysql/conf.d/mariadb.cnf
+    networks:
+      nw1:
+        ipv4_address: 172.16.1.2
+
+  db3:
+    image: mariadb:latest
+    environment:
+      - MYSQL_ROOT_PASSWORD=admin
+    command: mysqld --server-id=3
+    volumes:
+      - ./mariadb.cnf:/etc/mysql/conf.d/mariadb.cnf
+    networks:
+      nw1:
+        ipv4_address: 172.16.1.3
+
+  db4:
+    image: mariadb:latest
+    environment:
+      - MYSQL_ROOT_PASSWORD=admin
+    command: mysqld --server-id=4
+    volumes:
+      - ./mariadb.cnf:/etc/mysql/conf.d/mariadb.cnf
+    networks:
+      nw1:
+        ipv4_address: 172.16.1.4
+
+  db5:
+    image: mariadb:latest
+    environment:
+      - MYSQL_ROOT_PASSWORD=admin
+    command: mysqld --server-id=5
+    volumes:
+      - ./mariadb.cnf:/etc/mysql/conf.d/mariadb.cnf
+    networks:
+      nw1:
+        ipv4_address: 172.16.1.5
+
+networks:
+  nw1:
+    driver: bridge
+    driver_opts:
+      com.docker.network.enable_ipv4: "true"
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.16.1.0/24
+          gateway: 172.16.1.254
+

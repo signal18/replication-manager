@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -69,7 +69,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 			cluster.LogPrintf(LvlInfo, "Waiting switchover end")
 			exitloop++
 		case <-cluster.switchoverCond.Recv:
-			return
+			exitloop = 9999999
 		}
 	}
 	if exitloop == 9999999 {
@@ -206,7 +206,7 @@ func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
 	if exitloop == 9999999 {
 		cluster.LogPrintf(LvlInfo, "Waiting state running reach on %s", server.URL)
 	} else {
-		cluster.LogPrintf("Wait state running on %s", server.URL)
+		cluster.LogPrintf(LvlErr, "Wait state running on %s", server.URL)
 		return errors.New("Failed to wait running database server")
 	}
 	return nil
@@ -241,7 +241,7 @@ func (cluster *Cluster) WaitDatabaseSuspect(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) WaitDatabaseFailed(server *ServerMonitor) error {
-	cluster.LogPrintf(LvlInfo, "Wait state failed on %s", server.URL)
+	cluster.LogPrintf(LvlInfo, "Waiting state failed on %s", server.URL)
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
@@ -250,10 +250,10 @@ func (cluster *Cluster) WaitDatabaseFailed(server *ServerMonitor) error {
 
 			exitloop++
 
-			if server.IsFailed() {
+			if server.IsInStateFailed() {
 				exitloop = 9999999
 			} else {
-				cluster.LogPrintf(LvlInfo, "Waiting state failed on %s ", server.URL)
+				cluster.LogPrintf(LvlInfo, "Waiting state failed on %s %d current state:%s", server.URL, exitloop, server.State)
 			}
 		}
 	}

@@ -7,9 +7,9 @@
         </tr>
         <tr>
           <td  colspan=2>
-                <labelfor="test" action="/runonetest" >
+                <label for="test" action="/runonetest" >
                 </label>
-                <md-select name="repeatSelect" id="repeatSelect" ng-model="tests" ng-change="runonetest()">
+                <md-select name="selectedTest" id="selectedTest" ng-model="selectedTest" ng-change="runonetest(selectedTest)">
                     <md-option ng-selected="{{element == settings.tests}}"
                                ng-repeat="element in settings.tests" value="{{element}}">{{element}}</md-option>
                 </md-select>

@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -53,6 +53,7 @@ type Config struct {
 	MonitorProcessList                        bool   `mapstructure:"monitoring-processlist" toml:"monitoring-processlist" json:"monitoringProcesslist"`
 	MonitorQueries                            bool   `mapstructure:"monitoring-queries" toml:"monitoring-queries" json:"monitoringQueries"`
 	MonitorPFS                                bool   `mapstructure:"monitoring-performance-schema" toml:"monitoring-performance-schema" json:"monitoringPerformanceSchema"`
+	MonitorPlugins                            bool   `mapstructure:"monitoring-plugins" toml:"monitoring-plugins" json:"monitoringPlugins"`
 	MonitorInnoDBStatus                       bool   `mapstructure:"monitoring-innodb-status" toml:"monitoring-innodb-status" json:"monitoringInnoDBStatus"`
 	MonitorLongQueryWithProcess               bool   `mapstructure:"monitoring-long-query-with-process" toml:"monitoring-long-query-with-process" json:"monitoringLongQueryWithProcess"`
 	MonitorLongQueryTime                      int    `mapstructure:"monitoring-long-query-time" toml:"monitoring-long-query-time" json:"monitoringLongQueryTime"`
@@ -67,6 +68,7 @@ type Config struct {
 	MonitorCaptureTrigger                     string `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
 	MonitorIgnoreError                        string `mapstructure:"monitoring-ignore-errors" toml:"monitoring-ignore-errors" json:"monitoringIgnoreErrors"`
 	MonitorTenant                             string `mapstructure:"monitoring-tenant" toml:"monitoring-tenant" json:"monitoringTenant"`
+	MonitoringAlertTrigger                    string `mapstructure:"monitoring-alert-trigger" toml:"monitoring-alert-trigger" json:"monitoringAlertTrigger"`
 	Interactive                               bool   `mapstructure:"interactive" toml:"-" json:"interactive"`
 	Verbose                                   bool   `mapstructure:"verbose" toml:"verbose" json:"verbose"`
 	LogFile                                   string `mapstructure:"log-file" toml:"log-file" json:"logFile"`
@@ -85,8 +87,10 @@ type Config struct {
 	HostsDelayedTime                          int    `mapstructure:"replication-delayed-time", toml:"replication-delayed-time" json:"replicationDelayedTime"`
 	DBServersTLSUseGeneratedCertificate       bool   `mapstructure:"db-servers-tls-use-generated-cert" toml:"db-servers-tls-use-generated-cert" json:"dbServersUseGeneratedCert"`
 	HostsTLSCA                                string `mapstructure:"db-servers-tls-ca-cert" toml:"db-servers-tls-ca-cert" json:"dbServersTlsCaCert"`
-	HostsTLSKEY                               string `mapstructure:"db-servers-tls-client-key" toml:"db-servers-tls-client-key" json:"dbServersTlsClientKey"`
-	HostsTLSCLI                               string `mapstructure:"db-servers-tls-client-cert" toml:"db-servers-tls-client-cert" json:"dbServersTlsClientCert"`
+	HostsTlsCliKey                            string `mapstructure:"db-servers-tls-client-key" toml:"db-servers-tls-client-key" json:"dbServersTlsClientKey"`
+	HostsTlsCliCert                           string `mapstructure:"db-servers-tls-client-cert" toml:"db-servers-tls-client-cert" json:"dbServersTlsClientCert"`
+	HostsTlsSrvKey                            string `mapstructure:"db-servers-tls-server-key" toml:"db-servers-tls-server-key" json:"dbServersTlsServerKey"`
+	HostsTlsSrvCert                           string `mapstructure:"db-servers-tls-server-cert" toml:"db-servers-tls-server-cert" json:"dbServersTlsServerCert"`
 	PrefMaster                                string `mapstructure:"db-servers-prefered-master" toml:"db-servers-prefered-master" json:"dbServersPreferedMaster"`
 	BackupServers                             string `mapstructure:"db-servers-backup-hosts" toml:"db-servers-backup-hosts" json:"dbServersBackupHosts"`
 	IgnoreSrv                                 string `mapstructure:"db-servers-ignored-hosts" toml:"db-servers-ignored-hosts" json:"dbServersIgnoredHosts"`
@@ -99,6 +103,7 @@ type Config struct {
 	PRXServersBackendMaxReplicationLag        int    `mapstructure:"proxy-servers-backend-max-replication-lag" toml:"proxy-servers-backend--max-replication-lag" json:"proxyServersBackendMaxReplicationLag"`
 	PRXServersBackendMaxConnections           int    `mapstructure:"proxy-servers-backend-max-connections" toml:"proxy-servers-backend--max-connections" json:"proxyServersBackendMaxConnections"`
 	ClusterHead                               string `mapstructure:"cluster-head" toml:"cluster-head" json:"clusterHead"`
+	ReplicationMultisourceHeadClusters        string `mapstructure:"replication-multisource-head-clusters" toml:"replication-multisource-head-clusters" json:"replicationMultisourceHeadClusters"`
 	MasterConnectRetry                        int    `mapstructure:"replication-master-connect-retry" toml:"replication-master-connect-retry" json:"replicationMasterConnectRetry"`
 	RplUser                                   string `mapstructure:"replication-credential" toml:"replication-credential" json:"replicationCredential"`
 	ReplicationErrorScript                    string `mapstructure:"replication-error-script" toml:"replication-error-script" json:"replicationErrorScript"`
@@ -144,6 +149,7 @@ type Config struct {
 	CheckFalsePositiveExternal                bool   `mapstructure:"failover-falsepositive-external" toml:"failover-falsepositive-external" json:"failoverFalsePositiveExternal"`
 	CheckFalsePositiveExternalPort            int    `mapstructure:"failover-falsepositive-external-port" toml:"failover-falsepositive-external-port" json:"failoverFalsePositiveExternalPort"`
 	FailoverLogFileKeep                       int    `mapstructure:"failover-log-file-keep" toml:"failover-log-file-keep" json:"failoverLogFileKeep"`
+	FailoverSwitchToPrefered                  bool   `mapstructure:"failover-switch-to-prefered" toml:"failover-switch-to-prefered" json:"failoverSwithToPrefered"`
 	Autorejoin                                bool   `mapstructure:"autorejoin" toml:"autorejoin" json:"autorejoin"`
 	Autoseed                                  bool   `mapstructure:"autoseed" toml:"autoseed" json:"autoseed"`
 	AutorejoinFlashback                       bool   `mapstructure:"autorejoin-flashback" toml:"autorejoin-flashback" json:"autorejoinFlashback"`
@@ -231,6 +237,7 @@ type Config struct {
 	MyproxyUser                               string `mapstructure:"myproxy-user" toml:"myproxy-user" json:"myproxyUser"`
 	MyproxyPassword                           string `mapstructure:"myproxy-password" toml:"myproxy-password" json:"myproxyPassword"`
 	HaproxyOn                                 bool   `mapstructure:"haproxy" toml:"haproxy" json:"haproxy"`
+	HaproxyDebug                              bool   `mapstructure:"haproxy-debug" toml:"haproxy-debug" json:"haproxyDebug"`
 	HaproxyUser                               string `mapstructure:"haproxy-user" toml:"haproxy-user" json:"haproxylUser"`
 	HaproxyPassword                           string `mapstructure:"haproxy-password" toml:"haproxy-password" json:"haproxyPassword"`
 	HaproxyMode                               string `mapstructure:"haproxy-mode" toml:"haproxy-mode" json:"haproxyMode"`
@@ -246,6 +253,7 @@ type Config struct {
 	HaproxyAPIReadBackend                     string `mapstructure:"haproxy-api-read-backend"  toml:"haproxy-api-read-backend" json:"haproxyAPIReadBackend"`
 	HaproxyAPIWriteBackend                    string `mapstructure:"haproxy-api-write-backend"  toml:"haproxy-api-write-backend" json:"haproxyAPIWriteBackend"`
 	ProxysqlOn                                bool   `mapstructure:"proxysql" toml:"proxysql" json:"proxysql"`
+	ProxysqlDebug                             bool   `mapstructure:"proxysql-debug" toml:"proxysql-debug" json:"proxysqlDebug"`
 	ProxysqlSaveToDisk                        bool   `mapstructure:"proxysql-save-to-disk" toml:"proxysql-save-to-disk" json:"proxysqlSaveToDisk"`
 	ProxysqlHosts                             string `mapstructure:"proxysql-servers" toml:"proxysql-servers" json:"proxysqlServers"`
 	ProxysqlHostsIPV6                         string `mapstructure:"proxysql-servers-ipv6" toml:"proxysql-servers-ipv6" json:"proxysqlServers-ipv6"`
@@ -260,7 +268,6 @@ type Config struct {
 	ProxysqlBootstrapVariables                bool   `mapstructure:"proxysql-bootstrap-variables" toml:"proxysql-bootstrap-variables" json:"proxysqlBootstrapVariables"`
 	ProxysqlBootstrapHG                       bool   `mapstructure:"proxysql-bootstrap-hostgroups" toml:"proxysql-bootstrap-hostgroups" json:"proxysqlBootstrapHostgroups"`
 	ProxysqlBootstrapQueryRules               bool   `mapstructure:"proxysql-bootstrap-query-rules" toml:"proxysql-bootstrap-query-rules" json:"proxysqlBootstrapQueryRules"`
-	ProxysqlMasterIsReader                    bool   `mapstructure:"proxysql-master-is-reader" toml:"proxysql-master-is-reader" json:"proxysqlMasterIsReader"`
 	ProxysqlMultiplexing                      bool   `mapstructure:"proxysql-multiplexing" toml:"proxysql-multiplexing" json:"proxysqlMultiplexing"`
 	ProxysqlBinaryPath                        string `mapstructure:"proxysql-binary-path" toml:"proxysql-binary-path" json:"proxysqlBinaryPath"`
 	MysqlRouterOn                             bool   `mapstructure:"mysqlrouter" toml:"mysqlrouter" json:"mysqlrouter"`
@@ -291,9 +298,12 @@ type Config struct {
 	GraphiteCarbonPicklePort                  int    `mapstructure:"graphite-carbon-pickle-port" toml:"graphite-carbon-pickle-port" json:"graphiteCarbonPicklePort"`
 	GraphiteCarbonPprofPort                   int    `mapstructure:"graphite-carbon-pprof-port" toml:"graphite-carbon-pprof-port" json:"graphiteCarbonPprofPort"`
 	SysbenchBinaryPath                        string `mapstructure:"sysbench-binary-path" toml:"sysbench-binary-path" json:"sysbenchBinaryPath"`
+	SysbenchTest                              string `mapstructure:"sysbench-test" toml:"sysbench-test" json:"sysbenchBinaryTest"`
 	SysbenchV1                                bool   `mapstructure:"sysbench-v1" toml:"sysbench-v1" json:"sysbenchV1"`
 	SysbenchTime                              int    `mapstructure:"sysbench-time" toml:"sysbench-time" json:"sysbenchTime"`
 	SysbenchThreads                           int    `mapstructure:"sysbench-threads" toml:"sysbench-threads" json:"sysbenchThreads"`
+	SysbenchTables                            int    `mapstructure:"sysbench-tables" toml:"sysbench-tables" json:"sysbenchTables"`
+	SysbenchScale                             int    `mapstructure:"sysbench-scale" toml:"sysbench-scale" json:"sysbenchScale"`
 	Arbitration                               bool   `mapstructure:"arbitration-external" toml:"arbitration-external" json:"arbitrationExternal"`
 	ArbitrationSasSecret                      string `mapstructure:"arbitration-external-secret" toml:"arbitration-external-secret" json:"arbitrationExternalSecret"`
 	ArbitrationSasHosts                       string `mapstructure:"arbitration-external-hosts" toml:"arbitration-external-hosts" json:"arbitrationExternalHosts"`
@@ -303,7 +313,7 @@ type Config struct {
 	ArbitratorAddress                         string `mapstructure:"arbitrator-bind-address" toml:"arbitrator-bind-address" json:"arbitratorBindAddress"`
 	ArbitratorDriver                          string `mapstructure:"arbitrator-driver" toml:"arbitrator-driver" json:"arbitratorDriver"`
 	ArbitrationReadTimout                     int    `mapstructure:"arbitration-read-timeout" toml:"arbitration-read-timeout" json:"arbitrationReadTimout"`
-	FailForceGtid                             bool   `toml:"-" json:"-"` //suspicious code
+	SwitchoverCopyOldLeaderGtid               bool   `toml:"-" json:"-"` //suspicious code
 	Test                                      bool   `mapstructure:"test" toml:"test" json:"test"`
 	TestInjectTraffic                         bool   `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
 	Enterprise                                bool   `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector
@@ -316,6 +326,10 @@ type Config struct {
 	SlapOSShardProxyPartitions                string `mapstructure:"slapos-shardproxy-partitions" toml:"slapos-shardproxy-partitions" json:"slaposShardproxyPartitions"`
 	SlapOSSphinxPartitions                    string `mapstructure:"slapos-sphinx-partitions" toml:"slapos-sphinx-partitions" json:"slaposSphinxPartitions"`
 	ProvHost                                  string `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
+	OnPremiseSSH                              bool   `mapstructure:"onpremise-ssh" toml:"onpremise-ssh" json:"onpremiseSsh"`
+	OnPremiseSSHPort                          int    `mapstructure:"onpremise-ssh-port" toml:"onpremise-ssh-port" json:"onpremiseSshPort"`
+	OnPremiseSSHCredential                    string `mapstructure:"onpremise-ssh-credential" toml:"onpremise-ssh-credential" json:"onpremiseSshCredential"`
+	OnPremiseSSHPrivateKey                    string `mapstructure:"onpremise-ssh-private-key" toml:"onpremise-ssh-private-key" json:"onpremiseSshPrivateKey"`
 	ProvOpensvcP12Certificate                 string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificat" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
 	ProvOpensvcUseCollectorAPI                bool   `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
@@ -411,6 +425,14 @@ type Config struct {
 	ProvDockerDaemonPrivate                   bool   `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
 	ProvServicePlan                           string `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
 	ProvServicePlanRegistry                   string `mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
+	ProvDbBootstrapScript                     string `mapstructure:"prov-db-bootstrap-script" toml:"prov-db-bootstrap-script" json:"provDbBootstrapScript"`
+	ProvProxyBootstrapScript                  string `mapstructure:"prov-proxy-bootstrap-script" toml:"prov-proxy-bootstrap-script" json:"provProxyBootstrapScript"`
+	ProvDbCleanupScript                       string `mapstructure:"prov-db-cleanup-script" toml:"prov-db-cleanup-script" json:"provDbCleanupScript"`
+	ProvProxyCleanupScript                    string `mapstructure:"prov-proxy-cleanup-script" toml:"prov-proxy-cleanup-script" json:"provProxyCleanupScript"`
+	ProvDbStartScript                         string `mapstructure:"prov-db-start-script" toml:"prov-db-start-script" json:"provDbStartScript"`
+	ProvProxyStartScript                      string `mapstructure:"prov-proxy-start-script" toml:"prov-proxy-start-script" json:"provProxyStartScript"`
+	ProvDbStopScript                          string `mapstructure:"prov-db-stop-script" toml:"prov-db-stop-script" json:"provDbStopScript"`
+	ProvProxyStopScript                       string `mapstructure:"prov-proxy-stop-script" toml:"prov-proxy-stop-script" json:"provProxyStopScript"`
 	APIUsers                                  string `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
 	APIUsersExternal                          string `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
 	APIUsersACLAllow                          string `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
@@ -422,7 +444,8 @@ type Config struct {
 	AlertScript                               string `mapstructure:"alert-script" toml:"alert-script" json:"alertScript"`
 	ConfigFile                                string `mapstructure:"config" toml:"-" json:"-"`
 	MonitorScheduler                          bool   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
-	SchedulerReceiverPorts                    string `mapstructure:"scheduler-db-servers-receiver-ports" toml:"scheduler--db-servers-receiver-ports" json:"schedulerDbServersReceiverPorts"`
+	SchedulerReceiverPorts                    string `mapstructure:"scheduler-db-servers-receiver-ports" toml:"scheduler-db-servers-receiver-ports" json:"schedulerDbServersReceiverPorts"`
+	SchedulerReceiverUseSSL                   bool   `mapstructure:"scheduler-db-servers-receiver-use-ssl" toml:"scheduler-db-servers-receiver-use-ssl" json:"schedulerDbServersReceiverUseSSL"`
 	SchedulerBackupLogical                    bool   `mapstructure:"scheduler-db-servers-logical-backup" toml:"scheduler-db-servers-logical-backup" json:"schedulerDbServersLogicalBackup"`
 	SchedulerBackupPhysical                   bool   `mapstructure:"scheduler-db-servers-physical-backup" toml:"scheduler-db-servers-physical-backup" json:"schedulerDbServersPhysicalBackup"`
 	SchedulerDatabaseLogs                     bool   `mapstructure:"scheduler-db-servers-logs" toml:"scheduler-db-servers-logs" json:"schedulerDbServersLogs"`
@@ -474,6 +497,7 @@ type Config struct {
 	BackupMysqlclientPath                     string `mapstructure:"backup-mysqlclient-path" toml:"backup-mysqlclient-path" json:"backupMysqlclientgPath"`
 	BackupBinlogs                             bool   `mapstructure:"backup-binlogs" toml:"backup-binlogs" json:"backupBinlogs"`
 	BackupBinlogsKeep                         int    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
+	BackupLockDDL                             bool   `mapstructure:"backup-lockddl" toml:"backup-lockddl" json:"backupLockDDL"`
 	ClusterConfigPath                         string `mapstructure:"cluster-config-file" toml:"-" json:"-"`
 
 	//	BackupResticStoragePolicy                 string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
@@ -542,6 +566,7 @@ const (
 	ConstProxyMysqlrouter string = "mysqlrouter"
 	ConstProxySphinx      string = "sphinx"
 	ConstProxyMyProxy     string = "myproxy"
+	ConstProxyConsul      string = "consul"
 )
 
 type ServicePlan struct {
@@ -571,72 +596,82 @@ type DockerRepos struct {
 	Repos []DockerRepo `json:"repos"`
 }
 
+/* replaced by v3.Tag
+type Tag struct {
+	Id       uint   `json:"id"`
+	Name     string `json:"name"`
+	Category string `json:"category"`
+}
+*/
+
 type Grant struct {
 	Grant  string `json:"grant"`
 	Enable bool   `json:"enable"`
 }
 
 const (
-	GrantDBStart                 string = "db-start"
-	GrantDBStop                  string = "db-stop"
-	GrantDBKill                  string = "db-kill"
-	GrantDBOptimize              string = "db-optimize"
-	GrantDBAnalyse               string = "db-analyse"
-	GrantDBReplication           string = "db-replication"
-	GrantDBBackup                string = "db-backup"
-	GrantDBRestore               string = "db-restore"
-	GrantDBReadOnly              string = "db-readonly"
-	GrantDBLogs                  string = "db-logs"
-	GrantDBShowVariables         string = "db-show-variables"
-	GrantDBShowStatus            string = "db-show-status"
-	GrantDBShowSchema            string = "db-show-schema"
-	GrantDBShowProcess           string = "db-show-process"
-	GrantDBShowLogs              string = "db-show-logs"
-	GrantDBCapture               string = "db-capture"
-	GrantDBMaintenance           string = "db-maintenance"
-	GrantDBConfigCreate          string = "db-config-create"
-	GrantDBConfigRessource       string = "db-config-ressource"
-	GrantDBConfigFlag            string = "db-config-flag"
-	GrantDBConfigGet             string = "db-config-get"
-	GrantDBDebug                 string = "db-debug"
-	GrantClusterCreate           string = "cluster-create"
-	GrantClusterDrop             string = "cluster-drop"
-	GrantClusterCreateMonitor    string = "cluster-create-monitor"
-	GrantClusterDropMonitor      string = "cluster-drop-monitor"
-	GrantClusterFailover         string = "cluster-failover"
-	GrantClusterSwitchover       string = "cluster-switchover"
-	GrantClusterRolling          string = "cluster-rolling"
-	GrantClusterSettings         string = "cluster-settings"
-	GrantClusterGrant            string = "cluster-grant"
-	GrantClusterChecksum         string = "cluster-checksum"
-	GrantClusterSharding         string = "cluster-sharding"
-	GrantClusterReplication      string = "cluster-replication"
-	GrantClusterRotateKey        string = "cluster-rotate-keys"
-	GrantClusterBench            string = "cluster-bench"
-	GrantClusterProcess          string = "cluster-process" //Can ssh for jobs
-	GrantClusterTest             string = "cluster-test"
-	GrantClusterTraffic          string = "cluster-traffic"
-	GrantClusterShowBackups      string = "cluster-show-backups"
-	GrantClusterShowRoutes       string = "cluster-show-routes"
-	GrantClusterShowGraphs       string = "cluster-show-graphs"
-	GrantClusterShowAgents       string = "cluster-show-agents"
-	GrantClusterShowCertificates string = "cluster-show-certificates"
-	GrantClusterResetSLA         string = "cluster-reset-sla"
-	GrantClusterDebug            string = "cluster-debug"
-	GrantProxyConfigCreate       string = "proxy-config-create"
-	GrantProxyConfigGet          string = "proxy-config-get"
-	GrantProxyConfigRessource    string = "proxy-config-ressource"
-	GrantProxyConfigFlag         string = "proxy-config-flag"
-	GrantProxyStart              string = "proxy-start"
-	GrantProxyStop               string = "proxy-stop"
-	GrantProvClusterProvision    string = "prov-cluster-provision"
-	GrantProvClusterUnprovision  string = "prov-cluster-unprovision"
-	GrantProvProxyProvision      string = "prov-proxy-provision"
-	GrantProvProxyUnprovision    string = "prov-proxy-unprovision"
-	GrantProvDBProvision         string = "prov-db-provision"
-	GrantProvDBUnprovision       string = "prov-db-unprovision"
-	GrantProvSettings            string = "prov-settings"
-	GrantProvCluster             string = "prov-cluster"
+	GrantDBStart                   string = "db-start"
+	GrantDBStop                    string = "db-stop"
+	GrantDBKill                    string = "db-kill"
+	GrantDBOptimize                string = "db-optimize"
+	GrantDBAnalyse                 string = "db-analyse"
+	GrantDBReplication             string = "db-replication"
+	GrantDBBackup                  string = "db-backup"
+	GrantDBRestore                 string = "db-restore"
+	GrantDBReadOnly                string = "db-readonly"
+	GrantDBLogs                    string = "db-logs"
+	GrantDBShowVariables           string = "db-show-variables"
+	GrantDBShowStatus              string = "db-show-status"
+	GrantDBShowSchema              string = "db-show-schema"
+	GrantDBShowProcess             string = "db-show-process"
+	GrantDBShowLogs                string = "db-show-logs"
+	GrantDBCapture                 string = "db-capture"
+	GrantDBMaintenance             string = "db-maintenance"
+	GrantDBConfigCreate            string = "db-config-create"
+	GrantDBConfigRessource         string = "db-config-ressource"
+	GrantDBConfigFlag              string = "db-config-flag"
+	GrantDBConfigGet               string = "db-config-get"
+	GrantDBDebug                   string = "db-debug"
+	GrantClusterCreate             string = "cluster-create"
+	GrantClusterDrop               string = "cluster-drop"
+	GrantClusterCreateMonitor      string = "cluster-create-monitor"
+	GrantClusterDropMonitor        string = "cluster-drop-monitor"
+	GrantClusterFailover           string = "cluster-failover"
+	GrantClusterSwitchover         string = "cluster-switchover"
+	GrantClusterRolling            string = "cluster-rolling"
+	GrantClusterSettings           string = "cluster-settings"
+	GrantClusterGrant              string = "cluster-grant"
+	GrantClusterChecksum           string = "cluster-checksum"
+	GrantClusterSharding           string = "cluster-sharding"
+	GrantClusterReplication        string = "cluster-replication"
+	GrantClusterCertificatesRotate string = "cluster-certificates-rotate"
+	GrantClusterCertificatesReload string = "cluster-certificates-reload"
+	GrantClusterBench              string = "cluster-bench"
+	GrantClusterProcess            string = "cluster-process" //Can ssh for jobs
+	GrantClusterTest               string = "cluster-test"
+	GrantClusterTraffic            string = "cluster-traffic"
+	GrantClusterShowBackups        string = "cluster-show-backups"
+	GrantClusterShowRoutes         string = "cluster-show-routes"
+	GrantClusterShowGraphs         string = "cluster-show-graphs"
+	GrantClusterShowAgents         string = "cluster-show-agents"
+	GrantClusterShowCertificates   string = "cluster-show-certificates"
+
+	GrantClusterResetSLA        string = "cluster-reset-sla"
+	GrantClusterDebug           string = "cluster-debug"
+	GrantProxyConfigCreate      string = "proxy-config-create"
+	GrantProxyConfigGet         string = "proxy-config-get"
+	GrantProxyConfigRessource   string = "proxy-config-ressource"
+	GrantProxyConfigFlag        string = "proxy-config-flag"
+	GrantProxyStart             string = "proxy-start"
+	GrantProxyStop              string = "proxy-stop"
+	GrantProvClusterProvision   string = "prov-cluster-provision"
+	GrantProvClusterUnprovision string = "prov-cluster-unprovision"
+	GrantProvProxyProvision     string = "prov-proxy-provision"
+	GrantProvProxyUnprovision   string = "prov-proxy-unprovision"
+	GrantProvDBProvision        string = "prov-db-provision"
+	GrantProvDBUnprovision      string = "prov-db-unprovision"
+	GrantProvSettings           string = "prov-settings"
+	GrantProvCluster            string = "prov-cluster"
 )
 
 const (
@@ -750,6 +785,16 @@ func (conf *Config) GetFSType() map[string]bool {
 	}
 }
 
+func (conf *Config) GetSysbenchTests() map[string]bool {
+	return map[string]bool{
+		"oltp_read_write":       true,
+		"oltp_read_only":        true,
+		"oltp_update_non_index": true,
+		"oltp_update_index":     true,
+		"tpcc":                  true,
+	}
+}
+
 func (conf *Config) GetVMType() map[string]bool {
 
 	return map[string]bool{
@@ -818,66 +863,67 @@ func (conf *Config) GetMemoryPctThreaded() (map[string]int, error) {
 
 func (conf *Config) GetGrantType() map[string]string {
 	return map[string]string{
-		GrantDBStart:                 GrantDBStart,
-		GrantDBStop:                  GrantDBStop,
-		GrantDBKill:                  GrantDBKill,
-		GrantDBOptimize:              GrantDBOptimize,
-		GrantDBAnalyse:               GrantDBAnalyse,
-		GrantDBReplication:           GrantDBReplication,
-		GrantDBBackup:                GrantDBBackup,
-		GrantDBRestore:               GrantDBRestore,
-		GrantDBReadOnly:              GrantDBReadOnly,
-		GrantDBLogs:                  GrantDBLogs,
-		GrantDBCapture:               GrantDBCapture,
-		GrantDBMaintenance:           GrantDBMaintenance,
-		GrantDBConfigCreate:          GrantDBConfigCreate,
-		GrantDBConfigRessource:       GrantDBConfigRessource,
-		GrantDBConfigFlag:            GrantDBConfigFlag,
-		GrantDBConfigGet:             GrantDBConfigGet,
-		GrantDBShowVariables:         GrantDBShowVariables,
-		GrantDBShowStatus:            GrantDBShowStatus,
-		GrantDBShowSchema:            GrantDBShowSchema,
-		GrantDBShowProcess:           GrantDBShowProcess,
-		GrantDBShowLogs:              GrantDBShowLogs,
-		GrantDBDebug:                 GrantDBDebug,
-		GrantClusterCreate:           GrantClusterCreate,
-		GrantClusterDrop:             GrantClusterDrop,
-		GrantClusterCreateMonitor:    GrantClusterCreateMonitor,
-		GrantClusterDropMonitor:      GrantClusterDropMonitor,
-		GrantClusterFailover:         GrantClusterFailover,
-		GrantClusterSwitchover:       GrantClusterSwitchover,
-		GrantClusterRolling:          GrantClusterRolling,
-		GrantClusterSettings:         GrantClusterSettings,
-		GrantClusterGrant:            GrantClusterGrant,
-		GrantClusterReplication:      GrantClusterReplication,
-		GrantClusterChecksum:         GrantClusterChecksum,
-		GrantClusterSharding:         GrantClusterSharding,
-		GrantClusterRotateKey:        GrantClusterRotateKey,
-		GrantClusterBench:            GrantClusterBench,
-		GrantClusterTest:             GrantClusterTest,
-		GrantClusterTraffic:          GrantClusterTraffic,
-		GrantClusterProcess:          GrantClusterProcess,
-		GrantClusterDebug:            GrantClusterDebug,
-		GrantClusterShowBackups:      GrantClusterShowBackups,
-		GrantClusterShowAgents:       GrantClusterShowAgents,
-		GrantClusterShowGraphs:       GrantClusterShowGraphs,
-		GrantClusterShowRoutes:       GrantClusterShowRoutes,
-		GrantClusterShowCertificates: GrantClusterShowCertificates,
-		GrantClusterResetSLA:         GrantClusterResetSLA,
-		GrantProxyConfigCreate:       GrantProxyConfigCreate,
-		GrantProxyConfigGet:          GrantProxyConfigGet,
-		GrantProxyConfigRessource:    GrantProxyConfigRessource,
-		GrantProxyConfigFlag:         GrantProxyConfigFlag,
-		GrantProxyStart:              GrantProxyStart,
-		GrantProxyStop:               GrantProxyStop,
-		GrantProvSettings:            GrantProvSettings,
-		GrantProvCluster:             GrantProvCluster,
-		GrantProvClusterProvision:    GrantProvClusterProvision,
-		GrantProvClusterUnprovision:  GrantProvClusterUnprovision,
-		GrantProvDBUnprovision:       GrantProvDBUnprovision,
-		GrantProvDBProvision:         GrantProvDBProvision,
-		GrantProvProxyProvision:      GrantProvProxyProvision,
-		GrantProvProxyUnprovision:    GrantProvProxyUnprovision,
+		GrantDBStart:                   GrantDBStart,
+		GrantDBStop:                    GrantDBStop,
+		GrantDBKill:                    GrantDBKill,
+		GrantDBOptimize:                GrantDBOptimize,
+		GrantDBAnalyse:                 GrantDBAnalyse,
+		GrantDBReplication:             GrantDBReplication,
+		GrantDBBackup:                  GrantDBBackup,
+		GrantDBRestore:                 GrantDBRestore,
+		GrantDBReadOnly:                GrantDBReadOnly,
+		GrantDBLogs:                    GrantDBLogs,
+		GrantDBCapture:                 GrantDBCapture,
+		GrantDBMaintenance:             GrantDBMaintenance,
+		GrantDBConfigCreate:            GrantDBConfigCreate,
+		GrantDBConfigRessource:         GrantDBConfigRessource,
+		GrantDBConfigFlag:              GrantDBConfigFlag,
+		GrantDBConfigGet:               GrantDBConfigGet,
+		GrantDBShowVariables:           GrantDBShowVariables,
+		GrantDBShowStatus:              GrantDBShowStatus,
+		GrantDBShowSchema:              GrantDBShowSchema,
+		GrantDBShowProcess:             GrantDBShowProcess,
+		GrantDBShowLogs:                GrantDBShowLogs,
+		GrantDBDebug:                   GrantDBDebug,
+		GrantClusterCreate:             GrantClusterCreate,
+		GrantClusterDrop:               GrantClusterDrop,
+		GrantClusterCreateMonitor:      GrantClusterCreateMonitor,
+		GrantClusterDropMonitor:        GrantClusterDropMonitor,
+		GrantClusterFailover:           GrantClusterFailover,
+		GrantClusterSwitchover:         GrantClusterSwitchover,
+		GrantClusterRolling:            GrantClusterRolling,
+		GrantClusterSettings:           GrantClusterSettings,
+		GrantClusterGrant:              GrantClusterGrant,
+		GrantClusterReplication:        GrantClusterReplication,
+		GrantClusterChecksum:           GrantClusterChecksum,
+		GrantClusterSharding:           GrantClusterSharding,
+		GrantClusterCertificatesRotate: GrantClusterCertificatesRotate,
+		GrantClusterCertificatesReload: GrantClusterCertificatesReload,
+		GrantClusterBench:              GrantClusterBench,
+		GrantClusterTest:               GrantClusterTest,
+		GrantClusterTraffic:            GrantClusterTraffic,
+		GrantClusterProcess:            GrantClusterProcess,
+		GrantClusterDebug:              GrantClusterDebug,
+		GrantClusterShowBackups:        GrantClusterShowBackups,
+		GrantClusterShowAgents:         GrantClusterShowAgents,
+		GrantClusterShowGraphs:         GrantClusterShowGraphs,
+		GrantClusterShowRoutes:         GrantClusterShowRoutes,
+		GrantClusterShowCertificates:   GrantClusterShowCertificates,
+		GrantClusterResetSLA:           GrantClusterResetSLA,
+		GrantProxyConfigCreate:         GrantProxyConfigCreate,
+		GrantProxyConfigGet:            GrantProxyConfigGet,
+		GrantProxyConfigRessource:      GrantProxyConfigRessource,
+		GrantProxyConfigFlag:           GrantProxyConfigFlag,
+		GrantProxyStart:                GrantProxyStart,
+		GrantProxyStop:                 GrantProxyStop,
+		GrantProvSettings:              GrantProvSettings,
+		GrantProvCluster:               GrantProvCluster,
+		GrantProvClusterProvision:      GrantProvClusterProvision,
+		GrantProvClusterUnprovision:    GrantProvClusterUnprovision,
+		GrantProvDBUnprovision:         GrantProvDBUnprovision,
+		GrantProvDBProvision:           GrantProvDBProvision,
+		GrantProvProxyProvision:        GrantProvProxyProvision,
+		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
 	}
 }
 

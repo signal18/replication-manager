@@ -1,0 +1,25 @@
+# config.toml
+# Example replication-manager configuration file
+[regtest]
+title = "test"
+db-servers-hosts = "192.168.100.100,192.168.100.101"
+db-servers-prefered-master = "192.168.100.100"
+db-servers-connect-timeout = 1
+failover-mode = "automatic"
+autorejoin-mysqldump = true
+autorejoin-flashback = true
+failover-falsepositive-heartbeat = false
+force-slave-semisync = true
+force-sync-binlog = true
+force-sync-innodb = true
+force-slave-failover-readonly-state = true
+failover-falsepositive-ping-counter = 3
+failover-limit = 999
+failover-time-limit = 1
+prov-db-docker-img = "mysql-server:5.6"
+prov-db-tags = "smallredolog,semisync,innodb,noquerycache,threadpool,logslow"
+prov-db-disk-size = "1G"
+prov-proxy-disk-size ="1G"
+haproxy=true
+
+haproxy-servers = "192.168.100.105"

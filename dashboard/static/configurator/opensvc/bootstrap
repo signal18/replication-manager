@@ -28,3 +28,5 @@ if [ $? -eq 0 ]; then
 	cat config.tar.gz  | tar xzvf - -C /bootstrap
 	rm -f config.tar.gz
 fi
+chown -R 999:999 /bootstrap/data
+chmod -R 0755 /bootstrap/init

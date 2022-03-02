@@ -35,7 +35,7 @@
                 <md-tab md-select-id="Graphs" ng-click="onTabClicked('Graphs')"  md-on-select="onTabSelected" label="Graphs" ng-if="!selectedServer && selectedCluster.config.graphiteMetrics==true && selectedCluster.apiUsers[user].grants['cluster-show-graphs']==true">
                     <div ng-if="selectedTab=='Graphs'"  ng-include src="'static/tab-cluster-graphs.html'"></div>
                 </md-tab>
-                <md-tab md-select-id="Agents" ng-click="onTabClicked('Agents')" md-on-select="onTabSelected" label="Agents" ng-if="settings.config.enterprise && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-agents']==true">
+                <md-tab md-select-id="Agents" ng-click="onTabClicked('Agents')" md-on-select="onTabSelected" label="Agents" ng-if="!selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-agents']==true">
                     <div ng-if="selectedTab=='Agents'"  ng-include src="'static/tab-cluster-agents.html'"></div>
                 </md-tab>
                 <md-tab md-select-id="Certificates" ng-click="onTabClicked('Certificates')" md-on-select="onTabSelected" label="Certificates" ng-if="settings.config.enterprise && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-certificates']==true">
@@ -92,7 +92,7 @@
     </div>
     <footer class="footer">
         <div >
-            <span align="right" class="text-muted">Replication-Manager {{settings.fullVersion}} © 2017 SIGNAL 18 SARL</span>
+            <span align="right" class="text-muted">Replication-Manager {{settings.fullVersion}} © 2017-2021 SIGNAL18 CLOUD SAS</span>
         </div>
     </footer>
 </div>

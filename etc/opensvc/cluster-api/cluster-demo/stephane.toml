@@ -1,0 +1,34 @@
+[Default]
+opensvc-use-collector-api = false
+opensvc-p12-certificate = "etc/opensvc/cluster-api/cluster-demo/signal18.p12"
+opensvc-host = "10.8.0.15:1215"
+opensvc-p12-secret = "36vf2cczf8rms8hh"
+
+include ="etc/opensvc/cluster-api/cluster-demo/stephane.d"
+# log-heartbeat = true
+
+log-file="/var/log/replication-manager/replication-manager.log"
+http-bind-address = "0.0.0.0"
+
+#VPN Address
+monitoring-address = "10.8.0.50"
+
+
+prov-orchestrator = "opensvc"
+prov-orchestrator-cluster = "cloud18"
+
+prov-net-cni = true
+prov-net-cni-cluster = "repman"
+
+prov-docker-daemon-private=false
+
+prov-db-agents = "s18-fr-1,s18-fr-2"
+
+prov-db-service-type = "docker"
+prov-db-disk-type = "volume"
+prov-db-volume-data = "db"
+
+prov-proxy-agents = "s18-fr-1,s18-fr-2"
+prov-proxy-service-type = "docker"
+prov-proxy-disk-type = "volume"
+prov-proxy-volume-data = "tank"

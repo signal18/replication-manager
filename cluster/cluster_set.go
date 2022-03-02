@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -29,9 +29,9 @@ import (
 
 func (cluster *Cluster) SetStatus() {
 	if cluster.master == nil {
-		cluster.sme.SetMasterUpAndSync(false, false)
+		cluster.sme.SetMasterUpAndSync(false, false, false)
 	} else {
-		cluster.sme.SetMasterUpAndSync(cluster.master.SemiSyncMasterStatus, cluster.master.RplMasterStatus)
+		cluster.sme.SetMasterUpAndSync(!cluster.master.IsDown(), cluster.master.SemiSyncMasterStatus, cluster.master.HaveHealthyReplica)
 	}
 	cluster.Uptime = cluster.GetStateMachine().GetUptime()
 	cluster.UptimeFailable = cluster.GetStateMachine().GetUptimeFailable()
@@ -258,59 +258,85 @@ func (cluster *Cluster) SetInteractive(check bool) {
 }
 
 func (cluster *Cluster) SetDBDiskSize(value string) {
-	cluster.Conf.ProvDisk = value
+
+	cluster.Configurator.SetDBDisk(value)
+	cluster.Conf.ProvDisk = cluster.Configurator.GetConfigDBDisk()
+
 	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBCores(value string) {
-	cluster.Conf.ProvCores = value
-	cluster.SetDBRestartCookie()
+
+	cluster.Configurator.SetDBCores(value)
+	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
+	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBMemorySize(value string) {
-	cluster.Conf.ProvMem = value
+
+	cluster.Configurator.SetDBMemory(value)
+	cluster.Conf.ProvMem = cluster.Configurator.GetConfigDBMemory()
+	cluster.SetDBReprovCookie()
+}
+
+func (cluster *Cluster) SetDBCoresFromConfigurator() {
+
+	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
 	cluster.SetDBRestartCookie()
 }
 
+func (cluster *Cluster) SetDBMemoryFromConfigurator() {
+	cluster.Conf.ProvMem = cluster.Configurator.GetConfigDBMemory()
+	cluster.SetDBRestartCookie()
+}
+
+func (cluster *Cluster) SetDBIOPSFromConfigurator() {
+	cluster.Conf.ProvIops = cluster.Configurator.GetConfigDBDiskIOPS()
+	cluster.SetDBRestartCookie()
+}
+
+func (cluster *Cluster) SetTagsFromConfigurator() {
+	cluster.Conf.ProvTags = cluster.Configurator.GetConfigDBTags()
+	cluster.Conf.ProvTags = cluster.Configurator.GetConfigProxyTags()
+}
+
 func (cluster *Cluster) SetDBDiskIOPS(value string) {
-	cluster.Conf.ProvIops = value
+	cluster.Configurator.SetDBDiskIOPS(value)
+	cluster.Conf.ProvIops = cluster.Configurator.GetConfigDBDiskIOPS()
 	cluster.SetDBRestartCookie()
 }
 
 func (cluster *Cluster) SetDBMaxConnections(value string) {
-	valueNum, err := strconv.Atoi(value)
-	if err != nil {
-		cluster.Conf.ProvMaxConnections = 1000
-	}
-	cluster.Conf.ProvMaxConnections = valueNum
+	cluster.Configurator.SetDBMaxConnections(value)
+	cluster.Conf.ProvMaxConnections = cluster.Configurator.GetConfigDBMaxConnections()
 	cluster.SetDBRestartCookie()
 }
 
 func (cluster *Cluster) SetDBExpireLogDays(value string) {
-	valueNum, err := strconv.Atoi(value)
-	if err != nil {
-		cluster.Conf.ProvExpireLogDays = 5
-	}
-	cluster.Conf.ProvExpireLogDays = valueNum
+	cluster.Configurator.SetDBExpireLogDays(value)
+	cluster.Conf.ProvExpireLogDays = cluster.Configurator.GetConfigDBExpireLogDays()
 	cluster.SetDBRestartCookie()
 }
 
 func (cluster *Cluster) SetProxyCores(value string) {
-	cluster.Conf.ProvProxCores = value
+	cluster.Configurator.SetProxyCores(value)
+	cluster.Conf.ProvProxCores = cluster.Configurator.GetConfigProxyCores()
 	cluster.SetProxiesRestartCookie()
 }
+
 func (cluster *Cluster) SetProxyMemorySize(value string) {
-	cluster.Conf.ProvProxMem = value
+	cluster.Configurator.SetProxyMemorySize(value)
+	cluster.Conf.ProvProxMem = cluster.Configurator.GetProxyMemorySize()
 	cluster.SetProxiesRestartCookie()
 }
+
 func (cluster *Cluster) SetProxyDiskSize(value string) {
-	cluster.Conf.ProvProxDisk = value
+	cluster.Configurator.SetProxyDiskSize(value)
+	cluster.Conf.ProvProxDisk = cluster.Configurator.GetProxyDiskSize()
 	cluster.SetProxiesReprovCookie()
 }
 
 func (cluster *Cluster) SetTraffic(traffic bool) {
-	//cluster.SetBenchMethod("table")
-	//cluster.PrepareBench()
 	cluster.Conf.TestInjectTraffic = traffic
 }
 
@@ -318,15 +344,16 @@ func (cluster *Cluster) SetBenchMethod(m string) {
 	cluster.benchmarkType = m
 }
 
+// SetPrefMaster is used by regtest test_switchover_semisync_switchback_prefmaster_norplcheck and API to force a server
 func (cluster *Cluster) SetPrefMaster(PrefMaster string) {
+	cluster.Conf.PrefMaster = PrefMaster
 	for _, srv := range cluster.Servers {
-		if srv.URL == PrefMaster || srv.Name == PrefMaster {
+		if strings.Contains(PrefMaster, srv.URL) {
 			srv.SetPrefered(true)
 		} else {
 			srv.SetPrefered(false)
 		}
 	}
-	cluster.Conf.PrefMaster = PrefMaster
 }
 
 func (cluster *Cluster) SetFailoverCtr(failoverCtr int) {
@@ -451,8 +478,8 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 }
 
 func (cluster *Cluster) SetClusterVariablesFromConfig() {
-	cluster.DBTags = cluster.GetDatabaseTags()
-	cluster.ProxyTags = cluster.GetProxyTags()
+	cluster.Configurator.SetConfig(cluster.Conf)
+
 	var err error
 	err = cluster.loadDBCertificates(cluster.WorkingDir)
 	if err != nil {
@@ -564,7 +591,7 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 		cluster.Conf.MxsUser, cluster.Conf.MxsPass = misc.SplitPair(credential)
 	}
 	for _, prx := range cluster.Proxies {
-		prx.User, prx.Pass = misc.SplitPair(credential)
+		prx.SetCredential(credential)
 		prx.SetRestartCookie()
 	}
 }
@@ -721,6 +748,7 @@ func (cl *Cluster) SetArbitratorReport() error {
 	return nil
 }
 
+// SetClusterHead for MariaDB spider we can arbtitraty shard tables to child clusters
 func (cluster *Cluster) SetClusterHead(ClusterName string) {
 	cluster.Conf.ClusterHead = ClusterName
 }
@@ -731,12 +759,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 		if plan.Plan == theplan {
 			cluster.LogPrintf(LvlInfo, "Attaching service plan %s", theplan)
 			cluster.Conf.ProvServicePlan = theplan
-			cluster.SetDBCores(strconv.Itoa(plan.DbCores))
-			cluster.SetDBMemorySize(strconv.Itoa(plan.DbMemory))
-			cluster.SetDBDiskSize(strconv.Itoa(plan.DbDataSize))
-			cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops))
-			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
-			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
+
 			if cluster.Conf.User == "" {
 				cluster.LogPrintf(LvlInfo, "Settting database root credential to admin:repman ")
 				cluster.Conf.User = "admin:repman"
@@ -746,7 +769,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 				cluster.Conf.RplUser = "repl:repman"
 			}
 			cluster.LogPrintf(LvlInfo, "Adding %s database monitor on %s", string(strings.TrimPrefix(theplan, "x")[0]), cluster.Conf.ProvOrchestrator)
-			if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost || cluster.Conf.ProvOrchestrator == config.ConstOrchestratorOnPremise {
+			if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost || cluster.GetOrchestrator() == config.ConstOrchestratorOnPremise {
 				cluster.DropDBTag("docker")
 				cluster.DropDBTag("threadpool")
 				cluster.AddDBTag("pkg")
@@ -759,7 +782,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			hosts := []string{}
 			for i := 1; i <= srvcount; i++ {
 				cluster.LogPrintf(LvlInfo, "'%s' '%s'", cluster.Conf.ProvOrchestrator, config.ConstOrchestratorLocalhost)
-				if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+				if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost {
 					port, err := cluster.LocalhostGetFreePort()
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Adding DB monitor on 127.0.0.1 %s", err)
@@ -767,7 +790,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 						cluster.LogPrintf(LvlInfo, "Adding DB monitor 127.0.0.1:%s", port)
 					}
 					hosts = append(hosts, "127.0.0.1:"+port)
-				} else if cluster.Conf.ProvOrchestrator != config.ConstOrchestratorOnPremise {
+				} else if cluster.GetOrchestrator() != config.ConstOrchestratorOnPremise {
 					hosts = append(hosts, "db"+strconv.Itoa(i))
 				}
 			}
@@ -787,7 +810,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			cluster.Conf.MdbsProxyHosts = ""
 			// cluster head is used to copy exiting proxy from an other cluster
 			if cluster.Conf.ClusterHead == "" {
-				if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+				if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost {
 					portproxysql, err := cluster.LocalhostGetFreePort()
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Adding proxysql monitor on 127.0.0.1 %s", err)
@@ -812,12 +835,12 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 				oriClusters, err := cluster.GetClusterFromName(cluster.Conf.ClusterHead)
 				if err == nil {
 					for _, oriProxy := range oriClusters.Proxies {
-						cluster.LogPrintf(LvlInfo, "Adding new proxy %s copy %s:%s", oriProxy.Type, oriProxy.Host, oriProxy.Port)
-						if oriProxy.Type == config.ConstProxySpider {
-							cluster.AddSeededProxy(oriProxy.Type, oriProxy.Host, oriProxy.Port, oriProxy.User, oriProxy.Pass)
+						cluster.LogPrintf(LvlInfo, "Adding new proxy %s copy %s:%s", oriProxy.GetType(), oriProxy.GetHost(), oriProxy.GetPort())
+						if oriProxy.GetType() == config.ConstProxySpider {
+							cluster.AddSeededProxy(oriProxy.GetType(), oriProxy.GetHost(), oriProxy.GetPort(), oriProxy.GetUser(), oriProxy.GetPass())
 						}
 					}
-					if cluster.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+					if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost {
 						portproxysql, err := cluster.LocalhostGetFreePort()
 						if err != nil {
 							cluster.LogPrintf(LvlErr, "Adding proxysql monitor on 127.0.0.1 %s", err)
@@ -831,7 +854,12 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 					}
 				}
 			}
-
+			cluster.SetDBCores(strconv.Itoa(plan.DbCores))
+			cluster.SetDBMemorySize(strconv.Itoa(plan.DbMemory))
+			cluster.SetDBDiskSize(strconv.Itoa(plan.DbDataSize))
+			cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops))
+			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
+			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
 			return nil
 		}
 	}

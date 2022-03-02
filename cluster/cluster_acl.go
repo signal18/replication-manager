@@ -7,17 +7,31 @@
 package cluster
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/misc"
+	"google.golang.org/grpc/codes"
 )
 
 type APIUser struct {
 	User     string          `json:"user"`
 	Password string          `json:"-"`
 	Grants   map[string]bool `json:"grants"`
+}
+
+func (u *APIUser) Granted(grant string) error {
+	if value, ok := u.Grants[grant]; ok {
+		if !value {
+			return v3.NewErrorResource(codes.PermissionDenied, v3.ErrUserNotGranted, "user", u.User).Err()
+		}
+		return nil
+	}
+
+	return v3.NewErrorResource(codes.PermissionDenied, v3.ErrGrantNotFound, "grant not found", "").Err()
 }
 
 func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string) bool {
@@ -31,6 +45,17 @@ func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL strin
 	//	for key, value := range cluster.Grants {
 
 	return false
+}
+
+func (cluster *Cluster) GetAPIUser(strUser string, strPassword string) (APIUser, error) {
+	if user, ok := cluster.APIUsers[strUser]; ok {
+		if user.Password == strPassword {
+			return user, nil
+		}
+		return APIUser{}, fmt.Errorf("incorrect password")
+	}
+
+	return APIUser{}, fmt.Errorf("user not found")
 }
 
 func (cluster *Cluster) SaveAcls() {
@@ -385,6 +410,8 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 		return true
 	case "/api/clusters/" + cluster.Name:
 		return true
+	case "/api/clusters/" + cluster.Name + "/diffvariables":
+		return true
 	}
 	if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/servers") {
 		return cluster.IsURLPassDatabasesACL(strUser, URL)
@@ -415,6 +442,16 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterCertificatesReload] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/certificates-reload") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterCertificatesRotate] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/certificates-rotate") {
+			return true
+		}
+	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterResetSLA] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/reset-sla") {
 			return true
@@ -430,11 +467,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterRotateKey] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/rotatekeys") {
-			return true
-		}
-	}
+
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterTraffic] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/stop-traffic") {
 			return true
@@ -461,6 +494,10 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/sysbench") {
 			return true
 		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/tests/") {
+			return true
+		}
+
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterFailover] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/failover") {

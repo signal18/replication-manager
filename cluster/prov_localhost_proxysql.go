@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -14,13 +14,15 @@ import (
 	"time"
 )
 
-func (cluster *Cluster) LocalhostUnprovisionProxySQLService(prx *Proxy) error {
+// TODO: Make all of these part of ProxySQLProxy and not Cluster
+
+func (cluster *Cluster) LocalhostUnprovisionProxySQLService(prx *ProxySQLProxy) error {
 	cluster.LocalhostStopProxysqlService(prx)
 	cluster.errorChan <- nil
 	return nil
 }
 
-func (cluster *Cluster) LocalhostProvisionProxySQLService(prx *Proxy) error {
+func (cluster *Cluster) LocalhostProvisionProxySQLService(prx *ProxySQLProxy) error {
 
 	out := &bytes.Buffer{}
 	path := prx.Datadir + "/var"
@@ -49,7 +51,7 @@ func (cluster *Cluster) LocalhostProvisionProxySQLService(prx *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStopProxysqlService(prx *Proxy) error {
+func (cluster *Cluster) LocalhostStopProxysqlService(prx *ProxySQLProxy) error {
 
 	//	cluster.LogPrintf("TEST", "Killing database %s %d", server.Id, server.Process.Pid)
 
@@ -58,7 +60,7 @@ func (cluster *Cluster) LocalhostStopProxysqlService(prx *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStartProxySQLService(prx *Proxy) error {
+func (cluster *Cluster) LocalhostStartProxySQLService(prx *ProxySQLProxy) error {
 	prx.GetProxyConfig()
 
 	/*	path := prx.Datadir + "/var"
@@ -73,7 +75,7 @@ func (cluster *Cluster) LocalhostStartProxySQLService(prx *Proxy) error {
 			return err
 		}	*/
 
-	mariadbdCmd := exec.Command(cluster.Conf.ProxysqlBinaryPath, "--config", prx.Datadir+"/init/etc/proxysql.cnf", "--datadir", prx.Datadir+"/var", "--initial")
+	mariadbdCmd := exec.Command(cluster.Conf.ProxysqlBinaryPath, "--config", prx.Datadir+"/init/etc/proxysql/proxysql.cnf", "--datadir", prx.Datadir+"/var", "--initial")
 	cluster.LogPrintf(LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 
 	var out bytes.Buffer

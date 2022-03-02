@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -9,50 +9,56 @@ package cluster
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
-	"net/http"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/cron"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+func (cluster *Cluster) GetShareDir() string {
+	return cluster.Conf.ShareDir
+}
+
 func (cluster *Cluster) GetMysqlDumpPath() string {
 	if cluster.Conf.BackupMysqldumpPath == "" {
-		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqldump"
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqldump"
 	}
 	return cluster.Conf.BackupMysqldumpPath
 }
 
 func (cluster *Cluster) GetMyDumperPath() string {
 	if cluster.Conf.BackupMyDumperPath == "" {
-		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mydumper"
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mydumper"
 	}
 	return cluster.Conf.BackupMyDumperPath
 }
 
 func (cluster *Cluster) GetMyLoaderPath() string {
 	if cluster.Conf.BackupMyDumperPath == "" {
-		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/myloader"
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/myloader"
 	}
 	return cluster.Conf.BackupMyLoaderPath
 }
 
 func (cluster *Cluster) GetMysqlBinlogPath() string {
 	if cluster.Conf.BackupMysqlbinlogPath == "" {
-		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqlbinlog"
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqlbinlog"
 	}
 	return cluster.Conf.BackupMysqlbinlogPath
 }
 
 func (cluster *Cluster) GetMysqlclientPath() string {
 	if cluster.Conf.BackupMysqlclientPath == "" {
-		return cluster.Conf.ShareDir + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysql"
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysql"
 	}
 	return cluster.Conf.BackupMysqlclientPath
 }
@@ -62,6 +68,10 @@ func (cluster *Cluster) GetDomain() string {
 		return "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 	}
 	return ""
+}
+
+func (cluster *Cluster) GetOrchestrator() string {
+	return cluster.Conf.ProvOrchestrator
 }
 
 func (cluster *Cluster) GetDomainHeadCluster() string {
@@ -151,6 +161,10 @@ func (cluster *Cluster) GetMasterFailCount() int {
 
 func (cluster *Cluster) GetFailoverCtr() int {
 	return cluster.FailoverCtr
+}
+
+func (cluster *Cluster) GetIncludeDir() string {
+	return cluster.Conf.Include
 }
 
 func (cluster *Cluster) GetFailoverTs() int64 {
@@ -250,15 +264,15 @@ func (cluster *Cluster) GetGComm() string {
 	return strings.Join(gcomms, ",")
 }
 
-func (cluster *Cluster) getPreferedMaster() *ServerMonitor {
+func (cluster *Cluster) getOnePreferedMaster() *ServerMonitor {
 	if cluster.Conf.PrefMaster == "" {
 		return nil
 	}
 	for _, server := range cluster.Servers {
 		if cluster.Conf.LogLevel > 2 {
-			cluster.LogPrintf(LvlDbg, "Lookup server %s if preferred master: %s", server.URL, cluster.Conf.PrefMaster)
+			cluster.LogPrintf(LvlDbg, "Lookup if server: %s is preferred master: %s", server.URL, cluster.Conf.PrefMaster)
 		}
-		if server.URL == cluster.Conf.PrefMaster {
+		if strings.Contains(cluster.Conf.PrefMaster, server.URL) {
 			return server
 		}
 	}
@@ -271,7 +285,7 @@ func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 	}
 	for _, server := range cluster.Servers {
 		if cluster.Conf.LogLevel > 2 {
-			cluster.LogPrintf(LvlDbg, "Lookup server %s if maxscale binlog server: %s", server.URL, cluster.Conf.PrefMaster)
+			cluster.LogPrintf(LvlDbg, "Check for relay server %s: relay: %t", server.URL, server.IsRelay)
 		}
 		if server.IsRelay {
 			return server
@@ -334,17 +348,14 @@ func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
 	return nil
 }
 
-func (cluster *Cluster) GetProxyFromURL(url string) *Proxy {
-	if strings.Contains(url, ":") {
-		for _, proxy := range cluster.Proxies {
-			//	cluster.LogPrintf(LvlInfo, " search prx %s %s for url %s", proxy.Host, proxy.Port, url)
-			if proxy.Host+":"+proxy.Port == url {
+func (cluster *Cluster) GetProxyFromURL(url string) DatabaseProxy {
+	for _, proxy := range cluster.Proxies {
+		if strings.Contains(url, ":") {
+			if proxy.GetHost()+":"+proxy.GetPort() == url {
 				return proxy
 			}
-		}
-	} else {
-		for _, proxy := range cluster.Proxies {
-			if proxy.Host == url {
+		} else {
+			if proxy.GetHost() == url {
 				return proxy
 			}
 		}
@@ -397,10 +408,21 @@ func (cluster *Cluster) GetBackupServer() *ServerMonitor {
 	if !cluster.IsDiscovered() || len(cluster.Servers) < 1 {
 		return nil
 	}
+	//1	cluster.LogPrintf(LvlInfo, "%d ", len(cluster.Servers))
+
 	for _, server := range cluster.Servers {
+		if server == nil {
+			return nil
+		}
+		//	cluster.LogPrintf(LvlInfo, "%s ", server.State)
+		//	cluster.LogPrintf(LvlInfo, "%t ", server.PreferedBackup)
+
 		if server.State != stateFailed && server.PreferedBackup {
 			return server
 		}
+	}
+	if cluster.master != nil {
+		return cluster.master
 	}
 	return nil
 }
@@ -431,7 +453,7 @@ func (cluster *Cluster) GetDBServerIdList() []string {
 func (cluster *Cluster) GetProxyServerIdList() []string {
 	ret := make([]string, len(cluster.Proxies))
 	for i, server := range cluster.Proxies {
-		ret[i] = server.Id
+		ret[i] = server.GetId()
 	}
 	return ret
 }
@@ -465,6 +487,7 @@ func (cluster *Cluster) GetTopology() string {
 	return cluster.Conf.Topology
 }
 
+/*
 func (cluster *Cluster) GetDatabaseTags() []string {
 	return strings.Split(cluster.Conf.ProvTags, ",")
 }
@@ -472,22 +495,22 @@ func (cluster *Cluster) GetDatabaseTags() []string {
 func (cluster *Cluster) GetProxyTags() []string {
 	return strings.Split(cluster.Conf.ProvProxTags, ",")
 }
-
-func (cluster *Cluster) GetLocalProxy(this *Proxy) Proxy {
-	// dirty: need to point LB to all DB  proxies, just pick the first one so far
-	var prx Proxy
-	for _, p := range cluster.Proxies {
-		if p != this && p.Type != config.ConstProxySphinx {
-			return *p
-		}
-	}
-	return prx
-}
-
+*/
 func (cluster *Cluster) GetCron() []cron.Entry {
 
 	return cluster.scheduler.Entries()
 
+}
+
+func (cluster *Cluster) GetServerIndice(srv *ServerMonitor) int {
+	for i, sv := range cluster.Servers {
+		//	cluster.LogPrintf(LvlInfo, "HasServer:%s %s, %s %s", sv.Id, srv.Id, sv.URL, srv.URL)
+		// id can not be used for checking equality because  same srv in different clusters
+		if sv.URL == srv.URL {
+			return i
+		}
+	}
+	return 0
 }
 
 func (cluster *Cluster) getClusterByName(clname string) *Cluster {
@@ -525,10 +548,57 @@ func (cluster *Cluster) GetChildClusters() map[string]*Cluster {
 	for _, c := range cluster.clusterList {
 		//	cluster.LogPrintf(LvlErr, "GetChildClusters %s %s ", cluster.Name, c.Conf.ClusterHead)
 		if cluster.Name == c.Conf.ClusterHead {
+			cluster.LogPrintf(LvlDbg, "Discovering of a child cluster via ClusterHead %s replication source %s", c.Name, c.Conf.ClusterHead)
 			clusters[c.Name] = c
+		}
+		// lopp over master multi source replication
+		condidateclustermaster := c.GetMaster()
+		if condidateclustermaster != nil && c.Name != cluster.Name {
+			for _, rep := range condidateclustermaster.Replications {
+				// is a source name has my cluster name or is any child cluster master point to my master
+				if rep.ConnectionName.String == cluster.Name || (cluster.GetMaster() != nil && cluster.master.Host == rep.MasterHost.String && cluster.master.Port == rep.MasterPort.String) {
+					cluster.LogPrintf(LvlDbg, "Discovering of a child cluster via multi source %s replication source %s", c.Name, rep.ConnectionName.String)
+					clusters[c.Name] = c
+				}
+			}
 		}
 	}
 	return clusters
+}
+
+func (cluster *Cluster) GetParentClusterFromReplicationSource(rep dbhelper.SlaveStatus) *Cluster {
+
+	for _, c := range cluster.clusterList {
+		if cluster.Name != c.Name {
+			for _, srv := range c.Servers {
+				if srv.Host == rep.MasterHost.String && srv.Port == rep.MasterPort.String {
+					return c
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) GetRingChildServer(oldMaster *ServerMonitor) *ServerMonitor {
+	for _, s := range cluster.Servers {
+		if s.ServerID != cluster.oldMaster.ServerID {
+			//cluster.LogPrintf(LvlDbg, "test %s failed %s", s.URL, cluster.oldMaster.URL)
+			master, err := cluster.GetMasterFromReplication(s)
+			if err == nil && master.ServerID == oldMaster.ServerID {
+				return s
+			}
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) GetRingParentServer(oldMaster *ServerMonitor) *ServerMonitor {
+	ss, err := cluster.oldMaster.GetSlaveStatusLastSeen(cluster.oldMaster.ReplicationSourceName)
+	if err != nil {
+		return nil
+	}
+	return cluster.GetServerFromURL(ss.MasterHost.String + ":" + ss.MasterPort.String)
 }
 
 func (cluster *Cluster) GetClusterFromName(name string) (*Cluster, error) {
@@ -593,245 +663,8 @@ func (cluster *Cluster) GetTableDLLNoFK(schema string, table string, srv *Server
 	return ddl, err
 }
 
-func (cluster *Cluster) GetDBModuleTags() []Tag {
-	var tags []Tag
-	for _, value := range cluster.DBModule.Filtersets {
-		var t Tag
-		t.Id = value.ID
-		s := strings.Split(value.Name, ".")
-		t.Name = s[len(s)-1]
-		t.Category = s[len(s)-2]
-		tags = append(tags, t)
-	}
-	return tags
-}
-
-func (cluster *Cluster) GetBackups() []Backup {
+func (cluster *Cluster) GetBackups() []v3.Backup {
 	return cluster.Backups
-}
-
-func (cluster *Cluster) GetProxyModuleTags() []Tag {
-	var tags []Tag
-	for _, value := range cluster.ProxyModule.Filtersets {
-		var t Tag
-		t.Id = value.ID
-		s := strings.SplitAfter(value.Name, ".")
-		t.Name = s[len(s)-1]
-		tags = append(tags, t)
-	}
-	return tags
-}
-
-func (cluster *Cluster) GetConfigMaxConnections() string {
-	return strconv.Itoa(cluster.Conf.ProvMaxConnections)
-}
-
-func (cluster *Cluster) GetConfigExpireLogDays() string {
-	return strconv.Itoa(cluster.Conf.ProvExpireLogDays)
-}
-
-func (cluster *Cluster) GetConfigRelaySpaceLimit() string {
-	return strconv.Itoa(10 * 1024 * 1024)
-}
-
-// GetConfigInnoDBBPSize configure 80% of the ConfigMemory in Megabyte
-func (cluster *Cluster) GetConfigInnoDBBPSize() string {
-	containermem, err := strconv.ParseInt(cluster.Conf.ProvMem, 10, 64)
-	if err != nil {
-		return "128"
-	}
-	sharedmempcts, _ := cluster.Conf.GetMemoryPctShared()
-
-	containermem = containermem * int64(sharedmempcts["innodb"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigMyISAMKeyBufferSize() string {
-	containermem, err := strconv.ParseInt(cluster.Conf.ProvMem, 10, 64)
-	if err != nil {
-		return "128"
-	}
-	sharedmempcts, _ := cluster.Conf.GetMemoryPctShared()
-
-	containermem = containermem * int64(sharedmempcts["myisam"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigTokuDBBufferSize() string {
-	containermem, err := strconv.ParseInt(cluster.Conf.ProvMem, 10, 64)
-	if err != nil {
-		return "128"
-	}
-	sharedmempcts, _ := cluster.Conf.GetMemoryPctShared()
-
-	containermem = containermem * int64(sharedmempcts["tokudb"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigQueryCacheSize() string {
-	containermem, err := strconv.ParseInt(cluster.Conf.ProvMem, 10, 64)
-	if err != nil {
-		return "128"
-	}
-	sharedmempcts, _ := cluster.Conf.GetMemoryPctShared()
-	containermem = containermem * int64(sharedmempcts["querycache"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigAriaCacheSize() string {
-	containermem, err := strconv.ParseInt(cluster.Conf.ProvMem, 10, 64)
-	if err != nil {
-		return "128"
-	}
-	sharedmempcts, _ := cluster.Conf.GetMemoryPctShared()
-	containermem = containermem * int64(sharedmempcts["aria"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigS3CacheSize() string {
-	containermem, err := strconv.ParseInt(cluster.Conf.ProvMem, 10, 64)
-	if err != nil {
-		return "128"
-	}
-	sharedmempcts, _ := cluster.Conf.GetMemoryPctShared()
-	containermem = containermem * int64(sharedmempcts["s3"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigRocksDBCacheSize() string {
-	containermem, err := strconv.ParseInt(cluster.Conf.ProvMem, 10, 64)
-	if err != nil {
-		return "128"
-	}
-	sharedmempcts, _ := cluster.Conf.GetMemoryPctShared()
-	containermem = containermem * int64(sharedmempcts["rocksdb"]) / 100
-	s10 := strconv.FormatInt(containermem, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigMyISAMKeyBufferSegements() string {
-	value, err := strconv.ParseInt(cluster.GetConfigMyISAMKeyBufferSize(), 10, 64)
-	if err != nil {
-		return "1"
-	}
-	value = value/8000 + 1
-	s10 := strconv.FormatInt(value, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigInnoDBIOCapacity() string {
-	value, err := strconv.ParseInt(cluster.Conf.ProvIops, 10, 64)
-	if err != nil {
-		return "100"
-	}
-	value = value / 3
-	s10 := strconv.FormatInt(value, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigInnoDBIOCapacityMax() string {
-	value, err := strconv.ParseInt(cluster.Conf.ProvIops, 10, 64)
-	if err != nil {
-		return "200"
-	}
-	s10 := strconv.FormatInt(value, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigInnoDBMaxDirtyPagePct() string {
-	/*	mem, err := strconv.ParseInt(cluster.GetConfigInnoDBBPSize(), 10, 64)
-		if err != nil {
-			return "20"
-		}
-		//Compute the ration of memory compare to  a G
-		//	value := mem/1000
-
-	*/
-	var value int64
-	value = 40
-	s10 := strconv.FormatInt(value, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigInnoDBMaxDirtyPagePctLwm() string {
-	var value int64
-	value = 20
-	s10 := strconv.FormatInt(value, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigInnoDBLogFileSize() string {
-	//result in MB
-	var valuemin int64
-	var valuemax int64
-	valuemin = 1024
-	valuemax = 20 * 1024
-	value, err := strconv.ParseInt(cluster.GetConfigInnoDBBPSize(), 10, 64)
-	if err != nil {
-		return "1024"
-	}
-	value = value / 10
-	if value < valuemin {
-		value = valuemin
-	}
-	if value > valuemax {
-		value = valuemax
-	}
-	if cluster.HaveDBTag("smallredolog") {
-		return "128"
-	}
-	s10 := strconv.FormatInt(value, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigInnoDBLogBufferSize() string {
-	//result in MB
-	var value int64
-	value = 16
-	s10 := strconv.FormatInt(value, 10)
-	return s10
-}
-
-// GetConfigInnoDBBPInstances configure BP/8G of the ConfigMemory in Megabyte
-func (cluster *Cluster) GetConfigInnoDBBPInstances() string {
-	value, err := strconv.ParseInt(cluster.GetConfigInnoDBBPSize(), 10, 64)
-	if err != nil {
-		return "1"
-	}
-	value = value/8000 + 1
-	s10 := strconv.FormatInt(value, 10)
-	return s10
-}
-
-func (cluster *Cluster) GetConfigInnoDBWriteIoThreads() string {
-	iopsLatency, err := strconv.ParseFloat(cluster.Conf.ProvIopsLatency, 64)
-	if err != nil {
-		return "4"
-	}
-	iops, err := strconv.ParseFloat(cluster.Conf.ProvIops, 64)
-	if err != nil {
-		return "4"
-	}
-	nbthreads := int(iopsLatency * iops)
-	if nbthreads < 1 {
-		return "1"
-	}
-	strnbthreads := strconv.Itoa(nbthreads)
-	return strnbthreads
-}
-func (cluster *Cluster) GetConfigInnoDBReadIoThreads() string {
-
-	return cluster.Conf.ProvCores
-}
-
-func (cluster *Cluster) GetConfigInnoDBPurgeThreads() string {
-	return cluster.GetConfigInnoDBWriteIoThreads()
 }
 
 func (cluster *Cluster) GetQueryRules() []config.QueryRule {
@@ -844,58 +677,46 @@ func (cluster *Cluster) GetQueryRules() []config.QueryRule {
 }
 
 func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
+
 	type Message struct {
 		Rows []config.ServicePlan `json:"rows"`
 	}
 	var m Message
 
-	client := http.Client{
-		Timeout: 300 * time.Millisecond,
-	}
-	response, err := client.Get(cluster.Conf.ProvServicePlanRegistry)
+	file, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/serviceplan.json")
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "GetServicePlans: %s %s", cluster.Conf.ProvServicePlanRegistry, err)
+		log.Errorf("failed opening file because: %s", err.Error())
 		return nil
 	}
-	defer response.Body.Close()
-	contents, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		cluster.LogPrintf(LvlErr, "GetServicePlans: %s", err)
-		return nil
-	}
-	err = json.Unmarshal(contents, &m)
+
+	err = json.Unmarshal([]byte(file), &m.Rows)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "GetServicePlans  %s", err)
 		return nil
 	}
-	/*
-		r := make([]config.ServicePlan, 0, len(m.Rows))
-		for _, value := range m.Rows {
-			r = append(r, value)
-		}
-		/*sort.Sort(QueryRuleSorter(r))*/
+
 	return m.Rows
 }
 
-func (cluster *Cluster) GetClientCertificates() map[string]string {
+func (cluster *Cluster) GetClientCertificates() (map[string]string, error) {
 	certs := make(map[string]string)
 	clientCert, err := misc.ReadFile(cluster.WorkingDir + "/client-cert.pem")
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can't load certificate: %s", err)
-		return certs
+		return certs, fmt.Errorf("Can't load certificate: %w", err)
 	}
 	clientkey, err := misc.ReadFile(cluster.WorkingDir + "/client-key.pem")
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can't load certificate: %s", err)
-		return certs
+		return certs, fmt.Errorf("Can't load certificate: %w", err)
 	}
 	caCert, err := misc.ReadFile(cluster.WorkingDir + "/ca-cert.pem")
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can't load certificate: %s", err)
-		return certs
+		return certs, fmt.Errorf("Can't load certificate: %w", err)
 	}
 	certs["clientCert"] = clientCert
 	certs["clientKey"] = clientkey
 	certs["caCert"] = caCert
-	return certs
+	return certs, nil
 }

@@ -145,10 +145,16 @@
     Rolling Restart
       </md-button>
     </md-menu-item>
-    <md-menu-item ng-if="master.State !='Failed'" ng-click="rotationkeys()">
-      <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-rotation-keys']==false">
+    <md-menu-item ng-if="master.State !='Failed'" ng-click="certificatesrotate()">
+      <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-certificates-rotates']==false">
         <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
-    Rotate Keys
+    Rotate Certificates
+      </md-button>
+    </md-menu-item>
+    <md-menu-item ng-if="master.State !='Failed'" ng-click="certificatesreload()">
+      <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-certificates-reload']==false">
+        <md-icon md-menu-align-target class="fas fa-undo"></md-icon>
+    Reload Certificates
       </md-button>
     </md-menu-item>
     <md-menu-item ng-if="master.State !='Failed'" ng-click="cancelrollingrestart()">

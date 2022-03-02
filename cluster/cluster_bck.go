@@ -18,8 +18,10 @@ import (
 	"sync"
 
 	"github.com/signal18/replication-manager/config"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 )
 
+/* Replaced by v3.Backup
 type Backup struct {
 	Id       string   `json:"id"`
 	ShortId  string   `json:"short_id"`
@@ -31,6 +33,7 @@ type Backup struct {
 	UID      int64    `json:"uid"`
 	GID      int64    `json:"gid"`
 }
+*/
 
 func (cluster *Cluster) ResticPurgeRepo() error {
 	if cluster.Conf.BackupRestic {
@@ -162,13 +165,13 @@ func (cluster *Cluster) ResticFetchRepo() error {
 			return errors.New("failed to capture stdout or stderr\n")
 		}
 
-		var repo []Backup
+		var repo []v3.Backup
 		err = json.Unmarshal(stdoutBuf.Bytes(), &repo)
 		if err != nil {
 			cluster.LogPrintf(LvlInfo, "Error unmaeshal backups %s", err)
 			return err
 		}
-		var filterRepo []Backup
+		var filterRepo []v3.Backup
 		for _, bck := range repo {
 			if strings.Contains(bck.Paths[0], cluster.Name) {
 				filterRepo = append(filterRepo, bck)

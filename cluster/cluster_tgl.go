@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -55,6 +55,7 @@ func (cluster *Cluster) SwitchInteractive() {
 
 func (cluster *Cluster) SwitchReadOnly() {
 	cluster.Conf.ReadOnly = !cluster.Conf.ReadOnly
+	cluster.Configurator.Init(cluster.Conf)
 }
 
 func (cluster *Cluster) SwitchRplChecks() {
@@ -191,6 +192,7 @@ func (cluster *Cluster) SwitchProxyServersBackendCompression() {
 
 func (cluster *Cluster) SwitchProxyServersReadOnMaster() {
 	cluster.Conf.PRXServersReadOnMaster = !cluster.Conf.PRXServersReadOnMaster
+	cluster.Configurator.Init(cluster.Conf)
 }
 
 func (cluster *Cluster) SwitchProxySQL() {
@@ -249,12 +251,12 @@ func (cluster *Cluster) SwitchMonitoringProcesslist() {
 
 func (cluster *Cluster) SwitchMonitoringScheduler() {
 	cluster.Conf.MonitorScheduler = !cluster.Conf.MonitorScheduler
-	if cluster.Conf.MonitorScheduler {
+	if !cluster.Conf.MonitorScheduler {
 		cluster.LogPrintf(LvlInfo, "Stopping scheduler")
 		cluster.scheduler.Stop()
 	} else {
 		cluster.LogPrintf(LvlInfo, "Starting scheduler")
-		cluster.scheduler.Start()
+		cluster.initScheduler()
 	}
 }
 

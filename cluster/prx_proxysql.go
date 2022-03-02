@@ -5,12 +5,79 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/proxysql"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
+<<<<<<< HEAD
+=======
+	"github.com/signal18/replication-manager/utils/state"
+	"github.com/spf13/pflag"
+>>>>>>> develop
 )
 
-func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {
+type ProxySQLProxy struct {
+	Proxy
+}
+
+func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxySQLProxy {
+	conf := cluster.Conf
+	prx := new(ProxySQLProxy)
+	prx.Name = proxyHost
+	prx.Host = proxyHost
+	prx.Type = config.ConstProxySqlproxy
+	prx.Port = conf.ProxysqlAdminPort
+	prx.ReadWritePort, _ = strconv.Atoi(conf.ProxysqlPort)
+	prx.User = conf.ProxysqlUser
+	prx.Pass = conf.ProxysqlPassword
+	prx.ReaderHostgroup, _ = strconv.Atoi(conf.ProxysqlReaderHostgroup)
+	prx.WriterHostgroup, _ = strconv.Atoi(conf.ProxysqlWriterHostgroup)
+	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
+	prx.ReadPort, _ = strconv.Atoi(conf.ProxysqlPort)
+
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSProxySQLPartitions, conf.ProxysqlHostsIPV6)
+
+	if conf.ProvNetCNI {
+		if conf.ClusterHead == "" {
+			prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+		} else {
+			prx.Host = prx.Host + "." + conf.ClusterHead + ".svc." + conf.ProvOrchestratorCluster
+		}
+	}
+
+	if cluster.key != nil {
+		p := crypto.Password{Key: cluster.key}
+		p.CipherText = prx.Pass
+		p.Decrypt()
+		prx.Pass = p.PlainText
+	}
+
+	return prx
+}
+
+func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
+	flags.BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
+	flags.BoolVar(&conf.ProxysqlDebug, "proxysql-debug", false, "Extra info on monitoring backend")
+	flags.BoolVar(&conf.ProxysqlSaveToDisk, "proxysql-save-to-disk", false, "Save proxysql change to sqllight")
+	flags.StringVar(&conf.ProxysqlHosts, "proxysql-servers", "", "ProxySQL hosts")
+	flags.StringVar(&conf.ProxysqlHostsIPV6, "proxysql-servers-ipv6", "", "ProxySQL extra IPV6 bind for interfaces")
+	flags.StringVar(&conf.ProxysqlPort, "proxysql-port", "3306", "ProxySQL read/write proxy port")
+	flags.StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6032", "ProxySQL admin interface port")
+	flags.StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-reader-hostgroup", "1", "ProxySQL reader hostgroup")
+	flags.StringVar(&conf.ProxysqlWriterHostgroup, "proxysql-writer-hostgroup", "0", "ProxySQL writer hostgroup")
+	flags.StringVar(&conf.ProxysqlUser, "proxysql-user", "admin", "ProxySQL admin user")
+	flags.StringVar(&conf.ProxysqlPassword, "proxysql-password", "admin", "ProxySQL admin password")
+	flags.BoolVar(&conf.ProxysqlCopyGrants, "proxysql-bootstrap-users", true, "Copy users from master")
+	flags.BoolVar(&conf.ProxysqlMultiplexing, "proxysql-multiplexing", false, "Multiplexing")
+	flags.BoolVar(&conf.ProxysqlBootstrap, "proxysql-bootstrap", false, "Bootstrap ProxySQL backend servers and hostgroup")
+	flags.BoolVar(&conf.ProxysqlBootstrapVariables, "proxysql-bootstrap-variables", false, "Bootstrap ProxySQL backend servers and hostgroup")
+	flags.BoolVar(&conf.ProxysqlBootstrapHG, "proxysql-bootstrap-hostgroups", false, "Bootstrap ProxySQL hostgroups")
+	flags.BoolVar(&conf.ProxysqlBootstrapQueryRules, "proxysql-bootstrap-query-rules", false, "Bootstrap Query rules into ProxySQL")
+	flags.StringVar(&conf.ProxysqlBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "proxysql binary location")
+}
+
+func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 	psql := proxysql.ProxySQL{
 		User:     proxy.User,
 		Password: proxy.Pass,
@@ -28,25 +95,38 @@ func connectProxysql(proxy *Proxy) (proxysql.ProxySQL, error) {
 	return psql, nil
 }
 
-func (cluster *Cluster) AddShardProxy(proxysql *Proxy, shardproxy *Proxy) {
+func (cluster *Cluster) AddShardProxy(proxysql *ProxySQLProxy, shardproxy *MariadbShardProxy) {
+	proxysql.AddShardProxy(shardproxy)
+}
+
+func (proxy *ProxySQLProxy) UseSSL() string {
+	UseSSL := "0"
+	if proxy.ClusterGroup.Configurator.HaveDBTag("ssl") {
+		UseSSL = "1"
+	}
+	return UseSSL
+}
+
+func (proxy *ProxySQLProxy) AddShardProxy(shardproxy *MariadbShardProxy) {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
 		return
 	}
-	psql, err := connectProxysql(proxysql)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.SetSugarState("ERR00051", "MON", "", err)
 		return
 	}
 	defer psql.Connection.Close()
-	psql.AddShardServer(misc.Unbracket(shardproxy.Host), shardproxy.Port)
-
+	psql.AddShardServer(misc.Unbracket(shardproxy.Host), shardproxy.Port, proxy.UseSSL())
 }
 
-func (cluster *Cluster) AddQueryRulesProxysql(proxy *Proxy, rules []proxysql.QueryRule) error {
+func (proxy *ProxySQLProxy) AddQueryRulesProxysql(rules []proxysql.QueryRule) error {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
 		return errors.New("No proxysql enable in config")
 	}
-	psql, err := connectProxysql(proxy)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.SetSugarState("ERR00051", "MON", "", err)
 		return err
@@ -56,12 +136,13 @@ func (cluster *Cluster) AddQueryRulesProxysql(proxy *Proxy, rules []proxysql.Que
 	return err
 }
 
-func (cluster *Cluster) initProxysql(proxy *Proxy) {
+func (proxy *ProxySQLProxy) Init() {
+	cluster := proxy.ClusterGroup
 	if !cluster.Conf.ProxysqlBootstrap || !cluster.Conf.ProxysqlOn {
 		return
 	}
 
-	psql, err := connectProxysql(proxy)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.SetSugarState("ERR00051", "MON", "", err)
 		return
@@ -71,34 +152,37 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	if cluster.Conf.ProxysqlBootstrapHG {
 		psql.AddHostgroups(cluster.Name)
 	}
+	//	proxy.Refresh()
+	//	return
 	for _, s := range cluster.Servers {
 
 		if s.State == stateUnconn || s.IsIgnored() {
-			err = psql.AddOfflineServer(misc.Unbracket(s.Host), s.Port)
+			cluster.LogPrintf(LvlErr, "ProxySQL add backend %s as offline (%s)", s.URL, err)
+			err = psql.AddOfflineServer(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "ProxySQL could not add server %s as offline (%s)", s.URL, err)
+				cluster.LogPrintf(LvlErr, "ProxySQL could not add backend %s as offline (%s)", s.URL, err)
 			}
 		} else {
 			//weight string, max_replication_lag string, max_connections string, compression string
 
 			if s.State == stateMaster {
-				err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port)
+				err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "ProxySQL could not add writer %s (%s) ", s.URL, err)
 				}
-				if cluster.Conf.ProxysqlMasterIsReader {
-					err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)))
+				if cluster.Configurator.HasProxyReadLeader() {
+					err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
 					}
 				}
-			} else {
-				err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)))
+			} else if s.State == stateSlave {
+				err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
 				}
 			}
-			if cluster.Conf.LogLevel > 2 {
+			if cluster.Conf.LogLevel > 2 || cluster.Conf.ProxysqlDebug {
 				cluster.LogPrintf(LvlWarn, "ProxySQL init backend  %s with state %s ", s.URL, s.State)
 			}
 
@@ -113,8 +197,29 @@ func (cluster *Cluster) initProxysql(proxy *Proxy) {
 	}
 }
 
-func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
-	psql, err := connectProxysql(proxy)
+func (cluster *Cluster) failoverProxysql(proxy *ProxySQLProxy) {
+	proxy.Failover()
+}
+
+func (proxy *ProxySQLProxy) CertificatesReload() error {
+	cluster := proxy.ClusterGroup
+	psql, err := proxy.Connect()
+	if err != nil {
+		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		return err
+	}
+	defer psql.Connection.Close()
+	err = psql.ReloadTLS()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Reload TLS failed %s", err)
+		return err
+	}
+	return nil
+}
+
+func (proxy *ProxySQLProxy) Failover() {
+	cluster := proxy.ClusterGroup
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.SetSugarState("ERR00051", "MON", "", err)
 		return
@@ -131,7 +236,7 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 			}
 		}
 		if s.IsMaster() && !s.IsRelay {
-			err = psql.ReplaceWriter(misc.Unbracket(s.Host), s.Port, misc.Unbracket(cluster.oldMaster.Host), cluster.oldMaster.Port, cluster.Conf.ProxysqlMasterIsReader)
+			err = psql.ReplaceWriter(misc.Unbracket(s.Host), s.Port, misc.Unbracket(cluster.oldMaster.Host), cluster.oldMaster.Port, cluster.Configurator.HasProxyReadLeader(), proxy.UseSSL())
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Failover ProxySQL could not set server %s Master (%s)", s.URL, err)
 			} else {
@@ -152,12 +257,13 @@ func (cluster *Cluster) failoverProxysql(proxy *Proxy) {
 
 }
 
-func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
+func (proxy *ProxySQLProxy) Refresh() error {
+	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxysqlOn == false {
 		return nil
 	}
 
-	psql, err := connectProxysql(proxy)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.SetSugarState("ERR00051", "MON", "", err)
 		cluster.sme.CopyOldStateFromUnknowServer(proxy.Name)
@@ -171,6 +277,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 	proxy.BackendsRead = nil
 
 	for _, s := range cluster.Servers {
+		isFoundBackendWrite := true
 		proxysqlHostgroup, proxysqlServerStatus, proxysqlServerConnections, proxysqlByteOut, proxysqlByteIn, proxysqlLatency, err := psql.GetStatsForHostWrite(misc.Unbracket(s.Host), s.Port)
 		var bke = Backend{
 			Host:           s.Host,
@@ -190,13 +297,13 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 		s.MxsServerStatus = proxysqlServerStatus
 
 		if err != nil {
-
-			s.MxsServerStatus = "REMOVED"
-			bke.PrxStatus = "REMOVED"
+			isFoundBackendWrite = false
 		} else {
 			proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
 		}
+		isFoundBackendRead := true
 		rproxysqlHostgroup, rproxysqlServerStatus, rproxysqlServerConnections, rproxysqlByteOut, rproxysqlByteIn, rproxysqlLatency, err := psql.GetStatsForHostRead(misc.Unbracket(s.Host), s.Port)
+
 		var bkeread = Backend{
 			Host:           s.Host,
 			Port:           s.Port,
@@ -211,6 +318,7 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 		}
 		if err == nil {
 			proxy.BackendsRead = append(proxy.BackendsRead, bkeread)
+<<<<<<< HEAD
 		}
 		// if ProxySQL and replication-manager states differ, resolve the conflict
 		if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave && !s.IsIgnored() {
@@ -228,25 +336,83 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 			err = psql.SetOffline(misc.Unbracket(s.Host), s.Port)
 			if err != nil {
 				cluster.SetSugarState("ERR00070", "PRX", proxy.Name, s.URL, err)
+=======
+		} else {
+			isFoundBackendRead = false
+		}
 
-			}
-			updated = true
+		// nothing should be done if no bootstrap
+		if cluster.Conf.ProxysqlBootstrap {
+>>>>>>> develop
 
-			// if the server comes back from a previously failed or standalone state, reintroduce it in
-			// the appropriate HostGroup
-		} else if s.PrevState == stateUnconn || s.PrevState == stateFailed {
-			if s.State == stateMaster {
-				cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting writer standalone server %s", s.URL)
-				err = psql.SetWriter(misc.Unbracket(s.Host), s.Port)
+			// if ProxySQL and replication-manager states differ, resolve the conflict
+			if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave && !s.IsIgnored() {
+				if cluster.Conf.ProxysqlDebug {
+					cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting online as reader rejoining server %s", s.URL)
+				}
+				err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
 				if err != nil {
+					cluster.sme.AddState("ERR00069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00069"], s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
+				}
+				updated = true
+			}
+
+			// if server is Standalone, set offline in ProxySQL
+			if s.State == stateUnconn && bke.PrxStatus == "ONLINE" {
+				cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting offline standalone server %s", s.URL)
+				err = psql.SetOffline(misc.Unbracket(s.Host), s.Port)
+				if err != nil {
+<<<<<<< HEAD
 					// NOTE: this one had AddState ERR00071 but threw the error from ERR00070, which is what I wanted to prevent
 					// with the SetSugarState
 					cluster.SetSugarState("ERR00071", "PRX", proxy.Name, s.URL, err)
+=======
+					cluster.sme.AddState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+
 				}
 				updated = true
-			} else if s.IsSlave && !s.IsIgnored() {
+
+				// if the server comes back from a previously failed or standalone state, reintroduce it in
+				// the appropriate HostGroup
+			} else if s.State == stateMaster && (s.PrevState == stateUnconn || s.PrevState == stateFailed || (len(proxy.BackendsWrite) == 0 || !isFoundBackendWrite)) {
+				cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting online failed server %s", s.URL)
+				if psql.ExistAsWriterOrOffline(misc.Unbracket(s.Host), s.Port) {
+					err = psql.SetOnline(misc.Unbracket(s.Host), s.Port)
+					if err != nil {
+						cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					}
+				} else {
+					//scenario restart with failed leader
+					err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
+>>>>>>> develop
+				}
+				updated = true
+
+			} else if s.State == stateMaster && !isFoundBackendRead && cluster.Configurator.HasProxyReadLeader() {
+				// Add  leader in reader group if not found and setup
+				if cluster.Conf.ProxysqlDebug {
+					cluster.LogPrintf(LvlInfo, "Monitor ProxySQL add leader in reader group in %s", s.URL)
+				}
+				err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
+				}
+				updated = true
+			} else if s.State == stateMaster && isFoundBackendRead && !cluster.Configurator.HasProxyReadLeader() {
+				// Drop the leader in reader group if not found and setup
+				if cluster.Conf.ProxysqlDebug {
+					cluster.LogPrintf(LvlInfo, "Monitor ProxySQL Drop the leader in reader group from %s", s.URL)
+				}
+				err = psql.DropReader(misc.Unbracket(s.Host), s.Port)
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "ProxySQL could not drop reader in %s (%s)", s.URL, err)
+				}
+				updated = true
+			} else if s.IsSlave && !s.IsIgnored() && (s.PrevState == stateUnconn || s.PrevState == stateFailed) {
 				err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
-				cluster.LogPrintf(LvlDbg, "Monitor ProxySQL setting reader standalone server %s", s.URL)
+				if cluster.Conf.ProxysqlDebug {
+					cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting reader standalone server %s", s.URL)
+				}
 				if err != nil {
 					cluster.SetSugarState("ERR00072", "PRX", proxy.Name, s.URL, err)
 				}
@@ -326,12 +492,25 @@ func (cluster *Cluster) refreshProxysql(proxy *Proxy) error {
 	return nil
 }
 
-func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, s *ServerMonitor) {
+func (cluster *Cluster) setMaintenanceProxysql(proxy *ProxySQLProxy, s *ServerMonitor) {
+	proxy.SetMaintenance(s)
+}
+
+func (proxy *ProxySQLProxy) BackendsStateChange() {
+	proxy.Refresh()
+}
+
+func (proxy *ProxySQLProxy) SetMaintenance(s *ServerMonitor) {
+	cluster := proxy.ClusterGroup
+	// TODO ? check if needed
+	if cluster.GetMaster() != nil {
+		return
+	}
 	if cluster.Conf.ProxysqlOn == false {
 		return
 	}
 
-	psql, err := connectProxysql(proxy)
+	psql, err := proxy.Connect()
 	if err != nil {
 		cluster.SetSugarState("ERR00051", "MON", "", err)
 		return
@@ -344,7 +523,7 @@ func (cluster *Cluster) setMaintenanceProxysql(proxy *Proxy, s *ServerMonitor) {
 			cluster.LogPrintf(LvlErr, "ProxySQL could not set %s:%s as offline_soft (%s)", s.Host, s.Port, err)
 		}
 	} else {
-		err = psql.SetOnline(misc.Unbracket(s.Host), s.Port)
+		err = psql.SetOnlineSoft(misc.Unbracket(s.Host), s.Port)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "ProxySQL could not set %s:%s as online (%s)", s.Host, s.Port, err)
 		}

@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -101,12 +101,12 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 	return agents, nil
 }
 
-func (cluster *Cluster) OpenSVCCreateMaps() error {
+func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		return errors.New("No support of Maps in Collector API")
 	}
 	svc := cluster.OpenSVCConnect()
-	err := svc.CreateSecretV2(cluster.Name, "env")
+	err := svc.CreateSecretV2(cluster.Name, "env", agent)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can not create secret: %s ", err)
 	}
@@ -114,11 +114,11 @@ func (cluster *Cluster) OpenSVCCreateMaps() error {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can not add key to secret: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
 	}
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_SERVER_PASSWORD", cluster.GetDbPass())
+	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Can not add key to secret: %s %s ", "MYSQL_SERVER_PASSWORD", err)
+		cluster.LogPrintf(LvlErr, "Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
 	}
-	err = svc.CreateConfigV2(cluster.Name, "env")
+	err = svc.CreateConfigV2(cluster.Name, "env", agent)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can not create config: %s ", err)
 	}
@@ -392,4 +392,12 @@ info = 50
 `
 	}
 	return vm
+}
+
+func (cluster *Cluster) OpenSVCUnprovisionSecret() {
+	opensvc := cluster.OpenSVCConnect()
+	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
+		opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/sec/env", "")
+		opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/cfg/env", "")
+	}
 }

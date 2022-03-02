@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -65,14 +65,9 @@ type StateMachine struct {
 	CurState               *Map
 	OldState               *Map
 	discovered             bool
-	lasttime               int64
-	Firsttime              int64
-	Uptime                 int64
-	UptimeFailable         int64
-	UptimeSemisync         int64
+	sla                    Sla
 	lastState              int64
 	heartbeats             int64
-	avgReplicationDelay    float32
 	inFailover             bool
 	inSchemaMonitor        bool
 	SchemaMonitorStartTime int64
@@ -88,22 +83,40 @@ type Sla struct {
 	UptimeSemisync int64 `json:"uptimeSemisync"`
 }
 
+func (sla *Sla) Init() {
+	sla.Uptime = 0
+	sla.UptimeFailable = 0
+	sla.UptimeSemisync = 0
+	sla.Lasttime = time.Now().Unix()
+	sla.Firsttime = sla.Lasttime
+}
+
+func (sla *Sla) GetUptime() float64 {
+	return float64(100 * float64(sla.Uptime) / float64(sla.Lasttime-sla.Firsttime))
+}
+
+func (sla *Sla) GetUptimeSemiSync() float64 {
+	return float64(100 * float64(sla.UptimeSemisync) / float64(sla.Lasttime-sla.Firsttime))
+}
+
+func (sla *Sla) GetUptimeFailable() float64 {
+	return float64(100 * float64(sla.UptimeFailable) / float64(sla.Lasttime-sla.Firsttime))
+}
+
+func (sla *Sla) Format(f float64) string {
+	up := strconv.FormatFloat(f, 'f', 5, 64)
+	if up == "100.00000" {
+		up = "99.99999"
+	}
+	return up
+}
+
 func (SM *StateMachine) GetSla() Sla {
-	var mySla Sla
-	mySla.Firsttime = SM.Firsttime
-	mySla.Lasttime = SM.lasttime
-	mySla.Uptime = SM.Uptime
-	mySla.UptimeFailable = SM.UptimeFailable
-	mySla.UptimeSemisync = SM.UptimeSemisync
-	return mySla
+	return SM.sla
 }
 
 func (SM *StateMachine) SetSla(mySla Sla) {
-	SM.Firsttime = mySla.Firsttime
-	SM.lasttime = mySla.Lasttime
-	SM.Uptime = mySla.Uptime
-	SM.UptimeFailable = mySla.UptimeFailable
-	SM.UptimeSemisync = mySla.UptimeSemisync
+	SM.sla = mySla
 }
 
 func (SM *StateMachine) Init() {
@@ -111,11 +124,7 @@ func (SM *StateMachine) Init() {
 	SM.CurState = NewMap()
 	SM.OldState = NewMap()
 	SM.discovered = false
-	SM.lasttime = time.Now().Unix()
-	SM.Firsttime = SM.lasttime
-	SM.Uptime = 0
-	SM.UptimeFailable = 0
-	SM.UptimeSemisync = 0
+	SM.sla.Init()
 	SM.lastState = 0
 	SM.heartbeats = 0
 }
@@ -188,36 +197,18 @@ func (SM *StateMachine) GetHeartbeats() int64 {
 }
 
 func (SM *StateMachine) GetUptime() string {
-	var up = strconv.FormatFloat(float64(100*float64(SM.Uptime)/float64(SM.lasttime-SM.Firsttime)), 'f', 5, 64)
-	//fmt.Printf("INFO : Uptime %f %f ", float64(SM.Uptime), float64(time.Now().Unix()-SM.Firsttime))
-	if up == "100.00000" {
-		up = "99.99999"
-	}
-	return up
+	return SM.sla.Format(SM.sla.GetUptime())
 }
 func (SM *StateMachine) GetUptimeSemiSync() string {
-
-	var up = strconv.FormatFloat(float64(100*float64(SM.UptimeSemisync)/float64(SM.lasttime-SM.Firsttime)), 'f', 5, 64)
-	if up == "100.00000" {
-		up = "99.99999"
-	}
-	return up
+	return SM.sla.Format(SM.sla.GetUptimeSemiSync())
 }
 
 func (SM *StateMachine) ResetUptime() {
-	SM.lasttime = time.Now().Unix()
-	SM.Firsttime = SM.lasttime
-	SM.Uptime = 0
-	SM.UptimeFailable = 0
-	SM.UptimeSemisync = 0
+	SM.sla.Init()
 }
 
 func (SM *StateMachine) GetUptimeFailable() string {
-	var up = strconv.FormatFloat(float64(100*float64(SM.UptimeFailable)/float64(SM.lasttime-SM.Firsttime)), 'f', 5, 64)
-	if up == "100.00000" {
-		up = "99.99999"
-	}
-	return up
+	return SM.sla.Format(SM.sla.GetUptimeFailable())
 }
 
 func (SM *StateMachine) IsFailable() bool {
@@ -235,30 +226,28 @@ func (SM *StateMachine) IsFailable() bool {
 
 }
 
-func (SM *StateMachine) SetMasterUpAndSync(IsSemiSynced bool, IsNotDelay bool) {
-	var timenow int64
-	timenow = time.Now().Unix()
-	if IsSemiSynced == true && SM.IsFailable() == true {
-		SM.UptimeSemisync = SM.UptimeSemisync + (timenow - SM.lasttime)
+func (SM *StateMachine) SetMasterUpAndSync(IsValidMaster bool, IsSemiSynced bool, IsNotDelay bool) {
+	timenow := time.Now().Unix()
+	if IsSemiSynced {
+		SM.sla.UptimeSemisync = SM.sla.UptimeSemisync + (timenow - SM.sla.Lasttime)
 	}
-	if IsNotDelay == true && SM.IsFailable() == true {
-		SM.UptimeFailable = SM.UptimeFailable + (timenow - SM.lasttime)
+	if IsNotDelay {
+		SM.sla.UptimeFailable = SM.sla.UptimeFailable + (timenow - SM.sla.Lasttime)
 	}
-	if SM.IsFailable() == true {
-		SM.Uptime = SM.Uptime + (timenow - SM.lasttime)
+	if IsValidMaster {
+		SM.sla.Uptime = SM.sla.Uptime + (timenow - SM.sla.Lasttime)
 	}
-	SM.lasttime = timenow
+	SM.sla.Lasttime = timenow
 	SM.heartbeats = SM.heartbeats + 1
 	//fmt.Printf("INFO : is failable %b IsSemiSynced %b  IsNotDelay %b Uptime %d UptimeFailable %d UptimeSemisync %d\n",SM.IsFailable(),IsSemiSynced ,IsNotDelay, SM.Uptime, SM.UptimeFailable ,SM.UptimeSemisync)
 }
 
 func (SM *StateMachine) SetMasterUpAndSyncRestart() {
-	var timenow int64
-	timenow = time.Now().Unix()
-	SM.UptimeSemisync = SM.UptimeSemisync + (timenow - SM.lasttime)
-	SM.UptimeFailable = SM.UptimeFailable + (timenow - SM.lasttime)
-	SM.Uptime = SM.Uptime + (timenow - SM.lasttime)
-	SM.lasttime = timenow
+	timenow := time.Now().Unix()
+	SM.sla.UptimeSemisync = SM.sla.UptimeSemisync + (timenow - SM.sla.Lasttime)
+	SM.sla.UptimeFailable = SM.sla.UptimeFailable + (timenow - SM.sla.Lasttime)
+	SM.sla.Uptime = SM.sla.Uptime + (timenow - SM.sla.Lasttime)
+	SM.sla.Lasttime = timenow
 }
 
 // Clear copies the current map to argument map and clears it
@@ -296,30 +285,50 @@ func (SM *StateMachine) IsDiscovered() bool {
 
 func (SM *StateMachine) GetStates() []string {
 	var log []string
-	SM.Lock()
+
 	//every thing in  OldState that can't be found in curstate
-	for key2, value2 := range *SM.OldState {
-		if SM.CurState.Search(key2) == false {
-			//log = append(log, fmt.Sprintf("%-5s %s HAS BEEN FIXED, %s", value2.ErrType, key2, value2.ErrDesc))
-			log = append(log, fmt.Sprintf("RESOLV %s : %s", key2, value2.ErrDesc))
-		}
+	for key2, value2 := range SM.GetLastResolvedStates() {
+		log = append(log, fmt.Sprintf("RESOLV %s : %s", key2, value2.ErrDesc))
 	}
 
-	for key, value := range *SM.CurState {
-		if SM.OldState.Search(key) == false {
-			//log = append(log, fmt.Sprintf("%-5s %s %s", value.ErrType, key, value.ErrDesc))
-			log = append(log, fmt.Sprintf("OPENED %s : %s", key, value.ErrDesc))
+	for key, value := range SM.GetLastOpenedStates() {
+		log = append(log, fmt.Sprintf("OPENED %s : %s", key, value.ErrDesc))
+	}
+
+	return log
+}
+
+func (SM *StateMachine) GetLastResolvedStates() map[string]State {
+	resolved := make(map[string]State)
+	SM.Lock()
+	//every thing in  OldState that can't be found in curstate
+	for key, state := range *SM.OldState {
+		if !SM.CurState.Search(key) {
+			resolved[key] = state
 		}
 	}
 	SM.Unlock()
-	return log
+	return resolved
+}
+
+func (SM *StateMachine) GetLastOpenedStates() map[string]State {
+	opened := make(map[string]State)
+	SM.Lock()
+	//every thing in  OldState that can't be found in curstate
+	for key, state := range *SM.CurState {
+		if !SM.OldState.Search(key) {
+			opened[key] = state
+		}
+	}
+	SM.Unlock()
+	return opened
 }
 
 func (SM *StateMachine) GetResolvedStates() []State {
 	var log []State
 	SM.Lock()
 	for key, state := range *SM.OldState {
-		if SM.CurState.Search(key) == false {
+		if !SM.CurState.Search(key) {
 			log = append(log, state)
 		}
 	}

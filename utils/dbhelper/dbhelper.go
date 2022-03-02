@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -24,6 +24,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/percona/go-mysql/query"
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -90,12 +91,12 @@ func (a PFSQuerySorter) Less(i, j int) bool {
 	return l > r
 }
 
-type TableSizeSorter []Table
+type TableSizeSorter []v3.Table
 
 func (a TableSizeSorter) Len() int      { return len(a) }
 func (a TableSizeSorter) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a TableSizeSorter) Less(i, j int) bool {
-	return a[i].Data_length+a[i].Index_length > a[j].Data_length+a[j].Index_length
+	return a[i].DataLength+a[i].IndexLength > a[j].DataLength+a[j].IndexLength
 }
 
 type Disk struct {
@@ -106,6 +107,7 @@ type Disk struct {
 	Available int32
 }
 
+/* replaced by v3.Table
 type Table struct {
 	Table_schema   string `json:"tableSchema"`
 	Table_name     string `json:"tableName"`
@@ -117,6 +119,7 @@ type Table struct {
 	Table_clusters string `json:"tableClusters"`
 	Table_sync     string `json:"tableSync"`
 }
+*/
 
 type Grant struct {
 	User     string `json:"user"`
@@ -716,7 +719,11 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 	splitip := strings.Split(ip, ".")
 
 	iprange1 := splitip[0] + ".%.%.%"
+	iprange4 := splitip[0] + ".%"
+
 	iprange2 := splitip[0] + "." + splitip[1] + ".%.%"
+	iprange5 := splitip[0] + "." + splitip[1] + ".%"
+
 	iprange3 := splitip[0] + "." + splitip[1] + "." + splitip[2] + ".%"
 
 	if myver.IsPPostgreSQL() {
@@ -728,8 +735,8 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 		}
 
 	} else {
-		stmt := "SELECT COALESCE(MAX(Select_priv),'N') as Select_priv, COALESCE(MAX(Process_priv),'N') as Process_priv, COALESCE(MAX(Super_priv),'N') as Super_priv, COALESCE(MAX(Repl_slave_priv),'N') as Repl_slave_priv, COALESCE(MAX(Repl_client_priv),'N') as Repl_client_priv, COALESCE(MAX(Reload_priv),'N') as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?)"
-		row := db.QueryRowx(stmt, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3)
+		stmt := "SELECT COALESCE(MAX(Select_priv),'N') as Select_priv, COALESCE(MAX(Process_priv),'N') as Process_priv, COALESCE(MAX(Super_priv),'N') as Super_priv, COALESCE(MAX(Repl_slave_priv),'N') as Repl_slave_priv, COALESCE(MAX(Repl_client_priv),'N') as Repl_client_priv, COALESCE(MAX(Reload_priv),'N') as Reload_priv FROM mysql.user WHERE user = ? AND host IN(?,?,?,?,?,?,?,?,?,?,?)"
+		row := db.QueryRowx(stmt, user, host, ip, "%", ip+"/255.0.0.0", ip+"/255.255.0.0", ip+"/255.255.255.0", iprange1, iprange2, iprange3, iprange4, iprange5)
 		err = row.StructScan(&priv)
 		if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
 			return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
@@ -1456,15 +1463,35 @@ func DisablePFSQueries(db *sqlx.DB) (string, error) {
 	return query, err
 }
 
+func GetSampleQueryFromPFS(db *sqlx.DB, Query PFSQuery) (string, error) {
+	query := "SELECT COALESCE( B.SQL_TEXT,'')  as query FROM performance_schema.events_statements_history_long B WHERE B.DIGEST =''" + Query.Digest + "'"
+	rows, err := db.Queryx(query)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var res string
+		err := rows.Scan(&res)
+		if err != nil {
+			return "", err
+		}
+		return res, nil
+	}
+	return "", err
+}
+
 func GetQueries(db *sqlx.DB) (map[string]PFSQuery, string, error) {
 
 	vars := make(map[string]PFSQuery)
 	query := "set session group_concat_max_len=2048"
 	db.Exec(query)
+	/*	COALESCE((SELECT B.SQL_TEXT FROM performance_schema.events_statements_history_long B WHERE
+		A.DIGEST = B.DIGEST LIMIT 1 ),'')  as query, */
+	// to expensive FULL SCAN to extact during explain
 	query = `SELECT
 	A.digest as digest,
-	COALESCE((SELECT B.SQL_TEXT FROM performance_schema.events_statements_history_long B WHERE
-	 A.DIGEST = B.DIGEST LIMIT 1 ),'')  as query,
+	'' as query,
 	A.digest_text as digest_text,
 	A.LAST_SEEN as last_seen,
 	COALESCE(A.SCHEMA_NAME,'') as schema_name,
@@ -1611,11 +1638,22 @@ func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 	return vars, query, err
 }
 
-func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, string, error) {
-	vars := make(map[string]Table)
-	var tblList []Table
+func GetNoBlockOnMedataLock(db *sqlx.DB, myver *MySQLVersion) string {
+	if myver.IsPPostgreSQL() {
+		return ""
+	}
+	noBlockOnMedataLock := "/*replication-manager*/ "
+	if myver.IsMariaDB() && ((myver.Major == 10 && myver.Minor > 0) || myver.Major > 10) {
+		noBlockOnMedataLock += "SET STATEMENT LOCK_WAIT_TIMEOUT=0 FOR "
+	}
+	return noBlockOnMedataLock
+}
+func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Table, string, error) {
+	vars := make(map[string]v3.Table)
+	var tblList []v3.Table
+
 	logs := ""
-	query := "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')"
+	query := GetNoBlockOnMedataLock(db, myver) + "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')"
 	if myver.IsPPostgreSQL() {
 		query = `SELECT SCHEMA_NAME AS "SCHEMA_NAME" FROM information_schema.schemata  WHERE SCHEMA_NAME not in ('information_schema','pg_catalog')`
 	}
@@ -1625,13 +1663,14 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 	}
 	defer databases.Close()
 	logs += query
+
 	for databases.Next() {
 		var schema string
 		err = databases.Scan(&schema)
 		if err != nil {
 			return vars, tblList, query, err
 		}
-		query := "SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name, COALESCE(a.ENGINE,'') as Engine,a.TABLE_ROWS as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length , 0 as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' AND  a.TABLE_SCHEMA='" + schema + "'"
+		query := GetNoBlockOnMedataLock(db, myver) + "SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name, COALESCE(a.ENGINE,'') as Engine,a.TABLE_ROWS as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length , 0 as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' AND  a.TABLE_SCHEMA='" + schema + "'"
 		if myver.IsPPostgreSQL() {
 			query = `SELECT a.schemaname as "Table_schema" ,  a.tablename as "Table_name" ,'postgres' as "Engine",COALESCE(b.n_live_tup,0) as "Table_rows" ,0 as "Data_length",0 as "Index_length" , 0 as "Table_crc"  FROM pg_catalog.pg_tables  a LEFT JOIN pg_catalog.pg_stat_user_tables b ON (a.schemaname=b.schemaname AND a.tablename=b.relname )  WHERE  a.schemaname='` + schema + `'`
 		}
@@ -1646,9 +1685,9 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 		defer rows.Close()
 		crc64Table := crc64.MakeTable(0xC96C5795D7870F42)
 		for rows.Next() {
-			var v Table
+			var v v3.Table
 
-			err = rows.Scan(&v.Table_schema, &v.Table_name, &v.Engine, &v.Table_rows, &v.Data_length, &v.Index_length, &v.Table_crc)
+			err = rows.Scan(&v.TableSchema, &v.TableName, &v.Engine, &v.TableRows, &v.DataLength, &v.IndexLength, &v.TableCrc)
 			if err != nil {
 				return vars, tblList, logs, err
 			}
@@ -1657,9 +1696,9 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 				err = db.QueryRowx(query).Scan(&crcTable)
 			*/
 
-			query := "SHOW CREATE TABLE `" + schema + "`.`" + v.Table_name + "`"
+			query := GetNoBlockOnMedataLock(db, myver) + "SHOW CREATE TABLE `" + schema + "`.`" + v.TableName + "`"
 			if myver.IsPPostgreSQL() {
-				query = "SELECT 'CREATE TABLE `" + schema + "`.`" + v.Table_name + "` (' || E'\n'|| '' || string_agg(column_list.column_expr, ', ' || E'\n' || '') ||   '' || E'\n' || ') ENGINE=postgress;' FROM (   SELECT '    `' || column_name || '` ' || data_type ||   coalesce('(' || character_maximum_length || ')', '') ||   case when is_nullable = 'YES' then '' else ' NOT NULL' end as column_expr  FROM information_schema.columns  WHERE table_schema = '" + schema + "' AND table_name = '" + v.Table_name + "' ORDER BY ordinal_position) column_list"
+				query = "SELECT 'CREATE TABLE `" + schema + "`.`" + v.TableName + "` (' || E'\n'|| '' || string_agg(column_list.column_expr, ', ' || E'\n' || '') ||   '' || E'\n' || ') ENGINE=postgress;' FROM (   SELECT '    `' || column_name || '` ' || data_type ||   coalesce('(' || character_maximum_length || ')', '') ||   case when is_nullable = 'YES' then '' else ' NOT NULL' end as column_expr  FROM information_schema.columns  WHERE table_schema = '" + schema + "' AND table_name = '" + v.TableName + "' ORDER BY ordinal_position) column_list"
 			}
 			logs += "\n" + query
 			var tbl, ddl string
@@ -1669,10 +1708,10 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]Table, []Table, str
 				pos := strings.Index(ddl, "ENGINE=")
 				ddl = ddl[12:pos]
 				crc64Int := crc64.Checksum([]byte(ddl), crc64Table)
-				v.Table_crc = crc64Int
+				v.TableCrc = crc64Int
 			}
 			tblList = append(tblList, v)
-			vars[v.Table_schema+"."+v.Table_name] = v
+			vars[v.TableSchema+"."+v.TableName] = v
 		}
 		rows.Close()
 	}
@@ -1769,9 +1808,14 @@ func GetVariableByName(db *sqlx.DB, name string, myver *MySQLVersion) (string, s
 	return value, query, nil
 }
 
-func FlushLogs(db *sqlx.DB) (string, error) {
+func FlushBinaryLogsLocal(db *sqlx.DB) (string, error) {
 	_, err := db.Exec("FLUSH LOCAL BINARY LOGS")
 	return "FLUSH LOCAL BINARY LOGS", err
+}
+
+func FlushBinaryLogs(db *sqlx.DB) (string, error) {
+	_, err := db.Exec("FLUSH  BINARY LOGS")
+	return "FLUSH BINARY LOGS", err
 }
 
 func FlushTables(db *sqlx.DB) (string, error) {

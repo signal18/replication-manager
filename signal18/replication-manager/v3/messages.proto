@@ -1,0 +1,325 @@
+syntax = "proto3";
+
+package signal18.replication_manager.v3;
+
+option go_package = "github.com/signal18/replication-manager;repmanv3";
+
+message ErrorInfo {
+  string reason = 1;
+  ErrorResource resource = 2;
+}
+
+message ErrorResource {
+  string field = 1;
+  string contents = 2;
+}
+
+message Cluster {
+  string name = 1;
+  string clusterShardingName = 2;
+}
+
+message ClusterSetting {
+  Cluster cluster = 1;
+  enum Action {
+    UNSPECIFIED = 0;
+    DISCOVER = 1;
+    APPLY_DYNAMIC_CONFIG = 2;
+    RELOAD = 3;
+    SET = 4;
+    SWITCH = 5;
+    
+    ADD_DB_TAG = 10;
+    DROP_DB_TAG = 11;
+    ADD_PROXY_TAG = 12;
+    DROP_PROXY_TAG = 13;
+  }
+  Action action = 3;
+  string tag_value = 4;
+  message Setting {
+    enum SettingName {
+      UNSPECIFIED = 0;
+      BACKUP_BINLOGS_KEEP = 1;
+      BACKUP_KEEP_DAILY = 2;
+      BACKUP_KEEP_HOURLY = 3;
+      BACKUP_KEEP_MONTHLY = 4;
+      BACKUP_KEEP_WEEKLY = 5;
+      BACKUP_KEEP_YEARLY = 6;
+      BACKUP_LOGICAL_TYPE = 7;
+      BACKUP_PHYSICAL_TYPE = 8;
+      DB_SERVERS_CREDENTIAL = 9;
+      DB_SERVERS_HOSTS = 10;
+      FAILOVER_LIMIT = 11;
+      FAILOVER_MAX_SLAVE_DELAY = 12;
+      MAXSCALE_SERVERS_CREDENTIAL = 13;
+      MONITORING_ADDRESS = 14;
+      PROV_DB_AGENTS = 15;
+      PROV_DB_CPU_CORES = 16;
+      PROV_DB_DISK_DEVICE = 17;
+      PROV_DB_DISK_FS = 18;
+      PROV_DB_DISK_IOPS = 19;
+      PROV_DB_DISK_POOL = 20;
+      PROV_DB_DISK_SIZE = 21;
+      PROV_DB_DISK_TYPE = 22;
+      PROV_DB_EXPIRE_LOG_DAYS = 23;
+      PROV_DB_IMAGE = 24;
+      PROV_DB_MAX_CONNECTIONS = 25;
+      PROV_DB_MEMORY = 26;
+      PROV_DB_SERVICE_TYPE = 27;
+      PROV_NET_CNI_CLUSTER = 28;
+      PROV_ORCHESTRATOR_CLUSTER = 29;
+      PROV_ORCHESTRATOR = 30;
+      PROV_PROXY_AGENTS = 31;
+      PROV_PROXY_CPU_CORES = 32;
+      PROV_PROXY_DISK_DEVICE = 33;
+      PROV_PROXY_DISK_FS = 34;
+      PROV_PROXY_DISK_POOL = 35;
+      PROV_PROXY_DISK_SIZE = 36;
+      PROV_PROXY_DISK_TYPE = 37;
+      PROV_PROXY_DOCKER_HAPROXY_IMG = 38;
+      PROV_PROXY_DOCKER_MAXSCALE_IMG = 39;
+      PROV_PROXY_DOCKER_PROXYSQL_IMG = 47;
+      PROV_PROXY_DOCKER_SHARDPROXY_IMG = 48;
+      PROV_PROXY_MEMORY = 49;
+      PROV_PROXY_SERVICE_TYPE = 50;
+      PROV_SERVICE_PLAN = 51;
+      PROV_SPHINX_IMG = 52;
+      PROXY_SERVERS_BACKEND_MAX_CONNECTIONS = 53;
+      PROXY_SERVERS_BACKEND_MAX_REPLICATION_LAG = 54;
+      PROXYSQL_SERVERS_CREDENTIAL = 55;
+      REPLICATION_CREDENTIAL = 56;
+      SCHEDULER_DB_SERVERS_LOGICAL_BACKUP_CRON = 57;
+      SCHEDULER_DB_SERVERS_LOGS_CRON = 58;
+      SCHEDULER_DB_SERVERS_LOGS_TABLE_ROTATE_CRON = 59;
+      SCHEDULER_DB_SERVERS_OPTIMIZE_CRON = 60;
+      SCHEDULER_DB_SERVERS_PHYSICAL_BACKUP_CRON = 61;
+      SCHEDULER_JOBS_SSH_CRON = 62;
+      SCHEDULER_ROLLING_REPROV_CRON = 63;
+      SCHEDULER_ROLLING_RESTART_CRON = 64;
+      SCHEDULER_SLA_ROTATE_CRON = 65;
+      SHARDPROXY_SERVERS_CREDENTIAL = 66;
+      SWITCHOVER_WAIT_ROUTE_CHANGE = 67;
+    }
+    SettingName name = 1;
+    string value = 2;
+  }
+  Setting setting = 5;
+  message Switch {
+    enum SwitchName {
+      UNSPECIFIED = 0;
+      AUTOREJOIN_BACKUP_BINLOG = 1;
+      AUTOREJOIN_FLASHBACK_ON_SYNC = 2;
+      AUTOREJOIN_FLASHBACK_ON_UNSYNC = 3; //?????
+      AUTOREJOIN_FLASHBACK = 4;
+      AUTOREJOIN_LOGICAL_BACKUP = 5; 
+      AUTOREJOIN_MYSQLDUMP = 6;
+      AUTOREJOIN_PHYSICAL_BACKUP = 7;
+      AUTOREJOIN_SLAVE_POSITIONAL_HEARTBEAT = 8;
+      AUTOREJOIN_ZFS_FLASHBACK = 9;
+      AUTOREJOIN = 10;
+      AUTOSEED = 11;
+      BACKUP_BINLOGS = 12;
+      BACKUP_RESTIC = 13;
+      CHECK_REPLICATION_FILTERS = 14;
+      CHECK_REPLICATION_STATE = 15;
+      DATABASE_HEARTBEAT = 16;
+      FAILOVER_AT_SYNC = 17;
+      FAILOVER_EVENT_SCHEDULER = 18;
+      FAILOVER_EVENT_STATUS = 19;
+      FAILOVER_MODE = 20;
+      FAILOVER_READONLY_STATE = 21;
+      FAILOVER_RESTART_UNSAFE = 22;
+      FORCE_SLAVE_NO_GTID_MODE = 23;
+      GRAPHITE_EMBEDDED = 24;
+      GRAPHITE_METRICS = 25;
+      MONITORING_CAPTURE = 26;
+      MONITORING_INNODB_STATUS = 27;
+      MONITORING_PAUSE = 28;
+      MONITORING_PROCESSLIST = 29;
+      MONITORING_QUERIES = 30;
+      MONITORING_SAVE_CONFIG = 31;
+      MONITORING_SCHEDULER = 32;
+      MONITORING_SCHEMA_CHANGE = 33;
+      MONITORING_VARIABLE_DIFF = 34;
+      PROV_DB_APPLY_DYNAMIC_CONFIG = 35;
+      PROV_DOCKER_DAEMON_PRIVATE = 36;
+      PROV_NET_CNI = 37;
+      PROXY_SERVERS_BACKEND_COMPRESSION = 38;
+      PROXY_SERVERS_READ_ON_MASTER = 39;
+      PROXYSQL_BOOTSTRAP_HOSTGROUPS = 40;
+      PROXYSQL_BOOTSTRAP_QUERY_RULES = 41;
+      PROXYSQL_BOOTSTRAP_SERVERS = 42;
+      PROXYSQL_BOOTSTRAP_USERS = 43;
+      PROXYSQL_BOOTSTRAP_VARIABLES = 44;
+      PROXYSQL_BOOTSTRAP = 45;
+      PROXYSQL_COPY_GRANTS = 46;
+      PROXYSQL = 47;
+      SCHEDULER_DB_SERVERS_LOGICAL_BACKUP = 48;
+      SCHEDULER_DB_SERVERS_LOGS_TABLE_ROTATE = 49;
+      SCHEDULER_DB_SERVERS_LOGS = 50;
+      SCHEDULER_DB_SERVERS_OPTIMIZE = 51;
+      SCHEDULER_DB_SERVERS_PHYSICAL_BACKUP = 52;
+      SCHEDULER_JOBS_SSH = 53;
+      SCHEDULER_ROLLING_REPROV = 54;
+      SCHEDULER_ROLLING_RESTART = 55;
+      SHARDPROXY_COPY_GRANTS = 56;
+      SWITCHOVER_AT_SYNC = 57;
+      TEST = 58;
+      VERBOSE = 59;
+    }
+    SwitchName name = 1;
+  }
+  Switch switch = 6;
+}
+
+message ClusterAction {
+  Cluster cluster = 1;
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ADD = 1;
+    ADDSERVER = 2;
+    CANCEL_ROLLING_REPROV = 3;
+    CANCEL_ROLLING_RESTART = 4;
+    CHECKSUM_ALL_TABLES = 5;
+    FAILOVER = 6;
+    MASTER_PHYSICAL_BACKUP = 7;
+    OPTIMIZE = 8;
+    RESET_FAILOVER_CONTROL = 10;
+    RESET_SLA = 11;
+    ROLLING = 12;
+    ROTATEKEYS = 13;
+    START_TRAFFIC = 14;
+    STOP_TRAFFIC = 15;
+    SWITCHOVER = 16;
+    SYSBENCH = 17;
+    WAITDATABASES = 18;
+    REPLICATION_BOOTSTRAP = 19;
+    REPLICATION_CLEANUP = 20;
+  }
+  Action action = 3;
+  message Server {
+    string host = 1;
+    uint64 port = 2;
+    enum Type {
+      TYPE_UNSPECIFIED = 0;
+      DATABASE = 1;
+      PROXY = 2;
+    }
+    enum Database {
+      DATABASE_UNSPECIFIED = 0;
+      MARIADB = 1;
+      PERCONA = 2;
+      MYSQL = 3;
+      POSTGRESQL = 4;
+    }
+    enum Proxy {
+      PROXY_UNSPECIFIED = 0;
+      MAXSCALE = 1;
+      PROXYSQL = 2;
+      SHARDPROXY = 3;
+      HAPROXY = 4;
+      MYPROXY = 5;
+      EXTPROXY = 6;
+      SPHINX = 7;
+    }
+    Type type = 3;
+    Database database = 4;
+    Proxy proxy = 5;
+  }
+  Server server = 4;
+  enum ReplicationTopology {
+    RT_UNSPECIFIED = 0;
+    MASTER_SLAVE = 1;
+    MASTER_SLAVE_NO_GTID = 2;
+    MULTI_MASTER = 3;
+    MULTI_TIER_SLAVE = 4;
+    MAXSCALE_BINLOG = 5;
+    MULTI_MASTER_RING = 6;
+    MULTI_MASTER_WSREP = 7;
+  }
+  ReplicationTopology topology = 5;
+}
+
+enum ServiceStatus {
+  SERVICESTATUS_UNSPECIFIED = 0;
+  RUNNING = 1;
+  STARTING = 2;
+  ERRORS = 3;
+}
+
+message StatusMessage {
+  ServiceStatus alive = 1;
+}
+
+message TopologyRetrieval {
+  Cluster cluster = 1;
+  enum Retrieval {
+    RETRIEVAL_UNSPECIFIED = 0;
+    ALERTS = 1;
+    CRASHES = 2;
+    LOGS = 3;
+    MASTER = 4;
+    PROXIES = 5;
+    SERVERS = 6;
+    SLAVES = 7;
+  }
+  Retrieval retrieve = 2;
+}
+
+message Certificate {
+  string client_certificate = 1;
+  string client_key = 2;
+  string authority = 3;
+}
+
+message Backup {
+  string id = 1;
+  string short_id = 2 [json_name="short_id"];
+  string time = 3;
+  string tree = 4;
+  repeated string paths = 5;
+  string hostname = 6;
+  string username = 7;
+  int64 uid = 8;
+  int64 gid = 9;
+}
+
+// message Cluster {
+//   string name = 1;
+//   string tenant = 2;
+//   string working_dir = 3;
+//   repeated Agent agents = 4;
+//   repeated Tag config_tags = 5;
+//   repeated Tag config_prx_tags = 6;
+// }
+
+// message Agent {
+//   string id = 1;
+//   string hostname = 2;
+//   uint64 cpu_cores = 3;
+//   uint64 cpu_freq = 4;
+//   uint64 mem_bytes = 5;
+//   uint64 mem_free_bytes = 6;
+//   string os_kernel = 7;
+//   string os_name = 8;
+//   string status = 9;
+//   string version = 10;
+// }
+
+message Tag {
+  uint64 id = 1;
+  string name = 2;
+  string category = 3;
+}
+
+message Table {
+  string table_schema = 1 [json_name="tableSchema"];
+	string table_name = 2 [json_name="tableName"];
+	string engine = 3 [json_name="engine"];
+	int64 table_rows = 4 [json_name="tableRows"];
+	int64 data_length = 5 [json_name="dataLength"];
+	int64 index_length = 6 [json_name="indexLength"];
+	uint64 table_crc = 7 [json_name="tableCrc"];
+	string table_clusters = 8 [json_name="tableClusters"];
+	string table_sync = 9 [json_name="tableSync"];
+}

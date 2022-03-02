@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -18,6 +18,7 @@ import (
 )
 
 // Crash will store informations on a crash based on the replication stream
+// swagger:response crash
 type Crash struct {
 	URL                         string
 	FailoverMasterLogFile       string
@@ -29,6 +30,8 @@ type Crash struct {
 	ElectedMasterURL            string
 }
 
+// Collection of Crash reports
+// swagger:response crashList
 type crashList []*Crash
 
 func (cluster *Cluster) newCrash(*Crash) (*Crash, error) {

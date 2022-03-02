@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Author: Stephane Varoqui  <svaroqui@gmail.com>
 // License: GNU General Public License, version 3. Redistribution/Reuse of this code is permitted under the GNU v3 license, as an additional term ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
@@ -32,6 +32,12 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-reprov", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedReprov)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-prov", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedProv)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-unprov", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedUnprov)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-start", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedStart)),
@@ -1044,6 +1050,52 @@ func (repman *ReplicationManager) handlerMuxServerUnprovision(w http.ResponseWri
 	}
 }
 
+// swagger:operation GET /api/clusters/{clusterName}/servers/{serverName}/is-master serverName-is-master
+//
+//
+// ---
+// parameters:
+// - name: clusterName
+//   in: path
+//   description: cluster to filter by
+//   required: true
+//   type: string
+// - name: serverName
+//   in: path
+//   description: server to filter by
+//   required: true
+//   type: string
+// produces:
+//  - text/plain
+// responses:
+//   '200':
+//     description: OK
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: 200 -Valid Master!
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '500':
+//     description: No cluster
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No cluster
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '503':
+//     description: Not a Valid Master
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: 503 -Not a Valid Master!
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+
 func (repman *ReplicationManager) handlerMuxServersIsMasterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1116,6 +1168,70 @@ func (repman *ReplicationManager) handlerMuxServerNeedReprov(w http.ResponseWrit
 			http.Error(w, "Encoding error", 503)
 		} else if proxy != nil {
 			if proxy.HasReprovCookie() {
+				w.Write([]byte("200 -Need reprov!"))
+				return
+			}
+			w.Write([]byte("503 -No reprov needed!"))
+			http.Error(w, "No reprov needed", 503)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerNeedProv(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil && node.IsDown() == false {
+			if node.HasProvisionCookie() {
+				w.Write([]byte("200 -Need restart!"))
+				return
+			}
+			w.Write([]byte("503 -No reprov needed!"))
+			http.Error(w, "Encoding error", 503)
+		} else if proxy != nil {
+			if proxy.HasProvisionCookie() {
+				w.Write([]byte("200 -Need reprov!"))
+				return
+			}
+			w.Write([]byte("503 -No reprov needed!"))
+			http.Error(w, "No reprov needed", 503)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerNeedUnprov(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil && node.IsDown() == false {
+			if node.HasUnprovisionCookie() {
+				w.Write([]byte("200 -Need restart!"))
+				return
+			}
+			w.Write([]byte("503 -No reprov needed!"))
+			http.Error(w, "Encoding error", 503)
+		} else if proxy != nil {
+			if proxy.HasUnprovisionCookie() {
 				w.Write([]byte("200 -Need reprov!"))
 				return
 			}
@@ -1273,6 +1389,52 @@ func (repman *ReplicationManager) handlerMuxServersPortIsMasterStatus(w http.Res
 	}
 }
 
+// swagger:operation GET /api/clusters/{clusterName}/servers/{serverName}/is-slave serverName-is-slave
+//
+//
+// ---
+// parameters:
+// - name: clusterName
+//   in: path
+//   description: cluster to filter by
+//   required: true
+//   type: string
+// - name: serverName
+//   in: path
+//   description: server to filter by
+//   required: true
+//   type: string
+// produces:
+//  - text/plain
+// responses:
+//   '200':
+//     description: OK
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: 200 -Valid Slave!
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '500':
+//     description: No cluster
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No cluster
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '503':
+//     description: Not a Valid Slave!
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: 503 -Not a Valid Slave!
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+
 func (repman *ReplicationManager) handlerMuxServersIsSlaveStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1353,7 +1515,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if repman.Conf.APISecureConfig {
+		if mycluster.Conf.APISecureConfig {
 			if !repman.IsValidClusterACL(r, mycluster) {
 				http.Error(w, "No valid ACL", 403)
 				return
@@ -1367,18 +1529,19 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
 				w.WriteHeader(404)
-				w.Write([]byte("404 Something went wrong - " + http.StatusText(404)))
+				w.Write([]byte("404 Something went wrong reading : " + string(node.Datadir+"/config.tar.gz") + " " + err.Error() + " - " + http.StatusText(404)))
 				return
 			}
 			w.Write(data)
 
 		} else if proxy != nil {
 			proxy.GetProxyConfig()
-			data, err := ioutil.ReadFile(string(proxy.Datadir + "/config.tar.gz"))
+			data, err := ioutil.ReadFile(string(proxy.GetDatadir() + "/config.tar.gz"))
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
 				w.WriteHeader(404)
-				w.Write([]byte("404 Something went wrong - " + http.StatusText(404)))
+				w.Write([]byte("404 Something went wrong reading : " + string(proxy.GetDatadir()+"/config.tar.gz") + " " + err.Error() + " - " + http.StatusText(404)))
+
 				return
 			}
 			w.Write(data)
@@ -1879,6 +2042,63 @@ func (repman *ReplicationManager) handlerMuxServerAllSlavesStatus(w http.Respons
 		return
 	}
 }
+
+// swagger:operation GET /api/clusters/{clusterName}/servers/{serverName}/master-status serverName-master-status
+//
+//
+// ---
+// parameters:
+// - name: clusterName
+//   in: path
+//   description: cluster to filter by
+//   required: true
+//   type: string
+// - name: serverName
+//   in: path
+//   description: server to filter by
+//   required: true
+//   type: string
+// produces:
+//  - text/plain
+// responses:
+//   '200':
+//     description: OK
+//   '403':
+//     description: No valid ACL
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No valid ACL
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '500':
+//     description: Encoding error
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: Encoding error
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '500':
+//     description: No cluster
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: No cluster
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
+//   '503':
+//     description: Not a Valid Server!
+//     schema:
+//       type: string
+//     examples:
+//       text/plain: 503 -Not a Valid Server!
+//     headers:
+//       Access-Control-Allow-Origin:
+//         type: string
 
 func (repman *ReplicationManager) handlerMuxServerMasterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")

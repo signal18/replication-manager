@@ -13,13 +13,14 @@ db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-source-name = "source1"
 replication-credential = "root:mariadb"
-
+force-slave-readonly = false
 haproxy = true
 haproxy-write-port = 3303
 haproxy-read-port = 3302
 
 [cluster-haproxy-source2]
 title = "cluster-haproxy-source2"
+
 cluster-head = "cluster-haproxy-source1"
 db-servers-hosts = "127.0.0.1:3312,127.0.0.1:3313"
 db-servers-prefered-master = "127.0.0.1:3312"
@@ -27,6 +28,7 @@ db-servers-credential = "root:mariadb"
 db-servers-connect-timeout = 1
 replication-source-name = "source2"
 replication-credential = "root:mariadb"
+force-slave-readonly = false
 prov-db-domain = "2"
 
 

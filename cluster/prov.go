@@ -1,5 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
-// Copyright 2017 Signal 18 SARL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
@@ -34,7 +34,7 @@ func (cluster *Cluster) Bootstrap() error {
 		return err
 	}
 	if cluster.Conf.Test {
-		cluster.initProxies()
+		//cluster.initProxies()
 		err = cluster.WaitProxyEqualMaster()
 		if err != nil {
 			return err
@@ -63,7 +63,7 @@ func (cluster *Cluster) ProvisionServices() error {
 	os.Remove(path)
 	cluster.ResetCrashes()
 	for _, server := range cluster.Servers {
-		switch cluster.Conf.ProvOrchestrator {
+		switch cluster.GetOrchestrator()  {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCProvisionDatabaseService(server)
 		case config.ConstOrchestratorKubernetes:
@@ -72,11 +72,15 @@ func (cluster *Cluster) ProvisionServices() error {
 			go cluster.SlapOSProvisionDatabaseService(server)
 		case config.ConstOrchestratorLocalhost:
 			go cluster.LocalhostProvisionDatabaseService(server)
+		case config.ConstOrchestratorOnPremise:
+			go cluster.OnPremiseProvisionDatabaseService(server)
+
 		default:
-			cluster.sme.RemoveFailoverState()
-			return nil
+
 		}
+		cluster.ProvisionDatabaseScript(server)
 	}
+
 	for _, server := range cluster.Servers {
 		select {
 		case err := <-cluster.errorChan:
@@ -90,8 +94,9 @@ func (cluster *Cluster) ProvisionServices() error {
 			}
 		}
 	}
+
 	for _, prx := range cluster.Proxies {
-		switch cluster.Conf.ProvOrchestrator {
+		switch cluster.GetOrchestrator()  {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCProvisionProxyService(prx)
 		case config.ConstOrchestratorKubernetes:
@@ -100,18 +105,24 @@ func (cluster *Cluster) ProvisionServices() error {
 			go cluster.SlapOSProvisionProxyService(prx)
 		case config.ConstOrchestratorLocalhost:
 			go cluster.LocalhostProvisionProxyService(prx)
+		case config.ConstOrchestratorOnPremise:
+			go cluster.OnPremiseProvisionProxyService(prx)
 		default:
-			cluster.sme.RemoveFailoverState()
-			return nil
+
 		}
+		cluster.ProvisionProxyScript(prx)
 	}
-	for _, prx := range cluster.Proxies {
+	for _, pri := range cluster.Proxies {
+		prx, ok := pri.(*Proxy)
+		if !ok {
+			continue
+		}
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Provisionning proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.Name)
+				cluster.LogPrintf(LvlErr, "Provisionning proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
 			} else {
-				cluster.LogPrintf(LvlInfo, "Provisionning done for proxy %s", cluster.Name+"/svc/"+prx.Name)
+				cluster.LogPrintf(LvlInfo, "Provisionning done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
 				prx.SetProvisionCookie()
 			}
 		}
@@ -125,7 +136,7 @@ func (cluster *Cluster) ProvisionServices() error {
 
 func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 	cluster.sme.SetFailoverState()
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionDatabaseService(server)
 	case config.ConstOrchestratorKubernetes:
@@ -134,25 +145,28 @@ func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 		go cluster.SlapOSProvisionDatabaseService(server)
 	case config.ConstOrchestratorLocalhost:
 		go cluster.LocalhostProvisionDatabaseService(server)
+	case config.ConstOrchestratorOnPremise:
+		go cluster.OnPremiseProvisionDatabaseService(server)
 	default:
 		cluster.sme.RemoveFailoverState()
 		return nil
 	}
+	cluster.ProvisionDatabaseScript(server)
 	select {
 	case err := <-cluster.errorChan:
 		cluster.sme.RemoveFailoverState()
 		if err == nil {
 			server.SetProvisionCookie()
 		} else {
+			return err
 		}
-		return err
 	}
 
 	return nil
 }
 
-func (cluster *Cluster) InitProxyService(prx *Proxy) error {
-	switch cluster.Conf.ProvOrchestrator {
+func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionProxyService(prx)
 	case config.ConstOrchestratorKubernetes:
@@ -161,16 +175,20 @@ func (cluster *Cluster) InitProxyService(prx *Proxy) error {
 		go cluster.SlapOSProvisionProxyService(prx)
 	case config.ConstOrchestratorLocalhost:
 		go cluster.LocalhostProvisionProxyService(prx)
+	case config.ConstOrchestratorOnPremise:
+		go cluster.OnPremiseProvisionProxyService(prx)
 	default:
 		return nil
 	}
+	cluster.ProvisionProxyScript(prx)
 	select {
 	case err := <-cluster.errorChan:
 		cluster.sme.RemoveFailoverState()
 		if err == nil {
 			prx.SetProvisionCookie()
+		} else {
+			return err
 		}
-		return err
 	}
 	return nil
 }
@@ -179,7 +197,7 @@ func (cluster *Cluster) Unprovision() error {
 
 	cluster.sme.SetFailoverState()
 	for _, server := range cluster.Servers {
-		switch cluster.Conf.ProvOrchestrator {
+		switch cluster.GetOrchestrator()  {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCUnprovisionDatabaseService(server)
 		case config.ConstOrchestratorKubernetes:
@@ -188,10 +206,11 @@ func (cluster *Cluster) Unprovision() error {
 			go cluster.SlapOSUnprovisionDatabaseService(server)
 		case config.ConstOrchestratorLocalhost:
 			go cluster.LocalhostUnprovisionDatabaseService(server)
+		case config.ConstOrchestratorOnPremise:
+			go cluster.OnPremiseUnprovisionDatabaseService(server)
 		default:
-			cluster.sme.RemoveFailoverState()
-			return nil
 		}
+		cluster.UnprovisionDatabaseScript(server)
 	}
 	for _, server := range cluster.Servers {
 		select {
@@ -206,8 +225,18 @@ func (cluster *Cluster) Unprovision() error {
 			}
 		}
 	}
+	cluster.slaves = nil
+	cluster.master = nil
+	cluster.vmaster = nil
+	cluster.IsAllDbUp = false
+	cluster.sme.RemoveFailoverState()
+
 	for _, prx := range cluster.Proxies {
-		switch cluster.Conf.ProvOrchestrator {
+		/*	prx, ok := pri.(*Proxy)
+			if !ok {
+				continue
+			}*/
+		switch cluster.GetOrchestrator()  {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCUnprovisionProxyService(prx)
 		case config.ConstOrchestratorKubernetes:
@@ -216,36 +245,42 @@ func (cluster *Cluster) Unprovision() error {
 			go cluster.SlapOSUnprovisionProxyService(prx)
 		case config.ConstOrchestratorLocalhost:
 			go cluster.LocalhostUnprovisionProxyService(prx)
+		case config.ConstOrchestratorOnPremise:
+			go cluster.OnPremiseUnprovisionProxyService(prx)
 		default:
-			cluster.sme.RemoveFailoverState()
-			return nil
+
 		}
+		cluster.UnprovisionProxyScript(prx)
 	}
 	for _, prx := range cluster.Proxies {
+		/*	prx, ok := pri.(*Proxy)
+			if !ok {
+				cluster.LogPrintf(LvlErr, "Unprovision proxy continue ")
+				continue
+			}*/
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.Name)
+				cluster.LogPrintf(LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
 			} else {
-				cluster.LogPrintf(LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.Name)
+				cluster.LogPrintf(LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
 				prx.DelProvisionCookie()
 				prx.DelRestartCookie()
 				prx.DelReprovisionCookie()
 			}
 		}
 	}
+	switch cluster.GetOrchestrator()  {
+	case config.ConstOrchestratorOpenSVC:
+		cluster.OpenSVCUnprovisionSecret()
+	default:
+	}
 
-	cluster.slaves = nil
-	cluster.master = nil
-	cluster.vmaster = nil
-	cluster.IsAllDbUp = false
-	cluster.sme.UnDiscovered()
-	cluster.sme.RemoveFailoverState()
 	return nil
 }
 
-func (cluster *Cluster) UnprovisionProxyService(prx *Proxy) error {
-	switch cluster.Conf.ProvOrchestrator {
+func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCUnprovisionProxyService(prx)
 	case config.ConstOrchestratorKubernetes:
@@ -254,8 +289,11 @@ func (cluster *Cluster) UnprovisionProxyService(prx *Proxy) error {
 		go cluster.SlapOSUnprovisionProxyService(prx)
 	case config.ConstOrchestratorLocalhost:
 		go cluster.LocalhostUnprovisionProxyService(prx)
+	case config.ConstOrchestratorOnPremise:
+		go cluster.OnPremiseUnprovisionProxyService(prx)
 	default:
 	}
+	cluster.UnprovisionProxyScript(prx)
 	select {
 	case err := <-cluster.errorChan:
 		if err == nil {
@@ -270,16 +308,19 @@ func (cluster *Cluster) UnprovisionProxyService(prx *Proxy) error {
 
 func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error {
 	cluster.ResetCrashes()
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCUnprovisionDatabaseService(server)
 	case config.ConstOrchestratorKubernetes:
 		go cluster.K8SUnprovisionDatabaseService(server)
 	case config.ConstOrchestratorSlapOS:
 		go cluster.SlapOSUnprovisionDatabaseService(server)
+	case config.ConstOrchestratorOnPremise:
+		go cluster.OnPremiseUnprovisionDatabaseService(server)
 	default:
 		go cluster.LocalhostUnprovisionDatabaseService(server)
 	}
+	cluster.UnprovisionDatabaseScript(server)
 	select {
 
 	case err := <-cluster.errorChan:
@@ -287,8 +328,9 @@ func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error 
 			server.DelProvisionCookie()
 			server.DelReprovisionCookie()
 			server.DelRestartCookie()
+		} else {
+			return err
 		}
-		return err
 	}
 	return nil
 }
@@ -297,55 +339,77 @@ func (cluster *Cluster) RollingUpgrade() {
 }
 
 func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
+	cluster.LogPrintf(LvlInfo, "Stopping database service %s", cluster.Name+"/svc/"+server.URL)
+	var err error
 
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
-		return cluster.OpenSVCStopDatabaseService(server)
+		err = cluster.OpenSVCStopDatabaseService(server)
 	case config.ConstOrchestratorKubernetes:
-		cluster.K8SStopDatabaseService(server)
+		err = cluster.K8SStopDatabaseService(server)
 	case config.ConstOrchestratorSlapOS:
-		cluster.SlapOSStopDatabaseService(server)
+		err = cluster.SlapOSStopDatabaseService(server)
 	case config.ConstOrchestratorOnPremise:
-		cluster.OnPremiseStopDatabaseService(server)
+		err = cluster.OnPremiseStopDatabaseService(server)
 	case config.ConstOrchestratorLocalhost:
-		return cluster.LocalhostStopDatabaseService(server)
+		err = cluster.OnPremiseStopDatabaseService(server)
 	default:
 		return errors.New("No valid orchestrator")
 	}
-	server.DelRestartCookie()
-	return nil
+	cluster.StopDatabaseScript(server)
+	if err == nil {
+		server.DelRestartCookie()
+	}
+	return err
 }
 
-func (cluster *Cluster) StopProxyService(server *Proxy) error {
+func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
+	cluster.LogPrintf(LvlInfo, "Stopping Proxy service %s", cluster.Name+"/svc/"+server.GetName())
+	var err error
 
-	switch cluster.Conf.ProvOrchestrator {
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
-		return cluster.OpenSVCStopProxyService(server)
+		err = cluster.OpenSVCStopProxyService(server)
 	case config.ConstOrchestratorKubernetes:
-		cluster.K8SStopProxyService(server)
+		err = cluster.K8SStopProxyService(server)
 	case config.ConstOrchestratorSlapOS:
-		cluster.SlapOSStopProxyService(server)
+		err = cluster.SlapOSStopProxyService(server)
+	case config.ConstOrchestratorOnPremise:
+		err = cluster.OnPremiseStopProxyService(server)
+	case config.ConstOrchestratorLocalhost:
+		err = cluster.LocalhostStopProxyService(server)
 	default:
-		return cluster.LocalhostStopProxyService(server)
+		return errors.New("No valid orchestrator")
 	}
-	server.DelRestartCookie()
-	return nil
+	cluster.StopProxyScript(server)
+	if err == nil {
+		server.DelRestartCookie()
+	}
+	return err
 }
 
-func (cluster *Cluster) StartProxyService(server *Proxy) error {
-
-	switch cluster.Conf.ProvOrchestrator {
+func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
+	cluster.LogPrintf(LvlInfo, "Starting Proxy service %s", cluster.Name+"/svc/"+server.GetName())
+	var err error
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
-		return cluster.OpenSVCStartProxyService(server)
+		err = cluster.OpenSVCStartProxyService(server)
 	case config.ConstOrchestratorKubernetes:
-		cluster.K8SStartProxyService(server)
+		err = cluster.K8SStartProxyService(server)
 	case config.ConstOrchestratorSlapOS:
-		cluster.SlapOSStartProxyService(server)
+		err = cluster.SlapOSStartProxyService(server)
+	case config.ConstOrchestratorOnPremise:
+		err = cluster.OnPremiseStartProxyService(server)
+	case config.ConstOrchestratorLocalhost:
+		err = cluster.LocalhostStartProxyService(server)
 	default:
-		return cluster.LocalhostStartProxyService(server)
+		return errors.New("No valid orchestrator")
 	}
-	server.DelRestartCookie()
-	return nil
+	cluster.StartProxyScript(server)
+	if err == nil {
+		server.DelRestartCookie()
+	}
+	return err
 }
 
 func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
@@ -356,39 +420,26 @@ func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
 
 func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	cluster.LogPrintf(LvlInfo, "Starting Database service %s", cluster.Name+"/svc/"+server.Name)
-	switch cluster.Conf.ProvOrchestrator {
+	var err error
+	switch cluster.GetOrchestrator()  {
 	case config.ConstOrchestratorOpenSVC:
-		return cluster.OpenSVCStartDatabaseService(server)
+		err = cluster.OpenSVCStartDatabaseService(server)
 	case config.ConstOrchestratorKubernetes:
-		cluster.K8SStartDatabaseService(server)
+		err = cluster.K8SStartDatabaseService(server)
 	case config.ConstOrchestratorSlapOS:
-		cluster.SlapOSStartDatabaseService(server)
+		err = cluster.SlapOSStartDatabaseService(server)
 	case config.ConstOrchestratorOnPremise:
-		cluster.OnPremiseStartDatabaseService(server)
+		err = cluster.OnPremiseStartDatabaseService(server)
 	case config.ConstOrchestratorLocalhost:
-		return cluster.LocalhostStartDatabaseService(server)
+		err = cluster.LocalhostStartDatabaseService(server)
 	default:
 		return errors.New("No valid orchestrator")
 	}
-	server.DelRestartCookie()
-	return nil
-}
-
-func (cluster *Cluster) GetOchestaratorPlacement(server *ServerMonitor) error {
-	cluster.LogPrintf(LvlInfo, "Starting Database service %s", cluster.Name+"/svc/"+server.Name)
-	switch cluster.Conf.ProvOrchestrator {
-	case config.ConstOrchestratorOpenSVC:
-		return cluster.OpenSVCStartDatabaseService(server)
-	case config.ConstOrchestratorKubernetes:
-		cluster.K8SStartDatabaseService(server)
-	case config.ConstOrchestratorSlapOS:
-		cluster.SlapOSStartDatabaseService(server)
-	case config.ConstOrchestratorLocalhost:
-		return cluster.LocalhostStartDatabaseService(server)
-	default:
-		return errors.New("No valid orchestrator")
+	cluster.StartDatabaseScript(server)
+	if err == nil {
+		server.DelRestartCookie()
 	}
-	return nil
+	return err
 }
 
 func (cluster *Cluster) StartAllNodes() error {
@@ -629,7 +680,7 @@ func (cluster *Cluster) GetDatabaseAgent(server *ServerMonitor) (Agent, error) {
 	return agent, errors.New("Indice not found in database node list")
 }
 
-func (cluster *Cluster) GetProxyAgent(server *Proxy) (Agent, error) {
+func (cluster *Cluster) GetProxyAgent(server DatabaseProxy) (Agent, error) {
 	var agent Agent
 	agents := strings.Split(cluster.Conf.ProvProxAgents, ",")
 	if len(agents) == 0 {
@@ -637,7 +688,7 @@ func (cluster *Cluster) GetProxyAgent(server *Proxy) (Agent, error) {
 	}
 	for i, srv := range cluster.Servers {
 
-		if srv.Id == server.Id {
+		if srv.Id == server.GetId() {
 			agentName := agents[i%len(agents)]
 			agent, err := cluster.GetAgentInOrchetrator(agentName)
 			if err != nil {

@@ -91,32 +91,49 @@ func (psql *ProxySQL) AddHostgroups(clustername string) error {
 	return err
 }
 
-func (psql *ProxySQL) AddServerAsReader(host string, port string, weight string, max_replication_lag string, max_connections string, compression string) error {
-	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id,hostname, port,weight,max_replication_lag,max_connections,compression) VALUES('%s','%s','%s','%s','%s','%s','%s')", psql.ReaderHG, host, port, weight, max_replication_lag, max_connections, compression)
+func (psql *ProxySQL) AddServerAsReader(host string, port string, weight string, max_replication_lag string, max_connections string, compression string, use_ssl string) error {
+	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id,hostname, port,weight,max_replication_lag,max_connections,compression,use_ssl) VALUES('%s','%s','%s','%s','%s','%s','%s','%s')", psql.ReaderHG, host, port, weight, max_replication_lag, max_connections, compression, use_ssl)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
-func (psql *ProxySQL) AddServerAsWriter(host string, port string) error {
-	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id,hostname, port) VALUES('%s','%s','%s')", psql.WriterHG, host, port)
+func (psql *ProxySQL) AddServerAsWriter(host string, port string, use_ssl string) error {
+	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id,hostname, port,use_ssl) VALUES('%s','%s','%s','%s')", psql.WriterHG, host, port, use_ssl)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
-func (psql *ProxySQL) AddShardServer(host string, port string) error {
-	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostname, port,hostgroup_id) VALUES('%s','%s',999)", host, port)
+func (psql *ProxySQL) AddShardServer(host string, port string, use_ssl string) error {
+	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostname, port,hostgroup_id,use_ssl) VALUES('%s','%s',999,'%s')", host, port, use_ssl)
 	_, err := psql.Connection.Exec(sql)
 	psql.LoadServersToRuntime()
 	return err
 }
-func (psql *ProxySQL) AddOfflineServer(host string, port string) error {
-	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id, hostname, port) VALUES('666', '%s','%s')", host, port)
+func (psql *ProxySQL) AddOfflineServer(host string, port string, use_ssl string) error {
+	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id, hostname, port,use_ssl) VALUES('666', '%s','%s','%s')", host, port, use_ssl)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
 
 func (psql *ProxySQL) SetOffline(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE mysql_servers SET hostgroup_id='666' WHERE hostname='%s' AND port='%s'  AND hostgroup_id in ('%s','%s')", host, port, psql.ReaderHG, psql.WriterHG)
+	sql := fmt.Sprintf("UPDATE mysql_servers SET hostgroup_id='666' WHERE hostname='%s' AND port='%s'  AND hostgroup_id in ('%s')", host, port, psql.WriterHG)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
+func (psql *ProxySQL) ExistAsWriterOrOffline(host string, port string) bool {
+	var exist int
+	sql := fmt.Sprintf("SELECT 1 FROM mysql_servers WHERE srv_host='%s' AND srv_port='%s' AND hostgroup_id in (666,'%s')", host, port, psql.WriterHG)
+	row := psql.Connection.QueryRow(sql)
+	err := row.Scan(&exist)
+	if err == nil {
+		return true
+	}
+	return false
+}
+
+func (psql *ProxySQL) SetOnline(host string, port string) error {
+	sql := fmt.Sprintf("UPDATE mysql_servers SET hostgroup_id='%s' WHERE hostname='%s' AND port='%s'  AND hostgroup_id in (666)", psql.WriterHG, host, port)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
@@ -127,7 +144,7 @@ func (psql *ProxySQL) SetOfflineSoft(host string, port string) error {
 	return err
 }
 
-func (psql *ProxySQL) SetOnline(host string, port string) error {
+func (psql *ProxySQL) SetOnlineSoft(host string, port string) error {
 	sql := fmt.Sprintf("UPDATE mysql_servers SET status='ONLINE' WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s','%s') ", host, port, psql.ReaderHG, psql.WriterHG)
 	_, err := psql.Connection.Exec(sql)
 	return err
@@ -151,19 +168,30 @@ func (psql *ProxySQL) SetReader(host string, port string) error {
 	return err
 }
 
+func (psql *ProxySQL) DropReader(host string, port string) error {
+	sql := fmt.Sprintf("DELETE FROM mysql_servers WHERE  hostgroup_id='%s' AND hostname='%s' AND port='%s' ", psql.ReaderHG, host, port)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
 func (psql *ProxySQL) Truncate() error {
 	_, err := psql.Connection.Exec("DELETE FROM mysql_servers WHERE hostgroup_id in ('%s','%s')", psql.ReaderHG, psql.WriterHG)
 	return err
 }
 
-func (psql *ProxySQL) ReplaceWriter(host string, port string, oldhost string, oldport string, masterasreader bool) error {
+func (psql *ProxySQL) ReloadTLS() error {
+	_, err := psql.Connection.Exec("PROXYSQL RELOAD TLS")
+	return err
+}
+
+func (psql *ProxySQL) ReplaceWriter(host string, port string, oldhost string, oldport string, masterasreader bool, use_ssl string) error {
 
 	if masterasreader {
 		err := psql.DeleteAllWriters()
 		if err != nil {
 			return err
 		}
-		err = psql.AddServerAsWriter(host, port)
+		err = psql.AddServerAsWriter(host, port, use_ssl)
 		return err
 	} else {
 		err := psql.SetReader(oldhost, oldport)
