@@ -33,7 +33,7 @@ func (cluster *Cluster) SpiderShardsDiscovery() {
 					for j, url := range strings.Split(extraUrl, ",") {
 						var err error
 						srv, err := cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, true, cluster.GetDomain())
-						srv.State = stateShard
+						srv.SetState(stateShard)
 						cluster.Servers = append(cluster.Servers, srv)
 						if err != nil {
 							log.Fatalf("ERROR: Could not open connection to Spider Shard server %s : %s", cluster.Servers[j].URL, err)

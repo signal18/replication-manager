@@ -403,7 +403,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		// Add the old master to the slaves list
 
-		cluster.oldMaster.State = stateSlave
+		cluster.oldMaster.SetState(stateSlave)
 		if cluster.Conf.MultiMaster == false {
 			cluster.slaves = append(cluster.slaves, cluster.oldMaster)
 		}

@@ -703,7 +703,7 @@ func (cluster *Cluster) FailoverForce() error {
 		if cluster.sme.CurState.Search("ERR00012") {
 			for _, s := range cluster.Servers {
 				if s.State == "" {
-					s.State = stateFailed
+					s.SetState(stateFailed)
 					if cluster.Conf.LogLevel > 2 {
 						cluster.LogPrintf(LvlDbg, "State failed set by state detection ERR00012")
 					}

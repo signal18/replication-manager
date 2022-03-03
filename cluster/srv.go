@@ -255,8 +255,9 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.IsRelay = false
 	server.IsMaxscale = true
 	server.IsDelayed = server.IsInDelayedHost()
-	server.State = stateSuspect
-	server.PrevState = stateSuspect
+	server.SetState(stateSuspect)
+	// NOTE: does this make sense to set the state to the same?
+	server.SetPrevState(stateSuspect)
 	server.Datadir = server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Host + "_" + server.Port
 	if _, err := os.Stat(server.Datadir); os.IsNotExist(err) {
 		os.MkdirAll(server.Datadir, os.ModePerm)
@@ -333,7 +334,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 			// access denied
 			if driverErr.Number == 1045 {
-				server.State = stateErrorAuth
+				server.SetState(stateErrorAuth)
 				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "SRV"})
 				return
 			} else {
@@ -354,11 +355,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					if server.FailCount == server.ClusterGroup.Conf.MaxFail {
 						server.ClusterGroup.LogPrintf("INFO", "Declaring db master as failed %s", server.URL)
 					}
-					server.ClusterGroup.master.State = stateFailed
+					server.ClusterGroup.master.SetState(stateFailed)
 					server.DelWaitStopCookie()
 					server.DelUnprovisionCookie()
 				} else {
-					server.ClusterGroup.master.State = stateSuspect
+					server.ClusterGroup.master.SetState(stateSuspect)
 
 				}
 			} else {
@@ -367,7 +368,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				if server.FailCount >= server.ClusterGroup.Conf.MaxFail {
 					if server.FailCount == server.ClusterGroup.Conf.MaxFail {
 						server.ClusterGroup.LogPrintf("INFO", "Declaring slave db %s as failed", server.URL)
-						server.State = stateFailed
+						server.SetState(stateFailed)
 						server.DelWaitStopCookie()
 						server.DelUnprovisionCookie()
 						// remove from slave list
@@ -378,7 +379,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 						server.Replications = nil
 					}
 				} else {
-					server.State = stateSuspect
+					server.SetState(stateSuspect)
 				}
 			}
 		}
@@ -394,7 +395,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			}
 		}
 		if server.PrevState != server.State {
-			server.PrevState = server.State
+			server.SetPrevState(server.State)
 		}
 		return
 	}
@@ -466,7 +467,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				}
 			}
 			//if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
-			server.State = stateUnconn
+			server.SetState(stateUnconn)
 			//}
 			server.FailCount = 0
 			server.ClusterGroup.backendStateChangeProxies()
@@ -480,7 +481,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State == stateUnconn {
 			// Master will never get discovery in topology if it does not get unconnected first it default to suspect
 			if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
-				server.State = stateUnconn
+				server.SetState(stateUnconn)
 				server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
 			}
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
@@ -500,7 +501,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 
 	if server.PrevState != server.State {
-		server.PrevState = server.State
+		server.SetPrevState(server.State)
 		if server.PrevState != stateSuspect {
 			server.ClusterGroup.backendStateChangeProxies()
 			server.SendAlert()
@@ -562,7 +563,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.IsMaxscale = true
 			server.IsRelay = true
 			server.MxsVersion = dbhelper.MariaDBVersion(mxsversion)
-			server.State = stateRelay
+			server.SetState(stateRelay)
 		} else {
 			server.IsMaxscale = false
 		}
