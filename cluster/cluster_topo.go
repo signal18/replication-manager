@@ -234,7 +234,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			if cluster.Conf.MultiMaster == false && sl.IsMaxscale == false {
 				if sl.IsSlave == true && sl.HasSlaves(cluster.slaves) == true {
 					sl.IsRelay = true
-					sl.State = stateRelay
+					sl.SetState(stateRelay)
 				} else if sl.IsRelay {
 					sl.IsRelay = false
 				}
@@ -467,7 +467,7 @@ func (cluster *Cluster) FailedMasterDiscovery() {
 			if (s.Host == smh || s.IP == smh) && s.Port == cluster.slaves[0].GetReplicationMasterPort() {
 				if cluster.Conf.FailRestartUnsafe || cluster.MultipleSlavesUp(s) {
 					cluster.master = cluster.Servers[k]
-					cluster.master.PrevState = stateMaster
+					cluster.master.SetPrevState(stateMaster)
 					cluster.LogPrintf(LvlInfo, "Assuming failed server %s was a master", s.URL)
 				}
 				break

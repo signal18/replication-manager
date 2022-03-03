@@ -401,7 +401,7 @@ func (cluster *Cluster) SetFailTime(time int64) {
 }
 
 func (cluster *Cluster) SetMasterStateFailed() {
-	cluster.master.State = stateFailed
+	cluster.master.SetState(stateFailed)
 }
 
 func (cluster *Cluster) SetFailSync(check bool) {

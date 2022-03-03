@@ -50,13 +50,13 @@ func (server *ServerMonitor) CheckReplication() string {
 	}
 	if server.HaveWsrep && !server.IsFailed() {
 		if server.IsWsrepSync {
-			server.State = stateWsrep
+			server.SetState(stateWsrep)
 			return "Galera OK"
 		} else if server.IsWsrepDonor {
-			server.State = stateWsrepDonor
+			server.SetState(stateWsrepDonor)
 			return "Galera OK"
 		} else {
-			server.State = stateWsrepLate
+			server.SetState(stateWsrepLate)
 			return "Galera Late"
 		}
 	}
@@ -71,7 +71,7 @@ func (server *ServerMonitor) CheckReplication() string {
 		}
 	}
 	if server.IsMaintenance {
-		server.State = stateMaintenance
+		server.SetState(stateMaintenance)
 		return "Maintenance"
 	}
 	// when replication stopped Valid is null
@@ -84,38 +84,38 @@ func (server *ServerMonitor) CheckReplication() string {
 		//	log.Printf("replicationCheck %s %s", server.SQLThread, server.IOThread)
 		if ss.SlaveSQLRunning.String == "Yes" && ss.SlaveIORunning.String == "No" {
 			if server.IsRelay == false && server.IsMaxscale == false {
-				server.State = stateSlaveErr
+				server.SetState(stateSlaveErr)
 			} else if server.IsRelay {
-				server.State = stateRelayErr
+				server.SetState(stateRelayErr)
 			}
 			return fmt.Sprintf("NOT OK, IO Stopped (%s)", ss.LastIOErrno.String)
 		} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "Yes" {
 			if server.IsRelay == false && server.IsMaxscale == false {
-				server.State = stateSlaveErr
+				server.SetState(stateSlaveErr)
 			} else if server.IsRelay {
-				server.State = stateRelayErr
+				server.SetState(stateRelayErr)
 			}
 			return fmt.Sprintf("NOT OK, SQL Stopped (%s)", ss.LastSQLErrno.String)
 		} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "No" {
 			if server.IsRelay == false && server.IsMaxscale == false {
-				server.State = stateSlaveErr
+				server.SetState(stateSlaveErr)
 			} else if server.IsRelay {
-				server.State = stateRelayErr
+				server.SetState(stateRelayErr)
 			}
 			return "NOT OK, ALL Stopped"
 		} else if ss.SlaveSQLRunning.String == "Connecting" {
 			if server.IsRelay == false && server.IsMaxscale == false {
-				server.State = stateSlave
+				server.SetState(stateSlave)
 			} else if server.IsRelay {
-				server.State = stateRelay
+				server.SetState(stateRelay)
 			}
 			return "NOT OK, IO Connecting"
 		}
 
 		if server.IsRelay == false && server.IsMaxscale == false {
-			server.State = stateSlave
+			server.SetState(stateSlave)
 		} else if server.IsRelay {
-			server.State = stateRelay
+			server.SetState(stateRelay)
 		}
 		return "Running OK"
 	}
@@ -123,24 +123,24 @@ func (server *ServerMonitor) CheckReplication() string {
 	if ss.SecondsBehindMaster.Int64 > 0 {
 		if ss.SecondsBehindMaster.Int64 > server.ClusterGroup.Conf.FailMaxDelay && server.ClusterGroup.Conf.RplChecks == true {
 			if server.IsRelay == false && server.IsMaxscale == false {
-				server.State = stateSlaveLate
+				server.SetState(stateSlaveLate)
 			} else if server.IsRelay {
-				server.State = stateRelayLate
+				server.SetState(stateRelayLate)
 			}
 
 		} else {
 			if server.IsRelay == false && server.IsMaxscale == false {
-				server.State = stateSlave
+				server.SetState(stateSlave)
 			} else if server.IsRelay {
-				server.State = stateRelay
+				server.SetState(stateRelay)
 			}
 		}
 		return "Behind master"
 	}
 	if server.IsRelay == false && server.IsMaxscale == false {
-		server.State = stateSlave
+		server.SetState(stateSlave)
 	} else if server.IsRelay {
-		server.State = stateRelayLate
+		server.SetState(stateRelayLate)
 	}
 	return "Running OK"
 }

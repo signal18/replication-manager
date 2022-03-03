@@ -49,12 +49,22 @@ func (server *ServerMonitor) SetEventScheduler(value bool) (string, error) {
 	return logs, err
 }
 
+func (server *ServerMonitor) SetState(state string) {
+	server.ClusterGroup.LogPrintf(LvlInfo, "ServerMonitor State changed to: %s", state)
+	server.State = state
+}
+
+func (server *ServerMonitor) SetPrevState(state string) {
+	server.ClusterGroup.LogPrintf(LvlInfo, "ServerMonitor PrevState changed to: %s", state)
+	server.PrevState = state
+}
+
 func (server *ServerMonitor) SetFailed() {
-	server.State = stateFailed
+	server.SetState(stateFailed)
 }
 
 func (server *ServerMonitor) SetMaster() {
-	server.State = stateMaster
+	server.SetState(stateMaster)
 	for _, s := range server.ClusterGroup.Servers {
 		s.HaveNoMasterOnStart = false
 	}
