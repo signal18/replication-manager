@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"hash/crc64"
 	"io/ioutil"
+	"runtime"
 	"strconv"
 
 	mysqllog "log"
@@ -34,6 +35,7 @@ func init() {
 	var errLog = mysql.Logger(mysqllog.New(ioutil.Discard, "", 0))
 	mysql.SetLogger(errLog)
 
+	//monitorCmd.AddCommand(rootCmd)
 	rootCmd.AddCommand(monitorCmd)
 	if WithDeprecate == "ON" {
 		//	initDeprecated() // not needed used alias in main
@@ -47,7 +49,7 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.ConfDir, "monitoring-confdir", "/etc/replication-manager", "Path to a config directory")
 	}
 
-	if GoOS == "darwin" {
+	if runtime.GOOS == "darwin" {
 		monitorCmd.Flags().StringVar(&conf.ShareDir, "monitoring-sharedir", "/opt/replication-manager/share", "Path to share files")
 	} else {
 		monitorCmd.Flags().StringVar(&conf.ShareDir, "monitoring-sharedir", "/usr/share/replication-manager", "Path to share files")
@@ -218,7 +220,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.HttpServ, "http-server", true, "Start the HTTP monitor")
 	monitorCmd.Flags().StringVar(&conf.BindAddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
 	monitorCmd.Flags().StringVar(&conf.HttpPort, "http-port", "10001", "HTTP monitor to listen on this port")
-	if GoOS == "darwin" {
+	if runtime.GOOS == "darwin" {
 		monitorCmd.Flags().StringVar(&conf.HttpRoot, "http-root", "/opt/replication-manager/share/dashboard", "Path to HTTP replication-monitor files")
 	} else {
 		monitorCmd.Flags().StringVar(&conf.HttpRoot, "http-root", "/usr/share/replication-manager/dashboard", "Path to HTTP replication-monitor files")
@@ -522,6 +524,7 @@ func init() {
 		}
 	}
 	//cobra.OnInitialize()
+	initLogFlags(monitorCmd)
 	viper.BindPFlags(monitorCmd.Flags())
 
 }

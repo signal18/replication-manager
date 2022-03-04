@@ -249,6 +249,7 @@ func cliDisplayMonitor() {
 	}
 }
 
+//cliLogPrint Used to print Help
 func cliLogPrint(msg ...interface{}) {
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 

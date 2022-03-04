@@ -471,7 +471,7 @@ func (repman *ReplicationManager) Run() error {
 	}
 
 	if repman.Conf.LogFile != "" {
-
+		log.WithError(err).Error("Repman log : " + repman.Conf.LogFile)
 		hook, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
 			Filename:   repman.Conf.LogFile,
 			MaxSize:    repman.Conf.LogRotateMaxSize,

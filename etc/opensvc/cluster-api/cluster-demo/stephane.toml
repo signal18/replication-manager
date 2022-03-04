@@ -7,7 +7,7 @@ opensvc-p12-secret = "36vf2cczf8rms8hh"
 include ="etc/opensvc/cluster-api/cluster-demo/stephane.d"
 # log-heartbeat = true
 
-log-file="/var/log/replication-manager/replication-manager.log"
+log-file="./replication-manager.log"
 http-bind-address = "0.0.0.0"
 
 #VPN Address

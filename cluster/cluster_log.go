@@ -45,19 +45,6 @@ func (cluster *Cluster) display() {
 
 }
 
-func (cluster *Cluster) DisplayHelp() {
-	cluster.LogPrint("HELP : Ctrl-D  Print debug information")
-	cluster.LogPrint("HELP : Ctrl-F  Manual Failover")
-	cluster.LogPrint("HELP : Ctrl-I  Toggle automatic/manual failover mode")
-	cluster.LogPrint("HELP : Ctrl-R  Set slaves read-only")
-	cluster.LogPrint("HELP : Ctrl-S  Switchover")
-	cluster.LogPrint("HELP : Ctrl-N  Next Cluster")
-	cluster.LogPrint("HELP : Ctrl-P  Previous Cluster")
-	cluster.LogPrint("HELP : Ctrl-Q  Quit")
-	cluster.LogPrint("HELP : Ctrl-C  Quit")
-	cluster.LogPrint("HELP : Ctrl-W  Set slaves read-write")
-}
-
 func (cluster *Cluster) LogSQL(logs string, err error, url string, from string, level string, format string, args ...interface{}) {
 	if err != nil {
 		cluster.LogPrintf(level, format, args)
@@ -141,6 +128,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 	}
 	cliformat := format
 	format = "[" + cluster.Name + "] " + padright(level, " ", 5) + " - " + format
+	log.Printf("hello:" + format)
 	if level == "DEBUG" && cluster.Conf.LogLevel <= 1 {
 		// Only print debug messages if loglevel > 1
 	} else {
@@ -152,7 +140,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		}
 		if cluster.tlog != nil && cluster.tlog.Len > 0 {
 			cluster.tlog.Add(fmt.Sprintf(format, args...))
-			cluster.display()
+			//		cluster.display()
 		}
 
 		if cluster.Conf.HttpServ {
@@ -196,5 +184,6 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		default:
 			log.Printf(cliformat, args...)
 		}
+
 	}
 }

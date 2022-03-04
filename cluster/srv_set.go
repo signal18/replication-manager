@@ -50,12 +50,14 @@ func (server *ServerMonitor) SetEventScheduler(value bool) (string, error) {
 }
 
 func (server *ServerMonitor) SetState(state string) {
-	server.ClusterGroup.LogPrintf(LvlInfo, "ServerMonitor State changed to: %s", state)
+	if server.PrevState != state {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Server %s state transition %s changed to: %s", server.URL, server.PrevState, state)
+	}
 	server.State = state
 }
 
 func (server *ServerMonitor) SetPrevState(state string) {
-	server.ClusterGroup.LogPrintf(LvlInfo, "ServerMonitor PrevState changed to: %s", state)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Server %s previous state changed to: %s", server.URL, state)
 	server.PrevState = state
 }
 
