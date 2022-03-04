@@ -23,7 +23,6 @@ import (
 	"github.com/signal18/replication-manager/router/proxysql"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
-	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/pflag"
 )
 
@@ -241,7 +240,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 			}
 			db, err := pr.GetClusterConnection()
 			if err != nil {
-				cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
+				cluster.AddSugarState("ERR00050", "TOPO", "", err)
 			} else {
 				if pr.GetType() == config.ConstProxyMyProxy {
 					definer = "DEFINER = root@localhost"
@@ -251,7 +250,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 				_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + misc.GetUUID() + "' from dual")
 
 				if err != nil {
-					cluster.sme.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
+					cluster.AddSugarState("ERR00050", "TOPO", "", err)
 					db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 
 				}

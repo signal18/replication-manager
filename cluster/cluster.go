@@ -10,7 +10,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"hash/crc64"
 	"io/ioutil"
 	"os"
@@ -853,7 +852,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 			cluster.LogPrintf(LvlErr, "Encoding variables diff %s", err)
 			return
 		}
-		cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], string(jtext)), ErrFrom: "MON", ServerUrl: cluster.GetMaster().URL})
+		cluster.SetSugarState("WARN0084", "MON", cluster.GetMaster().URL, string(jtext))
 	}
 }
 

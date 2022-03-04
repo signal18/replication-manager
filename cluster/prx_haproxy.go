@@ -274,7 +274,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 	result, err := haRuntime.ApiCmd("show stat")
 
 	if err != nil {
-		cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
+		cluster.AddSugarState("ERR00052", "MON", "", err)
 		return err
 	}
 	if cluster.Conf.HaproxyDebug {
@@ -296,7 +296,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 			return err
 		}
 		if len(line) < 73 {
-			cluster.sme.AddState("WARN0078", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0078"], err), ErrFrom: "MON"})
+			cluster.SetSugarState("WARN0078", "MON", "", err)
 			return errors.New(clusterError["WARN0078"])
 		}
 		if strings.Contains(strings.ToLower(line[0]), "write") {

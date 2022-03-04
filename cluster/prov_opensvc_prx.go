@@ -16,7 +16,6 @@ import (
 
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/misc"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx DatabaseProxy) {
@@ -399,7 +398,7 @@ func (cluster *Cluster) FoundProxyAgent(proxy DatabaseProxy) (opensvc.Host, erro
 	svc := cluster.OpenSVCConnect()
 	agents, err := svc.GetNodes()
 	if err != nil {
-		cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], err), ErrFrom: "TOPO"})
+		cluster.SetSugarState("ERR00082", "TOPO", "", err)
 	}
 	var clusteragents []opensvc.Host
 	var agent opensvc.Host

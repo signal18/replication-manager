@@ -32,7 +32,7 @@ func (cluster *Cluster) Heartbeat(wg *sync.WaitGroup) {
 		if cluster.IsSplitBrain {
 			err := cluster.SetArbitratorReport()
 			if err != nil {
-				cluster.SetState("WARN0081", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0081"], err), ErrFrom: "ARB"})
+				cluster.SetSugarState("WARN0081", "ARB", "", err)
 			}
 			if cluster.IsSplitBrainBck != cluster.IsSplitBrain {
 				time.Sleep(5 * time.Second)
@@ -42,7 +42,7 @@ func (cluster *Cluster) Heartbeat(wg *sync.WaitGroup) {
 				i++
 				err = cluster.ArbitratorElection()
 				if err != nil {
-					cluster.SetState("WARN0082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0082"], err), ErrFrom: "ARB"})
+					cluster.SetSugarState("WARN0082", "ARB", "", err)
 				} else {
 					break //break the loop on success retry 3 times
 				}
