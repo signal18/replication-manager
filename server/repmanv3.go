@@ -107,6 +107,9 @@ func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error
 	httpmux := http.NewServeMux()
 	gwmux := runtime.NewServeMux()
 
+	// TODO: dial with TLS and the known generated cert
+	// conn, err := grpc.Dial(s.v3Config.Listen.AddressWithPort(), grpc.With)
+
 	err = v3.RegisterClusterPublicServiceHandlerFromEndpoint(ctx,
 		gwmux,
 		s.v3Config.Listen.AddressWithPort(),

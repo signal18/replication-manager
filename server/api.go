@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ import (
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gorilla/mux"
+	"github.com/signal18/replication-manager/cert"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/regtest"
 )
@@ -152,13 +154,24 @@ func (repman *ReplicationManager) apiserver() {
 	}
 	// Add default unsecure cert if not set
 	if repman.Conf.MonitoringSSLCert == "" {
-		log.Info("No SSL certificate provided using insecured from " + repman.Conf.ShareDir + "/server.crt")
-		repman.Conf.MonitoringSSLCert = repman.Conf.ShareDir + "/server.crt"
-		repman.Conf.MonitoringSSLKey = repman.Conf.ShareDir + "/server.key"
+		host := repman.Conf.APIBind
+		if host == "0.0.0.0" {
+			host = "localhost, " + host + ", 127.0.0.1"
+		}
+		cert.Host = host
+		cert.Organization = "Replication-Manager"
+		tmpKey, tmpCert, err := cert.GenerateTempKeyAndCert()
+		if err != nil {
+			log.Errorf("Cannot generate temporary Certificate and/or Key: %s", err)
+		}
+		log.Info("No TLS certificate provided using generated key (", tmpKey, ") and certificate (", tmpCert, ")")
+		defer os.Remove(tmpKey)
+		defer os.Remove(tmpCert)
+
 		tlsConfig = Repmanv3TLS{
 			Enabled:            true,
-			CertificatePath:    repman.Conf.MonitoringSSLCert,
-			CertificateKeyPath: repman.Conf.MonitoringSSLKey,
+			CertificatePath:    tmpCert,
+			CertificateKeyPath: tmpKey,
 		}
 	}
 
