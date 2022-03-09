@@ -451,10 +451,10 @@ func (repman *ReplicationManager) InitRestic() error {
 
 func (repman *ReplicationManager) Run() error {
 	var err error
-	repman.Version = repman.Conf.Version
-	repman.Fullversion = repman.Conf.FullVersion
-	repman.Arch = repman.Conf.GoArch
-	repman.Os = repman.Conf.GoOS
+	repman.Version = Version
+	repman.Fullversion = FullVersion
+	repman.Arch = GoArch
+	repman.Os = GoOS
 	repman.MemProfile = repman.Conf.MemProfile
 
 	repman.Clusters = make(map[string]*cluster.Cluster)
