@@ -128,7 +128,6 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 	}
 	cliformat := format
 	format = "[" + cluster.Name + "] " + padright(level, " ", 5) + " - " + format
-	log.Printf("hello:" + format)
 	if level == "DEBUG" && cluster.Conf.LogLevel <= 1 {
 		// Only print debug messages if loglevel > 1
 	} else {

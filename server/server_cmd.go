@@ -13,7 +13,7 @@ import (
 	"fmt"
 
 	"github.com/signal18/replication-manager/config"
-
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -85,7 +85,7 @@ func init() {
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	rootCmd.PersistentFlags().BoolVar(&conf.Verbose, "verbose", false, "Print detailed execution info")
 	rootCmd.PersistentFlags().StringVar(&memprofile, "memprofile", "/tmp/repmgr.mprof", "Write a memory profile to a file readable by pprof")
-	initLogFlags(rootCmd)
+
 	rootCmd.AddCommand(versionCmd)
 
 }
@@ -106,5 +106,12 @@ func initLogFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&conf.LogRotateMaxAge, "log-rotate-max-age", 7, "Log rotate max age")
 
 	viper.BindPFlags(cmd.Flags())
+	if conf.Verbose == true && conf.LogLevel == 0 {
+		conf.LogLevel = 1
+	}
+	if conf.Verbose == false && conf.LogLevel > 0 {
+		conf.Verbose = true
+	}
+	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 
 }

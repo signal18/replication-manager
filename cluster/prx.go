@@ -182,17 +182,11 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 	if cluster.Conf.ExtProxyOn {
-		prx := new(Proxy)
-		prx.Type = config.ConstProxyExternal
-		prx.Host, prx.Port = misc.SplitHostPort(cluster.Conf.ExtProxyVIP)
-		prx.WritePort, _ = strconv.Atoi(prx.GetPort())
-		prx.ReadPort = prx.WritePort
-		prx.ReadWritePort = prx.WritePort
-		if prx.Name == "" {
-			prx.Name = prx.Host
+		for k, proxyHost := range strings.Split(cluster.Conf.ExtProxyVIP, ",") {
+			prx := NewExternalProxy(k, cluster, proxyHost)
+			cluster.AddProxy(prx)
 		}
 
-		cluster.AddProxy(prx)
 	}
 	if cluster.Conf.ProxysqlOn {
 		for k, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
