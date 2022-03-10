@@ -415,17 +415,20 @@ func (proxy *ProxySQLProxy) Refresh() error {
 					}
 				}
 			}
-
+			changedUser := false
 			for _, user := range uniUsers {
 				if _, ok := myprxusermap[user.User+":"+user.Password]; !ok {
 					cluster.LogPrintf(LvlInfo, "Add ProxySQL user %s ", user.User)
-
 					err := psql.AddUser(user.User, user.Password)
 					if err != nil {
 						cluster.sme.AddState("ERR00054", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00054"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
-
+					} else {
+						changedUser = true
 					}
 				}
+			}
+			if changedUser {
+				psql.SaveMySQLUsersToDisk()
 			}
 		}
 	}
@@ -433,6 +436,8 @@ func (proxy *ProxySQLProxy) Refresh() error {
 		err = psql.LoadServersToRuntime()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
+		} else {
+			err = psql.SaveServersToDisk()
 		}
 	}
 	proxy.QueryRules, err = psql.GetQueryRulesRuntime()

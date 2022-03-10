@@ -344,3 +344,8 @@ func (psql *ProxySQL) SaveMySQLVariablesToDisk() error {
 	_, err := psql.Connection.Exec("SAVE MYSQL VARIABLES TO DISK")
 	return err
 }
+
+func (psql *ProxySQL) SaveMySQLUsersToDisk() error {
+	_, err := psql.Connection.Exec("SAVE MYSQL USERS TO DISK")
+	return err
+}
