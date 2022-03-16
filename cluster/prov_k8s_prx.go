@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"strconv"
 
@@ -57,7 +58,7 @@ func (cluster *Cluster) K8SProvisionProxyService(prx DatabaseProxy) {
 
 	// Create Deployment
 	cluster.LogPrintf(LvlInfo, "Creating deployment...")
-	result, err := deploymentsClient.Create(deployment)
+	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
 
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Cannot deploy Kubernetes service %s ", err)
