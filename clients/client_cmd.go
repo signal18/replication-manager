@@ -257,36 +257,47 @@ func initServerFlags(cmd *cobra.Command) {
 	viper.BindPFlags(cmd.Flags())
 }
 
+func initClusterFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Cluster (default is none)")
+	viper.BindPFlags(cmd.Flags())
+}
+
 func init() {
 
 	rootClientCmd.AddCommand(clientConsoleCmd)
-	//initApiServerFlags(clientConsoleCmd)
+	initServerApiFlags(clientConsoleCmd)
+	initClusterFlags(clientConsoleCmd)
 
 	rootClientCmd.AddCommand(switchoverCmd)
 	initSwitchoverFlags(switchoverCmd)
-
+	initClusterFlags(switchoverCmd)
 	rootClientCmd.AddCommand(failoverCmd)
 	initFailoverFlags(failoverCmd)
-
+	initClusterFlags(failoverCmd)
 	rootClientCmd.AddCommand(topologyCmd)
-
+	initClusterFlags(topologyCmd)
 	rootClientCmd.AddCommand(apiCmd)
 	initApiFlags(apiCmd)
+	initClusterFlags(apiCmd)
 
 	rootClientCmd.AddCommand(regTestCmd)
 	initRegTestFlags(regTestCmd)
+	initClusterFlags(regTestCmd)
 
 	rootClientCmd.AddCommand(statusCmd)
 	initStatusFlags(statusCmd)
 
 	rootClientCmd.AddCommand(bootstrapCmd)
 	initBootstrapFlags(bootstrapCmd)
+	initClusterFlags(bootstrapCmd)
 
 	rootClientCmd.AddCommand(serverCmd)
 	initServerFlags(serverCmd)
+	initClusterFlags(serverCmd)
 
 	rootClientCmd.AddCommand(showCmd)
 	initShowFlags(showCmd)
+	initClusterFlags(showCmd)
 
 	rootClientCmd.AddCommand(configuratorCmd)
 	initConfiguratorFlags(showCmd)
