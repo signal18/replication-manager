@@ -47,7 +47,7 @@ var configuratorCmd = &cobra.Command{
 			select {
 			case <-ticker.C:
 
-				cliDisplayConfigurator()
+				cliDisplayConfigurator(configurator)
 			case event := <-termboxChan:
 				switch event.Type {
 				case termbox.EventKey:
@@ -124,10 +124,10 @@ var configuratorCmd = &cobra.Command{
 	},
 }
 
-func cliDisplayConfigurator() {
+func cliDisplayConfigurator(configurator *configurator.Configurator) {
 
 	termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
-	headstr := fmt.Sprintf(" Replication Manager Client ")
+	headstr := fmt.Sprintf(" Replication Manager Configurator")
 
 	cliPrintfTb(0, 0, termbox.ColorWhite, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, headstr)
 	cliPrintfTb(0, 1, termbox.ColorRed, termbox.ColorBlack|termbox.AttrReverse|termbox.AttrBold, cliConfirm)
