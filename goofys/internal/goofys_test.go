@@ -47,7 +47,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure"
 	azureauth "github.com/Azure/go-autorest/autorest/azure/auth"
 
-	"github.com/signal18/replication-manager/go-xattr"
+	"github.com/pkg/xattr"
 
 	"github.com/jacobsa/fuse"
 	"github.com/jacobsa/fuse/fuseops"
@@ -2092,13 +2092,13 @@ func (s *GoofysTest) TestXAttrSet(t *C) {
 	in, err := s.LookUpInode(t, "file1")
 	t.Assert(err, IsNil)
 
-	err = in.SetXattr("user.bar", []byte("hello"), xattr.REPLACE)
+	err = in.SetXattr("user.bar", []byte("hello"), xattr.XATTR_REPLACE)
 	t.Assert(err, Equals, syscall.ENODATA)
 
-	err = in.SetXattr("user.bar", []byte("hello"), xattr.CREATE)
+	err = in.SetXattr("user.bar", []byte("hello"), xattr.XATTR_CREATE)
 	t.Assert(err, IsNil)
 
-	err = in.SetXattr("user.bar", []byte("hello"), xattr.CREATE)
+	err = in.SetXattr("user.bar", []byte("hello"), xattr.XATTR_CREATE)
 	t.Assert(err, Equals, syscall.EEXIST)
 
 	in, err = s.LookUpInode(t, "file1")
@@ -2110,7 +2110,7 @@ func (s *GoofysTest) TestXAttrSet(t *C) {
 
 	value = []byte("file1+%/#\x00")
 
-	err = in.SetXattr("user.bar", value, xattr.REPLACE)
+	err = in.SetXattr("user.bar", value, xattr.XATTR_REPLACE)
 	t.Assert(err, IsNil)
 
 	in, err = s.LookUpInode(t, "file1")
