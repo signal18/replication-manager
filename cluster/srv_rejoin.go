@@ -44,7 +44,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 		return nil
 	}
 	if server.ClusterGroup.Conf.LogLevel > 2 {
-		server.ClusterGroup.LogPrintf("INFO", "Trying to rejoin restarted standalone server %s", server.URL)
+		server.ClusterGroup.LogPrintf("INFO", "Rejoining standalone server %s", server.URL)
 	}
 	server.ClusterGroup.canFlashBack = true
 	if server.ClusterGroup.master != nil {
@@ -424,7 +424,10 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		return errors.New("No master found from replication")
 	}
 	if server.ClusterGroup.master != nil && mycurrentmaster != nil {
-
+		if server.ClusterGroup.master.URL == mycurrentmaster.URL {
+			server.ClusterGroup.LogPrintf("INFO", "Cancel rejoin, found same leader already from replication %s	", mycurrentmaster.URL)
+			return errors.New("Same master found from replication")
+		}
 		//Found slave to rejoin
 		server.ClusterGroup.SetState("ERR00067", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00067"], server.URL, server.PrevState, ss.SlaveIORunning.String, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
 		if server.ClusterGroup.master.IsDown() && server.ClusterGroup.Conf.FailRestartUnsafe == false {
@@ -447,7 +450,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				//		slave_gtid := server.CurrentGtid.GetSeqServerIdNos(uint64(server.GetReplicationServerID()))
 				//		master_gtid := crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.GetReplicationServerID()))
 				//	if slave_gtid < master_gtid {
-				server.ClusterGroup.LogPrintf("INFO", "Rejoining slave via GTID")
+				server.ClusterGroup.LogPrintf("INFO", "Rejoining slave %s via GTID", server.URL)
 				logs, err := server.StopSlave()
 				server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to stop slave server %s, stopping slave as a precaution %s", server.URL, err)
 				if err == nil {

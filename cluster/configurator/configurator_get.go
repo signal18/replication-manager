@@ -27,6 +27,19 @@ func (configurator *Configurator) GetDBModuleTags() []v3.Tag {
 	return tags
 }
 
+func (configurator *Configurator) GetDBModuleCategories() map[string]string {
+	cats := make(map[string]string)
+	for _, value := range configurator.DBModule.Filtersets {
+		var t v3.Tag
+		t.Id = uint64(value.ID)
+		s := strings.Split(value.Name, ".")
+		t.Name = s[len(s)-1]
+		t.Category = s[len(s)-2]
+		cats[t.Category] = t.Name
+	}
+	return cats
+}
+
 func (configurator *Configurator) GetDBTags() []string {
 	return configurator.DBTags
 }

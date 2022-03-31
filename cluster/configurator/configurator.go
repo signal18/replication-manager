@@ -68,9 +68,9 @@ func (configurator *Configurator) LoadDBModules() error {
 		byteValue, _ := ioutil.ReadAll(jsonFile)
 	*/
 	byteValue, _ := share.EmbededDbModuleFS.ReadFile("opensvc/moduleset_mariadb.svc.mrm.db.json")
-	err = json.Unmarshal([]byte(byteValue), &configurator.DBModule)
+	err := json.Unmarshal([]byte(byteValue), &configurator.DBModule)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Failed unmarshal file %s %s", file, err))
+		return errors.New(fmt.Sprintf("Failed unmarshal file %s %s", "opensvc/moduleset_mariadb.svc.mrm.db.json", err))
 	}
 	return nil
 }
