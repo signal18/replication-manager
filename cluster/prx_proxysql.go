@@ -232,7 +232,7 @@ func (proxy *ProxySQLProxy) Failover() {
 				cluster.LogPrintf(LvlInfo, "Failover ProxySQL set server %s offline", s.URL)
 			}
 		}
-		if s.IsMaster() && !s.IsRelay {
+		if s.IsMaster() && !s.IsRelay && cluster.oldMaster != nil {
 			err = psql.ReplaceWriter(misc.Unbracket(s.Host), s.Port, misc.Unbracket(cluster.oldMaster.Host), cluster.oldMaster.Port, cluster.Configurator.HasProxyReadLeader(), proxy.UseSSL())
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Failover ProxySQL could not set server %s Master (%s)", s.URL, err)
@@ -334,6 +334,14 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				updated = true
 			}
 
+			if s.IsSlave && s.IsMaintenance && isFoundBackendRead && bke.PrxStatus == "ONLINE" {
+				if cluster.Conf.ProxysqlDebug {
+					cluster.LogPrintf(LvlInfo, "Monitor ProxySQL  replicat %s Offline SOFT from reader group cause by maintenance ", s.URL)
+				}
+				err = psql.SetOfflineSoft(misc.Unbracket(s.Host), s.Port)
+				updated = true
+			}
+
 			// if server is Standalone, set offline in ProxySQL
 			if s.State == stateUnconn && bke.PrxStatus == "ONLINE" {
 				cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting offline standalone server %s", s.URL)
@@ -344,7 +352,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				updated = true
 
-				// if the server comes back from a previously failed or standalone state, reintroduce it in
+				// if the master comes back from a previously failed or standalone state, reintroduce it in
 				// the appropriate HostGroup
 			} else if s.State == stateMaster && (s.PrevState == stateUnconn || s.PrevState == stateFailed || (len(proxy.BackendsWrite) == 0 || !isFoundBackendWrite)) {
 				cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting online failed server %s", s.URL)
@@ -359,7 +367,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				updated = true
 
-			} else if s.State == stateMaster && !isFoundBackendRead && cluster.Configurator.HasProxyReadLeader() {
+			} else if s.State == stateMaster && !isFoundBackendRead && (cluster.Configurator.HasProxyReadLeader() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && cluster.HasNoValidSlave())) {
 				// Add  leader in reader group if not found and setup
 				if cluster.Conf.ProxysqlDebug {
 					cluster.LogPrintf(LvlInfo, "Monitor ProxySQL add leader in reader group in %s", s.URL)
@@ -369,16 +377,19 @@ func (proxy *ProxySQLProxy) Refresh() error {
 					cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
 				}
 				updated = true
-			} else if s.State == stateMaster && isFoundBackendRead && !cluster.Configurator.HasProxyReadLeader() {
+			} else if s.State == stateMaster && isFoundBackendRead && (!cluster.Configurator.HasProxyReadLeader()) {
 				// Drop the leader in reader group if not found and setup
-				if cluster.Conf.ProxysqlDebug {
-					cluster.LogPrintf(LvlInfo, "Monitor ProxySQL Drop the leader in reader group from %s", s.URL)
+				// Cancel learder remove because no valid reader
+				if !cluster.Configurator.HasProxyReadLeaderNoSlave() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && !cluster.HasNoValidSlave()) {
+					if cluster.Conf.ProxysqlDebug {
+						cluster.LogPrintf(LvlInfo, "Monitor ProxySQL Drop the leader in reader group from %s", s.URL)
+					}
+					err = psql.DropReader(misc.Unbracket(s.Host), s.Port)
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "ProxySQL could not drop reader in %s (%s)", s.URL, err)
+					}
+					updated = true
 				}
-				err = psql.DropReader(misc.Unbracket(s.Host), s.Port)
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "ProxySQL could not drop reader in %s (%s)", s.URL, err)
-				}
-				updated = true
 			} else if s.IsSlave && !s.IsIgnored() && (s.PrevState == stateUnconn || s.PrevState == stateFailed) {
 				err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
 				if cluster.Conf.ProxysqlDebug {
@@ -389,7 +400,9 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				updated = true
 			}
-		}
+
+		} //if bootstrap
+
 		// load the grants
 		if s.IsMaster() && cluster.Conf.ProxysqlCopyGrants {
 			myprxusermap, _, err := dbhelper.GetProxySQLUsers(psql.Connection)
@@ -431,7 +444,8 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				psql.SaveMySQLUsersToDisk()
 			}
 		}
-	}
+	} //end for each server
+
 	if updated {
 		err = psql.LoadServersToRuntime()
 		if err != nil {
@@ -468,6 +482,24 @@ func (proxy *ProxySQLProxy) Refresh() error {
 	return nil
 }
 
+func (proxy *ProxySQLProxy) HasAvailableReader() bool {
+	for _, b := range proxy.BackendsRead {
+		if b.PrxStatus == "ONLINE" {
+			return true
+		}
+	}
+	return false
+}
+
+func (proxy *ProxySQLProxy) HasLeaderInReader() bool {
+	for _, b := range proxy.BackendsRead {
+		if b.Host == proxy.GetCluster().master.Host && b.Port == proxy.GetCluster().master.Port {
+			return true
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) setMaintenanceProxysql(proxy *ProxySQLProxy, s *ServerMonitor) {
 	proxy.SetMaintenance(s)
 }
@@ -479,10 +511,12 @@ func (proxy *ProxySQLProxy) BackendsStateChange() {
 func (proxy *ProxySQLProxy) SetMaintenance(s *ServerMonitor) {
 	cluster := proxy.ClusterGroup
 	// TODO ? check if needed
-	if cluster.GetMaster() != nil {
-		return
-	}
-	if cluster.Conf.ProxysqlOn == false {
+	/*	if cluster.GetMaster() != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL set maintenance cancel for server %s:%s as proxysql as no leader", s.Host, s.Port)
+			return
+	} */
+	if !cluster.Conf.ProxysqlOn {
+		cluster.LogPrintf(LvlErr, "ProxySQL set maintenance cancel for server %s:%s as proxysql off in config", s.Host, s.Port)
 		return
 	}
 

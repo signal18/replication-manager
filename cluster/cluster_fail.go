@@ -790,6 +790,12 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		Ignoredreplication bool
 		Weight             uint
 	}
+
+	// HaveOneValidReader is used to state that at least one replicat is available for reading via proxies
+	// In such case it is needed to add the leader in the reader server list
+	// To avoid oveloading the leader with to many read we ignore replication delay and IO thread status
+	HaveOneValidReader := false
+
 	trackposList := make([]Trackpos, ll)
 	for i, sl := range l {
 		trackposList[i].URL = sl.URL
@@ -840,6 +846,9 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 			continue
 		}
 		trackposList[i].Ignoredreplication = !cluster.isSlaveElectable(sl, false)
+		if !HaveOneValidReader {
+			HaveOneValidReader = cluster.isSlaveValidReader(sl, false)
+		}
 		// Fake position if none as new slave
 		filepos := "1"
 		logfile := "master.000001"
@@ -885,6 +894,11 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		}
 
 	} //end loop all slaves
+
+	if !HaveOneValidReader {
+		cluster.sme.AddState("ERR00085", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00085"]), ErrFrom: "CHECK"})
+	}
+
 	sort.Slice(trackposList[:], func(i, j int) bool {
 		return trackposList[i].Seq > trackposList[j].Seq
 	})
@@ -1005,6 +1019,53 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		cluster.sme.AddState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
+		}
+		return false
+	}
+	if sl.IsIgnored() {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Slave is in ignored list %s", sl.URL)
+		}
+		return false
+	}
+	return true
+}
+
+func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) bool {
+	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
+	if err != nil {
+		cluster.LogPrintf(LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
+		return false
+	}
+
+	if sl.IsMaintenance {
+		cluster.sme.AddState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
+		}
+		return false
+	}
+
+	/*if ss.SecondsBehindMaster.Int64 > cluster.Conf.FailMaxDelay && cluster.Conf.FailMaxDelay != -1  {
+		cluster.sme.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"]+" Sql: "+sl.GetProcessListReplicationLongQuery(), sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
+		}
+
+		return false
+	}
+	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.FailSync && cluster.Conf.RplChecks {
+		cluster.sme.AddState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
+		}
+		return false
+	}
+	*/
+	if ss.SlaveSQLRunning.String == "No" {
+		cluster.sme.AddState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		}
 		return false
 	}

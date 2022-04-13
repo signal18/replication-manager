@@ -49,8 +49,20 @@ func (cluster *Cluster) HasSchedulerEntry(myname string) bool {
 	return false
 }
 
+func (cluster *Cluster) HasNoValidSlave() bool {
+	//All slave stopped
+	if cluster.sme.IsInState("ERR00010") {
+		return true
+	}
+	// Any issues on all slaves expeting delay and network
+	if cluster.sme.IsInState("ERR00085") {
+		return true
+	}
+	return false
+}
+
 func (cluster *Cluster) IsProvisioned() bool {
-	if cluster.GetOrchestrator()  == config.ConstOrchestratorOnPremise {
+	if cluster.GetOrchestrator() == config.ConstOrchestratorOnPremise {
 		return true
 	}
 	if cluster.Conf.Hosts == "" {

@@ -92,6 +92,7 @@ var clusterError = map[string]string{
 	"ERR00082": "Could not get agents from orchestrator %s",
 	"ERR00083": "Different cluster uuid found on %s:%s %s:%s",
 	"ERR00084": "Cluster have no master when slave %s was started",
+	"ERR00085": "No replica found for routing reads",
 	"WARN0022": "Rejoining standalone server %s to master %s",
 	"WARN0023": "Number of failed master ping has been reached",
 	"WARN0045": "Provision task is in queue",
