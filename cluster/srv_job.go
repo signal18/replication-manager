@@ -1023,11 +1023,14 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	cluster.LogPrintf(LvlInfo, "Rejoining from direct mysqldump from %s", source.URL)
 	dest.StopSlave()
 	usegtid := ""
-
-	if dest.HasGTIDReplication() {
-		usegtid = "--gtid=true"
-	} else {
-		usegtid = "--gtid=false"
+	// MySQL force GTID in server configuration the dump transparently include GTID pos. In MariaDB both positional or GTID is possible and so must be choose at dump
+	// Issue #422
+	if dest.GetVersion().IsMariaDB() {
+		if dest.HasGTIDReplication() {
+			usegtid = "--gtid=true"
+		} else {
+			usegtid = "--gtid=false"
+		}
 	}
 	events := ""
 	if source.HasEventScheduler() {

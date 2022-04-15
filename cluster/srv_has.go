@@ -18,7 +18,7 @@ import (
 )
 
 func (server *ServerMonitor) IsInDelayedHost() bool {
-	delayedhosts := strings.Split(server.ClusterGroup.Conf.HostsDelayed, ",")
+	delayedhosts := strings.Split(server.GetClusterConfig().HostsDelayed, ",")
 	for _, url := range delayedhosts {
 		if server.URL == url || server.Name == url {
 			return true
@@ -194,7 +194,7 @@ func (server *ServerMonitor) HasMySQLGTID() bool {
 	if !(server.DBVersion.IsMySQL() || server.DBVersion.IsPercona()) {
 		return false
 	}
-	if server.ClusterGroup.Conf.ForceSlaveNoGtid {
+	if server.GetClusterConfig().ForceSlaveNoGtid {
 		return false
 	}
 	val := server.Variables["ENFORCE_GTID_CONSISTENCY"]
@@ -217,7 +217,7 @@ func (server *ServerMonitor) HasMariaDBGTID() bool {
 	if server.DBVersion.Major < 10 {
 		return false
 	}
-	if server.ClusterGroup.Conf.ForceSlaveNoGtid {
+	if server.GetClusterConfig().ForceSlaveNoGtid {
 		return false
 	}
 
@@ -387,6 +387,9 @@ func (server *ServerMonitor) IsReplicationBroken() bool {
 }
 
 func (server *ServerMonitor) HasGTIDReplication() bool {
+	if server.GetClusterConfig().ForceSlaveNoGtid {
+		return false
+	}
 	if server.DBVersion.IsMySQLOrPercona() && server.HaveMySQLGTID == false {
 		return false
 	} else if server.DBVersion.IsMariaDB() && server.DBVersion.Major == 5 {

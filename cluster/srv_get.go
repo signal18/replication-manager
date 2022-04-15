@@ -597,3 +597,15 @@ func (server *ServerMonitor) GetTablePK(schema string, table string) (string, er
 	}
 	return pk, nil
 }
+
+func (server *ServerMonitor) GetVersion() *dbhelper.MySQLVersion {
+	return server.DBVersion
+}
+
+func (server *ServerMonitor) GetCluster() *Cluster {
+	return server.ClusterGroup
+}
+
+func (server *ServerMonitor) GetClusterConfig() config.Config {
+	return server.GetCluster().Conf
+}
