@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"context"
 	"strconv"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -18,7 +19,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		return
 	}
 	namespace := &apiv1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: cluster.Name}}
-	_, err = client.CoreV1().Namespaces().Create(namespace)
+	_, err = client.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Cannot create namespace %s ", err)
 	}
@@ -88,7 +89,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 			},
 		},
 	}
-	pvcresult, pvcerr := persistentVolumeClaims.Create(pvc)
+	pvcresult, pvcerr := persistentVolumeClaims.Create(context.TODO(), pvc, metav1.CreateOptions{})
 	if pvcerr != nil {
 		cluster.LogPrintf(LvlErr, "Cannot deploy Kubernetes pvc %s ", pvcerr)
 	}
@@ -182,7 +183,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 
 	// Create Deployment
 	cluster.LogPrintf(LvlInfo, "Creating Kubernetes deployment...")
-	result, err := deploymentsClient.Create(deployment)
+	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Cannot deploy Kubernetes deployment %s ", err)
 	}
@@ -209,7 +210,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		},
 	}
 	cluster.LogPrintf(LvlInfo, "Creating service...")
-	result2, err2 := servicesClient.Create(service)
+	result2, err2 := servicesClient.Create(context.TODO(), service, metav1.CreateOptions{})
 	if err2 != nil {
 		cluster.LogPrintf(LvlErr, "Cannot deploy Kubernetes service %s ", err2)
 		cluster.errorChan <- err2
@@ -238,7 +239,7 @@ func (cluster *Cluster) K8SUnprovisionDatabaseService(s *ServerMonitor) {
 	}
 
 	deletePolicy := metav1.DeletePropagationForeground
-	if err := deploymentsClient.Delete(s.Name, &metav1.DeleteOptions{
+	if err := deploymentsClient.Delete(context.TODO(), s.Name, metav1.DeleteOptions{
 		PropagationPolicy: &deletePolicy,
 	}); err != nil {
 		cluster.LogPrintf(LvlErr, "Cannot delete Kubernetes deployment %s %s ", s.Name, err)
@@ -246,7 +247,7 @@ func (cluster *Cluster) K8SUnprovisionDatabaseService(s *ServerMonitor) {
 	}
 	cluster.LogPrintf(LvlInfo, "Deleted Kubernetes deployment %s.", s.Name)
 	servicesClient := client.CoreV1().Services(cluster.Name)
-	if err := servicesClient.Delete(s.Name, &metav1.DeleteOptions{
+	if err := servicesClient.Delete(context.TODO(), s.Name, metav1.DeleteOptions{
 		PropagationPolicy: &deletePolicy,
 	}); err != nil {
 		cluster.LogPrintf(LvlErr, "Cannot delete Kubernetes service %s %s ", s.Name, err)

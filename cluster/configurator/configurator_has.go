@@ -77,3 +77,13 @@ func (configurator *Configurator) HasProxyReadLeader() bool {
 	}
 	return false
 }
+
+func (configurator *Configurator) HasProxyReadLeaderNoSlave() bool {
+	if configurator.IsFilterInProxyTags("readonmasternoslave") {
+		return true
+	}
+	if configurator.ClusterConfig.PRXServersReadOnMasterNoSlave {
+		return true
+	}
+	return false
+}

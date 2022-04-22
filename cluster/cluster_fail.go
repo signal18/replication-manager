@@ -126,33 +126,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if cluster.Conf.MultiMaster == false {
 		cluster.slaves[key].delete(&cluster.slaves)
 	}
-	// Call pre-failover script
-	if cluster.Conf.PreScript != "" {
-		cluster.LogPrintf(LvlInfo, "Calling pre-failover script")
-		var out []byte
-		out, err = exec.Command(cluster.Conf.PreScript, cluster.oldMaster.Host, cluster.master.Host, cluster.oldMaster.Port, cluster.master.Port, cluster.oldMaster.MxsServerName, cluster.master.MxsServerName).CombinedOutput()
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "%s", err)
-		}
-		cluster.LogPrintf(LvlInfo, "Pre-failover script complete:", string(out))
-	}
+	cluster.failoverPreScript()
 
 	// Phase 2: Reject updates and sync slaves on switchover
 	if fail == false {
-		if cluster.Conf.FailEventStatus {
-			for _, v := range cluster.master.EventStatus {
-				if v.Status == 3 {
-					cluster.LogPrintf(LvlInfo, "Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
-					logs, err := dbhelper.SetEventStatus(cluster.oldMaster.Conn, v, 3)
-					cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
-				}
-			}
-		}
-
 		cluster.oldMaster.freeze()
-		// https://github.com/signal18/replication-manager/issues/378
-		logs, err := dbhelper.FlushBinaryLogs(cluster.oldMaster.Conn)
-		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not flush binary logs on %s", cluster.oldMaster.URL)
 	}
 	// Sync candidate depending on the master status.
 	// If it's a switchover, use MASTER_POS_WAIT to sync.
@@ -254,16 +232,6 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	crash.Save(cluster.WorkingDir + "/failover." + t.Format("20060102150405") + ".json")
 	crash.Purge(cluster.WorkingDir, cluster.Conf.FailoverLogFileKeep)
 	cluster.Save()
-	// Call post-failover script before unlocking the old master.
-	if cluster.Conf.PostScript != "" {
-		cluster.LogPrintf(LvlInfo, "Calling post-failover script")
-		var out []byte
-		out, err = exec.Command(cluster.Conf.PostScript, cluster.oldMaster.Host, cluster.master.Host, cluster.oldMaster.Port, cluster.master.Port, cluster.oldMaster.MxsServerName, cluster.master.MxsServerName).CombinedOutput()
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "%s", err)
-		}
-		cluster.LogPrintf(LvlInfo, "Post-failover script complete", string(out))
-	}
 
 	if cluster.Conf.MultiMaster == false {
 		cluster.LogPrintf(LvlInfo, "Resetting slave on new master and set read/write mode on")
@@ -286,22 +254,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	cluster.LogPrintf(LvlInfo, "Failover proxies")
 	cluster.failoverProxies()
-	cluster.LogPrintf(LvlInfo, "Waiting %ds for unmanaged proxy to monitor route change", cluster.Conf.SwitchSlaveWaitRouteChange)
-	time.Sleep(time.Duration(cluster.Conf.SwitchSlaveWaitRouteChange) * time.Second)
-	if cluster.Conf.FailEventScheduler {
-		cluster.LogPrintf(LvlInfo, "Enable Event Scheduler on the new master")
-		logs, err := cluster.master.SetEventScheduler(true)
-		cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlErr, "Could not enable event scheduler on the new master")
-	}
-	if cluster.Conf.FailEventStatus {
-		for _, v := range cluster.master.EventStatus {
-			if v.Status == 3 {
-				cluster.LogPrintf(LvlInfo, "Set ENABLE for event %s %s on new master", v.Db, v.Name)
-				logs, err := dbhelper.SetEventStatus(cluster.master.Conn, v, 1)
-				cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlErr, "Could not Set ENABLE for event %s %s on new master", v.Db, v.Name)
-			}
-		}
-	}
+	cluster.failoverProxiesWaitMonitor()
+	cluster.failoverPostScript()
+	cluster.failoverEnableEventScheduler()
 	// Insert a bogus transaction in order to have a new GTID pos on master
 	cluster.LogPrintf(LvlInfo, "Inject fake transaction on new master %s ", cluster.master.URL)
 	logs, err := dbhelper.FlushTables(cluster.master.Conn)
@@ -591,6 +546,56 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	return true
 }
 
+func (cluster *Cluster) failoverPostScript() {
+	if cluster.Conf.PostScript != "" {
+		var out []byte
+		var err error
+		cluster.LogPrintf(LvlInfo, "Calling post-failover script")
+		out, err = exec.Command(cluster.Conf.PostScript, cluster.oldMaster.Host, cluster.master.Host, cluster.oldMaster.Port, cluster.master.Port, cluster.oldMaster.MxsServerName, cluster.master.MxsServerName).CombinedOutput()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "%s", err)
+		}
+		cluster.LogPrintf(LvlInfo, "Post-failover script complete %s", string(out))
+	}
+}
+
+func (cluster *Cluster) failoverPreScript() {
+	// Call pre-failover script
+	if cluster.Conf.PreScript != "" {
+		cluster.LogPrintf(LvlInfo, "Calling pre-failover script")
+		var out []byte
+		var err error
+		out, err = exec.Command(cluster.Conf.PreScript, cluster.oldMaster.Host, cluster.vmaster.Host, cluster.oldMaster.Port, cluster.vmaster.Port, cluster.oldMaster.MxsServerName, cluster.vmaster.MxsServerName).CombinedOutput()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "%s", err)
+		}
+		cluster.LogPrintf(LvlInfo, "Pre-failover script complete:", string(out))
+	}
+}
+
+func (cluster *Cluster) failoverProxiesWaitMonitor() {
+	cluster.LogPrintf(LvlInfo, "Waiting %ds for unmanaged proxy to monitor route change", cluster.Conf.SwitchSlaveWaitRouteChange)
+	time.Sleep(time.Duration(cluster.Conf.SwitchSlaveWaitRouteChange) * time.Second)
+}
+
+func (cluster *Cluster) failoverEnableEventScheduler() {
+
+	if cluster.Conf.FailEventScheduler {
+		cluster.LogPrintf(LvlInfo, "Enable Event Scheduler on the new master")
+		logs, err := cluster.master.SetEventScheduler(true)
+		cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlErr, "Could not enable event scheduler on the new master")
+	}
+	if cluster.Conf.FailEventStatus {
+		for _, v := range cluster.master.EventStatus {
+			if v.Status == 3 {
+				cluster.LogPrintf(LvlInfo, "Set ENABLE for event %s %s on new master", v.Db, v.Name)
+				logs, err := dbhelper.SetEventStatus(cluster.master.Conn, v, 1)
+				cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlErr, "Could not Set ENABLE for event %s %s on new master", v.Db, v.Name)
+			}
+		}
+	}
+}
+
 // FailoverExtraMultiSource care of master extra muti source replications
 func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMaster *ServerMonitor, fail bool) error {
 
@@ -785,6 +790,12 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		Ignoredreplication bool
 		Weight             uint
 	}
+
+	// HaveOneValidReader is used to state that at least one replicat is available for reading via proxies
+	// In such case it is needed to add the leader in the reader server list
+	// To avoid oveloading the leader with to many read we ignore replication delay and IO thread status
+	HaveOneValidReader := false
+
 	trackposList := make([]Trackpos, ll)
 	for i, sl := range l {
 		trackposList[i].URL = sl.URL
@@ -835,6 +846,9 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 			continue
 		}
 		trackposList[i].Ignoredreplication = !cluster.isSlaveElectable(sl, false)
+		if !HaveOneValidReader {
+			HaveOneValidReader = cluster.isSlaveValidReader(sl, false)
+		}
 		// Fake position if none as new slave
 		filepos := "1"
 		logfile := "master.000001"
@@ -880,6 +894,11 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		}
 
 	} //end loop all slaves
+
+	if !HaveOneValidReader {
+		cluster.sme.AddState("ERR00085", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00085"]), ErrFrom: "CHECK"})
+	}
+
 	sort.Slice(trackposList[:], func(i, j int) bool {
 		return trackposList[i].Seq > trackposList[j].Seq
 	})
@@ -1012,6 +1031,53 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	return true
 }
 
+func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) bool {
+	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
+	if err != nil {
+		cluster.LogPrintf(LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
+		return false
+	}
+
+	if sl.IsMaintenance {
+		cluster.sme.AddState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
+		}
+		return false
+	}
+
+	/*if ss.SecondsBehindMaster.Int64 > cluster.Conf.FailMaxDelay && cluster.Conf.FailMaxDelay != -1  {
+		cluster.sme.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"]+" Sql: "+sl.GetProcessListReplicationLongQuery(), sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
+		}
+
+		return false
+	}
+	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.FailSync && cluster.Conf.RplChecks {
+		cluster.sme.AddState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
+		}
+		return false
+	}
+	*/
+	if ss.SlaveSQLRunning.String == "No" {
+		cluster.sme.AddState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
+		}
+		return false
+	}
+	if sl.IsIgnored() {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Slave is in ignored list %s", sl.URL)
+		}
+		return false
+	}
+	return true
+}
+
 func (cluster *Cluster) foundPreferedMaster(l []*ServerMonitor) *ServerMonitor {
 	for _, sl := range l {
 		if strings.Contains(cluster.Conf.PrefMaster, sl.URL) && cluster.master.State != stateFailed {
@@ -1104,38 +1170,12 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	}
 	cluster.vmaster = cluster.Servers[skey]
 	cluster.master = cluster.Servers[skey]
-	// Call pre-failover script
-	if cluster.Conf.PreScript != "" {
-		cluster.LogPrintf(LvlInfo, "Calling pre-failover script")
-		var out []byte
-		out, err = exec.Command(cluster.Conf.PreScript, cluster.oldMaster.Host, cluster.vmaster.Host, cluster.oldMaster.Port, cluster.vmaster.Port, cluster.oldMaster.MxsServerName, cluster.vmaster.MxsServerName).CombinedOutput()
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "%s", err)
-		}
-		cluster.LogPrintf(LvlInfo, "Pre-failover script complete:", string(out))
-	}
+	cluster.failoverPreScript()
 
 	// Phase 2: Reject updates and sync slaves on switchover
 	if fail == false {
-		if cluster.Conf.FailEventStatus {
-			for _, v := range cluster.vmaster.EventStatus {
-				if v.Status == 3 {
-					cluster.LogPrintf(LvlInfo, "Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
-					logs, err := dbhelper.SetEventStatus(cluster.oldMaster.Conn, v, 3)
-					cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
-				}
-			}
-		}
-		if cluster.Conf.FailEventScheduler {
-
-			cluster.LogPrintf(LvlInfo, "Disable Event Scheduler on old master")
-			logs, err := cluster.oldMaster.SetEventScheduler(false)
-			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not disable event scheduler on old master")
-		}
-		cluster.oldMaster.freeze()
 		cluster.LogPrintf(LvlInfo, "Rejecting updates on %s (old master)", cluster.oldMaster.URL)
-		logs, err := dbhelper.FlushTablesWithReadLock(cluster.oldMaster.Conn, cluster.oldMaster.DBVersion)
-		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not lock tables on %s (old master) %s", cluster.oldMaster.URL, err)
+		cluster.oldMaster.freeze()
 	}
 
 	// Failover
@@ -1187,27 +1227,15 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 
 	// Phase 3: Prepare new master
 
-	// Call post-failover script before unlocking the old master.
-	if cluster.Conf.PostScript != "" {
-		cluster.LogPrintf(LvlInfo, "Calling post-failover script")
-		var out []byte
-		out, err = exec.Command(cluster.Conf.PostScript, cluster.oldMaster.Host, cluster.master.Host, cluster.oldMaster.Port, cluster.master.Port, cluster.oldMaster.MxsServerName, cluster.master.MxsServerName).CombinedOutput()
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "%s", err)
-		}
-		cluster.LogPrintf(LvlInfo, "Post-failover script complete", string(out))
-	}
-	cluster.failoverProxies()
-	cluster.master.SetReadWrite()
-
+	err = cluster.master.SetReadWrite()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Could not set new master as read-write")
+		cluster.LogPrintf(LvlErr, "Could not set new master as read-write %s", err)
 	}
-	if cluster.Conf.FailEventScheduler {
-		cluster.LogPrintf(LvlInfo, "Enable Event Scheduler on the new master")
-		logs, err := cluster.vmaster.SetEventScheduler(true)
-		cluster.LogSQL(logs, err, cluster.vmaster.URL, "MasterFailover", LvlErr, "Could not enable event scheduler on the new master")
-	}
+	// Call post-failover script before unlocking the old master.
+	cluster.failoverProxies()
+	cluster.failoverProxiesWaitMonitor()
+	cluster.failoverEnableEventScheduler()
+	cluster.failoverPostScript()
 	if cluster.Conf.FailEventStatus {
 		for _, v := range cluster.master.EventStatus {
 			if v.Status == 3 {

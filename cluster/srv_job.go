@@ -644,7 +644,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	// Blocking DDL
 	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
 
-		usegtid := "--gtid"
+		usegtid := server.JobGetDumpGtidParameter()
 		events := ""
 		dumpslave := ""
 		if server.IsMaster() {
@@ -1019,16 +1019,25 @@ func (server *ServerMonitor) JobCapturePurge(path string, keep int) error {
 	return nil
 }
 
+func (server *ServerMonitor) JobGetDumpGtidParameter() string {
+	usegtid := ""
+	// MySQL force GTID in server configuration the dump transparently include GTID pos. In MariaDB both positional or GTID is possible and so must be choose at dump
+	// Issue #422
+	if server.GetVersion().IsMariaDB() {
+		if server.HasGTIDReplication() {
+			usegtid = "--gtid=true"
+		} else {
+			usegtid = "--gtid=false"
+		}
+	}
+	return usegtid
+}
+
 func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest *ServerMonitor) error {
 	cluster.LogPrintf(LvlInfo, "Rejoining from direct mysqldump from %s", source.URL)
 	dest.StopSlave()
-	usegtid := ""
+	usegtid := dest.JobGetDumpGtidParameter()
 
-	if dest.HasGTIDReplication() {
-		usegtid = "--gtid=true"
-	} else {
-		usegtid = "--gtid=false"
-	}
 	events := ""
 	if source.HasEventScheduler() {
 		events = "--events=true"

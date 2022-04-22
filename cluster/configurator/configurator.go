@@ -20,6 +20,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 )
@@ -56,19 +57,20 @@ func (configurator *Configurator) Init(conf config.Config) error {
 }
 
 func (configurator *Configurator) LoadDBModules() error {
-	file := configurator.ClusterConfig.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.json"
-	jsonFile, err := os.Open(file)
-	if err != nil {
-		return errors.New(fmt.Sprintf("Failed opened module %s %s", file, err))
-	}
-	// defer the closing of our jsonFile so that we can parse it later on
-	defer jsonFile.Close()
+	/*	file := configurator.ClusterConfig.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.json"
+		jsonFile, err := os.Open(file)
+		if err != nil {
+			return errors.New(fmt.Sprintf("Failed opened module %s %s", file, err))
+		}
+		// defer the closing of our jsonFile so that we can parse it later on
+		defer jsonFile.Close()
 
-	byteValue, _ := ioutil.ReadAll(jsonFile)
-
-	err = json.Unmarshal([]byte(byteValue), &configurator.DBModule)
+		byteValue, _ := ioutil.ReadAll(jsonFile)
+	*/
+	byteValue, _ := share.EmbededDbModuleFS.ReadFile("opensvc/moduleset_mariadb.svc.mrm.db.json")
+	err := json.Unmarshal([]byte(byteValue), &configurator.DBModule)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Failed unmarshal file %s %s", file, err))
+		return errors.New(fmt.Sprintf("Failed unmarshal file %s %s", "opensvc/moduleset_mariadb.svc.mrm.db.json", err))
 	}
 	return nil
 }

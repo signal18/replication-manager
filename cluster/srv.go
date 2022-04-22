@@ -79,7 +79,7 @@ type ServerMonitor struct {
 	Process                     *os.Process                  `json:"process"`
 	SemiSyncMasterStatus        bool                         `json:"semiSyncMasterStatus"`
 	SemiSyncSlaveStatus         bool                         `json:"semiSyncSlaveStatus"`
-	HaveHealthyReplica             bool                         `json:"HaveHealthyReplica"`
+	HaveHealthyReplica          bool                         `json:"HaveHealthyReplica"`
 	HaveEventScheduler          bool                         `json:"eventScheduler"`
 	HaveSemiSync                bool                         `json:"haveSemiSync"`
 	HaveInnodbTrxCommit         bool                         `json:"haveInnodbTrxCommit"`
@@ -217,7 +217,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.ClusterGroup = cluster
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 
-	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator()  == config.ConstOrchestratorOpenSVC {
+	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		// OpenSVC and Sharding proxy monitoring
 		if server.IsCompute {
 			if cluster.Conf.ClusterHead != "" {
@@ -882,6 +882,15 @@ func (server *ServerMonitor) freeze() bool {
 		logs, err := server.SetEventScheduler(false)
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not disable event scheduler on %s", server.URL)
 	}
+	if server.ClusterGroup.Conf.FailEventStatus {
+		for _, v := range server.EventStatus {
+			if v.Status == 3 {
+				server.ClusterGroup.LogPrintf(LvlInfo, "Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
+				logs, err := dbhelper.SetEventStatus(server.Conn, v, 3)
+				server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Could not Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
+			}
+		}
+	}
 	server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes stopping all slaves on %s", server.URL)
 	logs, err := server.StopAllSlaves()
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "Freeze", LvlErr, "Could not stop replicas source on %s ", server.URL)
@@ -918,6 +927,10 @@ func (server *ServerMonitor) freeze() bool {
 	server.ClusterGroup.LogPrintf(LvlInfo, "Freezing writes rejecting writes via FTWRL on %s ", server.URL)
 	logs, err = dbhelper.FlushTablesWithReadLock(server.Conn, server.DBVersion)
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Could not lock tables on %s : %s", server.URL, err)
+
+	// https://github.com/signal18/replication-manager/issues/378
+	logs, err = dbhelper.FlushBinaryLogs(server.Conn)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Could not flush binary logs on %s", server.URL)
 
 	return true
 }

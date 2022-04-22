@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,7 +35,7 @@ func (cluster *Cluster) K8SGetNodes() ([]Agent, error) {
 		cluster.LogPrintf(LvlErr, "Cannot init Kubernetes client API %s ", err)
 		return nil, err
 	}
-	nodes, err := client.CoreV1().Nodes().List(metav1.ListOptions{})
+	nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	agents := []Agent{}
 	for _, n := range nodes.Items {
 		var agent Agent

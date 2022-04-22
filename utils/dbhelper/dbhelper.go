@@ -1330,9 +1330,9 @@ func GetEventStatus(db *sqlx.DB, version *MySQLVersion) ([]Event, string, error)
 
 	ss := []Event{}
 
-	query := "SELECT db as Db, name as Name, definer as Definer, status+0  AS Status FROM mysql.event"
-	if version.IsMySQL() && version.Major >= 8 {
-		query = "SELECT EVENT_SCHEMA as Db, EVENT_NAME as Name, definer as Definer, status+0  AS Status FROM information_schema.EVENTS"
+	query := "SELECT /*replication-manager*/ db as Db, name as Name, definer as Definer, status+0  AS Status FROM mysql.event"
+	if version.IsMySQLOrPercona() && version.Major >= 8 {
+		query = "SELECT /*replication-manager*/ EVENT_SCHEMA as Db, EVENT_NAME as Name, definer as Definer, status+0  AS Status FROM information_schema.EVENTS"
 	}
 	err := udb.Select(&ss, query)
 	if err != nil {
@@ -1346,7 +1346,7 @@ func SetEventStatus(db *sqlx.DB, ev Event, status int64) (string, error) {
 	if len(definer) != 2 {
 		return "", errors.New("Incorrect definer format")
 	}
-	stmt := fmt.Sprintf("ALTER DEFINER='%s'@'%s' EVENT ", definer[0], definer[1])
+	stmt := fmt.Sprintf("ALTER /*replication-manager*/ DEFINER='%s'@'%s' EVENT ", definer[0], definer[1])
 	if status == 3 {
 		stmt += ev.Db + "." + ev.Name + " DISABLE ON SLAVE"
 	} else {
@@ -1374,7 +1374,7 @@ func GetStatus(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, err
 
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
-	query := "SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status"
+	query := "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status"
 	if myver.IsPPostgreSQL() {
 		query = `SELECT 'COM_QUERY' as "variable_name",  SUM(xact_commit + xact_rollback)::text as "value" FROM pg_stat_database
 			UNION ALL SELECT 'COM_INSERT' as "variable_name",SUM(tup_inserted)::text as "value" FROM pg_stat_database
@@ -1489,7 +1489,7 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, string, error) {
 	/*	COALESCE((SELECT B.SQL_TEXT FROM performance_schema.events_statements_history_long B WHERE
 		A.DIGEST = B.DIGEST LIMIT 1 ),'')  as query, */
 	// to expensive FULL SCAN to extact during explain
-	query = `SELECT
+	query = `SELECT /*replication-manager*/
 	A.digest as digest,
 	'' as query,
 	A.digest_text as digest_text,
@@ -1531,7 +1531,7 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, string, error) {
 
 func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
 	vars := make(map[uint64]chunk)
-	query := "SELECT * from replication_manager_schema.table_checksum"
+	query := "SELECT /*replication-manager*/ * from replication_manager_schema.table_checksum"
 	rows, err := db.Queryx(query)
 	if err != nil {
 		return vars, query, err
@@ -1551,9 +1551,9 @@ func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
 func GetPlugins(db *sqlx.DB, myver *MySQLVersion) (map[string]Plugin, string, error) {
 
 	vars := make(map[string]Plugin)
-	query := `SHOW plugins`
+	query := `SHOW PLUGINS`
 	if myver.IsMariaDB() {
-		query = `SHOW plugins soname`
+		query = `SHOW PLUGINS soname`
 	}
 
 	rows, err := db.Queryx(query)
@@ -1579,7 +1579,7 @@ func GetStatusAsInt(db *sqlx.DB, myver *MySQLVersion) (map[string]int64, string,
 	}
 	vars := make(map[string]int64)
 	source := GetVariableSource(db, myver)
-	query := "SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status"
+	query := "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status"
 	rows, err := db.Queryx(query)
 	if err != nil {
 		return nil, query, errors.New("Could not get status variables as integers")
@@ -1597,7 +1597,7 @@ func GetVariables(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, 
 
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
-	query := "SELECT UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_variables"
+	query := "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_variables"
 
 	if myver.IsPPostgreSQL() {
 		query = "SELECT upper(name) AS variable_name, upper(setting) AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
@@ -1621,7 +1621,7 @@ func GetVariables(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, 
 func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 
 	vars := make(map[string]string)
-	query := "SELECT 'SLOW_QUERY_PFS' AS variable_name, IF(count(*)>0,'OFF','ON') AS VALUE from performance_schema.setup_consumers  WHERE NAME IN('events_statements_history_long','events_stages_history') AND ENABLED='NO'"
+	query := "SELECT /*replication-manager*/ 'SLOW_QUERY_PFS' AS variable_name, IF(count(*)>0,'OFF','ON') AS VALUE from performance_schema.setup_consumers  WHERE NAME IN('events_statements_history_long','events_stages_history') AND ENABLED='NO'"
 	rows, err := db.Queryx(query)
 	if err != nil {
 		return vars, query, err

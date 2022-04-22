@@ -195,6 +195,11 @@ func (cluster *Cluster) SwitchProxyServersReadOnMaster() {
 	cluster.Configurator.Init(cluster.Conf)
 }
 
+func (cluster *Cluster) SwitchProxyServersReadOnMasterNoSlave() {
+	cluster.Conf.PRXServersReadOnMasterNoSlave = !cluster.Conf.PRXServersReadOnMasterNoSlave
+	cluster.Configurator.Init(cluster.Conf)
+}
+
 func (cluster *Cluster) SwitchProxySQL() {
 	cluster.Conf.ProxysqlOn = !cluster.Conf.ProxysqlOn
 }

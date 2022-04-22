@@ -238,12 +238,13 @@ func init() {
 	}
 
 	monitorCmd.Flags().BoolVar(&conf.PRXServersReadOnMaster, "proxy-servers-read-on-master", false, "Should RO route via proxies point to master")
+	monitorCmd.Flags().BoolVar(&conf.PRXServersReadOnMasterNoSlave, "proxy-servers-read-on-master-no-slave", true, "Should RO route via proxies point to master when no more replicats")
 	monitorCmd.Flags().BoolVar(&conf.PRXServersBackendCompression, "proxy-servers-backend-compression", false, "Proxy communicate with backends with compression")
 	monitorCmd.Flags().IntVar(&conf.PRXServersBackendMaxReplicationLag, "proxy-servers-backend-max-replication-lag", 30, "Max lag to send query to read  backends ")
 	monitorCmd.Flags().IntVar(&conf.PRXServersBackendMaxConnections, "proxy-servers-backend-max-connections", 1000, "Max connections on backends ")
 
-	monitorCmd.Flags().BoolVar(&conf.ExtProxyOn, "extproxy", false, "External proxy can be used to specify a route manage with external scripts")
-	monitorCmd.Flags().StringVar(&conf.ExtProxyVIP, "extproxy-address", "", "Network address when route is manage via external script,  host:[port] format")
+	externalprx := new(cluster.ExternalProxy)
+	externalprx.AddFlags(monitorCmd.Flags(), &conf)
 
 	if WithMaxscale == "ON" {
 		maxscaleprx := new(cluster.MaxscaleProxy)
@@ -525,6 +526,7 @@ func init() {
 	}
 	//cobra.OnInitialize()
 	initLogFlags(monitorCmd)
+
 	viper.BindPFlags(monitorCmd.Flags())
 
 }
