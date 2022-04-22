@@ -156,10 +156,10 @@ func (repman *ReplicationManager) apiserver() {
 	if repman.Conf.MonitoringSSLCert == "" {
 		host := repman.Conf.APIBind
 		if host == "0.0.0.0" {
-			host = "localhost, " + host + ", 127.0.0.1"
+			host = "localhost," + host + ",127.0.0.1"
 		}
 		cert.Host = host
-		cert.Organization = "Replication-Manager"
+		cert.Organization = "Signal18 Replication-Manager"
 		tmpKey, tmpCert, err := cert.GenerateTempKeyAndCert()
 		if err != nil {
 			log.Errorf("Cannot generate temporary Certificate and/or Key: %s", err)
@@ -172,6 +172,7 @@ func (repman *ReplicationManager) apiserver() {
 			Enabled:            true,
 			CertificatePath:    tmpCert,
 			CertificateKeyPath: tmpKey,
+			SelfSigned:         true,
 		}
 	}
 
