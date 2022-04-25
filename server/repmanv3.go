@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 
 	jwt "github.com/dgrijalva/jwt-go"
@@ -55,6 +57,7 @@ type Repmanv3TLS struct {
 	Enabled            bool
 	CertificatePath    string
 	CertificateKeyPath string
+	SelfSigned         bool
 }
 
 func (s *ReplicationManager) SetV3Config(config Repmanv3Config) {
@@ -274,12 +277,6 @@ func (s *ReplicationManager) getCredentials() (opts []grpc.ServerOption, dopts [
 
 		opts = append(opts, grpc.Creds(grpcCreds))
 
-		// TLS for the REST Gateway to gRPC
-		gatewayCreds := credentials.NewTLS(&tls.Config{
-			ServerName: s.v3Config.Listen.Address, // this is critical
-		})
-		dopts = []grpc.DialOption{grpc.WithTransportCredentials(gatewayCreds)}
-
 		cer, err := tls.LoadX509KeyPair(s.v3Config.TLS.CertificatePath, s.v3Config.TLS.CertificateKeyPath)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("error loading certificates for TLS: %w", err)
@@ -289,7 +286,40 @@ func (s *ReplicationManager) getCredentials() (opts []grpc.ServerOption, dopts [
 			Certificates: []tls.Certificate{cer},
 			// declare that the listener supports http/2.0
 			NextProtos: []string{"h2"},
+			ServerName: s.v3Config.Listen.Address, // this is critical
+			MinVersion: tls.VersionTLS12,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
+				tls.TLS_AES_256_GCM_SHA384,
+				tls.TLS_CHACHA20_POLY1305_SHA256,
+				tls.TLS_AES_128_GCM_SHA256,
+				tls.TLS_AES_256_GCM_SHA384,
+				tls.TLS_CHACHA20_POLY1305_SHA256,
+			},
 		}
+
+		// in case the certificate is self-signed we must add the certificate to the TLS' known pool of CA's
+		// else the local dialing will not function for the REST Gateway
+		if s.v3Config.TLS.SelfSigned {
+			certPEMBlock, err := os.ReadFile(s.v3Config.TLS.CertificatePath)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("could not read self-signed cert for root-ca: %w", err)
+			}
+
+			rootCa := x509.NewCertPool()
+			if !rootCa.AppendCertsFromPEM(certPEMBlock) {
+				return nil, nil, nil, fmt.Errorf("could not append self-signed cert for root-ca")
+			}
+
+			tlsConfig.RootCAs = rootCa
+		}
+
+		dopts = []grpc.DialOption{grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))}
 	} else {
 		dopts = []grpc.DialOption{grpc.WithInsecure()}
 	}
