@@ -26,7 +26,7 @@ import (
 
 // MasterFailover triggers a leader change and returns the new master URL when single possible leader
 func (cluster *Cluster) MasterFailover(fail bool) bool {
-	if cluster.GetTopology() == topoMultiMasterRing || cluster.GetTopology() == topoMultiMasterWsrep {
+	if cluster.GetTopology() == topoMultiMasterRing || cluster.GetTopology() == topoMultiMasterWsrep || cluster.GetTopology() == topoMultiMasterGrouprep {
 		res := cluster.VMasterFailover(fail)
 		return res
 	}
@@ -1147,7 +1147,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		s.Refresh()
 	}
 	key := -1
-	if cluster.GetTopology() != topoMultiMasterWsrep {
+	if cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoMultiMasterGrouprep {
 		key = cluster.electVirtualCandidate(cluster.oldMaster, true)
 	} else {
 		key = cluster.electFailoverCandidate(cluster.slaves, true)
@@ -1178,8 +1178,8 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.oldMaster.freeze()
 	}
 
-	// Failover
-	if cluster.GetTopology() != topoMultiMasterWsrep {
+	// Failover for ring
+	if cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoMultiMasterGrouprep {
 		// Sync candidate depending on the master status.
 		// If it's a switchover, use MASTER_POS_WAIT to sync.
 		// If it's a failover, wait for the SQL thread to read all relay logs.

@@ -112,7 +112,10 @@ type Config struct {
 	ReplicationSSL                            bool   `mapstructure:"replication-use-ssl" toml:"replication-use-ssl" json:"replicationUseSsl"`
 	MultiMasterRing                           bool   `mapstructure:"replication-multi-master-ring" toml:"replication-multi-master-ring" json:"replicationMultiMasterRing"`
 	MultiMasterWsrep                          bool   `mapstructure:"replication-multi-master-wsrep" toml:"replication-multi-master-wsrep" json:"replicationMultiMasterWsrep"`
+	MultiMasterGrouprep                       bool   `mapstructure:"replication-multi-master-grouprep" toml:"replication-multi-master-grouprep" json:"replicationMultiMasterGrouprep"`
+	MultiMasterGrouprepPort                   int    `mapstructure:"replication-multi-master-grouprep-port" toml:"replication-multi-master-grouprep-port" json:"replicationMultiMasterGrouprepPort"`
 	MultiMasterWsrepSSTMethod                 string `mapstructure:"replication-multi-master-wsrep-sst-method" toml:"replication-multi-master-wsrep-sst-method" json:"replicationMultiMasterWsrepSSTMethod"`
+	MultiMasterWsrepPort                      int    `mapstructure:"replication-multi-master-wsrep-port" toml:"replication-multi-master-wsrep-port" json:"replicationMultiMasterWsrepPort"`
 	MultiMaster                               bool   `mapstructure:"replication-multi-master" toml:"replication-multi-master" json:"replicationMultiMaster"`
 	MultiTierSlave                            bool   `mapstructure:"replication-multi-tier-slave" toml:"replication-multi-tier-slave" json:"replicationMultiTierSlave"`
 	MasterSlavePgStream                       bool   `mapstructure:"replication-master-slave-pg-stream" toml:"replication-master-slave-pg-stream" json:"replicationMasterSlavePgStream"`

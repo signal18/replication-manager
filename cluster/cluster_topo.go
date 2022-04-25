@@ -30,6 +30,7 @@ const (
 	topoMultiMaster         string = "multi-master"
 	topoMultiMasterRing     string = "multi-master-ring"
 	topoMultiMasterWsrep    string = "multi-master-wsrep"
+	topoMultiMasterGrouprep string = "multi-master-grprep"
 	topoMasterSlavePgLog    string = "master-slave-pg-logical"
 	topoMasterSlavePgStream string = "master-slave-pg-stream"
 )
@@ -201,7 +202,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	// If no cluster.slaves are detected, generate an error
-	if len(cluster.slaves) == 0 && cluster.GetTopology() != topoMultiMasterWsrep {
+	if len(cluster.slaves) == 0 && cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoMultiMasterGrouprep {
 		cluster.SetState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00010"]), ErrFrom: "TOPO"})
 	}
 
@@ -241,7 +242,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 		}
 	}
-	if cluster.Conf.MultiMaster == true || cluster.GetTopology() == topoMultiMasterWsrep {
+	if cluster.Conf.MultiMaster == true || cluster.GetTopology() == topoMultiMasterWsrep || cluster.GetTopology() == topoMultiMasterGrouprep {
 		srw := 0
 		for _, s := range cluster.Servers {
 			if s.IsReadWrite() {
@@ -287,7 +288,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						break
 					}
 				}
-				if (cluster.Conf.MultiMaster == true || cluster.GetTopology() == topoMultiMasterWsrep) && !cluster.Servers[k].IsDown() {
+				if (cluster.Conf.MultiMaster == true || cluster.GetTopology() == topoMultiMasterWsrep || cluster.GetTopology() == topoMultiMasterGrouprep) && !cluster.Servers[k].IsDown() {
 					if s.IsReadWrite() {
 						cluster.master = cluster.Servers[k]
 						if cluster.Conf.MultiMaster == true {
