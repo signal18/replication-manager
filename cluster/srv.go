@@ -1460,7 +1460,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 	if err != nil {
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "BootstrapReplication", LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, master.URL, err)
 	}
-	_, err = server.Conn.Exec("START SLAVE")
+	_, err = server.Conn.Exec("START SLAVE FOR CHANNEL '" + server.ClusterGroup.Conf.MasterConn + "'")
 	if err != nil {
 		err = errors.New(fmt.Sprintln("Can't start slave: ", err))
 	}
