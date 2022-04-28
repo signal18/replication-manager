@@ -317,7 +317,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	}
 
 	cfgGroupIndex = 0
-
+	//	fistRead := viper.GetViper()
 	cf1 := fistRead.Sub("Default")
 	vipersave := viper.GetViper()
 	//cf1.Debug()

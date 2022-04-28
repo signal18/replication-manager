@@ -368,7 +368,7 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection(port string) map[string]s
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer["detach"] = "false"
 		svccontainer["type"] = "docker"
-		svccontainer["image"] = "busybox"
+		svccontainer["image"] = "alpine"
 		svccontainer["netns"] = "container#01"
 		svccontainer["rm"] = "true"
 		svccontainer["start_timeout"] = "30s"
@@ -765,7 +765,7 @@ func (server *ServerMonitor) GetInitContainer(collector opensvc.Collector) strin
 [container#02]
 detach = false
 type = docker
-image = busybox
+image = alpine
 netns = container#01
 rm = true
 start_timeout = 30s

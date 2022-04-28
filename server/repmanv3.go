@@ -281,13 +281,15 @@ func (s *ReplicationManager) getCredentials() (opts []grpc.ServerOption, dopts [
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("error loading certificates for TLS: %w", err)
 		}
-
+		log.Warning("Ici :" + s.v3Config.Listen.Address)
 		tlsConfig = &tls.Config{
 			Certificates: []tls.Certificate{cer},
 			// declare that the listener supports http/2.0
-			NextProtos: []string{"h2"},
-			ServerName: s.v3Config.Listen.Address, // this is critical
-			MinVersion: tls.VersionTLS12,
+			NextProtos:               []string{"h2"},
+			ServerName:               s.v3Config.Listen.Address, // this is critical
+			MinVersion:               tls.VersionTLS12,
+			CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
+			PreferServerCipherSuites: true,
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
 				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
