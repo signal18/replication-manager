@@ -609,3 +609,8 @@ func (server *ServerMonitor) GetCluster() *Cluster {
 func (server *ServerMonitor) GetClusterConfig() config.Config {
 	return server.GetCluster().Conf
 }
+
+func (server *ServerMonitor) GetGroupReplicationLocalAddress() string {
+	strPort := "33061"
+	return server.Host + ":" + strPort
+}
