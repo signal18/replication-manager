@@ -549,6 +549,13 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	}
 
 	switch in.Action {
+	case v3.ClusterAction_PROVISION:
+		err = mycluster.Bootstrap()
+		if err != nil {
+			mycluster.LogPrintf(cluster.LvlErr, "API Error Bootstrap Micro Services + replication: %s", err)
+		}
+	case v3.ClusterAction_UNPROVISION:
+		err = mycluster.Unprovision()
 	case v3.ClusterAction_ADD:
 		if err = user.Granted(config.GrantProvCluster); err != nil {
 			return nil, err
@@ -922,4 +929,69 @@ func (s *ReplicationManager) GetSchema(in *v3.Cluster, stream v3.ClusterService_
 	}
 
 	return nil
+}
+
+func (s *ReplicationManager) ExecuteTableAction(ctx context.Context, in *v3.TableAction) (res *emptypb.Empty, err error) {
+	user, mycluster, err := s.getClusterAndUser(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: introduce new Grants for this type of endpoint
+	if err = user.Granted(config.GrantClusterGrant); err != nil {
+		return nil, err
+	}
+
+	if err = in.Validate(); err != nil {
+		return nil, err
+	}
+
+	switch in.Action {
+	case v3.TableAction_ACTION_UNSPECIFIED:
+		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "action", "").Err()
+
+	case v3.TableAction_CHECKSUM_TABLE:
+		go mycluster.CheckTableChecksum(in.Table.TableSchema, in.Table.TableName)
+
+	case v3.TableAction_RESHARD_TABLE:
+		for _, pri := range mycluster.Proxies {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
+				clusters := mycluster.GetClusterListFromShardProxy(mycluster.Conf.MdbsProxyHosts)
+				if in.ClusterList == "" {
+					mycluster.ShardProxyReshardTable(pr, in.Table.TableSchema, in.Table.TableName, clusters)
+				} else {
+					var clustersFilter map[string]*cluster.Cluster
+					for _, c := range clusters {
+						if strings.Contains(in.ClusterList, c.GetName()) {
+							clustersFilter[c.GetName()] = c
+						}
+					}
+					mycluster.ShardProxyReshardTable(pr, in.Table.TableSchema, in.Table.TableName, clustersFilter)
+				}
+			}
+		}
+
+	case v3.TableAction_UNIVERSAL_TABLE:
+		for _, pri := range mycluster.Proxies {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
+				go mycluster.ShardSetUniversalTable(pr, in.Table.TableSchema, in.Table.TableName)
+			}
+		}
+
+	case v3.TableAction_MOVE_TABLE:
+		for _, pri := range mycluster.Proxies {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
+				if in.ClusterShard != "" {
+					destcluster := s.getClusterByName(in.ClusterShard)
+					if mycluster != nil {
+						mycluster.ShardProxyMoveTable(pr, in.Table.TableSchema, in.Table.TableName, destcluster)
+						return
+					}
+				}
+			}
+		}
+
+	}
+
+	return
 }

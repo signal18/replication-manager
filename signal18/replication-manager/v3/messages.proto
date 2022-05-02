@@ -195,6 +195,8 @@ message ClusterAction {
     WAITDATABASES = 18;
     REPLICATION_BOOTSTRAP = 19;
     REPLICATION_CLEANUP = 20;
+    PROVISION = 21;
+    UNPROVISION = 22;
   }
   Action action = 3;
   message Server {
@@ -310,6 +312,21 @@ message Tag {
   uint64 id = 1;
   string name = 2;
   string category = 3;
+}
+
+message TableAction {
+  Cluster cluster = 1;
+  Table table = 2;
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    CHECKSUM_TABLE = 1;
+    MOVE_TABLE = 2;
+    RESHARD_TABLE = 3;
+    UNIVERSAL_TABLE = 4;
+  }
+  Action action = 3;
+  string cluster_shard = 4;
+  string cluster_list = 5;
 }
 
 message Table {

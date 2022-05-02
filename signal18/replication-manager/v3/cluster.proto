@@ -102,6 +102,13 @@ service ClusterService {
         // /api/clusters/{clusterName}/actions/replication/cleanup
         get: "/v3/clusters/{cluster.name}/actions/{action}"
       }
+
+      additional_bindings {
+        // /api/clusters/{clusterName}/services/actions/provision
+        // /api/clusters/{clusterName}/services/actions/unprovision
+        get: "/v3/clusters/{cluster.name}/services/actions/{action}"
+      }
+
       additional_bindings {
         // /api/clusters/{clusterName}/actions/switchover
         post: "/v3/clusters/{cluster.name}/actions/switchover"
@@ -155,6 +162,25 @@ service ClusterService {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/schema
       get: "/v3/clusters/{name}/schema"
+    };
+  }
+
+  rpc ExecuteTableAction(TableAction) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/checksum-table
+      // /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table
+      // /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/universal-table
+      get: "/v3/clusters/{cluster.name}/schema/{table.table_schema}/{table.table_name}/actions/{action}"
+
+      additional_bindings {
+        // /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/move-table/{clusterShard}
+        get: "/v3/clusters/{cluster.name}/schema/{table.table_schema}/{table.table_name}/actions/{action}/{cluster_shard}"
+      }
+
+      additional_bindings {
+        // /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table/{clusterList}
+        get: "/v3/clusters/{cluster.name}/schema/{table.table_schema}/{table.table_name}/actions/RESHARD_TABLE/{cluster_list}"
+      }
     };
   }
 }

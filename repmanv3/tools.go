@@ -50,3 +50,22 @@ func (c *Cluster) GetClusterMessage() (*Cluster, error) {
 
 	return c, nil
 }
+
+func (t *TableAction) GetClusterMessage() (*Cluster, error) {
+	if t.Cluster == nil {
+		return nil, NewError(codes.InvalidArgument, ErrClusterNotSet).Err()
+	}
+
+	return t.Cluster, nil
+}
+
+func (t *TableAction) Validate() error {
+	if t.Table.TableName == "" {
+		return NewErrorResource(codes.InvalidArgument, ErrFieldNotSet, "table_name", "").Err()
+	}
+	if t.Table.TableSchema == "" {
+		return NewErrorResource(codes.InvalidArgument, ErrFieldNotSet, "table_schema", "").Err()
+	}
+
+	return nil
+}

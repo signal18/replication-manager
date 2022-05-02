@@ -152,6 +152,7 @@ type ClusterServiceClient interface {
 	GetTags(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetTagsClient, error)
 	GetQueryRules(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetQueryRulesClient, error)
 	GetSchema(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetSchemaClient, error)
+	ExecuteTableAction(ctx context.Context, in *TableAction, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type clusterServiceClient struct {
@@ -367,6 +368,15 @@ func (x *clusterServiceGetSchemaClient) Recv() (*Table, error) {
 	return m, nil
 }
 
+func (c *clusterServiceClient) ExecuteTableAction(ctx context.Context, in *TableAction, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/signal18.replication_manager.v3.ClusterService/ExecuteTableAction", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations must embed UnimplementedClusterServiceServer
 // for forward compatibility
@@ -381,6 +391,7 @@ type ClusterServiceServer interface {
 	GetTags(*Cluster, ClusterService_GetTagsServer) error
 	GetQueryRules(*Cluster, ClusterService_GetQueryRulesServer) error
 	GetSchema(*Cluster, ClusterService_GetSchemaServer) error
+	ExecuteTableAction(context.Context, *TableAction) (*emptypb.Empty, error)
 	mustEmbedUnimplementedClusterServiceServer()
 }
 
@@ -417,6 +428,9 @@ func (UnimplementedClusterServiceServer) GetQueryRules(*Cluster, ClusterService_
 }
 func (UnimplementedClusterServiceServer) GetSchema(*Cluster, ClusterService_GetSchemaServer) error {
 	return status.Errorf(codes.Unimplemented, "method GetSchema not implemented")
+}
+func (UnimplementedClusterServiceServer) ExecuteTableAction(context.Context, *TableAction) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExecuteTableAction not implemented")
 }
 func (UnimplementedClusterServiceServer) mustEmbedUnimplementedClusterServiceServer() {}
 
@@ -626,6 +640,24 @@ func (x *clusterServiceGetSchemaServer) Send(m *Table) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _ClusterService_ExecuteTableAction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TableAction)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).ExecuteTableAction(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/signal18.replication_manager.v3.ClusterService/ExecuteTableAction",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).ExecuteTableAction(ctx, req.(*TableAction))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -652,6 +684,10 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetClientCertificates",
 			Handler:    _ClusterService_GetClientCertificates_Handler,
+		},
+		{
+			MethodName: "ExecuteTableAction",
+			Handler:    _ClusterService_ExecuteTableAction_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
