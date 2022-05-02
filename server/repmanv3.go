@@ -699,7 +699,7 @@ func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stre
 		if err != nil {
 			return status.Error(codes.Internal, "could not marshal crashes list")
 		}
-		var crashes []*cluster.Crash
+		var crashes []*v3.Cluster_Crash
 		err = json.Unmarshal(data, &crashes)
 		if err != nil {
 			return status.Error(codes.Internal, "could not unmarshal crashes list")

@@ -79,3 +79,9 @@ proto:
 		--openapiv2_opt merge_file_name=repmanv3 \
 		-orepmanv3/service.desc \
 		${PROTO_DIR}/cluster.proto ${PROTO_DIR}/messages.proto
+
+	@protoc/bin/protoc \
+		-I ${PROTO_DIR} \
+		--go_opt=paths=source_relative \
+		--go_out=utils/gtid \
+		${PROTO_DIR}/gtid.proto

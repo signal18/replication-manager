@@ -60,7 +60,7 @@ type Cluster struct {
 	WorkingDir                    string                      `json:"workingDir"`
 	Servers                       serverList                  `json:"-"`
 	ServerIdList                  []string                    `json:"dbServers"`
-	Crashes                       crashList                   `json:"dbServersCrashes"`
+	Crashes                       v3.CrashList                `json:"dbServersCrashes"`
 	Proxies                       proxyList                   `json:"-"`
 	ProxyIdList                   []string                    `json:"proxyServers"`
 	FailoverCtr                   int                         `json:"failoverCounter"`
@@ -213,11 +213,12 @@ func ClusterToProtoCluster(c *Cluster) *v3.Cluster {
 		DbIndexSize:                   c.DBIndexSize,
 		Connections:                   int32(c.Connections),
 		Qps:                           c.QPS,
-		HaveDBTLSCert:                 c.HaveDBTLSCert,
-		HaveDBTLSOldCert:              c.HaveDBTLSOldCert,
+		HaveDbtlsCert:                 c.HaveDBTLSCert,
+		HaveDbtlsOldCert:              c.HaveDBTLSOldCert,
 		WaitingRejoin:                 int32(c.WaitingRejoin),
 		WaitingSwitchover:             int32(c.WaitingSwitchover),
 		WaitingFailover:               int32(c.WaitingFailover),
+		Crashes:                       c.Crashes,
 	}
 
 	return out
@@ -388,7 +389,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.LoadAPIUsers()
 	// createKeys do nothing yet
 	cluster.createKeys()
-	cluster.GetPersitentState()
+	cluster.GetPersistentState()
 
 	cluster.newServerList()
 	err = cluster.newProxyList()
@@ -642,11 +643,11 @@ func (cluster *Cluster) Stop() {
 func (cluster *Cluster) Save() error {
 
 	type Save struct {
-		Servers    string      `json:"servers"`
-		Crashes    crashList   `json:"crashes"`
-		SLA        state.Sla   `json:"sla"`
-		SLAHistory []state.Sla `json:"slaHistory"`
-		IsAllDbUp  bool        `json:"provisioned"`
+		Servers    string       `json:"servers"`
+		Crashes    v3.CrashList `json:"crashes"`
+		SLA        state.Sla    `json:"sla"`
+		SLAHistory []state.Sla  `json:"slaHistory"`
+		IsAllDbUp  bool         `json:"provisioned"`
 	}
 
 	var clsave Save

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/state"
@@ -136,9 +137,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// If it's a switchover, use MASTER_POS_WAIT to sync.
 	// If it's a failover, wait for the SQL thread to read all relay logs.
 	// If maxsclale we should wait for relay catch via old style
-	crash := new(Crash)
-	crash.URL = cluster.oldMaster.URL
-	crash.ElectedMasterURL = cluster.master.URL
+	crash := new(v3.Cluster_Crash)
+	crash.Url = cluster.oldMaster.URL
+	crash.ElectedMasterUrl = cluster.master.URL
 
 	// if switchover on MariaDB Wait GTID
 	/*	if fail == false && cluster.Conf.MxsBinlogOn == false && cluster.master.DBVersion.IsMariaDB() {
@@ -173,13 +174,13 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if cluster.master.DBVersion.IsMariaDB() {
 		if cluster.Conf.MxsBinlogOn {
 			//	cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
-			crash.FailoverIOGtid = cluster.master.CurrentGtid
+			crash.SetFailoverIOGtid(*cluster.master.CurrentGtid)
 		} else {
 			//	cluster.master.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
-			crash.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
+			crash.SetFailoverIOGtid(*gtid.NewList(ms.GtidIOPos.String))
 		}
 	} else if cluster.master.DBVersion.IsMySQLOrPerconaGreater57() && cluster.master.HasGTIDReplication() {
-		crash.FailoverIOGtid = gtid.NewMySQLList(ms.ExecutedGtidSet.String)
+		crash.SetFailoverIOGtid(*gtid.NewMySQLList(ms.ExecutedGtidSet.String))
 	}
 	cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 	crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
@@ -1184,9 +1185,9 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		// If it's a switchover, use MASTER_POS_WAIT to sync.
 		// If it's a failover, wait for the SQL thread to read all relay logs.
 		// If maxsclale we should wait for relay catch via old style
-		crash := new(Crash)
-		crash.URL = cluster.oldMaster.URL
-		crash.ElectedMasterURL = cluster.master.URL
+		crash := new(v3.Cluster_Crash)
+		crash.Url = cluster.oldMaster.URL
+		crash.ElectedMasterUrl = cluster.master.URL
 
 		cluster.LogPrintf(LvlInfo, "Waiting for candidate master to apply relay log")
 		err = cluster.master.ReadAllRelayLogs()
@@ -1208,13 +1209,13 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		if cluster.master.DBVersion.IsMariaDB() {
 			if cluster.Conf.MxsBinlogOn {
 				//	cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
-				crash.FailoverIOGtid = cluster.master.CurrentGtid
+				crash.SetFailoverIOGtid(*cluster.master.CurrentGtid)
 			} else {
 				//	cluster.master.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
-				crash.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
+				crash.SetFailoverIOGtid(*gtid.NewList(ms.GtidIOPos.String))
 			}
 		} else if cluster.master.DBVersion.IsMySQLOrPerconaGreater57() && cluster.master.HasGTIDReplication() {
-			crash.FailoverIOGtid = gtid.NewMySQLList(ms.ExecutedGtidSet.String)
+			crash.SetFailoverIOGtid(*gtid.NewMySQLList(ms.ExecutedGtidSet.String))
 		}
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus

@@ -9342,6 +9342,38 @@
       ],
       "default": "TYPE_UNSPECIFIED"
     },
+    "ClusterCrash": {
+      "type": "object",
+      "properties": {
+        "URL": {
+          "type": "string"
+        },
+        "FailoverMasterLogFile": {
+          "type": "string"
+        },
+        "FailoverMasterLogPos": {
+          "type": "string"
+        },
+        "NewMasterLogFile": {
+          "type": "string"
+        },
+        "NewMasterLogPos": {
+          "type": "string"
+        },
+        "FailoverSemiSyncSlaveStatus": {
+          "type": "boolean"
+        },
+        "FailoverIOGtid": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/v3Gtid"
+          }
+        },
+        "ElectedMasterURL": {
+          "type": "string"
+        }
+      }
+    },
     "ClusterSettingSetting": {
       "type": "object",
       "properties": {
@@ -9762,6 +9794,12 @@
         "waitingFailover": {
           "type": "integer",
           "format": "int32"
+        },
+        "dbServersCrashes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ClusterCrash"
+          }
         }
       }
     },
@@ -9808,6 +9846,23 @@
         "DROP_PROXY_TAG"
       ],
       "default": "UNSPECIFIED"
+    },
+    "v3Gtid": {
+      "type": "object",
+      "properties": {
+        "domainId": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "serverId": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "seqNo": {
+          "type": "string",
+          "format": "uint64"
+        }
+      }
     },
     "v3ServiceStatus": {
       "type": "string",

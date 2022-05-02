@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package signal18.replication_manager.v3;
 
+import "gtid.proto";
+
 option go_package = "github.com/signal18/replication-manager;repmanv3";
 
 message ErrorInfo {
@@ -53,11 +55,24 @@ message Cluster {
   int64 db_index_size = 34 [ json_name = "dbIndexSize" ];
   int32 connections = 35 [ json_name = "connections" ];
   int64 qps = 36 [ json_name = "qps" ];
-  bool HaveDBTLSCert = 37 [ json_name = "haveDBTLSCert" ];
-  bool HaveDBTLSOldCert = 38 [ json_name = "haveDBTLSOldCert" ];
-  int32 WaitingRejoin = 39 [ json_name = "waitingRejoin" ];
-  int32 WaitingSwitchover = 40 [ json_name = "waitingSwitchover" ];
-  int32 WaitingFailover = 41 [ json_name = "waitingFailover" ];
+  bool have_dbtls_cert = 37 [ json_name = "haveDBTLSCert" ];
+  bool have_dbtls_old_cert = 38 [ json_name = "haveDBTLSOldCert" ];
+  int32 waiting_rejoin = 39 [ json_name = "waitingRejoin" ];
+  int32 waiting_switchover = 40 [ json_name = "waitingSwitchover" ];
+  int32 waiting_failover = 41 [ json_name = "waitingFailover" ];
+  message Crash {
+    string url = 1 [ json_name = "URL" ];
+    string failover_master_log_file = 2 [ json_name = "FailoverMasterLogFile" ];
+    string failover_master_log_pos = 3 [ json_name = "FailoverMasterLogPos" ];
+    string new_master_log_file = 4 [ json_name = "NewMasterLogFile" ];
+    string new_master_log_pos = 5 [ json_name = "NewMasterLogPos" ];
+    bool failover_semi_sync_slave_status = 6
+        [ json_name = "FailoverSemiSyncSlaveStatus" ];
+    repeated signal18.replication_manager.v3.Gtid failover_io_gtids = 7
+        [ json_name = "FailoverIOGtid" ];
+    string elected_master_url = 8 [ json_name = "ElectedMasterURL" ];
+  }
+  repeated Crash crashes = 42 [ json_name = "dbServersCrashes" ];
   // crashList Crashes = 42 [json_name="dbServersCrashes"];
   // config.Config Conf = 43 [json_name="config"];
   // configurator.Configurator Configurator = 44 [json_name="configurator"];
