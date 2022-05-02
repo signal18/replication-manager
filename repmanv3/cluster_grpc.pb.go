@@ -150,6 +150,7 @@ type ClusterServiceClient interface {
 	GetClientCertificates(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*Certificate, error)
 	GetBackups(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetBackupsClient, error)
 	GetTags(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetTagsClient, error)
+	GetShards(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetShardsClient, error)
 	GetQueryRules(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetQueryRulesClient, error)
 	GetSchema(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetSchemaClient, error)
 	ExecuteTableAction(ctx context.Context, in *TableAction, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -304,8 +305,40 @@ func (x *clusterServiceGetTagsClient) Recv() (*Tag, error) {
 	return m, nil
 }
 
+func (c *clusterServiceClient) GetShards(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetShardsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[3], "/signal18.replication_manager.v3.ClusterService/GetShards", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &clusterServiceGetShardsClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ClusterService_GetShardsClient interface {
+	Recv() (*Cluster, error)
+	grpc.ClientStream
+}
+
+type clusterServiceGetShardsClient struct {
+	grpc.ClientStream
+}
+
+func (x *clusterServiceGetShardsClient) Recv() (*Cluster, error) {
+	m := new(Cluster)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *clusterServiceClient) GetQueryRules(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetQueryRulesClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[3], "/signal18.replication_manager.v3.ClusterService/GetQueryRules", opts...)
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[4], "/signal18.replication_manager.v3.ClusterService/GetQueryRules", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +370,7 @@ func (x *clusterServiceGetQueryRulesClient) Recv() (*structpb.Struct, error) {
 }
 
 func (c *clusterServiceClient) GetSchema(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetSchemaClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[4], "/signal18.replication_manager.v3.ClusterService/GetSchema", opts...)
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[5], "/signal18.replication_manager.v3.ClusterService/GetSchema", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -389,6 +422,7 @@ type ClusterServiceServer interface {
 	GetClientCertificates(context.Context, *Cluster) (*Certificate, error)
 	GetBackups(*Cluster, ClusterService_GetBackupsServer) error
 	GetTags(*Cluster, ClusterService_GetTagsServer) error
+	GetShards(*Cluster, ClusterService_GetShardsServer) error
 	GetQueryRules(*Cluster, ClusterService_GetQueryRulesServer) error
 	GetSchema(*Cluster, ClusterService_GetSchemaServer) error
 	ExecuteTableAction(context.Context, *TableAction) (*emptypb.Empty, error)
@@ -422,6 +456,9 @@ func (UnimplementedClusterServiceServer) GetBackups(*Cluster, ClusterService_Get
 }
 func (UnimplementedClusterServiceServer) GetTags(*Cluster, ClusterService_GetTagsServer) error {
 	return status.Errorf(codes.Unimplemented, "method GetTags not implemented")
+}
+func (UnimplementedClusterServiceServer) GetShards(*Cluster, ClusterService_GetShardsServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetShards not implemented")
 }
 func (UnimplementedClusterServiceServer) GetQueryRules(*Cluster, ClusterService_GetQueryRulesServer) error {
 	return status.Errorf(codes.Unimplemented, "method GetQueryRules not implemented")
@@ -598,6 +635,27 @@ func (x *clusterServiceGetTagsServer) Send(m *Tag) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _ClusterService_GetShards_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(Cluster)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ClusterServiceServer).GetShards(m, &clusterServiceGetShardsServer{stream})
+}
+
+type ClusterService_GetShardsServer interface {
+	Send(*Cluster) error
+	grpc.ServerStream
+}
+
+type clusterServiceGetShardsServer struct {
+	grpc.ServerStream
+}
+
+func (x *clusterServiceGetShardsServer) Send(m *Cluster) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 func _ClusterService_GetQueryRules_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(Cluster)
 	if err := stream.RecvMsg(m); err != nil {
@@ -704,6 +762,11 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "GetTags",
 			Handler:       _ClusterService_GetTags_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetShards",
+			Handler:       _ClusterService_GetShards_Handler,
 			ServerStreams: true,
 		},
 		{

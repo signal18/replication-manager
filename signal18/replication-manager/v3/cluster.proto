@@ -70,7 +70,7 @@ service ClusterService {
       get: "/v3/clusters/actions/{action}/{cluster.name}"
       additional_bindings {
         // /api/clusters/{clusterName}/actions/add/{clusterShardingName}
-        get: "/v3/clusters/{cluster.name}/actions/{action}/{cluster.clusterShardingName}"
+        get: "/v3/clusters/{cluster.name}/actions/{action}/{sharding_name}"
       }
       additional_bindings {
         // /api/clusters/{clusterName}/actions/addserver/{host}/{port}
@@ -148,6 +148,13 @@ service ClusterService {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/tags
       get: "/v3/clusters/{name}/tags"
+    };
+  }
+
+  rpc GetShards(Cluster) returns (stream Cluster) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/shardclusters
+      get: "/v3/clusters/{name}/shardclusters"
     };
   }
 

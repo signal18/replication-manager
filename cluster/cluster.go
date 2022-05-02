@@ -175,6 +175,54 @@ type Cluster struct {
 	crcTable *crc64.Table
 }
 
+func ClusterToProtoCluster(c *Cluster) *v3.Cluster {
+	out := &v3.Cluster{
+		Name:                          c.Name,
+		Tenant:                        c.Tenant,
+		WorkingDir:                    c.WorkingDir,
+		ServerIdList:                  c.ServerIdList,
+		ProxyIdList:                   c.ProxyIdList,
+		FailoverCtr:                   int32(c.FailoverCtr),
+		FailoverTs:                    c.GetFailoverTs(),
+		Status:                        c.Status,
+		IsSplitBrain:                  c.IsSplitBrain,
+		IsFailedArbitrator:            c.IsFailedArbitrator,
+		IsLostMajority:                c.IsLostMajority,
+		IsDown:                        c.IsDown,
+		IsClusterDown:                 c.IsClusterDown,
+		IsAllDbUp:                     c.IsAllDbUp,
+		IsFailable:                    c.IsFailable,
+		IsPostgres:                    c.IsPostgres,
+		IsProvision:                   c.IsProvision,
+		IsNeedProxiesRestart:          c.IsNeedProxiesRestart,
+		IsNeedProxiesReprov:           c.IsNeedProxiesReprov,
+		IsNeedDatabasesRestart:        c.IsNeedDatabasesRestart,
+		IsNeedDatabasesRollingRestart: c.IsNeedDatabasesRollingRestart,
+		IsNeedDatabasesRollingReprov:  c.IsNeedDatabasesRollingReprov,
+		IsNeedDatabasesReprov:         c.IsNeedDatabasesReprov,
+		IsValidBackup:                 c.IsValidBackup,
+		IsNotMonitoring:               c.IsNotMonitoring,
+		IsCapturing:                   c.IsCapturing,
+		CleanAll:                      c.CleanAll,
+		Topology:                      c.Topology,
+		Uptime:                        c.Uptime,
+		UptimeFailable:                c.UptimeFailable,
+		UptimeSemiSync:                c.UptimeSemiSync,
+		MonitorSpin:                   c.MonitorSpin,
+		DbTableSize:                   c.DBTableSize,
+		DbIndexSize:                   c.DBIndexSize,
+		Connections:                   int32(c.Connections),
+		Qps:                           c.QPS,
+		HaveDBTLSCert:                 c.HaveDBTLSCert,
+		HaveDBTLSOldCert:              c.HaveDBTLSOldCert,
+		WaitingRejoin:                 int32(c.WaitingRejoin),
+		WaitingSwitchover:             int32(c.WaitingSwitchover),
+		WaitingFailover:               int32(c.WaitingFailover),
+	}
+
+	return out
+}
+
 type ClusterSorter []*Cluster
 
 func (a ClusterSorter) Len() int           { return len(a) }

@@ -530,10 +530,27 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 	return res, nil
 }
 
+func (s *ReplicationManager) GetShards(in *v3.Cluster, stream v3.ClusterService_GetShardsServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in)
+	if err != nil {
+		return err
+	}
+
+	if err = user.Granted(config.GrantClusterSharding); err != nil {
+		return err
+	}
+
+	for _, c := range mycluster.ShardProxyGetShardClusters() {
+		stream.Send(cluster.ClusterToProtoCluster(c))
+	}
+
+	return nil
+}
+
 func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.ClusterAction) (res *emptypb.Empty, err error) {
 	// WARNING: this one cannot be validated for ACL, as there is no cluster to validate against
 	// special case, the clustername doesn't exist yet
-	if in.Cluster.ClusterShardingName == "" {
+	if in.ShardingName == "" {
 		if in.Action == v3.ClusterAction_ADD {
 			err = s.AddCluster(in.Cluster.Name, "")
 			if err != nil {
@@ -560,7 +577,7 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 		if err = user.Granted(config.GrantProvCluster); err != nil {
 			return nil, err
 		}
-		err = s.AddCluster(in.Cluster.ClusterShardingName, in.Cluster.Name)
+		err = s.AddCluster(in.ShardingName, in.Cluster.Name)
 		if err != nil {
 			return nil, v3.NewError(codes.Unknown, err).Err()
 		}

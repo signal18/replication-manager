@@ -852,7 +852,7 @@ func local_request_ClusterService_PerformClusterAction_0(ctx context.Context, ma
 }
 
 var (
-	filter_ClusterService_PerformClusterAction_1 = &utilities.DoubleArray{Encoding: map[string]int{"cluster": 0, "name": 1, "action": 2, "clusterShardingName": 3}, Base: []int{1, 1, 1, 3, 2, 0, 0, 0}, Check: []int{0, 1, 2, 1, 2, 3, 5, 4}}
+	filter_ClusterService_PerformClusterAction_1 = &utilities.DoubleArray{Encoding: map[string]int{"cluster": 0, "name": 1, "action": 2, "sharding_name": 3}, Base: []int{1, 1, 1, 2, 3, 0, 0, 0}, Check: []int{0, 1, 2, 1, 1, 3, 4, 5}}
 )
 
 func request_ClusterService_PerformClusterAction_1(ctx context.Context, marshaler runtime.Marshaler, client ClusterServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -889,14 +889,14 @@ func request_ClusterService_PerformClusterAction_1(ctx context.Context, marshale
 
 	protoReq.Action = ClusterAction_Action(e)
 
-	val, ok = pathParams["cluster.clusterShardingName"]
+	val, ok = pathParams["sharding_name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "cluster.clusterShardingName")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "sharding_name")
 	}
 
-	err = runtime.PopulateFieldFromPath(&protoReq, "cluster.clusterShardingName", val)
+	protoReq.ShardingName, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "cluster.clusterShardingName", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "sharding_name", err)
 	}
 
 	if err := req.ParseForm(); err != nil {
@@ -945,14 +945,14 @@ func local_request_ClusterService_PerformClusterAction_1(ctx context.Context, ma
 
 	protoReq.Action = ClusterAction_Action(e)
 
-	val, ok = pathParams["cluster.clusterShardingName"]
+	val, ok = pathParams["sharding_name"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "cluster.clusterShardingName")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "sharding_name")
 	}
 
-	err = runtime.PopulateFieldFromPath(&protoReq, "cluster.clusterShardingName", val)
+	protoReq.ShardingName, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "cluster.clusterShardingName", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "sharding_name", err)
 	}
 
 	if err := req.ParseForm(); err != nil {
@@ -1890,6 +1890,51 @@ func request_ClusterService_GetTags_0(ctx context.Context, marshaler runtime.Mar
 }
 
 var (
+	filter_ClusterService_GetShards_0 = &utilities.DoubleArray{Encoding: map[string]int{"name": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+)
+
+func request_ClusterService_GetShards_0(ctx context.Context, marshaler runtime.Marshaler, client ClusterServiceClient, req *http.Request, pathParams map[string]string) (ClusterService_GetShardsClient, runtime.ServerMetadata, error) {
+	var protoReq Cluster
+	var metadata runtime.ServerMetadata
+
+	var (
+		val string
+		ok  bool
+		err error
+		_   = err
+	)
+
+	val, ok = pathParams["name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "name")
+	}
+
+	protoReq.Name, err = runtime.String(val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "name", err)
+	}
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_ClusterService_GetShards_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	stream, err := client.GetShards(ctx, &protoReq)
+	if err != nil {
+		return nil, metadata, err
+	}
+	header, err := stream.Header()
+	if err != nil {
+		return nil, metadata, err
+	}
+	metadata.HeaderMD = header
+	return stream, metadata, nil
+
+}
+
+var (
 	filter_ClusterService_GetQueryRules_0 = &utilities.DoubleArray{Encoding: map[string]int{"name": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
 )
 
@@ -2629,7 +2674,7 @@ func RegisterClusterServiceHandlerServer(ctx context.Context, mux *runtime.Serve
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/signal18.replication_manager.v3.ClusterService/PerformClusterAction", runtime.WithHTTPPathPattern("/v3/clusters/{cluster.name}/actions/{action}/{cluster.clusterShardingName}"))
+		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/signal18.replication_manager.v3.ClusterService/PerformClusterAction", runtime.WithHTTPPathPattern("/v3/clusters/{cluster.name}/actions/{action}/{sharding_name}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -2822,6 +2867,13 @@ func RegisterClusterServiceHandlerServer(ctx context.Context, mux *runtime.Serve
 	})
 
 	mux.Handle("GET", pattern_ClusterService_GetTags_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		err := status.Error(codes.Unimplemented, "streaming calls are not yet supported in the in-process transport")
+		_, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+		return
+	})
+
+	mux.Handle("GET", pattern_ClusterService_GetShards_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		err := status.Error(codes.Unimplemented, "streaming calls are not yet supported in the in-process transport")
 		_, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
@@ -3189,7 +3241,7 @@ func RegisterClusterServiceHandlerClient(ctx context.Context, mux *runtime.Serve
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		rctx, err := runtime.AnnotateContext(ctx, mux, req, "/signal18.replication_manager.v3.ClusterService/PerformClusterAction", runtime.WithHTTPPathPattern("/v3/clusters/{cluster.name}/actions/{action}/{cluster.clusterShardingName}"))
+		rctx, err := runtime.AnnotateContext(ctx, mux, req, "/signal18.replication_manager.v3.ClusterService/PerformClusterAction", runtime.WithHTTPPathPattern("/v3/clusters/{cluster.name}/actions/{action}/{sharding_name}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -3405,6 +3457,26 @@ func RegisterClusterServiceHandlerClient(ctx context.Context, mux *runtime.Serve
 
 	})
 
+	mux.Handle("GET", pattern_ClusterService_GetShards_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateContext(ctx, mux, req, "/signal18.replication_manager.v3.ClusterService/GetShards", runtime.WithHTTPPathPattern("/v3/clusters/{name}/shardclusters"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_ClusterService_GetShards_0(rctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_ClusterService_GetShards_0(ctx, mux, outboundMarshaler, w, req, func() (proto.Message, error) { return resp.Recv() }, mux.GetForwardResponseOptions()...)
+
+	})
+
 	mux.Handle("GET", pattern_ClusterService_GetQueryRules_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -3523,7 +3595,7 @@ var (
 
 	pattern_ClusterService_PerformClusterAction_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 1, 0, 4, 1, 5, 4}, []string{"v3", "clusters", "actions", "action", "cluster.name"}, ""))
 
-	pattern_ClusterService_PerformClusterAction_1 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 1, 0, 4, 1, 5, 5}, []string{"v3", "clusters", "cluster.name", "actions", "action", "cluster.clusterShardingName"}, ""))
+	pattern_ClusterService_PerformClusterAction_1 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 1, 0, 4, 1, 5, 5}, []string{"v3", "clusters", "cluster.name", "actions", "action", "sharding_name"}, ""))
 
 	pattern_ClusterService_PerformClusterAction_2 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 4, 1, 0, 4, 1, 5, 5, 1, 0, 4, 1, 5, 6}, []string{"v3", "clusters", "cluster.name", "actions", "action", "server.host", "server.port"}, ""))
 
@@ -3544,6 +3616,8 @@ var (
 	pattern_ClusterService_GetBackups_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3}, []string{"v3", "clusters", "name", "backups"}, ""))
 
 	pattern_ClusterService_GetTags_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3}, []string{"v3", "clusters", "name", "tags"}, ""))
+
+	pattern_ClusterService_GetShards_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3}, []string{"v3", "clusters", "name", "shardclusters"}, ""))
 
 	pattern_ClusterService_GetQueryRules_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3}, []string{"v3", "clusters", "name", "queryrules"}, ""))
 
@@ -3592,6 +3666,8 @@ var (
 	forward_ClusterService_GetBackups_0 = runtime.ForwardResponseStream
 
 	forward_ClusterService_GetTags_0 = runtime.ForwardResponseStream
+
+	forward_ClusterService_GetShards_0 = runtime.ForwardResponseStream
 
 	forward_ClusterService_GetQueryRules_0 = runtime.ForwardResponseStream
 
