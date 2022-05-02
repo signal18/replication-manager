@@ -317,7 +317,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	}
 
 	cfgGroupIndex = 0
-	//	fistRead := viper.GetViper()
 	cf1 := fistRead.Sub("Default")
 	vipersave := viper.GetViper()
 	//cf1.Debug()
@@ -331,61 +330,20 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		vipersave.MergeConfigMap(cf1.AllSettings())
 		//fmt.Printf("%+v\n", vipersave.AllSettings())
 		vipersave.Unmarshal(&conf)
-		//fmt.Printf("%+v\n", conf)
-		//	os.Exit(3)
+		//	fmt.Printf("%+v\n", conf)
+		//os.Exit(3)
 		repman.Conf = conf
 	}
+	//	backupvipersave := viper.GetViper()
 	if strClusters != "" {
 		repman.ClusterList = strings.Split(strClusters, ",")
 
 		for _, cluster := range repman.ClusterList {
-			vipersave := viper.GetViper()
-			if cluster != "" {
-				clusterconf := conf
-				log.WithField("group", cluster).Debug("Reading configuration group")
-				def := fistRead.Sub("Default")
-				//	def.Debug()
-				def.AutomaticEnv()
-				def.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
-				def.SetEnvPrefix("DEFAULT")
-				if def != nil {
-					repman.initAlias(def)
-					def.Unmarshal(&clusterconf)
+			//vipersave := backupvipersave
 
-				}
+			confs[cluster] = repman.GetClusterConfig(fistRead, cluster, conf)
+			cfgGroupIndex++
 
-				cf2 := fistRead.Sub(cluster)
-				def.SetEnvPrefix(strings.ToUpper(cluster))
-				cf2.AutomaticEnv()
-				cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
-
-				if cf2 == nil {
-					log.WithField("group", cluster).Infof("Could not parse configuration group")
-				} else {
-					repman.initAlias(cf2)
-					cf2.Unmarshal(&def)
-					cf2.Unmarshal(&clusterconf)
-					vipersave.MergeConfigMap(cf2.AllSettings())
-					vipersave.Unmarshal(&clusterconf)
-				}
-
-				repman.ForcedConfs[cluster] = clusterconf
-				if clusterconf.ConfRewrite {
-					cf3 := fistRead.Sub("saved-" + cluster)
-					if cf3 == nil {
-						log.WithField("group", cluster).Info("Could not parse saved configuration group")
-					} else {
-						repman.initAlias(cf3)
-						cf3.Unmarshal(&def)
-						cf3.Unmarshal(&clusterconf)
-						vipersave.MergeConfigMap(cf3.AllSettings())
-						vipersave.Unmarshal(&clusterconf)
-					}
-				}
-
-				confs[cluster] = clusterconf
-				cfgGroupIndex++
-			}
 		}
 
 		cfgGroupIndex--
@@ -400,6 +358,59 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	}
 	repman.Confs = confs
 	//repman.Conf = conf
+}
+
+func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, cluster string, conf config.Config) config.Config {
+
+	clusterconf := conf
+	//vipersave := viper.GetViper()
+	if cluster != "" {
+		log.WithField("group", cluster).Debug("Reading configuration group")
+		def := fistRead.Sub("Default")
+		//	def.Debug()
+		def.AutomaticEnv()
+		def.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+		def.SetEnvPrefix("DEFAULT")
+		if def != nil {
+			repman.initAlias(def)
+			def.Unmarshal(&clusterconf)
+
+		}
+		fmt.Printf("default for cluster %s %+v\n", cluster, clusterconf)
+
+		cf2 := fistRead.Sub(cluster)
+		//def.SetEnvPrefix(strings.ToUpper(cluster))
+		cf2.AutomaticEnv()
+		cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+
+		if cf2 == nil {
+			log.WithField("group", cluster).Infof("Could not parse configuration group")
+		} else {
+			repman.initAlias(cf2)
+			//	cf2.Unmarshal(&def)
+			cf2.Unmarshal(&clusterconf)
+			fmt.Printf("include config cf2 for cluster %s %+v\n", cluster, clusterconf)
+			//		vipersave.MergeConfigMap(cf2.AllSettings())
+			//	vipersave.Unmarshal(&clusterconf)
+			fmt.Printf("include config for cluster %s %+v\n", cluster, clusterconf)
+
+		}
+
+		repman.ForcedConfs[cluster] = clusterconf
+		if clusterconf.ConfRewrite {
+			cf3 := fistRead.Sub("saved-" + cluster)
+			if cf3 == nil {
+				log.WithField("group", cluster).Info("Could not parse saved configuration group")
+			} else {
+				repman.initAlias(cf3)
+				cf3.Unmarshal(&def)
+				cf3.Unmarshal(&clusterconf)
+				//	vipersave.MergeConfigMap(cf3.AllSettings())
+				//	vipersave.Unmarshal(&clusterconf)
+			}
+		}
+	}
+	return clusterconf
 }
 
 func (repman *ReplicationManager) initAlias(v *viper.Viper) {
