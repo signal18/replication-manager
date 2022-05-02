@@ -219,6 +219,11 @@ func ClusterToProtoCluster(c *Cluster) *v3.Cluster {
 		WaitingSwitchover:             int32(c.WaitingSwitchover),
 		WaitingFailover:               int32(c.WaitingFailover),
 		Crashes:                       c.Crashes,
+		MonitorType:                   c.MonitorType,
+		TopologyType:                  c.TopologyType,
+		FsType:                        c.FSType,
+		DiskType:                      c.DiskType,
+		VmType:                        c.VMType,
 	}
 
 	return out

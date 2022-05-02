@@ -9800,6 +9800,37 @@
           "items": {
             "$ref": "#/definitions/ClusterCrash"
           }
+        },
+        "monitorType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "config.Config Conf = 43 [json_name=\"config\"];\nconfigurator.Configurator Configurator = 44 [json_name=\"configurator\"];\n[]VariableDiff DiffVariables = 45 [json_name=\"diffVariables\"];\ns18log.HttpLog Log = 46 [json_name=\"log\"];\nmap[string]*JobResult JobResults = 47 [json_name=\"jobResults\"];\ns18log.HttpLog SQLGeneralLog = 48 [json_name=\"sqlGeneralLog\"];\ns18log.HttpLog SQLErrorLog = 49 [json_name=\"sqlErrorLog\"];"
+        },
+        "topologyType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "fsType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "diskType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "vmType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
         }
       }
     },

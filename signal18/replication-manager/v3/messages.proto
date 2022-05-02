@@ -73,7 +73,6 @@ message Cluster {
     string elected_master_url = 8 [ json_name = "ElectedMasterURL" ];
   }
   repeated Crash crashes = 42 [ json_name = "dbServersCrashes" ];
-  // crashList Crashes = 42 [json_name="dbServersCrashes"];
   // config.Config Conf = 43 [json_name="config"];
   // configurator.Configurator Configurator = 44 [json_name="configurator"];
   // []VariableDiff DiffVariables = 45 [json_name="diffVariables"];
@@ -81,11 +80,11 @@ message Cluster {
   // map[string]*JobResult JobResults = 47 [json_name="jobResults"];
   // s18log.HttpLog SQLGeneralLog = 48 [json_name="sqlGeneralLog"];
   // s18log.HttpLog SQLErrorLog = 49 [json_name="sqlErrorLog"];
-  // map[string]string MonitorType = 50 [json_name="monitorType"];
-  // map[string]string TopologyType = 51 [json_name="topologyType"];
-  // map[string]bool FSType = 52 [json_name="fsType"];
-  // map[string]string DiskType = 53 [json_name="diskType"];
-  // map[string]bool VMType = 54 [json_name="vmType"];
+  map<string, string> monitor_type = 50 [ json_name = "monitorType" ];
+  map<string, string> topology_type = 51 [ json_name = "topologyType" ];
+  map<string, bool> fs_type = 52 [ json_name = "fsType" ];
+  map<string, string> disk_type = 53 [ json_name = "diskType" ];
+  map<string, bool> vm_type = 54 [ json_name = "vmType" ];
   // []Agent Agents = 55 [json_name="agents"];
   // []state.Sla SLAHistory = 56 [json_name="slaHistory"];
   // map[string]APIUser APIUsers = 57 [json_name="apiUsers"];
