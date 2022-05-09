@@ -616,6 +616,6 @@ func (server *ServerMonitor) GetGroupReplicationLocalAddress() string {
 }
 
 func (server *ServerMonitor) GetWsrepNodeAddress() string {
-	strPort := "4567"
-	return server.Host + ":" + strPort
+	/*	strPort := "4567"*/
+	return server.Host /*+ ":" + strPort*/
 }

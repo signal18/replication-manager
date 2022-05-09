@@ -376,7 +376,7 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, cluste
 			def.Unmarshal(&clusterconf)
 
 		}
-		fmt.Printf("default for cluster %s %+v\n", cluster, clusterconf)
+		//	fmt.Printf("default for cluster %s %+v\n", cluster, clusterconf)
 
 		cf2 := fistRead.Sub(cluster)
 		//def.SetEnvPrefix(strings.ToUpper(cluster))
@@ -389,10 +389,10 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, cluste
 			repman.initAlias(cf2)
 			//	cf2.Unmarshal(&def)
 			cf2.Unmarshal(&clusterconf)
-			fmt.Printf("include config cf2 for cluster %s %+v\n", cluster, clusterconf)
+			//			fmt.Printf("include config cf2 for cluster %s %+v\n", cluster, clusterconf)
 			//		vipersave.MergeConfigMap(cf2.AllSettings())
 			//	vipersave.Unmarshal(&clusterconf)
-			fmt.Printf("include config for cluster %s %+v\n", cluster, clusterconf)
+			//		fmt.Printf("include config for cluster %s %+v\n", cluster, clusterconf)
 
 		}
 
