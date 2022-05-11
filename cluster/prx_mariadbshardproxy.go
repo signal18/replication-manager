@@ -143,6 +143,9 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MariadbShardProxy) {
 	if cluster.master == nil {
 		return
 	}
+	if proxy.ShardProxy.Conn == nil {
+		return
+	}
 	schemas, _, err := cluster.master.GetSchemas()
 	if err != nil {
 		cluster.sme.AddState("WARN0089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0089"], cluster.master.URL), ErrFrom: "PROXY", ServerUrl: cluster.master.URL})
@@ -300,6 +303,9 @@ func (cluster *Cluster) ShardProxyGetHeadCluster() *Cluster {
 }
 
 func (cluster *Cluster) ShardProxyCreateVTable(proxy *MariadbShardProxy, schema string, table string, duplicates []*ServerMonitor, withreshard bool) error {
+	if proxy.ShardProxy.Conn == nil {
+		return errors.New("Shard Proxy not yet defined")
+	}
 	checksum64 := crc64.Checksum([]byte(schema+"_"+cluster.GetName()), cluster.crcTable)
 	var err error
 	var ddl string

@@ -289,3 +289,10 @@ func (cluster *Cluster) IsInFailover() bool {
 func (cluster *Cluster) IsDiscovered() bool {
 	return cluster.sme.IsDiscovered()
 }
+
+func (cluster *Cluster) IsMultiMaster() bool {
+	if cluster.GetTopology() != topoMultiMasterWsrep || cluster.GetTopology() != topoMultiMaster || cluster.GetTopology() != topoMultiMasterRing {
+		return true
+	}
+	return false
+}

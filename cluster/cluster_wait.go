@@ -185,31 +185,7 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
-	exitloop := 0
-	cluster.LogPrintf(LvlInfo, "Waiting database start on %s", server.URL)
-	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
-	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
-		select {
-		case <-ticker.C:
-
-			exitloop++
-
-			err := server.Refresh()
-			if err == nil {
-
-				exitloop = 9999999
-			} else {
-				cluster.LogPrintf(LvlInfo, "Waiting state running on %s failed with error %s ", server.URL, err)
-			}
-		}
-	}
-	if exitloop == 9999999 {
-		cluster.LogPrintf(LvlInfo, "Waiting state running reach on %s", server.URL)
-	} else {
-		cluster.LogPrintf(LvlErr, "Wait state running on %s", server.URL)
-		return errors.New("Failed to wait running database server")
-	}
-	return nil
+	return server.WaitDatabaseStart()
 }
 
 func (cluster *Cluster) WaitDatabaseSuspect(server *ServerMonitor) error {

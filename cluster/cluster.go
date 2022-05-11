@@ -112,10 +112,10 @@ type Cluster struct {
 	hostList                      []string                    `json:"-"`
 	proxyList                     []string                    `json:"-"`
 	clusterList                   map[string]*Cluster         `json:"-"`
-	slaves                        serverList                  `json:"-"`
-	master                        *ServerMonitor              `json:"-"`
-	oldMaster                     *ServerMonitor              `json:"-"`
-	vmaster                       *ServerMonitor              `json:"-"`
+	slaves                        serverList                  `json:"slaves"`
+	master                        *ServerMonitor              `json:"master"`
+	oldMaster                     *ServerMonitor              `json:"oldmaster"`
+	vmaster                       *ServerMonitor              `json:"vmaster"`
 	mxs                           *maxscale.MaxScale          `json:"-"`
 	dbUser                        string                      `json:"-"`
 	dbPass                        string                      `json:"-"`

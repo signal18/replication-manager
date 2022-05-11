@@ -452,11 +452,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 	if errss == sql.ErrNoRows || noChannel {
 		// If we reached this stage with a previously failed server, reintroduce
-		// it as unconnected server.
+		// it as unconnected server.master
 		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth /*|| server.PrevState == stateSuspect*/ {
 			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected", server.URL)
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
-				if server.ClusterGroup.master != nil {
+				//GetMaster abstract master for galera multi master and master slave
+				if server.GetCluster().GetMaster() != nil {
 					if server.ClusterGroup.Status == ConstMonitorActif && server.ClusterGroup.master.Id != server.Id && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
 						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as active monitor and other master is discovered", server.URL)
 						server.SetReadOnly()
@@ -466,9 +467,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					}
 				}
 			}
-			//if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
-			server.SetState(stateUnconn)
-			//}
+			if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
+				server.SetState(stateUnconn)
+			}
 			server.FailCount = 0
 			server.ClusterGroup.backendStateChangeProxies()
 			server.SendAlert()
@@ -480,10 +481,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State == stateUnconn {
 			// Master will never get discovery in topology if it does not get unconnected first it default to suspect
-			if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
-				server.SetState(stateUnconn)
-				server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
-			}
+			//	if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
+			server.SetState(stateUnconn)
+			server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
+			//	}
 			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
 				server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server: %s no master state and replication found", server.URL)
 				server.SetReadOnly()
