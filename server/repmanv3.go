@@ -547,6 +547,30 @@ func (s *ReplicationManager) GetShards(in *v3.Cluster, stream v3.ClusterService_
 	return nil
 }
 
+func (s *ReplicationManager) PerformClusterTest(ctx context.Context, in *v3.ClusterTest) (*structpb.Struct, error) {
+	// TODO: implement allowing no cluster to be set and starting a test cluster
+
+	user, mycluster, err := s.getClusterAndUser(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = user.Granted(config.GrantClusterTest); err != nil {
+		return nil, err
+	}
+
+	if in.Provision {
+		mycluster.SetTestStartCluster(true)
+	}
+
+	if in.Unprovision {
+		mycluster.SetTestStopCluster(true)
+	}
+
+	res := s.RunAllTests(mycluster, in.TestName.String(), "")
+	return marshal(res)
+}
+
 func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.ClusterAction) (res *emptypb.Empty, err error) {
 	// WARNING: this one cannot be validated for ACL, as there is no cluster to validate against
 	// special case, the clustername doesn't exist yet
@@ -795,7 +819,7 @@ func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stre
 	return nil
 }
 
-func marshalAndSend(in interface{}, send func(*structpb.Struct) error) error {
+func marshal(in interface{}) (*structpb.Struct, error) {
 	type String struct {
 		String string
 	}
@@ -806,7 +830,7 @@ func marshalAndSend(in interface{}, send func(*structpb.Struct) error) error {
 		str.String = s
 		data, err = json.Marshal(str)
 		if err != nil {
-			return status.Error(codes.Internal, "could not marshal String to json")
+			return nil, status.Error(codes.Internal, "could not marshal String to json")
 		}
 	}
 
@@ -818,21 +842,30 @@ func marshalAndSend(in interface{}, send func(*structpb.Struct) error) error {
 		strs.Data = sl
 		data, err = json.Marshal(strs)
 		if err != nil {
-			return status.Error(codes.Internal, "could not marshal Strings to json")
+			return nil, status.Error(codes.Internal, "could not marshal Strings to json")
 		}
 	}
 
 	if len(data) == 0 {
 		data, err = json.Marshal(in)
 		if err != nil {
-			return status.Error(codes.Internal, "could not marshal to json")
+			return nil, status.Error(codes.Internal, "could not marshal to json")
 		}
 	}
 
 	out := &structpb.Struct{}
 	err = protojson.Unmarshal(data, out)
 	if err != nil {
-		return status.Error(codes.Internal, "could not unmarshal json to struct")
+		return nil, status.Error(codes.Internal, "could not unmarshal json to struct")
+	}
+
+	return out, nil
+}
+
+func marshalAndSend(in interface{}, send func(*structpb.Struct) error) error {
+	out, err := marshal(in)
+	if err != nil {
+		return err
 	}
 
 	if err := send(out); err != nil {

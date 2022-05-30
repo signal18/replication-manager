@@ -43,6 +43,14 @@ func (ca *ClusterSetting) GetClusterMessage() (*Cluster, error) {
 	return ca.Cluster, nil
 }
 
+func (ca *ClusterTest) GetClusterMessage() (*Cluster, error) {
+	if ca.Cluster == nil {
+		return nil, NewError(codes.InvalidArgument, ErrClusterNotSet).Err()
+	}
+
+	return ca.Cluster, nil
+}
+
 func (c *Cluster) GetClusterMessage() (*Cluster, error) {
 	if c == nil {
 		return nil, NewError(codes.InvalidArgument, ErrClusterNotSet).Err()

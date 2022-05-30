@@ -410,3 +410,57 @@ message Table {
   string table_clusters = 8 [ json_name = "tableClusters" ];
   string table_sync = 9 [ json_name = "tableSync" ];
 }
+
+message ClusterTest {
+  Cluster cluster = 1;
+  enum Test {
+    Unspecified = 0;
+    All = 1;
+    Suite = 2;
+    TestFailoverAllSlavesDelayNoRplChecksNoSemiSync = 3;
+    TestFailoverAllSlavesDelayRplChecksNoSemiSync = 4;
+    TestFailoverAssyncAutoRejoinFlashback = 5;
+    TestFailoverAssyncAutoRejoinNoGtid = 6;
+    TestFailoverAssyncAutoRejoinNowrites = 7;
+    TestFailoverAssyncAutoRejoinRelay = 8;
+    TestFailoverManual = 9;
+    TestFailoverNoRplChecksNoSemiSync = 10;
+    TestFailoverNoRplChecksNoSemiSyncMasterHeartbeat = 11;
+    TestFailoverNumberFailureLimitReach = 12;
+    TestFailoverSemisyncAutoRejoinFlashback = 13;
+    TestFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM = 14;
+    TestFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM = 15;
+    TestFailoverSemisyncAutoRejoinSafeMSMXMS = 16;
+    TestFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS = 17;
+    TestFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS = 18;
+    TestFailoverSemisyncAutoRejoinSafeMSXMSM = 19;
+    TestFailoverSemisyncAutoRejoinUnsafeMSMXMS = 20;
+    TestFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS = 21;
+    TestFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS = 22;
+    TestFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM = 23;
+    TestFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM = 24;
+    TestFailoverSemisyncAutoRejoinUnsafeMSXMSM = 25;
+    TestFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS = 26;
+    TestFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM = 27;
+    TestFailoverSemisyncSlavekilledAutoRejoin = 28;
+    TestFailoverTimeNotReach = 29;
+    TestSlaReplAllSlavesDelayNoSemiSync = 30;
+    TestSlaReplAllSlavesStopNoSemiSync = 31;
+    TestSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck = 32;
+    TestSwitchover2TimesReplicationOkSemiSyncNoRplCheck = 33;
+    TestSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync = 34;
+    TestSwitchoverAllSlavesDelayNoRplChecksNoSemiSync = 35;
+    TestSwitchoverAllSlavesDelayRplCheckNoSemiSync = 36;
+    TestSwitchoverAllSlavesStopNoSemiSyncNoRplCheck = 37;
+    TestSwitchoverAllSlavesStopRplCheckNoSemiSync = 38;
+    TestSwitchoverBackPreferedMasterNoRplCheckSemiSync = 39;
+    TestSwitchoverLongQueryNoRplCheckNoSemiSync = 40;
+    TestSwitchoverLongTransactionNoRplCheckNoSemiSync = 41;
+    TestSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync = 42;
+    TestSwitchoverNoReadOnlyNoRplCheck = 43;
+    TestSwitchoverReadOnlyNoRplCheck = 44;
+  }
+  Test test_name = 2;
+  bool provision = 3;
+  bool unprovision = 4;
+}

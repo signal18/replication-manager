@@ -7,8 +7,10 @@
 package server
 
 import (
+	"reflect"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/regtest"
@@ -67,132 +69,27 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 			}
 		}
 		test.ConfigFile = cl.GetConf().ConfigFile
+
+		// the testnames are stored in first letter lowercase for legacy reasons
+		// inside the test configs they are stored as such
+		// we need to uppercase the first letter so we can call the method
+		// directly via reflect
+		t := []rune(test.Name)
+		t[0] = unicode.ToUpper(t[0])
+		if m := reflect.ValueOf(regtest).MethodByName(string(t)); m.IsValid() {
+			params := []reflect.Value{
+				reflect.ValueOf(cl),
+				reflect.ValueOf(test.ConfigFile),
+				reflect.ValueOf(&test),
+			}
+
+			m.Call(params)
+		}
+
 		if test.Name == "testFailoverManual" {
 			res = regtest.TestFailoverSemisyncAutoRejoinSafeMSMXMS(cl, test.ConfigFile, &test)
 		}
-		if test.Name == "testFailoverSemisyncAutoRejoinSafeMSMXMS" {
-			res = regtest.TestFailoverSemisyncAutoRejoinSafeMSMXMS(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinSafeMSXMSM" {
-			res = regtest.TestFailoverSemisyncAutoRejoinSafeMSXMSM(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS" {
-			res = regtest.TestFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS" {
-			res = regtest.TestFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinUnsafeMSMXMS" {
-			res = regtest.TestFailoverSemisyncAutoRejoinUnsafeMSMXMS(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS" {
-			res = regtest.TestFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM" {
-			res = regtest.TestFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinUnsafeMSXMSM" {
-			res = regtest.TestFailoverSemisyncAutoRejoinUnsafeMSXMSM(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS" {
-			res = regtest.TestFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM" {
-			res = regtest.TestFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS" {
-			res = regtest.TestFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM" {
-			res = regtest.TestFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverAssyncAutoRejoinNoGtid" {
-			res = regtest.TestFailoverAssyncAutoRejoinNoGtid(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverAssyncAutoRejoinRelay" {
-			res = regtest.TestFailoverAssyncAutoRejoinRelay(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM" {
-			res = regtest.TestFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM" {
-			res = regtest.TestFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncSlavekilledAutoRejoin" {
-			res = regtest.TestFailoverSemisyncSlavekilledAutoRejoin(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverSemisyncAutoRejoinFlashback" {
-			res = regtest.TestFailoverSemisyncAutoRejoinFlashback(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverAssyncAutoRejoinFlashback" {
-			res = regtest.TestFailoverAssyncAutoRejoinFlashback(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverAssyncAutoRejoinNowrites" {
-			res = regtest.TestFailoverAssyncAutoRejoinNowrites(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverAssyncAutoRejoinDump" {
-			res = regtest.TestFailoverAssyncAutoRejoinDump(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync" {
-			res = regtest.TestSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchoverLongTransactionNoRplCheckNoSemiSync" {
-			res = regtest.TestSwitchoverLongTransactionNoRplCheckNoSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync" {
-			res = regtest.TestSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchoverLongQueryNoRplCheckNoSemiSync" {
-			res = regtest.TestSwitchoverLongQueryNoRplCheckNoSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchoverNoReadOnlyNoRplCheck" {
-			res = regtest.TestSwitchoverNoReadOnlyNoRplCheck(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchoverReadOnlyNoRplCheck" {
-			res = regtest.TestSwitchoverReadOnlyNoRplCheck(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck" {
-			res = regtest.TestSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchover2TimesReplicationOkSemiSyncNoRplCheck" {
-			res = regtest.TestSwitchover2TimesReplicationOkSemiSyncNoRplCheck(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchoverBackPreferedMasterNoRplCheckSemiSync" {
-			res = regtest.TestSwitchoverBackPreferedMasterNoRplCheckSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchoverAllSlavesStopRplCheckNoSemiSync" {
-			res = regtest.TestSwitchoverAllSlavesStopRplCheckNoSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck" {
-			res = regtest.TestSwitchoverAllSlavesStopNoSemiSyncNoRplCheck(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchoverAllSlavesDelayRplCheckNoSemiSync" {
-			res = regtest.TestSwitchoverAllSlavesDelayRplCheckNoSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync" {
-			res = regtest.TestSwitchoverAllSlavesDelayNoRplChecksNoSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSlaReplAllSlavesStopNoSemiSync" {
-			res = regtest.TestSlaReplAllSlavesStopNoSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testSlaReplAllSlavesDelayNoSemiSync" {
-			res = regtest.TestSlaReplAllSlavesDelayNoSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverNoRplChecksNoSemiSync" {
-			res = regtest.TestFailoverNoRplChecksNoSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverAllSlavesDelayNoRplChecksNoSemiSync" {
-			res = regtest.TestFailoverAllSlavesDelayNoRplChecksNoSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverAllSlavesDelayRplChecksNoSemiSync" {
-			res = regtest.TestFailoverAllSlavesDelayRplChecksNoSemiSync(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverNumberFailureLimitReach" {
-			res = regtest.TestFailoverNumberFailureLimitReach(cl, test.ConfigFile, &test)
-		}
-		if test.Name == "testFailoverTimeNotReach" {
-			res = regtest.TestFailoverTimeNotReach(cl, test.ConfigFile, &test)
-		}
+
 		test.Result = regtest.GetTestResultLabel(res)
 		if testExp == "SUITE" {
 			cl.CloseTestCluster(test.ConfigFile, &test)

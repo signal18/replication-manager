@@ -146,6 +146,7 @@ type ClusterServiceClient interface {
 	GetSettingsForCluster(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*structpb.Struct, error)
 	SetActionForClusterSettings(ctx context.Context, in *ClusterSetting, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	PerformClusterAction(ctx context.Context, in *ClusterAction, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	PerformClusterTest(ctx context.Context, in *ClusterTest, opts ...grpc.CallOption) (*structpb.Struct, error)
 	RetrieveFromTopology(ctx context.Context, in *TopologyRetrieval, opts ...grpc.CallOption) (ClusterService_RetrieveFromTopologyClient, error)
 	GetClientCertificates(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*Certificate, error)
 	GetBackups(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetBackupsClient, error)
@@ -194,6 +195,15 @@ func (c *clusterServiceClient) SetActionForClusterSettings(ctx context.Context, 
 func (c *clusterServiceClient) PerformClusterAction(ctx context.Context, in *ClusterAction, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/signal18.replication_manager.v3.ClusterService/PerformClusterAction", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clusterServiceClient) PerformClusterTest(ctx context.Context, in *ClusterTest, opts ...grpc.CallOption) (*structpb.Struct, error) {
+	out := new(structpb.Struct)
+	err := c.cc.Invoke(ctx, "/signal18.replication_manager.v3.ClusterService/PerformClusterTest", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -418,6 +428,7 @@ type ClusterServiceServer interface {
 	GetSettingsForCluster(context.Context, *Cluster) (*structpb.Struct, error)
 	SetActionForClusterSettings(context.Context, *ClusterSetting) (*emptypb.Empty, error)
 	PerformClusterAction(context.Context, *ClusterAction) (*emptypb.Empty, error)
+	PerformClusterTest(context.Context, *ClusterTest) (*structpb.Struct, error)
 	RetrieveFromTopology(*TopologyRetrieval, ClusterService_RetrieveFromTopologyServer) error
 	GetClientCertificates(context.Context, *Cluster) (*Certificate, error)
 	GetBackups(*Cluster, ClusterService_GetBackupsServer) error
@@ -444,6 +455,9 @@ func (UnimplementedClusterServiceServer) SetActionForClusterSettings(context.Con
 }
 func (UnimplementedClusterServiceServer) PerformClusterAction(context.Context, *ClusterAction) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PerformClusterAction not implemented")
+}
+func (UnimplementedClusterServiceServer) PerformClusterTest(context.Context, *ClusterTest) (*structpb.Struct, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PerformClusterTest not implemented")
 }
 func (UnimplementedClusterServiceServer) RetrieveFromTopology(*TopologyRetrieval, ClusterService_RetrieveFromTopologyServer) error {
 	return status.Errorf(codes.Unimplemented, "method RetrieveFromTopology not implemented")
@@ -550,6 +564,24 @@ func _ClusterService_PerformClusterAction_Handler(srv interface{}, ctx context.C
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ClusterServiceServer).PerformClusterAction(ctx, req.(*ClusterAction))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClusterService_PerformClusterTest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClusterTest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).PerformClusterTest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/signal18.replication_manager.v3.ClusterService/PerformClusterTest",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).PerformClusterTest(ctx, req.(*ClusterTest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -738,6 +770,10 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PerformClusterAction",
 			Handler:    _ClusterService_PerformClusterAction_Handler,
+		},
+		{
+			MethodName: "PerformClusterTest",
+			Handler:    _ClusterService_PerformClusterTest_Handler,
 		},
 		{
 			MethodName: "GetClientCertificates",

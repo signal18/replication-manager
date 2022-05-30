@@ -6073,6 +6073,358 @@
         ]
       }
     },
+    "/v3/clusters/{cluster.name}/tests/actions/run/{testName}": {
+      "get": {
+        "operationId": "ClusterService_PerformClusterTest",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "type": "object"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "testName",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "Unspecified",
+              "All",
+              "Suite",
+              "TestFailoverAllSlavesDelayNoRplChecksNoSemiSync",
+              "TestFailoverAllSlavesDelayRplChecksNoSemiSync",
+              "TestFailoverAssyncAutoRejoinFlashback",
+              "TestFailoverAssyncAutoRejoinNoGtid",
+              "TestFailoverAssyncAutoRejoinNowrites",
+              "TestFailoverAssyncAutoRejoinRelay",
+              "TestFailoverManual",
+              "TestFailoverNoRplChecksNoSemiSync",
+              "TestFailoverNoRplChecksNoSemiSyncMasterHeartbeat",
+              "TestFailoverNumberFailureLimitReach",
+              "TestFailoverSemisyncAutoRejoinFlashback",
+              "TestFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM",
+              "TestFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM",
+              "TestFailoverSemisyncAutoRejoinSafeMSMXMS",
+              "TestFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS",
+              "TestFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS",
+              "TestFailoverSemisyncAutoRejoinSafeMSXMSM",
+              "TestFailoverSemisyncAutoRejoinUnsafeMSMXMS",
+              "TestFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS",
+              "TestFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS",
+              "TestFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM",
+              "TestFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM",
+              "TestFailoverSemisyncAutoRejoinUnsafeMSXMSM",
+              "TestFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS",
+              "TestFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM",
+              "TestFailoverSemisyncSlavekilledAutoRejoin",
+              "TestFailoverTimeNotReach",
+              "TestSlaReplAllSlavesDelayNoSemiSync",
+              "TestSlaReplAllSlavesStopNoSemiSync",
+              "TestSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck",
+              "TestSwitchover2TimesReplicationOkSemiSyncNoRplCheck",
+              "TestSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync",
+              "TestSwitchoverAllSlavesDelayNoRplChecksNoSemiSync",
+              "TestSwitchoverAllSlavesDelayRplCheckNoSemiSync",
+              "TestSwitchoverAllSlavesStopNoSemiSyncNoRplCheck",
+              "TestSwitchoverAllSlavesStopRplCheckNoSemiSync",
+              "TestSwitchoverBackPreferedMasterNoRplCheckSemiSync",
+              "TestSwitchoverLongQueryNoRplCheckNoSemiSync",
+              "TestSwitchoverLongTransactionNoRplCheckNoSemiSync",
+              "TestSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync",
+              "TestSwitchoverNoReadOnlyNoRplCheck",
+              "TestSwitchoverReadOnlyNoRplCheck"
+            ]
+          },
+          {
+            "name": "cluster.tenant",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.workingDir",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.dbServers",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "cluster.proxyServers",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "cluster.failoverCounter",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.failoverLastTime",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.activePassiveStatus",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.isSplitBrain",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isFailedArbitrator",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isLostMajority",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isDown",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isClusterDown",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isAllDbUp",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isFailable",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isPostgres",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isProvision",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedProxyRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedProxiesRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesRollingRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesRollingReprov",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesReprov",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isValidBackup",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNotMonitoring",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isCapturing",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.cleanReplication",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.topology",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.uptime",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.uptimeFailable",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.uptimeSemisync",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.monitorSpin",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.dbTableSize",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.dbIndexSize",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.connections",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.qps",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.haveDBTLSCert",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.haveDBTLSOldCert",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.waitingRejoin",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.waitingSwitchover",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.waitingFailover",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "provision",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "unprovision",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
     "/v3/clusters/{cluster.name}/topology/{retrieve}": {
       "get": {
         "operationId": "ClusterService_RetrieveFromTopology",
@@ -9392,6 +9744,57 @@
           "$ref": "#/definitions/SwitchSwitchName"
         }
       }
+    },
+    "ClusterTestTest": {
+      "type": "string",
+      "enum": [
+        "Unspecified",
+        "All",
+        "Suite",
+        "TestFailoverAllSlavesDelayNoRplChecksNoSemiSync",
+        "TestFailoverAllSlavesDelayRplChecksNoSemiSync",
+        "TestFailoverAssyncAutoRejoinFlashback",
+        "TestFailoverAssyncAutoRejoinNoGtid",
+        "TestFailoverAssyncAutoRejoinNowrites",
+        "TestFailoverAssyncAutoRejoinRelay",
+        "TestFailoverManual",
+        "TestFailoverNoRplChecksNoSemiSync",
+        "TestFailoverNoRplChecksNoSemiSyncMasterHeartbeat",
+        "TestFailoverNumberFailureLimitReach",
+        "TestFailoverSemisyncAutoRejoinFlashback",
+        "TestFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM",
+        "TestFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM",
+        "TestFailoverSemisyncAutoRejoinSafeMSMXMS",
+        "TestFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS",
+        "TestFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS",
+        "TestFailoverSemisyncAutoRejoinSafeMSXMSM",
+        "TestFailoverSemisyncAutoRejoinUnsafeMSMXMS",
+        "TestFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS",
+        "TestFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS",
+        "TestFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM",
+        "TestFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM",
+        "TestFailoverSemisyncAutoRejoinUnsafeMSXMSM",
+        "TestFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS",
+        "TestFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM",
+        "TestFailoverSemisyncSlavekilledAutoRejoin",
+        "TestFailoverTimeNotReach",
+        "TestSlaReplAllSlavesDelayNoSemiSync",
+        "TestSlaReplAllSlavesStopNoSemiSync",
+        "TestSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck",
+        "TestSwitchover2TimesReplicationOkSemiSyncNoRplCheck",
+        "TestSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync",
+        "TestSwitchoverAllSlavesDelayNoRplChecksNoSemiSync",
+        "TestSwitchoverAllSlavesDelayRplCheckNoSemiSync",
+        "TestSwitchoverAllSlavesStopNoSemiSyncNoRplCheck",
+        "TestSwitchoverAllSlavesStopRplCheckNoSemiSync",
+        "TestSwitchoverBackPreferedMasterNoRplCheckSemiSync",
+        "TestSwitchoverLongQueryNoRplCheckNoSemiSync",
+        "TestSwitchoverLongTransactionNoRplCheckNoSemiSync",
+        "TestSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync",
+        "TestSwitchoverNoReadOnlyNoRplCheck",
+        "TestSwitchoverReadOnlyNoRplCheck"
+      ],
+      "default": "Unspecified"
     },
     "ServerDatabase": {
       "type": "string",
