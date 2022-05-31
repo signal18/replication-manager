@@ -84,7 +84,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 	defer wg.Done()
-	cluster.LogPrintf(LvlInfo, "Waiting Rejoin")
+	logline := cluster.LogPrintf(LvlInfo, "Waiting Rejoin")
 	exitloop := 0
 	cluster.rejoinCond = nbc.New()
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
@@ -93,7 +93,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf(LvlInfo, "Waiting Rejoin")
+			cluster.LogUpdate(logline, LvlInfo, "Waiting Rejoin %d", exitloop)
 			exitloop++
 		case <-cluster.rejoinCond.Recv:
 			exitloop = 9999999
@@ -143,7 +143,7 @@ func (cluster *Cluster) WaitProxyEqualMaster() error {
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf(LvlInfo, "Waiting for proxy to join master")
+			cluster.LogPrintf(LvlInfo, "Waiting for proxy to join master %d", exitloop)
 			exitloop++
 			// All cluster down
 			if cluster.IsProxyEqualMaster() == true {

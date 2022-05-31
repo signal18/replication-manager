@@ -39,8 +39,11 @@ func (server *ServerMonitor) RejoinLoop() error {
 // RejoinMaster a server that just show up without slave status
 func (server *ServerMonitor) RejoinMaster() error {
 	// Check if master exists in topology before rejoining.
-	if server.ClusterGroup.sme.IsInFailover() {
+	defer func() {
 		server.ClusterGroup.rejoinCond.Send <- true
+	}()
+
+	if server.ClusterGroup.sme.IsInFailover() {
 		return nil
 	}
 	if server.ClusterGroup.Conf.LogLevel > 2 {
@@ -58,16 +61,13 @@ func (server *ServerMonitor) RejoinMaster() error {
 				if server.ClusterGroup.oldMaster != nil {
 					if server.ClusterGroup.oldMaster.URL == server.URL {
 						server.RejoinMasterSST()
-						server.ClusterGroup.rejoinCond.Send <- true
 						return nil
 					}
 				}
 				if server.ClusterGroup.Conf.Autoseed {
 					server.ReseedMasterSST()
-					server.ClusterGroup.rejoinCond.Send <- true
 					return nil
 				} else {
-					server.ClusterGroup.rejoinCond.Send <- true
 					server.ClusterGroup.LogPrintf("INFO", "No auto seeding %s", server.URL)
 					return errors.New("No Autoseed")
 				}
@@ -113,7 +113,6 @@ func (server *ServerMonitor) RejoinMaster() error {
 		// if consul or internal proxy need to adapt read only route to new slaves
 		server.ClusterGroup.backendStateChangeProxies()
 	}
-	server.ClusterGroup.rejoinCond.Send <- true
 	return nil
 }
 
@@ -416,17 +415,18 @@ func (server *ServerMonitor) rejoinMasterAsSlave() error {
 
 func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	// Test if slave not connected to current master
+	defer func() {
+		server.ClusterGroup.rejoinCond.Send <- true
+	}()
 	if server.ClusterGroup.GetTopology() == topoMultiMasterRing || server.ClusterGroup.GetTopology() == topoMultiMasterWsrep {
 		if server.ClusterGroup.GetTopology() == topoMultiMasterRing {
 			server.RejoinLoop()
-			server.ClusterGroup.rejoinCond.Send <- true
 			return nil
 		}
 	}
 	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
 	if mycurrentmaster == nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "No master found from replication")
-		server.ClusterGroup.rejoinCond.Send <- true
 		return errors.New("No master found from replication")
 	}
 	if server.ClusterGroup.master != nil && mycurrentmaster != nil {
@@ -445,7 +445,6 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				crash := server.ClusterGroup.getCrashFromMaster(server.ClusterGroup.master.URL)
 				if crash == nil {
 					server.ClusterGroup.SetState("ERR00065", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00065"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
-					server.ClusterGroup.rejoinCond.Send <- true
 					return errors.New("No Crash info on current master")
 				}
 				server.ClusterGroup.LogPrintf("INFO", "Crash info on current master %s", crash)
@@ -533,12 +532,12 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 			logs, err := dbhelper.SetReadOnly(server.Conn, true)
 			server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
 			if err != nil {
-				server.ClusterGroup.rejoinCond.Send <- true
+
 				return err
 			}
 		}
 	}
-	server.ClusterGroup.rejoinCond.Send <- true
+
 	return nil
 }
 
