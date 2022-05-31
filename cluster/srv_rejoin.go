@@ -46,7 +46,9 @@ func (server *ServerMonitor) RejoinMaster() error {
 	if server.ClusterGroup.Conf.LogLevel > 2 {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoining standalone server %s", server.URL)
 	}
+	// Strange here add comment for why
 	server.ClusterGroup.canFlashBack = true
+
 	if server.ClusterGroup.master != nil {
 		if server.URL != server.ClusterGroup.master.URL {
 			server.ClusterGroup.SetState("WARN0022", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0022"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
@@ -69,7 +71,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 					server.ClusterGroup.LogPrintf("INFO", "No auto seeding %s", server.URL)
 					return errors.New("No Autoseed")
 				}
-			}
+			} //crash info is available
 			if server.ClusterGroup.Conf.AutorejoinBackupBinlog == true {
 				server.backupBinlog(crash)
 			}
@@ -303,6 +305,10 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 	realmaster := server.ClusterGroup.master
 	if server.ClusterGroup.Conf.MxsBinlogOn || server.ClusterGroup.Conf.MultiTierSlave {
 		realmaster = server.ClusterGroup.GetRelayServer()
+	}
+
+	if realmaster == nil {
+		return errors.New("No master defined exiting rejoin direct dump ")
 	}
 	// done change master just to set the host and port before dump
 	if server.MxsHaveGtid || server.IsMaxscale == false {
