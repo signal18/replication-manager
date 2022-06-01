@@ -454,11 +454,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		// If we reached this stage with a previously failed server, reintroduce
 		// it as unconnected server.master
 		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth /*|| server.PrevState == stateSuspect*/ {
-			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected", server.URL)
-			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
+			server.ClusterGroup.LogPrintf(LvlInfo, "State changed, init failed server %s as unconnected", server.URL)
+			if server.ClusterGroup.Conf.ReadOnly && !server.HaveWsrep && server.ClusterGroup.IsDiscovered() {
 				//GetMaster abstract master for galera multi master and master slave
 				if server.GetCluster().GetMaster() != nil {
-					if server.ClusterGroup.Status == ConstMonitorActif && server.ClusterGroup.master.Id != server.Id && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
+					if server.ClusterGroup.Status == ConstMonitorActif && server.GetCluster().GetMaster().Id != server.Id && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
 						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as active monitor and other master is discovered", server.URL)
 						server.SetReadOnly()
 					} else if server.ClusterGroup.Status == ConstMonitorStandby && server.ClusterGroup.Conf.Arbitration && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
@@ -483,9 +483,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			// Master will never get discovery in topology if it does not get unconnected first it default to suspect
 			//	if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
 			server.SetState(stateUnconn)
-			server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
+			server.ClusterGroup.LogPrintf(LvlInfo, "From state %s to unconnected and non leader on server %s", server.PrevState, server.URL)
 			//	}
-			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
+			if server.ClusterGroup.Conf.ReadOnly && !server.HaveWsrep && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
 				server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server: %s no master state and replication found", server.URL)
 				server.SetReadOnly()
 			}
@@ -494,10 +494,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.ClusterGroup.backendStateChangeProxies()
 				server.SendAlert()
 			}
+		} else if server.GetCluster().GetMaster() != nil && server.GetCluster().GetMaster().Id != server.Id && server.PrevState == stateSuspect && !server.HaveWsrep && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInFailover() {
+			// a case of a standalone transite to suspect but never get to standalone back
+			server.SetState(stateUnconn)
 		}
-
 	} else if server.ClusterGroup.IsActive() && errss == nil && (server.PrevState == stateFailed) {
-
+		// Is Slave
 		server.rejoinSlave(ss)
 	}
 
