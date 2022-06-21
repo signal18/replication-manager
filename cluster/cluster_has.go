@@ -149,7 +149,15 @@ func (cluster *Cluster) HasAllDbUp() bool {
 	}
 	for _, s := range cluster.Servers {
 		if s != nil {
-			if s.State == stateFailed || s.State == stateSuspect /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+			if s.State == stateFailed /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+				return false
+			}
+			if s.State == stateSuspect && cluster.GetTopology() != topoUnknown {
+				//supect is used to reload config and avoid backend state change to failed that would disable servers in proxies and cause glinch in cluster traffic
+				// at the same time to enbale bootstrap replication we need to know when server are up
+				return false
+			}
+			if s.Conn == nil {
 				return false
 			}
 		}
@@ -280,4 +288,11 @@ func (cluster *Cluster) IsInFailover() bool {
 
 func (cluster *Cluster) IsDiscovered() bool {
 	return cluster.sme.IsDiscovered()
+}
+
+func (cluster *Cluster) IsMultiMaster() bool {
+	if cluster.GetTopology() != topoMultiMasterWsrep || cluster.GetTopology() != topoMultiMaster || cluster.GetTopology() != topoMultiMasterRing {
+		return true
+	}
+	return false
 }

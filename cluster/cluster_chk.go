@@ -684,7 +684,10 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 }
 
 func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
-	if !(cluster.master.HasMySQLGTID()) {
+	if cluster.GetMaster() == nil {
+		return false
+	}
+	if !(cluster.GetMaster().HasMySQLGTID()) {
 		return true
 	}
 	for _, s := range cluster.slaves {

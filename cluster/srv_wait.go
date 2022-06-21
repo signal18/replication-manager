@@ -9,7 +9,12 @@
 
 package cluster
 
-import "github.com/signal18/replication-manager/utils/dbhelper"
+import (
+	"errors"
+	"time"
+
+	"github.com/signal18/replication-manager/utils/dbhelper"
+)
 
 func (server *ServerMonitor) WaitSyncToMaster(master *ServerMonitor) {
 	server.ClusterGroup.LogPrintf(LvlInfo, "Waiting for slave %s to sync", server.URL)
@@ -25,4 +30,38 @@ func (server *ServerMonitor) WaitSyncToMaster(master *ServerMonitor) {
 	if server.ClusterGroup.Conf.LogLevel > 2 {
 		server.LogReplPostion()
 	}
+}
+
+func (server *ServerMonitor) WaitDatabaseStart() error {
+	exitloop := 0
+	server.GetCluster().LogPrintf(LvlInfo, "Waiting database start on %s", server.URL)
+	ticker := time.NewTicker(time.Millisecond * time.Duration(server.GetCluster().GetConf().MonitoringTicker*1000))
+	for int64(exitloop) < server.GetCluster().GetConf().MonitorWaitRetry {
+		select {
+		case <-ticker.C:
+
+			exitloop++
+			var err error
+			if server.GetCluster().GetTopology() == topoMultiMasterWsrep {
+				if !server.IsConnected() {
+					err = errors.New("Not yet connected")
+				}
+			} else {
+				err = server.Refresh()
+			}
+			if err == nil {
+
+				exitloop = 9999999
+			} else {
+				server.GetCluster().LogPrintf(LvlInfo, "Waiting state running on %s failed with error %s ", server.URL, err)
+			}
+		}
+	}
+	if exitloop == 9999999 {
+		server.GetCluster().LogPrintf(LvlInfo, "Waiting state running reach on %s", server.URL)
+	} else {
+		server.GetCluster().LogPrintf(LvlErr, "Wait state running on %s", server.URL)
+		return errors.New("Failed to wait running database server")
+	}
+	return nil
 }

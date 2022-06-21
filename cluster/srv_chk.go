@@ -162,7 +162,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	} else if sl.IsIgnored() == false && sl.HaveBinlogRow == false && server.ClusterGroup.Conf.AutorejoinFlashback == true {
 		server.ClusterGroup.sme.AddState("WARN0049", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0049"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if server.ClusterGroup.Conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" && !server.ClusterGroup.IsInIgnoredReadonly(server) {
+	if server.ClusterGroup.Conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsMultiMaster() {
 		// In non-multimaster mode, enforce read-only flag if the option is set
 		sl.SetReadOnly()
 		server.ClusterGroup.LogPrintf("INFO", "Enforce read only on slave %s", sl.URL)

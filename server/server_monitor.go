@@ -403,7 +403,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/bin/sysbench", "Sysbench Wrapper in test mode")
 	monitorCmd.Flags().StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")
 	monitorCmd.Flags().StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
-
+	monitorCmd.Flags().BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
 	if WithOpenSVC == "ON" {
 		monitorCmd.Flags().StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "opensvc,kube,onpremise,local", "seprated list of orchestrator ")
 		monitorCmd.Flags().StringVar(&conf.ProvOrchestrator, "prov-orchestrator", "opensvc", "onpremise|opensvc|kube|slapos|local")

@@ -37,9 +37,16 @@ func NewHttpLog(sz int) HttpLog {
 	return tl
 }
 
-func (tl *HttpLog) Add(s HttpMessage) {
+func (tl *HttpLog) Add(s HttpMessage) int {
 	tl.L.Lock()
 	tl.Shift(s)
+	tl.L.Unlock()
+	return tl.Line
+}
+
+func (tl *HttpLog) Update(line int, s HttpMessage) {
+	tl.L.Lock()
+	tl.Buffer[line] = s
 	tl.L.Unlock()
 }
 

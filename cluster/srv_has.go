@@ -363,6 +363,21 @@ func (server *ServerMonitor) IsRunning() bool {
 	return !server.IsDown()
 }
 
+func (server *ServerMonitor) IsConnected() bool {
+	if server.State == stateFailed /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+		return false
+	}
+	if server.State == stateSuspect && server.GetCluster().GetTopology() != topoUnknown {
+		//supect is used to reload config and avoid backend state change to failed that would disable servers in proxies and cause glinch in cluster traffic
+		// at the same time to enbale bootstrap replication we need to know when server are up
+		return false
+	}
+	if server.Conn == nil {
+		return false
+	}
+	return true
+}
+
 // IsFailed() returns true is the server is Failed or auth error
 func (server *ServerMonitor) IsFailed() bool {
 	if server.State == stateFailed || server.State == stateErrorAuth {

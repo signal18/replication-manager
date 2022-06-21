@@ -116,7 +116,21 @@ func (cluster *Cluster) LogSQLErrorPrintf(level string, url string, err error, f
 	logsqlerr.WithFields(log.Fields{"cluster": cluster.Name, "server": url, "module": from, "error": err, "sql": logs}).Errorf(format)
 }
 
-func (cluster *Cluster) LogPrintf(level string, format string, args ...interface{}) {
+func (cluster *Cluster) LogUpdate(line int, level string, format string, args ...interface{}) int {
+	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
+
+	msg := s18log.HttpMessage{
+		Group:     cluster.Name,
+		Level:     level,
+		Timestamp: stamp,
+		Text:      fmt.Sprintf(format, args...),
+	}
+	cluster.Log.Update(line, msg)
+	return line
+}
+
+func (cluster *Cluster) LogPrintf(level string, format string, args ...interface{}) int {
+	line := 0
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 	padright := func(str, pad string, lenght int) string {
 		for {
@@ -149,7 +163,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 				Timestamp: stamp,
 				Text:      fmt.Sprintf(cliformat, args...),
 			}
-			cluster.htlog.Add(msg)
+			line = cluster.htlog.Add(msg)
 			cluster.Log.Add(msg)
 		}
 	}
@@ -185,4 +199,5 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		}
 
 	}
+	return line
 }
