@@ -15,7 +15,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-func (proxy *Proxy) hasCookie(key string) bool {
+func (proxy *Proxy) HasCookie(key string) bool {
 	if _, err := os.Stat(proxy.Datadir + "/@" + key); os.IsNotExist(err) {
 		return false
 	}
@@ -23,27 +23,27 @@ func (proxy *Proxy) hasCookie(key string) bool {
 }
 
 func (proxy *Proxy) HasProvisionCookie() bool {
-	return proxy.hasCookie("cookie_prov")
+	return proxy.HasCookie("cookie_prov")
 }
 
 func (proxy *Proxy) HasUnprovisionCookie() bool {
-	return proxy.hasCookie("cookie_unprov")
+	return proxy.HasCookie("cookie_unprov")
 }
 
 func (proxy *Proxy) HasWaitStartCookie() bool {
-	return proxy.hasCookie("cookie_waitstart")
+	return proxy.HasCookie("cookie_waitstart")
 }
 
 func (proxy *Proxy) HasWaitStopCookie() bool {
-	return proxy.hasCookie("cookie_waitstop")
+	return proxy.HasCookie("cookie_waitstop")
 }
 
 func (proxy *Proxy) HasRestartCookie() bool {
-	return proxy.hasCookie("cookie_restart")
+	return proxy.HasCookie("cookie_restart")
 }
 
 func (proxy *Proxy) HasReprovCookie() bool {
-	return proxy.hasCookie("cookie_reprov")
+	return proxy.HasCookie("cookie_reprov")
 }
 
 func (proxy *Proxy) IsRunning() bool {

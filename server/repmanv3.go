@@ -27,8 +27,9 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 
@@ -105,6 +106,7 @@ func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error
 	s.grpcServer = grpc.NewServer(serverOpts...)
 	v3.RegisterClusterPublicServiceServer(s.grpcServer, s)
 	v3.RegisterClusterServiceServer(s.grpcServer, s)
+	v3.RegisterDatabasePublicServiceServer(s.grpcServer, s)
 
 	/* Bootstrap the Muxed connection */
 	httpmux := http.NewServeMux()
@@ -127,6 +129,16 @@ func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error
 
 	if err != nil {
 		return fmt.Errorf("could not register service ClusterService: %w", err)
+	}
+
+	err = v3.RegisterDatabasePublicServiceHandlerFromEndpoint(ctx,
+		gwmux,
+		s.v3Config.Listen.AddressWithPort(),
+		dopts,
+	)
+
+	if err != nil {
+		return fmt.Errorf("could not register service DatabasePublicService: %w", err)
 	}
 
 	httpmux.Handle("/", gwmux)
@@ -548,7 +560,9 @@ func (s *ReplicationManager) GetShards(in *v3.Cluster, stream v3.ClusterService_
 }
 
 func (s *ReplicationManager) PerformClusterTest(ctx context.Context, in *v3.ClusterTest) (*structpb.Struct, error) {
-	// TODO: implement allowing no cluster to be set and starting a test cluster
+	if in.TestName == v3.ClusterTest_Unspecified {
+		in.TestName = v3.ClusterTest_All
+	}
 
 	user, mycluster, err := s.getClusterAndUser(ctx, in)
 	if err != nil {
@@ -608,25 +622,25 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 		err = mycluster.RollingRestart()
 	case v3.ClusterAction_ADDSERVER:
 		switch in.Server.Type {
-		case v3.ClusterAction_Server_TYPE_UNSPECIFIED:
+		case v3.Server_TYPE_UNSPECIFIED:
 			err = mycluster.AddSeededServer(in.Server.GetURI())
-		case v3.ClusterAction_Server_PROXY:
-			if in.Server.Proxy == v3.ClusterAction_Server_PROXY_UNSPECIFIED {
-				return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "Proxy", v3.ClusterAction_Server_PROXY_UNSPECIFIED.String()).Err()
+		case v3.Server_PROXY:
+			if in.Server.Proxy == v3.Server_PROXY_UNSPECIFIED {
+				return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "Proxy", v3.Server_PROXY_UNSPECIFIED.String()).Err()
 			}
 			err = mycluster.AddSeededProxy(
 				strings.ToLower(in.Server.Proxy.String()),
 				in.Server.Host,
 				fmt.Sprintf("%d", in.Server.Port), "", "")
-		case v3.ClusterAction_Server_DATABASE:
+		case v3.Server_DATABASE:
 			switch in.Server.Database {
-			case v3.ClusterAction_Server_DATABASE_UNSPECIFIED:
-				return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "Database", v3.ClusterAction_Server_DATABASE_UNSPECIFIED.String()).Err()
-			case v3.ClusterAction_Server_MARIADB:
+			case v3.Server_DATABASE_UNSPECIFIED:
+				return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "Database", v3.Server_DATABASE_UNSPECIFIED.String()).Err()
+			case v3.Server_MARIADB:
 				mycluster.Conf.ProvDbImg = "mariadb:latest"
-			case v3.ClusterAction_Server_PERCONA:
+			case v3.Server_PERCONA:
 				mycluster.Conf.ProvDbImg = "percona:latest"
-			case v3.ClusterAction_Server_MYSQL:
+			case v3.Server_MYSQL:
 				mycluster.Conf.ProvDbImg = "mysql:latest"
 				// TODO: Postgres is an option but previous code doesn't mention it
 			}
@@ -1044,4 +1058,115 @@ func (s *ReplicationManager) ExecuteTableAction(ctx context.Context, in *v3.Tabl
 	}
 
 	return
+}
+
+// DatabaseStatus is a public endpoint so it doesn't need to verify a user
+func (s *ReplicationManager) ServerStatus(ctx context.Context, in *v3.DatabaseStatus) (*wrapperspb.BoolValue, error) {
+	mycluster, err := s.getClusterFromFromRequest(in)
+	if err != nil {
+		return nil, err
+	}
+
+	if in.Status == v3.DatabaseStatus_ACTION_UNSPECIFIED {
+		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "status", "").Err()
+	}
+
+	status := &wrapperspb.BoolValue{
+		Value: false,
+	}
+
+	// when no server is set we can check if the rolling-reprov or rolling-restart status
+	if in.Server == nil {
+		switch in.Status {
+		case v3.DatabaseStatus_NEED_ROLLING_REPROV:
+			if mycluster.HasRequestDBRollingReprov() {
+				status.Value = true
+			}
+		case v3.DatabaseStatus_NEED_ROLLING_RESTART:
+			if mycluster.HasRequestDBRollingRestart() {
+				status.Value = true
+			}
+		}
+		return status, nil
+	}
+
+	if in.Server == nil {
+		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrFieldNotSet, "server", "").Err()
+	}
+
+	var node *cluster.ServerMonitor
+
+	if in.Server.Port == 0 {
+		node = mycluster.GetServerFromName(in.Server.Host)
+	} else {
+		node = mycluster.GetServerFromName(in.Server.GetURI())
+	}
+
+	proxy := mycluster.GetProxyFromURL(in.Server.GetURI())
+
+	if node == nil && proxy == nil {
+		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrServerNotFound, "server", in.Server.Host).Err()
+	}
+
+	if proxy == nil && node.IsDown() {
+		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrServerDown, "server", in.Server.Host).Err()
+	}
+
+	switch in.Status {
+	case v3.DatabaseStatus_IS_MASTER:
+		if !mycluster.IsInFailover() && mycluster.IsActive() && node.IsMaster() &&
+			!node.IsDown() && !node.IsMaintenance && !node.IsReadOnly() {
+			status.Value = true
+		}
+	case v3.DatabaseStatus_IS_SLAVE:
+		if mycluster.IsActive() && !node.IsDown() && !node.IsMaintenance &&
+			((node.IsSlave && !node.HasReplicationIssue()) ||
+				(node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
+			status.Value = true
+		}
+	}
+
+	if proxy != nil {
+		status = getStatusFromCookie(in, proxy)
+	} else {
+		status = getStatusFromCookie(in, node)
+	}
+
+	// TODO: decide if we want to return an error or not for when e.g. a restart is not needed
+
+	return status, nil
+}
+
+func getStatusFromCookie(in *v3.DatabaseStatus, n cluster.HasCookie) *wrapperspb.BoolValue {
+	status := &wrapperspb.BoolValue{
+		Value: false,
+	}
+	switch in.Status {
+	case v3.DatabaseStatus_RESTART:
+		if n.HasCookie("cookie_restart") {
+			status.Value = true
+		}
+	case v3.DatabaseStatus_REPROVISION:
+		if n.HasCookie("cookie_reprov") {
+			status.Value = true
+		}
+	case v3.DatabaseStatus_PROVISION:
+		if n.HasCookie("cookie_prov") {
+			status.Value = true
+		}
+	case v3.DatabaseStatus_UNPROVISION:
+		if n.HasCookie("cookie_unprov") {
+			status.Value = true
+		}
+	case v3.DatabaseStatus_START:
+		if n.HasCookie("cookie_waitstart") {
+			status.Value = true
+		}
+	case v3.DatabaseStatus_STOP:
+		if n.HasCookie("cookie_waitstop") {
+			status.Value = true
+		}
+	}
+
+	return status
 }

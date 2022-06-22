@@ -5,6 +5,7 @@ package signal18.replication_manager.v3;
 import "google/api/annotations.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
+import "google/protobuf/wrappers.proto";
 import "messages.proto";
 
 option go_package = "github.com/signal18/replication-manager;repmanv3";
@@ -23,6 +24,40 @@ service ClusterPublicService {
       get : "/v3/clusters/{name}/actions/master-physical-backup"
     };
   }
+}
+
+service DatabasePublicService {
+  rpc ServerStatus(DatabaseStatus) returns (google.protobuf.BoolValue) {
+    // replaces
+    // /api/clusters/{clusterName}/need-rolling-reprov
+    // /api/clusters/{clusterName}/need-rolling-restart
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-master
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-prov
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-reprov
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-restart
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-start
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-stop
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-unprov
+    // /api/clusters/{clusterName}/servers/{serverName}/is-master
+    // /api/clusters/{clusterName}/servers/{serverName}/is-slave
+
+    // the fragment `/status` has been added to signify this is a status
+    // endpoint allowing us to re-use the action keywords, e.g.
+    // `/status/provision` is the same as the old `/need-prov`
+    // `/status/restart` is the same as `/need-restart`
+    option (google.api.http) = {
+      get : "/v3/clusters/{cluster.name}/{server.host}/{server.port}/status/"
+            "{status}"
+      additional_bindings {
+        get : "/v3/clusters/{cluster.name}/{server.host}/status/{status}"
+      }
+      additional_bindings {get : "/v3/clusters/{cluster.name}/status/{status}"}
+    };
+  }
+
+  // TODO: config should be behind an ACL
+  // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config
 }
 
 service ClusterService {
@@ -126,7 +161,6 @@ service ClusterService {
   rpc PerformClusterTest(ClusterTest) returns (google.protobuf.Struct) {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/tests/actions/run/all
-      // /api/clusters/{clusterName}/tests/actions/run/{testName}
       // /api/clusters/{clusterName}/tests/actions/run/{testName}
       get : "/v3/clusters/{cluster.name}/tests/actions/run/{test_name}"
     };

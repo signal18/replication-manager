@@ -69,7 +69,7 @@ func (server *ServerMonitor) IsSlaveOfReplicationSource(name string) bool {
 	return false
 }
 
-func (server *ServerMonitor) hasCookie(key string) bool {
+func (server *ServerMonitor) HasCookie(key string) bool {
 	if server == nil {
 		return false
 	}
@@ -80,39 +80,39 @@ func (server *ServerMonitor) hasCookie(key string) bool {
 }
 
 func (server *ServerMonitor) HasWaitStartCookie() bool {
-	return server.hasCookie("cookie_waitstart")
+	return server.HasCookie("cookie_waitstart")
 }
 
 func (server *ServerMonitor) HasWaitBackupCookie() bool {
-	return server.hasCookie("cookie_waitbackup")
+	return server.HasCookie("cookie_waitbackup")
 }
 
 func (server *ServerMonitor) HasWaitStopCookie() bool {
-	return server.hasCookie("cookie_waitstop")
+	return server.HasCookie("cookie_waitstop")
 }
 
 func (server *ServerMonitor) HasRestartCookie() bool {
-	return server.hasCookie("cookie_restart")
+	return server.HasCookie("cookie_restart")
 }
 
 func (server *ServerMonitor) HasProvisionCookie() bool {
-	return server.hasCookie("cookie_prov")
+	return server.HasCookie("cookie_prov")
 }
 
 func (server *ServerMonitor) HasReprovCookie() bool {
-	return server.hasCookie("cookie_reprov")
+	return server.HasCookie("cookie_reprov")
 }
 
 func (server *ServerMonitor) HasUnprovisionCookie() bool {
-	return server.hasCookie("cookie_unprov")
+	return server.HasCookie("cookie_unprov")
 }
 
 func (server *ServerMonitor) HasBackupLogicalCookie() bool {
-	return server.hasCookie("cookie_logicalbackup")
+	return server.HasCookie("cookie_logicalbackup")
 }
 
 func (server *ServerMonitor) HasBackupPhysicalCookie() bool {
-	return server.hasCookie("cookie_physicalbackup")
+	return server.HasCookie("cookie_physicalbackup")
 }
 
 func (server *ServerMonitor) HasReadOnly() bool {

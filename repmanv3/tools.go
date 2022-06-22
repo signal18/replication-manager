@@ -15,7 +15,7 @@ func (s *ClusterSetting_Switch_SwitchName) Legacy() string {
 	return strings.ToLower(strings.ReplaceAll(s.String(), "_", "-"))
 }
 
-func (s *ClusterAction_Server) GetURI() string {
+func (s *Server) GetURI() string {
 	return fmt.Sprintf("%s:%d", s.Host, s.Port)
 }
 
@@ -25,6 +25,14 @@ func (s *ClusterAction_ReplicationTopology) Legacy() string {
 
 type ContainsClusterMessage interface {
 	GetClusterMessage() (*Cluster, error)
+}
+
+func (da *DatabaseStatus) GetClusterMessage() (*Cluster, error) {
+	if da.Cluster == nil {
+		return nil, NewError(codes.InvalidArgument, ErrClusterNotSet).Err()
+	}
+
+	return da.Cluster, nil
 }
 
 func (ca *ClusterAction) GetClusterMessage() (*Cluster, error) {

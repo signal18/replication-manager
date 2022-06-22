@@ -243,6 +243,36 @@ message ClusterSetting {
   Switch switch = 6;
 }
 
+message Server {
+  string host = 1;
+  uint64 port = 2;
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    DATABASE = 1;
+    PROXY = 2;
+  }
+  enum Database {
+    DATABASE_UNSPECIFIED = 0;
+    MARIADB = 1;
+    PERCONA = 2;
+    MYSQL = 3;
+    POSTGRESQL = 4;
+  }
+  enum Proxy {
+    PROXY_UNSPECIFIED = 0;
+    MAXSCALE = 1;
+    PROXYSQL = 2;
+    SHARDPROXY = 3;
+    HAPROXY = 4;
+    MYPROXY = 5;
+    EXTPROXY = 6;
+    SPHINX = 7;
+  }
+  Type type = 3;
+  Database database = 4;
+  Proxy proxy = 5;
+}
+
 message ClusterAction {
   Cluster cluster = 1;
   enum Action {
@@ -270,35 +300,6 @@ message ClusterAction {
     UNPROVISION = 22;
   }
   Action action = 3;
-  message Server {
-    string host = 1;
-    uint64 port = 2;
-    enum Type {
-      TYPE_UNSPECIFIED = 0;
-      DATABASE = 1;
-      PROXY = 2;
-    }
-    enum Database {
-      DATABASE_UNSPECIFIED = 0;
-      MARIADB = 1;
-      PERCONA = 2;
-      MYSQL = 3;
-      POSTGRESQL = 4;
-    }
-    enum Proxy {
-      PROXY_UNSPECIFIED = 0;
-      MAXSCALE = 1;
-      PROXYSQL = 2;
-      SHARDPROXY = 3;
-      HAPROXY = 4;
-      MYPROXY = 5;
-      EXTPROXY = 6;
-      SPHINX = 7;
-    }
-    Type type = 3;
-    Database database = 4;
-    Proxy proxy = 5;
-  }
   Server server = 4;
   enum ReplicationTopology {
     RT_UNSPECIFIED = 0;
@@ -312,6 +313,46 @@ message ClusterAction {
   }
   ReplicationTopology topology = 5;
   string sharding_name = 6;
+}
+
+message DatabaseStatus {
+  Cluster cluster = 1;
+  Server server = 2;
+  enum Status {
+    ACTION_UNSPECIFIED = 0;
+    START = 1;
+    STOP = 2;
+    RESTART = 3;
+    PROVISION = 4;
+    UNPROVISION = 5;
+    REPROVISION = 6;
+    IS_MASTER = 7;
+    IS_SLAVE = 8;
+    NEED_ROLLING_REPROV = 9;
+    NEED_ROLLING_RESTART = 10;
+  }
+  Status status = 3;
+}
+
+message DatabaseAction {
+  Cluster cluster = 1;
+  Server server = 2;
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    START = 1;
+    STOP = 2;
+    RESTART = 3;
+    PROVISION = 4;
+    UNPROVISION = 5;
+    REPROVISION = 6;
+    MAINTENANCE = 7;
+    BACKUP_PHYSICAL = 8;
+    BACKUP_LOGICAL = 9;
+    BACKUP_ERROR_LOG = 10;
+    BACKUP_SLOWQUERY_LOG = 11;
+    OPTIMIZE = 12;
+  }
+  Action action = 3;
 }
 
 enum ServiceStatus {

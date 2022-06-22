@@ -9,6 +9,9 @@
       "name": "ClusterPublicService"
     },
     {
+      "name": "DatabasePublicService"
+    },
+    {
       "name": "ClusterService"
     }
   ],
@@ -32,7 +35,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -428,7 +431,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -444,7 +447,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/ClusterActionServer"
+              "$ref": "#/definitions/v3Server"
             }
           },
           {
@@ -777,7 +780,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -1173,7 +1176,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -1569,7 +1572,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -1964,7 +1967,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -2360,7 +2363,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -2755,7 +2758,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -3126,7 +3129,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -3496,7 +3499,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -3866,7 +3869,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -4262,7 +4265,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -4718,7 +4721,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -5174,7 +5177,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -5630,7 +5633,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -6073,6 +6076,368 @@
         ]
       }
     },
+    "/v3/clusters/{cluster.name}/status/{status}": {
+      "get": {
+        "operationId": "DatabasePublicService_ServerStatus3",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/googlerpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "ACTION_UNSPECIFIED",
+              "START",
+              "STOP",
+              "RESTART",
+              "PROVISION",
+              "UNPROVISION",
+              "REPROVISION",
+              "IS_MASTER",
+              "IS_SLAVE",
+              "NEED_ROLLING_REPROV",
+              "NEED_ROLLING_RESTART"
+            ]
+          },
+          {
+            "name": "cluster.tenant",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.workingDir",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.dbServers",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "cluster.proxyServers",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "cluster.failoverCounter",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.failoverLastTime",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.activePassiveStatus",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.isSplitBrain",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isFailedArbitrator",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isLostMajority",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isDown",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isClusterDown",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isAllDbUp",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isFailable",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isPostgres",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isProvision",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedProxyRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedProxiesRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesRollingRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesRollingReprov",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesReprov",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isValidBackup",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNotMonitoring",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isCapturing",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.cleanReplication",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.topology",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.uptime",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.uptimeFailable",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.uptimeSemisync",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.monitorSpin",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.dbTableSize",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.dbIndexSize",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.connections",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.qps",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.haveDBTLSCert",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.haveDBTLSOldCert",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.waitingRejoin",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.waitingSwitchover",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.waitingFailover",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "server.host",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "server.port",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "server.type",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "TYPE_UNSPECIFIED",
+              "DATABASE",
+              "PROXY"
+            ],
+            "default": "TYPE_UNSPECIFIED"
+          },
+          {
+            "name": "server.database",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "DATABASE_UNSPECIFIED",
+              "MARIADB",
+              "PERCONA",
+              "MYSQL",
+              "POSTGRESQL"
+            ],
+            "default": "DATABASE_UNSPECIFIED"
+          },
+          {
+            "name": "server.proxy",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "PROXY_UNSPECIFIED",
+              "MAXSCALE",
+              "PROXYSQL",
+              "SHARDPROXY",
+              "HAPROXY",
+              "MYPROXY",
+              "EXTPROXY",
+              "SPHINX"
+            ],
+            "default": "PROXY_UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "DatabasePublicService"
+        ]
+      }
+    },
     "/v3/clusters/{cluster.name}/tests/actions/run/{testName}": {
       "get": {
         "operationId": "ClusterService_PerformClusterTest",
@@ -6086,7 +6451,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -6436,7 +6801,7 @@
               "properties": {
                 "result": {},
                 "error": {
-                  "$ref": "#/definitions/rpcStatus"
+                  "$ref": "#/definitions/googlerpcStatus"
                 }
               },
               "title": "Stream result of protobufStruct"
@@ -6445,7 +6810,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -6735,6 +7100,730 @@
         ]
       }
     },
+    "/v3/clusters/{cluster.name}/{server.host}/status/{status}": {
+      "get": {
+        "operationId": "DatabasePublicService_ServerStatus2",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/googlerpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "server.host",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "ACTION_UNSPECIFIED",
+              "START",
+              "STOP",
+              "RESTART",
+              "PROVISION",
+              "UNPROVISION",
+              "REPROVISION",
+              "IS_MASTER",
+              "IS_SLAVE",
+              "NEED_ROLLING_REPROV",
+              "NEED_ROLLING_RESTART"
+            ]
+          },
+          {
+            "name": "cluster.tenant",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.workingDir",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.dbServers",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "cluster.proxyServers",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "cluster.failoverCounter",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.failoverLastTime",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.activePassiveStatus",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.isSplitBrain",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isFailedArbitrator",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isLostMajority",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isDown",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isClusterDown",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isAllDbUp",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isFailable",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isPostgres",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isProvision",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedProxyRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedProxiesRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesRollingRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesRollingReprov",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesReprov",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isValidBackup",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNotMonitoring",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isCapturing",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.cleanReplication",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.topology",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.uptime",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.uptimeFailable",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.uptimeSemisync",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.monitorSpin",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.dbTableSize",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.dbIndexSize",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.connections",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.qps",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.haveDBTLSCert",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.haveDBTLSOldCert",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.waitingRejoin",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.waitingSwitchover",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.waitingFailover",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "server.port",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "server.type",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "TYPE_UNSPECIFIED",
+              "DATABASE",
+              "PROXY"
+            ],
+            "default": "TYPE_UNSPECIFIED"
+          },
+          {
+            "name": "server.database",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "DATABASE_UNSPECIFIED",
+              "MARIADB",
+              "PERCONA",
+              "MYSQL",
+              "POSTGRESQL"
+            ],
+            "default": "DATABASE_UNSPECIFIED"
+          },
+          {
+            "name": "server.proxy",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "PROXY_UNSPECIFIED",
+              "MAXSCALE",
+              "PROXYSQL",
+              "SHARDPROXY",
+              "HAPROXY",
+              "MYPROXY",
+              "EXTPROXY",
+              "SPHINX"
+            ],
+            "default": "PROXY_UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "DatabasePublicService"
+        ]
+      }
+    },
+    "/v3/clusters/{cluster.name}/{server.host}/{server.port}/status/{status}": {
+      "get": {
+        "operationId": "DatabasePublicService_ServerStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/googlerpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cluster.name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "server.host",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "server.port",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "status",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "enum": [
+              "ACTION_UNSPECIFIED",
+              "START",
+              "STOP",
+              "RESTART",
+              "PROVISION",
+              "UNPROVISION",
+              "REPROVISION",
+              "IS_MASTER",
+              "IS_SLAVE",
+              "NEED_ROLLING_REPROV",
+              "NEED_ROLLING_RESTART"
+            ]
+          },
+          {
+            "name": "cluster.tenant",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.workingDir",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.dbServers",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "cluster.proxyServers",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "cluster.failoverCounter",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.failoverLastTime",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.activePassiveStatus",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.isSplitBrain",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isFailedArbitrator",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isLostMajority",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isDown",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isClusterDown",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isAllDbUp",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isFailable",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isPostgres",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isProvision",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedProxyRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedProxiesRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesRollingRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesRollingReprov",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNeedDatabasesReprov",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isValidBackup",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isNotMonitoring",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.isCapturing",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.cleanReplication",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.topology",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.uptime",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.uptimeFailable",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.uptimeSemisync",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.monitorSpin",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "cluster.dbTableSize",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.dbIndexSize",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.connections",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.qps",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "cluster.haveDBTLSCert",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.haveDBTLSOldCert",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cluster.waitingRejoin",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.waitingSwitchover",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "cluster.waitingFailover",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "server.type",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "TYPE_UNSPECIFIED",
+              "DATABASE",
+              "PROXY"
+            ],
+            "default": "TYPE_UNSPECIFIED"
+          },
+          {
+            "name": "server.database",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "DATABASE_UNSPECIFIED",
+              "MARIADB",
+              "PERCONA",
+              "MYSQL",
+              "POSTGRESQL"
+            ],
+            "default": "DATABASE_UNSPECIFIED"
+          },
+          {
+            "name": "server.proxy",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "PROXY_UNSPECIFIED",
+              "MAXSCALE",
+              "PROXYSQL",
+              "SHARDPROXY",
+              "HAPROXY",
+              "MYPROXY",
+              "EXTPROXY",
+              "SPHINX"
+            ],
+            "default": "PROXY_UNSPECIFIED"
+          }
+        ],
+        "tags": [
+          "DatabasePublicService"
+        ]
+      }
+    },
     "/v3/clusters/{name}": {
       "get": {
         "operationId": "ClusterService_GetCluster",
@@ -6748,7 +7837,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -7035,7 +8124,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -7322,7 +8411,7 @@
                   "$ref": "#/definitions/v3Backup"
                 },
                 "error": {
-                  "$ref": "#/definitions/rpcStatus"
+                  "$ref": "#/definitions/googlerpcStatus"
                 }
               },
               "title": "Stream result of v3Backup"
@@ -7331,7 +8420,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -7618,7 +8707,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -7903,7 +8992,7 @@
               "properties": {
                 "result": {},
                 "error": {
-                  "$ref": "#/definitions/rpcStatus"
+                  "$ref": "#/definitions/googlerpcStatus"
                 }
               },
               "title": "Stream result of protobufStruct"
@@ -7912,7 +9001,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -8199,7 +9288,7 @@
                   "$ref": "#/definitions/v3Table"
                 },
                 "error": {
-                  "$ref": "#/definitions/rpcStatus"
+                  "$ref": "#/definitions/googlerpcStatus"
                 }
               },
               "title": "Stream result of v3Table"
@@ -8208,7 +9297,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -8495,7 +9584,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -8782,7 +9871,7 @@
                   "$ref": "#/definitions/v3Cluster"
                 },
                 "error": {
-                  "$ref": "#/definitions/rpcStatus"
+                  "$ref": "#/definitions/googlerpcStatus"
                 }
               },
               "title": "Stream result of v3Cluster"
@@ -8791,7 +9880,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -9078,7 +10167,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -9365,7 +10454,7 @@
                   "$ref": "#/definitions/v3Tag"
                 },
                 "error": {
-                  "$ref": "#/definitions/rpcStatus"
+                  "$ref": "#/definitions/googlerpcStatus"
                 }
               },
               "title": "Stream result of v3Tag"
@@ -9374,7 +10463,7 @@
           "default": {
             "description": "An unexpected error response.",
             "schema": {
-              "$ref": "#/definitions/rpcStatus"
+              "$ref": "#/definitions/googlerpcStatus"
             }
           }
         },
@@ -9664,36 +10753,6 @@
       ],
       "default": "RT_UNSPECIFIED"
     },
-    "ClusterActionServer": {
-      "type": "object",
-      "properties": {
-        "host": {
-          "type": "string"
-        },
-        "port": {
-          "type": "string",
-          "format": "uint64"
-        },
-        "type": {
-          "$ref": "#/definitions/ClusterActionServerType"
-        },
-        "database": {
-          "$ref": "#/definitions/ServerDatabase"
-        },
-        "proxy": {
-          "$ref": "#/definitions/ServerProxy"
-        }
-      }
-    },
-    "ClusterActionServerType": {
-      "type": "string",
-      "enum": [
-        "TYPE_UNSPECIFIED",
-        "DATABASE",
-        "PROXY"
-      ],
-      "default": "TYPE_UNSPECIFIED"
-    },
     "ClusterCrash": {
       "type": "object",
       "properties": {
@@ -9968,6 +11027,24 @@
       ],
       "default": "RETRIEVAL_UNSPECIFIED"
     },
+    "googlerpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
     "protobufAny": {
       "type": "object",
       "properties": {
@@ -9987,24 +11064,6 @@
       ],
       "default": "NULL_VALUE",
       "description": "`NullValue` is a singleton enumeration to represent the null value for the\n`Value` type union.\n\n The JSON representation for `NullValue` is JSON `null`.\n\n - NULL_VALUE: Null value."
-    },
-    "rpcStatus": {
-      "type": "object",
-      "properties": {
-        "code": {
-          "type": "integer",
-          "format": "int32"
-        },
-        "message": {
-          "type": "string"
-        },
-        "details": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/protobufAny"
-          }
-        }
-      }
     },
     "v3Backup": {
       "type": "object",
@@ -10281,6 +11340,23 @@
       ],
       "default": "UNSPECIFIED"
     },
+    "v3DatabaseStatusStatus": {
+      "type": "string",
+      "enum": [
+        "ACTION_UNSPECIFIED",
+        "START",
+        "STOP",
+        "RESTART",
+        "PROVISION",
+        "UNPROVISION",
+        "REPROVISION",
+        "IS_MASTER",
+        "IS_SLAVE",
+        "NEED_ROLLING_REPROV",
+        "NEED_ROLLING_RESTART"
+      ],
+      "default": "ACTION_UNSPECIFIED"
+    },
     "v3Gtid": {
       "type": "object",
       "properties": {
@@ -10297,6 +11373,36 @@
           "format": "uint64"
         }
       }
+    },
+    "v3Server": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "type": {
+          "$ref": "#/definitions/v3ServerType"
+        },
+        "database": {
+          "$ref": "#/definitions/ServerDatabase"
+        },
+        "proxy": {
+          "$ref": "#/definitions/ServerProxy"
+        }
+      }
+    },
+    "v3ServerType": {
+      "type": "string",
+      "enum": [
+        "TYPE_UNSPECIFIED",
+        "DATABASE",
+        "PROXY"
+      ],
+      "default": "TYPE_UNSPECIFIED"
     },
     "v3ServiceStatus": {
       "type": "string",

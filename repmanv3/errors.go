@@ -14,6 +14,7 @@ var (
 	ErrEnumNotSet          = errors.New("mandatory enum not set")
 	ErrFieldNotSet         = errors.New("mandatory field not set")
 	ErrServerNotFound      = errors.New("server not found")
+	ErrServerDown          = errors.New("server is down")
 	ErrUserNotGranted      = errors.New("user not granted permission for this action")
 	ErrGrantNotFound       = errors.New("cluster grant not found")
 )

@@ -229,6 +229,10 @@ func ClusterToProtoCluster(c *Cluster) *v3.Cluster {
 	return out
 }
 
+type HasCookie interface {
+	HasCookie(key string) bool
+}
+
 type ClusterSorter []*Cluster
 
 func (a ClusterSorter) Len() int           { return len(a) }

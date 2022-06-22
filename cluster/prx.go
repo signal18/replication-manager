@@ -148,6 +148,8 @@ type DatabaseProxy interface {
 	DelRestartCookie() error
 	DelWaitStartCookie() error
 	DelWaitStopCookie() error
+
+	HasCookie(key string) bool
 }
 
 type Backend struct {

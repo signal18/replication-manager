@@ -172,6 +172,354 @@ func local_request_ClusterPublicService_MasterPhysicalBackup_0(ctx context.Conte
 }
 
 var (
+	filter_DatabasePublicService_ServerStatus_0 = &utilities.DoubleArray{Encoding: map[string]int{"cluster": 0, "name": 1, "server": 2, "host": 3, "port": 4, "status": 5}, Base: []int{1, 1, 1, 1, 2, 3, 4, 0, 0, 0, 0}, Check: []int{0, 1, 2, 1, 4, 4, 1, 3, 5, 6, 7}}
+)
+
+func request_DatabasePublicService_ServerStatus_0(ctx context.Context, marshaler runtime.Marshaler, client DatabasePublicServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq DatabaseStatus
+	var metadata runtime.ServerMetadata
+
+	var (
+		val string
+		e   int32
+		ok  bool
+		err error
+		_   = err
+	)
+
+	val, ok = pathParams["cluster.name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "cluster.name")
+	}
+
+	err = runtime.PopulateFieldFromPath(&protoReq, "cluster.name", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "cluster.name", err)
+	}
+
+	val, ok = pathParams["server.host"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "server.host")
+	}
+
+	err = runtime.PopulateFieldFromPath(&protoReq, "server.host", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "server.host", err)
+	}
+
+	val, ok = pathParams["server.port"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "server.port")
+	}
+
+	err = runtime.PopulateFieldFromPath(&protoReq, "server.port", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "server.port", err)
+	}
+
+	val, ok = pathParams["status"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "status")
+	}
+
+	e, err = runtime.Enum(val, DatabaseStatus_Status_value)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "status", err)
+	}
+
+	protoReq.Status = DatabaseStatus_Status(e)
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DatabasePublicService_ServerStatus_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := client.ServerStatus(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+
+}
+
+func local_request_DatabasePublicService_ServerStatus_0(ctx context.Context, marshaler runtime.Marshaler, server DatabasePublicServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq DatabaseStatus
+	var metadata runtime.ServerMetadata
+
+	var (
+		val string
+		e   int32
+		ok  bool
+		err error
+		_   = err
+	)
+
+	val, ok = pathParams["cluster.name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "cluster.name")
+	}
+
+	err = runtime.PopulateFieldFromPath(&protoReq, "cluster.name", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "cluster.name", err)
+	}
+
+	val, ok = pathParams["server.host"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "server.host")
+	}
+
+	err = runtime.PopulateFieldFromPath(&protoReq, "server.host", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "server.host", err)
+	}
+
+	val, ok = pathParams["server.port"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "server.port")
+	}
+
+	err = runtime.PopulateFieldFromPath(&protoReq, "server.port", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "server.port", err)
+	}
+
+	val, ok = pathParams["status"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "status")
+	}
+
+	e, err = runtime.Enum(val, DatabaseStatus_Status_value)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "status", err)
+	}
+
+	protoReq.Status = DatabaseStatus_Status(e)
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DatabasePublicService_ServerStatus_0); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := server.ServerStatus(ctx, &protoReq)
+	return msg, metadata, err
+
+}
+
+var (
+	filter_DatabasePublicService_ServerStatus_1 = &utilities.DoubleArray{Encoding: map[string]int{"cluster": 0, "name": 1, "server": 2, "host": 3, "status": 4}, Base: []int{1, 1, 1, 1, 2, 3, 0, 0, 0}, Check: []int{0, 1, 2, 1, 4, 1, 3, 5, 6}}
+)
+
+func request_DatabasePublicService_ServerStatus_1(ctx context.Context, marshaler runtime.Marshaler, client DatabasePublicServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq DatabaseStatus
+	var metadata runtime.ServerMetadata
+
+	var (
+		val string
+		e   int32
+		ok  bool
+		err error
+		_   = err
+	)
+
+	val, ok = pathParams["cluster.name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "cluster.name")
+	}
+
+	err = runtime.PopulateFieldFromPath(&protoReq, "cluster.name", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "cluster.name", err)
+	}
+
+	val, ok = pathParams["server.host"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "server.host")
+	}
+
+	err = runtime.PopulateFieldFromPath(&protoReq, "server.host", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "server.host", err)
+	}
+
+	val, ok = pathParams["status"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "status")
+	}
+
+	e, err = runtime.Enum(val, DatabaseStatus_Status_value)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "status", err)
+	}
+
+	protoReq.Status = DatabaseStatus_Status(e)
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DatabasePublicService_ServerStatus_1); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := client.ServerStatus(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+
+}
+
+func local_request_DatabasePublicService_ServerStatus_1(ctx context.Context, marshaler runtime.Marshaler, server DatabasePublicServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq DatabaseStatus
+	var metadata runtime.ServerMetadata
+
+	var (
+		val string
+		e   int32
+		ok  bool
+		err error
+		_   = err
+	)
+
+	val, ok = pathParams["cluster.name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "cluster.name")
+	}
+
+	err = runtime.PopulateFieldFromPath(&protoReq, "cluster.name", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "cluster.name", err)
+	}
+
+	val, ok = pathParams["server.host"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "server.host")
+	}
+
+	err = runtime.PopulateFieldFromPath(&protoReq, "server.host", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "server.host", err)
+	}
+
+	val, ok = pathParams["status"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "status")
+	}
+
+	e, err = runtime.Enum(val, DatabaseStatus_Status_value)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "status", err)
+	}
+
+	protoReq.Status = DatabaseStatus_Status(e)
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DatabasePublicService_ServerStatus_1); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := server.ServerStatus(ctx, &protoReq)
+	return msg, metadata, err
+
+}
+
+var (
+	filter_DatabasePublicService_ServerStatus_2 = &utilities.DoubleArray{Encoding: map[string]int{"cluster": 0, "name": 1, "status": 2}, Base: []int{1, 1, 1, 2, 0, 0}, Check: []int{0, 1, 2, 1, 3, 4}}
+)
+
+func request_DatabasePublicService_ServerStatus_2(ctx context.Context, marshaler runtime.Marshaler, client DatabasePublicServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq DatabaseStatus
+	var metadata runtime.ServerMetadata
+
+	var (
+		val string
+		e   int32
+		ok  bool
+		err error
+		_   = err
+	)
+
+	val, ok = pathParams["cluster.name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "cluster.name")
+	}
+
+	err = runtime.PopulateFieldFromPath(&protoReq, "cluster.name", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "cluster.name", err)
+	}
+
+	val, ok = pathParams["status"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "status")
+	}
+
+	e, err = runtime.Enum(val, DatabaseStatus_Status_value)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "status", err)
+	}
+
+	protoReq.Status = DatabaseStatus_Status(e)
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DatabasePublicService_ServerStatus_2); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := client.ServerStatus(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
+	return msg, metadata, err
+
+}
+
+func local_request_DatabasePublicService_ServerStatus_2(ctx context.Context, marshaler runtime.Marshaler, server DatabasePublicServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
+	var protoReq DatabaseStatus
+	var metadata runtime.ServerMetadata
+
+	var (
+		val string
+		e   int32
+		ok  bool
+		err error
+		_   = err
+	)
+
+	val, ok = pathParams["cluster.name"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "cluster.name")
+	}
+
+	err = runtime.PopulateFieldFromPath(&protoReq, "cluster.name", val)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "cluster.name", err)
+	}
+
+	val, ok = pathParams["status"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "status")
+	}
+
+	e, err = runtime.Enum(val, DatabaseStatus_Status_value)
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "status", err)
+	}
+
+	protoReq.Status = DatabaseStatus_Status(e)
+
+	if err := req.ParseForm(); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_DatabasePublicService_ServerStatus_2); err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+
+	msg, err := server.ServerStatus(ctx, &protoReq)
+	return msg, metadata, err
+
+}
+
+var (
 	filter_ClusterService_GetCluster_0 = &utilities.DoubleArray{Encoding: map[string]int{"name": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
 )
 
@@ -1171,12 +1519,12 @@ func request_ClusterService_PerformClusterAction_3(ctx context.Context, marshale
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "server.type", err)
 	}
 
-	e, err = runtime.Enum(val, ClusterAction_Server_Type_value)
+	e, err = runtime.Enum(val, Server_Type_value)
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "could not parse path as enum value, parameter: %s, error: %v", "server.type", err)
 	}
 
-	protoReq.Server.Type = ClusterAction_Server_Type(e)
+	protoReq.Server.Type = Server_Type(e)
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
@@ -1254,12 +1602,12 @@ func local_request_ClusterService_PerformClusterAction_3(ctx context.Context, ma
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "server.type", err)
 	}
 
-	e, err = runtime.Enum(val, ClusterAction_Server_Type_value)
+	e, err = runtime.Enum(val, Server_Type_value)
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "could not parse path as enum value, parameter: %s, error: %v", "server.type", err)
 	}
 
-	protoReq.Server.Type = ClusterAction_Server_Type(e)
+	protoReq.Server.Type = Server_Type(e)
 
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
@@ -2597,6 +2945,84 @@ func RegisterClusterPublicServiceHandlerServer(ctx context.Context, mux *runtime
 	return nil
 }
 
+// RegisterDatabasePublicServiceHandlerServer registers the http handlers for service DatabasePublicService to "mux".
+// UnaryRPC     :call DatabasePublicServiceServer directly.
+// StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
+// Note that using this registration option will cause many gRPC library features to stop working. Consider using RegisterDatabasePublicServiceHandlerFromEndpoint instead.
+func RegisterDatabasePublicServiceHandlerServer(ctx context.Context, mux *runtime.ServeMux, server DatabasePublicServiceServer) error {
+
+	mux.Handle("GET", pattern_DatabasePublicService_ServerStatus_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/signal18.replication_manager.v3.DatabasePublicService/ServerStatus", runtime.WithHTTPPathPattern("/v3/clusters/{cluster.name}/{server.host}/{server.port}/status/{status}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DatabasePublicService_ServerStatus_0(rctx, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_DatabasePublicService_ServerStatus_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
+	mux.Handle("GET", pattern_DatabasePublicService_ServerStatus_1, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/signal18.replication_manager.v3.DatabasePublicService/ServerStatus", runtime.WithHTTPPathPattern("/v3/clusters/{cluster.name}/{server.host}/status/{status}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DatabasePublicService_ServerStatus_1(rctx, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_DatabasePublicService_ServerStatus_1(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
+	mux.Handle("GET", pattern_DatabasePublicService_ServerStatus_2, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		var stream runtime.ServerTransportStream
+		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/signal18.replication_manager.v3.DatabasePublicService/ServerStatus", runtime.WithHTTPPathPattern("/v3/clusters/{cluster.name}/status/{status}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := local_request_DatabasePublicService_ServerStatus_2(rctx, inboundMarshaler, server, req, pathParams)
+		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_DatabasePublicService_ServerStatus_2(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
+	return nil
+}
+
 // RegisterClusterServiceHandlerServer registers the http handlers for service ClusterService to "mux".
 // UnaryRPC     :call ClusterServiceServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
@@ -3176,6 +3602,123 @@ var (
 	forward_ClusterPublicService_ClusterStatus_0 = runtime.ForwardResponseMessage
 
 	forward_ClusterPublicService_MasterPhysicalBackup_0 = runtime.ForwardResponseMessage
+)
+
+// RegisterDatabasePublicServiceHandlerFromEndpoint is same as RegisterDatabasePublicServiceHandler but
+// automatically dials to "endpoint" and closes the connection when "ctx" gets done.
+func RegisterDatabasePublicServiceHandlerFromEndpoint(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) (err error) {
+	conn, err := grpc.Dial(endpoint, opts...)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			if cerr := conn.Close(); cerr != nil {
+				grpclog.Infof("Failed to close conn to %s: %v", endpoint, cerr)
+			}
+			return
+		}
+		go func() {
+			<-ctx.Done()
+			if cerr := conn.Close(); cerr != nil {
+				grpclog.Infof("Failed to close conn to %s: %v", endpoint, cerr)
+			}
+		}()
+	}()
+
+	return RegisterDatabasePublicServiceHandler(ctx, mux, conn)
+}
+
+// RegisterDatabasePublicServiceHandler registers the http handlers for service DatabasePublicService to "mux".
+// The handlers forward requests to the grpc endpoint over "conn".
+func RegisterDatabasePublicServiceHandler(ctx context.Context, mux *runtime.ServeMux, conn *grpc.ClientConn) error {
+	return RegisterDatabasePublicServiceHandlerClient(ctx, mux, NewDatabasePublicServiceClient(conn))
+}
+
+// RegisterDatabasePublicServiceHandlerClient registers the http handlers for service DatabasePublicService
+// to "mux". The handlers forward requests to the grpc endpoint over the given implementation of "DatabasePublicServiceClient".
+// Note: the gRPC framework executes interceptors within the gRPC handler. If the passed in "DatabasePublicServiceClient"
+// doesn't go through the normal gRPC flow (creating a gRPC client etc.) then it will be up to the passed in
+// "DatabasePublicServiceClient" to call the correct interceptors.
+func RegisterDatabasePublicServiceHandlerClient(ctx context.Context, mux *runtime.ServeMux, client DatabasePublicServiceClient) error {
+
+	mux.Handle("GET", pattern_DatabasePublicService_ServerStatus_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateContext(ctx, mux, req, "/signal18.replication_manager.v3.DatabasePublicService/ServerStatus", runtime.WithHTTPPathPattern("/v3/clusters/{cluster.name}/{server.host}/{server.port}/status/{status}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DatabasePublicService_ServerStatus_0(rctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_DatabasePublicService_ServerStatus_0(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
+	mux.Handle("GET", pattern_DatabasePublicService_ServerStatus_1, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateContext(ctx, mux, req, "/signal18.replication_manager.v3.DatabasePublicService/ServerStatus", runtime.WithHTTPPathPattern("/v3/clusters/{cluster.name}/{server.host}/status/{status}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DatabasePublicService_ServerStatus_1(rctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_DatabasePublicService_ServerStatus_1(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
+	mux.Handle("GET", pattern_DatabasePublicService_ServerStatus_2, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+		ctx, cancel := context.WithCancel(req.Context())
+		defer cancel()
+		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+		rctx, err := runtime.AnnotateContext(ctx, mux, req, "/signal18.replication_manager.v3.DatabasePublicService/ServerStatus", runtime.WithHTTPPathPattern("/v3/clusters/{cluster.name}/status/{status}"))
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+		resp, md, err := request_DatabasePublicService_ServerStatus_2(rctx, inboundMarshaler, client, req, pathParams)
+		ctx = runtime.NewServerMetadataContext(ctx, md)
+		if err != nil {
+			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+			return
+		}
+
+		forward_DatabasePublicService_ServerStatus_2(ctx, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+	})
+
+	return nil
+}
+
+var (
+	pattern_DatabasePublicService_ServerStatus_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 1, 0, 4, 1, 5, 3, 1, 0, 4, 1, 5, 4, 2, 5, 1, 0, 4, 1, 5, 5}, []string{"v3", "clusters", "cluster.name", "server.host", "server.port", "status"}, ""))
+
+	pattern_DatabasePublicService_ServerStatus_1 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 1, 0, 4, 1, 5, 3, 2, 4, 1, 0, 4, 1, 5, 4}, []string{"v3", "clusters", "cluster.name", "server.host", "status"}, ""))
+
+	pattern_DatabasePublicService_ServerStatus_2 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3, 1, 0, 4, 1, 5, 3}, []string{"v3", "clusters", "cluster.name", "status"}, ""))
+)
+
+var (
+	forward_DatabasePublicService_ServerStatus_0 = runtime.ForwardResponseMessage
+
+	forward_DatabasePublicService_ServerStatus_1 = runtime.ForwardResponseMessage
+
+	forward_DatabasePublicService_ServerStatus_2 = runtime.ForwardResponseMessage
 )
 
 // RegisterClusterServiceHandlerFromEndpoint is same as RegisterClusterServiceHandler but

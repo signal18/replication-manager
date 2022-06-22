@@ -9,6 +9,7 @@ import (
 	status "google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	structpb "google.golang.org/protobuf/types/known/structpb"
+	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -132,6 +133,92 @@ var ClusterPublicService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MasterPhysicalBackup",
 			Handler:    _ClusterPublicService_MasterPhysicalBackup_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "cluster.proto",
+}
+
+// DatabasePublicServiceClient is the client API for DatabasePublicService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type DatabasePublicServiceClient interface {
+	ServerStatus(ctx context.Context, in *DatabaseStatus, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error)
+}
+
+type databasePublicServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewDatabasePublicServiceClient(cc grpc.ClientConnInterface) DatabasePublicServiceClient {
+	return &databasePublicServiceClient{cc}
+}
+
+func (c *databasePublicServiceClient) ServerStatus(ctx context.Context, in *DatabaseStatus, opts ...grpc.CallOption) (*wrapperspb.BoolValue, error) {
+	out := new(wrapperspb.BoolValue)
+	err := c.cc.Invoke(ctx, "/signal18.replication_manager.v3.DatabasePublicService/ServerStatus", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// DatabasePublicServiceServer is the server API for DatabasePublicService service.
+// All implementations must embed UnimplementedDatabasePublicServiceServer
+// for forward compatibility
+type DatabasePublicServiceServer interface {
+	ServerStatus(context.Context, *DatabaseStatus) (*wrapperspb.BoolValue, error)
+	mustEmbedUnimplementedDatabasePublicServiceServer()
+}
+
+// UnimplementedDatabasePublicServiceServer must be embedded to have forward compatible implementations.
+type UnimplementedDatabasePublicServiceServer struct {
+}
+
+func (UnimplementedDatabasePublicServiceServer) ServerStatus(context.Context, *DatabaseStatus) (*wrapperspb.BoolValue, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ServerStatus not implemented")
+}
+func (UnimplementedDatabasePublicServiceServer) mustEmbedUnimplementedDatabasePublicServiceServer() {}
+
+// UnsafeDatabasePublicServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to DatabasePublicServiceServer will
+// result in compilation errors.
+type UnsafeDatabasePublicServiceServer interface {
+	mustEmbedUnimplementedDatabasePublicServiceServer()
+}
+
+func RegisterDatabasePublicServiceServer(s grpc.ServiceRegistrar, srv DatabasePublicServiceServer) {
+	s.RegisterService(&DatabasePublicService_ServiceDesc, srv)
+}
+
+func _DatabasePublicService_ServerStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DatabaseStatus)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatabasePublicServiceServer).ServerStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/signal18.replication_manager.v3.DatabasePublicService/ServerStatus",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatabasePublicServiceServer).ServerStatus(ctx, req.(*DatabaseStatus))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// DatabasePublicService_ServiceDesc is the grpc.ServiceDesc for DatabasePublicService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var DatabasePublicService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "signal18.replication_manager.v3.DatabasePublicService",
+	HandlerType: (*DatabasePublicServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ServerStatus",
+			Handler:    _DatabasePublicService_ServerStatus_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
