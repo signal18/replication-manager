@@ -135,7 +135,9 @@ func NewMySQLGtid(s string) *Gtid {
 		seq = f[1]
 	}
 	g.DomainID = 0
+
 	g.ServerID = crc64.Checksum([]byte(f[0]), crcTable)
+	//	fmt.Fprintf(os.Stdout, "gniac new MySQL GTID : "+f[0])
 	g.SeqNo, _ = strconv.ParseUint(seq, 10, 64)
 	return g
 }

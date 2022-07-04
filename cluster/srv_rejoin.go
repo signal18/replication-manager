@@ -343,6 +343,11 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 }
 
 func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
+	if server.GetCluster().GetConf().AutorejoinForceRestore {
+		server.ClusterGroup.LogPrintf("INFO", "Cancel incremental rejoin server %s caused by force backup restore  ", server.URL)
+		return errors.New("autorejoin-force-restore is on can't just rejoin from current pos")
+	}
+
 	server.ClusterGroup.LogPrintf("INFO", "Rejoin master incremental %s", server.URL)
 	server.ClusterGroup.LogPrintf("INFO", "Crash info %s", crash)
 	server.Refresh()
@@ -352,8 +357,8 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	}
 
 	if crash.FailoverIOGtid != nil {
-		server.ClusterGroup.LogPrintf("INFO", "Rejoined GTID sequence %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)))
-		server.ClusterGroup.LogPrintf("INFO", "Crash Saved GTID sequence %d for master id %d", crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)), uint64(server.ServerID))
+		server.ClusterGroup.LogPrintf("INFO", "Rejoined GTID sequence  %d from server id %d", server.CurrentGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()), server.GetUniversalGtidServerID())
+		server.ClusterGroup.LogPrintf("INFO", "Crash Saved GTID sequence %d from server id %d", crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()), server.GetUniversalGtidServerID())
 	}
 	if server.isReplicationAheadOfMasterElection(crash) == false || server.ClusterGroup.Conf.MxsBinlogOn {
 		server.rejoinMasterSync(crash)
@@ -548,12 +553,12 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 		// CurrentGtid fetch from show global variables GTID_CURRENT_POS
 		// FailoverIOGtid is fetch at failover from show slave status of the new master
 		// If server-id can't be found in FailoverIOGtid can state cascading master failover
-		if crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
+		if crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()) == 0 {
 			server.ClusterGroup.LogPrintf("INFO", "Cascading failover, found empty GTID, forcing full state transfer")
 			return true
 		}
-		if server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)) > crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) {
-			server.ClusterGroup.LogPrintf("INFO", "Rejoining node seq %d, master seq %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)), crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
+		if server.CurrentGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()) > crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()) {
+			server.ClusterGroup.LogPrintf("INFO", "Rejoining node seq %d, master seq %d", server.CurrentGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()), crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()))
 			return true
 		}
 		return false

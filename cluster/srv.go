@@ -57,6 +57,7 @@ type ServerMonitor struct {
 	IP                          string                       `json:"ip"`
 	Strict                      string                       `json:"strict"`
 	ServerID                    uint64                       `json:"serverId"`
+	HashUUID                    uint64                       `json:"hashUUID"`
 	DomainID                    uint64                       `json:"domainId"`
 	GTIDBinlogPos               *gtid.List                   `json:"gtidBinlogPos"`
 	CurrentGtid                 *gtid.List                   `json:"currentGtid"`
@@ -437,7 +438,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		server.FailCount = 0
 		server.FailSuspectHeartbeat = 0
 	}
-
+	//	server.ClusterGroup.LogPrintf(LvlInfo, "niac %s: %s", server.URL, server.DBVersion)
 	var ss dbhelper.SlaveStatus
 	ss, _, errss := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 	// We have no replicatieon can this be the old master
@@ -632,6 +633,7 @@ func (server *ServerMonitor) Refresh() error {
 				server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
 				server.CurrentGtid = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
 				server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
+				server.HashUUID = crc64.Checksum([]byte(server.Variables["SERVER_UUID"]), server.CrcTable)
 			}
 
 			var sid uint64

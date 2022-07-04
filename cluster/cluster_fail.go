@@ -136,27 +136,16 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// If it's a switchover, use MASTER_POS_WAIT to sync.
 	// If it's a failover, wait for the SQL thread to read all relay logs.
 	// If maxsclale we should wait for relay catch via old style
-	crash := new(Crash)
-	crash.URL = cluster.oldMaster.URL
-	crash.ElectedMasterURL = cluster.master.URL
 
-	// if switchover on MariaDB Wait GTID
-	/*	if fail == false && cluster.Conf.MxsBinlogOn == false && cluster.master.DBVersion.IsMariaDB() {
-		cluster.LogPrintf(LvlInfo, "Waiting for candidate Master to synchronize")
-		cluster.oldMaster.Refresh()
-		if cluster.Conf.LogLevel > 2 {
-			cluster.LogPrintf(LvlDbg, "Syncing on master GTID Binlog Pos [%s]", cluster.oldMaster.GTIDBinlogPos.Sprint())
-			cluster.oldMaster.log()
-		}
-		dbhelper.MasterWaitGTID(cluster.master.Conn, cluster.oldMaster.GTIDBinlogPos.Sprint(), 30)
-	} else {*/
-	// Failover
 	cluster.LogPrintf(LvlInfo, "Waiting for candidate master %s to apply relay log", cluster.master.URL)
 	err = cluster.master.ReadAllRelayLogs()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Error while reading relay logs on candidate %s: %s", cluster.master.URL, err)
 	}
-	cluster.LogPrintf(LvlDbg, "Save replication status before opening traffic")
+
+	//cluster.failoverCrash()
+
+	cluster.LogPrintf(LvlInfo, "Save replication status and crash infos before opening traffic")
 	ms, err := cluster.master.GetSlaveStatus(cluster.master.ReplicationSourceName)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Failover can not fetch replication info on new master: %s", err)
@@ -164,26 +153,25 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.LogPrintf(LvlDbg, "master_log_file=%s", ms.MasterLogFile.String)
 	cluster.LogPrintf(LvlDbg, "master_log_pos=%s", ms.ReadMasterLogPos.String)
 	cluster.LogPrintf(LvlDbg, "Candidate semisync %t", cluster.master.SemiSyncSlaveStatus)
-	//		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
-	//		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
+	crash := new(Crash)
+	crash.URL = cluster.oldMaster.URL
+	crash.ElectedMasterURL = cluster.master.URL
 	crash.FailoverMasterLogFile = ms.MasterLogFile.String
 	crash.FailoverMasterLogPos = ms.ReadMasterLogPos.String
 	crash.NewMasterLogFile = cluster.master.BinaryLogFile
 	crash.NewMasterLogPos = cluster.master.BinaryLogPos
 	if cluster.master.DBVersion.IsMariaDB() {
 		if cluster.Conf.MxsBinlogOn {
-			//	cluster.master.FailoverIOGtid = cluster.master.CurrentGtid
 			crash.FailoverIOGtid = cluster.master.CurrentGtid
 		} else {
-			//	cluster.master.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 			crash.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 		}
 	} else if cluster.master.DBVersion.IsMySQLOrPerconaGreater57() && cluster.master.HasGTIDReplication() {
-		crash.FailoverIOGtid = gtid.NewMySQLList(ms.ExecutedGtidSet.String)
+		cluster.LogPrintf(LvlInfo, "MySQL GTID saving crash info for replication ExexecutedGtidSet %s", ms.ExecutedGtidSet.String)
+		crash.FailoverIOGtid = gtid.NewMySQLList(strings.ToUpper(ms.ExecutedGtidSet.String))
 	}
 	cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 	crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
-	//}
 
 	// if relay server than failover and switchover converge to a new binlog  make this happen
 	var relaymaster *ServerMonitor
@@ -218,7 +206,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		} else {
 			cluster.LogPrintf(LvlErr, "No relay server found")
 		}
-	}
+	} // end relay server
+
 	// Phase 3: Prepare new master
 	if cluster.Conf.MultiMaster == false {
 		cluster.LogPrintf(LvlInfo, "Stopping slave threads on new master")
@@ -1184,16 +1173,17 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		// If it's a switchover, use MASTER_POS_WAIT to sync.
 		// If it's a failover, wait for the SQL thread to read all relay logs.
 		// If maxsclale we should wait for relay catch via old style
-		crash := new(Crash)
-		crash.URL = cluster.oldMaster.URL
-		crash.ElectedMasterURL = cluster.master.URL
 
 		cluster.LogPrintf(LvlInfo, "Waiting for candidate master to apply relay log")
 		err = cluster.master.ReadAllRelayLogs()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Error while reading relay logs on candidate: %s", err)
 		}
-		cluster.LogPrintf("INFO ", "Save replication status before electing")
+
+		crash := new(Crash)
+		crash.URL = cluster.oldMaster.URL
+		crash.ElectedMasterURL = cluster.master.URL
+		cluster.LogPrintf(LvlInfo, "Save replication status before electing")
 		ms, err := cluster.master.GetSlaveStatus(cluster.master.ReplicationSourceName)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Faiover can not fetch replication info on new master: %s", err)
@@ -1203,6 +1193,8 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.LogPrintf(LvlInfo, "Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
 		//		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
 		//		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
+		cluster.LogPrintf("INFO ", "Save crash information")
+
 		crash.FailoverMasterLogFile = ms.MasterLogFile.String
 		crash.FailoverMasterLogPos = ms.ReadMasterLogPos.String
 		if cluster.master.DBVersion.IsMariaDB() {
@@ -1214,7 +1206,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 				crash.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 			}
 		} else if cluster.master.DBVersion.IsMySQLOrPerconaGreater57() && cluster.master.HasGTIDReplication() {
-			crash.FailoverIOGtid = gtid.NewMySQLList(ms.ExecutedGtidSet.String)
+			crash.FailoverIOGtid = gtid.NewMySQLList(strings.ToUpper(ms.ExecutedGtidSet.String))
 		}
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
