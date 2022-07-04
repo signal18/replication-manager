@@ -540,7 +540,7 @@ func (cluster *Cluster) failoverPostScript() {
 		var out []byte
 		var err error
 		cluster.LogPrintf(LvlInfo, "Calling post-failover script")
-		out, err = exec.Command(cluster.Conf.PostScript, cluster.oldMaster.Host, cluster.master.Host, cluster.oldMaster.Port, cluster.master.Port, cluster.oldMaster.MxsServerName, cluster.master.MxsServerName).CombinedOutput()
+		out, err = exec.Command(cluster.Conf.PostScript, cluster.oldMaster.Host, cluster.GetMaster().Host, cluster.oldMaster.Port, cluster.GetMaster().Port, cluster.oldMaster.MxsServerName, cluster.GetMaster().MxsServerName).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "%s", err)
 		}
@@ -554,7 +554,7 @@ func (cluster *Cluster) failoverPreScript() {
 		cluster.LogPrintf(LvlInfo, "Calling pre-failover script")
 		var out []byte
 		var err error
-		out, err = exec.Command(cluster.Conf.PreScript, cluster.oldMaster.Host, cluster.vmaster.Host, cluster.oldMaster.Port, cluster.vmaster.Port, cluster.oldMaster.MxsServerName, cluster.vmaster.MxsServerName).CombinedOutput()
+		out, err = exec.Command(cluster.Conf.PreScript, cluster.oldMaster.Host, cluster.GetMaster().Host, cluster.oldMaster.Port, cluster.GetMaster().Port, cluster.oldMaster.MxsServerName, cluster.GetMaster().MxsServerName).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "%s", err)
 		}
