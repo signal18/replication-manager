@@ -105,7 +105,7 @@ func NewMySQLList(s string) *List {
 	if s == "" {
 		return gl
 	}
-	l := strings.Split(s, ",")
+	l := strings.Split(strings.ReplaceAll(s, " ", ""), ",")
 	for _, g := range l {
 		gtid := NewMySQLGtid(g)
 		*gl = append(*gl, *gtid)
@@ -136,9 +136,10 @@ func NewMySQLGtid(s string) *Gtid {
 	}
 	g.DomainID = 0
 
-	g.ServerID = crc64.Checksum([]byte(f[0]), crcTable)
-	//	fmt.Fprintf(os.Stdout, "gniac new MySQL GTID : "+f[0])
+	g.ServerID = crc64.Checksum([]byte(strings.ToUpper(f[0])), crcTable)
 	g.SeqNo, _ = strconv.ParseUint(seq, 10, 64)
+	//	fmt.Fprintf(os.Stdout, "gniac new MySQL GTID : "+f[0]+" "+strconv.FormatUint(g.ServerID, 10))
+
 	return g
 }
 

@@ -633,7 +633,7 @@ func (server *ServerMonitor) Refresh() error {
 				server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
 				server.CurrentGtid = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
 				server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
-				server.HashUUID = crc64.Checksum([]byte(server.Variables["SERVER_UUID"]), server.CrcTable)
+				server.HashUUID = crc64.Checksum([]byte(strings.ToUpper(server.Variables["SERVER_UUID"])), server.CrcTable)
 			}
 
 			var sid uint64
