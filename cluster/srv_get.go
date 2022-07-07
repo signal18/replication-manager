@@ -38,7 +38,7 @@ func (server *ServerMonitor) GetUniversalGtidServerID() uint64 {
 	}
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
 		server.ClusterGroup.LogPrintf("INFO", " %s %s", server.Variables["SERVER_UUID"], server.URL)
-		return crc64.Checksum([]byte(strings.ToUpper(server.Variables["SERVER_UUID"])), server.CrcTable)
+		return crc64.Checksum([]byte(strings.ToUpper(server.Variables["SERVER_UUID"])), server.GetCluster().GetCrcTable())
 
 	}
 	return 0

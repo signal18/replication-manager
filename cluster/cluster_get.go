@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc64"
 	"io/ioutil"
 	"regexp"
 	"sort"
@@ -24,6 +25,10 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
+
+func (cluster *Cluster) GetCrcTable() *crc64.Table {
+	return cluster.crcTable
+}
 
 func (cluster *Cluster) getDumpParameter() string {
 	dump_param := cluster.Conf.BackupMysqldumpOptions

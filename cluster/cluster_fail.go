@@ -168,7 +168,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 	} else if cluster.master.DBVersion.IsMySQLOrPerconaGreater57() && cluster.master.HasGTIDReplication() {
 		cluster.LogPrintf(LvlInfo, "MySQL GTID saving crash info for replication ExexecutedGtidSet %s", ms.ExecutedGtidSet.String)
-		crash.FailoverIOGtid = gtid.NewMySQLList(strings.ToUpper(ms.ExecutedGtidSet.String))
+		crash.FailoverIOGtid = gtid.NewMySQLList(strings.ToUpper(ms.ExecutedGtidSet.String), cluster.GetCrcTable())
 	}
 	cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 	crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
@@ -1206,7 +1206,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 				crash.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 			}
 		} else if cluster.master.DBVersion.IsMySQLOrPerconaGreater57() && cluster.master.HasGTIDReplication() {
-			crash.FailoverIOGtid = gtid.NewMySQLList(strings.ToUpper(ms.ExecutedGtidSet.String))
+			crash.FailoverIOGtid = gtid.NewMySQLList(strings.ToUpper(ms.ExecutedGtidSet.String), cluster.GetCrcTable())
 		}
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus

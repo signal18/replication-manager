@@ -166,7 +166,6 @@ type ServerMonitor struct {
 	Datadir                     string                       `json:"datadir"`
 	SlapOSDatadir               string                       `json:"slaposDatadir"`
 	PostgressDB                 string                       `json:"postgressDB"`
-	CrcTable                    *crc64.Table                 `json:"-"`
 	TLSConfigUsed               string                       `json:"tlsConfigUsed"` //used to track TLS config during key rotation
 	SSTPort                     string                       `json:"sstPort"`       //used to send data to dbjobs
 	Agent                       string                       `json:"agent"`         //used to provision service in orchestrator
@@ -229,10 +228,9 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		}
 		url = server.Name + server.Domain + ":3306"
 	}
-	server.CrcTable = crc64.MakeTable(crc64.ECMA)
 	var sid uint64
 	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id
-	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.CrcTable), 10), 10, 64)
+	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.GetCluster().GetCrcTable()), 10), 10, 64)
 	server.ServerID = sid
 	server.Id = fmt.Sprintf("%s%d", "db", sid)
 
@@ -629,11 +627,12 @@ func (server *ServerMonitor) Refresh() error {
 				}
 
 			} else {
-				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
+				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"], server.GetCluster().GetCrcTable())
 				server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
-				server.CurrentGtid = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
+				server.CurrentGtid = server.GTIDBinlogPos
 				server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
-				server.HashUUID = crc64.Checksum([]byte(strings.ToUpper(server.Variables["SERVER_UUID"])), server.CrcTable)
+				server.HashUUID = crc64.Checksum([]byte(strings.ToUpper(server.Variables["SERVER_UUID"])), server.GetCluster().GetCrcTable())
+				//		fmt.Fprintf(os.Stdout, "gniac2 "+strings.ToUpper(server.Variables["SERVER_UUID"])+" "+strconv.FormatUint(server.HashUUID, 10))
 			}
 
 			var sid uint64
@@ -769,7 +768,7 @@ func (server *ServerMonitor) Refresh() error {
 		if server.DBVersion.IsPPostgreSQL() {
 			//PostgresQL as no server_id concept mimic via internal server id for topology detection
 			var sid uint64
-			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), server.ClusterGroup.crcTable), 10), 10, 64)
+			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), server.ClusterGroup.GetCrcTable()), 10), 10, 64)
 			if err != nil {
 				server.ClusterGroup.LogPrintf(LvlWarn, "PG Could not assign server_id s", err)
 			}
