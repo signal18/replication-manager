@@ -39,14 +39,19 @@ func (server *ServerMonitor) RejoinLoop() error {
 // RejoinMaster a server that just show up without slave status
 func (server *ServerMonitor) RejoinMaster() error {
 	// Check if master exists in topology before rejoining.
-	if server.ClusterGroup.sme.IsInFailover() {
+	defer func() {
 		server.ClusterGroup.rejoinCond.Send <- true
+	}()
+
+	if server.ClusterGroup.sme.IsInFailover() {
 		return nil
 	}
 	if server.ClusterGroup.Conf.LogLevel > 2 {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoining standalone server %s", server.URL)
 	}
+	// Strange here add comment for why
 	server.ClusterGroup.canFlashBack = true
+
 	if server.ClusterGroup.master != nil {
 		if server.URL != server.ClusterGroup.master.URL {
 			server.ClusterGroup.SetState("WARN0022", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0022"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
@@ -56,20 +61,17 @@ func (server *ServerMonitor) RejoinMaster() error {
 				if server.ClusterGroup.oldMaster != nil {
 					if server.ClusterGroup.oldMaster.URL == server.URL {
 						server.RejoinMasterSST()
-						server.ClusterGroup.rejoinCond.Send <- true
 						return nil
 					}
 				}
 				if server.ClusterGroup.Conf.Autoseed {
 					server.ReseedMasterSST()
-					server.ClusterGroup.rejoinCond.Send <- true
 					return nil
 				} else {
-					server.ClusterGroup.rejoinCond.Send <- true
 					server.ClusterGroup.LogPrintf("INFO", "No auto seeding %s", server.URL)
 					return errors.New("No Autoseed")
 				}
-			}
+			} //crash info is available
 			if server.ClusterGroup.Conf.AutorejoinBackupBinlog == true {
 				server.backupBinlog(crash)
 			}
@@ -111,7 +113,6 @@ func (server *ServerMonitor) RejoinMaster() error {
 		// if consul or internal proxy need to adapt read only route to new slaves
 		server.ClusterGroup.backendStateChangeProxies()
 	}
-	server.ClusterGroup.rejoinCond.Send <- true
 	return nil
 }
 
@@ -304,6 +305,10 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 	if server.ClusterGroup.Conf.MxsBinlogOn || server.ClusterGroup.Conf.MultiTierSlave {
 		realmaster = server.ClusterGroup.GetRelayServer()
 	}
+
+	if realmaster == nil {
+		return errors.New("No master defined exiting rejoin direct dump ")
+	}
 	// done change master just to set the host and port before dump
 	if server.MxsHaveGtid || server.IsMaxscale == false {
 		logs, err3 := server.SetReplicationGTIDSlavePosFromServer(realmaster)
@@ -338,6 +343,11 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 }
 
 func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
+	if server.GetCluster().GetConf().AutorejoinForceRestore {
+		server.ClusterGroup.LogPrintf("INFO", "Cancel incremental rejoin server %s caused by force backup restore  ", server.URL)
+		return errors.New("autorejoin-force-restore is on can't just rejoin from current pos")
+	}
+
 	server.ClusterGroup.LogPrintf("INFO", "Rejoin master incremental %s", server.URL)
 	server.ClusterGroup.LogPrintf("INFO", "Crash info %s", crash)
 	server.Refresh()
@@ -347,8 +357,8 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	}
 
 	if crash.FailoverIOGtid != nil {
-		server.ClusterGroup.LogPrintf("INFO", "Rejoined GTID sequence %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)))
-		server.ClusterGroup.LogPrintf("INFO", "Crash Saved GTID sequence %d for master id %d", crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)), uint64(server.ServerID))
+		server.ClusterGroup.LogPrintf("INFO", "Rejoined GTID sequence  %d from server id %d", server.CurrentGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()), server.GetUniversalGtidServerID())
+		server.ClusterGroup.LogPrintf("INFO", "Crash Saved GTID sequence %d from server id %d", crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()), server.GetUniversalGtidServerID())
 	}
 	if server.isReplicationAheadOfMasterElection(crash) == false || server.ClusterGroup.Conf.MxsBinlogOn {
 		server.rejoinMasterSync(crash)
@@ -410,17 +420,18 @@ func (server *ServerMonitor) rejoinMasterAsSlave() error {
 
 func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	// Test if slave not connected to current master
+	defer func() {
+		server.ClusterGroup.rejoinCond.Send <- true
+	}()
 	if server.ClusterGroup.GetTopology() == topoMultiMasterRing || server.ClusterGroup.GetTopology() == topoMultiMasterWsrep {
 		if server.ClusterGroup.GetTopology() == topoMultiMasterRing {
 			server.RejoinLoop()
-			server.ClusterGroup.rejoinCond.Send <- true
 			return nil
 		}
 	}
 	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
 	if mycurrentmaster == nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "No master found from replication")
-		server.ClusterGroup.rejoinCond.Send <- true
 		return errors.New("No master found from replication")
 	}
 	if server.ClusterGroup.master != nil && mycurrentmaster != nil {
@@ -439,7 +450,6 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				crash := server.ClusterGroup.getCrashFromMaster(server.ClusterGroup.master.URL)
 				if crash == nil {
 					server.ClusterGroup.SetState("ERR00065", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00065"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
-					server.ClusterGroup.rejoinCond.Send <- true
 					return errors.New("No Crash info on current master")
 				}
 				server.ClusterGroup.LogPrintf("INFO", "Crash info on current master %s", crash)
@@ -527,12 +537,12 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 			logs, err := dbhelper.SetReadOnly(server.Conn, true)
 			server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
 			if err != nil {
-				server.ClusterGroup.rejoinCond.Send <- true
+
 				return err
 			}
 		}
 	}
-	server.ClusterGroup.rejoinCond.Send <- true
+
 	return nil
 }
 
@@ -543,12 +553,12 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 		// CurrentGtid fetch from show global variables GTID_CURRENT_POS
 		// FailoverIOGtid is fetch at failover from show slave status of the new master
 		// If server-id can't be found in FailoverIOGtid can state cascading master failover
-		if crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
+		if crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()) == 0 {
 			server.ClusterGroup.LogPrintf("INFO", "Cascading failover, found empty GTID, forcing full state transfer")
 			return true
 		}
-		if server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)) > crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) {
-			server.ClusterGroup.LogPrintf("INFO", "Rejoining node seq %d, master seq %d", server.CurrentGtid.GetSeqServerIdNos(uint64(server.ServerID)), crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)))
+		if server.CurrentGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()) > crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()) {
+			server.ClusterGroup.LogPrintf("INFO", "Rejoining node seq %d, master seq %d", server.CurrentGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()), crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()))
 			return true
 		}
 		return false

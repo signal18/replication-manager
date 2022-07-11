@@ -2277,6 +2277,25 @@
                 }
             ],
             "fset_name": "mariadb.disk.nosplitpath"
+        },
+        {
+            "fset_stats": false,
+            "id": 413,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "grouprep",
+                        "f_table": "v_tags",
+                        "id": 371
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mysql.replication.grouprep"
         }
     ],
     "rulesets": [
@@ -2627,8 +2646,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_wsrep.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nbind-address=%%ENV:SERVER_IP%%\\nbinlog_format = ROW\\nlog_bin = ON\\n\\n[galera]\\n##\\n## WSREP options\\n##\\nwsrep_on=ON\\n\\n# Full path to wsrep provider library or 'none'\\nwsrep_provider=/usr/lib/libgalera_smm.so\\n\\n# wsrep_node_address=%%ENV:SERVER_IP%%:4567\\n\\n# Provider specific configuration options\\nwsrep_provider_options=\\\"gcache.size=128M; gmcast.segment=0\\\"\\n\\n# Logical cluster name. Should be the same for all nodes.\\nwsrep_cluster_name=\\\"mariadb_poc_cluster\\\"\\n\\n# Group communication system handle\\nwsrep_cluster_address=gcomm://%%ENV:SVC_CONF_ENV_GCOMM%%\\n\\n\\n\\n# Human_readable node name (non-unique). Hostname by default.\\n#wsrep_node_name=\\n\\n# Address for incoming client connections. Autodetect by default.\\nwsrep_node_incoming_address=%%ENV:SERVER_IP%%:%%ENV:SERVER_PORT%%\\n\\n# How many threads will process writesets from other nodes\\nwsrep_slave_threads=%%ENV:SVC_CONF_ENV_MAX_CORES%%\\n\\n# DBUG options for wsrep provider\\n#wsrep_dbug_option\\n\\n# Generate fake primary keys for non-PK tables (required for multi-master\\n# and parallel applying   svar  operation)\\nwsrep_certify_nonPK=1\\n\\n\\n\\n# Maximum number of rows in write set\\nwsrep_max_ws_rows=131072\\n\\n# Maximum size of write set\\nwsrep_max_ws_size=1073741824\\n\\n# to enable debug level logging, set this to 1\\nwsrep_debug=0\\n\\n# convert locking sessions into transactions\\nwsrep_convert_LOCK_to_trx=0\\n\\n# how many times to retry deadlocked autocommits\\nwsrep_retry_autocommit=10\\n\\n# change auto_increment_increment and auto_increment_offset automatically\\nwsrep_auto_increment_control=0\\n\\n# replicate myisam\\nwsrep_replicate_myisam=1\\n# retry autoinc insert, which failed for duplicate key error\\nwsrep_drupal_282555_workaround=1\\n\\n# enable \\\"strictly synchronous\\\" semantics for read operations\\n#wsrep_causal_reads=0\\nwsrep_causal_reads=1\\n\\n# Command to call when node status or cluster membership changes.\\n# Will be passed all or some of the following options:\\n# --status  - new status of this node\\n# --uuid    - UUID of the cluster\\n# --primary - whether the component is primary or not (\\\"yes\\\"/\\\"no\\\")\\n# --members - comma-separated list of members\\n# --index   - index of this node in the list\\n#wsrep_notify_cmd=\\n\\n##\\n## WSREP State Transfer options\\n##\\n# State Snapshot Transfer method\\n\\n\\n#wsrep_sst_donor= \\n\\nwsrep_sst_method=%%ENV:SVC_CONF_ENV_SST_METHOD%%\\nwsrep_sst_auth=root:%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\n\\n# wsrep_sst_receive_address=%%ENV:SERVER_IP%%\\n# Location of the directory with data files. Needed for non-mysqldump\\n# state snapshot transfers. Defaults to mysql_real_data_home.\\nwsrep_data_home_dir=/var/lib/mysql\\n\\n[xtrabackup]\\nparallel=4\\n\"}",
-                    "var_updated": "2020-01-02 13:06:22",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_wsrep.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nbind-address=%%ENV:SERVER_IP%%\\nbinlog_format = ROW\\nlog_bin = ON\\n\\n[galera]\\n##\\n## WSREP options\\n##\\nwsrep_on=ON\\n\\n# Full path to wsrep provider library or 'none'\\nwsrep_provider=/usr/lib/libgalera_smm.so\\n\\nwsrep_node_address=%%ENV:SVC_CONF_ENV_WSREP_NODE_ADDRESS%%\\n\\n# Provider specific configuration options\\nwsrep_provider_options=\\\"gcache.size=128M; gmcast.segment=0\\\"\\n\\n# Logical cluster name. Should be the same for all nodes.\\nwsrep_cluster_name=\\\"mariadb_poc_cluster\\\"\\n\\n# Group communication system handle\\nwsrep_cluster_address=gcomm://%%ENV:SVC_CONF_ENV_GCOMM%%\\n\\n\\n\\n# Human_readable node name (non-unique). Hostname by default.\\n#wsrep_node_name=\\n\\n# Address for incoming client connections. Autodetect by default.\\nwsrep_node_incoming_address=%%ENV:SERVER_IP%%:%%ENV:SERVER_PORT%%\\n\\n# How many threads will process writesets from other nodes\\nwsrep_slave_threads=%%ENV:SVC_CONF_ENV_MAX_CORES%%\\n\\n# DBUG options for wsrep provider\\n#wsrep_dbug_option\\n\\n# Generate fake primary keys for non-PK tables (required for multi-master\\n# and parallel applying   svar  operation)\\nwsrep_certify_nonPK=1\\n\\n\\n\\n# Maximum number of rows in write set\\nwsrep_max_ws_rows=131072\\n\\n# Maximum size of write set\\nwsrep_max_ws_size=1073741824\\n\\n# to enable debug level logging, set this to 1\\nwsrep_debug=0\\n\\n# convert locking sessions into transactions\\nwsrep_convert_LOCK_to_trx=0\\n\\n# how many times to retry deadlocked autocommits\\nwsrep_retry_autocommit=10\\n\\n# change auto_increment_increment and auto_increment_offset automatically\\nwsrep_auto_increment_control=0\\n\\n# replicate myisam\\nloose_wsrep_replicate_myisam=1\\n# retry autoinc insert, which failed for duplicate key error\\nloose_wsrep_drupal_282555_workaround=1\\n\\n# enable \\\"strictly synchronous\\\" semantics for read operations\\n#wsrep_causal_reads=0\\nloose_wsrep_causal_reads=1\\n\\n# Command to call when node status or cluster membership changes.\\n# Will be passed all or some of the following options:\\n# --status  - new status of this node\\n# --uuid    - UUID of the cluster\\n# --primary - whether the component is primary or not (\\\"yes\\\"/\\\"no\\\")\\n# --members - comma-separated list of members\\n# --index   - index of this node in the list\\n#wsrep_notify_cmd=\\n\\n##\\n## WSREP State Transfer options\\n##\\n# State Snapshot Transfer method\\n\\n\\n#wsrep_sst_donor= \\n\\nwsrep_sst_method=%%ENV:SVC_CONF_ENV_SST_METHOD%%\\nwsrep_sst_auth=root:%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\n\\n# wsrep_sst_receive_address=%%ENV:SERVER_IP%%\\n# Location of the directory with data files. Needed for non-mysqldump\\n# state snapshot transfers. Defaults to mysql_real_data_home.\\nwsrep_data_home_dir=/var/lib/mysql\\n\\n[xtrabackup]\\nparallel=4\\n\"}",
+                    "var_updated": "2022-04-28 18:18:15",
                     "var_name": "db_cnf_rep_with_wsrep",
                     "id": 5906
                 },
@@ -2907,8 +2926,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_replication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# REPLICATION\\n# -----------  \\n\\n# mariadb_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;EXECUTE IMMEDIATE IF(@@relay_log_space_limit=0,\\\"SELECT 'Unchanged relay_log_space_limit'\\\" ,\\\"SET GLOBAL relay_log_space_limit = 0\\\");SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1; SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;EXECUTE IMMEDIATE IF(@@report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%',\\\"SELECT 'Unchanged report_host'\\\", \\\"SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\\");EXECUTE IMMEDIATE IF(@@log_slave_updates=1,\\\"SELECT 'Unchanged log_slave_updates'\\\",\\\"SET GLOBAL log_slave_updates = ON\\\");SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';EXECUTE IMMEDIATE IF(@@replicate_annotate_row_events=1,\\\"SELECT 'Unchanged replicate_annotate_row_events'\\\", \\\"SET GLOBAL replicate_annotate_row_events = 1\\\");EXECUTE IMMEDIATE IF(@@binlog_annotate_row_events=1,\\\"SELECT 'Unchanged binlog_annotate_row_events'\\\", \\\"SET GLOBAL binlog_annotate_row_events = 1\\\");SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;STOP SLAVE; SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;START SLAVE;SET GLOBAL slave_parallel_max_queued =2*1024*1024;\\n\\n# mysql_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;SET GLOBAL relay_log_space_limit = 0;SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1;SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%';SET GLOBAL log_slave_updates = ON;SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL loose_binlog_row_query_log_events = 1;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';SET GLOBAL replicate_annotate_row_events = 1;SET GLOBAL binlog_annotate_row_events = 1;SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_max_queued =2*1024*1024;\\n\\n[mysqld]\\nserver_id = %%ENV:SVC_CONF_ENV_SERVER_ID%%\\nrelay_log_space_limit = 0\\nbinlog_format = MIXED\\nbinlog_checksum = 1\\nbinlog_cache_size = 1M\\nbinlog_stmt_cache_size = 1M\\nloose_expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%% \\nsync_binlog = 1\\nreport_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\nlog_slave_updates = ON\\nlog_bin_trust_function_creators = ON\\nloose_binlog_row_query_log_events = 1\\n\\n[mariadb]\\nloose_slave_type_conversions = 'ALL_NON_LOSSY'\\nloose_replicate_annotate_row_events = 1\\nloose_binlog_annotate_row_events = 1\\n#loose_gtid-strict-mode = 1\\nloose_gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%\\nloose_slave_parallel_mode = conservative\\nloose_slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_max_queued =2M\\n\\n\"}",
-                    "var_updated": "2021-02-01 12:23:32",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_replication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# REPLICATION\\n# -----------  \\n\\n# mariadb_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;EXECUTE IMMEDIATE IF(@@relay_log_space_limit=0,\\\"SELECT 'Unchanged relay_log_space_limit'\\\" ,\\\"SET GLOBAL relay_log_space_limit = 0\\\");SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1; SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;EXECUTE IMMEDIATE IF(@@report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%',\\\"SELECT 'Unchanged report_host'\\\", \\\"SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\\");EXECUTE IMMEDIATE IF(@@log_slave_updates=1,\\\"SELECT 'Unchanged log_slave_updates'\\\",\\\"SET GLOBAL log_slave_updates = ON\\\");SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';EXECUTE IMMEDIATE IF(@@replicate_annotate_row_events=1,\\\"SELECT 'Unchanged replicate_annotate_row_events'\\\", \\\"SET GLOBAL replicate_annotate_row_events = 1\\\");EXECUTE IMMEDIATE IF(@@binlog_annotate_row_events=1,\\\"SELECT 'Unchanged binlog_annotate_row_events'\\\", \\\"SET GLOBAL binlog_annotate_row_events = 1\\\");SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;STOP SLAVE; SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_max_queued =2*1024*1024;/*!100800 SET GLOBAL  binlog_alter_two_phase=1*/;START SLAVE;\\n\\n# mysql_command: SET GLOBAL server_id=%%ENV:SVC_CONF_ENV_SERVER_ID%%;SET GLOBAL relay_log_space_limit = 0;SET GLOBAL binlog_format = MIXED;SET GLOBAL binlog_checksum = 1;SET GLOBAL binlog_cache_size = 1*1024*1024;SET GLOBAL binlog_stmt_cache_size = 1*1024*1024;SET GLOBAL expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%;SET GLOBAL sync_binlog = 1;SET GLOBAL report_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%';SET GLOBAL log_slave_updates = ON;SET GLOBAL log_bin_trust_function_creators = ON;SET GLOBAL loose_binlog_row_query_log_events = 1;SET GLOBAL slave_type_conversions = 'ALL_NON_LOSSY';SET GLOBAL replicate_annotate_row_events = 1;SET GLOBAL binlog_annotate_row_events = 1;SET GLOBAL gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%;SET GLOBAL slave_parallel_mode = conservative;SET GLOBAL slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_threads = %%ENV:NODES_CPU_CORES%%;SET GLOBAL slave_parallel_max_queued =2*1024*1024;\\n\\n[mysqld]\\nserver_id = %%ENV:SVC_CONF_ENV_SERVER_ID%%\\nrelay_log_space_limit = 0\\nbinlog_format = MIXED\\nbinlog_checksum = 1\\nbinlog_cache_size = 1M\\nbinlog_stmt_cache_size = 1M\\nloose_expire_logs_days = %%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%% \\nsync_binlog = 1\\nreport_host='host_%%ENV:SVC_CONF_ENV_SERVER_ID%%'\\nlog_slave_updates = ON\\nlog_bin_trust_function_creators = ON\\nloose_binlog_row_query_log_events = 1\\n\\n[mariadb]\\nloose_slave_type_conversions = 'ALL_NON_LOSSY'\\nloose_replicate_annotate_row_events = 1\\nloose_binlog_annotate_row_events = 1\\n#loose_gtid-strict-mode = 1\\nloose_gtid_domain_id =  %%ENV:SVC_CONF_ENV_DOMAIN_ID%%\\nloose_slave_parallel_mode = conservative\\nloose_slave_domain_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_threads = %%ENV:NODES_CPU_CORES%%\\nloose_slave_parallel_max_queued =2M\\n# 10.8\\nloose_binlog_alter_two_phase = 1\\n\"}",
+                    "var_updated": "2022-01-28 10:55:57",
                     "var_name": "db_cnf_default_replication",
                     "id": 5943
                 },
@@ -2959,14 +2978,6 @@
                     "var_updated": "2020-03-25 11:12:43",
                     "var_name": "db_cnf_log_with_pfs",
                     "id": 5949
-                },
-                {
-                    "var_author": "admin Manager",
-                    "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_groupreplication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nplugin_load=group_replication.so\\nloose_group_replication_single_primary_mode = ON\\nloose_group_replication = FORCE_PLUS_PERMANENT\\ntransaction_write_set_extraction=XXHASH64\\nloose-group_replication_group_name=\\\"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\\\"\\nloose-group_replication_start_on_boot=off\\nloose-group_replication_local_address= \\\"127.0.0.1:24901\\\"\\nloose-group_replication_group_seeds= \\\"127.0.0.1:24901,127.0.0.1:24902,127.0.0.1:24903\\\"\\nloose-group_replication_bootstrap_group= off\"}",
-                    "var_updated": "2018-09-28 16:44:54",
-                    "var_name": "db_cnf_rep_with_groupreplication",
-                    "id": 5950
                 },
                 {
                     "var_author": "admin Manager",
@@ -3951,6 +3962,14 @@
                     "var_updated": "2021-06-10 13:51:46",
                     "var_name": "db_cnf_disk_splitundo",
                     "id": 6282
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/with_rep_groupreplication.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ndisabled_storage_engines=\\\"MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY\\\"\\nlog_slave_updates=ON\\nloose_binlog_format=ROW\\nloose_master_info_repository=TABLE\\nloose_relay_log_info_repository=TABLE\\nloose_transaction_write_set_extraction=XXHASH64\\nloose_gtid_mode = ON\\nloose_enforce_gtid_consistency = ON\\nloose_binlog_checksum = NONE           # Not needed from 8.0.21\\nplugin_load_add ='group_replication.so'\\nloose_group_replication_group_name = \\\"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\\\"\\nloose_group_replication_start_on_boot = off\\nloose_group_replication_local_address = \\\"s2:33061\\\"\\nloose_group_replication_local_address = \\\"%%ENV:SVC_CONF_ENV_GROUP_REPLICATION_LOCAL_ADDRESS%%\\\"\\n#group_replication_group_seeds = \\\"s1:33061,s2:33061,s3:33061\\\"\\nloose_group_replication_group_seeds = \\\"%%ENV:SVC_CONF_ENV_GCOMM%%\\\"\\ngroup_replication_bootstrap_group = off\"}",
+                    "var_updated": "2022-04-28 09:17:32",
+                    "var_name": "db_cnf_rep_with_groupreplication",
+                    "id": 6289
                 }
             ],
             "ruleset_public": false,
@@ -4071,7 +4090,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.mem_withinterleave",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withrowminimal",
                 "mariadb.svc.mrm.db.cnf.generic.disk_withsplitundolog",
-                "mariadb.svc.mrm.db.cnf.generic.disk_nosplitpath"
+                "mariadb.svc.mrm.db.cnf.generic.disk_nosplitpath",
+                "mariadb.svc.mrm.db.cnf.generic.rep_withgrouprep"
             ],
             "publications": [
                 "replication-manager"
@@ -6986,8 +7006,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_path.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\ntmpdir = %%ENV:SVC_CONF_ENV_MYSQL_TMPDIR%%\\nslave_load_tmpdir = %%ENV:SVC_CONF_ENV_MYSQL_SLAVE_LOAD_TMPDIR%%\\nlog_error = %%ENV:SVC_CONF_ENV_MYSQL_LOG_ERROR%%\\nslow_query_log_file = %%ENV:SVC_CONF_ENV_MYSQL_SLOW_QUERY_LOG_FILE%%\\ngeneral_log_file= %%ENV:SVC_CONF_ENV_MYSQL_GENERAL_LOG_FILE%%\\ninnodb_data_home_dir = %%ENV:SVC_CONF_ENV_MYSQL_INNODB_DATA_HOME_DIR%%\\ninnodb_log_group_home_dir =  %%ENV:SVC_CONF_ENV_MYSQL_INNODB_LOG_GROUP_HOME_DIR%%\\nloose_innodb_undo_directory  = %%ENV:SVC_CONF_ENV_MYSQL_INNODB_UNDO_DIRECTORY%%\\nlog_bin= %%ENV:SVC_CONF_ENV_MYSQL_LOG_BIN%%\\nlog_bin_index= %%ENV:SVC_CONF_ENV_MYSQL_LOG_BIN_INDEX%%\\nrelay_log = %%ENV:SVC_CONF_ENV_MYSQL_RELAY_LOG%%\\nrelay_log_index = %%ENV:SVC_CONF_ENV_MYSQL_RELAY_LOG_INDEX%%\\n\\n[mariadb]\\n# Bug aria_log_dir_path is not available in variables \\n# aria_log_dir_path = %%ENV:SVC_CONF_ENV_MYSQL_ARIA_LOG_DIR_PATH%%\"}",
-                    "var_updated": "2021-07-15 15:36:26",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/default_path.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\n#tmpdir = %%ENV:SVC_CONF_ENV_MYSQL_TMPDIR%%\\n#slave_load_tmpdir = %%ENV:SVC_CONF_ENV_MYSQL_SLAVE_LOAD_TMPDIR%%\\n#log_error = %%ENV:SVC_CONF_ENV_MYSQL_LOG_ERROR%%\\n#slow_query_log_file = %%ENV:SVC_CONF_ENV_MYSQL_SLOW_QUERY_LOG_FILE%%\\n#general_log_file= %%ENV:SVC_CONF_ENV_MYSQL_GENERAL_LOG_FILE%%\\n#innodb_data_home_dir = %%ENV:SVC_CONF_ENV_MYSQL_INNODB_DATA_HOME_DIR%%\\n#innodb_log_group_home_dir =  %%ENV:SVC_CONF_ENV_MYSQL_INNODB_LOG_GROUP_HOME_DIR%%\\n#loose_innodb_undo_directory  = %%ENV:SVC_CONF_ENV_MYSQL_INNODB_UNDO_DIRECTORY%%\\n#log_bin= %%ENV:SVC_CONF_ENV_MYSQL_LOG_BIN%%\\n#log_bin_index= %%ENV:SVC_CONF_ENV_MYSQL_LOG_BIN_INDEX%%\\n#relay_log = %%ENV:SVC_CONF_ENV_MYSQL_RELAY_LOG%%\\n#relay_log_index = %%ENV:SVC_CONF_ENV_MYSQL_RELAY_LOG_INDEX%%\\n\\n[mariadb]\\n# Bug aria_log_dir_path is not available in variables \\n# aria_log_dir_path = %%ENV:SVC_CONF_ENV_MYSQL_ARIA_LOG_DIR_PATH%%\"}",
+                    "var_updated": "2022-04-28 11:56:23",
                     "var_name": "db_cnf_default_path",
                     "id": 6285
                 }
@@ -6999,6 +7019,30 @@
                 "replication-manager"
             ],
             "id": 1152,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mysql.replication.grouprep",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.rep_withgrouprep",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/99_with_rep_groupreplication.cnf\",\"target\":\"../with_rep_groupreplication.cnf\"}",
+                    "var_updated": "2022-04-22 07:39:59",
+                    "var_name": "db_link_grouprep",
+                    "id": 6290
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1153,
             "responsibles": [
                 "replication-manager"
             ]

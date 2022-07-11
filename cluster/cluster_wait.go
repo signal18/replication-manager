@@ -84,7 +84,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 	defer wg.Done()
-	cluster.LogPrintf(LvlInfo, "Waiting Rejoin")
+	logline := cluster.LogPrintf(LvlInfo, "Waiting Rejoin")
 	exitloop := 0
 	cluster.rejoinCond = nbc.New()
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
@@ -93,7 +93,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf(LvlInfo, "Waiting Rejoin")
+			cluster.LogUpdate(logline, LvlInfo, "Waiting Rejoin %d", exitloop)
 			exitloop++
 		case <-cluster.rejoinCond.Recv:
 			exitloop = 9999999
@@ -143,7 +143,7 @@ func (cluster *Cluster) WaitProxyEqualMaster() error {
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
 		select {
 		case <-ticker.C:
-			cluster.LogPrintf(LvlInfo, "Waiting for proxy to join master")
+			cluster.LogPrintf(LvlInfo, "Waiting for proxy to join master %d", exitloop)
 			exitloop++
 			// All cluster down
 			if cluster.IsProxyEqualMaster() == true {
@@ -185,31 +185,7 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) WaitDatabaseStart(server *ServerMonitor) error {
-	exitloop := 0
-	cluster.LogPrintf(LvlInfo, "Waiting database start on %s", server.URL)
-	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
-	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
-		select {
-		case <-ticker.C:
-
-			exitloop++
-
-			err := server.Refresh()
-			if err == nil {
-
-				exitloop = 9999999
-			} else {
-				cluster.LogPrintf(LvlInfo, "Waiting state running on %s failed with error %s ", server.URL, err)
-			}
-		}
-	}
-	if exitloop == 9999999 {
-		cluster.LogPrintf(LvlInfo, "Waiting state running reach on %s", server.URL)
-	} else {
-		cluster.LogPrintf(LvlErr, "Wait state running on %s", server.URL)
-		return errors.New("Failed to wait running database server")
-	}
-	return nil
+	return server.WaitDatabaseStart()
 }
 
 func (cluster *Cluster) WaitDatabaseSuspect(server *ServerMonitor) error {
@@ -333,7 +309,7 @@ func (cluster *Cluster) WaitDatabaseCanConn() error {
 		case <-ticker.C:
 			cluster.LogPrintf(LvlInfo, "Waiting for cluster to start")
 			exitloop++
-			if cluster.AllDatabaseCanConn() && cluster.HasAllDbUp() {
+			if /*cluster.AllDatabaseCanConn() && */ cluster.HasAllDbUp() {
 				exitloop = 9999999
 			}
 

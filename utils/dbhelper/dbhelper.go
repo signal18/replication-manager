@@ -1670,7 +1670,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Tabl
 		if err != nil {
 			return vars, tblList, query, err
 		}
-		query := GetNoBlockOnMedataLock(db, myver) + "SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name, COALESCE(a.ENGINE,'') as Engine,a.TABLE_ROWS as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length , 0 as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' AND  a.TABLE_SCHEMA='" + schema + "'"
+		query := GetNoBlockOnMedataLock(db, myver) + "SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name, COALESCE(a.ENGINE,'') as Engine,COALESCE(a.TABLE_ROWS,0) as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length , 0 as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' AND  a.TABLE_SCHEMA='" + schema + "'"
 		if myver.IsPPostgreSQL() {
 			query = `SELECT a.schemaname as "Table_schema" ,  a.tablename as "Table_name" ,'postgres' as "Engine",COALESCE(b.n_live_tup,0) as "Table_rows" ,0 as "Data_length",0 as "Index_length" , 0 as "Table_crc"  FROM pg_catalog.pg_tables  a LEFT JOIN pg_catalog.pg_stat_user_tables b ON (a.schemaname=b.schemaname AND a.tablename=b.relname )  WHERE  a.schemaname='` + schema + `'`
 		}

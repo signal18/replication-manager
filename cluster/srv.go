@@ -57,6 +57,7 @@ type ServerMonitor struct {
 	IP                          string                       `json:"ip"`
 	Strict                      string                       `json:"strict"`
 	ServerID                    uint64                       `json:"serverId"`
+	HashUUID                    uint64                       `json:"hashUUID"`
 	DomainID                    uint64                       `json:"domainId"`
 	GTIDBinlogPos               *gtid.List                   `json:"gtidBinlogPos"`
 	CurrentGtid                 *gtid.List                   `json:"currentGtid"`
@@ -165,7 +166,6 @@ type ServerMonitor struct {
 	Datadir                     string                       `json:"datadir"`
 	SlapOSDatadir               string                       `json:"slaposDatadir"`
 	PostgressDB                 string                       `json:"postgressDB"`
-	CrcTable                    *crc64.Table                 `json:"-"`
 	TLSConfigUsed               string                       `json:"tlsConfigUsed"` //used to track TLS config during key rotation
 	SSTPort                     string                       `json:"sstPort"`       //used to send data to dbjobs
 	Agent                       string                       `json:"agent"`         //used to provision service in orchestrator
@@ -228,10 +228,9 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		}
 		url = server.Name + server.Domain + ":3306"
 	}
-	server.CrcTable = crc64.MakeTable(crc64.ECMA)
 	var sid uint64
 	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id
-	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.CrcTable), 10), 10, 64)
+	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.GetCluster().GetCrcTable()), 10), 10, 64)
 	server.ServerID = sid
 	server.Id = fmt.Sprintf("%s%d", "db", sid)
 
@@ -437,7 +436,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		server.FailCount = 0
 		server.FailSuspectHeartbeat = 0
 	}
-
+	//	server.ClusterGroup.LogPrintf(LvlInfo, "niac %s: %s", server.URL, server.DBVersion)
 	var ss dbhelper.SlaveStatus
 	ss, _, errss := dbhelper.GetSlaveStatus(server.Conn, server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 	// We have no replicatieon can this be the old master
@@ -452,12 +451,13 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 	if errss == sql.ErrNoRows || noChannel {
 		// If we reached this stage with a previously failed server, reintroduce
-		// it as unconnected server.
+		// it as unconnected server.master
 		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth /*|| server.PrevState == stateSuspect*/ {
-			server.ClusterGroup.LogPrintf(LvlDbg, "State comparison reinitialized failed server %s as unconnected", server.URL)
-			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() {
-				if server.ClusterGroup.master != nil {
-					if server.ClusterGroup.Status == ConstMonitorActif && server.ClusterGroup.master.Id != server.Id && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
+			server.ClusterGroup.LogPrintf(LvlInfo, "State changed, init failed server %s as unconnected", server.URL)
+			if server.ClusterGroup.Conf.ReadOnly && !server.HaveWsrep && server.ClusterGroup.IsDiscovered() {
+				//GetMaster abstract master for galera multi master and master slave
+				if server.GetCluster().GetMaster() != nil {
+					if server.ClusterGroup.Status == ConstMonitorActif && server.GetCluster().GetMaster().Id != server.Id && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
 						server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server %s as active monitor and other master is discovered", server.URL)
 						server.SetReadOnly()
 					} else if server.ClusterGroup.Status == ConstMonitorStandby && server.ClusterGroup.Conf.Arbitration && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
@@ -466,9 +466,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					}
 				}
 			}
-			//if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
-			server.SetState(stateUnconn)
-			//}
+			if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
+				server.SetState(stateUnconn)
+			}
 			server.FailCount = 0
 			server.ClusterGroup.backendStateChangeProxies()
 			server.SendAlert()
@@ -480,11 +480,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State == stateUnconn {
 			// Master will never get discovery in topology if it does not get unconnected first it default to suspect
-			if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
-				server.SetState(stateUnconn)
-				server.ClusterGroup.LogPrintf(LvlDbg, "State unconnected set by non-master rule on server %s", server.URL)
-			}
-			if server.ClusterGroup.Conf.ReadOnly && server.HaveWsrep == false && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
+			//	if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
+			server.SetState(stateUnconn)
+			server.ClusterGroup.LogPrintf(LvlInfo, "From state %s to unconnected and non leader on server %s", server.PrevState, server.URL)
+			//	}
+			if server.ClusterGroup.Conf.ReadOnly && !server.HaveWsrep && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
 				server.ClusterGroup.LogPrintf(LvlInfo, "Setting Read Only on unconnected server: %s no master state and replication found", server.URL)
 				server.SetReadOnly()
 			}
@@ -493,10 +493,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.ClusterGroup.backendStateChangeProxies()
 				server.SendAlert()
 			}
+		} else if server.GetCluster().GetMaster() != nil && server.GetCluster().GetMaster().Id != server.Id && server.PrevState == stateSuspect && !server.HaveWsrep && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInFailover() {
+			// a case of a standalone transite to suspect but never get to standalone back
+			server.SetState(stateUnconn)
 		}
-
 	} else if server.ClusterGroup.IsActive() && errss == nil && (server.PrevState == stateFailed) {
-
+		// Is Slave
 		server.rejoinSlave(ss)
 	}
 
@@ -625,10 +627,12 @@ func (server *ServerMonitor) Refresh() error {
 				}
 
 			} else {
-				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
+				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"], server.GetCluster().GetCrcTable())
 				server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
-				server.CurrentGtid = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"])
+				server.CurrentGtid = server.GTIDBinlogPos
 				server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
+				server.HashUUID = crc64.Checksum([]byte(strings.ToUpper(server.Variables["SERVER_UUID"])), server.GetCluster().GetCrcTable())
+				//		fmt.Fprintf(os.Stdout, "gniac2 "+strings.ToUpper(server.Variables["SERVER_UUID"])+" "+strconv.FormatUint(server.HashUUID, 10))
 			}
 
 			var sid uint64
@@ -764,7 +768,7 @@ func (server *ServerMonitor) Refresh() error {
 		if server.DBVersion.IsPPostgreSQL() {
 			//PostgresQL as no server_id concept mimic via internal server id for topology detection
 			var sid uint64
-			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), server.ClusterGroup.crcTable), 10), 10, 64)
+			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), server.ClusterGroup.GetCrcTable()), 10), 10, 64)
 			if err != nil {
 				server.ClusterGroup.LogPrintf(LvlWarn, "PG Could not assign server_id s", err)
 			}
@@ -1460,7 +1464,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 	if err != nil {
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "BootstrapReplication", LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, master.URL, err)
 	}
-	_, err = server.Conn.Exec("START SLAVE '" + server.ClusterGroup.Conf.MasterConn + "'")
+	_, err = server.StartSlave()
 	if err != nil {
 		err = errors.New(fmt.Sprintln("Can't start slave: ", err))
 	}

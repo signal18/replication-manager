@@ -156,6 +156,7 @@ type Config struct {
 	FailoverSwitchToPrefered                  bool   `mapstructure:"failover-switch-to-prefered" toml:"failover-switch-to-prefered" json:"failoverSwithToPrefered"`
 	Autorejoin                                bool   `mapstructure:"autorejoin" toml:"autorejoin" json:"autorejoin"`
 	Autoseed                                  bool   `mapstructure:"autoseed" toml:"autoseed" json:"autoseed"`
+	AutorejoinForceRestore                    bool   `mapstructure:"autorejoin-force-restore" toml:"autorejoin-force-restore" json:"autorejoinForceRestore"`
 	AutorejoinFlashback                       bool   `mapstructure:"autorejoin-flashback" toml:"autorejoin-flashback" json:"autorejoinFlashback"`
 	AutorejoinMysqldump                       bool   `mapstructure:"autorejoin-mysqldump" toml:"autorejoin-mysqldump" json:"autorejoinMysqldump"`
 	AutorejoinZFSFlashback                    bool   `mapstructure:"autorejoin-zfs-flashback" toml:"autorejoin-zfs-flashback" json:"autorejoinZfsFlashback"`
@@ -341,6 +342,7 @@ type Config struct {
 	ProvAdminUser                             string `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
 	ProvUser                                  string `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
 	ProvCodeApp                               string `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
+	ProvSerialized                            bool   `mapstructure:"prov-serialized" toml:"prov-serialized" json:"provSerialized"`
 	ProvOrchestrator                          string `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
 	ProvOrchestratorEnable                    string `mapstructure:"prov-orchestrator-enable" toml:"prov-orchestrator-enable" json:"provOrchestratorEnable"`
 	ProvOrchestratorCluster                   string `mapstructure:"prov-orchestrator-cluster" toml:"prov-orchestrator-cluster" json:"provOrchestratorCluster"`

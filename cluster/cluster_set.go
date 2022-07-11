@@ -638,6 +638,7 @@ func (cluster *Cluster) SetReplicationCredential(credential string) {
 
 func (cluster *Cluster) SetUnDiscovered() {
 	cluster.sme.UnDiscovered()
+	cluster.Topology = topoUnknown
 }
 
 func (cluster *Cluster) SetActiveStatus(status string) {

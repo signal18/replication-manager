@@ -12,6 +12,7 @@ package gtid
 import (
 	"fmt"
 	"hash/crc64"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -100,14 +101,18 @@ func NewList(s string) *List {
 	return gl
 }
 
-func NewMySQLList(s string) *List {
+func NewMySQLList(s string, crcTable *crc64.Table) *List {
 	gl := new(List)
 	if s == "" {
 		return gl
 	}
-	l := strings.Split(s, ",")
+
+	var re = regexp.MustCompile(`\r\n|[\r\n\v\f\x{0085}\x{2028}\x{2029}]`)
+
+	s = re.ReplaceAllString(s, "")
+	l := strings.Split(strings.ReplaceAll(s, " ", ""), ",")
 	for _, g := range l {
-		gtid := NewMySQLGtid(g)
+		gtid := NewMySQLGtid(g, crcTable)
 		*gl = append(*gl, *gtid)
 	}
 	return gl
@@ -123,10 +128,9 @@ func NewGtid(s string) *Gtid {
 	return g
 }
 
-func NewMySQLGtid(s string) *Gtid {
+func NewMySQLGtid(s string, crcTable *crc64.Table) *Gtid {
 	g := new(Gtid)
 	f := strings.Split(s, ":")
-	crcTable := crc64.MakeTable(crc64.ECMA)
 	seq := "1"
 	if strings.Contains(f[1], "-") {
 		e := strings.Split(f[1], "-")
@@ -135,8 +139,11 @@ func NewMySQLGtid(s string) *Gtid {
 		seq = f[1]
 	}
 	g.DomainID = 0
-	g.ServerID = crc64.Checksum([]byte(f[0]), crcTable)
+
+	g.ServerID = crc64.Checksum([]byte(strings.ToUpper(f[0])), crcTable)
 	g.SeqNo, _ = strconv.ParseUint(seq, 10, 64)
+	//fmt.Fprintf(os.Stdout, "gniac new MySQL GTID : "+f[0]+" "+strconv.FormatUint(g.ServerID, 10))
+
 	return g
 }
 
