@@ -466,7 +466,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.Fullversion = FullVersion
 	repman.Arch = GoArch
 	repman.Os = GoOS
-	repman.MemProfile = repman.Conf.MemProfile
+	//repman.MemProfile = repman.Conf.MemProfile
 
 	repman.Clusters = make(map[string]*cluster.Cluster)
 	repman.UUID = misc.GetUUID()
@@ -628,6 +628,7 @@ func (repman *ReplicationManager) Run() error {
 		for _, cl := range repman.Clusters {
 			cl.Stop()
 		}
+
 		repman.exit = true
 
 	}()
@@ -644,6 +645,8 @@ func (repman *ReplicationManager) Run() error {
 	if repman.exitMsg != "" {
 		log.Println(repman.exitMsg)
 	}
+	fmt.Println("Cleanup before leaving")
+	repman.Stop()
 	os.Exit(1)
 	return nil
 
@@ -803,9 +806,10 @@ func (repman *ReplicationManager) resolveHostIp() string {
 
 func (repman *ReplicationManager) Stop() {
 
-	termbox.Close()
-	if repman.MemProfile != "" {
-		f, err := os.Create(repman.MemProfile)
+	//termbox.Close()
+	fmt.Println("Prof profile into file: " + memprofile)
+	if memprofile != "" {
+		f, err := os.Create(memprofile)
 		if err != nil {
 			log.Fatal(err)
 		}
