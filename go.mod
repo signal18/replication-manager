@@ -14,7 +14,7 @@ require (
 	github.com/Azure/go-autorest/autorest/azure/cli v0.4.0
 	github.com/BurntSushi/toml v0.3.1
 	github.com/JaderDias/movingmedian v0.0.0-20170611140316-de8c410559fa
-	github.com/NYTimes/gziphandler v0.0.0-20180125165240-289a3b81f5ae
+	github.com/NYTimes/gziphandler v1.0.1
 	github.com/alyu/configparser v0.0.0-20151125021232-26b2fe18bee1
 	github.com/asaskevich/govalidator v0.0.0-20180115102450-4b3d68f87f17
 	github.com/aws/aws-sdk-go v1.29.24
@@ -57,7 +57,7 @@ require (
 	github.com/lib/pq v1.3.0
 	github.com/magneticio/vamp-router v0.0.0-20151116102511-29379b621548
 	github.com/mattn/go-sqlite3 v1.9.0
-	github.com/micro/go-micro v0.1.4
+	github.com/micro/go-micro v0.27.1
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mjibson/go-dsp v0.0.0-20170104183934-49dba8372707
 	github.com/nsf/termbox-go v0.0.0-20180129072728-88b7b944be8b
@@ -79,9 +79,8 @@ require (
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
 	github.com/yoheimuta/protolint v0.32.0
-	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
+	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
 	golang.org/x/net v0.0.0-20211105192438-b53810dc28af
-	google.golang.org/api v0.30.0
 	google.golang.org/genproto v0.0.0-20210617175327-b9e0b3197ced
 	google.golang.org/grpc v1.38.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0
@@ -95,15 +94,12 @@ require (
 )
 
 require (
-	github.com/Microsoft/go-winio v0.5.0 // indirect
+	github.com/Azure/go-autorest/autorest/to v0.4.0 // indirect
+	github.com/Azure/go-autorest/autorest/validation v0.3.0 // indirect
 	github.com/StackExchange/wmi v0.0.0-20210224194228-fe8f1750fd46 // indirect
 	github.com/aclements/go-moremath v0.0.0-20170210193428-033754ab1fee // indirect
-	github.com/armon/circbuf v0.0.0-20190214190532-5111143e8da2 // indirect
-	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/bluele/slack v0.0.0-20180528010058-b4b4d354a079 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
-	github.com/docker/go-connections v0.4.0 // indirect
-	github.com/elazarl/go-bindata-assetfs v1.0.1 // indirect
 	github.com/facebookgo/atomicfile v0.0.0-20151019160806-2de1f203e7d5 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/facebookgo/ensure v0.0.0-20200202191622-63f1cf65ac4c // indirect
@@ -123,31 +119,12 @@ require (
 	github.com/gorilla/context v1.1.1 // indirect
 	github.com/gorilla/securecookie v1.1.1 // indirect
 	github.com/gorilla/sessions v0.0.0-20180209192218-6ba88b7f1c1e // indirect
-	github.com/hashicorp/consul v0.0.0-20180215214858-1ce90e2a19ea // indirect
-	github.com/hashicorp/go-discover v0.0.0-20220105235006-b95dfa40aaed // indirect
-	github.com/hashicorp/go-memdb v1.3.2 // indirect
-	github.com/hashicorp/go-msgpack v1.1.5 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
-	github.com/hashicorp/go-rootcerts v0.0.0-20160503143440-6bb64b370b90 // indirect
-	github.com/hashicorp/go-sockaddr v1.0.2 // indirect
-	github.com/hashicorp/go-syslog v1.0.0 // indirect
-	github.com/hashicorp/go-uuid v1.0.2 // indirect
-	github.com/hashicorp/go-version v1.4.0 // indirect
-	github.com/hashicorp/hil v0.0.0-20210521165536-27a72121fd40 // indirect
-	github.com/hashicorp/logutils v1.0.0 // indirect
-	github.com/hashicorp/memberlist v0.3.1 // indirect
-	github.com/hashicorp/net-rpc-msgpackrpc v0.0.0-20151116020338-a14192a58a69 // indirect
-	github.com/hashicorp/raft v1.3.6 // indirect
-	github.com/hashicorp/raft-boltdb v0.0.0-20211202195631-7d34b9fb3f42 // indirect
-	github.com/hashicorp/serf v0.0.0-20180213013805-d4f33d5b6a0b // indirect
+	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
 	github.com/juju/testing v0.0.0-20220203020004-a0ff61f03494 // indirect
 	github.com/lestrrat/go-envload v0.0.0-20180220120943-6ed08b54a570 // indirect
-	github.com/mattn/go-runewidth v0.0.0-20170510074858-97311d9f7767 // indirect
+	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/miekg/dns v1.1.43 // indirect
-	github.com/mitchellh/cli v1.1.2 // indirect
-	github.com/mitchellh/copystructure v1.2.0 // indirect
-	github.com/mitchellh/hashstructure v0.0.0-20170609045927-2bca23e0e452 // indirect
 	github.com/pkg/xattr v0.4.6
 	github.com/rs/cors v1.7.0 // indirect
 	github.com/siddontang/go-log v0.0.0-20190221022429-1e957dd83bed // indirect
