@@ -10,7 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc64"
 	"io/ioutil"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +25,28 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
+
+func (cluster *Cluster) GetCrcTable() *crc64.Table {
+	return cluster.crcTable
+}
+
+func (cluster *Cluster) getDumpParameter() string {
+	dump_param := cluster.Conf.BackupMysqldumpOptions
+	if cluster.master != nil {
+		if !cluster.master.IsMariaDB() {
+			re, err := regexp.Compile("--system=all")
+			if err != nil {
+				return dump_param
+			}
+			dump_param = re.ReplaceAllString(dump_param, "")
+			if cluster.master.HasMySQLGTID() {
+				dump_param = strings.ReplaceAll(dump_param, "--master-data=1", "")
+			}
+
+		}
+	}
+	return dump_param
+}
 
 func (cluster *Cluster) GetShareDir() string {
 	return cluster.Conf.ShareDir

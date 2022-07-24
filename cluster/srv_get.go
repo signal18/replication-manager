@@ -12,6 +12,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"hash/crc64"
 	"os"
 	"sort"
 	"strconv"
@@ -28,6 +29,19 @@ import (
 
 func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {
 	return server.FullProcessList
+}
+
+func (server *ServerMonitor) GetUniversalGtidServerID() uint64 {
+
+	if server.IsMariaDB() {
+		return uint64(server.ServerID)
+	}
+	if server.DBVersion.IsMySQLOrPerconaGreater57() {
+		server.ClusterGroup.LogPrintf("INFO", " %s %s", server.Variables["SERVER_UUID"], server.URL)
+		return crc64.Checksum([]byte(strings.ToUpper(server.Variables["SERVER_UUID"])), server.GetCluster().GetCrcTable())
+
+	}
+	return 0
 }
 
 func (server *ServerMonitor) GetSourceClusterName() string {

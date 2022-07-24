@@ -594,7 +594,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 	server.ClusterGroup.LogPrintf(LvlInfo, "Request logical backup %s for: %s", server.ClusterGroup.Conf.BackupLogicalType, server.URL)
 	if server.IsDown() {
-		return nil
+		return errors.New("Can't backup when server down")
 	}
 	server.DelBackupLogicalCookie()
 	if server.IsMariaDB() && server.DBVersion.Major == 10 &&
@@ -643,22 +643,31 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	// Blocking DDL
 	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
-
+		file, err2 := server.ClusterGroup.CreateTmpClientConfFile()
+		if err2 != nil {
+			return err2
+		}
+		defer os.Remove(file)
 		usegtid := server.JobGetDumpGtidParameter()
 		events := ""
 		dumpslave := ""
+		//		if !server.HasMySQLGTID() {
 		if server.IsMaster() {
 			dumpslave = "--master-data=1"
 		} else {
 			dumpslave = "--dump-slave=1"
 		}
+		//	}
 		if server.HasEventScheduler() {
 			events = "--events=true"
 		} else {
 			events = "--events=false"
 		}
-		dumpargs := strings.Split(server.ClusterGroup.Conf.BackupMysqldumpOptions, " ")
-		dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass, dumpslave, usegtid, events)
+
+		dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+server.ClusterGroup.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
+
+		dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser /*"--log-error="+server.GetMyBackupDirectory()+"dump_error.log"*/)
+
 		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), dumpargs...)
 
 		server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", -1))
@@ -1023,6 +1032,7 @@ func (server *ServerMonitor) JobGetDumpGtidParameter() string {
 	usegtid := ""
 	// MySQL force GTID in server configuration the dump transparently include GTID pos. In MariaDB both positional or GTID is possible and so must be choose at dump
 	// Issue #422
+	// server.GetCluster().LogPrintf(LvlInfo, "gniac2 %s: %s,", server.URL, server.GetVersion())
 	if server.GetVersion().IsMariaDB() {
 		if server.HasGTIDReplication() {
 			usegtid = "--gtid=true"
@@ -1031,6 +1041,22 @@ func (server *ServerMonitor) JobGetDumpGtidParameter() string {
 		}
 	}
 	return usegtid
+}
+
+func (cluster *Cluster) CreateTmpClientConfFile() (string, error) {
+	confOut, err := os.CreateTemp("", "client.cnf")
+	if err != nil {
+		return "", err
+	}
+
+	if _, err := confOut.Write([]byte("[client]\npassword=" + cluster.dbPass + "\n")); err != nil {
+		return "", err
+	}
+	if err := confOut.Close(); err != nil {
+		return "", err
+	}
+	return confOut.Name(), nil
+
 }
 
 func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest *ServerMonitor) error {
@@ -1045,35 +1071,45 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 		events = "--events=false"
 	}
 	dumpslave := ""
+	//	if !source.HasMySQLGTID() {
 	if source.IsMaster() {
 		dumpslave = "--master-data=1"
 	} else {
 		dumpslave = "--dump-slave=1"
 	}
-	dumpargs := strings.Split(cluster.Conf.BackupMysqldumpOptions, " ")
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass, dumpslave, usegtid, events)
+	//	}
+	file, err := cluster.CreateTmpClientConfFile()
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file)
+	dumpstring := "--defaults-file=" + file + " " + source.ClusterGroup.getDumpParameter() + " " + dumpslave + " " + usegtid + " " + events
+
+	dumpargs := strings.Split(strings.ReplaceAll(dumpstring, "  ", " "), " ")
+
+	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+source.ClusterGroup.dbUser /*, "--log-error="+source.GetMyBackupDirectory()+"dump_error.log"*/)
+
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
-	//	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), "--opt", "--hex-blob", events, "--disable-keys", dumpslave, "--apply-slave-statements", usegtid, "--single-transaction", "--all-databases", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+cluster.dbUser, "--password="+cluster.dbPass, "--add-drop-database", "--verbose")
 	stderrIn, _ := dumpCmd.StderrPipe()
-	// do not quote parameters
-	//clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.dbUser, `--password=`+cluster.dbPass, `--batch`, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`)
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--password`, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.dbUser, `--batch`, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`)
-	clientCmd.Stdin = strings.NewReader(cluster.dbPass)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.dbUser, `--force`, `--batch` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
 	stderrOut, _ := clientCmd.StderrPipe()
 
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
 	cluster.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.dbPass, "XXXX", -1))
-	var err error
-	clientCmd.Stdin, err = dumpCmd.StdoutPipe()
+
+	iodumpreader, err := dumpCmd.StdoutPipe()
+	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), iodumpreader)
+
+	/*clientCmd.Stdin, err = dumpCmd.StdoutPipe()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Failed opening pipe: %s", err)
 		return err
-	}
+	}*/
 	if err := dumpCmd.Start(); err != nil {
 		cluster.LogPrintf(LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(dumpCmd.String(), cluster.dbPass, "XXXX", -1))
 		return err
 	}
-	if err := clientCmd.Run(); err != nil {
+	if err := clientCmd.Start(); err != nil {
 		cluster.LogPrintf(LvlErr, "Can't start mysql client:%s at %s", err, strings.Replace(clientCmd.String(), cluster.dbPass, "XXXX", -1))
 		return err
 	}

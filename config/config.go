@@ -153,6 +153,7 @@ type Config struct {
 	FailoverSwitchToPrefered                  bool   `mapstructure:"failover-switch-to-prefered" toml:"failover-switch-to-prefered" json:"failoverSwithToPrefered"`
 	Autorejoin                                bool   `mapstructure:"autorejoin" toml:"autorejoin" json:"autorejoin"`
 	Autoseed                                  bool   `mapstructure:"autoseed" toml:"autoseed" json:"autoseed"`
+	AutorejoinForceRestore                    bool   `mapstructure:"autorejoin-force-restore" toml:"autorejoin-force-restore" json:"autorejoinForceRestore"`
 	AutorejoinFlashback                       bool   `mapstructure:"autorejoin-flashback" toml:"autorejoin-flashback" json:"autorejoinFlashback"`
 	AutorejoinMysqldump                       bool   `mapstructure:"autorejoin-mysqldump" toml:"autorejoin-mysqldump" json:"autorejoinMysqldump"`
 	AutorejoinZFSFlashback                    bool   `mapstructure:"autorejoin-zfs-flashback" toml:"autorejoin-zfs-flashback" json:"autorejoinZfsFlashback"`

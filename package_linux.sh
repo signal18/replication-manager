@@ -86,9 +86,9 @@ do
     cp "$builddir"/binaries/replication-manager-$flavor "$builddir"/package/usr/bin/
     cp service/replication-manager-$flavor.service "$builddir"/package/etc/systemd/system/replication-manager.service
     cp service/replication-manager-$flavor.init.el6 "$builddir"/package/etc/init.d/replication-manager
-    fpm ${cflags[@]} --rpm-os linux -C "$builddir"/package -s dir -t rpm -n replication-manager-$flavor --epoch $epoch --description "$description - $extra_desc" -p "$builddir/release"
+    fpm ${cflags[@]} --rpm-os linux -C "$builddir"/package -s dir -t rpm --config-files /etc/replication-manager/cluster.d/cluster1.toml --config-files /etc/replication-manager/config.toml -n replication-manager-$flavor --epoch $epoch --description "$description - $extra_desc" -p "$builddir/release"
     cp service/replication-manager-$flavor.init.deb7 "$builddir"/package/etc/init.d/replication-manager
-    fpm ${cflags[@]} -C "$builddir"/package -s dir -t deb -n replication-manager-$flavor --description "$description - $extra_desc" -p "$builddir/release"
+    fpm ${cflags[@]} -C "$builddir"/package -s dir -t deb --config-files /etc/replication-manager/cluster.d/cluster1.toml --config-files /etc/replication-manager/config.toml -n replication-manager-$flavor --description "$description - $extra_desc" -p "$builddir/release"
     rm -f "$builddir"/package/usr/bin/replication-manager-$flavor
 
     echo "# Building tarball replication-manager-$flavor"
