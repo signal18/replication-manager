@@ -27,7 +27,6 @@ import (
 	"sync"
 	"time"
 
-	sshcli "github.com/helloyi/go-sshclient"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -874,11 +873,9 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	if server.ClusterGroup.IsInFailover() {
 		return errors.New("Cancel dbjob via ssh during failover")
 	}
-	user, _ := misc.SplitPair(server.ClusterGroup.Conf.OnPremiseSSHCredential)
-	key := server.ClusterGroup.OnPremiseGetSSHKey(user)
-	client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":22", user, key)
+	client, err := server.GetCluster().OnPremiseConnect(server)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err)
+		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise run  job  %s", err)
 		return err
 	}
 	defer client.Close()
@@ -887,9 +884,9 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 		stdout bytes.Buffer
 		stderr bytes.Buffer
 	)
-	filerc, err := os.Open(server.Datadir + "/init/init/dbjobs_new")
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err)
+	filerc, err2 := os.Open(server.Datadir + "/init/init/dbjobs_new")
+	if err2 != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err2)
 		return errors.New("Cancel dbjob can't open script")
 
 	}
@@ -908,7 +905,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 			return errors.New("JobRunViaSSH Setup env variables via SSH %s" + err.Error())
 		}*/
 
-	buf2 := strings.NewReader("sudo su - root\nexport MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\"\n")
+	buf2 := strings.NewReader("export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\"\n")
 	r := io.MultiReader(buf2, buf)
 	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Database jobs run via SSH: %s", stderr.String())

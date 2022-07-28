@@ -1385,7 +1385,7 @@ func (server *ServerMonitor) Shutdown() error {
 		return errors.New("No database connection pool")
 	}
 	cmd := "SHUTDOWN"
-	if server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 4 {
+	if server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 4 && server.IsMaster() {
 		cmd = "SHUTDOWN WAIT FOR ALL SLAVES"
 	}
 	_, err := server.Conn.Exec(cmd)

@@ -432,6 +432,8 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.OnPremiseSSHPrivateKey, "onpremise-ssh-private-key", "", "Private key for ssh if none use the user HOME directory")
 	monitorCmd.Flags().IntVar(&conf.OnPremiseSSHPort, "onpremise-ssh-port", 22, "Connect to host via SSH using ssh port")
 	monitorCmd.Flags().StringVar(&conf.OnPremiseSSHCredential, "onpremise-ssh-credential", "root:", "User:password for ssh if no password using current user private key")
+	monitorCmd.Flags().StringVar(&conf.OnPremiseSSHStartDbScript, "onpremise-ssh-start-db-script", "", "Run via ssh a custom script to start database")
+	monitorCmd.Flags().StringVar(&conf.OnPremiseSSHStartProxyScript, "onpremise-ssh-start-proxy-script", "", "Run via ssh a custom script to start proxy")
 	if WithProvisioning == "ON" {
 		monitorCmd.Flags().StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		monitorCmd.Flags().StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")

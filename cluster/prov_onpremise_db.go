@@ -143,21 +143,8 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 		return err
 	}
 	defer client.Close()
-	//	err = cluster.OnPremiseSetEnv(client, server)
 
-	//if err != nil {
-	//	server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database failed in env setup : %s", err)
-	//	return err
-	//	}
-	dbtype := "mariadb"
-
-	cmd := cluster.Conf.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/start"
-	if cluster.Configurator.HaveDBTag("rpm") {
-		cmd = cluster.Conf.HttpRoot + "/static/configurator/onpremise/repository/redhat/" + dbtype + "/start"
-	}
-	if cluster.Configurator.HaveDBTag("package") {
-		cmd = cluster.Conf.HttpRoot + "/static/configurator/onpremise/package/linux/" + dbtype + "/start"
-	}
+	cmd := cluster.Configurator.GetSshStartDBScript()
 
 	filerc, err := os.Open(cmd)
 	if err != nil {
@@ -174,7 +161,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
 		adminpassword = user.Password
 	}
-	buf2 := strings.NewReader("sudo su - root\nexport MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"\n")
+	buf2 := strings.NewReader("export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"\n")
 	r := io.MultiReader(buf2, buf)
 
 	var (
@@ -186,7 +173,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 	}
 	out := stdout.String()
 
-	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start scipt: %s ,out: %s ,err: %s", cmd, out, stderr.String())
+	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start script: %s ,out: %s ,err: %s", cmd, out, stderr.String())
 	/*	out, err := client.Cmd(cmd).SmartOutput()
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
