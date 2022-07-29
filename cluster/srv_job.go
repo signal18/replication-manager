@@ -376,7 +376,11 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 func (server *ServerMonitor) JobReseedMyLoader() {
 
 	threads := strconv.Itoa(server.ClusterGroup.Conf.BackupLogicalLoadThreads)
-	dumpCmd := exec.Command(server.ClusterGroup.GetMyLoaderPath(), "--overwrite-tables", "--directory="+server.ClusterGroup.master.GetMasterBackupDirectory(), "--verbose=3", "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+
+	myargs := strings.Split(strings.ReplaceAll(server.ClusterGroup.Conf.BackupMyLoaderOptions, "  ", " "), " ")
+	myargs = append(myargs, "--directory="+server.ClusterGroup.master.GetMasterBackupDirectory(), "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+	dumpCmd := exec.Command(server.ClusterGroup.GetMyLoaderPath(), myargs...)
+
 	server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
 
 	stdoutIn, _ := dumpCmd.StdoutPipe()
@@ -664,9 +668,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		}
 
 		dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+server.ClusterGroup.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
-
 		dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser /*"--log-error="+server.GetMyBackupDirectory()+"dump_error.log"*/)
-
 		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), dumpargs...)
 
 		server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", -1))
@@ -738,27 +740,11 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		//  --no-schemas     --regex '^(?!(mysql))'
 
 		threads := strconv.Itoa(server.ClusterGroup.Conf.BackupLogicalDumpThreads)
-		dumpCmd := exec.Command(server.ClusterGroup.GetMyDumperPath(), "--outputdir="+server.GetMyBackupDirectory(), "--chunk-filesize=1000", "--compress", "--less-locking", "--verbose=3", "--triggers", "--routines", "--events", "--trx-consistency-only", "--kill-long-queries", "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+		myargs := strings.Split(strings.ReplaceAll(server.ClusterGroup.Conf.BackupMyLoaderOptions, "  ", " "), " ")
+		myargs = append(myargs, "--outputdir="+server.GetMyBackupDirectory(), "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+		dumpCmd := exec.Command(server.ClusterGroup.GetMyDumperPath(), myargs...)
+
 		server.ClusterGroup.LogPrintf(LvlInfo, "%s", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
-		/*	pr, pw := io.Pipe()
-			defer pw.Close()
-
-			// tell the command to write to our pipe
-
-					dumpCmd.Stdout = pw
-					dumpCmd.Stderr = pw
-
-				buf := new(bytes.Buffer)
-				go func() {
-					defer pr.Close()
-					// copy the data written to the PipeReader via the cmd to stdout
-					if _, err := io.Copy(buf, pr); err != nil {
-						server.ClusterGroup.LogPrintf(LvlErr, "MyDumper: %s", err)
-					}
-					server.ClusterGroup.LogPrintf(LvlInfo, "%s", buf.String())
-				}()
-
-		*/
 		stdoutIn, _ := dumpCmd.StdoutPipe()
 		stderrIn, _ := dumpCmd.StderrPipe()
 		dumpCmd.Start()
@@ -884,7 +870,11 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 		stdout bytes.Buffer
 		stderr bytes.Buffer
 	)
-	filerc, err2 := os.Open(server.Datadir + "/init/init/dbjobs_new")
+	scriptpath := server.Datadir + "/init/init/dbjobs_new"
+	if server.GetCluster().GetConf().OnPremiseSSHDbJobScript == "" {
+		scriptpath = server.GetCluster().GetConf().OnPremiseSSHDbJobScript
+	}
+	filerc, err2 := os.Open(scriptpath)
 	if err2 != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err2)
 		return errors.New("Cancel dbjob can't open script")
@@ -893,20 +883,10 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	defer filerc.Close()
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(filerc)
-	/*
-		adminuser := "admin"
-			adminpassword := "repman"
-		if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
-			adminpassword = user.Password
-		}
-		_, err = client.Cmd("export MYSQL_ROOT_PASSWORD=" + server.Pass).Cmd("export REPLICATION_MANAGER_URL=" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort).Cmd("export REPLICATION_MANAGER_USER=" + adminuser).Cmd("export REPLICATION_MANAGER_PASSWORD=" + adminpassword).Cmd("export REPLICATION_MANAGER_HOST_NAME=" + server.Host).Cmd("export REPLICATION_MANAGER_HOST_PORT=" + server.Port).Cmd("export REPLICATION_MANAGER_CLUSTER_NAME=" +
-		server.ClusterGroup.Name).SmartOutput()
-		if err != nil {
-			return errors.New("JobRunViaSSH Setup env variables via SSH %s" + err.Error())
-		}*/
 
-	buf2 := strings.NewReader("export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\"\n")
+	buf2 := strings.NewReader(server.GetSshEnv())
 	r := io.MultiReader(buf2, buf)
+
 	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Database jobs run via SSH: %s", stderr.String())
 	}

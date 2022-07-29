@@ -98,19 +98,19 @@ func (cluster *Cluster) OnPremiseStopDatabaseService(server *ServerMonitor) erro
 }
 
 func (cluster *Cluster) OnPremiseSetEnv(client *sshclient.Client, server *ServerMonitor) error {
-	adminuser := "admin"
-	adminpassword := "repman"
 
-	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
-		adminpassword = user.Password
-	}
-	buf := strings.NewReader("export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"")
-	/*	REPLICATION_MANAGER_USER
-		REPLICATION_MANAGER_PASSWORD
-		REPLICATION_MANAGER_URL
-		REPLICATION_MANAGER_CLUSTER_NAME
-		REPLICATION_MANAGER_HOST_NAME
-		REPLICATION_MANAGER_HOST_PORT  */
+	buf := strings.NewReader(server.GetSshEnv())
+	/*
+		  REPLICATION_MANAGER_USER
+			REPLICATION_MANAGER_PASSWORD
+			REPLICATION_MANAGER_URL
+			REPLICATION_MANAGER_CLUSTER_NAME
+			REPLICATION_MANAGER_HOST_NAME
+			REPLICATION_MANAGER_HOST_USER
+			REPLICATION_MANAGER_HOST_PASSWORD
+			REPLICATION_MANAGER_HOST_PORT
+
+	*/
 	var (
 		stdout bytes.Buffer
 		stderr bytes.Buffer
@@ -121,15 +121,6 @@ func (cluster *Cluster) OnPremiseSetEnv(client *sshclient.Client, server *Server
 		return err
 	}
 	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start database install secret env: %s", stdout.String())
-
-	/*out := stdout.String()
-	out, err := client.Cmd("export MYSQL_ROOT_PASSWORD=" + server.Pass).Cmd("export REPLICATION_MANAGER_URL=https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort).Cmd("export REPLICATION_MANAGER_USER=" + adminuser).Cmd("export REPLICATION_MANAGER_PASSWORD=" + adminpassword).Cmd("export REPLICATION_MANAGER_HOST_NAME=" + server.Host).Cmd("export REPLICATION_MANAGER_HOST_PORT=" + server.Port).Cmd("export REPLICATION_MANAGER_CLUSTER_NAME=" + server.ClusterGroup.Name).SmartOutput()
-	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
-		return err
-		server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start database install secret env: %s", string(out))
-
-	}*/
 
 	return nil
 }
@@ -156,12 +147,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(filerc)
 
-	adminuser := "admin"
-	adminpassword := "repman"
-	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
-		adminpassword = user.Password
-	}
-	buf2 := strings.NewReader("export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"\n")
+	buf2 := strings.NewReader(server.GetSshEnv())
 	r := io.MultiReader(buf2, buf)
 
 	var (
@@ -174,12 +160,6 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 	out := stdout.String()
 
 	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start script: %s ,out: %s ,err: %s", cmd, out, stderr.String())
-	/*	out, err := client.Cmd(cmd).SmartOutput()
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
-			return err
-		}
 
-	*/
 	return nil
 }
