@@ -248,7 +248,15 @@ func (s *ReplicationManager) getClusterAndUser(ctx context.Context, req v3.Conta
 	if !ok {
 		return cluster.APIUser{}, nil, fmt.Errorf("metadata missing")
 	}
-	log.Info("md", md)
+
+	// if a username/password was provided via the gRPC call we don't have to check JWT
+	if loginCreds := v3.CredentialsFromContext(ctx); loginCreds != nil {
+		user, err := mycluster.GetAPIUser(loginCreds.Username, loginCreds.Password)
+		if err != nil {
+			return cluster.APIUser{}, nil, err
+		}
+		return user, mycluster, nil
+	}
 
 	auth := md.Get("authorization")
 	if len(auth) == 0 {
