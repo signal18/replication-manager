@@ -158,9 +158,6 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.LogPrintf(LvlDbg, "master_log_file=%s", ms.MasterLogFile.String)
 	cluster.LogPrintf(LvlDbg, "master_log_pos=%s", ms.ReadMasterLogPos.String)
 	cluster.LogPrintf(LvlDbg, "Candidate semisync %t", cluster.master.SemiSyncSlaveStatus)
-	crash := new(Crash)
-	crash.URL = cluster.oldMaster.URL
-	crash.ElectedMasterURL = cluster.master.URL
 	crash.FailoverMasterLogFile = ms.MasterLogFile.String
 	crash.FailoverMasterLogPos = ms.ReadMasterLogPos.String
 	crash.NewMasterLogFile = cluster.master.BinaryLogFile
@@ -1191,9 +1188,6 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 			cluster.LogPrintf(LvlErr, "Error while reading relay logs on candidate: %s", err)
 		}
 
-		crash := new(Crash)
-		crash.URL = cluster.oldMaster.URL
-		crash.ElectedMasterURL = cluster.master.URL
 		cluster.LogPrintf(LvlInfo, "Save replication status before electing")
 		ms, err := cluster.master.GetSlaveStatus(cluster.master.ReplicationSourceName)
 		if err != nil {

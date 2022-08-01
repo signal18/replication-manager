@@ -31,6 +31,26 @@ func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {
 	return server.FullProcessList
 }
 
+func (server *ServerMonitor) GetSshEnv() string {
+	/*
+		REPLICATION_MANAGER_USER
+		REPLICATION_MANAGER_PASSWORD
+		REPLICATION_MANAGER_URL
+		REPLICATION_MANAGER_CLUSTER_NAME
+		REPLICATION_MANAGER_HOST_NAME
+		REPLICATION_MANAGER_HOST_USER
+		REPLICATION_MANAGER_HOST_PASSWORD
+		REPLICATION_MANAGER_HOST_PORT
+
+	*/
+	adminuser := "admin"
+	adminpassword := "repman"
+	if user, ok := server.ClusterGroup.APIUsers[adminuser]; ok {
+		adminpassword = user.Password
+	}
+	return "export REPLICATION_MANAGER_HOST_USER=\"" + server.User + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + server.Pass + "\";export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"\n"
+}
+
 func (server *ServerMonitor) GetUniversalGtidServerID() uint64 {
 
 	if server.IsMariaDB() {
