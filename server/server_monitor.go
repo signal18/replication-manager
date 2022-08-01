@@ -175,6 +175,9 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.SlackChannel, "alert-slack-channel", "#support", "Slack channel to alert")
 	monitorCmd.Flags().StringVar(&conf.SlackUser, "alert-slack-user", "", "Slack user for alert")
 
+	monitorCmd.Flags().StringVar(&conf.PushoverAppToken, "alert-pushover-app-token", "", "Pushover App Token for alerts")
+	monitorCmd.Flags().StringVar(&conf.PushoverUserToken, "alert-pushover-user-token", "", "Pushover User Token for alerts")
+
 	monitorCmd.Flags().BoolVar(&conf.RegistryConsul, "registry-consul", false, "Register write and read SRV DNS to consul")
 	monitorCmd.Flags().StringVar(&conf.RegistryHosts, "registry-servers", "127.0.0.1", "Comma-separated list of registry addresses")
 
