@@ -41,6 +41,7 @@ import (
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 )
@@ -500,6 +501,11 @@ func (repman *ReplicationManager) Run() error {
 			Username:       repman.Conf.SlackUser,
 			Timeout:        5 * time.Second, // request timeout for calling slack api
 		})
+	}
+	if repman.Conf.PushoverAppToken != "" && repman.Conf.PushoverUserToken != "" {
+		log.AddHook(
+			pushover.NewHook(repman.Conf.PushoverAppToken, repman.Conf.PushoverUserToken),
+		)
 	}
 	if repman.Conf.LogLevel > 1 {
 		log.SetLevel(log.DebugLevel)

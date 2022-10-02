@@ -207,6 +207,8 @@ type Config struct {
 	SlackURL                                  string `mapstructure:"alert-slack-url" toml:"alert-slack-url" json:"alertSlackUrl"`
 	SlackChannel                              string `mapstructure:"alert-slack-channel" toml:"alert-slack-channel" json:"alertSlackChannel"`
 	SlackUser                                 string `mapstructure:"alert-slack-user" toml:"alert-slack-user" json:"alertSlackUser"`
+	PushoverAppToken                          string `mapstructure:"alert-pushover-app-token" toml:"alert-pushover-app-token" json:"alertPushoverAppToken"`
+	PushoverUserToken                         string `mapstructure:"alert-pushover-user-token" toml:"alert-pushover-user-token" json:"alertPushoverUserToken"`
 	Heartbeat                                 bool   `mapstructure:"heartbeat-table" toml:"heartbeat-table" json:"heartbeatTable"`
 	ExtProxyOn                                bool   `mapstructure:"extproxy" toml:"extproxy" json:"extproxy"`
 	ExtProxyVIP                               string `mapstructure:"extproxy-address" toml:"extproxy-address" json:"extproxyAddress"`
