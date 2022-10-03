@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 
 	jwt "github.com/dgrijalva/jwt-go"
@@ -369,7 +370,7 @@ func grpcHandlerFunc(s *ReplicationManager, otherHandler http.Handler, legacyHan
 	})
 }
 
-func (s *ReplicationManager) GetCluster(ctx context.Context, in *v3.Cluster) (*structpb.Struct, error) {
+func (s *ReplicationManager) GetCluster(ctx context.Context, in *v3.Cluster) (*v3.Cluster, error) {
 	user, mycluster, err := s.getClusterAndUser(ctx, in)
 	if err != nil {
 		return nil, err
@@ -380,18 +381,37 @@ func (s *ReplicationManager) GetCluster(ctx context.Context, in *v3.Cluster) (*s
 	}
 
 	// TODO: note we are not scrubbing the passwords here
-	b, err := json.Marshal(mycluster)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "could not marshal cluster")
+	return mycluster.ToProtoCluster(), nil
+}
+
+func (s *ReplicationManager) ListClusters(in *emptypb.Empty, stream v3.ClusterService_ListClustersServer) error {
+	var clusters []*cluster.Cluster
+
+	for _, c := range s.Clusters {
+		user, mycluster, err := s.getClusterAndUser(stream.Context(), &v3.Cluster{
+			Name: c.Name,
+		})
+
+		if err != nil {
+			continue
+		}
+
+		if err := user.Granted(config.GrantClusterGrant); err != nil {
+			continue
+		}
+
+		clusters = append(clusters, mycluster)
 	}
 
-	out := &structpb.Struct{}
-	err = protojson.Unmarshal(b, out)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "could not unmarshal json config to struct")
+	sort.Sort(cluster.ClusterSorter(clusters))
+
+	for _, c := range clusters {
+		if err := stream.Send(c.ToProtoCluster()); err != nil {
+			return err
+		}
 	}
 
-	return out, nil
+	return nil
 }
 
 // ClusterStatus is a public endpoint so it doesn't need to verify a user
@@ -561,7 +581,7 @@ func (s *ReplicationManager) GetShards(in *v3.Cluster, stream v3.ClusterService_
 	}
 
 	for _, c := range mycluster.ShardProxyGetShardClusters() {
-		stream.Send(cluster.ClusterToProtoCluster(c))
+		stream.Send(c.ToProtoCluster())
 	}
 
 	return nil
@@ -767,6 +787,7 @@ func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stre
 	if in.Retrieve == v3.TopologyRetrieval_MASTER {
 		m := mycluster.GetMaster()
 		if m == nil {
+			// TODO: decide if we want to return an error or return nil here
 			return v3.NewErrorResource(codes.InvalidArgument, v3.ErrClusterMasterNotSet, "cluster", in.Cluster.Name).Err()
 		}
 

@@ -33,6 +33,8 @@ import (
 	logsqlerr "github.com/sirupsen/logrus"
 	logsqlgen "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // A Clusters is a collection of Cluster objects
@@ -175,7 +177,7 @@ type Cluster struct {
 	crcTable *crc64.Table
 }
 
-func ClusterToProtoCluster(c *Cluster) *v3.Cluster {
+func (c *Cluster) ToProtoCluster() *v3.Cluster {
 	out := &v3.Cluster{
 		Name:                          c.Name,
 		Tenant:                        c.Tenant,
@@ -224,6 +226,15 @@ func ClusterToProtoCluster(c *Cluster) *v3.Cluster {
 		FsType:                        c.FSType,
 		DiskType:                      c.DiskType,
 		VmType:                        c.VMType,
+	}
+
+	b, err := json.Marshal(c.Conf)
+	if err == nil {
+		conf := &structpb.Struct{}
+		err = protojson.Unmarshal(b, conf)
+		if err == nil {
+			out.Conf = conf
+		}
 	}
 
 	return out

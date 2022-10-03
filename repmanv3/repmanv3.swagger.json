@@ -22,6 +22,37 @@
     "application/json"
   ],
   "paths": {
+    "/v3/clusters": {
+      "get": {
+        "operationId": "ClusterService_ListClusters",
+        "responses": {
+          "200": {
+            "description": "A successful response.(streaming responses)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "result": {
+                  "$ref": "#/definitions/v3Cluster"
+                },
+                "error": {
+                  "$ref": "#/definitions/googlerpcStatus"
+                }
+              },
+              "title": "Stream result of v3Cluster"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/googlerpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "ClusterService"
+        ]
+      }
+    },
     "/v3/clusters/actions/{action}/{cluster.name}": {
       "get": {
         "operationId": "ClusterService_PerformClusterAction",
@@ -7831,7 +7862,7 @@
           "200": {
             "description": "A successful response.",
             "schema": {
-              "type": "object"
+              "$ref": "#/definitions/v3Cluster"
             }
           },
           "default": {
@@ -11263,12 +11294,15 @@
             "$ref": "#/definitions/ClusterCrash"
           }
         },
+        "config": {
+          "type": "object"
+        },
         "monitorType": {
           "type": "object",
           "additionalProperties": {
             "type": "string"
           },
-          "title": "config.Config Conf = 43 [json_name=\"config\"];\nconfigurator.Configurator Configurator = 44 [json_name=\"configurator\"];\n[]VariableDiff DiffVariables = 45 [json_name=\"diffVariables\"];\ns18log.HttpLog Log = 46 [json_name=\"log\"];\nmap[string]*JobResult JobResults = 47 [json_name=\"jobResults\"];\ns18log.HttpLog SQLGeneralLog = 48 [json_name=\"sqlGeneralLog\"];\ns18log.HttpLog SQLErrorLog = 49 [json_name=\"sqlErrorLog\"];"
+          "title": "configurator.Configurator Configurator = 44 [json_name=\"configurator\"];\n[]VariableDiff DiffVariables = 45 [json_name=\"diffVariables\"];\ns18log.HttpLog Log = 46 [json_name=\"log\"];\nmap[string]*JobResult JobResults = 47 [json_name=\"jobResults\"];\ns18log.HttpLog SQLGeneralLog = 48 [json_name=\"sqlGeneralLog\"];\ns18log.HttpLog SQLErrorLog = 49 [json_name=\"sqlErrorLog\"];"
         },
         "topologyType": {
           "type": "object",

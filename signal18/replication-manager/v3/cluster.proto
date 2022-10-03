@@ -61,10 +61,17 @@ service DatabasePublicService {
 }
 
 service ClusterService {
-  rpc GetCluster(Cluster) returns (google.protobuf.Struct) {
+  rpc GetCluster(Cluster) returns (Cluster) {
     // replaces /api/clusters/{clusterName}
     option (google.api.http) = {
       get : "/v3/clusters/{name}"
+    };
+  }
+
+  rpc ListClusters(google.protobuf.Empty) returns (stream Cluster) {
+    // replaces /api/clusters
+    option (google.api.http) = {
+      get : "/v3/clusters"
     };
   }
 

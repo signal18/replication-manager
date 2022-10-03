@@ -32,6 +32,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/ssh/terminal"
+
+	v3 "github.com/signal18/replication-manager/repmanv3"
 )
 
 var (
@@ -77,6 +79,8 @@ var (
 	cliConfirm                   string
 	cfgGroup                     string
 	memprofile                   string
+
+	v3Config *v3.ClientConfig
 )
 
 type RequetParam struct {
@@ -156,6 +160,20 @@ func cliInit(needcluster bool) {
 	if err != nil {
 		log.WithError(err).Fatal()
 		return
+	}
+
+	// the legacy code has already received all information we need
+	v3Config = &v3.ClientConfig{
+		Address: cliHost + ":" + cliPort,
+		TLS:     true,
+		Auth: &v3.LoginCreds{
+			Username: cliUser,
+			Password: cliPassword,
+		},
+	}
+
+	if cliNoCheckCert {
+		v3Config.InsecureSkipVerify = true
 	}
 }
 

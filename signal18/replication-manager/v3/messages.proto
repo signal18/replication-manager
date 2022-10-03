@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package signal18.replication_manager.v3;
 
+import "google/protobuf/struct.proto";
 import "gtid.proto";
 
 option go_package = "github.com/signal18/replication-manager;repmanv3";
@@ -73,7 +74,7 @@ message Cluster {
     string elected_master_url = 8 [ json_name = "ElectedMasterURL" ];
   }
   repeated Crash crashes = 42 [ json_name = "dbServersCrashes" ];
-  // config.Config Conf = 43 [json_name="config"];
+  google.protobuf.Struct conf = 43 [ json_name = "config" ];
   // configurator.Configurator Configurator = 44 [json_name="configurator"];
   // []VariableDiff DiffVariables = 45 [json_name="diffVariables"];
   // s18log.HttpLog Log = 46 [json_name="log"];
