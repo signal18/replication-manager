@@ -61,18 +61,6 @@ message Cluster {
   int32 waiting_rejoin = 39 [ json_name = "waitingRejoin" ];
   int32 waiting_switchover = 40 [ json_name = "waitingSwitchover" ];
   int32 waiting_failover = 41 [ json_name = "waitingFailover" ];
-  message Crash {
-    string url = 1 [ json_name = "URL" ];
-    string failover_master_log_file = 2 [ json_name = "FailoverMasterLogFile" ];
-    string failover_master_log_pos = 3 [ json_name = "FailoverMasterLogPos" ];
-    string new_master_log_file = 4 [ json_name = "NewMasterLogFile" ];
-    string new_master_log_pos = 5 [ json_name = "NewMasterLogPos" ];
-    bool failover_semi_sync_slave_status = 6
-        [ json_name = "FailoverSemiSyncSlaveStatus" ];
-    repeated signal18.replication_manager.v3.Gtid failover_io_gtids = 7
-        [ json_name = "FailoverIOGtid" ];
-    string elected_master_url = 8 [ json_name = "ElectedMasterURL" ];
-  }
   repeated Crash crashes = 42 [ json_name = "dbServersCrashes" ];
   google.protobuf.Struct conf = 43 [ json_name = "config" ];
   // configurator.Configurator Configurator = 44 [json_name="configurator"];
@@ -89,6 +77,19 @@ message Cluster {
   // []Agent Agents = 55 [json_name="agents"];
   // []state.Sla SLAHistory = 56 [json_name="slaHistory"];
   // map[string]APIUser APIUsers = 57 [json_name="apiUsers"];
+}
+
+message Crash {
+  string url = 1 [ json_name = "URL" ];
+  string failover_master_log_file = 2 [ json_name = "FailoverMasterLogFile" ];
+  string failover_master_log_pos = 3 [ json_name = "FailoverMasterLogPos" ];
+  string new_master_log_file = 4 [ json_name = "NewMasterLogFile" ];
+  string new_master_log_pos = 5 [ json_name = "NewMasterLogPos" ];
+  bool failover_semi_sync_slave_status = 6
+      [ json_name = "FailoverSemiSyncSlaveStatus" ];
+  repeated signal18.replication_manager.v3.Gtid failover_io_gtids = 7
+      [ json_name = "FailoverIOGtid" ];
+  string elected_master_url = 8 [ json_name = "ElectedMasterURL" ];
 }
 
 message StateMessage {
@@ -381,7 +382,6 @@ message TopologyRetrieval {
   Cluster cluster = 1;
   enum Retrieval {
     RETRIEVAL_UNSPECIFIED = 0;
-    CRASHES = 2;
     LOGS = 3;
     MASTER = 4;
     PROXIES = 5;

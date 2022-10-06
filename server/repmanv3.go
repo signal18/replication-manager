@@ -784,6 +784,26 @@ func (s *ReplicationManager) RetrieveAlerts(in *v3.Cluster, stream v3.ClusterSer
 	return nil
 }
 
+func (s *ReplicationManager) RetrieveCrashes(in *v3.Cluster, stream v3.ClusterService_RetrieveCrashesServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in)
+	if err != nil {
+		return err
+	}
+
+	// TODO: introduce new Grants for this type of endpoint
+	if err = user.Granted(config.GrantClusterSettings); err != nil {
+		return err
+	}
+
+	for _, crash := range mycluster.GetCrashes() {
+		if err := stream.Send(crash); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stream v3.ClusterService_RetrieveFromTopologyServer) error {
 	user, mycluster, err := s.getClusterAndUser(stream.Context(), in.Cluster)
 	if err != nil {
@@ -797,23 +817,6 @@ func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stre
 
 	if in.Retrieve == v3.TopologyRetrieval_RETRIEVAL_UNSPECIFIED {
 		return v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "retrieve", "").Err()
-	}
-
-	if in.Retrieve == v3.TopologyRetrieval_CRASHES {
-		cr := mycluster.GetCrashes()
-		if cr == nil {
-			return nil
-		}
-		data, err := json.Marshal(cr)
-		if err != nil {
-			return status.Error(codes.Internal, "could not marshal crashes list")
-		}
-		var crashes []*v3.Cluster_Crash
-		err = json.Unmarshal(data, &crashes)
-		if err != nil {
-			return status.Error(codes.Internal, "could not unmarshal crashes list")
-		}
-		return marshalAndSend(crashes, stream.Send)
 	}
 
 	if in.Retrieve == v3.TopologyRetrieval_LOGS {

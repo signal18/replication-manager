@@ -31,22 +31,22 @@ import (
 // }
 
 // Collection of Cluster_Crash reports
-type CrashList []*Cluster_Crash
+type CrashList []*Crash
 
-func (crash *Cluster_Crash) GetFailoverIOGtid() (l gtid.List) {
+func (crash *Crash) GetFailoverIOGtid() (l gtid.List) {
 	for _, g := range crash.FailoverIoGtids {
 		l = append(l, *g)
 	}
 	return l
 }
 
-func (crash *Cluster_Crash) SetFailoverIOGtid(l gtid.List) {
+func (crash *Crash) SetFailoverIOGtid(l gtid.List) {
 	for _, g := range l {
 		crash.FailoverIoGtids = append(crash.FailoverIoGtids, &g)
 	}
 }
 
-func (crash *Cluster_Crash) delete(cl *CrashList) {
+func (crash *Crash) delete(cl *CrashList) {
 	lsm := *cl
 	for k, s := range lsm {
 		if crash.Url == s.Url {
@@ -59,7 +59,7 @@ func (crash *Cluster_Crash) delete(cl *CrashList) {
 	*cl = lsm
 }
 
-func (crash *Cluster_Crash) Save(path string) error {
+func (crash *Crash) Save(path string) error {
 	saveJson, _ := json.MarshalIndent(crash, "", "\t")
 	err := ioutil.WriteFile(path, saveJson, 0644)
 	if err != nil {
@@ -68,7 +68,7 @@ func (crash *Cluster_Crash) Save(path string) error {
 	return nil
 }
 
-func (crash *Cluster_Crash) Purge(path string, keep int) error {
+func (crash *Crash) Purge(path string, keep int) error {
 	drop := make(map[string]int)
 
 	files, err := ioutil.ReadDir(path)

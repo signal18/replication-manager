@@ -745,7 +745,7 @@ func (cluster *Cluster) GetClientCertificates() (map[string]string, error) {
 	return certs, nil
 }
 
-func (cluster *Cluster) getCrashFromJoiner(URL string) *v3.Cluster_Crash {
+func (cluster *Cluster) getCrashFromJoiner(URL string) *v3.Crash {
 	for _, cr := range cluster.Crashes {
 		if cr.Url == URL {
 			return cr
@@ -754,7 +754,7 @@ func (cluster *Cluster) getCrashFromJoiner(URL string) *v3.Cluster_Crash {
 	return nil
 }
 
-func (cluster *Cluster) getCrashFromMaster(URL string) *v3.Cluster_Crash {
+func (cluster *Cluster) getCrashFromMaster(URL string) *v3.Crash {
 	for _, cr := range cluster.Crashes {
 		if cr.ElectedMasterUrl == URL {
 			return cr

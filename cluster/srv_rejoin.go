@@ -183,7 +183,7 @@ func (server *ServerMonitor) ReseedMasterSST() error {
 	return nil
 }
 
-func (server *ServerMonitor) rejoinMasterSync(crash *v3.Cluster_Crash) error {
+func (server *ServerMonitor) rejoinMasterSync(crash *v3.Crash) error {
 	if server.HasGTIDReplication() {
 		server.ClusterGroup.LogPrintf("INFO", "Found same or lower GTID %s and new elected master was %s", server.CurrentGtid.Sprint(), crash.GetFailoverIOGtid().Sprint())
 	} else {
@@ -246,7 +246,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *v3.Cluster_Crash) error {
 	return err
 }
 
-func (server *ServerMonitor) rejoinMasterFlashBack(crash *v3.Cluster_Crash) error {
+func (server *ServerMonitor) rejoinMasterFlashBack(crash *v3.Crash) error {
 	realmaster := server.ClusterGroup.master
 	if server.ClusterGroup.Conf.MxsBinlogOn || server.ClusterGroup.Conf.MultiTierSlave {
 		realmaster = server.ClusterGroup.GetRelayServer()
@@ -343,7 +343,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 	return nil
 }
 
-func (server *ServerMonitor) rejoinMasterIncremental(crash *v3.Cluster_Crash) error {
+func (server *ServerMonitor) rejoinMasterIncremental(crash *v3.Crash) error {
 	if server.GetCluster().GetConf().AutorejoinForceRestore {
 		server.ClusterGroup.LogPrintf("INFO", "Cancel incremental rejoin server %s caused by force backup restore  ", server.URL)
 		return errors.New("autorejoin-force-restore is on can't just rejoin from current pos")
@@ -547,7 +547,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	return nil
 }
 
-func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *v3.Cluster_Crash) bool {
+func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *v3.Crash) bool {
 
 	if server.UsedGtidAtElection(crash) {
 
@@ -590,7 +590,7 @@ func (server *ServerMonitor) deletefiles(path string, f os.FileInfo, err error) 
 	return
 }
 
-func (server *ServerMonitor) saveBinlog(crash *v3.Cluster_Crash) error {
+func (server *ServerMonitor) saveBinlog(crash *v3.Crash) error {
 	t := time.Now()
 	backupdir := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/crash-bin-" + t.Format("20060102150405")
 	server.ClusterGroup.LogPrintf("INFO", "Rejoin old Master %s , backing up lost event to %s", crash.Url, backupdir)
@@ -599,7 +599,7 @@ func (server *ServerMonitor) saveBinlog(crash *v3.Cluster_Crash) error {
 	return nil
 
 }
-func (server *ServerMonitor) backupBinlog(crash *v3.Cluster_Crash) error {
+func (server *ServerMonitor) backupBinlog(crash *v3.Crash) error {
 
 	if _, err := os.Stat(server.ClusterGroup.GetMysqlBinlogPath()); os.IsNotExist(err) {
 		server.ClusterGroup.LogPrintf("ERROR", "mysqlbinlog does not exist %s check binary path", server.ClusterGroup.GetMysqlBinlogPath())
@@ -671,7 +671,7 @@ func (cluster *Cluster) RejoinFixRelay(slave *ServerMonitor, relay *ServerMonito
 }
 
 // UseGtid check is replication use gtid
-func (server *ServerMonitor) UsedGtidAtElection(crash *v3.Cluster_Crash) bool {
+func (server *ServerMonitor) UsedGtidAtElection(crash *v3.Crash) bool {
 	/*
 		ss, errss := server.GetSlaveStatus(server.ReplicationSourceName)
 		if errss != nil {

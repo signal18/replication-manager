@@ -138,7 +138,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// If it's a failover, wait for the SQL thread to read all relay logs.
 	// If maxsclale we should wait for relay catch via old style
 
-	crash := new(v3.Cluster_Crash)
+	crash := new(v3.Crash)
 	crash.Url = cluster.oldMaster.URL
 	crash.ElectedMasterUrl = cluster.master.URL
 
@@ -1178,7 +1178,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		// If it's a failover, wait for the SQL thread to read all relay logs.
 		// If maxsclale we should wait for relay catch via old style
 
-		crash := new(v3.Cluster_Crash)
+		crash := new(v3.Crash)
 		crash.Url = cluster.oldMaster.URL
 		crash.ElectedMasterUrl = cluster.master.URL
 

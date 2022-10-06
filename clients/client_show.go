@@ -38,7 +38,7 @@ var showCmd = &cobra.Command{
 			Servers  []cluster.ServerMonitor `json:"servers"`
 			Master   cluster.ServerMonitor   `json:"master"`
 			Slaves   []cluster.ServerMonitor `json:"slaves"`
-			Crashes  []v3.Cluster_Crash      `json:"crashes"`
+			Crashes  []v3.Crash              `json:"crashes"`
 			Alerts   cluster.Alerts          `json:"alerts"`
 		}
 		type Report struct {
@@ -97,40 +97,25 @@ var showCmd = &cobra.Command{
 				myObjects.Slaves = append(myObjects.Slaves, srv...)
 			}
 			if strings.Contains(cliShowObjects, "crashes") {
-				stream, err := client.RetrieveFromTopology(context.Background(),
-					&v3.TopologyRetrieval{
-						Cluster: &v3.Cluster{
-							Name: clusterName,
-						},
-						Retrieve: v3.TopologyRetrieval_CRASHES,
-					})
+				stream, err := client.RetrieveCrashes(context.Background(), &v3.Cluster{
+					Name: clusterName,
+				})
 
 				if err != nil {
-					log.Fatalf("Error fetching RetrieveFromTopology: %s", err)
+					log.Fatal("Error fetching RetrieveCrashes: %s", err)
 				}
 
 				for {
-					st, err := stream.Recv()
+					recv, err := stream.Recv()
 					if err == io.EOF {
 						break
 					}
 
 					if err != nil {
-						log.Fatalf("Error retrieving topology: %s", err)
+						log.Fatalf("Error receiving stream: %s", err)
 					}
 
-					buf, err := st.MarshalJSON()
-					if err != nil {
-						log.Fatalf("Error marshalling servermonitor: %s", err)
-					}
-
-					var crash v3.Cluster_Crash
-					err = protojson.Unmarshal(buf, &crash)
-					if err != nil {
-						log.Fatalf("Error unmarshalling servermonitor: %s", err)
-					}
-
-					myObjects.Crashes = append(myObjects.Crashes, crash)
+					myObjects.Crashes = append(myObjects.Crashes, *recv)
 				}
 			}
 
