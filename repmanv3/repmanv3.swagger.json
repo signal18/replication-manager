@@ -6859,7 +6859,6 @@
             "type": "string",
             "enum": [
               "RETRIEVAL_UNSPECIFIED",
-              "ALERTS",
               "CRASHES",
               "LOGS",
               "MASTER",
@@ -10767,6 +10766,302 @@
           "ClusterService"
         ]
       }
+    },
+    "/v3/clusters/{name}/topology/alerts": {
+      "get": {
+        "operationId": "ClusterService_RetrieveAlerts",
+        "responses": {
+          "200": {
+            "description": "A successful response.(streaming responses)",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "result": {
+                  "$ref": "#/definitions/v3StateMessage"
+                },
+                "error": {
+                  "$ref": "#/definitions/googlerpcStatus"
+                }
+              },
+              "title": "Stream result of v3StateMessage"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/googlerpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "tenant",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "workingDir",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "dbServers",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "proxyServers",
+            "in": "query",
+            "required": false,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "collectionFormat": "multi"
+          },
+          {
+            "name": "failoverCounter",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "failoverLastTime",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "activePassiveStatus",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "isSplitBrain",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isFailedArbitrator",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isLostMajority",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isDown",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isClusterDown",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isAllDbUp",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isFailable",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isPostgres",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isProvision",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isNeedProxyRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isNeedProxiesRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isNeedDatabasesRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isNeedDatabasesRollingRestart",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isNeedDatabasesRollingReprov",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isNeedDatabasesReprov",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isValidBackup",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isNotMonitoring",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "isCapturing",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "cleanReplication",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "topology",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "uptime",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "uptimeFailable",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "uptimeSemisync",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "monitorSpin",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "dbTableSize",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "dbIndexSize",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "connections",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "qps",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
+          },
+          {
+            "name": "haveDBTLSCert",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "haveDBTLSOldCert",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "waitingRejoin",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "waitingSwitchover",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "waitingFailover",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          }
+        ],
+        "tags": [
+          "ClusterService"
+        ]
+      }
     }
   },
   "definitions": {
@@ -10978,6 +11273,15 @@
       ],
       "default": "UNSPECIFIED"
     },
+    "StateMessageSeverity": {
+      "type": "string",
+      "enum": [
+        "UNSPECIFIED",
+        "WARNING",
+        "ERROR"
+      ],
+      "default": "UNSPECIFIED"
+    },
     "SwitchSwitchName": {
       "type": "string",
       "enum": [
@@ -11048,7 +11352,6 @@
       "type": "string",
       "enum": [
         "RETRIEVAL_UNSPECIFIED",
-        "ALERTS",
         "CRASHES",
         "LOGS",
         "MASTER",
@@ -11447,6 +11750,23 @@
         "ERRORS"
       ],
       "default": "SERVICESTATUS_UNSPECIFIED"
+    },
+    "v3StateMessage": {
+      "type": "object",
+      "properties": {
+        "severity": {
+          "$ref": "#/definitions/StateMessageSeverity"
+        },
+        "number": {
+          "type": "string"
+        },
+        "desc": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        }
+      }
     },
     "v3StatusMessage": {
       "type": "object",

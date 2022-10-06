@@ -18,6 +18,7 @@ type ClientConfig struct {
 }
 
 type Client struct {
+	ClusterPublicServiceClient
 	ClusterServiceClient
 }
 
@@ -58,6 +59,7 @@ func NewClient(ctx context.Context, conf *ClientConfig) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Could not create new connection: %s", err)
 	}
+	c.ClusterPublicServiceClient = NewClusterPublicServiceClient(conn)
 	c.ClusterServiceClient = NewClusterServiceClient(conn)
 
 	return c, nil

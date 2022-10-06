@@ -19,6 +19,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/server"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -30,7 +31,6 @@ var showCmd = &cobra.Command{
 	Short: "Print json informations",
 	Long:  `To use for support issues`,
 	Run: func(cmd *cobra.Command, args []string) {
-		//cliClusters, err = cliGetClusters()
 		cliInit(false)
 		type Objects struct {
 			Name     string
@@ -133,41 +133,41 @@ var showCmd = &cobra.Command{
 					myObjects.Crashes = append(myObjects.Crashes, crash)
 				}
 			}
+
 			if strings.Contains(cliShowObjects, "alerts") {
-				stream, err := client.RetrieveFromTopology(context.Background(),
-					&v3.TopologyRetrieval{
-						Cluster: &v3.Cluster{
-							Name: clusterName,
-						},
-						Retrieve: v3.TopologyRetrieval_ALERTS,
-					})
+				stream, err := client.RetrieveAlerts(context.Background(), &v3.Cluster{
+					Name: clusterName,
+				})
 
 				if err != nil {
-					log.Fatalf("Error fetching RetrieveFromTopology: %s", err)
+					log.Fatal("Error fetching RetrieveAlerts: %s", err)
 				}
 
 				for {
-					st, err := stream.Recv()
+					recv, err := stream.Recv()
 					if err == io.EOF {
 						break
 					}
 
 					if err != nil {
-						log.Fatalf("Error retrieving topology: %s", err)
+						log.Fatalf("Error receiving stream: %s", err)
 					}
 
-					buf, err := st.MarshalJSON()
-					if err != nil {
-						log.Fatalf("Error marshalling servermonitor: %s", err)
+					if recv.Severity == v3.StateMessage_WARNING {
+						myObjects.Alerts.Warnings = append(myObjects.Alerts.Warnings, state.StateHttp{
+							ErrNumber: recv.Number,
+							ErrFrom:   recv.From,
+							ErrDesc:   recv.Desc,
+						})
 					}
 
-					var alerts cluster.Alerts
-					err = json.Unmarshal(buf, &alerts)
-					if err != nil {
-						log.Fatalf("Error unmarshalling servermonitor: %s", err)
+					if recv.Severity == v3.StateMessage_ERROR {
+						myObjects.Alerts.Errors = append(myObjects.Alerts.Errors, state.StateHttp{
+							ErrNumber: recv.Number,
+							ErrFrom:   recv.From,
+							ErrDesc:   recv.Desc,
+						})
 					}
-
-					myObjects.Alerts = alerts
 				}
 			}
 			myReport.Clusters = append(myReport.Clusters, myObjects)

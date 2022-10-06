@@ -91,6 +91,18 @@ message Cluster {
   // map[string]APIUser APIUsers = 57 [json_name="apiUsers"];
 }
 
+message StateMessage {
+  enum Severity {
+    UNSPECIFIED = 0;
+    WARNING = 1;
+    ERROR = 2;
+  }
+  Severity severity = 1;
+  string number = 2;
+  string desc = 3;
+  string from = 4;
+}
+
 message ClusterSetting {
   Cluster cluster = 1;
   enum Action {
@@ -369,7 +381,6 @@ message TopologyRetrieval {
   Cluster cluster = 1;
   enum Retrieval {
     RETRIEVAL_UNSPECIFIED = 0;
-    ALERTS = 1;
     CRASHES = 2;
     LOGS = 3;
     MASTER = 4;

@@ -236,6 +236,7 @@ type ClusterServiceClient interface {
 	PerformClusterAction(ctx context.Context, in *ClusterAction, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	PerformClusterTest(ctx context.Context, in *ClusterTest, opts ...grpc.CallOption) (*structpb.Struct, error)
 	RetrieveFromTopology(ctx context.Context, in *TopologyRetrieval, opts ...grpc.CallOption) (ClusterService_RetrieveFromTopologyClient, error)
+	RetrieveAlerts(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_RetrieveAlertsClient, error)
 	GetClientCertificates(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*Certificate, error)
 	GetBackups(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetBackupsClient, error)
 	GetTags(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetTagsClient, error)
@@ -362,6 +363,38 @@ func (x *clusterServiceRetrieveFromTopologyClient) Recv() (*structpb.Struct, err
 	return m, nil
 }
 
+func (c *clusterServiceClient) RetrieveAlerts(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_RetrieveAlertsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[2], "/signal18.replication_manager.v3.ClusterService/RetrieveAlerts", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &clusterServiceRetrieveAlertsClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type ClusterService_RetrieveAlertsClient interface {
+	Recv() (*StateMessage, error)
+	grpc.ClientStream
+}
+
+type clusterServiceRetrieveAlertsClient struct {
+	grpc.ClientStream
+}
+
+func (x *clusterServiceRetrieveAlertsClient) Recv() (*StateMessage, error) {
+	m := new(StateMessage)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *clusterServiceClient) GetClientCertificates(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (*Certificate, error) {
 	out := new(Certificate)
 	err := c.cc.Invoke(ctx, "/signal18.replication_manager.v3.ClusterService/GetClientCertificates", in, out, opts...)
@@ -372,7 +405,7 @@ func (c *clusterServiceClient) GetClientCertificates(ctx context.Context, in *Cl
 }
 
 func (c *clusterServiceClient) GetBackups(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetBackupsClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[2], "/signal18.replication_manager.v3.ClusterService/GetBackups", opts...)
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[3], "/signal18.replication_manager.v3.ClusterService/GetBackups", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +437,7 @@ func (x *clusterServiceGetBackupsClient) Recv() (*Backup, error) {
 }
 
 func (c *clusterServiceClient) GetTags(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetTagsClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[3], "/signal18.replication_manager.v3.ClusterService/GetTags", opts...)
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[4], "/signal18.replication_manager.v3.ClusterService/GetTags", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -436,7 +469,7 @@ func (x *clusterServiceGetTagsClient) Recv() (*Tag, error) {
 }
 
 func (c *clusterServiceClient) GetShards(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetShardsClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[4], "/signal18.replication_manager.v3.ClusterService/GetShards", opts...)
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[5], "/signal18.replication_manager.v3.ClusterService/GetShards", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -468,7 +501,7 @@ func (x *clusterServiceGetShardsClient) Recv() (*Cluster, error) {
 }
 
 func (c *clusterServiceClient) GetQueryRules(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetQueryRulesClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[5], "/signal18.replication_manager.v3.ClusterService/GetQueryRules", opts...)
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[6], "/signal18.replication_manager.v3.ClusterService/GetQueryRules", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -500,7 +533,7 @@ func (x *clusterServiceGetQueryRulesClient) Recv() (*structpb.Struct, error) {
 }
 
 func (c *clusterServiceClient) GetSchema(ctx context.Context, in *Cluster, opts ...grpc.CallOption) (ClusterService_GetSchemaClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[6], "/signal18.replication_manager.v3.ClusterService/GetSchema", opts...)
+	stream, err := c.cc.NewStream(ctx, &ClusterService_ServiceDesc.Streams[7], "/signal18.replication_manager.v3.ClusterService/GetSchema", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -551,6 +584,7 @@ type ClusterServiceServer interface {
 	PerformClusterAction(context.Context, *ClusterAction) (*emptypb.Empty, error)
 	PerformClusterTest(context.Context, *ClusterTest) (*structpb.Struct, error)
 	RetrieveFromTopology(*TopologyRetrieval, ClusterService_RetrieveFromTopologyServer) error
+	RetrieveAlerts(*Cluster, ClusterService_RetrieveAlertsServer) error
 	GetClientCertificates(context.Context, *Cluster) (*Certificate, error)
 	GetBackups(*Cluster, ClusterService_GetBackupsServer) error
 	GetTags(*Cluster, ClusterService_GetTagsServer) error
@@ -585,6 +619,9 @@ func (UnimplementedClusterServiceServer) PerformClusterTest(context.Context, *Cl
 }
 func (UnimplementedClusterServiceServer) RetrieveFromTopology(*TopologyRetrieval, ClusterService_RetrieveFromTopologyServer) error {
 	return status.Errorf(codes.Unimplemented, "method RetrieveFromTopology not implemented")
+}
+func (UnimplementedClusterServiceServer) RetrieveAlerts(*Cluster, ClusterService_RetrieveAlertsServer) error {
+	return status.Errorf(codes.Unimplemented, "method RetrieveAlerts not implemented")
 }
 func (UnimplementedClusterServiceServer) GetClientCertificates(context.Context, *Cluster) (*Certificate, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetClientCertificates not implemented")
@@ -749,6 +786,27 @@ type clusterServiceRetrieveFromTopologyServer struct {
 }
 
 func (x *clusterServiceRetrieveFromTopologyServer) Send(m *structpb.Struct) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _ClusterService_RetrieveAlerts_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(Cluster)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ClusterServiceServer).RetrieveAlerts(m, &clusterServiceRetrieveAlertsServer{stream})
+}
+
+type ClusterService_RetrieveAlertsServer interface {
+	Send(*StateMessage) error
+	grpc.ServerStream
+}
+
+type clusterServiceRetrieveAlertsServer struct {
+	grpc.ServerStream
+}
+
+func (x *clusterServiceRetrieveAlertsServer) Send(m *StateMessage) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -938,6 +996,11 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "RetrieveFromTopology",
 			Handler:       _ClusterService_RetrieveFromTopology_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "RetrieveAlerts",
+			Handler:       _ClusterService_RetrieveAlerts_Handler,
 			ServerStreams: true,
 		},
 		{

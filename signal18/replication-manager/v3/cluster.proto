@@ -176,7 +176,6 @@ service ClusterService {
   rpc RetrieveFromTopology(TopologyRetrieval)
       returns (stream google.protobuf.Struct) {
     option (google.api.http) = {
-      // /api/clusters/{clusterName}/topology/alerts
       // /api/clusters/{clusterName}/topology/crashes
       // /api/clusters/{clusterName}/topology/logs
       // /api/clusters/{clusterName}/topology/master
@@ -184,6 +183,13 @@ service ClusterService {
       // /api/clusters/{clusterName}/topology/servers
       // /api/clusters/{clusterName}/topology/slaves
       get : "/v3/clusters/{cluster.name}/topology/{retrieve}"
+    };
+  }
+
+  rpc RetrieveAlerts(Cluster) returns (stream StateMessage) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/topology/alerts
+      get : "/v3/clusters/{name}/topology/alerts"
     };
   }
 

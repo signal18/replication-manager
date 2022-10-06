@@ -416,6 +416,17 @@ func (s *ReplicationManager) ListClusters(in *emptypb.Empty, stream v3.ClusterSe
 
 // ClusterStatus is a public endpoint so it doesn't need to verify a user
 func (s *ReplicationManager) ClusterStatus(ctx context.Context, in *v3.Cluster) (*v3.StatusMessage, error) {
+	if in.Name == "" {
+		if s.isStarted {
+			return &v3.StatusMessage{
+				Alive: v3.ServiceStatus_RUNNING,
+			}, nil
+		}
+		return &v3.StatusMessage{
+			Alive: v3.ServiceStatus_ERRORS,
+		}, nil
+	}
+
 	mycluster, err := s.getClusterFromFromRequest(in)
 	if err != nil {
 		return nil, err
@@ -733,6 +744,46 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	return
 }
 
+func (s *ReplicationManager) RetrieveAlerts(in *v3.Cluster, stream v3.ClusterService_RetrieveAlertsServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in)
+	if err != nil {
+		return err
+	}
+
+	// TODO: introduce new Grants for this type of endpoint
+	if err = user.Granted(config.GrantClusterSettings); err != nil {
+		return err
+	}
+
+	for _, sh := range mycluster.GetStateMachine().GetOpenErrors() {
+		msg := &v3.StateMessage{
+			Severity: v3.StateMessage_ERROR,
+			Number:   sh.ErrNumber,
+			Desc:     sh.ErrDesc,
+			From:     sh.ErrFrom,
+		}
+
+		if err := stream.Send(msg); err != nil {
+			return err
+		}
+	}
+
+	for _, sh := range mycluster.GetStateMachine().GetOpenWarnings() {
+		msg := &v3.StateMessage{
+			Severity: v3.StateMessage_WARNING,
+			Number:   sh.ErrNumber,
+			Desc:     sh.ErrDesc,
+			From:     sh.ErrFrom,
+		}
+
+		if err := stream.Send(msg); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stream v3.ClusterService_RetrieveFromTopologyServer) error {
 	user, mycluster, err := s.getClusterAndUser(stream.Context(), in.Cluster)
 	if err != nil {
@@ -746,14 +797,6 @@ func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stre
 
 	if in.Retrieve == v3.TopologyRetrieval_RETRIEVAL_UNSPECIFIED {
 		return v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "retrieve", "").Err()
-	}
-
-	if in.Retrieve == v3.TopologyRetrieval_ALERTS {
-		a := new(cluster.Alerts)
-		a.Errors = mycluster.GetStateMachine().GetOpenErrors()
-		a.Warnings = mycluster.GetStateMachine().GetOpenWarnings()
-
-		return marshalAndSend(a, stream.Send)
 	}
 
 	if in.Retrieve == v3.TopologyRetrieval_CRASHES {
