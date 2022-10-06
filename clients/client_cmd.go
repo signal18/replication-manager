@@ -304,6 +304,7 @@ func init() {
 
 	rootClientCmd.AddCommand(statusCmd)
 	initStatusFlags(statusCmd)
+	initClusterFlags(statusCmd)
 
 	rootClientCmd.AddCommand(bootstrapCmd)
 	initBootstrapFlags(bootstrapCmd)
