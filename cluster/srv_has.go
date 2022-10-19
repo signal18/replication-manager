@@ -17,6 +17,39 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
+func (server *ServerMonitor) IsSemiSyncMaster() bool {
+	return server.Status["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" || server.Status["RPL_SEMI_SYNC_SOURCE_STATUS"] == "ON"
+}
+
+func (server *ServerMonitor) IsSemiSyncReplica() bool {
+	return server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "ON" || server.Status["RPL_SEMI_SYNC_REPLICA_STATUS"] == "ON"
+}
+
+func (server *ServerMonitor) HasSemiSync() bool {
+	return server.IsSemiSyncReplica() || server.IsSemiSyncMaster()
+}
+
+func (server *ServerMonitor) HasWsrepSync() bool {
+	if server.Status["WSREP_LOCAL_STATE"] == "4" {
+		return true
+	}
+	return false
+}
+
+func (server *ServerMonitor) HasWsrepDonor() bool {
+	if server.Status["WSREP_LOCAL_STATE"] == "2" {
+		return true
+	}
+	return false
+}
+
+func (server *ServerMonitor) HasWsrepPrimary() bool {
+	if server.Status["WSREP_CLUSTER_STATUS"] == "PRIMARY" {
+		return true
+	}
+	return false
+}
+
 func (server *ServerMonitor) IsInDelayedHost() bool {
 	delayedhosts := strings.Split(server.GetClusterConfig().HostsDelayed, ",")
 	for _, url := range delayedhosts {
