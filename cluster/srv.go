@@ -911,6 +911,12 @@ func (server *ServerMonitor) freeze() bool {
 	logs, err = dbhelper.FlushBinaryLogs(server.Conn)
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Could not flush binary logs on %s", server.URL)
 
+	if server.ClusterGroup.Conf.FailoverSemiSyncState {
+		server.ClusterGroup.LogPrintf("INFO", "Set semisync replica and disable semisync leader %s", server.URL)
+		logs, err := server.SetSemiSyncReplica()
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set semisync replica and disable semisync  %s, %s", server.URL, err)
+	}
+
 	return true
 }
 

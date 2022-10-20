@@ -277,7 +277,9 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 	}
 
 	server.ClusterGroup.LogPrintf(LvlInfo, "Receive reseed logical backup %s request for server: %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL)
-	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
+	if server.ClusterGroup.Conf.BackupLoadScript != "" {
+		go server.JobReseedBackupScript()
+	} else if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
 		go server.JobReseedMyLoader()
 	}
 	return jobid, err
@@ -415,6 +417,34 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 			server.StartSlave()
 		}
 	}
+
+}
+
+func (server *ServerMonitor) JobReseedBackupScript() {
+
+	cmd := exec.Command(server.ClusterGroup.Conf.BackupLoadScript, misc.Unbracket(server.Host), misc.Unbracket(server.ClusterGroup.master.Host))
+
+	server.ClusterGroup.LogPrintf(LvlInfo, "Command backup load script: %s", strings.Replace(cmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
+
+	stdoutIn, _ := cmd.StdoutPipe()
+	stderrIn, _ := cmd.StderrPipe()
+	cmd.Start()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stdoutIn)
+	}()
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stderrIn)
+	}()
+	wg.Wait()
+	if err := cmd.Wait(); err != nil {
+		server.ClusterGroup.LogPrintf(LvlErr, "My reload script: %s", err)
+		return
+	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Finish logical restaure from load script on %s ", server.URL)
 
 }
 
@@ -615,7 +645,31 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		server.ClusterGroup.LogSQL("BACKUP BLOCK_DDL", err, server.URL, "JobBackupLogical", LvlErr, "Failed SQL for server %s: %s ", server.URL, err)
 		server.ClusterGroup.LogPrintf(LvlInfo, "Blocking DDL via BACKUP STAGE")
 	}
-
+	if server.ClusterGroup.Conf.BackupSaveScript != "" {
+		scriptCmd := exec.Command(server.ClusterGroup.Conf.BackupSaveScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s", strings.Replace(scriptCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
+		stdoutIn, _ := scriptCmd.StdoutPipe()
+		stderrIn, _ := scriptCmd.StderrPipe()
+		scriptCmd.Start()
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			server.copyLogs(stdoutIn)
+		}()
+		go func() {
+			defer wg.Done()
+			server.copyLogs(stderrIn)
+		}()
+		wg.Wait()
+		if err := scriptCmd.Wait(); err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "Backup script error: %s", err)
+			return err
+		} else {
+			server.SetBackupLogicalCookie()
+		}
+		return nil
+	}
 	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeRiver {
 		cfg := new(river.Config)
 		cfg.MyHost = server.URL
@@ -736,6 +790,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		server.ClusterGroup.LogPrintf(LvlErr, "Dumpling %s", err)
 
 	}
+
 	if server.ClusterGroup.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
 		//  --no-schemas     --regex '^(?!(mysql))'
 
