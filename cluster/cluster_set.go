@@ -861,7 +861,7 @@ func (cluster *Cluster) SetMonitoringAddress(value string) error {
 }
 
 func (cluster *Cluster) SetSchedulerDbServersLogicalBackupCron(value string) error {
-	cluster.Conf.BackupPhysicalCron = value
+	cluster.Conf.BackupLogicalCron = value
 	cluster.SetSchedulerBackupLogical()
 	return nil
 }

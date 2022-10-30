@@ -219,6 +219,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			logs, err := cluster.master.StopSlave()
 			cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlErr, "Failed stopping slave on new master %s %s", cluster.master.URL, err)
 		}
+		if cluster.master.ClusterGroup.Conf.FailoverSemiSyncState {
+			cluster.LogPrintf("INFO", "Enable semisync leader and disable semisync replica on %s", cluster.master.URL)
+			logs, err := cluster.master.SetSemiSyncLeader()
+			cluster.LogSQL(logs, err, cluster.master.URL, "Rejoin", LvlErr, "Failed enable semisync leader and disable semisync replica on %s %s", cluster.master.URL, err)
+		}
 	}
 	cluster.Crashes = append(cluster.Crashes, crash)
 	t := time.Now()

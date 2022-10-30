@@ -133,6 +133,7 @@ type Config struct {
 	PreScript                                 string `mapstructure:"failover-pre-script" toml:"failover-pre-script" json:"failoverPreScript"`
 	PostScript                                string `mapstructure:"failover-post-script" toml:"failover-post-script" json:"failoverPostScript"`
 	ReadOnly                                  bool   `mapstructure:"failover-readonly-state" toml:"failover-readonly-state" json:"failoverReadOnlyState"`
+	FailoverSemiSyncState                     bool   `mapstructure:"failover-semisync-state" toml:"failover-semisync-state" json:"failoverSemisyncState"`
 	SuperReadOnly                             bool   `mapstructure:"failover-superreadonly-state" toml:"failover-superreadonly-state" json:"failoverSuperReadOnlyState"`
 	FailTime                                  int64  `mapstructure:"failover-time-limit" toml:"failover-time-limit" json:"failoverTimeLimit"`
 	FailSync                                  bool   `mapstructure:"failover-at-sync" toml:"failover-at-sync" json:"failoverAtSync"`
@@ -462,6 +463,8 @@ type Config struct {
 	BackupPhysicalCron                        string `mapstructure:"scheduler-db-servers-physical-backup-cron" toml:"scheduler-db-servers-physical-backup-cron" json:"schedulerDbServersPhysicalBackupCron"`
 	BackupDatabaseLogCron                     string `mapstructure:"scheduler-db-servers-logs-cron" toml:"scheduler-db-servers-logs-cron" json:"schedulerDbServersLogsCron"`
 	BackupDatabaseOptimizeCron                string `mapstructure:"scheduler-db-servers-optimize-cron" toml:"scheduler-db-servers-optimize-cron" json:"schedulerDbServersOptimizeCron"`
+	BackupSaveScript                          string `mapstructure:"backup-save-script" toml:"backup-save-script" json:"backupSaveScript"`
+	BackupLoadScript                          string `mapstructure:"backup-load-script" toml:"backup-load-script" json:"backupLoadScript"`
 	SchedulerDatabaseLogsTableRotate          bool   `mapstructure:"scheduler-db-servers-logs-table-rotate" toml:"scheduler-db-servers-logs-table-rotate" json:"schedulerDbServersLogsTableRotate"`
 	SchedulerDatabaseLogsTableRotateCron      string `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDbServersLogsTableRotateCron"`
 	SchedulerMaintenanceDatabaseLogsTableKeep int    `mapstructure:"scheduler-db-servers-logs-table-keep" toml:"scheduler-db-servers-logs-table-keep" json:"schedulerDatabaseLogsTableKeep"`
