@@ -55,6 +55,12 @@ func (server *ServerMonitor) RejoinMaster() error {
 	if server.ClusterGroup.master != nil {
 		if server.URL != server.ClusterGroup.master.URL {
 			server.ClusterGroup.SetState("WARN0022", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0022"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
+			server.RejoinScript()
+			if server.ClusterGroup.Conf.FailoverSemiSyncState {
+				server.ClusterGroup.LogPrintf("INFO", "Set semisync replica and disable semisync leader %s", server.URL)
+				logs, err := server.SetSemiSyncReplica()
+				server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set semisync replica and disable semisync  %s, %s", server.URL, err)
+			}
 			crash := server.ClusterGroup.getCrashFromJoiner(server.URL)
 			if crash == nil {
 				server.ClusterGroup.SetState("ERR00066", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00066"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
@@ -135,20 +141,34 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 		server.JobFlashbackPhysicalBackup()
 	} else if server.ClusterGroup.Conf.AutorejoinZFSFlashback {
 		server.RejoinPreviousSnapshot()
-	} else if server.ClusterGroup.Conf.RejoinScript != "" {
-		server.ClusterGroup.LogPrintf("INFO", "Calling rejoin flashback script")
+	} else if server.ClusterGroup.Conf.BackupLoadScript != "" {
+		server.ClusterGroup.LogPrintf("INFO", "Calling restore script")
 		var out []byte
-		out, err := exec.Command(server.ClusterGroup.Conf.RejoinScript, misc.Unbracket(server.Host), misc.Unbracket(server.ClusterGroup.master.Host)).CombinedOutput()
+		out, err := exec.Command(server.ClusterGroup.Conf.BackupLoadScript, misc.Unbracket(server.Host), misc.Unbracket(server.ClusterGroup.master.Host), server.Port, server.GetCluster().GetMaster().Port).CombinedOutput()
 		if err != nil {
 			server.ClusterGroup.LogPrintf("ERROR", "%s", err)
 		}
-		server.ClusterGroup.LogPrintf("INFO", "Rejoin script complete %s", string(out))
+		server.ClusterGroup.LogPrintf("INFO", "Restore script complete %s", string(out))
 	} else {
 		server.ClusterGroup.LogPrintf("INFO", "No SST rejoin method found")
 		return errors.New("No SST rejoin flashback method found")
 	}
 
 	return nil
+}
+
+func (server *ServerMonitor) RejoinScript() {
+	// Call pre-rejoin script
+	if server.GetCluster().Conf.RejoinScript != "" {
+		server.ClusterGroup.LogPrintf("INFO", "Calling rejoin script")
+		var out []byte
+		var err error
+		out, err = exec.Command(server.ClusterGroup.Conf.RejoinScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port).CombinedOutput()
+		if err != nil {
+			server.ClusterGroup.LogPrintf(LvlErr, "%s", err)
+		}
+		server.ClusterGroup.LogPrintf(LvlInfo, "Rejoin script complete:", string(out))
+	}
 }
 
 func (server *ServerMonitor) ReseedMasterSST() error {
@@ -161,18 +181,12 @@ func (server *ServerMonitor) ReseedMasterSST() error {
 			return errors.New("Dump from master failed")
 		}
 	} else {
-		if server.ClusterGroup.Conf.AutorejoinLogicalBackup {
+		if server.ClusterGroup.Conf.BackupLoadScript != "" {
+			server.JobReseedBackupScript()
+		} else if server.ClusterGroup.Conf.AutorejoinLogicalBackup {
 			server.JobReseedLogicalBackup()
 		} else if server.ClusterGroup.Conf.AutorejoinPhysicalBackup {
 			server.JobReseedPhysicalBackup()
-		} else if server.ClusterGroup.Conf.RejoinScript != "" {
-			server.ClusterGroup.LogPrintf("INFO", "Calling rejoin script")
-			var out []byte
-			out, err := exec.Command(server.ClusterGroup.Conf.RejoinScript, misc.Unbracket(server.Host), misc.Unbracket(server.ClusterGroup.master.Host)).CombinedOutput()
-			if err != nil {
-				server.ClusterGroup.LogPrintf("ERROR", "%s", err)
-			}
-			server.ClusterGroup.LogPrintf("INFO", "Rejoin script complete %s", string(out))
 		} else {
 			server.ClusterGroup.LogPrintf("INFO", "No SST reseed method found")
 			return errors.New("No SST reseed method found")

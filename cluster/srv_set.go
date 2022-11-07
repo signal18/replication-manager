@@ -80,6 +80,28 @@ func (server *ServerMonitor) SetPreferedBackup(pref bool) {
 	server.PreferedBackup = pref
 }
 
+func (server *ServerMonitor) SetSemiSyncReplica() (string, error) {
+	logs := ""
+	if !server.IsSemiSyncReplica() {
+		logs, err := dbhelper.SetSemiSyncSlave(server.Conn, server.DBVersion)
+		if err != nil {
+			return logs, err
+		}
+	}
+	return logs, nil
+}
+
+func (server *ServerMonitor) SetSemiSyncLeader() (string, error) {
+	logs := ""
+	if !server.IsSemiSyncMaster() {
+		logs, err := dbhelper.SetSemiSyncMaster(server.Conn, server.DBVersion)
+		if err != nil {
+			return logs, err
+		}
+	}
+	return logs, nil
+}
+
 func (server *ServerMonitor) SetReadOnly() (string, error) {
 	logs := ""
 	if !server.IsReadOnly() {

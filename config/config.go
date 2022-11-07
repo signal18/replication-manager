@@ -136,6 +136,7 @@ type Config struct {
 	PreScript                                 string `mapstructure:"failover-pre-script" toml:"failover-pre-script" json:"failoverPreScript"`
 	PostScript                                string `mapstructure:"failover-post-script" toml:"failover-post-script" json:"failoverPostScript"`
 	ReadOnly                                  bool   `mapstructure:"failover-readonly-state" toml:"failover-readonly-state" json:"failoverReadOnlyState"`
+	FailoverSemiSyncState                     bool   `mapstructure:"failover-semisync-state" toml:"failover-semisync-state" json:"failoverSemisyncState"`
 	SuperReadOnly                             bool   `mapstructure:"failover-superreadonly-state" toml:"failover-superreadonly-state" json:"failoverSuperReadOnlyState"`
 	FailTime                                  int64  `mapstructure:"failover-time-limit" toml:"failover-time-limit" json:"failoverTimeLimit"`
 	FailSync                                  bool   `mapstructure:"failover-at-sync" toml:"failover-at-sync" json:"failoverAtSync"`
@@ -210,6 +211,8 @@ type Config struct {
 	SlackURL                                  string `mapstructure:"alert-slack-url" toml:"alert-slack-url" json:"alertSlackUrl"`
 	SlackChannel                              string `mapstructure:"alert-slack-channel" toml:"alert-slack-channel" json:"alertSlackChannel"`
 	SlackUser                                 string `mapstructure:"alert-slack-user" toml:"alert-slack-user" json:"alertSlackUser"`
+	PushoverAppToken                          string `mapstructure:"alert-pushover-app-token" toml:"alert-pushover-app-token" json:"alertPushoverAppToken"`
+	PushoverUserToken                         string `mapstructure:"alert-pushover-user-token" toml:"alert-pushover-user-token" json:"alertPushoverUserToken"`
 	Heartbeat                                 bool   `mapstructure:"heartbeat-table" toml:"heartbeat-table" json:"heartbeatTable"`
 	ExtProxyOn                                bool   `mapstructure:"extproxy" toml:"extproxy" json:"extproxy"`
 	ExtProxyVIP                               string `mapstructure:"extproxy-address" toml:"extproxy-address" json:"extproxyAddress"`
@@ -335,6 +338,9 @@ type Config struct {
 	OnPremiseSSHPort                          int    `mapstructure:"onpremise-ssh-port" toml:"onpremise-ssh-port" json:"onpremiseSshPort"`
 	OnPremiseSSHCredential                    string `mapstructure:"onpremise-ssh-credential" toml:"onpremise-ssh-credential" json:"onpremiseSshCredential"`
 	OnPremiseSSHPrivateKey                    string `mapstructure:"onpremise-ssh-private-key" toml:"onpremise-ssh-private-key" json:"onpremiseSshPrivateKey"`
+	OnPremiseSSHStartDbScript                 string `mapstructure:"onpremise-ssh-start-db-script" toml:"onpremise-ssh-start-db-script" json:"onpremiseSshStartDbScript"`
+	OnPremiseSSHStartProxyScript              string `mapstructure:"onpremise-ssh-start-proxy-script" toml:"onpremise-ssh-start-proxy-script" json:"onpremiseSshStartProxyScript"`
+	OnPremiseSSHDbJobScript                   string `mapstructure:"onpremise-ssh-db-job-script" toml:"onpremise-ssh-db-job-script" json:"onpremiseSshDbJobScript"`
 	ProvOpensvcP12Certificate                 string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificat" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
 	ProvOpensvcUseCollectorAPI                bool   `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
@@ -460,6 +466,8 @@ type Config struct {
 	BackupPhysicalCron                        string `mapstructure:"scheduler-db-servers-physical-backup-cron" toml:"scheduler-db-servers-physical-backup-cron" json:"schedulerDbServersPhysicalBackupCron"`
 	BackupDatabaseLogCron                     string `mapstructure:"scheduler-db-servers-logs-cron" toml:"scheduler-db-servers-logs-cron" json:"schedulerDbServersLogsCron"`
 	BackupDatabaseOptimizeCron                string `mapstructure:"scheduler-db-servers-optimize-cron" toml:"scheduler-db-servers-optimize-cron" json:"schedulerDbServersOptimizeCron"`
+	BackupSaveScript                          string `mapstructure:"backup-save-script" toml:"backup-save-script" json:"backupSaveScript"`
+	BackupLoadScript                          string `mapstructure:"backup-load-script" toml:"backup-load-script" json:"backupLoadScript"`
 	SchedulerDatabaseLogsTableRotate          bool   `mapstructure:"scheduler-db-servers-logs-table-rotate" toml:"scheduler-db-servers-logs-table-rotate" json:"schedulerDbServersLogsTableRotate"`
 	SchedulerDatabaseLogsTableRotateCron      string `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDbServersLogsTableRotateCron"`
 	SchedulerMaintenanceDatabaseLogsTableKeep int    `mapstructure:"scheduler-db-servers-logs-table-keep" toml:"scheduler-db-servers-logs-table-keep" json:"schedulerDatabaseLogsTableKeep"`
@@ -499,6 +507,8 @@ type Config struct {
 	BackupMysqldumpOptions                    string `mapstructure:"backup-mysqldump-options" toml:"backup-mysqldump-options" json:"backupMysqldumpOptions"`
 	BackupMyDumperPath                        string `mapstructure:"backup-mydumper-path" toml:"backup-mydumper-path" json:"backupMydumperPath"`
 	BackupMyLoaderPath                        string `mapstructure:"backup-myloader-path" toml:"backup-myloader-path" json:"backupMyloaderPath"`
+	BackupMyLoaderOptions                     string `mapstructure:"backup-myloader-options" toml:"backup-myloader-options" json:"backupMyloaderOptions"`
+	BackupMyDumperOptions                     string `mapstructure:"backup-mydumper-options" toml:"backup-mydumper-options" json:"backupMyDumperOptions"`
 	BackupMysqlbinlogPath                     string `mapstructure:"backup-mysqlbinlog-path" toml:"backup-mysqlbinlog-path" json:"backupMysqlbinlogPath"`
 	BackupMysqlclientPath                     string `mapstructure:"backup-mysqlclient-path" toml:"backup-mysqlclient-path" json:"backupMysqlclientgPath"`
 	BackupBinlogs                             bool   `mapstructure:"backup-binlogs" toml:"backup-binlogs" json:"backupBinlogs"`

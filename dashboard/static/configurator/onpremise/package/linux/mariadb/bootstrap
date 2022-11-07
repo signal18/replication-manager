@@ -26,7 +26,7 @@ get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/serv
 if [ $? -eq 0 ]; then
 	mkdir /bootstrap
 	cat config.tar.gz  | tar xzvf - -C /bootstrap
-	chwon -R mysql:mysql /bootstrap
+	chown -R mysql:mysql /bootstrap
 	mkdir -p /var/lib/replication-manager/$REPLICATION_MANAGER_CLUSTER_NAME/$REPLICATION_MANAGER_HOST_NAME_$REPLICATION_MANAGER_HOST_PORT
 	cp -rpn /bootstrap/* /var/lib/replication-manager/$REPLICATION_MANAGER_CLUSTER_NAME/$REPLICATION_MANAGER_HOST_NAME_$REPLICATION_MANAGER_HOST_PORT/
 	rm -rf /var/lib/replication-manager/$REPLICATION_MANAGER_CLUSTER_NAME/$REPLICATION_MANAGER_HOST_NAME_$REPLICATION_MANAGER_HOST_PORT/etc/mysql/conf.d

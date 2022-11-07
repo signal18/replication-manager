@@ -1957,6 +1957,42 @@ func SetMaxConnections(db *sqlx.DB, connections string, myver *MySQLVersion) (st
 	return query, err
 }
 
+func SetSemiSyncSlave(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+
+	query := "SET GLOBAL rpl-semi-sync-slave-enabled=1"
+	if myver.IsMySQL() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+		query = "SET GLOBAL rpl_semi_sync_replica_enabled=1"
+	}
+	_, err := db.Exec(query)
+	if err != nil {
+		return query, err
+	}
+	query = "SET GLOBAL rpl-semi-sync-master-enabled=0"
+	if myver.IsMySQL() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+		query = "SET GLOBAL rpl_semi_sync_source_enabled=0"
+	}
+	_, err = db.Exec(query)
+	return query, err
+}
+
+func SetSemiSyncMaster(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+
+	query := "SET GLOBAL rpl-semi-sync-master-enabled=1"
+	if myver.IsMySQL() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+		query = "SET GLOBAL rpl_semi_sync_source_enabled=1"
+	}
+	_, err := db.Exec(query)
+	if err != nil {
+		return query, err
+	}
+	query = "SET GLOBAL rpl-semi-sync-slave-enabled=0"
+	if myver.IsMySQL() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+		query = "SET GLOBAL rpl_semi_sync_replica_enabled=0"
+	}
+	_, err = db.Exec(query)
+	return query, err
+}
+
 func SetSlaveGTIDModeStrict(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 	var err error
 	stmt := ""

@@ -799,38 +799,13 @@ func (server *ServerMonitor) Refresh() error {
 	server.PrevStatus = server.Status
 
 	server.Status, logs, _ = dbhelper.GetStatus(server.Conn, server.DBVersion)
-	//server.ClusterGroup.LogPrintf("ERROR: %s %s %s", su["RPL_SEMI_SYNC_MASTER_STATUS"], su["RPL_SEMI_SYNC_SLAVE_STATUS"], server.URL)
-	if server.Status["RPL_SEMI_SYNC_MASTER_STATUS"] == "" || server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "" {
-		server.HaveSemiSync = false
-	} else {
-		server.HaveSemiSync = true
-	}
-	if server.Status["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" {
-		server.SemiSyncMasterStatus = true
-	} else {
-		server.SemiSyncMasterStatus = false
-	}
-	if server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "ON" {
-		server.SemiSyncSlaveStatus = true
-	} else {
-		server.SemiSyncSlaveStatus = false
-	}
+	server.HaveSemiSync = server.HasSemiSync()
+	server.SemiSyncMasterStatus = server.IsSemiSyncMaster()
+	server.SemiSyncSlaveStatus = server.IsSemiSyncReplica()
+	server.IsWsrepSync = server.HasWsrepSync()
+	server.IsWsrepDonor = server.HasWsrepDonor()
+	server.IsWsrepPrimary = server.HasWsrepPrimary()
 
-	if server.Status["WSREP_LOCAL_STATE"] == "4" {
-		server.IsWsrepSync = true
-	} else {
-		server.IsWsrepSync = false
-	}
-	if server.Status["WSREP_LOCAL_STATE"] == "2" {
-		server.IsWsrepDonor = true
-	} else {
-		server.IsWsrepDonor = false
-	}
-	if server.Status["WSREP_CLUSTER_STATUS"] == "PRIMARY" {
-		server.IsWsrepPrimary = true
-	} else {
-		server.IsWsrepPrimary = false
-	}
 	if len(server.PrevStatus) > 0 {
 		qps, _ := strconv.ParseInt(server.Status["QUERIES"], 10, 64)
 		prevqps, _ := strconv.ParseInt(server.PrevStatus["QUERIES"], 10, 64)
@@ -935,6 +910,12 @@ func (server *ServerMonitor) freeze() bool {
 	// https://github.com/signal18/replication-manager/issues/378
 	logs, err = dbhelper.FlushBinaryLogs(server.Conn)
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Could not flush binary logs on %s", server.URL)
+
+	if server.ClusterGroup.Conf.FailoverSemiSyncState {
+		server.ClusterGroup.LogPrintf("INFO", "Set semisync replica and disable semisync leader %s", server.URL)
+		logs, err := server.SetSemiSyncReplica()
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set semisync replica and disable semisync  %s, %s", server.URL, err)
+	}
 
 	return true
 }
@@ -1385,7 +1366,7 @@ func (server *ServerMonitor) Shutdown() error {
 		return errors.New("No database connection pool")
 	}
 	cmd := "SHUTDOWN"
-	if server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 4 {
+	if server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 4 && server.IsMaster() {
 		cmd = "SHUTDOWN WAIT FOR ALL SLAVES"
 	}
 	_, err := server.Conn.Exec(cmd)

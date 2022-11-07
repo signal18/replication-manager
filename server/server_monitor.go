@@ -143,6 +143,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.PreScript, "failover-pre-script", "", "Path of pre-failover script")
 	monitorCmd.Flags().StringVar(&conf.PostScript, "failover-post-script", "", "Path of post-failover script")
 	monitorCmd.Flags().BoolVar(&conf.ReadOnly, "failover-readonly-state", true, "Failover Switchover set slaves as read-only")
+	monitorCmd.Flags().BoolVar(&conf.FailoverSemiSyncState, "failover-semisync-state", false, "Failover Switchover set semisync slave master state")
 	monitorCmd.Flags().BoolVar(&conf.SuperReadOnly, "failover-superreadonly-state", false, "Failover Switchover set slaves as super-read-only")
 	monitorCmd.Flags().StringVar(&conf.FailMode, "failover-mode", "manual", "Failover is manual or automatic")
 	monitorCmd.Flags().Int64Var(&conf.FailMaxDelay, "failover-max-slave-delay", 30, "Election ignore slave with replication delay over this time in sec")
@@ -177,6 +178,9 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.SlackURL, "alert-slack-url", "", "Slack webhook URL to alert")
 	monitorCmd.Flags().StringVar(&conf.SlackChannel, "alert-slack-channel", "#support", "Slack channel to alert")
 	monitorCmd.Flags().StringVar(&conf.SlackUser, "alert-slack-user", "", "Slack user for alert")
+
+	monitorCmd.Flags().StringVar(&conf.PushoverAppToken, "alert-pushover-app-token", "", "Pushover App Token for alerts")
+	monitorCmd.Flags().StringVar(&conf.PushoverUserToken, "alert-pushover-user-token", "", "Pushover User Token for alerts")
 
 	monitorCmd.Flags().BoolVar(&conf.RegistryConsul, "registry-consul", false, "Register write and read SRV DNS to consul")
 	monitorCmd.Flags().StringVar(&conf.RegistryHosts, "registry-servers", "127.0.0.1", "Comma-separated list of registry addresses")
@@ -366,8 +370,13 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.BackupKeepMonthly, "backup-keep-monthly", 12, "Keep this number of monthly backup")
 	monitorCmd.Flags().IntVar(&conf.BackupKeepYearly, "backup-keep-yearly", 2, "Keep this number of yearly backup")
 
+	monitorCmd.Flags().StringVar(&conf.BackupSaveScript, "backup-save-script", "", "Customized backup save script")
+	monitorCmd.Flags().StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")
+
 	monitorCmd.Flags().StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "/usr/bin/mydumper", "Path to mydumper binary")
 	monitorCmd.Flags().StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "/usr/bin/myloader", "Path to myloader binary")
+	monitorCmd.Flags().StringVar(&conf.BackupMyLoaderOptions, "backup-myloader-options", "--overwrite-tables --enable-binlog --verbose=3", "Extra options")
+	monitorCmd.Flags().StringVar(&conf.BackupMyDumperOptions, "backup-mydumper-options", "--chunk-filesize=1000 --compress --less-locking --verbose=3 --triggers --routines --events --trx-consistency-only --kill-long-queries", "Extra options")
 	monitorCmd.Flags().StringVar(&conf.BackupMysqldumpPath, "backup-mysqldump-path", "", "Path to mysqldump binary")
 	monitorCmd.Flags().StringVar(&conf.BackupMysqldumpOptions, "backup-mysqldump-options", "--hex-blob --single-transaction --verbose --all-databases --routines=true --triggers=true --system=all", "Extra options")
 	monitorCmd.Flags().StringVar(&conf.BackupMysqlbinlogPath, "backup-mysqlbinlog-path", "", "Path to mysqlbinlog binary")
@@ -435,6 +444,10 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.OnPremiseSSHPrivateKey, "onpremise-ssh-private-key", "", "Private key for ssh if none use the user HOME directory")
 	monitorCmd.Flags().IntVar(&conf.OnPremiseSSHPort, "onpremise-ssh-port", 22, "Connect to host via SSH using ssh port")
 	monitorCmd.Flags().StringVar(&conf.OnPremiseSSHCredential, "onpremise-ssh-credential", "root:", "User:password for ssh if no password using current user private key")
+	monitorCmd.Flags().StringVar(&conf.OnPremiseSSHStartDbScript, "onpremise-ssh-start-db-script", "", "Run via ssh a custom script to start database")
+	monitorCmd.Flags().StringVar(&conf.OnPremiseSSHStartProxyScript, "onpremise-ssh-start-proxy-script", "", "Run via ssh a custom script to start proxy")
+	monitorCmd.Flags().StringVar(&conf.OnPremiseSSHDbJobScript, "onpremise-ssh-db-job-script", "", "Run via ssh a custom script to execute database jobs")
+
 	if WithProvisioning == "ON" {
 		monitorCmd.Flags().StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		monitorCmd.Flags().StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")

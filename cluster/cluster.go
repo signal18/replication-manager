@@ -550,7 +550,7 @@ func (cluster *Cluster) StateProcessing() {
 				}
 			}
 			if s.ErrKey == "WARN0101" {
-				cluster.LogPrintf(LvlInfo, "Cluster have  backup")
+				cluster.LogPrintf(LvlInfo, "Cluster have backup")
 				for _, srv := range cluster.Servers {
 					if srv.HasWaitBackupCookie() {
 						cluster.LogPrintf(LvlInfo, "Server %s was waiting for backup", srv.URL)
