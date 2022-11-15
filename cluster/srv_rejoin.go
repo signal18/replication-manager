@@ -56,64 +56,70 @@ func (server *ServerMonitor) RejoinMaster() error {
 		if server.URL != server.ClusterGroup.master.URL {
 			server.ClusterGroup.SetState("WARN0022", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0022"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
 			server.RejoinScript()
-			if server.ClusterGroup.Conf.FailoverSemiSyncState {
-				server.ClusterGroup.LogPrintf("INFO", "Set semisync replica and disable semisync leader %s", server.URL)
-				logs, err := server.SetSemiSyncReplica()
-				server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set semisync replica and disable semisync  %s, %s", server.URL, err)
-			}
-			crash := server.ClusterGroup.getCrashFromJoiner(server.URL)
-			if crash == nil {
-				server.ClusterGroup.SetState("ERR00066", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00066"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
-				if server.ClusterGroup.oldMaster != nil {
-					if server.ClusterGroup.oldMaster.URL == server.URL {
-						server.RejoinMasterSST()
+			if server.ClusterGroup.Conf.MultiMasterGrouprep {
+				server.ClusterGroup.LogPrintf("INFO", "Group replication rejoin  %s server to PRIMARY ", server.URL)
+				server.StartGroupReplication()
+
+			} else {
+				if server.ClusterGroup.Conf.FailoverSemiSyncState {
+					server.ClusterGroup.LogPrintf("INFO", "Set semisync replica and disable semisync leader %s", server.URL)
+					logs, err := server.SetSemiSyncReplica()
+					server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set semisync replica and disable semisync  %s, %s", server.URL, err)
+				}
+				crash := server.ClusterGroup.getCrashFromJoiner(server.URL)
+				if crash == nil {
+					server.ClusterGroup.SetState("ERR00066", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00066"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
+					if server.ClusterGroup.oldMaster != nil {
+						if server.ClusterGroup.oldMaster.URL == server.URL {
+							server.RejoinMasterSST()
+							return nil
+						}
+					}
+					if server.ClusterGroup.Conf.Autoseed {
+						server.ReseedMasterSST()
 						return nil
+					} else {
+						server.ClusterGroup.LogPrintf("INFO", "No auto seeding %s", server.URL)
+						return errors.New("No Autoseed")
+					}
+				} //crash info is available
+				if server.ClusterGroup.Conf.AutorejoinBackupBinlog == true {
+					server.backupBinlog(crash)
+				}
+
+				err := server.rejoinMasterIncremental(crash)
+				if err != nil {
+					server.ClusterGroup.LogPrintf("ERROR", "Failed to autojoin incremental to master %s", server.URL)
+					err := server.RejoinMasterSST()
+					if err != nil {
+						server.ClusterGroup.LogPrintf("ERROR", "State transfer rejoin failed")
 					}
 				}
-				if server.ClusterGroup.Conf.Autoseed {
-					server.ReseedMasterSST()
-					return nil
-				} else {
-					server.ClusterGroup.LogPrintf("INFO", "No auto seeding %s", server.URL)
-					return errors.New("No Autoseed")
+				if server.ClusterGroup.Conf.AutorejoinBackupBinlog == true {
+					server.saveBinlog(crash)
 				}
-			} //crash info is available
-			if server.ClusterGroup.Conf.AutorejoinBackupBinlog == true {
-				server.backupBinlog(crash)
-			}
 
-			err := server.rejoinMasterIncremental(crash)
-			if err != nil {
-				server.ClusterGroup.LogPrintf("ERROR", "Failed to autojoin incremental to master %s", server.URL)
-				err := server.RejoinMasterSST()
-				if err != nil {
-					server.ClusterGroup.LogPrintf("ERROR", "State transfer rejoin failed")
-				}
-			}
-			if server.ClusterGroup.Conf.AutorejoinBackupBinlog == true {
-				server.saveBinlog(crash)
-			}
-
-		}
-	} else {
-		//no master discovered
-		if server.ClusterGroup.lastmaster != nil {
-			if server.ClusterGroup.lastmaster.ServerID == server.ServerID {
-				server.ClusterGroup.LogPrintf("INFO", "Rediscovering last seen master: %s", server.URL)
-				server.ClusterGroup.master = server
-				server.ClusterGroup.lastmaster = nil
-			} else {
-				if server.ClusterGroup.Conf.FailRestartUnsafe == false {
-					server.ClusterGroup.LogPrintf("INFO", "Rediscovering last seen master: %s", server.URL)
-
-					server.rejoinMasterAsSlave()
-
-				}
 			}
 		} else {
-			if server.ClusterGroup.Conf.FailRestartUnsafe == true {
-				server.ClusterGroup.LogPrintf("INFO", "Restart Unsafe Picking first non-slave as master: %s", server.URL)
-				server.ClusterGroup.master = server
+			//no master discovered
+			if server.ClusterGroup.lastmaster != nil {
+				if server.ClusterGroup.lastmaster.ServerID == server.ServerID {
+					server.ClusterGroup.LogPrintf("INFO", "Rediscovering last seen master: %s", server.URL)
+					server.ClusterGroup.master = server
+					server.ClusterGroup.lastmaster = nil
+				} else {
+					if server.ClusterGroup.Conf.FailRestartUnsafe == false {
+						server.ClusterGroup.LogPrintf("INFO", "Rediscovering last seen master: %s", server.URL)
+
+						server.rejoinMasterAsSlave()
+
+					}
+				}
+			} else {
+				if server.ClusterGroup.Conf.FailRestartUnsafe == true {
+					server.ClusterGroup.LogPrintf("INFO", "Restart Unsafe Picking first non-slave as master: %s", server.URL)
+					server.ClusterGroup.master = server
+				}
 			}
 		}
 		// if consul or internal proxy need to adapt read only route to new slaves

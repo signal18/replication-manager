@@ -280,6 +280,14 @@ func (cluster *Cluster) GetStatus() bool {
 	return cluster.sme.IsFailable()
 }
 
+func (cluster *Cluster) GetGroupReplicationWhiteList() string {
+	var gcomms []string
+	for _, server := range cluster.Servers {
+		gcomms = append(gcomms, server.Host)
+	}
+	return strings.Join(gcomms, ",")
+}
+
 func (cluster *Cluster) GetGComm() string {
 	var gcomms []string
 	for _, server := range cluster.Servers {

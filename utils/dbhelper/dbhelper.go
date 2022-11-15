@@ -565,6 +565,20 @@ type ChangeMasterOpt struct {
 
 func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string, error) {
 	//CREATE PUBLICATION alltables FOR ALL TABLES;
+	/*
+		Group replication we will check opt.Mode=GROUP_REPL
+		The master_host is not used
+		mysql> CHANGE MASTER TO MASTER_USER='rpl_user', MASTER_PASSWORD='password' \\
+				      FOR CHANNEL 'group_replication_recovery';
+
+		Or from MySQL 8.0.23:
+		mysql> CHANGE REPLICATION SOURCE TO SOURCE_USER='rpl_user', SOURCE_PASSWORD='password' \\
+				      FOR CHANNEL 'group_replication_recovery';
+	*/
+	masterOrSource := "MASTER"
+	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 23)) {
+		masterOrSource = "SOURCE"
+	}
 	cm := ""
 	if myver.IsPPostgreSQL() {
 		if opt.Channel == "" {
@@ -573,31 +587,38 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 		cm += "CREATE SUBSCRIPTION " + opt.Channel + " CONNECTION 'dbname=" + opt.PostgressDB + " host=" + misc.Unbracket(opt.Host) + " user=" + opt.User + " port=" + opt.Port + " password=" + opt.Password + " ' PUBLICATION  " + opt.Channel + " WITH (enabled=false, copy_data=false, create_slot=true)"
 	} else {
 
-		cm += "CHANGE MASTER "
+		cm += "CHANGE MASTER TO "
+		if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 23)) {
+			cm = "CHANGE REPLICATION SOURCE TO "
+		}
 		if myver.IsMariaDB() && opt.Channel != "" {
 			cm += " '" + opt.Channel + "'"
 		}
-		cm += " TO master_host='" + misc.Unbracket(opt.Host) + "', master_port=" + opt.Port + ", master_user='" + opt.User + "', master_password='" + opt.Password + "', master_connect_retry=" + opt.Retry + ", master_heartbeat_period=" + opt.Heartbeat
+		if opt.Mode == "GROUP_REPL" {
+			cm += masterOrSource + "_user='" + opt.User + "', " + masterOrSource + "_password='" + opt.Password + "'"
+		} else {
+			cm += " " + masterOrSource + "_host='" + misc.Unbracket(opt.Host) + "', " + masterOrSource + "_port=" + opt.Port + ", " + masterOrSource + "_user='" + opt.User + "', " + masterOrSource + "_password='" + opt.Password + "', " + masterOrSource + "_connect_retry=" + opt.Retry + ", " + masterOrSource + "_heartbeat_period=" + opt.Heartbeat
+		}
 		if opt.IsDelayed {
-			cm += " ,master_delay=" + opt.Delay
+			cm += " ," + masterOrSource + "_delay=" + opt.Delay
 		}
 		switch opt.Mode {
 		case "SLAVE_POS":
-			cm += ", MASTER_USE_GTID=SLAVE_POS"
+			cm += ", " + masterOrSource + "_USE_GTID=SLAVE_POS"
 		case "CURRENT_POS":
-			cm += ", MASTER_USE_GTID=CURRENT_POS"
+			cm += ", " + masterOrSource + "_USE_GTID=CURRENT_POS"
 		case "MXS":
-			cm += ", master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
+			cm += ", " + masterOrSource + "_log_file='" + opt.Logfile + "', " + masterOrSource + "_log_pos=" + opt.Logpos
 		case "POSITIONAL":
-			cm += ", master_log_file='" + opt.Logfile + "', master_log_pos=" + opt.Logpos
+			cm += ", " + masterOrSource + "_log_file='" + opt.Logfile + "', " + masterOrSource + "_log_pos=" + opt.Logpos
 			if myver.IsMariaDB() {
-				cm += ", MASTER_USE_GTID=NO"
+				cm += ", " + masterOrSource + "_USE_GTID=NO"
 			}
 		case "MASTER_AUTO_POSITION":
-			cm += ", MASTER_AUTO_POSITION=1"
+			cm += ", " + masterOrSource + "_AUTO_POSITION=1"
 		}
 		if opt.SSL {
-			cm += ", MASTER_SSL=1"
+			cm += ", " + masterOrSource + "_SSL=1"
 			//cm +=, MASTER_SSL_CA='" + opt.SSLCa + "', MASTER_SSL_CERT='" + opt.SSLCert + "', MASTER_SSL_KEY=" + opt.SSLKey + "'"
 		}
 		if myver.IsMySQLOrPercona() && opt.Channel != "" {
@@ -607,7 +628,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 	_, err := db.Exec(cm)
 	cm = strings.Replace(cm, opt.Password, "XXX", -1)
 	if err != nil {
-		return cm, fmt.Errorf("Change master statement %s failed, reason: %s", cm, err)
+		return cm, fmt.Errorf("Change "+masterOrSource+" statement %s failed, reason: %s", cm, err)
 	}
 	return cm, nil
 }
@@ -2045,6 +2066,28 @@ func StartSlave(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error
 	return cmd, err
 }
 
+func StartGroupReplication(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+	cmd := "START GROUP_REPLICATION"
+	_, err := db.Exec(cmd)
+	return cmd, err
+}
+
+func BootstrapGroupReplication(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+	cmd := "SET GLOBAL group_replication_bootstrap_group = ON"
+
+	_, err := db.Exec(cmd)
+	if err != nil {
+		return cmd, err
+	}
+	cmd, err = StartGroupReplication(db, myver)
+	if err != nil {
+		return cmd, err
+	}
+	cmd = "SET GLOBAL group_replication_bootstrap_group = OFF"
+	_, err = db.Exec(cmd)
+
+	return cmd, err
+}
 func ResetSlave(db *sqlx.DB, all bool, Channel string, myver *MySQLVersion) (string, error) {
 	stmt := ""
 	if myver.IsPPostgreSQL() {
@@ -2545,4 +2588,47 @@ func WriteConcurrent2(dsn string, qt int) (string, error) {
 
 	result := bs.Run()
 	return result, nil
+}
+
+func IsGroupReplicationMaster(db *sqlx.DB, myver *MySQLVersion, host string) (bool, error) {
+	var value bool
+	value = false
+	err := db.QueryRowx("SELECT 1 FROM  performance_schema.replication_group_members WHERE  MEMBER_STATE='ONLINE' AND MEMBER_ROLE='PRIMARY' AND MEMBER_HOST='" + host + "'").Scan(&value)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		log.Println("ERROR: Could not check Group Replication Master", err)
+	}
+	return value, nil
+}
+
+func IsGroupReplicationSlave(db *sqlx.DB, myver *MySQLVersion, host string) (bool, error) {
+	var value bool
+	value = false
+	err := db.QueryRowx("SELECT 1 FROM  performance_schema.replication_group_members WHERE  MEMBER_STATE='ONLINE' AND MEMBER_ROLE='SECONDARY' AND MEMBER_HOST='" + host + "'").Scan(&value)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		log.Println("ERROR: Could not check Group Replication Secondary", err)
+	}
+	return value, nil
+}
+
+func SetGroupReplicationPrimary(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+	var value string
+	value = ""
+	uuid := ""
+	err := db.QueryRowx("SELECT @@server_uuid").Scan(&uuid)
+	if err != nil {
+		return "", err
+	}
+
+	err = db.QueryRowx("SELECT group_replication_set_as_primary('" + uuid + "')").Scan(&value)
+
+	if err != nil {
+		log.Println("ERROR: Could not set Group Replication Primary", err)
+	}
+	return value, nil
 }

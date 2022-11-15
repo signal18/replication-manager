@@ -165,29 +165,38 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			continue
 		}
 		// count wsrep node as  slaves
-		if sv.IsSlave || sv.IsWsrepPrimary {
+		if sv.IsSlave || sv.IsWsrepPrimary || sv.IsGroupReplicationSlave {
 			if cluster.Conf.LogLevel > 2 {
 				cluster.LogPrintf(LvlDbg, "Server %s is configured as a slave", sv.URL)
 			}
 			cluster.slaves = append(cluster.slaves, sv)
 		} else {
 			// not slave
+			if sv.IsGroupReplicationMaster {
+				cluster.master = cluster.Servers[k]
+				cluster.vmaster = cluster.Servers[k]
+				cluster.master.SetMaster()
+				if cluster.master.IsReadOnly() {
+					cluster.master.SetReadWrite()
+					cluster.LogPrintf(LvlInfo, "Group replication server %s disable read only ", cluster.master.URL)
+				}
 
-			if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
+			} else if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
 				//sv.State = stateUnconn
 				//transition to standalone may happen despite server have never connect successfully when default to suspect
 				if cluster.Conf.LogLevel > 2 {
 					cluster.LogPrintf(LvlDbg, "Server %s has no slaves ", sv.URL)
 				}
 			} else {
-				if cluster.Conf.LogLevel > 2 {
-					cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
-				}
+
 				if cluster.IsActive() && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
 					//Extra master in master slave topology rejoin it after split brain
 					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
 					//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping
 				} else {
+					if cluster.Conf.LogLevel > 2 {
+						cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
+					}
 					cluster.master = cluster.Servers[k]
 					cluster.master.SetMaster()
 					if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
@@ -207,7 +216,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	// Check that all slave servers have the same master and conformity.
-	if cluster.Conf.MultiMaster == false && cluster.Conf.Spider == false {
+	if !cluster.Conf.MultiMaster && !cluster.Conf.Spider {
 		for _, sl := range cluster.slaves {
 			if sl.IsMaxscale == false && !sl.IsFailed() {
 				sl.CheckSlaveSettings()
@@ -252,14 +261,14 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		if srw > 1 {
 			cluster.SetState("WARN0003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, choosing prefered master", ErrFrom: "TOPO"})
 		}
-		srw = 0
+		sro := 0
 		for _, s := range cluster.Servers {
 			if s.IsReadOnly() {
-				srw++
+				sro++
 			}
 		}
-		if srw > 1 {
-			cluster.SetState("WARN0004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in multi-master mode.  switching to preferred master.", ErrFrom: "TOPO"})
+		if sro > 1 && cluster.GetTopology() != topoMultiMasterGrouprep {
+			cluster.SetState("WARN0004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in 2 node multi-master mode.  switching to preferred master.", ErrFrom: "TOPO"})
 			server := cluster.getOnePreferedMaster()
 			if server != nil {
 				server.SetReadWrite()
@@ -269,7 +278,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		}
 	}
 
-	if cluster.slaves != nil {
+	if cluster.slaves != nil && !cluster.Conf.MultiMasterGrouprep {
 		if len(cluster.slaves) > 0 {
 			// Depending if we are doing a failover or a switchover, we will find the master in the list of
 			// failed hosts or unconnected hosts.
