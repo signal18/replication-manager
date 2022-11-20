@@ -20,6 +20,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/swagger"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
@@ -144,6 +145,10 @@ func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error
 
 	httpmux.Handle("/", gwmux)
 
+	httpmux.HandleFunc("/v3/swagger.json", swagger.JsonHandle)
+	httpmux.HandleFunc("/v3/swagger-ui/swagger-initializer.js", swagger.InitHandle)
+	httpmux.Handle("/v3/swagger-ui/", http.StripPrefix("/v3/swagger-ui/", swagger.Handler()))
+
 	srv := &http.Server{
 		Addr: s.v3Config.Listen.AddressWithPort(),
 		Handler: grpcHandlerFunc(s,
@@ -154,8 +159,6 @@ func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error
 				handlers.AllowedOrigins([]string{"*"}),
 			)(router),
 		),
-
-		// ErrorLog: zap.NewStdLog(s.log),
 	}
 
 	s.grpcWrapped = grpcweb.WrapServer(s.grpcServer, grpcweb.WithOriginFunc(func(origin string) bool {
