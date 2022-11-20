@@ -27,7 +27,7 @@ import (
 
 // MasterFailover triggers a leader change and returns the new master URL when single possible leader
 func (cluster *Cluster) MasterFailover(fail bool) bool {
-	if cluster.GetTopology() == topoMultiMasterRing || cluster.GetTopology() == topoMultiMasterWsrep {
+	if cluster.GetTopology() == topoMultiMasterRing || cluster.GetTopology() == topoMultiMasterWsrep || cluster.GetTopology() == topoMultiMasterGrouprep {
 		res := cluster.VMasterFailover(fail)
 		return res
 	}
@@ -87,6 +87,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 
 	} else {
+		if cluster.Conf.MultiMasterGrouprep {
+			// group replication auto elect a new master in case of failure do nothing
+			cluster.sme.RemoveFailoverState()
+			return true
+		}
 		cluster.LogPrintf(LvlInfo, "------------------------")
 		cluster.LogPrintf(LvlInfo, "Starting master failover")
 		cluster.LogPrintf(LvlInfo, "------------------------")
@@ -108,6 +113,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 
 	cluster.LogPrintf(LvlInfo, "Slave %s has been elected as a new master", cluster.slaves[key].URL)
+
 	if fail && !cluster.isSlaveElectable(cluster.slaves[key], true) {
 		cluster.LogPrintf(LvlInfo, "Elected slave have issue cancelling failover", cluster.slaves[key].URL)
 		cluster.sme.RemoveFailoverState()
@@ -213,7 +219,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	} // end relay server
 
 	// Phase 3: Prepare new master
-	if cluster.Conf.MultiMaster == false {
+	if !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterGrouprep {
 		cluster.LogPrintf(LvlInfo, "Stopping slave threads on new master")
 		if cluster.master.DBVersion.IsMariaDB() || (cluster.master.DBVersion.IsMariaDB() == false && cluster.master.DBVersion.Minor < 7) {
 			logs, err := cluster.master.StopSlave()
@@ -231,7 +237,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	crash.Purge(cluster.WorkingDir, cluster.Conf.FailoverLogFileKeep)
 	cluster.Save()
 
-	if cluster.Conf.MultiMaster == false {
+	if !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterGrouprep {
 		cluster.LogPrintf(LvlInfo, "Resetting slave on new master and set read/write mode on")
 		if cluster.master.DBVersion.IsMySQLOrPercona() {
 			// Need to stop all threads to reset on MySQL
@@ -647,6 +653,33 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 		}
 	}
 	return nil
+}
+
+func (cluster *Cluster) electSwitchoverGroupReplicationCandidate(l []*ServerMonitor, forcingLog bool) int {
+	//	Return prefered if exists
+	for i, sl := range l {
+		if cluster.IsInPreferedHosts(sl) {
+			if (cluster.Conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
+				cluster.LogPrintf(LvlDbg, "Election rig: %s elected as preferred master", sl.URL)
+			}
+			return i
+		}
+	}
+	//	Return one not ignored not full , not prefered
+	for i, sl := range l {
+		if sl.IsIgnored() {
+			cluster.sme.AddState("ERR00037", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			continue
+		}
+		if cluster.IsInPreferedHosts(sl) {
+			continue
+		}
+		if sl.IsFull {
+			continue
+		}
+		return i
+	}
+	return -1
 }
 
 // Returns a candidate from a list of slaves. If there's only one slave it will be the de facto candidate.
@@ -1145,10 +1178,15 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		s.Refresh()
 	}
 	key := -1
-	if cluster.GetTopology() != topoMultiMasterWsrep {
+	if cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoMultiMasterGrouprep {
 		key = cluster.electVirtualCandidate(cluster.oldMaster, true)
 	} else {
-		key = cluster.electFailoverCandidate(cluster.slaves, true)
+		if cluster.Conf.MultiMasterGrouprep {
+			key = cluster.electSwitchoverGroupReplicationCandidate(cluster.slaves, true)
+		} else {
+			key = cluster.electFailoverCandidate(cluster.slaves, true)
+		}
+
 	}
 	if key == -1 {
 		cluster.LogPrintf(LvlErr, "No candidates found")
@@ -1175,9 +1213,18 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.LogPrintf(LvlInfo, "Rejecting updates on %s (old master)", cluster.oldMaster.URL)
 		cluster.oldMaster.freeze()
 	}
+	if !fail && cluster.Conf.MultiMasterGrouprep {
+		result, errswitch := cluster.slaves[key].SetGroupReplicationPrimary()
+		cluster.sme.RemoveFailoverState()
+		if errswitch == nil {
+			cluster.LogPrintf(LvlInfo, "Server %s elected as new leader %s", cluster.slaves[key].URL, result)
 
-	// Failover
-	if cluster.GetTopology() != topoMultiMasterWsrep {
+		}
+		cluster.LogPrintf(LvlInfo, "Server %s failed elected as new leader %s", cluster.slaves[key].URL, result)
+
+	}
+	// Failover for ring
+	if cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoMultiMasterGrouprep {
 		// Sync candidate depending on the master status.
 		// If it's a switchover, use MASTER_POS_WAIT to sync.
 		// If it's a failover, wait for the SQL thread to read all relay logs.
@@ -1275,6 +1322,10 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not set max connections on %s %s", cluster.oldMaster.URL, err)
 		}
 		// Add the old master to the slaves list
+		if cluster.Conf.MultiMasterGrouprep {
+			cluster.oldMaster.SetState(stateSlave)
+			cluster.slaves = append(cluster.slaves, cluster.oldMaster)
+		}
 	}
 	if cluster.GetTopology() == topoMultiMasterRing {
 		// ********

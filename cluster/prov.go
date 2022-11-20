@@ -562,9 +562,19 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			if key == masterKey {
 				dbhelper.FlushTables(server.Conn)
 				server.SetReadWrite()
+				if cluster.Conf.MultiMasterGrouprep {
+					// All clsuter node need a specialreplicaton for recovery parameters are not important as leader host is not needed
+					server.ChangeMasterTo(server, "CURRENT_POS")
+					server.BootstrapGroupReplication()
+				}
 				continue
 			} else {
-				err = server.ChangeMasterTo(cluster.Servers[masterKey], "SLAVE_POS")
+				if cluster.Conf.MultiMasterGrouprep {
+					err = server.ChangeMasterTo(server, "SLAVE_POS")
+					server.StartGroupReplication()
+				} else {
+					err = server.ChangeMasterTo(cluster.Servers[masterKey], "SLAVE_POS")
+				}
 				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
 					server.SetReadOnly()
 				}
@@ -605,6 +615,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
 					server.SetReadOnly()
 				}
+
 			}
 		}
 		cluster.LogPrintf(LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)

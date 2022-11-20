@@ -1432,9 +1432,9 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
+	repman.InitConfig(repman.Conf)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		repman.InitConfig(repman.Conf)
 		mycluster.ReloadConfig(repman.Confs[vars["clusterName"]])
 	} else {
 		http.Error(w, "Cluster Not Found", 500)

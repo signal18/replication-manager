@@ -123,7 +123,7 @@ func (psql *ProxySQL) SetOffline(host string, port string) error {
 
 func (psql *ProxySQL) ExistAsWriterOrOffline(host string, port string) bool {
 	var exist int
-	sql := fmt.Sprintf("SELECT 1 FROM mysql_servers WHERE srv_host='%s' AND srv_port='%s' AND hostgroup_id in (666,'%s')", host, port, psql.WriterHG)
+	sql := fmt.Sprintf("SELECT 1 FROM mysql_servers WHERE hostname='%s' AND port='%s' AND hostgroup_id in (666,'%s')", host, port, psql.WriterHG)
 	row := psql.Connection.QueryRow(sql)
 	err := row.Scan(&exist)
 	if err == nil {

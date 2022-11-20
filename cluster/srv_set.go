@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -49,15 +50,25 @@ func (server *ServerMonitor) SetEventScheduler(value bool) (string, error) {
 	return logs, err
 }
 
+func (server *ServerMonitor) SetGroupReplicationPrimary() (string, error) {
+	logs, err := dbhelper.SetGroupReplicationPrimary(server.Conn, server.DBVersion)
+	server.GetCluster().LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Could not set server a primary")
+	return logs, err
+}
+
 func (server *ServerMonitor) SetState(state string) {
 	if server.PrevState != state {
-		server.ClusterGroup.LogPrintf(LvlInfo, "Server %s state transition %s changed to: %s", server.URL, server.PrevState, state)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Server %s state transition from %s changed to: %s", server.URL, server.PrevState, state)
+		_, file, no, ok := runtime.Caller(1)
+		if ok {
+			server.ClusterGroup.LogPrintf(LvlInfo, "Called from %s#%d\n", file, no)
+		}
 	}
 	server.State = state
 }
 
 func (server *ServerMonitor) SetPrevState(state string) {
-	server.ClusterGroup.LogPrintf(LvlInfo, "Server %s previous state changed to: %s", server.URL, state)
+	server.ClusterGroup.LogPrintf(LvlInfo, "Server %s previous state set to: %s", server.URL, state)
 	server.PrevState = state
 }
 

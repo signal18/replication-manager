@@ -280,10 +280,22 @@ func (cluster *Cluster) GetStatus() bool {
 	return cluster.sme.IsFailable()
 }
 
+func (cluster *Cluster) GetGroupReplicationWhiteList() string {
+	var gcomms []string
+	for _, server := range cluster.Servers {
+		gcomms = append(gcomms, server.Host)
+	}
+	return strings.Join(gcomms, ",")
+}
+
 func (cluster *Cluster) GetGComm() string {
 	var gcomms []string
 	for _, server := range cluster.Servers {
-		gcomms = append(gcomms, server.Host+":4567")
+		if cluster.Conf.MultiMasterWsrep {
+			gcomms = append(gcomms, server.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterWsrepPort))
+		} else {
+			gcomms = append(gcomms, server.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterGrouprepPort))
+		}
 	}
 	return strings.Join(gcomms, ",")
 }
@@ -490,6 +502,8 @@ func (cluster *Cluster) GetTopology() string {
 		cluster.Conf.Topology = topoMultiMasterRing
 	} else if cluster.Conf.MultiMasterWsrep {
 		cluster.Conf.Topology = topoMultiMasterWsrep
+	} else if cluster.Conf.MultiMasterGrouprep {
+		cluster.Conf.Topology = topoMultiMasterGrouprep
 	} else if cluster.Conf.MxsBinlogOn {
 		cluster.Conf.Topology = topoBinlogServer
 	} else if cluster.Conf.MultiTierSlave {

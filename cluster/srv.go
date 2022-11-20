@@ -112,6 +112,8 @@ type ServerMonitor struct {
 	IsMaxscale                  bool                         `json:"isMaxscale"`
 	IsRelay                     bool                         `json:"isRelay"`
 	IsSlave                     bool                         `json:"isSlave"`
+	IsGroupReplicationSlave     bool                         `json:"isGroupReplicationSlave"`
+	IsGroupReplicationMaster    bool                         `json:"isGroupReplicationMaster"`
 	IsVirtualMaster             bool                         `json:"isVirtualMaster"`
 	IsMaintenance               bool                         `json:"isMaintenance"`
 	IsCompute                   bool                         `json:"isCompute"` //Used to idenfied spider compute nide
@@ -216,7 +218,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
 	server.ClusterGroup = cluster
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
-
+	server.IsGroupReplicationSlave = false
+	server.IsGroupReplicationMaster = false
 	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		// OpenSVC and Sharding proxy monitoring
 		if server.IsCompute {
@@ -466,8 +469,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					}
 				}
 			}
-			if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
-				server.SetState(stateUnconn)
+			if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep || server.ClusterGroup.GetTopology() != topoMultiMasterGrouprep {
+				if server.IsGroupReplicationSlave {
+					server.SetState(stateSlave)
+				} else {
+					server.SetState(stateUnconn)
+				}
 			}
 			server.FailCount = 0
 			server.ClusterGroup.backendStateChangeProxies()
@@ -481,7 +488,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State == stateUnconn {
 			// Master will never get discovery in topology if it does not get unconnected first it default to suspect
 			//	if server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
-			server.SetState(stateUnconn)
+			if server.IsGroupReplicationSlave {
+				server.SetState(stateSlave)
+			} else {
+				server.SetState(stateUnconn)
+			}
+
 			server.ClusterGroup.LogPrintf(LvlInfo, "From state %s to unconnected and non leader on server %s", server.PrevState, server.URL)
 			//	}
 			if server.ClusterGroup.Conf.ReadOnly && !server.HaveWsrep && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsInFailover() {
@@ -495,7 +507,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			}
 		} else if server.GetCluster().GetMaster() != nil && server.GetCluster().GetMaster().Id != server.Id && server.PrevState == stateSuspect && !server.HaveWsrep && server.ClusterGroup.IsDiscovered() && !server.ClusterGroup.IsInFailover() {
 			// a case of a standalone transite to suspect but never get to standalone back
-			server.SetState(stateUnconn)
+			if server.IsGroupReplicationSlave {
+				server.SetState(stateSlave)
+			} else {
+				server.SetState(stateUnconn)
+			}
 		}
 	} else if server.ClusterGroup.IsActive() && errss == nil && (server.PrevState == stateFailed) {
 		// Is Slave
@@ -587,7 +603,13 @@ func (server *ServerMonitor) Refresh() error {
 			return nil
 		}
 		if !server.DBVersion.IsPPostgreSQL() {
-
+			if server.ClusterGroup.Conf.MultiMasterGrouprep {
+				server.IsGroupReplicationMaster, err = dbhelper.IsGroupReplicationMaster(server.Conn, server.DBVersion, server.Host)
+				server.IsGroupReplicationSlave, err = dbhelper.IsGroupReplicationSlave(server.Conn, server.DBVersion, server.Host)
+				if server.IsGroupReplicationSlave && server.State == stateUnconn {
+					server.SetState(stateSlave)
+				}
+			}
 			server.HaveEventScheduler = server.HasEventScheduler()
 			server.Strict = server.Variables["GTID_STRICT_MODE"]
 			server.ReadOnly = server.Variables["READ_ONLY"]
@@ -761,7 +783,11 @@ func (server *ServerMonitor) Refresh() error {
 	server.SlaveStatus, err = server.GetSlaveStatus(server.ReplicationSourceName)
 	if err != nil {
 		// Do not reset  server.MasterServerID = 0 as we may need it for recovery
-		server.IsSlave = false
+		if server.IsGroupReplicationSlave {
+			server.IsSlave = server.IsGroupReplicationSlave
+		} else {
+			server.IsSlave = false
+		}
 	} else {
 
 		server.IsSlave = true
@@ -1380,10 +1406,30 @@ func (server *ServerMonitor) Shutdown() error {
 func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gitd string) error {
 	logs := ""
 	var err error
-	hasMyGTID := server.HasMySQLGTID()
-	//mariadb
+	if server.State == stateFailed {
+		return errors.New("Change master canceled cause by state failed")
+	}
 
-	if server.State != stateFailed && server.ClusterGroup.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
+	hasMyGTID := server.HasMySQLGTID()
+	if server.ClusterGroup.Conf.MultiMasterGrouprep {
+		//MySQL group replication
+		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:        "",
+			Port:        "",
+			User:        server.ClusterGroup.rplUser,
+			Password:    server.ClusterGroup.rplPass,
+			Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+			Mode:        "GROUP_REPL",
+			Channel:     "group_replication_recovery",
+			IsDelayed:   server.IsDelayed,
+			Delay:       strconv.Itoa(server.ClusterGroup.Conf.HostsDelayedTime),
+			SSL:         server.ClusterGroup.Conf.ReplicationSSL,
+			PostgressDB: server.PostgressDB,
+		}, server.DBVersion)
+		server.ClusterGroup.LogPrintf(LvlInfo, "Group Replication bootstrapped  for", server.URL)
+	} else if server.ClusterGroup.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
+		//mariadb using GTID
 		master.Refresh()
 		_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + master.CurrentGtid.Sprint() + "\"")
 		if err != nil {
@@ -1405,7 +1451,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		}, server.DBVersion)
 		server.ClusterGroup.LogPrintf(LvlInfo, "Replication bootstrapped with %s as master", master.URL)
 	} else if hasMyGTID && server.ClusterGroup.Conf.ForceSlaveNoGtid == false {
-
+		// MySQL GTID
 		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:        master.Host,
 			Port:        master.Port,
@@ -1423,6 +1469,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		server.ClusterGroup.LogPrintf(LvlInfo, "Replication bootstrapped with MySQL GTID replication style and %s as master", master.URL)
 
 	} else {
+		// Old Style file pos as default
 		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:        master.Host,
 			Port:        master.Port,
@@ -1463,6 +1510,24 @@ func (server *ServerMonitor) CertificatesReload() error {
 	_, err := server.Conn.Exec(cmd)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Reload certificatd %s", err)
+		return err
+	}
+	return nil
+}
+
+func (server *ServerMonitor) BootstrapGroupReplication() error {
+	logs, err := dbhelper.BootstrapGroupReplication(server.Conn, server.DBVersion)
+	if err != nil {
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "BootstrapReplication", LvlErr, "Group Replication can't be bootstrap on server %s :%s ", server.URL, err)
+		return err
+	}
+	return nil
+}
+
+func (server *ServerMonitor) StartGroupReplication() error {
+	logs, err := dbhelper.StartGroupReplication(server.Conn, server.DBVersion)
+	if err != nil {
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "BootstrapReplication", LvlErr, "Group Replication can't be joined on server %s :%s ", server.URL, err)
 		return err
 	}
 	return nil
