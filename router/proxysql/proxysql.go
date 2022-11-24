@@ -250,7 +250,7 @@ func (psql *ProxySQL) GetHostsRuntime() (string, error) {
 }
 
 func (psql *ProxySQL) AddUser(User string, Password string) error {
-	_, err := psql.Connection.Exec("REPLACE INTO mysql_users(username,password) VALUES('" + User + "','" + Password + "')")
+	_, err := psql.Connection.Exec("REPLACE INTO mysql_users(username,password,default_hostgroup) VALUES('" + User + "','" + Password + "','" + psql.WriterHG + "')")
 	if err != nil {
 		return err
 	}
