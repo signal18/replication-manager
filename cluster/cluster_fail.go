@@ -132,7 +132,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if cluster.Conf.MultiMaster == false {
 		cluster.slaves[key].delete(&cluster.slaves)
 	}
-	cluster.failoverPreScript()
+	cluster.failoverPreScript(fail)
 
 	// Phase 2: Reject updates and sync slaves on switchover
 	if fail == false {
@@ -255,7 +255,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.LogPrintf(LvlInfo, "Failover proxies")
 	cluster.failoverProxies()
 	cluster.failoverProxiesWaitMonitor()
-	cluster.failoverPostScript()
+	cluster.failoverPostScript(fail)
 	cluster.failoverEnableEventScheduler()
 	// Insert a bogus transaction in order to have a new GTID pos on master
 	cluster.LogPrintf(LvlInfo, "Inject fake transaction on new master %s ", cluster.master.URL)
@@ -546,12 +546,18 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	return true
 }
 
-func (cluster *Cluster) failoverPostScript() {
+func (cluster *Cluster) failoverPostScript(fail bool) {
 	if cluster.Conf.PostScript != "" {
+
 		var out []byte
 		var err error
+
 		cluster.LogPrintf(LvlInfo, "Calling post-failover script")
-		out, err = exec.Command(cluster.Conf.PostScript, cluster.oldMaster.Host, cluster.GetMaster().Host, cluster.oldMaster.Port, cluster.GetMaster().Port, cluster.oldMaster.MxsServerName, cluster.GetMaster().MxsServerName).CombinedOutput()
+		failtype := "failover"
+		if !fail {
+			failtype = "switchover"
+		}
+		out, err = exec.Command(cluster.Conf.PostScript, cluster.oldMaster.Host, cluster.GetMaster().Host, cluster.oldMaster.Port, cluster.GetMaster().Port, cluster.oldMaster.MxsServerName, cluster.GetMaster().MxsServerName, failtype).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "%s", err)
 		}
@@ -559,13 +565,18 @@ func (cluster *Cluster) failoverPostScript() {
 	}
 }
 
-func (cluster *Cluster) failoverPreScript() {
+func (cluster *Cluster) failoverPreScript(fail bool) {
 	// Call pre-failover script
 	if cluster.Conf.PreScript != "" {
+		failtype := "failover"
+		if !fail {
+			failtype = "switchover"
+		}
+
 		cluster.LogPrintf(LvlInfo, "Calling pre-failover script")
 		var out []byte
 		var err error
-		out, err = exec.Command(cluster.Conf.PreScript, cluster.oldMaster.Host, cluster.GetMaster().Host, cluster.oldMaster.Port, cluster.GetMaster().Port, cluster.oldMaster.MxsServerName, cluster.GetMaster().MxsServerName).CombinedOutput()
+		out, err = exec.Command(cluster.Conf.PreScript, cluster.oldMaster.Host, cluster.GetMaster().Host, cluster.oldMaster.Port, cluster.GetMaster().Port, cluster.oldMaster.MxsServerName, cluster.GetMaster().MxsServerName, failtype).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "%s", err)
 		}
@@ -1202,7 +1213,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	}
 	cluster.vmaster = cluster.Servers[skey]
 	cluster.master = cluster.Servers[skey]
-	cluster.failoverPreScript()
+	cluster.failoverPreScript(fail)
 
 	// Phase 2: Reject updates and sync slaves on switchover
 	if fail == false {
@@ -1279,7 +1290,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	cluster.failoverProxies()
 	cluster.failoverProxiesWaitMonitor()
 	cluster.failoverEnableEventScheduler()
-	cluster.failoverPostScript()
+	cluster.failoverPostScript(fail)
 	if cluster.Conf.FailEventStatus {
 		for _, v := range cluster.master.EventStatus {
 			if v.Status == 3 {
