@@ -342,9 +342,9 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				updated = true
 			}
 
-			// if server is Standalone, set offline in ProxySQL
+			// if server is Standalone, and writer set offline in ProxySQL
 			if s.State == stateUnconn && bke.PrxStatus == "ONLINE" {
-				cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting offline standalone server %s", s.URL)
+				cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting writer offline standalone server %s", s.URL)
 				err = psql.SetOffline(misc.Unbracket(s.Host), s.Port)
 				if err != nil {
 					cluster.sme.AddState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
@@ -352,9 +352,19 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				updated = true
 
+			} else if s.State == stateUnconn && bkeread.PrxStatus == "ONLINE" && isFoundBackendRead {
+				// if server is Standalone, and reader shunned it in ProxySQL
+				cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting reader offline standalone server %s", s.URL)
+				err = psql.SetOfflineSoft(misc.Unbracket(s.Host), s.Port)
+				if err != nil {
+					cluster.sme.AddState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+				}
+				updated = true
+
+			} else if s.State == stateMaster && (s.PrevState == stateUnconn || s.PrevState == stateFailed || (len(proxy.BackendsWrite) == 0 || !isFoundBackendWrite)) {
 				// if the master comes back from a previously failed or standalone state, reintroduce it in
 				// the appropriate HostGroup
-			} else if s.State == stateMaster && (s.PrevState == stateUnconn || s.PrevState == stateFailed || (len(proxy.BackendsWrite) == 0 || !isFoundBackendWrite)) {
+
 				cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting online failed server %s", s.URL)
 				if psql.ExistAsWriterOrOffline(misc.Unbracket(s.Host), s.Port) {
 					err = psql.SetOnline(misc.Unbracket(s.Host), s.Port)
