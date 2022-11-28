@@ -146,8 +146,8 @@ func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error
 	httpmux.Handle("/", gwmux)
 
 	httpmux.HandleFunc("/v3/swagger.json", swagger.JsonHandle)
-	httpmux.HandleFunc("/v3/swagger-ui/swagger-initializer.js", swagger.InitHandle)
-	httpmux.Handle("/v3/swagger-ui/", http.StripPrefix("/v3/swagger-ui/", swagger.Handler()))
+	httpmux.HandleFunc("/v3/help/swagger-initializer.js", swagger.InitHandle)
+	httpmux.Handle("/v3/help/", http.StripPrefix("/v3/help/", swagger.Handler()))
 
 	srv := &http.Server{
 		Addr: s.v3Config.Listen.AddressWithPort(),
@@ -807,6 +807,31 @@ func (s *ReplicationManager) RetrieveCrashes(in *v3.Cluster, stream v3.ClusterSe
 	return nil
 }
 
+func (s *ReplicationManager) RetrieveLogs(in *v3.Cluster, stream v3.ClusterService_RetrieveLogsServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in)
+	if err != nil {
+		return err
+	}
+
+	// TODO: introduce new Grants for this type of endpoint
+	if err = user.Granted(config.GrantClusterSettings); err != nil {
+		return err
+	}
+
+	for _, slog := range s.tlog.Buffer {
+		if strings.Contains(slog, mycluster.Name) {
+			err := stream.Send(&wrapperspb.StringValue{
+				Value: slog,
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stream v3.ClusterService_RetrieveFromTopologyServer) error {
 	user, mycluster, err := s.getClusterAndUser(stream.Context(), in.Cluster)
 	if err != nil {
@@ -820,17 +845,6 @@ func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stre
 
 	if in.Retrieve == v3.TopologyRetrieval_RETRIEVAL_UNSPECIFIED {
 		return v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "retrieve", "").Err()
-	}
-
-	if in.Retrieve == v3.TopologyRetrieval_LOGS {
-		var clusterlogs []string
-		for _, slog := range s.tlog.Buffer {
-			if strings.Contains(slog, mycluster.Name) {
-				clusterlogs = append(clusterlogs, slog)
-			}
-		}
-
-		return marshalAndSend(clusterlogs, stream.Send)
 	}
 
 	if in.Retrieve == v3.TopologyRetrieval_MASTER {

@@ -11,10 +11,12 @@ package clients
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -582,35 +584,33 @@ func cliGetMaster() (cluster.ServerMonitor, error) {
 }
 
 func cliGetLogs() ([]string, error) {
-	var r []string
-	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/topology/logs"
-	var bearer = "Bearer " + cliToken
-	req, err := http.NewRequest("GET", urlpost, nil)
+	client, err := v3.NewClient(context.Background(), v3Config)
 	if err != nil {
-		return r, err
+		return []string{}, fmt.Errorf("Could not initialize v3 Client: %s", err)
 	}
-	req.Header.Set("Authorization", bearer)
-	resp, err := cliConn.Do(req)
+
+	stream, err := client.RetrieveLogs(context.Background(), &v3.Cluster{Name: cliClusters[cliClusterIndex]})
 	if err != nil {
-		log.Println("ERROR on getting logs ", err)
-		return r, err
+		return []string{}, fmt.Errorf("Error fetching RetrieveLogs: %s", err)
 	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Println("ERROR on getting logs", err)
-		return r, err
+
+	var logs []string
+
+	// TODO: we should directly stream the data into the termlog
+	for {
+		recv, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+
+		if err != nil {
+			log.Fatalf("Error receiving stream: %s", err)
+		}
+
+		logs = append(logs, recv.Value)
 	}
-	if resp.StatusCode == http.StatusForbidden {
-		return r, errors.New("Wrong credentential")
-	}
-	err = json.Unmarshal(body, &r)
-	if err != nil {
-		log.Println("ERROR on getting logs", err)
-		return r, err
-	}
-	resp.Body.Close()
-	return r, nil
+
+	return logs, nil
 }
 
 func cliClusterCmd(command string, params []RequetParam) error {
