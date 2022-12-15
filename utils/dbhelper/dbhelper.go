@@ -144,6 +144,7 @@ type Processlist struct {
 	Time         sql.NullFloat64 `json:"time" db:"Time"`
 	State        sql.NullString  `json:"state" db:"State"`
 	Info         sql.NullString  `json:"info" db:"Info"`
+	TimeMs       sql.NullFloat64 `json:"timeMs" db:"Time_ms"`
 	Progress     sql.NullFloat64 `json:"progress" db:"Progress"`
 	RowsSent     uint64          `json:"rowsSent" db:"Rows_sent"`
 	RowsExamined uint64          `json:"rowsExamined" db:"Rows_examined"`
@@ -665,7 +666,7 @@ func GetDBVersion(db *sqlx.DB) (*MySQLVersion, string, error) {
 	return NewMySQLVersion(version, versionComment), stmt, nil
 }
 
-//Unused does not look like safe way or documenting it
+// Unused does not look like safe way or documenting it
 func GetHostFromProcessList(db *sqlx.DB, user string, version *MySQLVersion) (string, string, error) {
 	pl := []Processlist{}
 	var err error
@@ -2150,7 +2151,9 @@ func SetDefaultMasterConn(db *sqlx.DB, dmc string, myver *MySQLVersion) (string,
 	return "", nil
 }
 
-/* Check for a list of slave prerequisites.
+/*
+	Check for a list of slave prerequisites.
+
 - Slave is connected
 - Binary log on
 - Connected to master
