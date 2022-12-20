@@ -5,9 +5,12 @@ WORKDIR /go/src/github.com/signal18/replication-manager
 
 COPY . .
 
-RUN make osc cli
+RUN make osc cli arb
 
-FROM debian:buster-slim
+FROM ubuntu:22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ="EST"
 
 RUN mkdir -p \
         /etc/replication-manager \
@@ -21,8 +24,16 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/share /usr/s
 COPY --from=builder /go/src/github.com/signal18/replication-manager/dashboard /usr/share/replication-manager/dashboard
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-osc /usr/bin/replication-manager
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
+COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-arb /usr/bin/replication-manager-arb
 
-RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client haproxy
+RUN apt-get update -q && \
+    apt-get install -yq \
+    ca-certificates \
+    restic \
+    mariadb-client \
+    haproxy \
+    tzdata && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/*
 
 CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001
