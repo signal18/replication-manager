@@ -416,6 +416,7 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, cluste
 
 func (repman *ReplicationManager) initAlias(v *viper.Viper) {
 	v.RegisterAlias("monitoring-config-rewrite", "monitoring-save-config")
+	v.RegisterAlias("api-user", "api-credentials")
 	v.RegisterAlias("replication-master-connection", "replication-source-name")
 	v.RegisterAlias("logfile", "log-file")
 	v.RegisterAlias("wait-kill", "switchover-wait-kill")
