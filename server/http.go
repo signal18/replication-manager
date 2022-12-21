@@ -84,6 +84,9 @@ func (repman *ReplicationManager) httpserver() {
 	router.Handle("/api/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxStatus)),
 	))
+	router.Handle("/api/state", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxState)),
+	))
 	router.Handle("/api/prometheus", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPrometheus)),
 	))

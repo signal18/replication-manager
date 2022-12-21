@@ -121,6 +121,9 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxStatus)),
 	))
+	router.Handle("/api/state", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxState)),
+	))
 	router.Handle("/api/timeout", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTimeout)),
 	))
@@ -474,6 +477,26 @@ func (repman *ReplicationManager) handlerMuxStatus(w http.ResponseWriter, r *htt
 		io.WriteString(w, `{"alive": "running"}`)
 	} else {
 		io.WriteString(w, `{"alive": "starting"}`)
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxState(w http.ResponseWriter, r *http.Request) {
+
+	var mycluster *cluster.Cluster
+	repman.Lock()
+	for _, cl := range repman.Clusters {
+		mycluster = cl
+		break
+	}
+	repman.Unlock()
+	if mycluster.Status == ConstMonitorActif {
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, mycluster.Status)
+	} else {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, mycluster.Status)
 	}
 }
 
