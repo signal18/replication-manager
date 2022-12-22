@@ -1,4 +1,4 @@
-FROM golang:1.16-buster as builder
+FROM nexus.adsrv.wtf/click/golang:1.19.2-202210270909 as builder
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
@@ -7,7 +7,7 @@ COPY . .
 
 RUN make osc cli arb
 
-FROM ubuntu:22.04
+FROM ubuntu:jammy-20221130
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ="EST"
