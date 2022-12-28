@@ -9,11 +9,12 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"net/http"
-
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
+	"io/ioutil"
+	"math"
+	"net/http"
+	"strconv"
 )
 
 func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Router) {
@@ -1461,7 +1462,8 @@ func (repman *ReplicationManager) handlerMuxServersIsSlaveStatus(w http.Response
 }
 
 func (repman *ReplicationManager) handlerMuxServersPortIsSlaveStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	var err error
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
@@ -1470,18 +1472,34 @@ func (repman *ReplicationManager) handlerMuxServersPortIsSlaveStatus(w http.Resp
 				return
 			}*/
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
-			w.Write([]byte("200 -Valid Slave!"))
-			return
+
+		maxLag := int64(math.MaxInt64)
+		if r.URL.Query().Has("lag") {
+			maxLag, err = strconv.ParseInt(r.URL.Query().Get("lag"), 10, 64)
+			if err != nil {
+				http.Error(w, "invalid lag value", 500)
+				return
+			}
+		}
+
+		currentLag := node.GetReplicationDelay()
+		if node != nil && mycluster.IsActive() && !node.IsDown() && !node.IsMaintenance {
+			if node.IsSlave && !node.HasReplicationIssue() && currentLag < maxLag {
+				w.Write([]byte(fmt.Sprintf("200 -Valid Slave! Current lag=%d, Maxlag=%d", currentLag, maxLag)))
+				return
+			} else if node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster {
+				w.Write([]byte("200 -Valid Master!"))
+				return
+			} else {
+				http.Error(w, "-Not a Slave or Master!", 503)
+				return
+			}
 		} else {
 			//	w.WriteHeader(http.StatusInternalServerError)
 			http.Error(w, "-Not a Valid Slave!", 503)
-			//	w.Write([]byte("503 -Not a Valid Slave!"))
 			return
 		}
-
 	} else {
-
 		http.Error(w, "No cluster", 500)
 		return
 	}
