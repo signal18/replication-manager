@@ -182,6 +182,7 @@ type MasterStatus struct {
 
 type SlaveStatus struct {
 	ConnectionName       sql.NullString `db:"Connection_name" json:"connectionName"`
+	ChannelName          sql.NullString `db:"Channel_Name" json:"channelName"`
 	MasterHost           sql.NullString `db:"Master_Host" json:"masterHost"`
 	MasterUser           sql.NullString `db:"Master_User" json:"masterUser"`
 	MasterPort           sql.NullString `db:"Master_Port" json:"masterPort"`
@@ -891,6 +892,13 @@ func GetSlaveStatus(db *sqlx.DB, Channel string, myver *MySQLVersion) (SlaveStat
 			err = udb.Get(&ss, query)
 		}
 	}
+	//
+	if ss.ChannelName.Valid {
+		if ss.ChannelName.String != "" {
+			ss.ConnectionName.String = ss.ChannelName.String
+			ss.ConnectionName.Valid = true
+		}
+	}
 
 	return ss, query, err
 }
@@ -900,7 +908,20 @@ func GetChannelSlaveStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, str
 	udb := db.Unsafe()
 	ss := []SlaveStatus{}
 	err := udb.Select(&ss, "SHOW SLAVE STATUS")
-	return ss, "SHOW SLAVE STATUS", err
+	// Unified MariaDB MySQL ConnectionName and ChannelName
+	uniss := []SlaveStatus{}
+	if err == nil {
+		for _, s := range ss {
+			if s.ChannelName.Valid {
+				if s.ChannelName.String != "" {
+					s.ConnectionName.String = s.ChannelName.String
+					s.ConnectionName.Valid = true
+				}
+			}
+			uniss = append(uniss, s)
+		}
+	}
+	return uniss, "SHOW SLAVE STATUS", err
 }
 
 func GetPGSlaveStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, error) {
@@ -925,6 +946,7 @@ func GetPGSlaveStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, error) {
 		  ORDER BY pid ASC`
 
 	err := udb.Select(&ss, query)
+
 	return ss, err
 }
 
@@ -1035,7 +1057,6 @@ func GetAllSlavesStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, string
 							  (SELECT count(*) as nbrep FROM pg_stat_subscription) AS sqt `
 	}
 	err = udb.Select(&ss, query)
-
 	return ss, query, err
 }
 
@@ -2257,10 +2278,22 @@ func MasterWaitGTID(db *sqlx.DB, gtid string, timeout int) (string, error) {
 	return query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
 }
 
-func MasterPosWait(db *sqlx.DB, log string, pos string, timeout int) (string, error) {
-	query := "SELECT MASTER_POS_WAIT(?, ?, ?)"
-	_, err := db.Exec(query, log, pos, timeout)
-	return query + "(" + log + "-" + pos + "-" + strconv.Itoa(timeout) + ")", err
+func MasterPosWait(db *sqlx.DB, myver *MySQLVersion, log string, pos string, timeout int, channel string) (string, error) {
+	// SOURCE_POS_WAIT  before MySQL 8.0.26
+	funcname := "MASTER_POS_WAIT"
+	if (myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26) {
+		funcname = "SOURCE_POS_WAIT"
+	}
+
+	if channel == "" {
+		query := "SELECT " + funcname + "(?, ?, ?)"
+		_, err := db.Exec(query, log, pos, timeout)
+		return query + "(" + log + "-" + pos + "-" + strconv.Itoa(timeout) + ")", err
+	} else {
+		query := "SELECT " + funcname + "(?, ?, ?, ?)"
+		_, err := db.Exec(query, log, pos, timeout, channel)
+		return query + "(" + log + "-" + pos + "-" + strconv.Itoa(timeout) + ")", err
+	}
 }
 
 func SetReadOnly(db *sqlx.DB, flag bool) (string, error) {

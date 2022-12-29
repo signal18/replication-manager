@@ -23,7 +23,7 @@ func (server *ServerMonitor) WaitSyncToMaster(master *ServerMonitor) {
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Failed MasterWaitGTID, %s", err)
 
 	} else {
-		logs, err := dbhelper.MasterPosWait(server.Conn, master.BinaryLogFile, master.BinaryLogPos, 30)
+		logs, err := dbhelper.MasterPosWait(server.Conn, server.DBVersion, master.BinaryLogFile, master.BinaryLogPos, 30, server.ClusterGroup.Conf.MasterConn)
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Failed MasterPosWait, %s", err)
 	}
 

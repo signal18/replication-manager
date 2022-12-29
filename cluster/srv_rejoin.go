@@ -497,7 +497,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 					logs, err := mycurrentmaster.StopSlave()
 					server.ClusterGroup.LogSQL(logs, err, mycurrentmaster.URL, "Rejoin", LvlErr, "Failed to stop slave on relay server  %s: %s", mycurrentmaster.URL, err)
 					if err == nil {
-						logs, err2 := dbhelper.MasterPosWait(server.Conn, mycurrentmaster.BinaryLogFile, mycurrentmaster.BinaryLogPos, 3600)
+						logs, err2 := dbhelper.MasterPosWait(server.Conn, server.DBVersion, mycurrentmaster.BinaryLogFile, mycurrentmaster.BinaryLogPos, 3600, server.ClusterGroup.Conf.MasterConn)
 						server.ClusterGroup.LogSQL(logs, err2, server.URL, "Rejoin", LvlErr, "Failed positional rejoin wait pos %s %s", server.URL, err2)
 						if err2 == nil {
 							myparentss, _ := mycurrentmaster.GetSlaveStatus(mycurrentmaster.ReplicationSourceName)
