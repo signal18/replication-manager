@@ -166,48 +166,50 @@ func (proxy *Proxy) GetEnv() map[string]string {
 
 func (proxy *Proxy) GetBaseEnv() map[string]string {
 	return map[string]string{
-		"%%ENV:NODES_CPU_CORES%%":                      proxy.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":               proxy.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                string(proxy.Id[2:10]),
-		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":               string(proxy.Id[2:10]),
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":     proxy.ClusterGroup.dbPass,
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":         proxy.ClusterGroup.dbUser,
-		"%%ENV:SERVER_IP%%":                            proxy.GetBindAddress(),
-		"%%ENV:EXTRA_BIND_SERVER_IPV6%%":               proxy.GetBindAddressExtraIPV6(),
-		"%%ENV:SVC_CONF_ENV_PROXY_USE_SSL%%":           proxy.GetUseSSL(),
-		"%%ENV:CAUSAL_READ%%":                          proxy.GetCausalRead(),
-		"%%ENV:SVC_CONF_ENV_PROXY_USE_COMPRESS%%":      proxy.GetUseCompression(),
-		"%%ENV:SERVER_PORT%%":                          proxy.Port,
-		"%%ENV:SVC_NAMESPACE%%":                        proxy.ClusterGroup.Name,
-		"%%ENV:SVC_NAME%%":                             proxy.Name,
-		"%%ENV:SERVERS_HAPROXY_WRITE%%":                proxy.GetConfigProxyModule("%%ENV:SERVERS_HAPROXY_WRITE%%"),
-		"%%ENV:SERVERS_HAPROXY_READ%%":                 proxy.GetConfigProxyModule("%%ENV:SERVERS_HAPROXY_READ%%"),
-		"%%ENV:SERVERS_HAPROXY_WRITE_BACKEND%%":        proxy.ClusterGroup.Conf.HaproxyAPIWriteBackend,
-		"%%ENV:SERVERS_HAPROXY_READ_BACKEND%%":         proxy.ClusterGroup.Conf.HaproxyAPIReadBackend,
-		"%%ENV:SVC_CONF_HAPROXY_DNS%%":                 proxy.GetConfigProxyDNS(),
-		"%%ENV:SERVERS_PROXYSQL%%":                     proxy.GetConfigProxyModule("%%ENV:SERVERS_PROXYSQL%%"),
-		"%%ENV:SERVERS%%":                              proxy.GetConfigProxyModule("%%ENV:SERVERS%%"),
-		"%%ENV:SERVERS_LIST%%":                         proxy.GetConfigProxyModule("%%ENV:SERVERS_LIST%%"),
-		"%%ENV:SVC_CONF_ENV_PORT_HTTP%%":               "80",
-		"%%ENV:SVC_CONF_ENV_PORT_R_LB%%":               strconv.Itoa(proxy.ReadPort),
-		"%%ENV:SVC_CONF_ENV_PORT_RW%%":                 strconv.Itoa(proxy.WritePort),
-		"%%ENV:SVC_CONF_ENV_MAXSCALE_MAXINFO_PORT%%":   strconv.Itoa(proxy.ClusterGroup.Conf.MxsMaxinfoPort),
-		"%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%":           strconv.Itoa(proxy.ReadWritePort),
-		"%%ENV:SVC_CONF_ENV_PORT_BINLOG%%":             strconv.Itoa(proxy.ClusterGroup.Conf.MxsBinlogPort),
-		"%%ENV:SVC_CONF_ENV_PORT_TELNET%%":             proxy.Port,
-		"%%ENV:SVC_CONF_ENV_PORT_ADMIN%%":              proxy.Port,
-		"%%ENV:SVC_CONF_ENV_USER_ADMIN%%":              proxy.User,
-		"%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%":          proxy.Pass,
-		"%%ENV:SVC_CONF_ENV_SPHINX_MEM%%":              proxy.ClusterGroup.Conf.ProvSphinxMem,
-		"%%ENV:SVC_CONF_ENV_SPHINX_MAX_CHILDREN%%":     proxy.ClusterGroup.Conf.ProvSphinxMaxChildren,
-		"%%ENV:SVC_CONF_ENV_VIP_ADDR%%":                proxy.ClusterGroup.Conf.ProvProxRouteAddr,
-		"%%ENV:SVC_CONF_ENV_VIP_NETMASK%%":             proxy.ClusterGroup.Conf.ProvProxRouteMask,
-		"%%ENV:SVC_CONF_ENV_VIP_PORT%%":                proxy.ClusterGroup.Conf.ProvProxRoutePort,
-		"%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%":            proxy.ClusterGroup.Conf.MonitorAddress + ":" + proxy.ClusterGroup.Conf.HttpPort,
-		"%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%":        proxy.ClusterGroup.GetClusterName(),
-		"%%ENV:SVC_CONF_ENV_DATADIR%%":                 proxy.GetConfigDatadir(),
-		"%%ENV:SVC_CONF_ENV_CONFDIR%%":                 proxy.GetConfigConfigdir(),
-		"%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%": proxy.GetConfigProxySQLReadOnMaster(),
+		"%%ENV:NODES_CPU_CORES%%":                        proxy.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":                 proxy.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                  string(proxy.Id[2:10]),
+		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":                 string(proxy.Id[2:10]),
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":       proxy.ClusterGroup.dbPass,
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":           proxy.ClusterGroup.dbUser,
+		"%%ENV:SERVER_IP%%":                              proxy.GetBindAddress(),
+		"%%ENV:EXTRA_BIND_SERVER_IPV6%%":                 proxy.GetBindAddressExtraIPV6(),
+		"%%ENV:SVC_CONF_ENV_PROXY_USE_SSL%%":             proxy.GetUseSSL(),
+		"%%ENV:CAUSAL_READ%%":                            proxy.GetCausalRead(),
+		"%%ENV:SVC_CONF_ENV_PROXY_USE_COMPRESS%%":        proxy.GetUseCompression(),
+		"%%ENV:SERVER_PORT%%":                            proxy.Port,
+		"%%ENV:SVC_NAMESPACE%%":                          proxy.ClusterGroup.Name,
+		"%%ENV:SVC_NAME%%":                               proxy.Name,
+		"%%ENV:SERVERS_HAPROXY_WRITE%%":                  proxy.GetConfigProxyModule("%%ENV:SERVERS_HAPROXY_WRITE%%"),
+		"%%ENV:SERVERS_HAPROXY_READ%%":                   proxy.GetConfigProxyModule("%%ENV:SERVERS_HAPROXY_READ%%"),
+		"%%ENV:SERVERS_HAPROXY_WRITE_BACKEND%%":          proxy.ClusterGroup.Conf.HaproxyAPIWriteBackend,
+		"%%ENV:SERVERS_HAPROXY_READ_BACKEND%%":           proxy.ClusterGroup.Conf.HaproxyAPIReadBackend,
+		"%%ENV:SVC_CONF_HAPROXY_DNS%%":                   proxy.GetConfigProxyDNS(),
+		"%%ENV:SERVERS_PROXYSQL%%":                       proxy.GetConfigProxyModule("%%ENV:SERVERS_PROXYSQL%%"),
+		"%%ENV:SERVERS%%":                                proxy.GetConfigProxyModule("%%ENV:SERVERS%%"),
+		"%%ENV:SERVERS_LIST%%":                           proxy.GetConfigProxyModule("%%ENV:SERVERS_LIST%%"),
+		"%%ENV:SVC_CONF_ENV_PORT_HTTP%%":                 "80",
+		"%%ENV:SVC_CONF_ENV_PORT_R_LB%%":                 strconv.Itoa(proxy.ReadPort),
+		"%%ENV:SVC_CONF_ENV_PORT_RW%%":                   strconv.Itoa(proxy.WritePort),
+		"%%ENV:SVC_CONF_ENV_MAXSCALE_MAXINFO_PORT%%":     strconv.Itoa(proxy.ClusterGroup.Conf.MxsMaxinfoPort),
+		"%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%":             strconv.Itoa(proxy.ReadWritePort),
+		"%%ENV:SVC_CONF_ENV_PORT_BINLOG%%":               strconv.Itoa(proxy.ClusterGroup.Conf.MxsBinlogPort),
+		"%%ENV:SVC_CONF_ENV_PORT_TELNET%%":               proxy.Port,
+		"%%ENV:SVC_CONF_ENV_PORT_ADMIN%%":                proxy.Port,
+		"%%ENV:SVC_CONF_ENV_USER_ADMIN%%":                proxy.User,
+		"%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%":            proxy.Pass,
+		"%%ENV:SVC_CONF_ENV_SPHINX_MEM%%":                proxy.ClusterGroup.Conf.ProvSphinxMem,
+		"%%ENV:SVC_CONF_ENV_SPHINX_MAX_CHILDREN%%":       proxy.ClusterGroup.Conf.ProvSphinxMaxChildren,
+		"%%ENV:SVC_CONF_ENV_VIP_ADDR%%":                  proxy.ClusterGroup.Conf.ProvProxRouteAddr,
+		"%%ENV:SVC_CONF_ENV_VIP_NETMASK%%":               proxy.ClusterGroup.Conf.ProvProxRouteMask,
+		"%%ENV:SVC_CONF_ENV_VIP_PORT%%":                  proxy.ClusterGroup.Conf.ProvProxRoutePort,
+		"%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%":              proxy.ClusterGroup.Conf.MonitorAddress + ":" + proxy.ClusterGroup.Conf.HttpPort,
+		"%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%":          proxy.ClusterGroup.GetClusterName(),
+		"%%ENV:SVC_CONF_ENV_DATADIR%%":                   proxy.GetConfigDatadir(),
+		"%%ENV:SVC_CONF_ENV_CONFDIR%%":                   proxy.GetConfigConfigdir(),
+		"%%ENV:SVC_CONF_ENV_PROXYSQL_READ_ON_MASTER%%":   proxy.GetConfigProxySQLReadOnMaster(),
+		"%%ENV:SVC_CONF_ENV_PROXYSQL_READER_HOSTGROUP%%": proxy.GetConfigProxySQLReaderHostgroup(),
+		"%%ENV:SVC_CONF_ENV_PROXYSQL_WRITER_HOSTGROUP%%": proxy.GetConfigProxySQLWriterHostgroup(),
 	}
 }
 
@@ -216,6 +218,14 @@ func (proxy *Proxy) GetConfigProxySQLReadOnMaster() string {
 		return "1"
 	}
 	return "0"
+}
+
+func (proxy *Proxy) GetConfigProxySQLReaderHostgroup() string {
+	return strconv.Itoa(proxy.ReaderHostgroup)
+}
+
+func (proxy *Proxy) GetConfigProxySQLWriterHostgroup() string {
+	return strconv.Itoa(proxy.WriterHostgroup)
 }
 
 func (proxy *Proxy) GetConfigProxyDNS() string {

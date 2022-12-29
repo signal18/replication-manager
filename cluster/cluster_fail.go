@@ -337,12 +337,12 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 
 		if cluster.Conf.ReadOnly {
-			logs, err = dbhelper.SetReadOnly(cluster.oldMaster.Conn, true)
+			logs, err = cluster.oldMaster.SetReadOnly()
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not set old master as read-only, %s", err)
-
-		} else {
-			logs, err = dbhelper.SetReadOnly(cluster.oldMaster.Conn, false)
-			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not set old master as read-write, %s", err)
+			/*	} else {
+				logs, err = cluster.oldMaster.SetReadWrite()
+				cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not set old master as read-write, %s", err)
+			*/
 		}
 		if cluster.Conf.SwitchDecreaseMaxConn {
 
