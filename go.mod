@@ -17,7 +17,7 @@ require (
 	github.com/NYTimes/gziphandler v1.0.1
 	github.com/alyu/configparser v0.0.0-20151125021232-26b2fe18bee1
 	github.com/asaskevich/govalidator v0.0.0-20180115102450-4b3d68f87f17
-	github.com/aws/aws-sdk-go v1.29.24
+	github.com/aws/aws-sdk-go v1.33.0
 	github.com/bluele/logrus_slack v0.0.0-20170812021752-74aa3c9b7cc3
 	github.com/bradfitz/gomemcache v0.0.0-20170208213004-1952afaa557d
 	github.com/codegangsta/negroni v0.3.0
@@ -119,7 +119,7 @@ require (
 	github.com/gorilla/context v1.1.1 // indirect
 	github.com/gorilla/securecookie v1.1.1 // indirect
 	github.com/gorilla/sessions v0.0.0-20180209192218-6ba88b7f1c1e // indirect
-	github.com/gregdel/pushover v1.1.0 // indirect
+	github.com/gregdel/pushover v1.1.0
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
 	github.com/juju/testing v0.0.0-20220203020004-a0ff61f03494 // indirect
