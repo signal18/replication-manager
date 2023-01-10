@@ -127,13 +127,13 @@ func (server *ServerMonitor) CheckReplication() string {
 			} else if server.IsRelay {
 				server.SetState(stateRelayLate)
 			}
-
 		} else {
 			if server.IsRelay == false && server.IsMaxscale == false {
 				server.SetState(stateSlave)
 			} else if server.IsRelay {
 				server.SetState(stateRelay)
 			}
+			return "Running OK"
 		}
 		return "Behind master"
 	}
