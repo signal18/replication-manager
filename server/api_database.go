@@ -1472,6 +1472,10 @@ func (repman *ReplicationManager) handlerMuxServersPortIsSlaveStatus(w http.Resp
 				return
 			}*/
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node == nil {
+			http.Error(w, "invalid server reference", 400)
+			return
+		}
 
 		maxLag := int64(math.MaxInt64)
 		if r.URL.Query().Has("lag") {
