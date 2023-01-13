@@ -100,30 +100,33 @@ func (server *ServerMonitor) RejoinMaster() error {
 				}
 
 			}
-		} else {
-			//no master discovered
-			if server.ClusterGroup.lastmaster != nil {
-				if server.ClusterGroup.lastmaster.ServerID == server.ServerID {
-					server.ClusterGroup.LogPrintf("INFO", "Rediscovering last seen master: %s", server.URL)
-					server.ClusterGroup.master = server
-					server.ClusterGroup.lastmaster = nil
-				} else {
-					if server.ClusterGroup.Conf.FailRestartUnsafe == false {
-						server.ClusterGroup.LogPrintf("INFO", "Rediscovering last seen master: %s", server.URL)
 
-						server.rejoinMasterAsSlave()
-
-					}
-				}
+			// if consul or internal proxy need to adapt read only route to new slaves
+			server.ClusterGroup.backendStateChangeProxies()
+		}
+	} else {
+		//no master discovered rediscovering from last seen
+		if server.ClusterGroup.lastmaster != nil {
+			if server.ClusterGroup.lastmaster.ServerID == server.ServerID {
+				server.ClusterGroup.LogPrintf("INFO", "Rediscovering same master from last seen master: %s", server.URL)
+				server.ClusterGroup.master = server
+				server.SetMaster()
+				server.SetReadWrite()
+				server.ClusterGroup.lastmaster = nil
 			} else {
-				if server.ClusterGroup.Conf.FailRestartUnsafe == true {
-					server.ClusterGroup.LogPrintf("INFO", "Restart Unsafe Picking first non-slave as master: %s", server.URL)
+				if server.ClusterGroup.Conf.FailRestartUnsafe == false {
+					server.ClusterGroup.LogPrintf("INFO", "Rediscovering not the master from last seen master: %s", server.URL)
+					server.rejoinMasterAsSlave()
+					// if consul or internal proxy need to adapt read only route to new slaves
+					server.ClusterGroup.backendStateChangeProxies()
+				} else {
+					server.ClusterGroup.LogPrintf("INFO", "Rediscovering unsafe possibly electing old leader after cascading failure to flavor availability: %s", server.URL)
 					server.ClusterGroup.master = server
 				}
 			}
-		}
-		// if consul or internal proxy need to adapt read only route to new slaves
-		server.ClusterGroup.backendStateChangeProxies()
+
+		} // we have last seen master
+
 	}
 	return nil
 }

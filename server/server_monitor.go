@@ -127,6 +127,7 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.MasterConnectRetry, "replication-master-connect-retry", 10, "Replication is define using this connection retry timeout")
 	monitorCmd.Flags().StringVar(&conf.RplUser, "replication-credential", "root:mariadb", "Replication user in the [user]:[password] format")
 	monitorCmd.Flags().BoolVar(&conf.ReplicationSSL, "replication-use-ssl", false, "Replication use SSL encryption to replicate from master")
+	monitorCmd.Flags().BoolVar(&conf.ActivePassive, "replication-active-passive", false, "Active Passive topology")
 	monitorCmd.Flags().BoolVar(&conf.MultiMaster, "replication-multi-master", false, "Multi-master topology")
 	monitorCmd.Flags().BoolVar(&conf.MultiMasterGrouprep, "replication-multi-master-grouprep", false, "Enable mysql group replication multi-master")
 	monitorCmd.Flags().IntVar(&conf.MultiMasterGrouprepPort, "replication-multi-master-grouprep-port", 33061, "Group replication network port")

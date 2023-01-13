@@ -514,6 +514,8 @@ func (cluster *Cluster) GetTopology() string {
 	} else if cluster.Conf.MasterSlavePgLogical {
 		cluster.Conf.Topology = topoMasterSlavePgLog
 		cluster.IsPostgres = true
+	} else if cluster.Conf.ActivePassive {
+		cluster.Conf.Topology = topoActivePassive
 	} else {
 		relay := cluster.GetRelayServer()
 		if relay != nil && cluster.Conf.ReplicationNoRelay == false {

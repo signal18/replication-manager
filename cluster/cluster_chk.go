@@ -256,6 +256,9 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 }
 
 func (cluster *Cluster) isFoundCandidateMaster() bool {
+	if cluster.GetTopology() == topoActivePassive {
+		return true
+	}
 	key := -1
 	if cluster.Conf.MultiMasterGrouprep {
 		key = cluster.electSwitchoverGroupReplicationCandidate(cluster.slaves, true)

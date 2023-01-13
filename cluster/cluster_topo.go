@@ -33,6 +33,7 @@ const (
 	topoMultiMasterGrouprep string = "multi-master-grprep"
 	topoMasterSlavePgLog    string = "master-slave-pg-logical"
 	topoMasterSlavePgStream string = "master-slave-pg-stream"
+	topoActivePassive       string = "active-passive"
 )
 
 func (cluster *Cluster) newServerList() error {
@@ -170,8 +171,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				cluster.LogPrintf(LvlDbg, "Server %s is configured as a slave", sv.URL)
 			}
 			cluster.slaves = append(cluster.slaves, sv)
-		} else {
-			// not slave
+		} else { // not slave
 			if sv.IsGroupReplicationMaster {
 				cluster.master = cluster.Servers[k]
 				cluster.vmaster = cluster.Servers[k]
@@ -180,7 +180,6 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					cluster.master.SetReadWrite()
 					cluster.LogPrintf(LvlInfo, "Group replication server %s disable read only ", cluster.master.URL)
 				}
-
 			} else if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
 				//sv.State = stateUnconn
 				//transition to standalone may happen despite server have never connect successfully when default to suspect
@@ -197,6 +196,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					if cluster.Conf.LogLevel > 2 {
 						cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
 					}
+					if len(cluster.Servers) == 1 {
+						cluster.Conf.ActivePassive = true
+					}
 					cluster.master = cluster.Servers[k]
 					cluster.master.SetMaster()
 					if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
@@ -206,12 +208,11 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				}
 			}
 
-		}
-		// end not slave
-	}
+		} // end not slave
+	} //end loop all servers
 
 	// If no cluster.slaves are detected, generate an error
-	if len(cluster.slaves) == 0 && cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoMultiMasterGrouprep {
+	if len(cluster.slaves) == 0 && cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoMultiMasterGrouprep && cluster.GetTopology() != topoActivePassive {
 		cluster.SetState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00010"]), ErrFrom: "TOPO"})
 	}
 
@@ -319,6 +320,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 		}
 	}
+
 	// Final check if master has been found
 	if cluster.master == nil {
 		// could not detect master
@@ -371,7 +373,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	if cluster.HasAllDbUp() {
-		if len(cluster.Crashes) > 0 {
+		if len(cluster.Crashes) > 0 && cluster.HasNoDbUnconnected() {
 			cluster.LogPrintf(LvlDbg, "Purging crashes, all databses nodes up")
 			cluster.Crashes = nil
 			cluster.Save()
@@ -419,12 +421,15 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 		}
 		if allslavefailed {
 			if cluster.IsDiscovered() {
-				if cluster.master != nil && cluster.Conf.Interactive == false && cluster.Conf.FailRestartUnsafe == false {
-					// forget the master if safe mode
-					//		cluster.LogPrintf(LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
-					//		cluster.lastmaster = cluster.master
-					//		cluster.master = nil
+				if cluster.master != nil {
+					cluster.lastmaster = cluster.master
+					cluster.LogPrintf(LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
 
+					if cluster.Conf.FailRestartUnsafe == false {
+						// forget the master if safe mode
+						cluster.LogPrintf(LvlInfo, "Forget the leader as no more slave and failover unsafe is disable: %s ", cluster.master.URL)
+						cluster.master = nil
+					}
 				}
 			}
 			cluster.SetState("ERR00021", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00021"]), ErrFrom: "TOPO"})

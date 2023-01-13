@@ -68,6 +68,9 @@ func (server *ServerMonitor) SetState(state string) {
 }
 
 func (server *ServerMonitor) SetPrevState(state string) {
+	if state == "" {
+		return
+	}
 	server.ClusterGroup.LogPrintf(LvlInfo, "Server %s previous state set to: %s", server.URL, state)
 	server.PrevState = state
 }
