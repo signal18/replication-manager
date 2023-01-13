@@ -409,8 +409,10 @@ func (proxy *ProxySQLProxy) Refresh() error {
 					cluster.sme.AddState("ERR00072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00072"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 				}
 				updated = true
+			} else if s.IsSlave && !isFoundBackendRead && !s.IsIgnored() {
+				err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
+				updated = true
 			}
-
 		} //if bootstrap
 
 		// load the grants
