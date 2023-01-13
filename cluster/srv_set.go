@@ -57,7 +57,14 @@ func (server *ServerMonitor) SetState(state string) {
 }
 
 func (server *ServerMonitor) SetPrevState(state string) {
+<<<<<<< HEAD
 	server.ClusterGroup.LogPrintf(LvlInfo, "Server %s previous state changed to: %s", server.URL, state)
+=======
+	if state == "" {
+		return
+	}
+	server.ClusterGroup.LogPrintf(LvlInfo, "Server %s previous state set to: %s", server.URL, state)
+>>>>>>> bab5a650... 2 nodes cluster scenario can end up with cycling replication on the master #464
 	server.PrevState = state
 }
 

@@ -254,9 +254,10 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.IsRelay = false
 	server.IsMaxscale = true
 	server.IsDelayed = server.IsInDelayedHost()
-	server.SetState(stateSuspect)
 	// NOTE: does this make sense to set the state to the same?
 	server.SetPrevState(stateSuspect)
+	server.SetState(stateSuspect)
+
 	server.Datadir = server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/" + server.Host + "_" + server.Port
 	if _, err := os.Stat(server.Datadir); os.IsNotExist(err) {
 		os.MkdirAll(server.Datadir, os.ModePerm)

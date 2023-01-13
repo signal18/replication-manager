@@ -127,6 +127,7 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.MasterConnectRetry, "replication-master-connect-retry", 10, "Replication is define using this connection retry timeout")
 	monitorCmd.Flags().StringVar(&conf.RplUser, "replication-credential", "root:mariadb", "Replication user in the [user]:[password] format")
 	monitorCmd.Flags().BoolVar(&conf.ReplicationSSL, "replication-use-ssl", false, "Replication use SSL encryption to replicate from master")
+	monitorCmd.Flags().BoolVar(&conf.ActivePassive, "replication-active-passive", false, "Active Passive topology")
 	monitorCmd.Flags().BoolVar(&conf.MultiMaster, "replication-multi-master", false, "Multi-master topology")
 	monitorCmd.Flags().BoolVar(&conf.MultiMasterWsrep, "replication-multi-master-wsrep", false, "Enable Galera multi-master")
 	monitorCmd.Flags().StringVar(&conf.MultiMasterWsrepSSTMethod, "replication-multi-master-wsrep-sst-method", "mariabackup", "mariabackup|xtrabackup-v2|rsync|mysqldump")

@@ -166,6 +166,29 @@ func (cluster *Cluster) HasAllDbUp() bool {
 	return true
 }
 
+func (cluster *Cluster) HasNoDbUnconnected() bool {
+	if cluster.Servers == nil {
+		return false
+	}
+	for _, s := range cluster.Servers {
+		if s != nil {
+			if s.State == stateFailed || s.State == stateUnconn /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+				return false
+			}
+			if s.State == stateSuspect && cluster.GetTopology() != topoUnknown {
+				//supect is used to reload config and avoid backend state change to failed that would disable servers in proxies and cause glinch in cluster traffic
+				// at the same time to enbale bootstrap replication we need to know when server are up
+				return false
+			}
+			if s.Conn == nil {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
 func (cluster *Cluster) HasRequestDBRestart() bool {
 	if cluster.Servers == nil {
 		return false
