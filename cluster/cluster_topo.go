@@ -170,23 +170,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				cluster.LogPrintf(LvlDbg, "Server %s is configured as a slave", sv.URL)
 			}
 			cluster.slaves = append(cluster.slaves, sv)
-<<<<<<< HEAD
 		} else {
 			// not slave
-
 			if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
-=======
-		} else { // not slave
-			if sv.IsGroupReplicationMaster {
-				cluster.master = cluster.Servers[k]
-				cluster.vmaster = cluster.Servers[k]
-				cluster.master.SetMaster()
-				if cluster.master.IsReadOnly() {
-					cluster.master.SetReadWrite()
-					cluster.LogPrintf(LvlInfo, "Group replication server %s disable read only ", cluster.master.URL)
-				}
-			} else if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
->>>>>>> bab5a650... 2 nodes cluster scenario can end up with cycling replication on the master #464
 				//sv.State = stateUnconn
 				//transition to standalone may happen despite server have never connect successfully when default to suspect
 				if cluster.Conf.LogLevel > 2 {
@@ -201,15 +187,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
 					//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping */
 				} else {
-<<<<<<< HEAD
-=======
-					if cluster.Conf.LogLevel > 2 {
-						cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
-					}
-					if len(cluster.Servers) == 1 {
-						cluster.Conf.ActivePassive = true
-					}
->>>>>>> bab5a650... 2 nodes cluster scenario can end up with cycling replication on the master #464
+
 					cluster.master = cluster.Servers[k]
 					cluster.master.SetMaster()
 					if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
@@ -223,11 +201,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	} //end loop all servers
 
 	// If no cluster.slaves are detected, generate an error
-<<<<<<< HEAD
-	if len(cluster.slaves) == 0 && cluster.GetTopology() != topoMultiMasterWsrep {
-=======
-	if len(cluster.slaves) == 0 && cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoMultiMasterGrouprep && cluster.GetTopology() != topoActivePassive {
->>>>>>> bab5a650... 2 nodes cluster scenario can end up with cycling replication on the master #464
+	if len(cluster.slaves) == 0 && cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoActivePassive {
 		cluster.SetState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00010"]), ErrFrom: "TOPO"})
 	}
 

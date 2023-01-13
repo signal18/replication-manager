@@ -56,6 +56,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 		if server.URL != server.ClusterGroup.master.URL {
 			server.ClusterGroup.SetState("WARN0022", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0022"], server.URL, server.ClusterGroup.master.URL), ErrFrom: "REJOIN"})
 			server.RejoinScript()
+
 			if server.ClusterGroup.Conf.FailoverSemiSyncState {
 				server.ClusterGroup.LogPrintf("INFO", "Set semisync replica and disable semisync leader %s", server.URL)
 				logs, err := server.SetSemiSyncReplica()
@@ -90,36 +91,9 @@ func (server *ServerMonitor) RejoinMaster() error {
 					server.ClusterGroup.LogPrintf("ERROR", "State transfer rejoin failed")
 				}
 			}
-<<<<<<< HEAD
 			if server.ClusterGroup.Conf.AutorejoinBackupBinlog == true {
 				server.saveBinlog(crash)
 			}
-
-		}
-	} else {
-		//no master discovered
-		if server.ClusterGroup.lastmaster != nil {
-			if server.ClusterGroup.lastmaster.ServerID == server.ServerID {
-				server.ClusterGroup.LogPrintf("INFO", "Rediscovering last seen master: %s", server.URL)
-				server.ClusterGroup.master = server
-				server.ClusterGroup.lastmaster = nil
-			} else {
-				if server.ClusterGroup.Conf.FailRestartUnsafe == false {
-					server.ClusterGroup.LogPrintf("INFO", "Rediscovering last seen master: %s", server.URL)
-
-					server.rejoinMasterAsSlave()
-
-				}
-			}
-		} else {
-			if server.ClusterGroup.Conf.FailRestartUnsafe == true {
-				server.ClusterGroup.LogPrintf("INFO", "Restart Unsafe Picking first non-slave as master: %s", server.URL)
-				server.ClusterGroup.master = server
-			}
-		}
-		// if consul or internal proxy need to adapt read only route to new slaves
-		server.ClusterGroup.backendStateChangeProxies()
-=======
 
 			// if consul or internal proxy need to adapt read only route to new slaves
 			server.ClusterGroup.backendStateChangeProxies()
@@ -137,17 +111,15 @@ func (server *ServerMonitor) RejoinMaster() error {
 				if server.ClusterGroup.Conf.FailRestartUnsafe == false {
 					server.ClusterGroup.LogPrintf("INFO", "Rediscovering not the master from last seen master: %s", server.URL)
 					server.rejoinMasterAsSlave()
-					// if consul or internal proxy need to adapt read only route to new slaves
-					server.ClusterGroup.backendStateChangeProxies()
 				} else {
 					server.ClusterGroup.LogPrintf("INFO", "Rediscovering unsafe possibly electing old leader after cascading failure to flavor availability: %s", server.URL)
 					server.ClusterGroup.master = server
 				}
 			}
-
+			// if consul or internal proxy need to adapt read only route to new slaves
+			server.ClusterGroup.backendStateChangeProxies()
 		} // we have last seen master
 
->>>>>>> bab5a650... 2 nodes cluster scenario can end up with cycling replication on the master #464
 	}
 	return nil
 }
