@@ -417,6 +417,9 @@ func (cluster *Cluster) OpenSVCGetNetSection() map[string]string {
 		svcnet["type"] = "cni"
 		svcnet["netns"] = "container#01"
 		svcnet["network"] = cluster.Conf.ProvNetCNICluster
+		if cluster.GetTopology() == topoMultiMasterWsrep {
+			svcnet["wait_dns"] = "15s"
+		}
 		return svcnet
 	} else if cluster.Conf.ProvType == "docker" {
 		svcnet["type"] = "docker"

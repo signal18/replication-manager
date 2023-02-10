@@ -567,7 +567,7 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 						if configurator.IsFilterInDBTags("docker") && configurator.ClusterConfig.ProvOrchestrator != config.ConstOrchestratorLocalhost {
 							if configurator.IsFilterInDBTags("wsrep") {
 								//if galera don't cusomized system files
-								if strings.Contains(content, "./.system") {
+								if strings.Contains(content, "./.system") && !(strings.Contains(content, "exclude") || strings.Contains(content, "ignore")) {
 									content = ""
 								}
 							} else {

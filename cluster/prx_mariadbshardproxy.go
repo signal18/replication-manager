@@ -195,10 +195,13 @@ func (proxy *MariadbShardProxy) Refresh() error {
 
 		return errors.New("Sharding proxy refresh no database monitor yet initialize")
 	}
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go proxy.ShardProxy.Ping(wg)
+	wg.Wait()
 	err := proxy.ShardProxy.Refresh()
 	if err != nil {
-		proxy.ClusterGroup.LogPrintf(LvlErr, "Sharding proxy refresh error (%s)", err)
-
+		//proxy.ClusterGroup.LogPrintf(LvlErr, "Sharding proxy refresh error (%s)", err)
 		return err
 	}
 	proxy.Version = proxy.ShardProxy.Variables["VERSION"]

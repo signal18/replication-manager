@@ -1216,7 +1216,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	cluster.failoverPreScript(fail)
 
 	// Phase 2: Reject updates and sync slaves on switchover
-	if fail == false {
+	if fail == false && cluster.GetTopology() != topoMultiMasterWsrep {
 		cluster.LogPrintf(LvlInfo, "Rejecting updates on %s (old master)", cluster.oldMaster.URL)
 		cluster.oldMaster.freeze()
 	}
@@ -1323,7 +1323,8 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 				cluster.LogPrintf(LvlErr, "Could not set old master as read-write, %s", err)
 			}
 		}
-		if cluster.Conf.SwitchDecreaseMaxConn {
+		// Galara does not freeze old master because of bug https://jira.mariadb.org/browse/MDEV-9134
+		if cluster.Conf.SwitchDecreaseMaxConn && cluster.GetTopology() != topoMultiMasterWsrep {
 			logs, err := dbhelper.SetMaxConnections(cluster.oldMaster.Conn, cluster.oldMaster.maxConn, cluster.oldMaster.DBVersion)
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not set max connections on %s %s", cluster.oldMaster.URL, err)
 		}

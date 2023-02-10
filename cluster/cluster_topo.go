@@ -268,7 +268,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				sro++
 			}
 		}
-		if sro > 1 && cluster.GetTopology() != topoMultiMasterGrouprep {
+		if sro > 1 && cluster.GetTopology() != topoMultiMasterGrouprep && cluster.GetTopology() != topoMultiMasterWsrep {
 			cluster.SetState("WARN0004", state.State{ErrType: "WARNING", ErrDesc: "RO server count > 1 in 2 node multi-master mode.  switching to preferred master.", ErrFrom: "TOPO"})
 			server := cluster.getOnePreferedMaster()
 			if server != nil {
@@ -277,6 +277,16 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				cluster.SetState("WARN0006", state.State{ErrType: "WARNING", ErrDesc: "Multi-master need a preferred master.", ErrFrom: "TOPO"})
 			}
 		}
+		if sro == len(cluster.Servers) && cluster.GetTopology() == topoMultiMasterWsrep {
+			if cluster.GetMaster() == nil {
+				cluster.SetState("WARN0006", state.State{ErrType: "WARNING", ErrDesc: "Wsrep cluster need a leader electing one", ErrFrom: "TOPO"})
+				server := cluster.getOnePreferedMaster()
+				if server != nil {
+					server.ClusterGroup.vmaster = server
+					server.SetReadWrite()
+				}
+			} // no master
+		} // end RO servers = number of nodes and galera
 	}
 
 	if cluster.slaves != nil && !cluster.Conf.MultiMasterGrouprep {

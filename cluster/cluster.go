@@ -424,8 +424,8 @@ func (cluster *Cluster) Run() {
 					for k, v := range cluster.Servers {
 						cluster.LogPrintf(LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 					}
-					if cluster.master != nil {
-						cluster.LogPrintf(LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.master.State, cluster.master.PrevState)
+					if cluster.GetMaster() != nil {
+						cluster.LogPrintf(LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.GetMaster().State, cluster.GetMaster().PrevState)
 						for k, v := range cluster.slaves {
 							cluster.LogPrintf(LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 						}
@@ -715,7 +715,7 @@ func (cluster *Cluster) FailoverForce() error {
 
 		}
 	}
-	if cluster.master == nil {
+	if cluster.GetMaster() == nil {
 		cluster.LogPrintf(LvlErr, "Could not find a failed server in the hosts list")
 		return errors.New("ERROR: Could not find a failed server in the hosts list")
 	}
@@ -861,21 +861,21 @@ func (cluster *Cluster) MonitorSchema() {
 	if !cluster.Conf.MonitorSchemaChange {
 		return
 	}
-	if cluster.master == nil {
+	if cluster.GetMaster() == nil {
 		return
 	}
-	if cluster.master.State == stateFailed || cluster.master.State == stateMaintenance || cluster.master.State == stateUnconn {
+	if cluster.GetMaster().State == stateFailed || cluster.GetMaster().State == stateMaintenance || cluster.GetMaster().State == stateUnconn {
 		return
 	}
-	if cluster.master.Conn == nil {
+	if cluster.GetMaster().Conn == nil {
 		return
 	}
 	cluster.sme.SetMonitorSchemaState()
-	cluster.master.Conn.SetConnMaxLifetime(3595 * time.Second)
+	cluster.GetMaster().Conn.SetConnMaxLifetime(3595 * time.Second)
 
-	tables, tablelist, logs, err := dbhelper.GetTables(cluster.master.Conn, cluster.master.DBVersion)
-	cluster.LogSQL(logs, err, cluster.master.URL, "Monitor", LvlErr, "Could not fetch master tables %s", err)
-	cluster.master.Tables = tablelist
+	tables, tablelist, logs, err := dbhelper.GetTables(cluster.GetMaster().Conn, cluster.GetMaster().DBVersion)
+	cluster.LogSQL(logs, err, cluster.GetMaster().URL, "Monitor", LvlErr, "Could not fetch master tables %s", err)
+	cluster.GetMaster().Tables = tablelist
 
 	var tableCluster []string
 	var duplicates []*ServerMonitor
@@ -889,7 +889,7 @@ func (cluster *Cluster) MonitorSchema() {
 
 		duplicates = append(duplicates, cluster.GetMaster())
 		tableCluster = append(tableCluster, cluster.GetName())
-		oldtable, err := cluster.master.GetTableFromDict(t.TableSchema + "." + t.TableName)
+		oldtable, err := cluster.GetMaster().GetTableFromDict(t.TableSchema + "." + t.TableName)
 		haschanged := false
 		if err != nil {
 			if err.Error() == "Empty" {
@@ -936,7 +936,7 @@ func (cluster *Cluster) MonitorSchema() {
 	}
 	cluster.DBIndexSize = totindexsize
 	cluster.DBTableSize = tottablesize
-	cluster.master.DictTables = tables
+	cluster.GetMaster().DictTables = tables
 	cluster.sme.RemoveMonitorSchemaState()
 }
 
@@ -993,7 +993,7 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 	}
 	if cluster.Conf.ArbitrationFailedMasterScript != "" {
 		cluster.LogPrintf(LvlInfo, "Calling abitration failed for master script")
-		out, err := exec.Command(cluster.Conf.ArbitrationFailedMasterScript, cluster.master.Host, cluster.master.Port).CombinedOutput()
+		out, err := exec.Command(cluster.Conf.ArbitrationFailedMasterScript, cluster.GetMaster().Host, cluster.GetMaster().Port).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "%s", err)
 		}
