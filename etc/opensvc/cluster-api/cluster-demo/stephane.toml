@@ -33,3 +33,11 @@ prov-proxy-agents = "s18-fr-1,s18-fr-2"
 prov-proxy-service-type = "docker"
 prov-proxy-disk-type = "volume"
 prov-proxy-volume-data = "tank"
+
+
+
+monitoring-sharedir="./share"
+monitoring-datadir="./data"
+http-root="./dashboard"
+#monitoring-basedir="./"
+​
