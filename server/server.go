@@ -226,7 +226,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		if conf.WithTarball == "ON" {
 			fistRead.AddConfigPath("/usr/local/replication-manager/etc")
 			if _, err := os.Stat("/usr/local/replication-manager/etc/config.toml"); os.IsNotExist(err) {
-				//log.Fatal("No config file /usr/local/replication-manager/etc/config.toml")
 				log.Warning("No config file /usr/local/replication-manager/etc/config.toml")
 			}
 		} else {
