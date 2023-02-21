@@ -30,8 +30,7 @@ import (
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 	log "github.com/sirupsen/logrus"
-	logsqlerr "github.com/sirupsen/logrus"
-	logsqlgen "github.com/sirupsen/logrus"
+	logsql "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -171,6 +170,9 @@ type Cluster struct {
 	WaitingFailover               int                         `json:"waitingFailover"`
 	Configurator                  configurator.Configurator   `json:"configurator"`
 	DiffVariables                 []VariableDiff              `json:"diffVariables"`
+	SqlErrorLog                   *logsql.Logger              `json:"-"`
+	SqlGeneralLog                 *logsql.Logger              `json:"-"`
+
 	sync.Mutex
 	crcTable *crc64.Table
 }
@@ -251,7 +253,8 @@ const (
 
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, log *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
-
+	cluster.SqlErrorLog = logsql.New()
+	cluster.SqlGeneralLog = logsql.New()
 	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 	cluster.switchoverChan = make(chan bool)
 	// should use buffered channels or it will block
@@ -309,34 +312,34 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		MaxSize:    cluster.Conf.LogRotateMaxSize,
 		MaxBackups: cluster.Conf.LogRotateMaxBackup,
 		MaxAge:     cluster.Conf.LogRotateMaxAge,
-		Level:      logsqlerr.DebugLevel,
-		Formatter: &logsqlerr.TextFormatter{
+		Level:      logsql.DebugLevel,
+		Formatter: &logsql.TextFormatter{
 			DisableColors:   true,
 			TimestampFormat: "2006-01-02 15:04:05",
 			FullTimestamp:   true,
 		},
 	})
 	if err != nil {
-		logsqlerr.WithError(err).Error("Can't init error sql log file")
+		cluster.SqlErrorLog.WithError(err).Error("Can't init error sql log file")
 	}
-	logsqlerr.AddHook(hookerr)
+	cluster.SqlErrorLog.AddHook(hookerr)
 
 	hookgen, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
 		Filename:   cluster.WorkingDir + "/sql_general.log",
 		MaxSize:    cluster.Conf.LogRotateMaxSize,
 		MaxBackups: cluster.Conf.LogRotateMaxBackup,
 		MaxAge:     cluster.Conf.LogRotateMaxAge,
-		Level:      logsqlerr.DebugLevel,
-		Formatter: &logsqlgen.TextFormatter{
+		Level:      logsql.DebugLevel,
+		Formatter: &logsql.TextFormatter{
 			DisableColors:   true,
 			TimestampFormat: "2006-01-02 15:04:05",
 			FullTimestamp:   true,
 		},
 	})
 	if err != nil {
-		logsqlgen.WithError(err).Error("Can't init general sql log file")
+		cluster.SqlGeneralLog.WithError(err).Error("Can't init general sql log file")
 	}
-	logsqlgen.AddHook(hookgen)
+	cluster.SqlGeneralLog.AddHook(hookgen)
 	cluster.LoadAPIUsers()
 	// createKeys do nothing yet
 	cluster.createKeys()

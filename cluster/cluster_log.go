@@ -18,8 +18,6 @@ import (
 	"github.com/nsf/termbox-go"
 	"github.com/signal18/replication-manager/utils/s18log"
 	log "github.com/sirupsen/logrus"
-	logsqlerr "github.com/sirupsen/logrus"
-	logsqlgen "github.com/sirupsen/logrus"
 )
 
 // Log levels
@@ -52,12 +50,12 @@ func (cluster *Cluster) LogSQL(logs string, err error, url string, from string, 
 	}
 	if logs != "" {
 		if err != nil {
-			cluster.LogSQLErrorPrintf(LvlInfo, url, err, from, logs, fmt.Sprintf(format, args...))
+			cluster.LogSqlErrorPrintf(LvlInfo, url, err, from, logs, fmt.Sprintf(format, args...))
 		}
 		if from != "Monitor" {
-			cluster.LogSQLGeneralPrintf(LvlInfo, url, from, logs)
+			cluster.LogSqlGeneralPrintf(LvlInfo, url, from, logs)
 		} else if cluster.Conf.LogSQLInMonitoring {
-			cluster.LogSQLGeneralPrintf(LvlInfo, url, from, logs)
+			cluster.LogSqlGeneralPrintf(LvlInfo, url, from, logs)
 		}
 	}
 }
@@ -92,7 +90,7 @@ func (cluster *Cluster) LogPrint(msg ...interface{}) {
 	}
 }
 
-func (cluster *Cluster) LogSQLGeneralPrintf(level string, url string, from string, format string) {
+func (cluster *Cluster) LogSqlGeneralPrintf(level string, url string, from string, format string) {
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 	msg := s18log.HttpMessage{
 		Group:     cluster.Name,
@@ -101,10 +99,10 @@ func (cluster *Cluster) LogSQLGeneralPrintf(level string, url string, from strin
 		Text:      format,
 	}
 	cluster.SQLGeneralLog.Add(msg)
-	logsqlgen.WithFields(log.Fields{"cluster": cluster.Name, "server": url, "module": from}).Infof(format)
+	cluster.SqlGeneralLog.WithFields(log.Fields{"cluster": cluster.Name, "server": url, "module": from}).Infof(format)
 }
 
-func (cluster *Cluster) LogSQLErrorPrintf(level string, url string, err error, from string, logs string, format string) {
+func (cluster *Cluster) LogSqlErrorPrintf(level string, url string, err error, from string, logs string, format string) {
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 	msg := s18log.HttpMessage{
 		Group:     cluster.Name,
@@ -113,7 +111,7 @@ func (cluster *Cluster) LogSQLErrorPrintf(level string, url string, err error, f
 		Text:      logs,
 	}
 	cluster.SQLErrorLog.Add(msg)
-	logsqlerr.WithFields(log.Fields{"cluster": cluster.Name, "server": url, "module": from, "error": err, "sql": logs}).Errorf(format)
+	cluster.SqlErrorLog.WithFields(log.Fields{"cluster": cluster.Name, "server": url, "module": from, "error": err, "sql": logs}).Errorf(format)
 }
 
 func (cluster *Cluster) LogUpdate(line int, level string, format string, args ...interface{}) int {
