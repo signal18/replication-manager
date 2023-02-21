@@ -726,7 +726,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.EngineInnoDB, logs, err = dbhelper.GetEngineInnoDBVariables(server.Conn)
 			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get engine innodb status %s %s", server.URL, err)
 		}
-		if server.ClusterGroup.Conf.MonitorPFS {
+		if server.ClusterGroup.Conf.MonitorPFS && server.HavePFSSlowQueryLog && server.HavePFS {
 			// GET PFS query digest
 			server.PFSQueries, logs, err = dbhelper.GetQueries(server.Conn)
 			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get queries %s %s", server.URL, err)
