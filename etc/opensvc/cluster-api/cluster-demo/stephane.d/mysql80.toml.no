@@ -1,0 +1,39 @@
+# config.toml
+# Example replication-manager configuration file
+[regtest]
+title = "regtest"
+db-servers-hosts = "db1,db2,db3"
+#db-servers-hosts = "db2"
+
+db-servers-prefered-master = "db2"
+db-servers-connect-timeout = 1
+failover-mode = "automatic"
+replication-source-name="test"
+# proxysql-writer-hostgroup = "1000"
+# proxysql-reader-hostgroup = "1001"
+failover-superreadonly-state = true
+# autorejoin-flashback = true
+failover-falsepositive-heartbeat = false
+# force-slave-semisync = true
+# failover-falsepositive-ping-counter = 3
+#failover-limit = 999
+# failover-time-limit = 1
+prov-db-docker-img = "mysql:latest"
+prov-db-tags = "docker,smallredolog,innodb,noquerycache,threadpool,logslow,nosplitpath,mysqlgtid"
+
+# replication-source-name = "regtest"
+# prov-db-domain = "2"
+
+autorejoin-mysqldump = false
+backup-mysqlbinlog-path = "/Users/apple/mysql/bin/mysqlbinlog"
+backup-mysqldump-path = "/Users/apple/mysql/bin/mysqldump"
+#backup-mysqldump-options = "--hex-blob --single-transaction --routines=true --triggers=true --verbose --all-databases"
+backup-mysqlclient-path = "/Users/apple/mysql/bin/mysql"
+# force-slave-readonly = false
+#haproxy=true
+#haproxy-servers = "haproxy1"
+proxysql=true
+proxysql-servers = "proxysql1"
+proxysql-user ="external"
+proxysql-bootstrap= true
+proxysql-copy-grants = true
