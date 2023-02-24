@@ -342,6 +342,7 @@ type Config struct {
 	ProvOpensvcP12Certificate                 string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificat" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
 	ProvOpensvcUseCollectorAPI                bool   `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
+	ProvOpensvcCollectorAccount               string `mapstructure:"opensvc-collector-account" toml:"opensvc-collector-account" json:"opensvcCollectorAccount"`
 	ProvRegister                              bool   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
 	ProvAdminUser                             string `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
 	ProvUser                                  string `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
@@ -526,7 +527,7 @@ type ConfigVariableType struct {
 	Label     string `json:"label"`
 }
 
-//Compliance created in OpenSVC collector and exported as JSON
+// Compliance created in OpenSVC collector and exported as JSON
 type Compliance struct {
 	Filtersets []struct {
 		ID    uint   `json:"id"`
