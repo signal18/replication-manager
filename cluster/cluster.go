@@ -171,6 +171,7 @@ type Cluster struct {
 	WaitingFailover               int                         `json:"waitingFailover"`
 	Configurator                  configurator.Configurator   `json:"configurator"`
 	DiffVariables                 []VariableDiff              `json:"diffVariables"`
+	insideInitNodes               bool                        `json:"-"`
 	sync.Mutex
 	crcTable *crc64.Table
 }
@@ -359,8 +360,15 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 
 	return nil
 }
-func (cluster *Cluster) initOrchetratorNodes() {
 
+func (cluster *Cluster) initOrchetratorNodes() {
+	if cluster.insideInitNodes {
+		return
+	}
+	cluster.insideInitNodes = true
+	defer func() { cluster.insideInitNodes = false }()
+
+	//defer cluster.insideInitNodes = false
 	//cluster.LogPrintf(LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
