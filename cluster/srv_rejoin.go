@@ -42,6 +42,10 @@ func (server *ServerMonitor) RejoinMaster() error {
 	defer func() {
 		server.ClusterGroup.rejoinCond.Send <- true
 	}()
+	if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep {
+		server.ClusterGroup.LogPrintf("INFO", "Rejoining leader %s ignored caused by wsrep protocol", server.URL)
+		return nil
+	}
 
 	if server.ClusterGroup.sme.IsInFailover() {
 		return nil
@@ -443,14 +447,20 @@ func (server *ServerMonitor) rejoinMasterAsSlave() error {
 
 func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	// Test if slave not connected to current master
+
 	defer func() {
 		server.ClusterGroup.rejoinCond.Send <- true
 	}()
+
 	if server.ClusterGroup.GetTopology() == topoMultiMasterRing || server.ClusterGroup.GetTopology() == topoMultiMasterWsrep {
 		if server.ClusterGroup.GetTopology() == topoMultiMasterRing {
 			server.RejoinLoop()
-			return nil
 		}
+		if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep {
+			server.ClusterGroup.LogPrintf("INFO", "Rejoining replica %s ignored caused by wsrep protocol", server.URL)
+		}
+		return nil
+
 	}
 	mycurrentmaster, _ := server.ClusterGroup.GetMasterFromReplication(server)
 	if mycurrentmaster == nil {

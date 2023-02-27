@@ -397,6 +397,8 @@ func (server *ServerMonitor) IsRunning() bool {
 }
 
 func (server *ServerMonitor) IsConnected() bool {
+	server.GetCluster().LogPrintf(LvlInfo, "Waiting state running state is %s  with topology %s and pool %s ", server.State, server.GetCluster().GetTopology(), server.Conn)
+
 	if server.State == stateFailed /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
 		return false
 	}
@@ -414,6 +416,13 @@ func (server *ServerMonitor) IsConnected() bool {
 // IsFailed() returns true is the server is Failed or auth error
 func (server *ServerMonitor) IsFailed() bool {
 	if server.State == stateFailed || server.State == stateErrorAuth {
+		return true
+	}
+	return false
+}
+
+func (server *ServerMonitor) IsSuspect() bool {
+	if server.State == stateSuspect {
 		return true
 	}
 	return false
@@ -463,6 +472,9 @@ func (server *ServerMonitor) IsReadOnly() bool {
 }
 
 func (server *ServerMonitor) IsReadWrite() bool {
+	if server.IsFailed() || server.IsSuspect() {
+		return false
+	}
 	return !server.HaveReadOnly
 }
 
@@ -516,4 +528,33 @@ func (server *ServerMonitor) IsMariaDB() bool {
 
 func (server *ServerMonitor) HasSuperReadOnlyCapability() bool {
 	return server.DBVersion.IsMySQLOrPerconaGreater57()
+}
+
+func (server *ServerMonitor) IsLeader() bool {
+
+	if server.State == stateMaster {
+		return true
+	}
+	// vmaster for wsrep
+	if server.ClusterGroup.vmaster != nil {
+		if server.State == stateWsrep && server.ClusterGroup.vmaster == server {
+			return true
+		}
+	}
+	return false
+}
+
+func (server *ServerMonitor) IsSlaveOrSync() bool {
+
+	if server.State == stateWsrep {
+		if server.IsLeader() {
+			return false
+		}
+		return true
+	}
+	// vmaster for wsrep
+	if server.IsSlave {
+		return true
+	}
+	return false
 }

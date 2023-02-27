@@ -357,11 +357,11 @@ func (proxy *HaproxyProxy) Refresh() error {
 					PrxByteOut:     line[9],
 					PrxLatency:     line[61],
 				})
-				if (srv.State == stateSlaveErr || srv.State == stateRelayErr || srv.State == stateSlaveLate || srv.State == stateRelayLate || srv.IsIgnored()) && line[17] == "UP" {
+				if (srv.State == stateSlaveErr || srv.State == stateRelayErr || srv.State == stateSlaveLate || srv.State == stateRelayLate || srv.IsIgnored()) && line[17] == "UP" || srv.State == stateWsrepLate || srv.State == stateWsrepDonor {
 					cluster.LogPrintf(LvlInfo, "HaProxy detecting broken resplication and UP state in haproxy %s drain  server %s", proxy.Host+":"+proxy.Port, srv.URL)
 					haRuntime.SetDrain(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
 				}
-				if (srv.State == stateSlave || srv.State == stateRelay) && line[17] == "DRAIN" && !srv.IsIgnored() {
+				if (srv.State == stateSlave || srv.State == stateRelay || (srv.State == stateWsrep && !srv.IsLeader())) && line[17] == "DRAIN" && !srv.IsIgnored() {
 					cluster.LogPrintf(LvlInfo, "HaProxy valid resplication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL)
 					haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
 				}
@@ -389,7 +389,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 	}
 	if !foundMasterInStat {
 		master := cluster.GetMaster()
-		if master != nil && master.State == stateMaster {
+		if master != nil && master.IsLeader() {
 			res, err := haRuntime.SetMaster(master.Host, master.Port)
 			cluster.LogPrintf(LvlInfo, "Haproxy have leader in cluster but not in haproxy %s fixing it to master %s return %s", proxy.Host+":"+proxy.Port, master.URL, res)
 			if err != nil {

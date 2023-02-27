@@ -30,8 +30,7 @@ import (
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 	log "github.com/sirupsen/logrus"
-	logsqlerr "github.com/sirupsen/logrus"
-	logsqlgen "github.com/sirupsen/logrus"
+	logsql "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -174,6 +173,8 @@ type Cluster struct {
 	inInitNodes                   bool                        `json:"-"`
 	CanInitNodes                  bool                        `json:"canInitNodes"`
 	errorInitNodes                error                       `json:"-"`
+	SqlErrorLog                   *logsql.Logger              `json:"-"`
+	SqlGeneralLog                 *logsql.Logger              `json:"-"`
 	sync.Mutex
 	crcTable *crc64.Table
 }
@@ -254,7 +255,8 @@ const (
 
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, log *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
-
+	cluster.SqlErrorLog = logsql.New()
+	cluster.SqlGeneralLog = logsql.New()
 	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
 	cluster.switchoverChan = make(chan bool)
 	// should use buffered channels or it will block
@@ -313,34 +315,34 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		MaxSize:    cluster.Conf.LogRotateMaxSize,
 		MaxBackups: cluster.Conf.LogRotateMaxBackup,
 		MaxAge:     cluster.Conf.LogRotateMaxAge,
-		Level:      logsqlerr.DebugLevel,
-		Formatter: &logsqlerr.TextFormatter{
+		Level:      logsql.DebugLevel,
+		Formatter: &logsql.TextFormatter{
 			DisableColors:   true,
 			TimestampFormat: "2006-01-02 15:04:05",
 			FullTimestamp:   true,
 		},
 	})
 	if err != nil {
-		logsqlerr.WithError(err).Error("Can't init error sql log file")
+		cluster.SqlErrorLog.WithError(err).Error("Can't init error sql log file")
 	}
-	logsqlerr.AddHook(hookerr)
+	cluster.SqlErrorLog.AddHook(hookerr)
 
 	hookgen, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
 		Filename:   cluster.WorkingDir + "/sql_general.log",
 		MaxSize:    cluster.Conf.LogRotateMaxSize,
 		MaxBackups: cluster.Conf.LogRotateMaxBackup,
 		MaxAge:     cluster.Conf.LogRotateMaxAge,
-		Level:      logsqlerr.DebugLevel,
-		Formatter: &logsqlgen.TextFormatter{
+		Level:      logsql.DebugLevel,
+		Formatter: &logsql.TextFormatter{
 			DisableColors:   true,
 			TimestampFormat: "2006-01-02 15:04:05",
 			FullTimestamp:   true,
 		},
 	})
 	if err != nil {
-		logsqlgen.WithError(err).Error("Can't init general sql log file")
+		cluster.SqlGeneralLog.WithError(err).Error("Can't init general sql log file")
 	}
-	logsqlgen.AddHook(hookgen)
+	cluster.SqlGeneralLog.AddHook(hookgen)
 	cluster.LoadAPIUsers()
 	// createKeys do nothing yet
 	cluster.createKeys()
@@ -435,8 +437,8 @@ func (cluster *Cluster) Run() {
 					for k, v := range cluster.Servers {
 						cluster.LogPrintf(LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 					}
-					if cluster.master != nil {
-						cluster.LogPrintf(LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.master.State, cluster.master.PrevState)
+					if cluster.GetMaster() != nil {
+						cluster.LogPrintf(LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.GetMaster().State, cluster.GetMaster().PrevState)
 						for k, v := range cluster.slaves {
 							cluster.LogPrintf(LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 						}
@@ -736,7 +738,7 @@ func (cluster *Cluster) FailoverForce() error {
 
 		}
 	}
-	if cluster.master == nil {
+	if cluster.GetMaster() == nil {
 		cluster.LogPrintf(LvlErr, "Could not find a failed server in the hosts list")
 		return errors.New("ERROR: Could not find a failed server in the hosts list")
 	}
@@ -882,21 +884,21 @@ func (cluster *Cluster) MonitorSchema() {
 	if !cluster.Conf.MonitorSchemaChange {
 		return
 	}
-	if cluster.master == nil {
+	if cluster.GetMaster() == nil {
 		return
 	}
-	if cluster.master.State == stateFailed || cluster.master.State == stateMaintenance || cluster.master.State == stateUnconn {
+	if cluster.GetMaster().State == stateFailed || cluster.GetMaster().State == stateMaintenance || cluster.GetMaster().State == stateUnconn {
 		return
 	}
-	if cluster.master.Conn == nil {
+	if cluster.GetMaster().Conn == nil {
 		return
 	}
 	cluster.sme.SetMonitorSchemaState()
-	cluster.master.Conn.SetConnMaxLifetime(3595 * time.Second)
+	cluster.GetMaster().Conn.SetConnMaxLifetime(3595 * time.Second)
 
-	tables, tablelist, logs, err := dbhelper.GetTables(cluster.master.Conn, cluster.master.DBVersion)
-	cluster.LogSQL(logs, err, cluster.master.URL, "Monitor", LvlErr, "Could not fetch master tables %s", err)
-	cluster.master.Tables = tablelist
+	tables, tablelist, logs, err := dbhelper.GetTables(cluster.GetMaster().Conn, cluster.GetMaster().DBVersion)
+	cluster.LogSQL(logs, err, cluster.GetMaster().URL, "Monitor", LvlErr, "Could not fetch master tables %s", err)
+	cluster.GetMaster().Tables = tablelist
 
 	var tableCluster []string
 	var duplicates []*ServerMonitor
@@ -910,7 +912,7 @@ func (cluster *Cluster) MonitorSchema() {
 
 		duplicates = append(duplicates, cluster.GetMaster())
 		tableCluster = append(tableCluster, cluster.GetName())
-		oldtable, err := cluster.master.GetTableFromDict(t.TableSchema + "." + t.TableName)
+		oldtable, err := cluster.GetMaster().GetTableFromDict(t.TableSchema + "." + t.TableName)
 		haschanged := false
 		if err != nil {
 			if err.Error() == "Empty" {
@@ -957,7 +959,7 @@ func (cluster *Cluster) MonitorSchema() {
 	}
 	cluster.DBIndexSize = totindexsize
 	cluster.DBTableSize = tottablesize
-	cluster.master.DictTables = tables
+	cluster.GetMaster().DictTables = tables
 	cluster.sme.RemoveMonitorSchemaState()
 }
 
@@ -1014,7 +1016,7 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 	}
 	if cluster.Conf.ArbitrationFailedMasterScript != "" {
 		cluster.LogPrintf(LvlInfo, "Calling abitration failed for master script")
-		out, err := exec.Command(cluster.Conf.ArbitrationFailedMasterScript, cluster.master.Host, cluster.master.Port).CombinedOutput()
+		out, err := exec.Command(cluster.Conf.ArbitrationFailedMasterScript, cluster.GetMaster().Host, cluster.GetMaster().Port).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "%s", err)
 		}

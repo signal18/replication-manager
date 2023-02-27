@@ -349,35 +349,37 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			if server.ClusterGroup.master == nil {
 				server.ClusterGroup.LogPrintf(LvlDbg, "Master not defined")
 			}
-			if server.ClusterGroup.master != nil && server.URL == server.ClusterGroup.master.URL {
+			if server.ClusterGroup.GetMaster() != nil && server.URL == server.ClusterGroup.GetMaster().URL {
 				server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
-				if server.ClusterGroup.master.FailCount <= server.ClusterGroup.Conf.MaxFail {
+				if server.ClusterGroup.GetMaster().FailCount <= server.ClusterGroup.Conf.MaxFail {
 					server.ClusterGroup.LogPrintf("INFO", "Master Failure detected! Retry %d/%d", server.ClusterGroup.master.FailCount, server.ClusterGroup.Conf.MaxFail)
 				}
 				if server.FailCount >= server.ClusterGroup.Conf.MaxFail {
 					if server.FailCount == server.ClusterGroup.Conf.MaxFail {
 						server.ClusterGroup.LogPrintf("INFO", "Declaring db master as failed %s", server.URL)
 					}
-					server.ClusterGroup.master.SetState(stateFailed)
+					server.ClusterGroup.GetMaster().SetState(stateFailed)
 					server.DelWaitStopCookie()
 					server.DelUnprovisionCookie()
 				} else {
-					server.ClusterGroup.master.SetState(stateSuspect)
+					server.ClusterGroup.GetMaster().SetState(stateSuspect)
 
 				}
 			} else {
-				// not the master
+				// not the master or a virtual master
 				server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection of no master FailCount %d MaxFail %d", server.FailCount, server.ClusterGroup.Conf.MaxFail)
 				if server.FailCount >= server.ClusterGroup.Conf.MaxFail {
 					if server.FailCount == server.ClusterGroup.Conf.MaxFail {
-						server.ClusterGroup.LogPrintf("INFO", "Declaring slave db %s as failed", server.URL)
+						server.ClusterGroup.LogPrintf("INFO", "Declaring replica %s as failed", server.URL)
 						server.SetState(stateFailed)
 						server.DelWaitStopCookie()
 						server.DelUnprovisionCookie()
-						// remove from slave list
-						server.delete(&server.ClusterGroup.slaves)
-						if server.Replications != nil {
+
+						// if wsrep could enter here but still server is not a slave
+						// Remove from slave list if exists
+						if server.Replications != nil && server.ClusterGroup.slaves != nil {
 							server.LastSeenReplications = server.Replications
+							server.delete(&server.ClusterGroup.slaves)
 						}
 						server.Replications = nil
 					}
@@ -404,13 +406,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 
 	// From here we have a new connection
-	// We will affect it or closing it
 
-	if server.ClusterGroup.sme.IsInFailover() {
-		conn.Close()
-		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skiping refresh")
-		return
-	}
 	// For orchestrator to trigger a start via tracking state URL
 	if server.PrevState == stateFailed {
 		server.DelWaitStartCookie()
@@ -426,6 +422,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		server.ClusterGroup.LogPrintf(LvlInfo, "Assigning a global connection on server %s", server.URL)
 		return
 	}
+	// We will leave when in failover to avoid refreshing variables and status
+	if server.ClusterGroup.sme.IsInFailover() {
+		//	conn.Close()
+		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skiping refresh")
+		return
+	}
 	err = server.Refresh()
 	if err != nil {
 		// reaffect a global DB pool object if we never get it , ex dynamic seeding
@@ -433,6 +435,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		server.ClusterGroup.LogPrintf(LvlInfo, "Server refresh failed but ping connect %s", err)
 		return
 	}
+
 	defer conn.Close()
 
 	// Reset FailCount
@@ -589,7 +592,6 @@ func (server *ServerMonitor) Refresh() error {
 	} else {
 		server.IsMaxscale = false
 	}
-
 	if !(server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale) {
 		// maxscale don't support show variables
 		server.PrevMonitorTime = server.MonitorTime
@@ -738,7 +740,7 @@ func (server *ServerMonitor) Refresh() error {
 			}
 		}
 		server.IsFull = false
-		server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get binoDumpthreads status %s %s", server.URL, err)
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get binlogDumpthreads status %s %s", server.URL, err)
 		if err != nil {
 			server.ClusterGroup.SetState("ERR00014", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ServerUrl: server.URL, ErrFrom: "CONF"})
 		}
@@ -748,7 +750,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.EngineInnoDB, logs, err = dbhelper.GetEngineInnoDBVariables(server.Conn)
 			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get engine innodb status %s %s", server.URL, err)
 		}
-		if server.ClusterGroup.Conf.MonitorPFS {
+		if server.ClusterGroup.Conf.MonitorPFS && server.HavePFSSlowQueryLog && server.HavePFS {
 			// GET PFS query digest
 			server.PFSQueries, logs, err = dbhelper.GetQueries(server.Conn)
 			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get queries %s %s", server.URL, err)
@@ -817,21 +819,22 @@ func (server *ServerMonitor) Refresh() error {
 			}
 		}
 	}
-	server.ReplicationHealth = server.CheckReplication()
-	// if MaxScale exit at fetch variables and status part as not supported
 
+	// if MaxScale exit at fetch variables and status part as not supported
 	if server.ClusterGroup.Conf.MxsBinlogOn && server.IsMaxscale {
 		return nil
 	}
 	server.PrevStatus = server.Status
-
 	server.Status, logs, _ = dbhelper.GetStatus(server.Conn, server.DBVersion)
+
 	server.HaveSemiSync = server.HasSemiSync()
 	server.SemiSyncMasterStatus = server.IsSemiSyncMaster()
 	server.SemiSyncSlaveStatus = server.IsSemiSyncReplica()
 	server.IsWsrepSync = server.HasWsrepSync()
 	server.IsWsrepDonor = server.HasWsrepDonor()
 	server.IsWsrepPrimary = server.HasWsrepPrimary()
+
+	server.ReplicationHealth = server.CheckReplication()
 
 	if len(server.PrevStatus) > 0 {
 		qps, _ := strconv.ParseInt(server.Status["QUERIES"], 10, 64)

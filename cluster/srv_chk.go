@@ -45,10 +45,8 @@ func (server *ServerMonitor) CheckDisks() {
 
 // CheckReplication Check replication health and return status string
 func (server *ServerMonitor) CheckReplication() string {
-	if server.ClusterGroup.sme.IsInFailover() {
-		return "In Failover"
-	}
-	if server.HaveWsrep && !server.IsFailed() {
+
+	if server.HaveWsrep {
 		if server.IsWsrepSync {
 			server.SetState(stateWsrep)
 			return "Galera OK"
@@ -60,8 +58,10 @@ func (server *ServerMonitor) CheckReplication() string {
 			return "Galera Late"
 		}
 	}
+	if server.ClusterGroup.sme.IsInFailover() {
+		return "In Failover"
+	}
 	if (server.IsDown()) && server.IsSlave == false {
-
 		return "Master OK"
 	}
 
@@ -148,10 +148,10 @@ func (server *ServerMonitor) CheckReplication() string {
 // CheckSlaveSettings check slave variables & enforce if set
 func (server *ServerMonitor) CheckSlaveSettings() {
 	sl := server
-	if server.ClusterGroup.Conf.ForceSlaveSemisync && sl.HaveSemiSync == false {
+	if server.ClusterGroup.Conf.ForceSlaveSemisync && sl.HaveSemiSync == false && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
 		server.ClusterGroup.LogPrintf("DEBUG", "Enforce semisync on slave %s", sl.URL)
 		dbhelper.InstallSemiSync(sl.Conn)
-	} else if sl.IsIgnored() == false && sl.HaveSemiSync == false {
+	} else if sl.IsIgnored() == false && sl.HaveSemiSync == false && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep {
 		server.ClusterGroup.sme.AddState("WARN0048", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0048"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
@@ -159,7 +159,8 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		// In non-multimaster mode, enforce read-only flag if the option is set
 		dbhelper.SetBinlogFormat(sl.Conn, "ROW")
 		server.ClusterGroup.LogPrintf("INFO", "Enforce binlog format ROW on slave %s", sl.URL)
-	} else if sl.IsIgnored() == false && sl.HaveBinlogRow == false && server.ClusterGroup.Conf.AutorejoinFlashback == true {
+	} else if sl.IsIgnored() == false && sl.HaveBinlogRow == false && (server.ClusterGroup.Conf.AutorejoinFlashback == true || server.ClusterGroup.GetTopology() == topoMultiMasterWsrep) {
+		//galera or binlog flashback need row based binlog
 		server.ClusterGroup.sme.AddState("WARN0049", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0049"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if server.ClusterGroup.Conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsMultiMaster() {
@@ -176,13 +177,13 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	if server.ClusterGroup.Conf.ForceSlaveGtid && sl.GetReplicationUsingGtid() == "No" {
 		dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos", server.ClusterGroup.Conf.MasterConn, server.DBVersion)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce GTID replication on slave %s", sl.URL)
-	} else if sl.IsIgnored() == false && sl.GetReplicationUsingGtid() == "No" {
+	} else if sl.IsIgnored() == false && sl.GetReplicationUsingGtid() == "No" && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
 		server.ClusterGroup.sme.AddState("WARN0051", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if server.ClusterGroup.Conf.ForceSlaveGtidStrict && sl.IsReplicationUsingGtidStrict() == false {
+	if server.ClusterGroup.Conf.ForceSlaveGtidStrict && sl.IsReplicationUsingGtidStrict() == false && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
 		dbhelper.SetSlaveGTIDModeStrict(sl.Conn, server.DBVersion)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce GTID strict mode on slave %s", sl.URL)
-	} else if sl.IsIgnored() == false && sl.IsReplicationUsingGtidStrict() == false {
+	} else if sl.IsIgnored() == false && sl.IsReplicationUsingGtidStrict() == false && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
 		server.ClusterGroup.sme.AddState("WARN0058", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0058"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
@@ -232,7 +233,7 @@ func (server *ServerMonitor) CheckMasterSettings() {
 	if server.ClusterGroup.Conf.ForceSlaveSemisync && server.HaveSemiSync == false {
 		server.ClusterGroup.LogPrintf("INFO", "Enforce semisync on Master %s", server.URL)
 		dbhelper.InstallSemiSync(server.Conn)
-	} else if server.HaveSemiSync == false {
+	} else if server.HaveSemiSync == false && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.ClusterGroup.GetTopology() != topoMultiMasterGrouprep {
 		server.ClusterGroup.sme.AddState("WARN0060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0060"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if server.ClusterGroup.Conf.ForceBinlogRow && server.HaveBinlogRow == false {
@@ -274,7 +275,7 @@ func (server *ServerMonitor) CheckMasterSettings() {
 	if server.HaveBinlogSlaveUpdates == false {
 		server.ClusterGroup.sme.AddState("WARN0069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0069"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if server.HaveGtidStrictMode == false && server.DBVersion.Flavor == "MariaDB" {
+	if server.HaveGtidStrictMode == false && server.DBVersion.Flavor == "MariaDB" && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.ClusterGroup.GetTopology() != topoMultiMasterGrouprep {
 		server.ClusterGroup.sme.AddState("WARN0070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0070"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if server.IsAcid() == false && server.ClusterGroup.IsDiscovered() {
