@@ -587,14 +587,15 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 		}
 		cm += "CREATE SUBSCRIPTION " + opt.Channel + " CONNECTION 'dbname=" + opt.PostgressDB + " host=" + misc.Unbracket(opt.Host) + " user=" + opt.User + " port=" + opt.Port + " password=" + opt.Password + " ' PUBLICATION  " + opt.Channel + " WITH (enabled=false, copy_data=false, create_slot=true)"
 	} else {
-
-		cm += "CHANGE MASTER TO "
+		if myver.IsMariaDB() && opt.Channel != "" {
+			cm += "CHANGE " + masterOrSource + " '" + opt.Channel + "' TO "
+		} else {
+			cm += "CHANGE  " + masterOrSource + " TO "
+		}
 		if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 23)) {
 			cm = "CHANGE REPLICATION SOURCE TO "
 		}
-		if myver.IsMariaDB() && opt.Channel != "" {
-			cm += " '" + opt.Channel + "'"
-		}
+
 		if opt.Mode == "GROUP_REPL" {
 			cm += masterOrSource + "_user='" + opt.User + "', " + masterOrSource + "_password='" + opt.Password + "'"
 		} else {
