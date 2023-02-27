@@ -618,7 +618,7 @@ func (server *ServerMonitor) GetDatabaseBasedir() string {
 	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
 		return server.SlapOSDatadir
 	}
-	return ""
+	return server.Datadir
 }
 
 func (server *ServerMonitor) GetTablePK(schema string, table string) (string, error) {

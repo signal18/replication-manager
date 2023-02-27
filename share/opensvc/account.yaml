@@ -3,4 +3,4 @@ state: enabled
 access:
   site:
     login: 'true'
-hashed_password: repman
+hashed_password: xxxx

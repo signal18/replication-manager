@@ -24,7 +24,7 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 	replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-")
 	hostname := replacer.Replace(server.Variables["HOSTNAME"])
 	var metrics []graphite.Metric
-	if server.IsSlave {
+	if server.IsSlave && server.GetCluster().GetTopology() != topoMultiMasterWsrep && server.GetCluster().GetTopology() != topoMultiMasterGrouprep {
 		m := graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_seconds_behind_master", hostname), fmt.Sprintf("%d", server.SlaveStatus.SecondsBehindMaster.Int64), time.Now().Unix())
 		metrics = append(metrics, m)
 		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_exec_master_log_pos", hostname), fmt.Sprintf("%s", server.SlaveStatus.ExecMasterLogPos.String), time.Now().Unix()))
