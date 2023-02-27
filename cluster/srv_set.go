@@ -21,7 +21,6 @@ import (
 
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (server *ServerMonitor) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string, SchedulerReceiverPorts string) {
@@ -230,7 +229,7 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 	server.Host, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	if err != nil {
-		server.ClusterGroup.SetState("ERR00062", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00062"], server.Host, err.Error()), ErrFrom: "TOPO"})
+		server.GetCluster().LogPrintf(LvlErr, "Cannot resolved DNS for host %s, error: %s", server.Host, err.Error())
 	}
 	if server.PostgressDB == "" {
 		server.PostgressDB = "test"

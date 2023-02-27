@@ -298,6 +298,15 @@ func (SM *StateMachine) GetStates() []string {
 	return log
 }
 
+func (SM *StateMachine) GetFirstStates() []string {
+	var log []string
+	for key, value := range SM.GetLastOpenedStates() {
+		log = append(log, fmt.Sprintf("OPENED %s : %s", key, value.ErrDesc))
+	}
+
+	return log
+}
+
 func (SM *StateMachine) GetLastResolvedStates() map[string]State {
 	resolved := make(map[string]State)
 	SM.Lock()

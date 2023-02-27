@@ -521,8 +521,8 @@ func init() {
 			monitorCmd.Flags().StringVar(&conf.KubeConfig, "kube-config", "", "path to ks8 config file")
 			monitorCmd.Flags().StringVar(&conf.ProvOpensvcCollectorAccount, "opensvc-collector-account", "/etc/replication-manager/account.yaml", "Openscv collector account")
 
-			dbConfig := viper.New()
 			if conf.ProvOpensvcUseCollectorAPI {
+				dbConfig := viper.New()
 				dbConfig.SetConfigType("yaml")
 				file, err := ioutil.ReadFile(conf.ProvOpensvcCollectorAccount)
 				if err != nil {

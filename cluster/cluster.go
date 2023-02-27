@@ -171,7 +171,9 @@ type Cluster struct {
 	WaitingFailover               int                         `json:"waitingFailover"`
 	Configurator                  configurator.Configurator   `json:"configurator"`
 	DiffVariables                 []VariableDiff              `json:"diffVariables"`
-	insideInitNodes               bool                        `json:"-"`
+	inInitNodes                   bool                        `json:"-"`
+	CanInitNodes                  bool                        `json:"canInitNodes"`
+	errorInitNodes                error                       `json:"-"`
 	sync.Mutex
 	crcTable *crc64.Table
 }
@@ -264,6 +266,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.addtableCond = nbc.New()
 	cluster.altertableCond = nbc.New()
 	cluster.canFlashBack = true
+	cluster.CanInitNodes = true
 	cluster.runOnceAfterTopology = true
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
@@ -362,23 +365,23 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
-	if cluster.insideInitNodes {
+	if cluster.inInitNodes {
 		return
 	}
-	cluster.insideInitNodes = true
-	defer func() { cluster.insideInitNodes = false }()
+	cluster.inInitNodes = true
+	defer func() { cluster.inInitNodes = false }()
 
 	//defer cluster.insideInitNodes = false
 	//cluster.LogPrintf(LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
-		cluster.Agents, _ = cluster.OpenSVCGetNodes()
+		cluster.Agents, cluster.errorInitNodes = cluster.OpenSVCGetNodes()
 	case config.ConstOrchestratorKubernetes:
-		cluster.Agents, _ = cluster.K8SGetNodes()
+		cluster.Agents, cluster.errorInitNodes = cluster.K8SGetNodes()
 	case config.ConstOrchestratorSlapOS:
-		cluster.Agents, _ = cluster.SlapOSGetNodes()
+		cluster.Agents, cluster.errorInitNodes = cluster.SlapOSGetNodes()
 	case config.ConstOrchestratorLocalhost:
-		cluster.Agents, _ = cluster.LocalhostGetNodes()
+		cluster.Agents, cluster.errorInitNodes = cluster.LocalhostGetNodes()
 	case config.ConstOrchestratorOnPremise:
 	default:
 		log.Fatalln("prov-orchestrator not supported", cluster.Conf.ProvOrchestrator)
@@ -452,7 +455,7 @@ func (cluster *Cluster) Run() {
 					if !cluster.IsInFailover() {
 						cluster.initProxies()
 					}
-					cluster.initOrchetratorNodes()
+					go cluster.initOrchetratorNodes()
 					cluster.ResticFetchRepo()
 					cluster.runOnceAfterTopology = false
 				} else {
@@ -469,7 +472,7 @@ func (cluster *Cluster) Run() {
 						cluster.InjectProxiesTraffic()
 					}
 					if cluster.sme.GetHeartbeats()%30 == 0 {
-						cluster.initOrchetratorNodes()
+						go cluster.initOrchetratorNodes()
 						cluster.MonitorQueryRules()
 						cluster.MonitorVariablesDiff()
 						cluster.ResticFetchRepo()
@@ -479,9 +482,12 @@ func (cluster *Cluster) Run() {
 						cluster.sme.PreserveState("WARN0093")
 						cluster.sme.PreserveState("WARN0084")
 						cluster.sme.PreserveState("WARN0095")
-						cluster.sme.PreserveState("ERR00082")
 						cluster.sme.PreserveState("WARN0101")
 					}
+					if !cluster.CanInitNodes {
+						cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
+					}
+
 					if cluster.sme.GetHeartbeats()%36000 == 0 {
 						cluster.ResticPurgeRepo()
 					} else {
@@ -569,8 +575,13 @@ func (cluster *Cluster) StateProcessing() {
 			}
 			//		cluster.statecloseChan <- s
 		}
+		var states []string
+		if cluster.runOnceAfterTopology {
+			states = cluster.sme.GetFirstStates()
 
-		states := cluster.sme.GetStates()
+		} else {
+			states = cluster.sme.GetStates()
+		}
 		for i := range states {
 			cluster.LogPrintf("STATE", states[i])
 		}
@@ -581,7 +592,9 @@ func (cluster *Cluster) StateProcessing() {
 		}
 
 		for _, s := range cluster.sme.GetLastOpenedStates() {
+
 			cluster.CheckAlert(s)
+
 		}
 
 		cluster.sme.ClearState()

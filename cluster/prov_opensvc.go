@@ -81,8 +81,10 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 	svc := cluster.OpenSVCConnect()
 	hosts, err := svc.GetNodes()
 	if err != nil {
-		cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], err), ErrFrom: "OPENSVC"})
+		cluster.CanInitNodes = false
 		return nil, err
+	} else {
+		cluster.CanInitNodes = true
 	}
 	if hosts == nil {
 		return nil, errors.New("Empty Opensvc Agent list")
