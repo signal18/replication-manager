@@ -33,3 +33,11 @@ prov-proxy-agents = "s18-fr-1,s18-fr-2"
 prov-proxy-service-type = "docker"
 prov-proxy-disk-type = "volume"
 prov-proxy-volume-data = "tank"
+<<<<<<< HEAD
+=======
+test=true
+#arbitration-external= true
+#arbitration-external-hosts="10.8.0.50:8080"
+#arbitration-peer-hosts="10.8.0.72:10001"
+#arbitration-external-secret="tnstest"
+>>>>>>> 04aaf83a... Fixing MariaDB Multi source bootstrap replication error

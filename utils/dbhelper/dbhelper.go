@@ -573,12 +573,20 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 		}
 		cm += "CREATE SUBSCRIPTION " + opt.Channel + " CONNECTION 'dbname=" + opt.PostgressDB + " host=" + misc.Unbracket(opt.Host) + " user=" + opt.User + " port=" + opt.Port + " password=" + opt.Password + " ' PUBLICATION  " + opt.Channel + " WITH (enabled=false, copy_data=false, create_slot=true)"
 	} else {
-
-		cm += "CHANGE MASTER "
 		if myver.IsMariaDB() && opt.Channel != "" {
-			cm += " '" + opt.Channel + "'"
+			cm += "CHANGE " + masterOrSource + " '" + opt.Channel + "' TO "
+		} else {
+			cm += "CHANGE  " + masterOrSource + " TO "
 		}
-		cm += " TO master_host='" + misc.Unbracket(opt.Host) + "', master_port=" + opt.Port + ", master_user='" + opt.User + "', master_password='" + opt.Password + "', master_connect_retry=" + opt.Retry + ", master_heartbeat_period=" + opt.Heartbeat
+		if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 23)) {
+			cm = "CHANGE REPLICATION SOURCE TO "
+		}
+
+		if opt.Mode == "GROUP_REPL" {
+			cm += masterOrSource + "_user='" + opt.User + "', " + masterOrSource + "_password='" + opt.Password + "'"
+		} else {
+			cm += " " + masterOrSource + "_host='" + misc.Unbracket(opt.Host) + "', " + masterOrSource + "_port=" + opt.Port + ", " + masterOrSource + "_user='" + opt.User + "', " + masterOrSource + "_password='" + opt.Password + "', " + masterOrSource + "_connect_retry=" + opt.Retry + ", " + masterOrSource + "_heartbeat_period=" + opt.Heartbeat
+		}
 		if opt.IsDelayed {
 			cm += " ,master_delay=" + opt.Delay
 		}
