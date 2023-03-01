@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/signal18/replication-manager/share"
 )
 
 type Config struct {
@@ -602,14 +604,17 @@ type ServicePlan struct {
 }
 
 type DockerTag struct {
-	Layer string `json:"layer"`
-	Name  string `json:"name"`
+	Results []TagResult `json:"results"`
+}
+
+type TagResult struct {
+	Name string `json:"name"`
 }
 
 type DockerRepo struct {
-	Name  string      `json:"name"`
-	Image string      `json:"image"`
-	Tags  []DockerTag `json:"tags"`
+	Name  string    `json:"name"`
+	Image string    `json:"image"`
+	Tags  DockerTag `json:"tags"`
 }
 
 type DockerRepos struct {
@@ -947,18 +952,22 @@ func (conf *Config) GetGrantType() map[string]string {
 	}
 }
 
-func (conf *Config) GetDockerRepos(file string) ([]DockerRepo, error) {
+func (conf *Config) GetDockerRepos(file string, is_not_embed bool) ([]DockerRepo, error) {
 	var repos DockerRepos
-	jsonFile, err := os.Open(file)
-	if err != nil {
-		return repos.Repos, err
+	var byteValue []byte
+	if is_not_embed {
+		jsonFile, err := os.Open(file)
+		if err != nil {
+			return repos.Repos, err
+		}
+
+		defer jsonFile.Close()
+		byteValue, _ = ioutil.ReadAll(jsonFile)
+	} else {
+		byteValue, _ = share.EmbededDbModuleFS.ReadFile("repo/repos.json")
 	}
 
-	defer jsonFile.Close()
-
-	byteValue, _ := ioutil.ReadAll(jsonFile)
-
-	err = json.Unmarshal([]byte(byteValue), &repos)
+	err := json.Unmarshal([]byte(byteValue), &repos)
 	if err != nil {
 		return repos.Repos, err
 	}

@@ -543,7 +543,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.InitServicePlans()
 	repman.ServiceOrchestrators = repman.Conf.GetOrchestratorsProv()
 	repman.InitGrants()
-	repman.ServiceRepos, err = repman.Conf.GetDockerRepos(repman.Conf.ShareDir + "/repo/repos.json")
+	repman.ServiceRepos, err = repman.Conf.GetDockerRepos(repman.Conf.ShareDir+"/repo/repos.json", repman.Conf.Test)
 	if err != nil {
 		log.WithError(err).Errorf("Initialization docker repo failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
 	}
