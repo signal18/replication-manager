@@ -354,7 +354,10 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		cluster.LogPrintf(LvlErr, "Could not set proxy list %s", err)
 	}
 	//Loading configuration compliances
-	cluster.Configurator.Init(cluster.Conf)
+	err = cluster.Configurator.Init(cluster.Conf)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Could not initialize configurator %s", err)
+	}
 
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorLocalhost:

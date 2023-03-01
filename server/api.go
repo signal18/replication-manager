@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"io/fs"
 
 	log "github.com/sirupsen/logrus"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/signal18/replication-manager/cert"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/regtest"
+	"github.com/signal18/replication-manager/share"
 )
 
 //RSA KEYS AND INITIALISATION
@@ -101,14 +103,49 @@ type token struct {
 	Token string `json:"token"`
 }
 
+func (repman *ReplicationManager) DashboardFSHandler() http.Handler {
+    sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard")
+	if err != nil {
+        panic(err)
+    }
+
+
+    return http.FileServer(http.FS(sub))
+}
+
+func (repman *ReplicationManager) DashboardFSHandlerApp() http.Handler{
+	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard/app.html")
+	if err != nil {
+        panic(err)
+    }
+
+	return http.FileServer(http.FS(sub))
+}
+
+func (repman *ReplicationManager) rootHandler(w http.ResponseWriter, r *http.Request){
+	html, err := share.EmbededDbModuleFS.ReadFile("dashboard/app.html")
+	if err != nil{
+		log.Printf("rootHandler read error : %s",err)
+	}
+	w.Write(html)
+}
+
 func (repman *ReplicationManager) apiserver() {
 	repman.initKeys()
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
-	router.HandleFunc("/", repman.handlerApp)
+	//router.HandleFunc("/", repman.handlerApp)
 	// page to view which does not need authorization
-	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
-	router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+	if repman.Conf.Test{
+		router.HandleFunc("/", repman.handlerApp)
+		router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+		router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+	}else{
+		router.HandleFunc("/", repman.rootHandler)
+		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler() )
+		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
+	}
+
 	router.HandleFunc("/api/login", repman.loginHandler)
 	//router.Handle("/api", v3.NewHandler("My API", "/swagger.json", "/api"))
 

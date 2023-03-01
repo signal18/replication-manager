@@ -148,7 +148,7 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 	}
 	err := server.ClusterGroup.Configurator.GenerateDatabaseConfig(server.Datadir, server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name, server.GetDatabaseBasedir(), server.GetEnv())
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlInfo, "Database Config generation %s: %s"+server.Datadir+"/config.tar.gz", err)
+		server.ClusterGroup.LogPrintf(LvlErr, "Database Config generation "+server.Datadir+"/config.tar.gz error: %s", err)
 	}
 	return ""
 }
