@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -23,11 +24,12 @@ import (
 )
 
 type Config struct {
-	Version                                   string `mapstructure:"-" toml:"-" json:"-"`
-	FullVersion                               string `mapstructure:"-" toml:"-" json:"-"`
-	GoOS                                      string `mapstructure:"goos" toml:"-" json:"-"`
-	GoArch                                    string `mapstructure:"goarch" toml:"-" json:"-"`
-	WithTarball                               string `mapstructure:"-" toml:"-" json:"-"`
+	Version                                   string `mapstructure:"-" toml:"-" json:"version"`
+	FullVersion                               string `mapstructure:"-" toml:"-" json:"fullVersion"`
+	GoOS                                      string `mapstructure:"goos" toml:"-" json:"goOS"`
+	GoArch                                    string `mapstructure:"goarch" toml:"-" json:"goArch"`
+	WithTarball                               string `mapstructure:"-" toml:"-" json:"withTarball"`
+	WithEmbed                                 string `mapstructure:"-" toml:"-" json:"withEmbed"`
 	MemProfile                                string `mapstructure:"-" toml:"-" json:"-"`
 	Include                                   string `mapstructure:"include" toml:"-" json:"-"`
 	BaseDir                                   string `mapstructure:"monitoring-basedir" toml:"monitoring-basedir" json:"monitoringBasedir"`
@@ -994,16 +996,21 @@ type Tarballs struct {
 	Tarballs []Tarball `json:"tarballs"`
 }
 
-func (conf *Config) GetTarballs() ([]Tarball, error) {
-	file := conf.ShareDir + "/repo/tarballs.json"
+func (conf *Config) GetTarballs(is_not_embed bool) ([]Tarball, error) {
+	var jsonFile fs.File
+	var err error
 	var tarballs Tarballs
-	jsonFile, err := os.Open(file)
-	if err != nil {
-		return tarballs.Tarballs, err
+	if is_not_embed {
+		file := conf.ShareDir + "/repo/tarballs.json"
+		jsonFile, err := os.Open(file)
+		if err != nil {
+			return tarballs.Tarballs, err
+		}
+
+		defer jsonFile.Close()
+	} else {
+		jsonFile, err = share.EmbededDbModuleFS.Open("repo/tarballs.json")
 	}
-
-	defer jsonFile.Close()
-
 	byteValue, _ := ioutil.ReadAll(jsonFile)
 
 	err = json.Unmarshal([]byte(byteValue), &tarballs)
@@ -1016,7 +1023,7 @@ func (conf *Config) GetTarballs() ([]Tarball, error) {
 
 func (conf *Config) GetTarballUrl(name string) (string, error) {
 
-	tarballs, _ := conf.GetTarballs()
+	tarballs, _ := conf.GetTarballs(true)
 	for _, tarball := range tarballs {
 		if tarball.Name == name {
 			return tarball.Url, nil

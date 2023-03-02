@@ -36,6 +36,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/etc"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
@@ -207,9 +208,44 @@ func (repman *ReplicationManager) OverwriteParameterFlags(destViper *viper.Viper
 
 }
 
+func (repman *ReplicationManager) initEmbed() error {
+	//test si y'a  un repertoire ./.replication-manager sinon on le créer
+	//test si y'a  un repertoire ./.replication-manager/config.toml sinon on le créer depuis embed
+	//test y'a  un repertoire ./.replication-manager/data sinon on le créer
+	//test y'a  un repertoire ./.replication-manager/share sinon on le créer
+	if _, err := os.Stat("./.replication-manager"); os.IsNotExist(err) {
+		os.MkdirAll("./.replication-manager", os.ModePerm)
+		os.MkdirAll("./.replication-manager/data", os.ModePerm)
+		os.MkdirAll("./.replication-manager/share", os.ModePerm)
+	}
+
+	if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
+
+		file, err := etc.EmbededDbModuleFS.ReadFile("local/embed/config.toml")
+		if err != nil {
+			log.Errorf("failed opening file because: %s", err.Error())
+			return err
+		}
+		err = ioutil.WriteFile("./.replication-manager/config.toml", file, 0644) //remplacer nil par l'obj créer pour config.toml dans etc/local/embed
+		if err != nil {
+			log.Errorf("failed write file because: %s", err.Error())
+			return err
+		}
+		if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
+			log.Errorf("failed create ./.replication-manager/config.toml file because: %s", err.Error())
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	repman.ForcedConfs = make(map[string]config.Config)
 	// call after init if configuration file is provide
+	if conf.WithEmbed == "ON" {
+		repman.initEmbed()
+	}
 	fistRead := viper.GetViper()
 	fistRead.SetConfigType("toml")
 	if conf.ConfigFile != "" {
@@ -223,10 +259,16 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		fistRead.SetConfigName("config")
 		fistRead.AddConfigPath("/etc/replication-manager/")
 		fistRead.AddConfigPath(".")
+		fistRead.AddConfigPath("./.replication-manager")
 		if conf.WithTarball == "ON" {
 			fistRead.AddConfigPath("/usr/local/replication-manager/etc")
 			if _, err := os.Stat("/usr/local/replication-manager/etc/config.toml"); os.IsNotExist(err) {
 				log.Warning("No config file /usr/local/replication-manager/etc/config.toml")
+			}
+		}
+		if conf.WithEmbed == "ON" {
+			if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
+				log.Warning("No config file ./.replication-manager/config.toml ")
 			}
 		} else {
 			if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
@@ -547,7 +589,7 @@ func (repman *ReplicationManager) Run() error {
 	if err != nil {
 		log.WithError(err).Errorf("Initialization docker repo failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
 	}
-	repman.ServiceTarballs, err = repman.Conf.GetTarballs()
+	repman.ServiceTarballs, err = repman.Conf.GetTarballs(repman.Conf.Test)
 	if err != nil {
 		log.WithError(err).Errorf("Initialization tarballs repo failed: %s %s", repman.Conf.ShareDir+"/repo/tarballs.json", err)
 	}
@@ -603,6 +645,8 @@ func (repman *ReplicationManager) Run() error {
 	go repman.MountS3()
 
 	//repman.InitRestic()
+	log.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
+	log.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
 
 	// If there's an existing encryption key, decrypt the passwords
 
@@ -849,7 +893,13 @@ func (repman *ReplicationManager) DownloadFile(url string, file string) error {
 
 func (repman *ReplicationManager) InitServicePlans() error {
 	var err error
-	if repman.Conf.ProvServicePlanRegistry != "" {
+	if !repman.Conf.Test {
+
+		if _, err := os.Stat(repman.Conf.WorkingDir + "/serviceplan.csv"); os.IsNotExist(err) {
+			misc.CopyFile(repman.Conf.ShareDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.csv")
+		}
+		err = misc.ConvertCSVtoJSON(repman.Conf.WorkingDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.json", ",", repman.Conf.Test)
+	} else {
 		err = repman.DownloadFile(repman.Conf.ProvServicePlanRegistry, repman.Conf.WorkingDir+"/serviceplan.csv")
 		if err != nil {
 			log.Errorf("GetServicePlans download csv  %s", err)
@@ -859,14 +909,8 @@ func (repman *ReplicationManager) InitServicePlans() error {
 			}
 		}
 		err = misc.ConvertCSVtoJSON(repman.Conf.WorkingDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.json", ",", true)
-	} else {
 		// copy from share if not downloadable
-		if repman.Conf.Test {
-			if _, err := os.Stat(repman.Conf.WorkingDir + "/serviceplan.csv"); os.IsNotExist(err) {
-				misc.CopyFile(repman.Conf.ShareDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.csv")
-			}
-		}
-		err = misc.ConvertCSVtoJSON(repman.Conf.WorkingDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.json", ",", repman.Conf.Test)
+
 	}
 	if err != nil {
 		log.Errorf("GetServicePlans ConvertCSVtoJSON %s", err)
