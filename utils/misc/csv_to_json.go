@@ -12,14 +12,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"strings"
 
 	"github.com/siddontang/go/log"
+	"github.com/signal18/replication-manager/share"
 )
 
-func ConvertCSVtoJSON(sourcefile string, destfile string, separator string) error {
-	file, err := os.Open(sourcefile)
+func ConvertCSVtoJSON(sourcefile string, destfile string, separator string, is_not_embed bool) error {
+	var err error
+	var file fs.File
+	if is_not_embed {
+		file, err = os.Open(sourcefile)
+	} else {
+		file, err = share.EmbededDbModuleFS.Open("serviceplan.csv")
+	}
+
 	if err != nil {
 		log.Errorf("failed opening file because: %s", err.Error())
 		return err
