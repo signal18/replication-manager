@@ -385,3 +385,7 @@ func (p *Proxy) GetServiceName() string {
 func (p *Proxy) GetCluster() *Cluster {
 	return p.ClusterGroup
 }
+
+func (p *Proxy) GetURL() string {
+	return p.GetHost() + ":" + p.GetPort()
+}

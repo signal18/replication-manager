@@ -325,7 +325,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	}
 
 	// Proceed dynamic config
+
 	if fistRead.GetBool("default.monitoring-save-config") {
+		if fistRead.GetString("default.monitoring-datadir") != "" {
+			conf.WorkingDir = fistRead.GetString("default.monitoring-datadir")
+		}
 		files, err := ioutil.ReadDir(conf.WorkingDir)
 		if err != nil {
 			log.Infof("No working directory %s ", conf.WorkingDir)
@@ -379,7 +383,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	//	backupvipersave := viper.GetViper()
 	if strClusters != "" {
 		repman.ClusterList = strings.Split(strClusters, ",")
-
 		for _, cluster := range repman.ClusterList {
 			//vipersave := backupvipersave
 
@@ -418,16 +421,18 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, cluste
 			def.Unmarshal(&clusterconf)
 
 		}
-		//	fmt.Printf("default for cluster %s %+v\n", cluster, clusterconf)
+		//fmt.Printf("default for cluster %s %+v\n", cluster, clusterconf)
 
 		cf2 := fistRead.Sub(cluster)
+
 		//def.SetEnvPrefix(strings.ToUpper(cluster))
-		cf2.AutomaticEnv()
-		cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+		//
 
 		if cf2 == nil {
 			log.WithField("group", cluster).Infof("Could not parse configuration group")
 		} else {
+			cf2.AutomaticEnv()
+			cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 			repman.initAlias(cf2)
 			//	cf2.Unmarshal(&def)
 			cf2.Unmarshal(&clusterconf)
