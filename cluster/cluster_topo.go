@@ -150,11 +150,6 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		cluster.LogPrintf(LvlDbg, "In Failover skip topology detection")
 		return errors.New("In Failover skip topology detection")
 	}
-	// Check topology Cluster is down
-	cluster.TopologyClusterDown()
-	// Check topology Cluster all servers down
-	cluster.IsDown = cluster.AllServersFailed()
-	cluster.CheckSameServerID()
 
 	if cluster.HasAllDbUp() {
 		if len(cluster.Crashes) > 0 && cluster.HasNoDbUnconnected() {
@@ -178,9 +173,16 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// if only one server
 	if len(cluster.Servers) == 1 {
 		cluster.Topology = topoActivePassive
+		cluster.Conf.ActivePassive = true
 		return nil
 
 	}
+
+	// Check topology Cluster is down
+	cluster.TopologyClusterDown()
+	// Check topology Cluster all servers down
+	cluster.IsDown = cluster.AllServersFailed()
+	cluster.CheckSameServerID()
 
 	// Spider shard discover
 	if cluster.Conf.Spider == true {

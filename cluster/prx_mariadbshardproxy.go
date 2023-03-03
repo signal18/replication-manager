@@ -212,7 +212,7 @@ func (proxy *MariadbShardProxy) Refresh() error {
 	wg.Add(1)
 	go proxy.ShardProxy.Ping(wg)
 	wg.Wait()
-	err := proxy.ShardProxy.Refresh()
+	err := proxy.Refresh()
 	if err != nil {
 		//proxy.ClusterGroup.LogPrintf(LvlErr, "Sharding proxy refresh error (%s)", err)
 		return err
@@ -257,7 +257,7 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Mariad
 	if proxy.ShardProxy == nil {
 		return errors.New("Sharding proxy no database monitor yet initialize")
 	}
-	err := proxy.ShardProxy.Refresh()
+	err := proxy.Refresh()
 	if err != nil {
 
 		return err

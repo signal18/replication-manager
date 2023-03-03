@@ -182,7 +182,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		case "BENCH":
 			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "benchmark"}).Infof(cliformat, args...)
 		case "ALERT":
-			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Warnf(cliformat, args...)
+			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Errorf(cliformat, args...)
 		case "STATE":
 			status := cliformat[0:6]
 			code := cliformat[7:15]
