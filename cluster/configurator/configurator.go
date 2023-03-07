@@ -38,7 +38,8 @@ type Configurator struct {
 
 func (configurator *Configurator) Init(conf config.Config) error {
 	var err error
-	configurator.ClusterConfig = conf
+	configurator.SetConfig(conf)
+
 	err = configurator.LoadDBModules()
 	if err != nil {
 		return err
@@ -54,11 +55,13 @@ func (configurator *Configurator) Init(conf config.Config) error {
 	} else {
 		configurator.DropProxyTag("readonmaster")
 	}
-	if conf.ReadOnly && !configurator.IsFilterInProxyTags("readonly") {
-		configurator.AddDBTag("readonly")
-	} else {
-		configurator.DropDBTag("readonly")
-	}
+	/*
+		if conf.ReadOnly && !configurator.IsFilterInDBTags("readonly") {
+			configurator.AddDBTag("readonly")
+
+		} else {
+			configurator.DropDBTag("readonly")
+		}*/
 	return err
 }
 

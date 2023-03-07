@@ -13,7 +13,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"io/fs"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -997,23 +997,30 @@ type Tarballs struct {
 }
 
 func (conf *Config) GetTarballs(is_not_embed bool) ([]Tarball, error) {
-	var jsonFile fs.File
-	var err error
+
 	var tarballs Tarballs
+	var byteValue []byte
 	if is_not_embed {
+
 		file := conf.ShareDir + "/repo/tarballs.json"
+		fmt.Printf("GetTarballs1 file value : ", file)
 		jsonFile, err := os.Open(file)
 		if err != nil {
 			return tarballs.Tarballs, err
 		}
 
 		defer jsonFile.Close()
+		byteValue, _ = ioutil.ReadAll(jsonFile)
 	} else {
-		jsonFile, err = share.EmbededDbModuleFS.Open("repo/tarballs.json")
+		jsonFile, err := share.EmbededDbModuleFS.Open("repo/tarballs.json")
+		if err != nil {
+			return tarballs.Tarballs, err
+		}
+		byteValue, _ = ioutil.ReadAll(jsonFile)
 	}
-	byteValue, _ := ioutil.ReadAll(jsonFile)
+	//byteValue, _ := ioutil.ReadAll(jsonFile)
 
-	err = json.Unmarshal([]byte(byteValue), &tarballs)
+	err := json.Unmarshal([]byte(byteValue), &tarballs)
 	if err != nil {
 		return tarballs.Tarballs, err
 	}
