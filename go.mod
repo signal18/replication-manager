@@ -79,8 +79,8 @@ require (
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
 	github.com/yoheimuta/protolint v0.32.0
-	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
-	golang.org/x/net v0.0.0-20211105192438-b53810dc28af
+	golang.org/x/crypto v0.1.0
+	golang.org/x/net v0.1.0
 	google.golang.org/genproto v0.0.0-20210617175327-b9e0b3197ced
 	google.golang.org/grpc v1.38.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0
@@ -119,7 +119,7 @@ require (
 	github.com/gorilla/context v1.1.1 // indirect
 	github.com/gorilla/securecookie v1.1.1 // indirect
 	github.com/gorilla/sessions v0.0.0-20180209192218-6ba88b7f1c1e // indirect
-	github.com/gregdel/pushover v1.1.0 // indirect
+	github.com/gregdel/pushover v1.1.0
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
 	github.com/juju/testing v0.0.0-20220203020004-a0ff61f03494 // indirect
@@ -130,7 +130,6 @@ require (
 	github.com/rs/cors v1.7.0 // indirect
 	github.com/siddontang/go-log v0.0.0-20190221022429-1e957dd83bed // indirect
 	github.com/smartystreets/goconvey v1.7.2 // indirect
-	golang.org/x/tools v0.1.7 // indirect
 	google.golang.org/grpc/examples v0.0.0-20220316190256-c4cabf78f4a2 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 )
