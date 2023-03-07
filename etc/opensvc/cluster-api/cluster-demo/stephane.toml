@@ -34,7 +34,10 @@ prov-proxy-service-type = "docker"
 prov-proxy-disk-type = "volume"
 prov-proxy-volume-data = "tank"
 test=true
-arbitration-external= true
-arbitration-external-hosts="10.8.0.50:8080"
-arbitration-peer-hosts="10.8.0.72:10001"
-arbitration-external-secret="tnstest"
+#monitoring-ssl-cert="/Users/apple/.ssh/id_rsa"
+#monitoring-ssl-key="/Users/apple/.ssh/id_rsa.pub"
+
+#arbitration-external= true
+#arbitration-external-hosts="10.8.0.50:8080"
+#arbitration-peer-hosts="10.8.0.72:10001"
+#arbitration-external-secret="tnstest"

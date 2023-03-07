@@ -30,6 +30,7 @@ const (
 	topoMultiMaster         string = "multi-master"
 	topoMultiMasterRing     string = "multi-master-ring"
 	topoMultiMasterWsrep    string = "multi-master-wsrep"
+	topoMultiMasterGrouprep string = "multi-master-grouprep"
 	topoMasterSlavePgLog    string = "master-slave-pg-logical"
 	topoMasterSlavePgStream string = "master-slave-pg-stream"
 	topoActivePassive       string = "active-passive"

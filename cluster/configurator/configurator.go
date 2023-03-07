@@ -48,11 +48,12 @@ func (configurator *Configurator) Init(conf config.Config) error {
 	} else {
 		configurator.DropProxyTag("readonmaster")
 	}
-	if conf.ReadOnly && !configurator.IsFilterInProxyTags("readonly") {
-		configurator.AddDBTag("readonly")
-	} else {
-		configurator.DropDBTag("readonly")
-	}
+	//	We should not force this here but rather via adding the readonly tag in default de tags
+	/*	if conf.ReadOnly && !configurator.IsFilterInDBTags("readonly") {
+			configurator.AddDBTag("readonly")
+		} else {
+			configurator.DropDBTag("readonly")
+		}*/
 	return err
 }
 
