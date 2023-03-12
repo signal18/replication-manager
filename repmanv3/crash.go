@@ -6,7 +6,7 @@
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
-package cluster
+package repmanv3
 
 import (
 	"encoding/json"
@@ -17,55 +17,39 @@ import (
 	"github.com/signal18/replication-manager/utils/gtid"
 )
 
-// Crash will store informations on a crash based on the replication stream
-// swagger:response crash
-type Crash struct {
-	URL                         string
-	FailoverMasterLogFile       string
-	FailoverMasterLogPos        string
-	NewMasterLogFile            string
-	NewMasterLogPos             string
-	FailoverSemiSyncSlaveStatus bool
-	FailoverIOGtid              *gtid.List
-	ElectedMasterURL            string
-}
+// Cluster_Crash will store informations on a Cluster_Crash based on the replication stream
+// swagger:response Cluster_Crash
+// type Cluster_Crash struct {
+// 	URL                         string
+// 	FailoverMasterLogFile       string
+// 	FailoverMasterLogPos        string
+// 	NewMasterLogFile            string
+// 	NewMasterLogPos             string
+// 	FailoverSemiSyncSlaveStatus bool
+// 	FailoverIOGtid              *gtid.List
+// 	ElectedMasterURL            string
+// }
 
-// Collection of Crash reports
-// swagger:response crashList
-type crashList []*Crash
+// Collection of Cluster_Crash reports
+type CrashList []*Crash
 
-func (cluster *Cluster) newCrash(*Crash) (*Crash, error) {
-	crash := new(Crash)
-	return crash, nil
-}
-
-func (cluster *Cluster) getCrashFromJoiner(URL string) *Crash {
-	for _, cr := range cluster.Crashes {
-		if cr.URL == URL {
-			return cr
-		}
+func (crash *Crash) GetFailoverIOGtid() (l gtid.List) {
+	for _, g := range crash.FailoverIoGtids {
+		l = append(l, *g)
 	}
-	return nil
+	return l
 }
 
-func (cluster *Cluster) getCrashFromMaster(URL string) *Crash {
-	for _, cr := range cluster.Crashes {
-		if cr.ElectedMasterURL == URL {
-			return cr
-		}
+func (crash *Crash) SetFailoverIOGtid(l gtid.List) {
+	for _, g := range l {
+		crash.FailoverIoGtids = append(crash.FailoverIoGtids, &g)
 	}
-	return nil
 }
 
-// GetCrashes return crashes
-func (cluster *Cluster) GetCrashes() crashList {
-	return cluster.Crashes
-}
-
-func (crash *Crash) delete(cl *crashList) {
+func (crash *Crash) delete(cl *CrashList) {
 	lsm := *cl
 	for k, s := range lsm {
-		if crash.URL == s.URL {
+		if crash.Url == s.Url {
 			lsm[k] = lsm[len(lsm)-1]
 			lsm[len(lsm)-1] = nil
 			lsm = lsm[:len(lsm)-1]

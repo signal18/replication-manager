@@ -5,6 +5,7 @@ package signal18.replication_manager.v3;
 import "google/api/annotations.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
+import "google/protobuf/wrappers.proto";
 import "messages.proto";
 
 option go_package = "github.com/signal18/replication-manager;repmanv3";
@@ -13,76 +14,123 @@ service ClusterPublicService {
   rpc ClusterStatus(Cluster) returns (StatusMessage) {
     // replaces /api/clusters/{clusterName}/status
     option (google.api.http) = {
-      get: "/v3/clusters/{name}/status"
+      get : "/v3/clusters/{name}/status"
     };
   }
 
   rpc MasterPhysicalBackup(Cluster) returns (google.protobuf.Empty) {
     // replaces /api/clusters/{name}/actions/master-physical-backup
     option (google.api.http) = {
-      get: "/v3/clusters/{name}/actions/master-physical-backup"
+      get : "/v3/clusters/{name}/actions/master-physical-backup"
     };
   }
 }
 
+service DatabasePublicService {
+  rpc ServerStatus(DatabaseStatus) returns (google.protobuf.BoolValue) {
+    // replaces
+    // /api/clusters/{clusterName}/need-rolling-reprov
+    // /api/clusters/{clusterName}/need-rolling-restart
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-master
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-prov
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-reprov
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-restart
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-start
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-stop
+    // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-unprov
+    // /api/clusters/{clusterName}/servers/{serverName}/is-master
+    // /api/clusters/{clusterName}/servers/{serverName}/is-slave
+
+    // the fragment `/status` has been added to signify this is a status
+    // endpoint allowing us to re-use the action keywords, e.g.
+    // `/status/provision` is the same as the old `/need-prov`
+    // `/status/restart` is the same as `/need-restart`
+    option (google.api.http) = {
+      get : "/v3/clusters/{cluster.name}/{server.host}/{server.port}/status/"
+            "{status}"
+      additional_bindings {
+        get : "/v3/clusters/{cluster.name}/{server.host}/status/{status}"
+      }
+      additional_bindings {get : "/v3/clusters/{cluster.name}/status/{status}"}
+    };
+  }
+
+  // TODO: config should be behind an ACL
+  // /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config
+}
+
 service ClusterService {
-  rpc GetCluster(Cluster) returns (google.protobuf.Struct) {
+  rpc GetCluster(Cluster) returns (Cluster) {
     // replaces /api/clusters/{clusterName}
     option (google.api.http) = {
-      get: "/v3/clusters/{name}"
+      get : "/v3/clusters/{name}"
+    };
+  }
+
+  rpc ListClusters(google.protobuf.Empty) returns (stream Cluster) {
+    // replaces /api/clusters
+    option (google.api.http) = {
+      get : "/v3/clusters"
     };
   }
 
   rpc GetSettingsForCluster(Cluster) returns (google.protobuf.Struct) {
     // replaces /api/clusters/{clusterName}/settings
     option (google.api.http) = {
-      get: "/v3/clusters/{name}/settings"
+      get : "/v3/clusters/{name}/settings"
     };
   }
 
-  rpc SetActionForClusterSettings(ClusterSetting) returns (google.protobuf.Empty) {
+  rpc SetActionForClusterSettings(ClusterSetting)
+      returns (google.protobuf.Empty) {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/settings/actions/apply-dynamic-config
       // /api/clusters/{clusterName}/settings/actions/discover
       // /api/clusters/{clusterName}/settings/actions/reload
-      get: "/v3/clusters/{cluster.name}/settings/actions/{action}"
+      get : "/v3/clusters/{cluster.name}/settings/actions/{action}"
       additional_bindings {
         // /api/clusters/{clusterName}/settings/actions/add-db-tag/{tagValue}
         // /api/clusters/{clusterName}/settings/actions/add-proxy-tag/{tagValue}
         // /api/clusters/{clusterName}/settings/actions/drop-db-tag/{tagValue}
         // /api/clusters/{clusterName}/settings/actions/drop-proxy-tag/{tagValue}
-				get: "/v3/clusters/{cluster.name}/settings/actions/{action}/{tag_value}"
-			}
+        get : "/v3/clusters/{cluster.name}/settings/actions/{action}/"
+              "{tag_value}"
+      }
       additional_bindings {
         // /api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}
-				get: "/v3/clusters/{cluster.name}/settings/actions/set/{setting.name}/{setting.value}"
-			}
+        get : "/v3/clusters/{cluster.name}/settings/actions/set/{setting.name}/"
+              "{setting.value}"
+      }
       additional_bindings {
         // /api/clusters/{clusterName}/settings/actions/switch/{settingName}
-				get: "/v3/clusters/{cluster.name}/settings/actions/switch/{switch.name}"
-			}
+        get : "/v3/clusters/{cluster.name}/settings/actions/switch/"
+              "{switch.name}"
+      }
     };
   }
 
   rpc PerformClusterAction(ClusterAction) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       // /api/clusters/actions/add/{clusterName}
-      get: "/v3/clusters/actions/{action}/{cluster.name}"
+      get : "/v3/clusters/actions/{action}/{cluster.name}"
       additional_bindings {
         // /api/clusters/{clusterName}/actions/add/{clusterShardingName}
-        get: "/v3/clusters/{cluster.name}/actions/{action}/{cluster.clusterShardingName}"
+        get : "/v3/clusters/{cluster.name}/actions/{action}/{sharding_name}"
       }
       additional_bindings {
         // /api/clusters/{clusterName}/actions/addserver/{host}/{port}
-        get: "/v3/clusters/{cluster.name}/actions/{action}/{server.host}/{server.port}"
+        get : "/v3/clusters/{cluster.name}/actions/{action}/{server.host}/"
+              "{server.port}"
       }
       additional_bindings {
         // /api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type}
-        get: "/v3/clusters/{cluster.name}/actions/{action}/{server.host}/{server.port}/{server.type}"
+        get : "/v3/clusters/{cluster.name}/actions/{action}/{server.host}/"
+              "{server.port}/{server.type}"
       }
       additional_bindings {
         // /api/clusters/{clusterName}/actions/replication/bootstrap/{topology}
-        get: "/v3/clusters/{cluster.name}/actions/{action}/{topology}"
+        get : "/v3/clusters/{cluster.name}/actions/{action}/{topology}"
       }
       additional_bindings {
         // /api/clusters/{clusterName}/actions/cancel-rolling-reprov
@@ -100,61 +148,118 @@ service ClusterService {
         // /api/clusters/{clusterName}/actions/sysbench
         // /api/clusters/{clusterName}/actions/waitdatabases
         // /api/clusters/{clusterName}/actions/replication/cleanup
-        get: "/v3/clusters/{cluster.name}/actions/{action}"
+        get : "/v3/clusters/{cluster.name}/actions/{action}"
       }
+
+      additional_bindings {
+        // /api/clusters/{clusterName}/services/actions/provision
+        // /api/clusters/{clusterName}/services/actions/unprovision
+        get : "/v3/clusters/{cluster.name}/services/actions/{action}"
+      }
+
       additional_bindings {
         // /api/clusters/{clusterName}/actions/switchover
-        post: "/v3/clusters/{cluster.name}/actions/switchover"
-        body: "server"
+        post : "/v3/clusters/{cluster.name}/actions/switchover"
+        body : "server"
       }
     };
   }
 
-  rpc RetrieveFromTopology(TopologyRetrieval) returns (stream google.protobuf.Struct) {
+  rpc PerformClusterTest(ClusterTest) returns (google.protobuf.Struct) {
     option (google.api.http) = {
-      // /api/clusters/{clusterName}/topology/alerts
-      // /api/clusters/{clusterName}/topology/crashes
+      // /api/clusters/{clusterName}/tests/actions/run/all
+      // /api/clusters/{clusterName}/tests/actions/run/{testName}
+      get : "/v3/clusters/{cluster.name}/tests/actions/run/{test_name}"
+    };
+  }
+
+  rpc RetrieveFromTopology(TopologyRetrieval)
+      returns (stream google.protobuf.Struct) {
+    option (google.api.http) = {
       // /api/clusters/{clusterName}/topology/logs
       // /api/clusters/{clusterName}/topology/master
       // /api/clusters/{clusterName}/topology/proxies
       // /api/clusters/{clusterName}/topology/servers
       // /api/clusters/{clusterName}/topology/slaves
-      get: "/v3/clusters/{cluster.name}/topology/{retrieve}"
+      get : "/v3/clusters/{cluster.name}/topology/{retrieve}"
+    };
+  }
+
+  rpc RetrieveAlerts(Cluster) returns (stream StateMessage) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/topology/alerts
+      get : "/v3/clusters/{name}/topology/alerts"
+    };
+  }
+
+  rpc RetrieveCrashes(Cluster) returns (stream Crash) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/topology/crashes
+      get : "/v3/clusters/{name}/topology/crashes"
     };
   }
 
   rpc GetClientCertificates(Cluster) returns (Certificate) {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/certificates
-      get: "/v3/clusters/{name}/certificates"
+      get : "/v3/clusters/{name}/certificates"
     };
   }
 
   rpc GetBackups(Cluster) returns (stream Backup) {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/backups
-      get: "/v3/clusters/{name}/backups"
+      get : "/v3/clusters/{name}/backups"
     };
   }
 
   rpc GetTags(Cluster) returns (stream Tag) {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/tags
-      get: "/v3/clusters/{name}/tags"
+      get : "/v3/clusters/{name}/tags"
+    };
+  }
+
+  rpc GetShards(Cluster) returns (stream Cluster) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/shardclusters
+      get : "/v3/clusters/{name}/shardclusters"
     };
   }
 
   rpc GetQueryRules(Cluster) returns (stream google.protobuf.Struct) {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/queryrules
-      get: "/v3/clusters/{name}/queryrules"
+      get : "/v3/clusters/{name}/queryrules"
     };
   }
 
   rpc GetSchema(Cluster) returns (stream Table) {
     option (google.api.http) = {
       // /api/clusters/{clusterName}/schema
-      get: "/v3/clusters/{name}/schema"
+      get : "/v3/clusters/{name}/schema"
+    };
+  }
+
+  rpc ExecuteTableAction(TableAction) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      // /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/checksum-table
+      // /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table
+      // /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/universal-table
+      get : "/v3/clusters/{cluster.name}/schema/{table.table_schema}/"
+            "{table.table_name}/actions/{action}"
+
+      additional_bindings {
+        // /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/move-table/{clusterShard}
+        get : "/v3/clusters/{cluster.name}/schema/{table.table_schema}/"
+              "{table.table_name}/actions/{action}/{cluster_shard}"
+      }
+
+      additional_bindings {
+        // /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table/{clusterList}
+        get : "/v3/clusters/{cluster.name}/schema/{table.table_schema}/"
+              "{table.table_name}/actions/RESHARD_TABLE/{cluster_list}"
+      }
     };
   }
 }

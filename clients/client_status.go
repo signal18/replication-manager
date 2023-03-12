@@ -9,12 +9,15 @@
 package clients
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"os"
+	"io"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/encoding/protojson"
+
+	v3 "github.com/signal18/replication-manager/repmanv3"
 )
 
 var statusCmd = &cobra.Command{
@@ -24,59 +27,50 @@ var statusCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		log.SetFormatter(&log.TextFormatter{})
 		cliInit(false)
-		type Result struct {
-			Alive string `json:"alive"`
-		}
-		var ret Result
 
-		if cfgGroup == "" {
-			urlpost := "https://" + cliHost + ":" + cliPort + "/api/status"
-			res, err := cliAPICmd(urlpost, nil)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "API call %s", err)
-				os.Exit(1)
-			} else {
-				if res != "" {
-					err = json.Unmarshal([]byte(res), &ret)
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "API call %s", err)
-						os.Exit(2)
-					} else {
-						fmt.Fprintf(os.Stdout, "%s\n", ret.Alive)
-						os.Exit(0)
-					}
-				}
-			}
+		client, err := v3.NewClient(context.Background(), v3Config)
+		if err != nil {
+			log.Fatal("Could not initialize v3 Client: %s", err)
 		}
+
+		c := &v3.Cluster{}
+
 		if cfgGroup != "" {
-			urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/status"
-			res, err := cliAPICmd(urlpost, nil)
+			c.Name = cliClusters[cliClusterIndex]
+		}
+
+		res, err := client.ClusterStatus(context.Background(), c)
+
+		if err != nil {
+			log.Fatal("Error fetching ClusterStatus: %s", err)
+		}
+
+		if res.Alive == v3.ServiceStatus_ERRORS {
+			stream, err := client.RetrieveAlerts(context.Background(), c)
+
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "API call %s", err)
-				os.Exit(1)
-			} else {
-				if res != "" {
-					err = json.Unmarshal([]byte(res), &ret)
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "API call %s", err)
-						os.Exit(2)
-					} else {
-						if cliStatusErrors {
-							urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/topology/alerts"
-							res, err := cliAPICmd(urlpost, nil)
-							if err != nil {
-								fmt.Fprintf(os.Stderr, "API call %s", err)
-								os.Exit(3)
-							} else {
-								fmt.Fprintf(os.Stdout, "%s\n", res)
-							}
-						} else {
-							fmt.Fprintf(os.Stdout, "%s\n", ret.Alive)
-						}
-						os.Exit(0)
-					}
-				}
+				log.Fatal("Error fetching RetrieveAlerts: %s", err)
 			}
+
+			for {
+				recv, err := stream.Recv()
+				if err == io.EOF {
+					break
+				}
+
+				if err != nil {
+					log.Fatalf("Error receiving stream: %s", err)
+				}
+
+				buf, err := protojson.Marshal(recv)
+				if err != nil {
+					log.Fatalf("Could not marshal received message: %s", err)
+				}
+
+				fmt.Printf("%s\n", buf)
+			}
+		} else {
+			fmt.Println(res.Alive)
 		}
 	},
 }

@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 
 	jwt "github.com/dgrijalva/jwt-go"
@@ -19,6 +20,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/swagger"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
@@ -27,8 +29,9 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 
@@ -105,6 +108,7 @@ func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error
 	s.grpcServer = grpc.NewServer(serverOpts...)
 	v3.RegisterClusterPublicServiceServer(s.grpcServer, s)
 	v3.RegisterClusterServiceServer(s.grpcServer, s)
+	v3.RegisterDatabasePublicServiceServer(s.grpcServer, s)
 
 	/* Bootstrap the Muxed connection */
 	httpmux := http.NewServeMux()
@@ -129,7 +133,21 @@ func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error
 		return fmt.Errorf("could not register service ClusterService: %w", err)
 	}
 
+	err = v3.RegisterDatabasePublicServiceHandlerFromEndpoint(ctx,
+		gwmux,
+		s.v3Config.Listen.AddressWithPort(),
+		dopts,
+	)
+
+	if err != nil {
+		return fmt.Errorf("could not register service DatabasePublicService: %w", err)
+	}
+
 	httpmux.Handle("/", gwmux)
+
+	httpmux.HandleFunc("/v3/swagger.json", swagger.JsonHandle)
+	httpmux.HandleFunc("/v3/help/swagger-initializer.js", swagger.InitHandle)
+	httpmux.Handle("/v3/help/", http.StripPrefix("/v3/help/", swagger.Handler()))
 
 	srv := &http.Server{
 		Addr: s.v3Config.Listen.AddressWithPort(),
@@ -141,8 +159,6 @@ func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error
 				handlers.AllowedOrigins([]string{"*"}),
 			)(router),
 		),
-
-		// ErrorLog: zap.NewStdLog(s.log),
 	}
 
 	s.grpcWrapped = grpcweb.WrapServer(s.grpcServer, grpcweb.WithOriginFunc(func(origin string) bool {
@@ -236,7 +252,15 @@ func (s *ReplicationManager) getClusterAndUser(ctx context.Context, req v3.Conta
 	if !ok {
 		return cluster.APIUser{}, nil, fmt.Errorf("metadata missing")
 	}
-	log.Info("md", md)
+
+	// if a username/password was provided via the gRPC call we don't have to check JWT
+	if loginCreds := v3.CredentialsFromContext(ctx); loginCreds != nil {
+		user, err := mycluster.GetAPIUser(loginCreds.Username, loginCreds.Password)
+		if err != nil {
+			return cluster.APIUser{}, nil, err
+		}
+		return user, mycluster, nil
+	}
 
 	auth := md.Get("authorization")
 	if len(auth) == 0 {
@@ -349,7 +373,7 @@ func grpcHandlerFunc(s *ReplicationManager, otherHandler http.Handler, legacyHan
 	})
 }
 
-func (s *ReplicationManager) GetCluster(ctx context.Context, in *v3.Cluster) (*structpb.Struct, error) {
+func (s *ReplicationManager) GetCluster(ctx context.Context, in *v3.Cluster) (*v3.Cluster, error) {
 	user, mycluster, err := s.getClusterAndUser(ctx, in)
 	if err != nil {
 		return nil, err
@@ -360,22 +384,52 @@ func (s *ReplicationManager) GetCluster(ctx context.Context, in *v3.Cluster) (*s
 	}
 
 	// TODO: note we are not scrubbing the passwords here
-	b, err := json.Marshal(mycluster)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "could not marshal cluster")
+	return mycluster.ToProtoCluster(), nil
+}
+
+func (s *ReplicationManager) ListClusters(in *emptypb.Empty, stream v3.ClusterService_ListClustersServer) error {
+	var clusters []*cluster.Cluster
+
+	for _, c := range s.Clusters {
+		user, mycluster, err := s.getClusterAndUser(stream.Context(), &v3.Cluster{
+			Name: c.Name,
+		})
+
+		if err != nil {
+			continue
+		}
+
+		if err := user.Granted(config.GrantClusterGrant); err != nil {
+			continue
+		}
+
+		clusters = append(clusters, mycluster)
 	}
 
-	out := &structpb.Struct{}
-	err = protojson.Unmarshal(b, out)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "could not unmarshal json config to struct")
+	sort.Sort(cluster.ClusterSorter(clusters))
+
+	for _, c := range clusters {
+		if err := stream.Send(c.ToProtoCluster()); err != nil {
+			return err
+		}
 	}
 
-	return out, nil
+	return nil
 }
 
 // ClusterStatus is a public endpoint so it doesn't need to verify a user
 func (s *ReplicationManager) ClusterStatus(ctx context.Context, in *v3.Cluster) (*v3.StatusMessage, error) {
+	if in.Name == "" {
+		if s.isStarted {
+			return &v3.StatusMessage{
+				Alive: v3.ServiceStatus_RUNNING,
+			}, nil
+		}
+		return &v3.StatusMessage{
+			Alive: v3.ServiceStatus_ERRORS,
+		}, nil
+	}
+
 	mycluster, err := s.getClusterFromFromRequest(in)
 	if err != nil {
 		return nil, err
@@ -530,10 +584,53 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 	return res, nil
 }
 
+func (s *ReplicationManager) GetShards(in *v3.Cluster, stream v3.ClusterService_GetShardsServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in)
+	if err != nil {
+		return err
+	}
+
+	if err = user.Granted(config.GrantClusterSharding); err != nil {
+		return err
+	}
+
+	for _, c := range mycluster.ShardProxyGetShardClusters() {
+		stream.Send(c.ToProtoCluster())
+	}
+
+	return nil
+}
+
+func (s *ReplicationManager) PerformClusterTest(ctx context.Context, in *v3.ClusterTest) (*structpb.Struct, error) {
+	if in.TestName == v3.ClusterTest_Unspecified {
+		in.TestName = v3.ClusterTest_All
+	}
+
+	user, mycluster, err := s.getClusterAndUser(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = user.Granted(config.GrantClusterTest); err != nil {
+		return nil, err
+	}
+
+	if in.Provision {
+		mycluster.SetTestStartCluster(true)
+	}
+
+	if in.Unprovision {
+		mycluster.SetTestStopCluster(true)
+	}
+
+	res := s.RunAllTests(mycluster, in.TestName.String(), "")
+	return marshal(res)
+}
+
 func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.ClusterAction) (res *emptypb.Empty, err error) {
 	// WARNING: this one cannot be validated for ACL, as there is no cluster to validate against
 	// special case, the clustername doesn't exist yet
-	if in.Cluster.ClusterShardingName == "" {
+	if in.ShardingName == "" {
 		if in.Action == v3.ClusterAction_ADD {
 			err = s.AddCluster(in.Cluster.Name, "")
 			if err != nil {
@@ -549,36 +646,43 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	}
 
 	switch in.Action {
+	case v3.ClusterAction_PROVISION:
+		err = mycluster.Bootstrap()
+		if err != nil {
+			mycluster.LogPrintf(cluster.LvlErr, "API Error Bootstrap Micro Services + replication: %s", err)
+		}
+	case v3.ClusterAction_UNPROVISION:
+		err = mycluster.Unprovision()
 	case v3.ClusterAction_ADD:
 		if err = user.Granted(config.GrantProvCluster); err != nil {
 			return nil, err
 		}
-		err = s.AddCluster(in.Cluster.ClusterShardingName, in.Cluster.Name)
+		err = s.AddCluster(in.ShardingName, in.Cluster.Name)
 		if err != nil {
 			return nil, v3.NewError(codes.Unknown, err).Err()
 		}
 		err = mycluster.RollingRestart()
 	case v3.ClusterAction_ADDSERVER:
 		switch in.Server.Type {
-		case v3.ClusterAction_Server_TYPE_UNSPECIFIED:
+		case v3.Server_TYPE_UNSPECIFIED:
 			err = mycluster.AddSeededServer(in.Server.GetURI())
-		case v3.ClusterAction_Server_PROXY:
-			if in.Server.Proxy == v3.ClusterAction_Server_PROXY_UNSPECIFIED {
-				return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "Proxy", v3.ClusterAction_Server_PROXY_UNSPECIFIED.String()).Err()
+		case v3.Server_PROXY:
+			if in.Server.Proxy == v3.Server_PROXY_UNSPECIFIED {
+				return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "Proxy", v3.Server_PROXY_UNSPECIFIED.String()).Err()
 			}
 			err = mycluster.AddSeededProxy(
 				strings.ToLower(in.Server.Proxy.String()),
 				in.Server.Host,
 				fmt.Sprintf("%d", in.Server.Port), "", "")
-		case v3.ClusterAction_Server_DATABASE:
+		case v3.Server_DATABASE:
 			switch in.Server.Database {
-			case v3.ClusterAction_Server_DATABASE_UNSPECIFIED:
-				return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "Database", v3.ClusterAction_Server_DATABASE_UNSPECIFIED.String()).Err()
-			case v3.ClusterAction_Server_MARIADB:
+			case v3.Server_DATABASE_UNSPECIFIED:
+				return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "Database", v3.Server_DATABASE_UNSPECIFIED.String()).Err()
+			case v3.Server_MARIADB:
 				mycluster.Conf.ProvDbImg = "mariadb:latest"
-			case v3.ClusterAction_Server_PERCONA:
+			case v3.Server_PERCONA:
 				mycluster.Conf.ProvDbImg = "percona:latest"
-			case v3.ClusterAction_Server_MYSQL:
+			case v3.Server_MYSQL:
 				mycluster.Conf.ProvDbImg = "mysql:latest"
 				// TODO: Postgres is an option but previous code doesn't mention it
 			}
@@ -643,6 +747,91 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	return
 }
 
+func (s *ReplicationManager) RetrieveAlerts(in *v3.Cluster, stream v3.ClusterService_RetrieveAlertsServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in)
+	if err != nil {
+		return err
+	}
+
+	// TODO: introduce new Grants for this type of endpoint
+	if err = user.Granted(config.GrantClusterSettings); err != nil {
+		return err
+	}
+
+	for _, sh := range mycluster.GetStateMachine().GetOpenErrors() {
+		msg := &v3.StateMessage{
+			Severity: v3.StateMessage_ERROR,
+			Number:   sh.ErrNumber,
+			Desc:     sh.ErrDesc,
+			From:     sh.ErrFrom,
+		}
+
+		if err := stream.Send(msg); err != nil {
+			return err
+		}
+	}
+
+	for _, sh := range mycluster.GetStateMachine().GetOpenWarnings() {
+		msg := &v3.StateMessage{
+			Severity: v3.StateMessage_WARNING,
+			Number:   sh.ErrNumber,
+			Desc:     sh.ErrDesc,
+			From:     sh.ErrFrom,
+		}
+
+		if err := stream.Send(msg); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *ReplicationManager) RetrieveCrashes(in *v3.Cluster, stream v3.ClusterService_RetrieveCrashesServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in)
+	if err != nil {
+		return err
+	}
+
+	// TODO: introduce new Grants for this type of endpoint
+	if err = user.Granted(config.GrantClusterSettings); err != nil {
+		return err
+	}
+
+	for _, crash := range mycluster.GetCrashes() {
+		if err := stream.Send(crash); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *ReplicationManager) RetrieveLogs(in *v3.Cluster, stream v3.ClusterService_RetrieveLogsServer) error {
+	user, mycluster, err := s.getClusterAndUser(stream.Context(), in)
+	if err != nil {
+		return err
+	}
+
+	// TODO: introduce new Grants for this type of endpoint
+	if err = user.Granted(config.GrantClusterSettings); err != nil {
+		return err
+	}
+
+	for _, slog := range s.tlog.Buffer {
+		if strings.Contains(slog, mycluster.Name) {
+			err := stream.Send(&wrapperspb.StringValue{
+				Value: slog,
+			})
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stream v3.ClusterService_RetrieveFromTopologyServer) error {
 	user, mycluster, err := s.getClusterAndUser(stream.Context(), in.Cluster)
 	if err != nil {
@@ -658,45 +847,10 @@ func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stre
 		return v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "retrieve", "").Err()
 	}
 
-	if in.Retrieve == v3.TopologyRetrieval_ALERTS {
-		a := new(cluster.Alerts)
-		a.Errors = mycluster.GetStateMachine().GetOpenErrors()
-		a.Warnings = mycluster.GetStateMachine().GetOpenWarnings()
-
-		return marshalAndSend(a, stream.Send)
-	}
-
-	if in.Retrieve == v3.TopologyRetrieval_CRASHES {
-		cr := mycluster.GetCrashes()
-		if cr == nil {
-			return nil
-		}
-		data, err := json.Marshal(cr)
-		if err != nil {
-			return status.Error(codes.Internal, "could not marshal crashes list")
-		}
-		var crashes []*cluster.Crash
-		err = json.Unmarshal(data, &crashes)
-		if err != nil {
-			return status.Error(codes.Internal, "could not unmarshal crashes list")
-		}
-		return marshalAndSend(crashes, stream.Send)
-	}
-
-	if in.Retrieve == v3.TopologyRetrieval_LOGS {
-		var clusterlogs []string
-		for _, slog := range s.tlog.Buffer {
-			if strings.Contains(slog, mycluster.Name) {
-				clusterlogs = append(clusterlogs, slog)
-			}
-		}
-
-		return marshalAndSend(clusterlogs, stream.Send)
-	}
-
 	if in.Retrieve == v3.TopologyRetrieval_MASTER {
 		m := mycluster.GetMaster()
 		if m == nil {
+			// TODO: decide if we want to return an error or return nil here
 			return v3.NewErrorResource(codes.InvalidArgument, v3.ErrClusterMasterNotSet, "cluster", in.Cluster.Name).Err()
 		}
 
@@ -771,7 +925,7 @@ func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stre
 	return nil
 }
 
-func marshalAndSend(in interface{}, send func(*structpb.Struct) error) error {
+func marshal(in interface{}) (*structpb.Struct, error) {
 	type String struct {
 		String string
 	}
@@ -782,7 +936,7 @@ func marshalAndSend(in interface{}, send func(*structpb.Struct) error) error {
 		str.String = s
 		data, err = json.Marshal(str)
 		if err != nil {
-			return status.Error(codes.Internal, "could not marshal String to json")
+			return nil, status.Error(codes.Internal, "could not marshal String to json")
 		}
 	}
 
@@ -794,21 +948,30 @@ func marshalAndSend(in interface{}, send func(*structpb.Struct) error) error {
 		strs.Data = sl
 		data, err = json.Marshal(strs)
 		if err != nil {
-			return status.Error(codes.Internal, "could not marshal Strings to json")
+			return nil, status.Error(codes.Internal, "could not marshal Strings to json")
 		}
 	}
 
 	if len(data) == 0 {
 		data, err = json.Marshal(in)
 		if err != nil {
-			return status.Error(codes.Internal, "could not marshal to json")
+			return nil, status.Error(codes.Internal, "could not marshal to json")
 		}
 	}
 
 	out := &structpb.Struct{}
 	err = protojson.Unmarshal(data, out)
 	if err != nil {
-		return status.Error(codes.Internal, "could not unmarshal json to struct")
+		return nil, status.Error(codes.Internal, "could not unmarshal json to struct")
+	}
+
+	return out, nil
+}
+
+func marshalAndSend(in interface{}, send func(*structpb.Struct) error) error {
+	out, err := marshal(in)
+	if err != nil {
+		return err
 	}
 
 	if err := send(out); err != nil {
@@ -922,4 +1085,180 @@ func (s *ReplicationManager) GetSchema(in *v3.Cluster, stream v3.ClusterService_
 	}
 
 	return nil
+}
+
+func (s *ReplicationManager) ExecuteTableAction(ctx context.Context, in *v3.TableAction) (res *emptypb.Empty, err error) {
+	user, mycluster, err := s.getClusterAndUser(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: introduce new Grants for this type of endpoint
+	if err = user.Granted(config.GrantClusterGrant); err != nil {
+		return nil, err
+	}
+
+	if err = in.Validate(); err != nil {
+		return nil, err
+	}
+
+	switch in.Action {
+	case v3.TableAction_ACTION_UNSPECIFIED:
+		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "action", "").Err()
+
+	case v3.TableAction_CHECKSUM_TABLE:
+		go mycluster.CheckTableChecksum(in.Table.TableSchema, in.Table.TableName)
+
+	case v3.TableAction_RESHARD_TABLE:
+		for _, pri := range mycluster.Proxies {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
+				clusters := mycluster.GetClusterListFromShardProxy(mycluster.Conf.MdbsProxyHosts)
+				if in.ClusterList == "" {
+					mycluster.ShardProxyReshardTable(pr, in.Table.TableSchema, in.Table.TableName, clusters)
+				} else {
+					var clustersFilter map[string]*cluster.Cluster
+					for _, c := range clusters {
+						if strings.Contains(in.ClusterList, c.GetName()) {
+							clustersFilter[c.GetName()] = c
+						}
+					}
+					mycluster.ShardProxyReshardTable(pr, in.Table.TableSchema, in.Table.TableName, clustersFilter)
+				}
+			}
+		}
+
+	case v3.TableAction_UNIVERSAL_TABLE:
+		for _, pri := range mycluster.Proxies {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
+				go mycluster.ShardSetUniversalTable(pr, in.Table.TableSchema, in.Table.TableName)
+			}
+		}
+
+	case v3.TableAction_MOVE_TABLE:
+		for _, pri := range mycluster.Proxies {
+			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
+				if in.ClusterShard != "" {
+					destcluster := s.getClusterByName(in.ClusterShard)
+					if mycluster != nil {
+						mycluster.ShardProxyMoveTable(pr, in.Table.TableSchema, in.Table.TableName, destcluster)
+						return
+					}
+				}
+			}
+		}
+
+	}
+
+	return
+}
+
+// DatabaseStatus is a public endpoint so it doesn't need to verify a user
+func (s *ReplicationManager) ServerStatus(ctx context.Context, in *v3.DatabaseStatus) (*wrapperspb.BoolValue, error) {
+	mycluster, err := s.getClusterFromFromRequest(in)
+	if err != nil {
+		return nil, err
+	}
+
+	if in.Status == v3.DatabaseStatus_ACTION_UNSPECIFIED {
+		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "status", "").Err()
+	}
+
+	status := &wrapperspb.BoolValue{
+		Value: false,
+	}
+
+	// when no server is set we can check if the rolling-reprov or rolling-restart status
+	if in.Server == nil {
+		switch in.Status {
+		case v3.DatabaseStatus_NEED_ROLLING_REPROV:
+			if mycluster.HasRequestDBRollingReprov() {
+				status.Value = true
+			}
+		case v3.DatabaseStatus_NEED_ROLLING_RESTART:
+			if mycluster.HasRequestDBRollingRestart() {
+				status.Value = true
+			}
+		}
+		return status, nil
+	}
+
+	if in.Server == nil {
+		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrFieldNotSet, "server", "").Err()
+	}
+
+	var node *cluster.ServerMonitor
+
+	if in.Server.Port == 0 {
+		node = mycluster.GetServerFromName(in.Server.Host)
+	} else {
+		node = mycluster.GetServerFromName(in.Server.GetURI())
+	}
+
+	proxy := mycluster.GetProxyFromURL(in.Server.GetURI())
+
+	if node == nil && proxy == nil {
+		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrServerNotFound, "server", in.Server.Host).Err()
+	}
+
+	if proxy == nil && node.IsDown() {
+		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrServerDown, "server", in.Server.Host).Err()
+	}
+
+	switch in.Status {
+	case v3.DatabaseStatus_IS_MASTER:
+		if !mycluster.IsInFailover() && mycluster.IsActive() && node.IsMaster() &&
+			!node.IsDown() && !node.IsMaintenance && !node.IsReadOnly() {
+			status.Value = true
+		}
+	case v3.DatabaseStatus_IS_SLAVE:
+		if mycluster.IsActive() && !node.IsDown() && !node.IsMaintenance &&
+			((node.IsSlave && !node.HasReplicationIssue()) ||
+				(node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
+			status.Value = true
+		}
+	}
+
+	if proxy != nil {
+		status = getStatusFromCookie(in, proxy)
+	} else {
+		status = getStatusFromCookie(in, node)
+	}
+
+	// TODO: decide if we want to return an error or not for when e.g. a restart is not needed
+
+	return status, nil
+}
+
+func getStatusFromCookie(in *v3.DatabaseStatus, n cluster.HasCookie) *wrapperspb.BoolValue {
+	status := &wrapperspb.BoolValue{
+		Value: false,
+	}
+	switch in.Status {
+	case v3.DatabaseStatus_RESTART:
+		if n.HasCookie("cookie_restart") {
+			status.Value = true
+		}
+	case v3.DatabaseStatus_REPROVISION:
+		if n.HasCookie("cookie_reprov") {
+			status.Value = true
+		}
+	case v3.DatabaseStatus_PROVISION:
+		if n.HasCookie("cookie_prov") {
+			status.Value = true
+		}
+	case v3.DatabaseStatus_UNPROVISION:
+		if n.HasCookie("cookie_unprov") {
+			status.Value = true
+		}
+	case v3.DatabaseStatus_START:
+		if n.HasCookie("cookie_waitstart") {
+			status.Value = true
+		}
+	case v3.DatabaseStatus_STOP:
+		if n.HasCookie("cookie_waitstop") {
+			status.Value = true
+		}
+	}
+
+	return status
 }

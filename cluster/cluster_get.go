@@ -105,13 +105,13 @@ func (cluster *Cluster) GetDomainHeadCluster() string {
 	return ""
 }
 
-func (cluster *Cluster) GetPersitentState() error {
+func (cluster *Cluster) GetPersistentState() error {
 
 	type Save struct {
-		Servers    string      `json:"servers"`
-		Crashes    crashList   `json:"crashes"`
-		SLA        state.Sla   `json:"sla"`
-		SLAHistory []state.Sla `json:"slaHistory"`
+		Servers    string       `json:"servers"`
+		Crashes    v3.CrashList `json:"crashes"`
+		SLA        state.Sla    `json:"sla"`
+		SLAHistory []state.Sla  `json:"slaHistory"`
 	}
 
 	var clsave Save
@@ -767,4 +767,27 @@ func (cluster *Cluster) GetClientCertificates() (map[string]string, error) {
 	certs["clientKey"] = clientkey
 	certs["caCert"] = caCert
 	return certs, nil
+}
+
+func (cluster *Cluster) getCrashFromJoiner(URL string) *v3.Crash {
+	for _, cr := range cluster.Crashes {
+		if cr.Url == URL {
+			return cr
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) getCrashFromMaster(URL string) *v3.Crash {
+	for _, cr := range cluster.Crashes {
+		if cr.ElectedMasterUrl == URL {
+			return cr
+		}
+	}
+	return nil
+}
+
+// GetCluster_Crashes return Cluster_Crashes
+func (cluster *Cluster) GetCrashes() v3.CrashList {
+	return cluster.Crashes
 }

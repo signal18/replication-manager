@@ -32,6 +32,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	logsql "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // A Clusters is a collection of Cluster objects
@@ -59,7 +61,7 @@ type Cluster struct {
 	WorkingDir                    string                      `json:"workingDir"`
 	Servers                       serverList                  `json:"-"`
 	ServerIdList                  []string                    `json:"dbServers"`
-	Crashes                       crashList                   `json:"dbServersCrashes"`
+	Crashes                       v3.CrashList                `json:"dbServersCrashes"`
 	Proxies                       proxyList                   `json:"-"`
 	ProxyIdList                   []string                    `json:"proxyServers"`
 	FailoverCtr                   int                         `json:"failoverCounter"`
@@ -177,6 +179,73 @@ type Cluster struct {
 	SqlGeneralLog                 *logsql.Logger              `json:"-"`
 	sync.Mutex
 	crcTable *crc64.Table
+}
+
+func (c *Cluster) ToProtoCluster() *v3.Cluster {
+	out := &v3.Cluster{
+		Name:                          c.Name,
+		Tenant:                        c.Tenant,
+		WorkingDir:                    c.WorkingDir,
+		ServerIdList:                  c.ServerIdList,
+		ProxyIdList:                   c.ProxyIdList,
+		FailoverCtr:                   int32(c.FailoverCtr),
+		FailoverTs:                    c.GetFailoverTs(),
+		Status:                        c.Status,
+		IsSplitBrain:                  c.IsSplitBrain,
+		IsFailedArbitrator:            c.IsFailedArbitrator,
+		IsLostMajority:                c.IsLostMajority,
+		IsDown:                        c.IsDown,
+		IsClusterDown:                 c.IsClusterDown,
+		IsAllDbUp:                     c.IsAllDbUp,
+		IsFailable:                    c.IsFailable,
+		IsPostgres:                    c.IsPostgres,
+		IsProvision:                   c.IsProvision,
+		IsNeedProxiesRestart:          c.IsNeedProxiesRestart,
+		IsNeedProxiesReprov:           c.IsNeedProxiesReprov,
+		IsNeedDatabasesRestart:        c.IsNeedDatabasesRestart,
+		IsNeedDatabasesRollingRestart: c.IsNeedDatabasesRollingRestart,
+		IsNeedDatabasesRollingReprov:  c.IsNeedDatabasesRollingReprov,
+		IsNeedDatabasesReprov:         c.IsNeedDatabasesReprov,
+		IsValidBackup:                 c.IsValidBackup,
+		IsNotMonitoring:               c.IsNotMonitoring,
+		IsCapturing:                   c.IsCapturing,
+		CleanAll:                      c.CleanAll,
+		Topology:                      c.Topology,
+		Uptime:                        c.Uptime,
+		UptimeFailable:                c.UptimeFailable,
+		UptimeSemiSync:                c.UptimeSemiSync,
+		MonitorSpin:                   c.MonitorSpin,
+		DbTableSize:                   c.DBTableSize,
+		DbIndexSize:                   c.DBIndexSize,
+		Connections:                   int32(c.Connections),
+		Qps:                           c.QPS,
+		HaveDbtlsCert:                 c.HaveDBTLSCert,
+		HaveDbtlsOldCert:              c.HaveDBTLSOldCert,
+		WaitingRejoin:                 int32(c.WaitingRejoin),
+		WaitingSwitchover:             int32(c.WaitingSwitchover),
+		WaitingFailover:               int32(c.WaitingFailover),
+		Crashes:                       c.Crashes,
+		MonitorType:                   c.MonitorType,
+		TopologyType:                  c.TopologyType,
+		FsType:                        c.FSType,
+		DiskType:                      c.DiskType,
+		VmType:                        c.VMType,
+	}
+
+	b, err := json.Marshal(c.Conf)
+	if err == nil {
+		conf := &structpb.Struct{}
+		err = protojson.Unmarshal(b, conf)
+		if err == nil {
+			out.Conf = conf
+		}
+	}
+
+	return out
+}
+
+type HasCookie interface {
+	HasCookie(key string) bool
 }
 
 type ClusterSorter []*Cluster
@@ -346,7 +415,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.LoadAPIUsers()
 	// createKeys do nothing yet
 	cluster.createKeys()
-	cluster.GetPersitentState()
+	cluster.GetPersistentState()
 
 	cluster.newServerList()
 	err = cluster.newProxyList()
@@ -617,11 +686,11 @@ func (cluster *Cluster) Stop() {
 func (cluster *Cluster) Save() error {
 
 	type Save struct {
-		Servers    string      `json:"servers"`
-		Crashes    crashList   `json:"crashes"`
-		SLA        state.Sla   `json:"sla"`
-		SLAHistory []state.Sla `json:"slaHistory"`
-		IsAllDbUp  bool        `json:"provisioned"`
+		Servers    string       `json:"servers"`
+		Crashes    v3.CrashList `json:"crashes"`
+		SLA        state.Sla    `json:"sla"`
+		SLAHistory []state.Sla  `json:"slaHistory"`
+		IsAllDbUp  bool         `json:"provisioned"`
 	}
 
 	var clsave Save

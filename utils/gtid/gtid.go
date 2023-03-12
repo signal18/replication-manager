@@ -19,11 +19,13 @@ import (
 )
 
 // Gtid defines a GTID object
-type Gtid struct {
-	DomainID uint64 `json:"domainId"`
-	ServerID uint64 `json:"serverId"`
-	SeqNo    uint64 `json:"seqNo"`
-}
+// type Gtid struct {
+// 	DomainID uint64 `json:"domainId"`
+// 	ServerID uint64 `json:"serverId"`
+// 	SeqNo    uint64 `json:"seqNo"`
+// }
+
+// type Gtid v3.Gtid
 
 // List defines a slice of GTIDs
 type List []Gtid
@@ -122,8 +124,8 @@ func NewMySQLList(s string, crcTable *crc64.Table) *List {
 func NewGtid(s string) *Gtid {
 	g := new(Gtid)
 	e := strings.Split(s, "-")
-	g.DomainID, _ = strconv.ParseUint(e[0], 10, 32)
-	g.ServerID, _ = strconv.ParseUint(e[1], 10, 32)
+	g.DomainId, _ = strconv.ParseUint(e[0], 10, 32)
+	g.ServerId, _ = strconv.ParseUint(e[1], 10, 32)
 	g.SeqNo, _ = strconv.ParseUint(e[2], 10, 64)
 	return g
 }
@@ -138,9 +140,9 @@ func NewMySQLGtid(s string, crcTable *crc64.Table) *Gtid {
 	} else {
 		seq = f[1]
 	}
-	g.DomainID = 0
+	g.DomainId = 0
 
-	g.ServerID = crc64.Checksum([]byte(strings.ToUpper(f[0])), crcTable)
+	g.ServerId = crc64.Checksum([]byte(strings.ToUpper(f[0])), crcTable)
 	g.SeqNo, _ = strconv.ParseUint(seq, 10, 64)
 	//fmt.Fprintf(os.Stdout, "gniac new MySQL GTID : "+f[0]+" "+strconv.FormatUint(g.ServerID, 10))
 
@@ -151,7 +153,7 @@ func NewMySQLGtid(s string, crcTable *crc64.Table) *Gtid {
 func (gl List) GetDomainIDs() []uint64 {
 	var d []uint64
 	for _, g := range gl {
-		d = append(d, g.DomainID)
+		d = append(d, g.DomainId)
 	}
 	return d
 }
@@ -160,7 +162,7 @@ func (gl List) GetDomainIDs() []uint64 {
 func (gl List) GetServerIDs() []uint64 {
 	var d []uint64
 	for _, g := range gl {
-		d = append(d, g.ServerID)
+		d = append(d, g.ServerId)
 	}
 	return d
 }
@@ -178,7 +180,7 @@ func (gl List) GetSeqNos() []uint64 {
 func (gl List) GetSeqDomainIdNos(domainId uint64) []uint64 {
 	var d []uint64
 	for _, g := range gl {
-		if g.DomainID == domainId {
+		if g.DomainId == domainId {
 			d = append(d, g.SeqNo)
 		}
 	}
@@ -188,7 +190,7 @@ func (gl List) GetSeqDomainIdNos(domainId uint64) []uint64 {
 // return the sequence of a sprecific domain
 func (gl List) GetSeqServerIdNos(serverId uint64) uint64 {
 	for _, g := range gl {
-		if g.ServerID == serverId {
+		if g.ServerId == serverId {
 			return g.SeqNo
 		}
 	}
@@ -199,7 +201,7 @@ func (gl List) GetSeqServerIdNos(serverId uint64) uint64 {
 func (gl List) Sprint() string {
 	var sl []string
 	for _, g := range gl {
-		s := fmt.Sprintf("%d-%d-%d", g.DomainID, g.ServerID, g.SeqNo)
+		s := fmt.Sprintf("%d-%d-%d", g.DomainId, g.ServerId, g.SeqNo)
 		sl = append(sl, s)
 	}
 	return strings.Join(sl, ",")
@@ -208,10 +210,10 @@ func (gl List) Sprint() string {
 //
 func (gl List) Equal(glcomp *List) bool {
 	server := func(c1, c2 *Gtid) bool {
-		return c1.ServerID < c2.ServerID
+		return c1.ServerId < c2.ServerId
 	}
 	domain := func(c1, c2 *Gtid) bool {
-		return c1.DomainID < c2.DomainID
+		return c1.DomainId < c2.DomainId
 	}
 	OrderedBy(domain, server).Sort(gl)
 	OrderedBy(domain, server).Sort(*glcomp)

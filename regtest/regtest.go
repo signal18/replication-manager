@@ -6,56 +6,15 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/utils/misc"
-)
 
-var tests = []string{
-	"testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync",
-	"testSwitchoverLongTransactionNoRplCheckNoSemiSync",
-	"testSwitchoverLongQueryNoRplCheckNoSemiSync",
-	"testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync",
-	"testSwitchoverReadOnlyNoRplCheck",
-	"testSwitchoverNoReadOnlyNoRplCheck",
-	"testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck",
-	"testSwitchover2TimesReplicationOkSemiSyncNoRplCheck",
-	"testSwitchoverBackPreferedMasterNoRplCheckSemiSync",
-	"testSwitchoverAllSlavesStopRplCheckNoSemiSync",
-	"testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck",
-	"testSwitchoverAllSlavesDelayRplCheckNoSemiSync",
-	"testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync",
-	"testFailoverSemisyncAutoRejoinSafeMSMXMS",
-	"testFailoverSemisyncAutoRejoinSafeMSXMSM",
-	"testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS",
-	"testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS",
-	"testFailoverSemisyncAutoRejoinUnsafeMSMXMS",
-	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS",
-	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM",
-	"testFailoverSemisyncAutoRejoinUnsafeMSXMSM",
-	"testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS",
-	"testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM",
-	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS",
-	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM",
-	"testFailoverAssyncAutoRejoinRelay",
-	"testFailoverAssyncAutoRejoinNoGtid",
-	"testFailoverAllSlavesDelayNoRplChecksNoSemiSync",
-	"testFailoverAllSlavesDelayRplChecksNoSemiSync",
-	"testFailoverNoRplChecksNoSemiSync",
-	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat",
-	"testFailoverNumberFailureLimitReach",
-	"testFailoverTimeNotReach",
-	"testFailoverManual",
-	"testFailoverAssyncAutoRejoinFlashback",
-	"testFailoverSemisyncAutoRejoinFlashback",
-	"testFailoverAssyncAutoRejoinNowrites",
-	"testFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM",
-	"testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM",
-	"testFailoverSemisyncSlavekilledAutoRejoin",
-	"testSlaReplAllSlavesStopNoSemiSync",
-	"testSlaReplAllSlavesDelayNoSemiSync",
-}
+	v3 "github.com/signal18/replication-manager/repmanv3"
+)
 
 const recoverTime = 8
 const LvlErr = "ERROR"
@@ -65,6 +24,18 @@ type RegTest struct {
 }
 
 func (regtest *RegTest) GetTests() []string {
+	var tests []string
+	// the testnames are now stored inside the protobuf message
+	for _, testname := range v3.ClusterTest_Test_name {
+		if testname != v3.ClusterTest_All.String() &&
+			testname != v3.ClusterTest_Suite.String() &&
+			testname != v3.ClusterTest_Unspecified.String() {
+			t := []rune(testname)
+			t[0] = unicode.ToLower(t[0])
+			tests = append(tests, string(t))
+		}
+	}
+	sort.Strings(tests)
 	return tests
 }
 

@@ -274,11 +274,6 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxOneTest)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/tests/actions/run/{testName}", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxOneTest)),
-	))
-
 	// endpoint to fetch Cluster.DiffVariables
 	router.Handle("/api/clusters/{clusterName}/diffvariables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),

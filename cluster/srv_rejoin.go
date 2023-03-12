@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -209,9 +210,9 @@ func (server *ServerMonitor) ReseedMasterSST() error {
 	return nil
 }
 
-func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
+func (server *ServerMonitor) rejoinMasterSync(crash *v3.Crash) error {
 	if server.HasGTIDReplication() {
-		server.ClusterGroup.LogPrintf("INFO", "Found same or lower GTID %s and new elected master was %s", server.CurrentGtid.Sprint(), crash.FailoverIOGtid.Sprint())
+		server.ClusterGroup.LogPrintf("INFO", "Found same or lower GTID %s and new elected master was %s", server.CurrentGtid.Sprint(), crash.GetFailoverIOGtid().Sprint())
 	} else {
 		server.ClusterGroup.LogPrintf("INFO", "Found same or lower sequence %s , %s", server.BinaryLogFile, server.BinaryLogPos)
 	}
@@ -272,7 +273,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 	return err
 }
 
-func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
+func (server *ServerMonitor) rejoinMasterFlashBack(crash *v3.Crash) error {
 	realmaster := server.ClusterGroup.master
 	if server.ClusterGroup.Conf.MxsBinlogOn || server.ClusterGroup.Conf.MultiTierSlave {
 		realmaster = server.ClusterGroup.GetRelayServer()
@@ -304,8 +305,8 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 		server.ClusterGroup.LogPrintf("ERROR", "Error starting client: %s at %s", err, strings.Replace(clientCmd.Path, server.ClusterGroup.rplPass, "XXXX", -1))
 		return err
 	}
-	logs, err := dbhelper.SetGTIDSlavePos(server.Conn, crash.FailoverIOGtid.Sprint())
-	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlInfo, "SET GLOBAL gtid_slave_pos = \"%s\"", crash.FailoverIOGtid.Sprint())
+	logs, err := dbhelper.SetGTIDSlavePos(server.Conn, crash.GetFailoverIOGtid().Sprint())
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlInfo, "SET GLOBAL gtid_slave_pos = \"%s\"", crash.GetFailoverIOGtid().Sprint())
 	if err != nil {
 		return err
 	}
@@ -369,7 +370,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 	return nil
 }
 
-func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
+func (server *ServerMonitor) rejoinMasterIncremental(crash *v3.Crash) error {
 	if server.GetCluster().GetConf().AutorejoinForceRestore {
 		server.ClusterGroup.LogPrintf("INFO", "Cancel incremental rejoin server %s caused by force backup restore  ", server.URL)
 		return errors.New("autorejoin-force-restore is on can't just rejoin from current pos")
@@ -383,9 +384,9 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
 	}
 
-	if crash.FailoverIOGtid != nil {
+	if crash.GetFailoverIOGtid() != nil {
 		server.ClusterGroup.LogPrintf("INFO", "Rejoined GTID sequence  %d from server id %d", server.CurrentGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()), server.GetUniversalGtidServerID())
-		server.ClusterGroup.LogPrintf("INFO", "Crash Saved GTID sequence %d from server id %d", crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()), server.GetUniversalGtidServerID())
+		server.ClusterGroup.LogPrintf("INFO", "Crash Saved GTID sequence %d from server id %d", crash.GetFailoverIOGtid().GetSeqServerIdNos(server.GetUniversalGtidServerID()), server.GetUniversalGtidServerID())
 	}
 	if server.isReplicationAheadOfMasterElection(crash) == false || server.ClusterGroup.Conf.MxsBinlogOn {
 		server.rejoinMasterSync(crash)
@@ -397,19 +398,19 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 			return errors.New("Incremental canceled caused by old style replication")
 		}
 	}
-	if crash.FailoverIOGtid != nil {
+	if crash.FailoverIoGtids != nil {
 		// server.ClusterGroup.master.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0
 		// lookup in crash recorded is the current master
-		if crash.FailoverIOGtid.GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
+		if crash.GetFailoverIOGtid().GetSeqServerIdNos(uint64(server.ServerID)) == 0 {
 			server.ClusterGroup.LogPrintf("INFO", "Cascading failover, consider we cannot flashback")
 			server.ClusterGroup.canFlashBack = false
 		} else {
-			server.ClusterGroup.LogPrintf("INFO", "Found server ID in rejoining ID %s and crash FailoverIOGtid %s Master %s", server.ServerID, crash.FailoverIOGtid.Sprint(), server.ClusterGroup.master.URL)
+			server.ClusterGroup.LogPrintf("INFO", "Found server ID in rejoining ID %s and crash FailoverIOGtid %s Master %s", server.ServerID, crash.GetFailoverIOGtid().Sprint(), server.ClusterGroup.master.URL)
 		}
 	} else {
 		server.ClusterGroup.LogPrintf("INFO", "Old server GTID for flashback not found")
 	}
-	if crash.FailoverIOGtid != nil && server.ClusterGroup.canFlashBack == true && server.ClusterGroup.Conf.AutorejoinFlashback == true && server.ClusterGroup.Conf.AutorejoinBackupBinlog == true {
+	if crash.FailoverIoGtids != nil && server.ClusterGroup.canFlashBack == true && server.ClusterGroup.Conf.AutorejoinFlashback == true && server.ClusterGroup.Conf.AutorejoinBackupBinlog == true {
 		err := server.rejoinMasterFlashBack(crash)
 		if err == nil {
 			return nil
@@ -579,19 +580,19 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	return nil
 }
 
-func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bool {
+func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *v3.Crash) bool {
 
 	if server.UsedGtidAtElection(crash) {
 
 		// CurrentGtid fetch from show global variables GTID_CURRENT_POS
 		// FailoverIOGtid is fetch at failover from show slave status of the new master
 		// If server-id can't be found in FailoverIOGtid can state cascading master failover
-		if crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()) == 0 {
+		if crash.GetFailoverIOGtid().GetSeqServerIdNos(server.GetUniversalGtidServerID()) == 0 {
 			server.ClusterGroup.LogPrintf("INFO", "Cascading failover, found empty GTID, forcing full state transfer")
 			return true
 		}
-		if server.CurrentGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()) > crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()) {
-			server.ClusterGroup.LogPrintf("INFO", "Rejoining node seq %d, master seq %d", server.CurrentGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()), crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()))
+		if server.CurrentGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()) > crash.GetFailoverIOGtid().GetSeqServerIdNos(server.GetUniversalGtidServerID()) {
+			server.ClusterGroup.LogPrintf("INFO", "Rejoining node seq %d, master seq %d", server.CurrentGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()), crash.GetFailoverIOGtid().GetSeqServerIdNos(server.GetUniversalGtidServerID()))
 			return true
 		}
 		return false
@@ -622,16 +623,16 @@ func (server *ServerMonitor) deletefiles(path string, f os.FileInfo, err error) 
 	return
 }
 
-func (server *ServerMonitor) saveBinlog(crash *Crash) error {
+func (server *ServerMonitor) saveBinlog(crash *v3.Crash) error {
 	t := time.Now()
 	backupdir := server.ClusterGroup.Conf.WorkingDir + "/" + server.ClusterGroup.Name + "/crash-bin-" + t.Format("20060102150405")
-	server.ClusterGroup.LogPrintf("INFO", "Rejoin old Master %s , backing up lost event to %s", crash.URL, backupdir)
+	server.ClusterGroup.LogPrintf("INFO", "Rejoin old Master %s , backing up lost event to %s", crash.Url, backupdir)
 	os.Mkdir(backupdir, 0777)
 	os.Rename(server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile, backupdir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
 	return nil
 
 }
-func (server *ServerMonitor) backupBinlog(crash *Crash) error {
+func (server *ServerMonitor) backupBinlog(crash *v3.Crash) error {
 
 	if _, err := os.Stat(server.ClusterGroup.GetMysqlBinlogPath()); os.IsNotExist(err) {
 		server.ClusterGroup.LogPrintf("ERROR", "mysqlbinlog does not exist %s check binary path", server.ClusterGroup.GetMysqlBinlogPath())
@@ -703,7 +704,7 @@ func (cluster *Cluster) RejoinFixRelay(slave *ServerMonitor, relay *ServerMonito
 }
 
 // UseGtid check is replication use gtid
-func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
+func (server *ServerMonitor) UsedGtidAtElection(crash *v3.Crash) bool {
 	/*
 		ss, errss := server.GetSlaveStatus(server.ReplicationSourceName)
 		if errss != nil {
@@ -714,11 +715,11 @@ func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
 
 		server.ClusterGroup.LogPrintf(LvlInfo, "Rejoin server using GTID %s", ss.UsingGtid.String)
 	*/
-	if crash.FailoverIOGtid == nil {
+	if crash.FailoverIoGtids == nil {
 		server.ClusterGroup.LogPrintf(LvlInfo, "Rejoin server cannot find a saved master election GTID")
 		return false
 	}
-	if len(crash.FailoverIOGtid.GetSeqNos()) > 0 {
+	if len(crash.GetFailoverIOGtid().GetSeqNos()) > 0 {
 		server.ClusterGroup.LogPrintf(LvlInfo, "Rejoin server found a crash GTID greater than 0 ")
 		return true
 	}

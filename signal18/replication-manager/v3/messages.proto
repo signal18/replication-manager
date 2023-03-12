@@ -2,6 +2,9 @@ syntax = "proto3";
 
 package signal18.replication_manager.v3;
 
+import "google/protobuf/struct.proto";
+import "gtid.proto";
+
 option go_package = "github.com/signal18/replication-manager;repmanv3";
 
 message ErrorInfo {
@@ -15,8 +18,90 @@ message ErrorResource {
 }
 
 message Cluster {
-  string name = 1;
-  string clusterShardingName = 2;
+  string name = 1 [ json_name = "name" ];
+  string tenant = 2 [ json_name = "tenant" ];
+  string working_dir = 3 [ json_name = "workingDir" ];
+  repeated string server_id_list = 4 [ json_name = "dbServers" ];
+  repeated string proxy_id_list = 5 [ json_name = "proxyServers" ];
+  int32 failover_ctr = 6 [ json_name = "failoverCounter" ];
+  int64 failover_ts = 7 [ json_name = "failoverLastTime" ];
+  string status = 8 [ json_name = "activePassiveStatus" ];
+  bool is_split_brain = 9 [ json_name = "isSplitBrain" ];
+  bool is_failed_arbitrator = 10 [ json_name = "isFailedArbitrator" ];
+  bool is_lost_majority = 11 [ json_name = "isLostMajority" ];
+  bool is_down = 12 [ json_name = "isDown" ];
+  bool is_cluster_down = 13 [ json_name = "isClusterDown" ];
+  bool is_all_db_up = 14 [ json_name = "isAllDbUp" ];
+  bool is_failable = 15 [ json_name = "isFailable" ];
+  bool is_postgres = 16 [ json_name = "isPostgres" ];
+  bool is_provision = 17 [ json_name = "isProvision" ];
+  bool is_need_proxies_restart = 18 [ json_name = "isNeedProxyRestart" ];
+  bool is_need_proxies_reprov = 19 [ json_name = "isNeedProxiesRestart" ];
+  bool is_need_databases_restart = 20 [ json_name = "isNeedDatabasesRestart" ];
+  bool is_need_databases_rolling_restart = 21
+      [ json_name = "isNeedDatabasesRollingRestart" ];
+  bool is_need_databases_rolling_reprov = 22
+      [ json_name = "isNeedDatabasesRollingReprov" ];
+  bool is_need_databases_reprov = 23 [ json_name = "isNeedDatabasesReprov" ];
+  bool is_valid_backup = 24 [ json_name = "isValidBackup" ];
+  bool is_not_monitoring = 25 [ json_name = "isNotMonitoring" ];
+  bool is_capturing = 26 [ json_name = "isCapturing" ];
+  bool clean_all = 27 [ json_name = "cleanReplication" ];
+  string topology = 28 [ json_name = "topology" ];
+  string uptime = 29 [ json_name = "uptime" ];
+  string uptime_failable = 30 [ json_name = "uptimeFailable" ];
+  string uptime_semi_sync = 31 [ json_name = "uptimeSemisync" ];
+  string monitor_spin = 32 [ json_name = "monitorSpin" ];
+  int64 db_table_size = 33 [ json_name = "dbTableSize" ];
+  int64 db_index_size = 34 [ json_name = "dbIndexSize" ];
+  int32 connections = 35 [ json_name = "connections" ];
+  int64 qps = 36 [ json_name = "qps" ];
+  bool have_dbtls_cert = 37 [ json_name = "haveDBTLSCert" ];
+  bool have_dbtls_old_cert = 38 [ json_name = "haveDBTLSOldCert" ];
+  int32 waiting_rejoin = 39 [ json_name = "waitingRejoin" ];
+  int32 waiting_switchover = 40 [ json_name = "waitingSwitchover" ];
+  int32 waiting_failover = 41 [ json_name = "waitingFailover" ];
+  repeated Crash crashes = 42 [ json_name = "dbServersCrashes" ];
+  google.protobuf.Struct conf = 43 [ json_name = "config" ];
+  // configurator.Configurator Configurator = 44 [json_name="configurator"];
+  // []VariableDiff DiffVariables = 45 [json_name="diffVariables"];
+  // s18log.HttpLog Log = 46 [json_name="log"];
+  // map[string]*JobResult JobResults = 47 [json_name="jobResults"];
+  // s18log.HttpLog SQLGeneralLog = 48 [json_name="sqlGeneralLog"];
+  // s18log.HttpLog SQLErrorLog = 49 [json_name="sqlErrorLog"];
+  map<string, string> monitor_type = 50 [ json_name = "monitorType" ];
+  map<string, string> topology_type = 51 [ json_name = "topologyType" ];
+  map<string, bool> fs_type = 52 [ json_name = "fsType" ];
+  map<string, string> disk_type = 53 [ json_name = "diskType" ];
+  map<string, bool> vm_type = 54 [ json_name = "vmType" ];
+  // []Agent Agents = 55 [json_name="agents"];
+  // []state.Sla SLAHistory = 56 [json_name="slaHistory"];
+  // map[string]APIUser APIUsers = 57 [json_name="apiUsers"];
+}
+
+message Crash {
+  string url = 1 [ json_name = "URL" ];
+  string failover_master_log_file = 2 [ json_name = "FailoverMasterLogFile" ];
+  string failover_master_log_pos = 3 [ json_name = "FailoverMasterLogPos" ];
+  string new_master_log_file = 4 [ json_name = "NewMasterLogFile" ];
+  string new_master_log_pos = 5 [ json_name = "NewMasterLogPos" ];
+  bool failover_semi_sync_slave_status = 6
+      [ json_name = "FailoverSemiSyncSlaveStatus" ];
+  repeated signal18.replication_manager.v3.Gtid failover_io_gtids = 7
+      [ json_name = "FailoverIOGtid" ];
+  string elected_master_url = 8 [ json_name = "ElectedMasterURL" ];
+}
+
+message StateMessage {
+  enum Severity {
+    UNSPECIFIED = 0;
+    WARNING = 1;
+    ERROR = 2;
+  }
+  Severity severity = 1;
+  string number = 2;
+  string desc = 3;
+  string from = 4;
 }
 
 message ClusterSetting {
@@ -28,7 +113,7 @@ message ClusterSetting {
     RELOAD = 3;
     SET = 4;
     SWITCH = 5;
-    
+
     ADD_DB_TAG = 10;
     DROP_DB_TAG = 11;
     ADD_PROXY_TAG = 12;
@@ -111,7 +196,7 @@ message ClusterSetting {
       AUTOREJOIN_FLASHBACK_ON_SYNC = 2;
       AUTOREJOIN_FLASHBACK_ON_UNSYNC = 3; //?????
       AUTOREJOIN_FLASHBACK = 4;
-      AUTOREJOIN_LOGICAL_BACKUP = 5; 
+      AUTOREJOIN_LOGICAL_BACKUP = 5;
       AUTOREJOIN_MYSQLDUMP = 6;
       AUTOREJOIN_PHYSICAL_BACKUP = 7;
       AUTOREJOIN_SLAVE_POSITIONAL_HEARTBEAT = 8;
@@ -172,6 +257,36 @@ message ClusterSetting {
   Switch switch = 6;
 }
 
+message Server {
+  string host = 1;
+  uint64 port = 2;
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    DATABASE = 1;
+    PROXY = 2;
+  }
+  enum Database {
+    DATABASE_UNSPECIFIED = 0;
+    MARIADB = 1;
+    PERCONA = 2;
+    MYSQL = 3;
+    POSTGRESQL = 4;
+  }
+  enum Proxy {
+    PROXY_UNSPECIFIED = 0;
+    MAXSCALE = 1;
+    PROXYSQL = 2;
+    SHARDPROXY = 3;
+    HAPROXY = 4;
+    MYPROXY = 5;
+    EXTPROXY = 6;
+    SPHINX = 7;
+  }
+  Type type = 3;
+  Database database = 4;
+  Proxy proxy = 5;
+}
+
 message ClusterAction {
   Cluster cluster = 1;
   enum Action {
@@ -195,37 +310,10 @@ message ClusterAction {
     WAITDATABASES = 18;
     REPLICATION_BOOTSTRAP = 19;
     REPLICATION_CLEANUP = 20;
+    PROVISION = 21;
+    UNPROVISION = 22;
   }
   Action action = 3;
-  message Server {
-    string host = 1;
-    uint64 port = 2;
-    enum Type {
-      TYPE_UNSPECIFIED = 0;
-      DATABASE = 1;
-      PROXY = 2;
-    }
-    enum Database {
-      DATABASE_UNSPECIFIED = 0;
-      MARIADB = 1;
-      PERCONA = 2;
-      MYSQL = 3;
-      POSTGRESQL = 4;
-    }
-    enum Proxy {
-      PROXY_UNSPECIFIED = 0;
-      MAXSCALE = 1;
-      PROXYSQL = 2;
-      SHARDPROXY = 3;
-      HAPROXY = 4;
-      MYPROXY = 5;
-      EXTPROXY = 6;
-      SPHINX = 7;
-    }
-    Type type = 3;
-    Database database = 4;
-    Proxy proxy = 5;
-  }
   Server server = 4;
   enum ReplicationTopology {
     RT_UNSPECIFIED = 0;
@@ -238,6 +326,47 @@ message ClusterAction {
     MULTI_MASTER_WSREP = 7;
   }
   ReplicationTopology topology = 5;
+  string sharding_name = 6;
+}
+
+message DatabaseStatus {
+  Cluster cluster = 1;
+  Server server = 2;
+  enum Status {
+    ACTION_UNSPECIFIED = 0;
+    START = 1;
+    STOP = 2;
+    RESTART = 3;
+    PROVISION = 4;
+    UNPROVISION = 5;
+    REPROVISION = 6;
+    IS_MASTER = 7;
+    IS_SLAVE = 8;
+    NEED_ROLLING_REPROV = 9;
+    NEED_ROLLING_RESTART = 10;
+  }
+  Status status = 3;
+}
+
+message DatabaseAction {
+  Cluster cluster = 1;
+  Server server = 2;
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    START = 1;
+    STOP = 2;
+    RESTART = 3;
+    PROVISION = 4;
+    UNPROVISION = 5;
+    REPROVISION = 6;
+    MAINTENANCE = 7;
+    BACKUP_PHYSICAL = 8;
+    BACKUP_LOGICAL = 9;
+    BACKUP_ERROR_LOG = 10;
+    BACKUP_SLOWQUERY_LOG = 11;
+    OPTIMIZE = 12;
+  }
+  Action action = 3;
 }
 
 enum ServiceStatus {
@@ -247,16 +376,12 @@ enum ServiceStatus {
   ERRORS = 3;
 }
 
-message StatusMessage {
-  ServiceStatus alive = 1;
-}
+message StatusMessage { ServiceStatus alive = 1; }
 
 message TopologyRetrieval {
   Cluster cluster = 1;
   enum Retrieval {
     RETRIEVAL_UNSPECIFIED = 0;
-    ALERTS = 1;
-    CRASHES = 2;
     LOGS = 3;
     MASTER = 4;
     PROXIES = 5;
@@ -274,7 +399,7 @@ message Certificate {
 
 message Backup {
   string id = 1;
-  string short_id = 2 [json_name="short_id"];
+  string short_id = 2 [ json_name = "short_id" ];
   string time = 3;
   string tree = 4;
   repeated string paths = 5;
@@ -312,14 +437,83 @@ message Tag {
   string category = 3;
 }
 
+message TableAction {
+  Cluster cluster = 1;
+  Table table = 2;
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    CHECKSUM_TABLE = 1;
+    MOVE_TABLE = 2;
+    RESHARD_TABLE = 3;
+    UNIVERSAL_TABLE = 4;
+  }
+  Action action = 3;
+  string cluster_shard = 4;
+  string cluster_list = 5;
+}
+
 message Table {
-  string table_schema = 1 [json_name="tableSchema"];
-	string table_name = 2 [json_name="tableName"];
-	string engine = 3 [json_name="engine"];
-	int64 table_rows = 4 [json_name="tableRows"];
-	int64 data_length = 5 [json_name="dataLength"];
-	int64 index_length = 6 [json_name="indexLength"];
-	uint64 table_crc = 7 [json_name="tableCrc"];
-	string table_clusters = 8 [json_name="tableClusters"];
-	string table_sync = 9 [json_name="tableSync"];
+  string table_schema = 1 [ json_name = "tableSchema" ];
+  string table_name = 2 [ json_name = "tableName" ];
+  string engine = 3 [ json_name = "engine" ];
+  int64 table_rows = 4 [ json_name = "tableRows" ];
+  int64 data_length = 5 [ json_name = "dataLength" ];
+  int64 index_length = 6 [ json_name = "indexLength" ];
+  uint64 table_crc = 7 [ json_name = "tableCrc" ];
+  string table_clusters = 8 [ json_name = "tableClusters" ];
+  string table_sync = 9 [ json_name = "tableSync" ];
+}
+
+message ClusterTest {
+  Cluster cluster = 1;
+  enum Test {
+    Unspecified = 0;
+    All = 1;
+    Suite = 2;
+    TestFailoverAllSlavesDelayNoRplChecksNoSemiSync = 3;
+    TestFailoverAllSlavesDelayRplChecksNoSemiSync = 4;
+    TestFailoverAssyncAutoRejoinFlashback = 5;
+    TestFailoverAssyncAutoRejoinNoGtid = 6;
+    TestFailoverAssyncAutoRejoinNowrites = 7;
+    TestFailoverAssyncAutoRejoinRelay = 8;
+    TestFailoverManual = 9;
+    TestFailoverNoRplChecksNoSemiSync = 10;
+    TestFailoverNoRplChecksNoSemiSyncMasterHeartbeat = 11;
+    TestFailoverNumberFailureLimitReach = 12;
+    TestFailoverSemisyncAutoRejoinFlashback = 13;
+    TestFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM = 14;
+    TestFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM = 15;
+    TestFailoverSemisyncAutoRejoinSafeMSMXMS = 16;
+    TestFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS = 17;
+    TestFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS = 18;
+    TestFailoverSemisyncAutoRejoinSafeMSXMSM = 19;
+    TestFailoverSemisyncAutoRejoinUnsafeMSMXMS = 20;
+    TestFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS = 21;
+    TestFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS = 22;
+    TestFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM = 23;
+    TestFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM = 24;
+    TestFailoverSemisyncAutoRejoinUnsafeMSXMSM = 25;
+    TestFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS = 26;
+    TestFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM = 27;
+    TestFailoverSemisyncSlavekilledAutoRejoin = 28;
+    TestFailoverTimeNotReach = 29;
+    TestSlaReplAllSlavesDelayNoSemiSync = 30;
+    TestSlaReplAllSlavesStopNoSemiSync = 31;
+    TestSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck = 32;
+    TestSwitchover2TimesReplicationOkSemiSyncNoRplCheck = 33;
+    TestSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync = 34;
+    TestSwitchoverAllSlavesDelayNoRplChecksNoSemiSync = 35;
+    TestSwitchoverAllSlavesDelayRplCheckNoSemiSync = 36;
+    TestSwitchoverAllSlavesStopNoSemiSyncNoRplCheck = 37;
+    TestSwitchoverAllSlavesStopRplCheckNoSemiSync = 38;
+    TestSwitchoverBackPreferedMasterNoRplCheckSemiSync = 39;
+    TestSwitchoverLongQueryNoRplCheckNoSemiSync = 40;
+    TestSwitchoverLongTransactionNoRplCheckNoSemiSync = 41;
+    TestSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync = 42;
+    TestSwitchoverNoReadOnlyNoRplCheck = 43;
+    TestSwitchoverReadOnlyNoRplCheck = 44;
+  }
+  Test test_name = 2;
+  bool provision = 3;
+  bool unprovision = 4;
 }

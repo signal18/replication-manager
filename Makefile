@@ -73,9 +73,15 @@ proto:
 		--grpc-gateway_opt logtostderr=true \
 		--grpc-gateway_opt paths=source_relative \
 		--grpc-gateway_out repmanv3 \
-		--openapiv2_out repmanv3 \
+		--openapiv2_out swagger \
 		--openapiv2_opt logtostderr=true \
 		--openapiv2_opt allow_merge=true \
 		--openapiv2_opt merge_file_name=repmanv3 \
 		-orepmanv3/service.desc \
 		${PROTO_DIR}/cluster.proto ${PROTO_DIR}/messages.proto
+
+	@protoc/bin/protoc \
+		-I ${PROTO_DIR} \
+		--go_opt=paths=source_relative \
+		--go_out=utils/gtid \
+		${PROTO_DIR}/gtid.proto

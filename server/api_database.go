@@ -58,6 +58,7 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortIsSlaveStatus)),
 	))
 
+	// TODO: this returns a config file, this should probably be behind an ACL.
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
 	))
@@ -1258,6 +1259,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedStart(w http.ResponseWrite
 		if node != nil {
 			if node.HasWaitStartCookie() {
 				w.Write([]byte("200 -Need start!"))
+				// TODO: why does a status request delete a cookie? nothing changes
 				node.DelWaitStartCookie()
 				return
 			}
@@ -1267,6 +1269,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedStart(w http.ResponseWrite
 		} else if proxy != nil {
 			if proxy.HasWaitStartCookie() {
 				w.Write([]byte("200 -Need start!"))
+				// TODO: idem
 				proxy.DelWaitStartCookie()
 				return
 			}
