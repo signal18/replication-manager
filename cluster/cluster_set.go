@@ -18,6 +18,8 @@ import (
 	"sync"
 	"time"
 
+	vault "github.com/hashicorp/vault/api"
+	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/crypto"
@@ -480,6 +482,9 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 func (cluster *Cluster) SetClusterVariablesFromConfig() {
 	cluster.Configurator.SetConfig(cluster.Conf)
 
+	splitmonitoringuser := cluster.Conf.User
+	splitreplicationuser := cluster.Conf.RplUser
+
 	var err error
 	err = cluster.loadDBCertificates(cluster.WorkingDir)
 	if err != nil {
@@ -497,9 +502,66 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 		cluster.HaveDBTLSOldCert = true
 		cluster.LogPrintf(LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
+
+	if cluster.Conf.VaultServerAddr != "" {
+		if cluster.Conf.VaultMode == "config_store_v2" {
+			cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
+			config := vault.DefaultConfig()
+
+			config.Address = cluster.Conf.VaultServerAddr
+
+			client, err := vault.NewClient(config)
+			if err != nil {
+				log.Fatalf("unable to initialize Vault client: %v", err)
+			}
+
+			roleID := cluster.Conf.VaultRoleId
+			secretID := &auth.SecretID{FromString: cluster.Conf.VaultSecretId}
+			if roleID == "" || secretID == nil {
+				log.Fatalf("no vault role-id or secret-id define")
+			}
+
+			appRoleAuth, err := auth.NewAppRoleAuth(
+				roleID,
+				secretID,
+			)
+			if err != nil {
+				log.Fatalf("unable to initialize AppRole auth method: %v", err)
+			}
+
+			authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
+			if err != nil {
+				log.Fatalf("unable to initialize AppRole auth method: %v", err)
+			}
+			if authInfo == nil {
+				log.Fatalf("unable to initialize AppRole auth method: %v", err)
+			}
+
+			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.User)
+
+			if err != nil {
+				log.Fatalf("unable to read secret: %v", err)
+			}
+			splitmonitoringuser = secret.Data["db-servers-credential"].(string)
+			cluster.LogPrintf(LvlInfo, "COUCOU2 secret read : %s", cluster.dbPass)
+
+			secret, err = client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.RplUser)
+			if err != nil {
+				log.Fatalf("unable to read secret: %v", err)
+			}
+			splitreplicationuser = secret.Data["replication-credential"].(string)
+
+			//test
+			cluster.LogPrintf(LvlInfo, "Secret read from Vault for dbPass is %s", splitmonitoringuser)
+			cluster.LogPrintf(LvlInfo, "Secret read from Vault for rplPass is %s", splitreplicationuser)
+
+		}
+
+	}
+
 	cluster.hostList = strings.Split(cluster.Conf.Hosts, ",")
-	cluster.dbUser, cluster.dbPass = misc.SplitPair(cluster.Conf.User)
-	cluster.rplUser, cluster.rplPass = misc.SplitPair(cluster.Conf.RplUser)
+	cluster.dbUser, cluster.dbPass = misc.SplitPair(splitmonitoringuser)
+	cluster.rplUser, cluster.rplPass = misc.SplitPair(splitreplicationuser)
 
 	if cluster.key != nil {
 		p := crypto.Password{Key: cluster.key}

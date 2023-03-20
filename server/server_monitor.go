@@ -201,6 +201,14 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.APIHttpsBind, "api-https-bind", false, "Bind API call to https Web UI will error with http")
 	monitorCmd.Flags().BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", false, "Need JWT token to download config tar.gz")
 
+	//vault
+	monitorCmd.Flags().StringVar(&conf.VaultServerAddr, "vault-server-addr", "", "Vault server address")
+	monitorCmd.Flags().StringVar(&conf.VaultRoleId, "vault-role-id", "", "Vault role id")
+	monitorCmd.Flags().StringVar(&conf.VaultSecretId, "vault-secret-id", "", "Vault secret id")
+	monitorCmd.Flags().StringVar(&conf.VaultMode, "vault-mode", "config_store_v2", "Vault mode : config_store_v2|database_engine")
+	monitorCmd.Flags().StringVar(&conf.VaultMount, "vault-mount", "secret", "Vault mount for the secret")
+	monitorCmd.Flags().StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius")
+
 	//monitorCmd.Flags().BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	conf.Daemon = true
 

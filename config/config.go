@@ -517,6 +517,12 @@ type Config struct {
 	BackupBinlogsKeep                         int    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
 	BackupLockDDL                             bool   `mapstructure:"backup-lockddl" toml:"backup-lockddl" json:"backupLockDDL"`
 	ClusterConfigPath                         string `mapstructure:"cluster-config-file" toml:"-" json:"-"`
+	VaultServerAddr                           string `mapstructure:"vault-server-addr" toml:"vault-server-addr" json:"vaultServerAddr"`
+	VaultRoleId                               string `mapstructure:"vault-role-id" toml:"vault-role-id" json:"vaultRoleId"`
+	VaultSecretId                             string `mapstructure:"vault-secret-id" toml:"vault-secret-id" json:"vaultSecretId"`
+	VaultMode                                 string `mapstructure:"vault-mode" toml:"vault-mode" json:"vaultMode"`
+	VaultMount                                string `mapstructure:"vault-mount" toml:"vault-mount" json:"vaultMount"`
+	VaultAuth                                 string `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
 
 	//	BackupResticStoragePolicy                 string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API

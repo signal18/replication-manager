@@ -73,13 +73,13 @@ require (
 	github.com/spf13/cobra v0.0.6
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.4.0
-	github.com/stretchr/testify v1.6.1
+	github.com/stretchr/testify v1.7.0
 	github.com/tebeka/strftime v0.1.5
 	github.com/urfave/cli v1.22.3
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
 	github.com/yoheimuta/protolint v0.32.0
-	golang.org/x/crypto v0.1.0
+	golang.org/x/crypto v0.5.0
 	golang.org/x/net v0.7.0
 	google.golang.org/genproto v0.0.0-20210617175327-b9e0b3197ced
 	google.golang.org/grpc v1.38.0
@@ -119,6 +119,8 @@ require (
 	github.com/gorilla/securecookie v1.1.1 // indirect
 	github.com/gorilla/sessions v0.0.0-20180209192218-6ba88b7f1c1e // indirect
 	github.com/gregdel/pushover v1.1.0
+	github.com/hashicorp/vault/api v1.9.0 // indirect
+	github.com/hashicorp/vault/api/auth/approle v0.4.0 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
 	github.com/juju/testing v0.0.0-20220203020004-a0ff61f03494 // indirect
