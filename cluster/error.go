@@ -1,7 +1,9 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <svaroqui@gmail.com>
+//
+//	Stephane Varoqui  <svaroqui@gmail.com>
+//
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -93,6 +95,8 @@ var clusterError = map[string]string{
 	"ERR00083": "Different cluster uuid found on %s:%s %s:%s",
 	"ERR00084": "Cluster have no master when slave %s was started",
 	"ERR00085": "No replica found for routing reads",
+	"ERR00086": "Sharding proxy refresh no database monitor yet initialize",
+	"ERR00087": "Skip slave in election %s IO Thread is stopped with valid leader",
 	"WARN0022": "Rejoining standalone server %s to master %s",
 	"WARN0023": "Number of failed master ping has been reached",
 	"WARN0045": "Provision task is in queue",

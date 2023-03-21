@@ -1,7 +1,9 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <svaroqui@gmail.com>
+//
+//	Stephane Varoqui  <svaroqui@gmail.com>
+//
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -49,6 +51,17 @@ func NewMariadbShardProxy(placement int, cluster *Cluster, proxyHost string) *Ma
 		prx.Port = "3306"
 	}
 	prx.WritePort, _ = strconv.Atoi(prx.GetPort())
+	if cluster.Conf.ProvNetCNI {
+		host := strings.Split(prx.Host, ".")[0]
+		if cluster.Conf.ClusterHead != "" {
+			prx.ShardProxy, _ = cluster.newServerMonitor(host+":"+prx.Port, prx.User, prx.Pass, true, cluster.GetDomainHeadCluster())
+		} else {
+			prx.ShardProxy, _ = cluster.newServerMonitor(host+":"+prx.Port, prx.User, prx.Pass, true, cluster.GetDomain())
+		}
+	} else {
+		prx.ShardProxy, _ = cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, true, "")
+	}
+	prx.ShardProxy.SlapOSDatadir = prx.SlapOSDatadir
 
 	return prx
 }
@@ -191,15 +204,15 @@ func (proxy *MariadbShardProxy) CertificatesReload() error {
 
 func (proxy *MariadbShardProxy) Refresh() error {
 	if proxy.ShardProxy == nil {
-		proxy.ClusterGroup.LogPrintf(LvlErr, "Sharding proxy refresh no database monitor yet initialize")
-
+		//proxy.ClusterGroup.LogPrintf(LvlErr, "Sharding proxy refresh no database monitor yet initialize")
+		proxy.ClusterGroup.sme.AddState("ERR00086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(proxy.ClusterGroup.GetErrorList()["ERR00086"]), ErrFrom: "PROXY", ServerUrl: proxy.GetURL()})
 		return errors.New("Sharding proxy refresh no database monitor yet initialize")
 	}
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go proxy.ShardProxy.Ping(wg)
 	wg.Wait()
-	err := proxy.ShardProxy.Refresh()
+	err := proxy.Refresh()
 	if err != nil {
 		//proxy.ClusterGroup.LogPrintf(LvlErr, "Sharding proxy refresh error (%s)", err)
 		return err
@@ -244,7 +257,7 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Mariad
 	if proxy.ShardProxy == nil {
 		return errors.New("Sharding proxy no database monitor yet initialize")
 	}
-	err := proxy.ShardProxy.Refresh()
+	err := proxy.Refresh()
 	if err != nil {
 
 		return err
@@ -774,21 +787,12 @@ func (cluster *Cluster) ShardProxyBootstrap(proxy *MariadbShardProxy) error {
 	if proxy.ShardProxy != nil {
 		return nil
 	}
-	if cluster.Conf.ProvNetCNI {
-		host := strings.Split(proxy.Host, ".")[0]
-		if cluster.Conf.ClusterHead != "" {
-			proxy.ShardProxy, err = cluster.newServerMonitor(host+":"+proxy.Port, proxy.User, proxy.Pass, true, cluster.GetDomainHeadCluster())
-		} else {
-			proxy.ShardProxy, err = cluster.newServerMonitor(host+":"+proxy.Port, proxy.User, proxy.Pass, true, cluster.GetDomain())
-		}
-	} else {
-		proxy.ShardProxy, err = cluster.newServerMonitor(proxy.Host+":"+proxy.Port, proxy.User, proxy.Pass, true, "")
-	}
+
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go proxy.ShardProxy.Ping(wg)
 	wg.Wait()
-	proxy.ShardProxy.SlapOSDatadir = proxy.SlapOSDatadir
+
 	return err
 }
 

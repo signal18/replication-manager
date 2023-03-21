@@ -150,11 +150,40 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		cluster.LogPrintf(LvlDbg, "In Failover skip topology detection")
 		return errors.New("In Failover skip topology detection")
 	}
+
+	if cluster.HasAllDbUp() {
+		if len(cluster.Crashes) > 0 && cluster.HasNoDbUnconnected() {
+			cluster.LogPrintf(LvlDbg, "Purging crashes, all databses nodes up")
+			cluster.Crashes = nil
+			cluster.Save()
+		}
+	}
+	if cluster.Conf.Arbitration {
+		if cluster.IsSplitBrain {
+			cluster.SetState("WARN0079", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0079"]), ErrFrom: "ARB"})
+		}
+		if cluster.IsLostMajority {
+			cluster.SetState("WARN0080", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0080"]), ErrFrom: "ARB"})
+		}
+		if cluster.IsFailedArbitrator {
+			cluster.SetState("WARN0090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0090"], cluster.Conf.ArbitratorAddress), ErrFrom: "ARB"})
+		}
+	}
+
+	// if only one server
+	if len(cluster.Servers) == 1 {
+		cluster.Topology = topoActivePassive
+		cluster.Conf.ActivePassive = true
+		return nil
+
+	}
+
 	// Check topology Cluster is down
 	cluster.TopologyClusterDown()
 	// Check topology Cluster all servers down
 	cluster.IsDown = cluster.AllServersFailed()
 	cluster.CheckSameServerID()
+
 	// Spider shard discover
 	if cluster.Conf.Spider == true {
 		cluster.SpiderShardsDiscovery()
@@ -382,24 +411,6 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 	}
 
-	if cluster.HasAllDbUp() {
-		if len(cluster.Crashes) > 0 && cluster.HasNoDbUnconnected() {
-			cluster.LogPrintf(LvlDbg, "Purging crashes, all databses nodes up")
-			cluster.Crashes = nil
-			cluster.Save()
-		}
-	}
-	if cluster.Conf.Arbitration {
-		if cluster.IsSplitBrain {
-			cluster.SetState("WARN0079", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0079"]), ErrFrom: "ARB"})
-		}
-		if cluster.IsLostMajority {
-			cluster.SetState("WARN0080", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0080"]), ErrFrom: "ARB"})
-		}
-		if cluster.IsFailedArbitrator {
-			cluster.SetState("WARN0090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0090"], cluster.Conf.ArbitratorAddress), ErrFrom: "ARB"})
-		}
-	}
 	if cluster.sme.CanMonitor() {
 		return nil
 	}

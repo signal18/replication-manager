@@ -38,6 +38,7 @@ var (
 	WithDeprecate         string = "ON"
 	WithOpenSVC           string = "OFF"
 	WithTarball           string
+	WithEmbed             string = "OFF"
 	WithMySQLRouter       string
 	WithSphinx            string = "ON"
 	WithBackup            string = "ON"
@@ -79,6 +80,7 @@ func init() {
 	conf.Version = Version
 	conf.FullVersion = FullVersion
 	conf.WithTarball = WithTarball
+	conf.WithEmbed = WithEmbed
 	rootCmd.PersistentFlags().StringVar(&conf.ConfigFile, "config", "", "Configuration file (default is config.toml)")
 	rootCmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Configuration group (default is none)")
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")

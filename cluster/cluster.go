@@ -254,7 +254,7 @@ const (
 )
 
 // Init initial cluster definition
-func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, log *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.SqlErrorLog = logsql.New()
 	cluster.SqlGeneralLog = logsql.New()
 	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
@@ -273,7 +273,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 	cluster.tlog = tlog
-	cluster.htlog = log
+	cluster.htlog = loghttp
 	cluster.termlength = termlength
 	cluster.Name = cfgGroup
 	cluster.WorkingDir = conf.WorkingDir + "/" + cluster.Name
@@ -354,7 +354,11 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		cluster.LogPrintf(LvlErr, "Could not set proxy list %s", err)
 	}
 	//Loading configuration compliances
-	cluster.Configurator.Init(cluster.Conf)
+	err = cluster.Configurator.Init(cluster.Conf)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Could not initialize configurator %s", err)
+		log.Fatal("missing important file, giving up")
+	}
 
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorLocalhost:
