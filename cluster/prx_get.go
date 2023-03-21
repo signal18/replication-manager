@@ -1,7 +1,9 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <svaroqui@gmail.com>
+//
+//	Stephane Varoqui  <svaroqui@gmail.com>
+//
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -74,7 +76,7 @@ func (proxy *Proxy) GetProxyConfig() string {
 	proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
 	err := proxy.ClusterGroup.Configurator.GenerateProxyConfig(proxy.Datadir, proxy.ClusterGroup.Conf.WorkingDir+"/"+proxy.ClusterGroup.Name, proxy.GetEnv())
 	if err != nil {
-		proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
+		proxy.ClusterGroup.LogPrintf(LvlErr, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz error: %s", err)
 	}
 	return ""
 }
@@ -382,4 +384,8 @@ func (p *Proxy) GetServiceName() string {
 
 func (p *Proxy) GetCluster() *Cluster {
 	return p.ClusterGroup
+}
+
+func (p *Proxy) GetURL() string {
+	return p.GetHost() + ":" + p.GetPort()
 }

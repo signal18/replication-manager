@@ -12,13 +12,15 @@ BIN-TST = $(BIN)-tst
 BIN-PRO = $(BIN)-pro
 BIN-CLI = $(BIN)-cli
 BIN-ARB = $(BIN)-arb
+BIN-EMBED = $(BIN)
 PROTO_DIR = signal18/replication-manager/v3
+EMBED = -X github.com/signal18/replication-manager/server.WithEmbed=ON
 
-all: bin tar cli arb
+all: bin tar cli arb emb
 
-bin: osc tst pro osc-cgo
+bin: osc tst pro osc-cgo emb
 
-non-cgo: osc tst pro arb cli
+non-cgo: osc tst pro arb cli emb
 
 tar: osc-basedir tst-basedir pro-basedir osc-cgo-basedir
 
@@ -55,6 +57,9 @@ cli:
 
 arb:
 	env GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "arbitrator" --ldflags "-w -s -X github.com/signal18/replication-manager/arbitrator.Version=$(VERSION) -X github.com/signal18/replication-manager/arbitrator.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/arbitrator.Build=$(BUILD)"   $(LDFLAGS) -o $(BINDIR)/$(BIN-ARB)
+
+emb:
+	env GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server" --ldflags "-w -s $(EMBED) -X 'github.com/signal18/replication-manager/server.Version=$(VERSION)' -X 'github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION)' -X 'github.com/signal18/replication-manager/server.Build=$(BUILD)' -X github.com/signal18/replication-manager/server.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN)
 
 package: all
 	nobuild=0 ./package_$(OS).sh

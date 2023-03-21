@@ -54,7 +54,6 @@ mkdir -p "$builddir"/tar/share
 mkdir -p "$builddir"/tar/data/cluster.d
 
 echo "# Copying files to build dir"
-cp -r dashboard/* "$builddir"/package/usr/share/replication-manager/dashboard/
 cp -r share/* "$builddir"/package/usr/share/replication-manager/
 
 # do not package commercial collector docker images

@@ -63,20 +63,29 @@ func (repman *ReplicationManager) testFile(fn string) error {
 
 func (repman *ReplicationManager) httpserver() {
 
-	// before starting the http server, check that the dashboard is present
-	if err := repman.testFile("app.html"); err != nil {
-		log.Printf("ERROR: Dashboard app.html file missing - will not start http server %s\n", err)
-		return
-	}
+
 
 	repman.initKeys()
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
-	router.HandleFunc("/", repman.handlerApp)
+	//router.HandleFunc("/", repman.handlerApp)
 	// page to view which does not need authorization
-	router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
-	router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+	if repman.Conf.Test{
+		// before starting the http server, check that the dashboard is present
+		if err := repman.testFile("app.html"); err != nil {
+			log.Printf("ERROR: Dashboard app.html file missing - will not start http server %s\n", err)
+			return
+		}
+		router.HandleFunc("/", repman.handlerApp)
+		router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+		router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+	}else{
+		router.HandleFunc("/", repman.rootHandler)
+		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler() )
+		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
+	}
+
 	router.HandleFunc("/api/login", repman.loginHandler)
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
@@ -168,7 +177,9 @@ func (repman *ReplicationManager) httpserver() {
 }
 
 func (repman *ReplicationManager) handlerApp(w http.ResponseWriter, r *http.Request) {
+
 	http.ServeFile(w, r, repman.Conf.HttpRoot+"/app.html")
+	
 }
 
 func (repman *ReplicationManager) handlerRepoComp(w http.ResponseWriter, r *http.Request) {

@@ -385,6 +385,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					}
 				} else {
 					server.SetState(stateSuspect)
+					////////
 				}
 			}
 		}
@@ -516,6 +517,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			} else {
 				server.SetState(stateUnconn)
 			}
+		} else if server.GetCluster().GetTopology() == topoActivePassive && server.PrevState == stateSuspect {
+			//if active-passive topo and no replication, put the state at standalone
+			server.SetState(stateUnconn)
 		}
 	} else if server.ClusterGroup.IsActive() && errss == nil && (server.PrevState == stateFailed) {
 		// Is Slave
@@ -674,7 +678,10 @@ func (server *ServerMonitor) Refresh() error {
 			}
 			if server.ClusterGroup.sme.GetHeartbeats()%30 == 0 {
 				server.SaveInfos()
-				server.CheckPrivileges()
+				if server.GetCluster().GetTopology() != topoActivePassive && server.GetCluster().GetTopology() != topoMultiMasterWsrep {
+					server.CheckPrivileges()
+				}
+
 			} else {
 				server.ClusterGroup.sme.PreserveState("ERR00007")
 				server.ClusterGroup.sme.PreserveState("ERR00006")

@@ -38,9 +38,16 @@ type Configurator struct {
 
 func (configurator *Configurator) Init(conf config.Config) error {
 	var err error
-	configurator.ClusterConfig = conf
-	configurator.LoadDBModules()
-	configurator.LoadProxyModules()
+	configurator.SetConfig(conf)
+
+	err = configurator.LoadDBModules()
+	if err != nil {
+		return err
+	}
+	err = configurator.LoadProxyModules()
+	if err != nil {
+		return err
+	}
 	configurator.ConfigDBTags = configurator.GetDBModuleTags()
 	configurator.ConfigPrxTags = configurator.GetProxyModuleTags()
 	if conf.PRXServersReadOnMaster && !configurator.IsFilterInProxyTags("readonmaster") {
@@ -48,16 +55,24 @@ func (configurator *Configurator) Init(conf config.Config) error {
 	} else {
 		configurator.DropProxyTag("readonmaster")
 	}
-	if conf.ReadOnly && !configurator.IsFilterInProxyTags("readonly") {
-		configurator.AddDBTag("readonly")
-	} else {
-		configurator.DropDBTag("readonly")
-	}
+	// We should not force this here but rather via adding the readonly tag in default de tags
+	/*
+		if conf.ReadOnly && !configurator.IsFilterInDBTags("readonly") {
+			configurator.AddDBTag("readonly")
+
+		} else {
+			configurator.DropDBTag("readonly")
+		}*/
 	return err
 }
 
 func (configurator *Configurator) LoadDBModules() error {
-	/*	file := configurator.ClusterConfig.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.json"
+	var byteValue []byte
+	if configurator.ClusterConfig.Test {
+		file := configurator.ClusterConfig.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.db.json"
+		if configurator.ClusterConfig.ProvDBCompliance != "" {
+			file = configurator.ClusterConfig.ProvDBCompliance
+		}
 		jsonFile, err := os.Open(file)
 		if err != nil {
 			return errors.New(fmt.Sprintf("Failed opened module %s %s", file, err))
@@ -65,9 +80,11 @@ func (configurator *Configurator) LoadDBModules() error {
 		// defer the closing of our jsonFile so that we can parse it later on
 		defer jsonFile.Close()
 
-		byteValue, _ := ioutil.ReadAll(jsonFile)
-	*/
-	byteValue, _ := share.EmbededDbModuleFS.ReadFile("opensvc/moduleset_mariadb.svc.mrm.db.json")
+		byteValue, _ = ioutil.ReadAll(jsonFile)
+	} else {
+		byteValue, _ = share.EmbededDbModuleFS.ReadFile("opensvc/moduleset_mariadb.svc.mrm.db.json")
+	}
+
 	err := json.Unmarshal([]byte(byteValue), &configurator.DBModule)
 	if err != nil {
 		return errors.New(fmt.Sprintf("Failed unmarshal file %s %s", "opensvc/moduleset_mariadb.svc.mrm.db.json", err))
@@ -76,17 +93,26 @@ func (configurator *Configurator) LoadDBModules() error {
 }
 
 func (configurator *Configurator) LoadProxyModules() error {
-
-	file := configurator.ClusterConfig.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.proxy.json"
-	jsonFile, err := os.Open(file)
-	if err != nil {
-		return errors.New(fmt.Sprintf("Failed opened module %s %s", file, err))
+	var byteValue []byte
+	if configurator.ClusterConfig.Test {
+		file := configurator.ClusterConfig.ShareDir + "/opensvc/moduleset_mariadb.svc.mrm.proxy.json"
+		if configurator.ClusterConfig.ProvDBCompliance != "" {
+			file = configurator.ClusterConfig.ProvProxyCompliance
+		}
+		jsonFile, err := os.Open(file)
+		if err != nil {
+			return errors.New(fmt.Sprintf("Failed opened module %s %s", file, err))
+		}
+		defer jsonFile.Close()
+		byteValue, _ = ioutil.ReadAll(jsonFile)
+	} else {
+		byteValue, _ = share.EmbededDbModuleFS.ReadFile("opensvc/moduleset_mariadb.svc.mrm.proxy.json")
 	}
-	defer jsonFile.Close()
-	byteValue, _ := ioutil.ReadAll(jsonFile)
-	err = json.Unmarshal([]byte(byteValue), &configurator.ProxyModule)
+
+	err := json.Unmarshal([]byte(byteValue), &configurator.ProxyModule)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Failed unmarshal file %s %s", file, err))
+		//return errors.New(fmt.Sprintf("Failed unmarshal file %s %s", file, err))
+		return errors.New(fmt.Sprintf("Failed unmarshal file %s %s", "opensvc/moduleset_mariadb.svc.mrm.proxy.json", err))
 	}
 	return nil
 }

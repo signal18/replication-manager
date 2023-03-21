@@ -13,19 +13,23 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/signal18/replication-manager/share"
 )
 
 type Config struct {
-	Version                                   string `mapstructure:"-" toml:"-" json:"-"`
-	FullVersion                               string `mapstructure:"-" toml:"-" json:"-"`
-	GoOS                                      string `mapstructure:"goos" toml:"-" json:"-"`
-	GoArch                                    string `mapstructure:"goarch" toml:"-" json:"-"`
-	WithTarball                               string `mapstructure:"-" toml:"-" json:"-"`
+	Version                                   string `mapstructure:"-" toml:"-" json:"version"`
+	FullVersion                               string `mapstructure:"-" toml:"-" json:"fullVersion"`
+	GoOS                                      string `mapstructure:"goos" toml:"-" json:"goOS"`
+	GoArch                                    string `mapstructure:"goarch" toml:"-" json:"goArch"`
+	WithTarball                               string `mapstructure:"-" toml:"-" json:"withTarball"`
+	WithEmbed                                 string `mapstructure:"-" toml:"-" json:"withEmbed"`
 	MemProfile                                string `mapstructure:"-" toml:"-" json:"-"`
 	Include                                   string `mapstructure:"include" toml:"-" json:"-"`
 	BaseDir                                   string `mapstructure:"monitoring-basedir" toml:"monitoring-basedir" json:"monitoringBasedir"`
@@ -447,6 +451,8 @@ type Config struct {
 	ProvProxyStartScript                      string `mapstructure:"prov-proxy-start-script" toml:"prov-proxy-start-script" json:"provProxyStartScript"`
 	ProvDbStopScript                          string `mapstructure:"prov-db-stop-script" toml:"prov-db-stop-script" json:"provDbStopScript"`
 	ProvProxyStopScript                       string `mapstructure:"prov-proxy-stop-script" toml:"prov-proxy-stop-script" json:"provProxyStopScript"`
+	ProvDBCompliance                          string `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`
+	ProvProxyCompliance                       string `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
 	APIUsers                                  string `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
 	APIUsersExternal                          string `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
 	APIUsersACLAllow                          string `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
@@ -606,14 +612,17 @@ type ServicePlan struct {
 }
 
 type DockerTag struct {
-	Layer string `json:"layer"`
-	Name  string `json:"name"`
+	Results []TagResult `json:"results"`
+}
+
+type TagResult struct {
+	Name string `json:"name"`
 }
 
 type DockerRepo struct {
-	Name  string      `json:"name"`
-	Image string      `json:"image"`
-	Tags  []DockerTag `json:"tags"`
+	Name  string    `json:"name"`
+	Image string    `json:"image"`
+	Tags  DockerTag `json:"tags"`
 }
 
 type DockerRepos struct {
@@ -951,18 +960,22 @@ func (conf *Config) GetGrantType() map[string]string {
 	}
 }
 
-func (conf *Config) GetDockerRepos(file string) ([]DockerRepo, error) {
+func (conf *Config) GetDockerRepos(file string, is_not_embed bool) ([]DockerRepo, error) {
 	var repos DockerRepos
-	jsonFile, err := os.Open(file)
-	if err != nil {
-		return repos.Repos, err
+	var byteValue []byte
+	if is_not_embed {
+		jsonFile, err := os.Open(file)
+		if err != nil {
+			return repos.Repos, err
+		}
+
+		defer jsonFile.Close()
+		byteValue, _ = ioutil.ReadAll(jsonFile)
+	} else {
+		byteValue, _ = share.EmbededDbModuleFS.ReadFile("repo/repos.json")
 	}
 
-	defer jsonFile.Close()
-
-	byteValue, _ := ioutil.ReadAll(jsonFile)
-
-	err = json.Unmarshal([]byte(byteValue), &repos)
+	err := json.Unmarshal([]byte(byteValue), &repos)
 	if err != nil {
 		return repos.Repos, err
 	}
@@ -989,19 +1002,31 @@ type Tarballs struct {
 	Tarballs []Tarball `json:"tarballs"`
 }
 
-func (conf *Config) GetTarballs() ([]Tarball, error) {
-	file := conf.ShareDir + "/repo/tarballs.json"
+func (conf *Config) GetTarballs(is_not_embed bool) ([]Tarball, error) {
+
 	var tarballs Tarballs
-	jsonFile, err := os.Open(file)
-	if err != nil {
-		return tarballs.Tarballs, err
+	var byteValue []byte
+	if is_not_embed {
+
+		file := conf.ShareDir + "/repo/tarballs.json"
+		fmt.Printf("GetTarballs1 file value : ", file)
+		jsonFile, err := os.Open(file)
+		if err != nil {
+			return tarballs.Tarballs, err
+		}
+
+		defer jsonFile.Close()
+		byteValue, _ = ioutil.ReadAll(jsonFile)
+	} else {
+		jsonFile, err := share.EmbededDbModuleFS.Open("repo/tarballs.json")
+		if err != nil {
+			return tarballs.Tarballs, err
+		}
+		byteValue, _ = ioutil.ReadAll(jsonFile)
 	}
+	//byteValue, _ := ioutil.ReadAll(jsonFile)
 
-	defer jsonFile.Close()
-
-	byteValue, _ := ioutil.ReadAll(jsonFile)
-
-	err = json.Unmarshal([]byte(byteValue), &tarballs)
+	err := json.Unmarshal([]byte(byteValue), &tarballs)
 	if err != nil {
 		return tarballs.Tarballs, err
 	}
@@ -1011,7 +1036,7 @@ func (conf *Config) GetTarballs() ([]Tarball, error) {
 
 func (conf *Config) GetTarballUrl(name string) (string, error) {
 
-	tarballs, _ := conf.GetTarballs()
+	tarballs, _ := conf.GetTarballs(true)
 	for _, tarball := range tarballs {
 		if tarball.Name == name {
 			return tarball.Url, nil
