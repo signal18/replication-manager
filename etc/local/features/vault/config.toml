@@ -1,0 +1,35 @@
+# config.toml
+# Example replication-manager configuration file
+
+# change the service file  in /etc/systemd/system/replication-manager.service to looks like :
+# replication-manager  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
+
+
+[Cluster_Test_MasterSlaveSlave]
+title = "ClusterTestMasterSlaveSlave"
+db-servers-hosts = "127.0.0.1:3317,127.0.0.1:3318,127.0.0.1:3319"
+db-servers-prefered-master = "127.0.0.1:3317"
+db-servers-credential = "root:test"
+db-servers-connect-timeout = 1
+
+replication-credential = "root:test"
+
+haproxy=true
+haproxy-write-port = 3307
+haproxy-read-port = 3306
+failover-switch-to-prefered = true
+
+vault-server-addr="http://vault.infra.svc.cloud18:8200"
+vault-role-id="bc22f1af-7ce4-e938-46d0-48368beb780d"
+vault-secret-id="91b1a039-1597-54b7-f304-c7b035a29d4e"
+vault-mount="kv"
+
+#Using vault with config store replication manager will fetch two keys form the given path db-server-credential and replication-credential encoded user:password
+vault-mode="config_store_v2"
+db-servers-credential = "applications/repman"
+replication-credential = "applications/repman"
+
+#Using vault with database engine replication manager will concated user and password from the given path
+# vault-mode="database_engine"
+# db-servers-credential = "database/static-creds/repman-monitor"
+# replication-credential = "database/static-creds/repman-replication"
