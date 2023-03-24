@@ -196,6 +196,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRolling)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/rotate-passwords", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerRotatePasswords)),
+	))
 
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -1487,14 +1491,16 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 //
 // ---
 // parameters:
-// - name: clusterName
-//   in: path
-//   description: cluster to filter by
-//   required: true
-//   type: string
+//   - name: clusterName
+//     in: path
+//     description: cluster to filter by
+//     required: true
+//     type: string
+//
 // responses:
-//   '200':
-//     "$ref": "#/responses/status"
+//
+//	'200':
+//	  "$ref": "#/responses/status"
 func (repman *ReplicationManager) handlerMuxClusterStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1891,6 +1897,24 @@ func (repman *ReplicationManager) handlerDiffVariables(w http.ResponseWriter, r 
 			http.Error(w, "Encoding error for DiffVariables", 500)
 			return
 		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+}
+
+func (repman *ReplicationManager) handlerRotatePasswords(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		go mycluster.RotatePasswords()
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

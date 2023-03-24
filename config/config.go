@@ -688,6 +688,7 @@ const (
 	GrantClusterShowGraphs         string = "cluster-show-graphs"
 	GrantClusterShowAgents         string = "cluster-show-agents"
 	GrantClusterShowCertificates   string = "cluster-show-certificates"
+	GrantClusterRotatePasswords    string = "cluster-rotate-passwords"
 
 	GrantClusterResetSLA        string = "cluster-reset-sla"
 	GrantClusterDebug           string = "cluster-debug"
@@ -943,6 +944,7 @@ func (conf *Config) GetGrantType() map[string]string {
 		GrantClusterShowRoutes:         GrantClusterShowRoutes,
 		GrantClusterShowCertificates:   GrantClusterShowCertificates,
 		GrantClusterResetSLA:           GrantClusterResetSLA,
+		GrantClusterRotatePasswords:    GrantClusterRotatePasswords,
 		GrantProxyConfigCreate:         GrantProxyConfigCreate,
 		GrantProxyConfigGet:            GrantProxyConfigGet,
 		GrantProxyConfigRessource:      GrantProxyConfigRessource,

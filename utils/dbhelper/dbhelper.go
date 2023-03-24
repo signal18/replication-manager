@@ -564,6 +564,46 @@ type ChangeMasterOpt struct {
 	//	SSLKey    string
 }
 
+func ChangeReplicationPassword(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string, error) {
+	_, err := StopSlave(db, opt.Channel, myver)
+	if err != nil {
+		return "Stop slave error", err
+	}
+	masterOrSource := "MASTER"
+	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 23)) {
+		masterOrSource = "SOURCE"
+	}
+	cm := ""
+	if myver.IsMariaDB() && opt.Channel != "" {
+		cm += "CHANGE " + masterOrSource + " '" + opt.Channel + "' TO "
+	} else {
+		cm += "CHANGE  " + masterOrSource + " TO "
+	}
+	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 23)) {
+		cm = "CHANGE REPLICATION SOURCE TO "
+	}
+
+	if opt.Mode == "GROUP_REPL" {
+		cm += masterOrSource + "_user='" + opt.User + "', " + masterOrSource + "_password='" + opt.Password + "'"
+	} else {
+		cm += " " + masterOrSource + "_user='" + opt.User + "', " + masterOrSource + "_password='" + opt.Password + "'"
+	}
+
+	if myver.IsMySQLOrPercona() && opt.Channel != "" {
+		cm += " FOR CHANNEL '" + opt.Channel + "'"
+	}
+	_, err = db.Exec(cm)
+	cm = strings.Replace(cm, opt.Password, "XXX", -1)
+	if err != nil {
+		return cm, fmt.Errorf("Change "+masterOrSource+" statement %s failed, reason: %s", cm, err)
+	}
+	_, err = StartSlave(db, opt.Channel, myver)
+	if err != nil {
+		return "Start slave error", err
+	}
+	return cm, nil
+}
+
 func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string, error) {
 	//CREATE PUBLICATION alltables FOR ALL TABLES;
 	/*
@@ -667,7 +707,7 @@ func GetDBVersion(db *sqlx.DB) (*MySQLVersion, string, error) {
 	return NewMySQLVersion(version, versionComment), stmt, nil
 }
 
-//Unused does not look like safe way or documenting it
+// Unused does not look like safe way or documenting it
 func GetHostFromProcessList(db *sqlx.DB, user string, version *MySQLVersion) (string, string, error) {
 	pl := []Processlist{}
 	var err error
@@ -2172,7 +2212,9 @@ func SetDefaultMasterConn(db *sqlx.DB, dmc string, myver *MySQLVersion) (string,
 	return "", nil
 }
 
-/* Check for a list of slave prerequisites.
+/*
+	Check for a list of slave prerequisites.
+
 - Slave is connected
 - Binary log on
 - Connected to master
@@ -2665,4 +2707,22 @@ func SetGroupReplicationPrimary(db *sqlx.DB, myver *MySQLVersion) (string, error
 		log.Println("ERROR: Could not set Group Replication Primary", err)
 	}
 	return value, nil
+}
+
+func AddMonitoringUser(db *sqlx.DB, myver *MySQLVersion, user string, password string, method string) error {
+
+	return nil
+}
+
+func AddReplicationUser(db *sqlx.DB, myver *MySQLVersion, user string, password string, method string) error {
+
+	return nil
+}
+
+func SetUserPassword(db *sqlx.DB, myver *MySQLVersion, user_host string, user_name string, new_password string) error {
+	_, err := db.Exec("ALTER USER '" + user_name + "'@'" + user_host + "' IDENTIFIED BY '" + new_password + "'")
+	if err != nil {
+		return err
+	}
+	return nil
 }

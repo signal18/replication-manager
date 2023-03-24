@@ -319,3 +319,10 @@ func (cluster *Cluster) IsMultiMaster() bool {
 	}
 	return false
 }
+
+func (cluster *Cluster) IsVaultUsed() bool {
+	if cluster.GetConf().VaultServerAddr == "" {
+		return false
+	}
+	return true
+}

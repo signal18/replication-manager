@@ -15,12 +15,12 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"sort"
 	"strings"
 	"time"
-	"io/fs"
 
 	log "github.com/sirupsen/logrus"
 
@@ -104,28 +104,27 @@ type token struct {
 }
 
 func (repman *ReplicationManager) DashboardFSHandler() http.Handler {
-    sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard")
+	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard")
 	if err != nil {
-        panic(err)
-    }
-
-
-    return http.FileServer(http.FS(sub))
-}
-
-func (repman *ReplicationManager) DashboardFSHandlerApp() http.Handler{
-	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard/app.html")
-	if err != nil {
-        panic(err)
-    }
+		panic(err)
+	}
 
 	return http.FileServer(http.FS(sub))
 }
 
-func (repman *ReplicationManager) rootHandler(w http.ResponseWriter, r *http.Request){
+func (repman *ReplicationManager) DashboardFSHandlerApp() http.Handler {
+	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard/app.html")
+	if err != nil {
+		panic(err)
+	}
+
+	return http.FileServer(http.FS(sub))
+}
+
+func (repman *ReplicationManager) rootHandler(w http.ResponseWriter, r *http.Request) {
 	html, err := share.EmbededDbModuleFS.ReadFile("dashboard/app.html")
-	if err != nil{
-		log.Printf("rootHandler read error : %s",err)
+	if err != nil {
+		log.Printf("rootHandler read error : %s", err)
 	}
 	w.Write(html)
 }
@@ -136,13 +135,13 @@ func (repman *ReplicationManager) apiserver() {
 	router := mux.NewRouter()
 	//router.HandleFunc("/", repman.handlerApp)
 	// page to view which does not need authorization
-	if repman.Conf.Test{
+	if repman.Conf.Test {
 		router.HandleFunc("/", repman.handlerApp)
 		router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
-	}else{
+	} else {
 		router.HandleFunc("/", repman.rootHandler)
-		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler() )
+		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
 	}
 
@@ -369,8 +368,8 @@ func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *ht
 //
 // This will show all the available clusters
 //
-//     Responses:
-//       200: clusters
+//	Responses:
+//	  200: clusters
 func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -444,15 +443,17 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 //
 // ---
 // produces:
-//  - text/plain; version=0.0.4
+//   - text/plain; version=0.0.4
+//
 // responses:
-//   '200':
-//     description: Prometheus file format
-//     schema:
-//       type: string
-//     headers:
-//       Access-Control-Allow-Origin:
-//         type: string
+//
+//	'200':
+//	  description: Prometheus file format
+//	  schema:
+//	    type: string
+//	  headers:
+//	    Access-Control-Allow-Origin:
+//	      type: string
 func (repman *ReplicationManager) handlerMuxPrometheus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")

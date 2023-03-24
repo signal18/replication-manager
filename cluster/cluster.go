@@ -253,6 +253,11 @@ const (
 	ConstMonitorStandby string = "S"
 )
 
+const (
+	VaultConfigStoreV2 string = "config_store_v2"
+	VaultDbEngine      string = "database_engine"
+)
+
 // Init initial cluster definition
 func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.SqlErrorLog = logsql.New()

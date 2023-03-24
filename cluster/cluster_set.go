@@ -503,47 +503,48 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 		cluster.LogPrintf(LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
 
-	if cluster.Conf.VaultServerAddr != "" {
-		if cluster.Conf.VaultMode == "config_store_v2" {
-			cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
-			config := vault.DefaultConfig()
+	if cluster.IsVaultUsed() {
 
-			config.Address = cluster.Conf.VaultServerAddr
+		cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
+		config := vault.DefaultConfig()
 
-			client, err := vault.NewClient(config)
-			if err != nil {
-				log.Fatalf("unable to initialize Vault client: %v", err)
-			}
+		config.Address = cluster.Conf.VaultServerAddr
 
-			roleID := cluster.Conf.VaultRoleId
-			secretID := &auth.SecretID{FromString: cluster.Conf.VaultSecretId}
-			if roleID == "" || secretID == nil {
-				log.Fatalf("no vault role-id or secret-id define")
-			}
+		client, err := vault.NewClient(config)
+		if err != nil {
+			log.Fatalf("unable to initialize Vault client: %v", err)
+		}
 
-			appRoleAuth, err := auth.NewAppRoleAuth(
-				roleID,
-				secretID,
-			)
-			if err != nil {
-				log.Fatalf("unable to initialize AppRole auth method: %v", err)
-			}
+		roleID := cluster.Conf.VaultRoleId
+		secretID := &auth.SecretID{FromString: cluster.Conf.VaultSecretId}
+		if roleID == "" || secretID == nil {
+			log.Fatalf("no vault role-id or secret-id define")
+		}
 
-			authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
-			if err != nil {
-				log.Fatalf("unable to initialize AppRole auth method: %v", err)
-			}
-			if authInfo == nil {
-				log.Fatalf("unable to initialize AppRole auth method: %v", err)
-			}
+		appRoleAuth, err := auth.NewAppRoleAuth(
+			roleID,
+			secretID,
+		)
+		if err != nil {
+			log.Fatalf("unable to initialize AppRole auth method: %v", err)
+		}
 
+		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
+		if err != nil {
+			log.Fatalf("unable to initialize AppRole auth method: %v", err)
+		}
+		if authInfo == nil {
+			log.Fatalf("unable to initialize AppRole auth method: %v", err)
+		}
+
+		if cluster.Conf.VaultMode == VaultConfigStoreV2 {
 			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.User)
 
 			if err != nil {
 				log.Fatalf("unable to read secret: %v", err)
 			}
 			splitmonitoringuser = secret.Data["db-servers-credential"].(string)
-			cluster.LogPrintf(LvlInfo, "COUCOU2 secret read : %s", cluster.dbPass)
+			cluster.LogPrintf(LvlDbg, "SetClusterVariablesFromConfig secret read for db-srv-credential : %s", splitmonitoringuser)
 
 			secret, err = client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.RplUser)
 			if err != nil {
@@ -554,7 +555,29 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 			//test
 			cluster.LogPrintf(LvlInfo, "Secret read from Vault for dbPass is %s", splitmonitoringuser)
 			cluster.LogPrintf(LvlInfo, "Secret read from Vault for rplPass is %s", splitreplicationuser)
+		} else {
+			secret, err := client.KVv1("").Get(context.Background(), cluster.Conf.User)
+			if err != nil {
+				log.Fatalf("unable to read secret for database engine : %v", err)
+			}
+			splitmonitoringuser = secret.Data["username"].(string) + ":" + secret.Data["password"].(string)
+			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", err)
+			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", cluster.Conf.User)
+			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", cluster.Conf.RplUser)
 
+			secret, err = client.KVv1("").Get(context.Background(), cluster.Conf.RplUser)
+			if err != nil {
+				log.Fatalf("unable to read secret for database engine : %v", err)
+			}
+
+			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", secret.Data["username"].(string))
+			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", err)
+			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", secret.Data["password"].(string))
+
+			splitreplicationuser = secret.Data["username"].(string) + ":" + secret.Data["password"].(string)
+
+			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", splitmonitoringuser)
+			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", splitreplicationuser)
 		}
 
 	}

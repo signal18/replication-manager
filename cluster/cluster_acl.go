@@ -527,6 +527,11 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterRotatePasswords] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/rotate-passwords") {
+			return true
+		}
+	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigFlag] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/drop-db-tag") {
 			return true

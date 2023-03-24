@@ -339,6 +339,16 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			if driverErr.Number == 1045 {
 				server.SetState(stateErrorAuth)
 				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "SRV"})
+
+				if server.GetCluster().IsVaultUsed() {
+					server.GetCluster().SetClusterVariablesFromConfig()
+					server.SetCredential(server.URL, server.GetCluster().dbUser, server.GetCluster().dbPass)
+					//server.GetCluster().SetDbServersCredential(server.GetCluster().GetConf().User)
+					//server.GetCluster().SetReplicationCredential(server.GetCluster().GetConf().RplUser)
+					server.ClusterGroup.LogPrintf(LvlInfo, "Vault monitoring user password rotation")
+					server.ClusterGroup.LogPrintf(LvlDbg, "Ping function User: %s, Pass: %s", server.User, server.Pass)
+				}
+
 				return
 			} else {
 				server.ClusterGroup.LogPrintf(LvlErr, "Driver Error %s %d ", server.URL, driverErr.Number)
