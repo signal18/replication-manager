@@ -12,8 +12,11 @@ import (
 
 	vault "github.com/hashicorp/vault/api"
 	auth "github.com/hashicorp/vault/api/auth/approle"
+	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -125,6 +128,30 @@ func (cluster *Cluster) RotatePasswords() error {
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Fail of rejoinSlaveChangePassword during rotation password ", err)
 					}
+				}
+
+			}
+			if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {
+				logger := logrus.New()
+				entry := logrus.NewEntry(logger)
+				msg := "COUCOU test"
+				entry.Log(logrus.InfoLevel, msg)
+				p := pushover.NewHook(cluster.GetConf().PushoverAppToken, cluster.GetConf().PushoverUserToken)
+				p.Fire(entry)
+			}
+			if cluster.Conf.MailTo != "" {
+				msg := "COUCOU test"
+				subj := "titre"
+				alert := alert.Alert{}
+				alert.From = cluster.Conf.MailFrom
+				alert.To = cluster.Conf.MailTo
+				alert.Destination = cluster.Conf.MailSMTPAddr
+				alert.User = cluster.Conf.MailSMTPUser
+				alert.Password = cluster.Conf.MailSMTPPassword
+				alert.TlsVerify = cluster.Conf.MailSMTPTLSSkipVerify
+				err := alert.EmailMessage(msg, subj)
+				if err != nil {
+					cluster.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
 				}
 			}
 
