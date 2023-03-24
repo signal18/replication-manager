@@ -14,11 +14,12 @@ import (
 	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
-	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
+
+var logger = logrus.New()
 
 func (cluster *Cluster) RotatePasswords() error {
 	if cluster.IsVaultUsed() {
@@ -132,16 +133,19 @@ func (cluster *Cluster) RotatePasswords() error {
 
 			}
 			if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {
-				logger := logrus.New()
-				entry := logrus.NewEntry(logger)
-				msg := "COUCOU test"
-				entry.Log(logrus.InfoLevel, msg)
-				p := pushover.NewHook(cluster.GetConf().PushoverAppToken, cluster.GetConf().PushoverUserToken)
-				p.Fire(entry)
+				//logger := logrus.New()
+				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster. Check the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
+				cluster.LogPrintf(LvlErr, msg)
+				//entry := logrus.NewEntry(logger)
+				//msg := "COUCOU test"
+				//entry.Log(logrus.ErrorLevel, msg)
+				//p := pushover.NewHook(cluster.GetConf().PushoverAppToken, cluster.GetConf().PushoverUserToken)
+				//p.Fire(entry)
+
 			}
 			if cluster.Conf.MailTo != "" {
-				msg := "COUCOU test"
-				subj := "titre"
+				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster. Check the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + "/" + cluster.Conf.User + " and " + cluster.Conf.VaultMount + "/" + cluster.Conf.RplUser + "."
+				subj := "Password Rotation Replication-Manager"
 				alert := alert.Alert{}
 				alert.From = cluster.Conf.MailFrom
 				alert.To = cluster.Conf.MailTo
