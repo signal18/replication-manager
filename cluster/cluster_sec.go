@@ -132,10 +132,20 @@ func (cluster *Cluster) RotatePasswords() error {
 				}
 
 			}
+			for _, pri := range cluster.Proxies {
+				if prx, ok := pri.(*ProxySQLProxy); ok {
+					prx.RotateMonitoringPasswords(new_password_db)
+				}
+			}
+			err = cluster.ProvisionRotatePasswords(new_password_db)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
+			}
 			if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {
 				//logger := logrus.New()
 				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster. Check the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
-				cluster.LogPrintf(LvlErr, msg)
+				cluster.LogPrintf("ALERT", msg)
+
 				//entry := logrus.NewEntry(logger)
 				//msg := "COUCOU test"
 				//entry.Log(logrus.ErrorLevel, msg)
@@ -170,5 +180,6 @@ func (cluster *Cluster) RotatePasswords() error {
 		//etre en dynamic config, sinon give up
 		//appeler changePassword appele dans lapi et ajouter la modif des users/passwords en bdd
 	}
+
 	return nil
 }

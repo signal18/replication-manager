@@ -26,7 +26,7 @@ type MapDigestHG struct {
 	Digest    string
 }
 
-//stats_history.stats_mysql_query_digest
+// stats_history.stats_mysql_query_digest
 type StatsQueryDigest struct {
 	Hostgroup   string `json:"hostGroup" db:"hostgroup"`
 	Digest      string `json:"digest" db:"digest"`

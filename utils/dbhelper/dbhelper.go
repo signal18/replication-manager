@@ -1763,7 +1763,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Tabl
 
 		//	rows, err := db.Queryx("SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name ,a.ENGINE as Engine,a.TABLE_ROWS as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length ,COALESCE((select CONV(LEFT(MD5(group_concat(concat(b.column_name,b.column_type,COALESCE(b.is_nullable,''),COALESCE(b.CHARACTER_SET_NAME,''), COALESCE(b.COLLATION_NAME,''),COALESCE(b.COLUMN_DEFAULT,''),COALESCE(c.CONSTRAINT_NAME,''),COALESCE(c.ORDINAL_POSITION,'')))), 16), 16, 10)    FROM information_schema.COLUMNS b left join information_schema.KEY_COLUMN_USAGE c ON b.table_schema=c.table_schema  and  b.table_name=c.table_name where b.table_schema=a.table_schema  and  b.table_name=a.table_name ),0) as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' and a.TABLE_SCHEMA NOT IN('information_schema','mysql','performance_schema')")
 		if err != nil {
-			return nil, nil, logs, errors.New("Could not get table list")
+			return nil, nil, logs, errors.New("Could not get table list : " + err.Error())
 		}
 		defer rows.Close()
 		crc64Table := crc64.MakeTable(0xC96C5795D7870F42)

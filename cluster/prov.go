@@ -726,3 +726,14 @@ func (cluster *Cluster) GetAgentInOrchetrator(name string) (Agent, error) {
 	}
 	return node, errors.New("Agent not found in orechestrator node list")
 }
+
+func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
+	if cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
+		svc := cluster.OpenSVCConnect()
+		err := svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "ProvisionRotatePasswords error: Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
+		}
+	}
+	return nil
+}

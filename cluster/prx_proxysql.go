@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/proxysql"
@@ -554,4 +555,34 @@ func (proxy *ProxySQLProxy) SetMaintenance(s *ServerMonitor) {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
 	}
+}
+
+func (proxy *ProxySQLProxy) RotateMonitoringPasswords(password string) {
+	cluster := proxy.ClusterGroup
+	psql, err := proxy.Connect()
+	if err != nil {
+		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		return
+	}
+	defer psql.Connection.Close()
+
+	vars, err := psql.GetVariables()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL could not get mysql variables (%s)", err)
+	}
+	user := vars["MYSQL-MONITOR_USERNAME"]
+	cluster.LogPrintf(LvlInfo, "HOLA : user %s", user)
+	cluster.LogPrintf(LvlInfo, "HOLA : dbUser %s", cluster.dbUser)
+	if user == strings.ToUpper(cluster.dbUser) {
+		err = psql.SetMySQLVariable("mysql-monitor_password", password)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "ProxySQL could not set mysql variables (%s)", err)
+		}
+		err = psql.LoadMySQLVariablesToRuntime()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "ProxySQL could not load varibles to runtime (%s)", err)
+		}
+		cluster.LogPrintf(LvlInfo, "Password rotation is done for the proxySQL monitor")
+	}
+
 }

@@ -24,7 +24,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bluele/logrus_slack"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
@@ -42,7 +41,6 @@ import (
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/crypto"
-	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 )
@@ -537,21 +535,7 @@ func (repman *ReplicationManager) Run() error {
 			log.AddHook(hook)
 		}
 	}
-	if repman.Conf.SlackURL != "" {
-		log.AddHook(&logrus_slack.SlackHook{
-			HookURL:        repman.Conf.SlackURL,
-			AcceptedLevels: logrus_slack.LevelThreshold(log.WarnLevel),
-			Channel:        repman.Conf.SlackChannel,
-			IconEmoji:      ":ghost:",
-			Username:       repman.Conf.SlackUser,
-			Timeout:        5 * time.Second, // request timeout for calling slack api
-		})
-	}
-	if repman.Conf.PushoverAppToken != "" && repman.Conf.PushoverUserToken != "" {
-		log.AddHook(
-			pushover.NewHook(repman.Conf.PushoverAppToken, repman.Conf.PushoverUserToken),
-		)
-	}
+
 	if repman.Conf.LogLevel > 1 {
 		log.SetLevel(log.DebugLevel)
 	}
