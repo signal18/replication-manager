@@ -97,7 +97,7 @@ type Cluster struct {
 	DBIndexSize                   int64                       `json:"dbIndexSize"`
 	Connections                   int                         `json:"connections"`
 	QPS                           int64                       `json:"qps"`
-	LogVault                      *log.Logger                 `json:"-"`
+	LogPushover                   *log.Logger                 `json:"-"`
 	Log                           s18log.HttpLog              `json:"log"`
 	LogSlack                      *log.Logger                 `json:"-"`
 	JobResults                    map[string]*JobResult       `json:"jobResults"`
@@ -311,13 +311,13 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
 	}
 
-	cluster.LogVault = log.New()
+	cluster.LogPushover = log.New()
 
 	if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-		cluster.LogVault.AddHook(
+		cluster.LogPushover.AddHook(
 			pushover.NewHook(cluster.Conf.PushoverAppToken, cluster.Conf.PushoverUserToken),
 		)
-		cluster.LogVault.SetLevel(log.WarnLevel)
+		cluster.LogPushover.SetLevel(log.WarnLevel)
 	}
 
 	cluster.LogSlack = log.New()
