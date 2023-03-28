@@ -171,18 +171,32 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 		switch level {
 		case "ERROR":
 			log.WithField("cluster", cluster.Name).Errorf(cliformat, args...)
+			if cluster.Conf.SlackURL != "" {
+				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Errorf(cliformat, args...)
+			}
+
 		case "INFO":
 			log.WithField("cluster", cluster.Name).Infof(cliformat, args...)
 		case "DEBUG":
 			log.WithField("cluster", cluster.Name).Debugf(cliformat, args...)
 		case "WARN":
 			log.WithField("cluster", cluster.Name).Warnf(cliformat, args...)
+			if cluster.Conf.SlackURL != "" {
+				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Errorf(cliformat, args...)
+			}
 		case "TEST":
 			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "test"}).Infof(cliformat, args...)
 		case "BENCH":
 			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "benchmark"}).Infof(cliformat, args...)
 		case "ALERT":
-			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Warnf(cliformat, args...)
+			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Errorf(cliformat, args...)
+			if cluster.Conf.SlackURL != "" {
+				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Errorf(cliformat, args...)
+			}
+			if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
+				cluster.LogVault.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Errorf(cliformat, args...)
+
+			}
 		case "STATE":
 			status := cliformat[0:6]
 			code := cliformat[7:15]

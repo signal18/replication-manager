@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/bluele/logrus_slack"
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
@@ -27,6 +28,7 @@ import (
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 	log "github.com/sirupsen/logrus"
@@ -95,7 +97,9 @@ type Cluster struct {
 	DBIndexSize                   int64                       `json:"dbIndexSize"`
 	Connections                   int                         `json:"connections"`
 	QPS                           int64                       `json:"qps"`
+	LogVault                      *log.Logger                 `json:"-"`
 	Log                           s18log.HttpLog              `json:"log"`
+	LogSlack                      *log.Logger                 `json:"-"`
 	JobResults                    map[string]*JobResult       `json:"jobResults"`
 	Grants                        map[string]string           `json:"-"`
 	tlog                          *s18log.TermLog             `json:"-"`
@@ -252,7 +256,7 @@ const (
 )
 
 // Init initial cluster definition
-func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, log *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.SqlErrorLog = logsql.New()
 	cluster.SqlGeneralLog = logsql.New()
 	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
@@ -270,7 +274,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 	cluster.tlog = tlog
-	cluster.htlog = log
+	cluster.htlog = loghttp
 	cluster.termlength = termlength
 	cluster.Name = cfgGroup
 	cluster.WorkingDir = conf.WorkingDir + "/" + cluster.Name
@@ -306,6 +310,29 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {
 		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
 	}
+
+	cluster.LogVault = log.New()
+
+	if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
+		cluster.LogVault.AddHook(
+			pushover.NewHook(cluster.Conf.PushoverAppToken, cluster.Conf.PushoverUserToken),
+		)
+		cluster.LogVault.SetLevel(log.WarnLevel)
+	}
+
+	cluster.LogSlack = log.New()
+
+	if cluster.Conf.SlackURL != "" {
+		cluster.LogSlack.AddHook(&logrus_slack.SlackHook{
+			HookURL:        cluster.Conf.SlackURL,
+			AcceptedLevels: logrus_slack.LevelThreshold(log.WarnLevel),
+			Channel:        cluster.Conf.SlackChannel,
+			IconEmoji:      ":ghost:",
+			Username:       cluster.Conf.SlackUser,
+			Timeout:        5 * time.Second, // request timeout for calling slack api
+		})
+	}
+	cluster.LogPrintf("ALERT", "Replication manager init cluster version : %s", cluster.Conf.Version)
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
 		Filename:   cluster.WorkingDir + "/sql_error.log",
