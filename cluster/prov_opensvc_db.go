@@ -299,7 +299,7 @@ func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string 
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 		svccontainer["run_args"] = "--ulimit nofile=262144:262144"
-		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
+		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw {name}-sec/:/credentials`
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 		svccontainer["command"] = "/docker-entrypoint-initdb.d/dbjobs_launcher"
 		svccontainer["entrypoint"] = "/bin/bash"
@@ -607,6 +607,18 @@ func (cluster *Cluster) OpenSVCGetVolumeDataSection() map[string]string {
 	return svcvol
 }
 
+func (cluster *Cluster) OpenSVCGetJobsVolumeSecret() map[string]string {
+	svcvol := make(map[string]string)
+	svcvol["name"] = "{name}-sec"
+	svcvol["type"] = "shm"
+	svcvol["size"] = "1m"
+	svcvol["secrets"] = "env/MYSQL_ROOT_PASSWORD:/"
+	svcvol["user"] = "99"
+	svcvol["perm"] = "600"
+	svcvol["dirperm"] = "700"
+	return svcvol
+}
+
 /*func (cluster *Cluster) OpenSVCGetVolumeSystemSection() map[string]string {
 	svcvol := make(map[string]string)
 	svcvol["name"] = "{name}-system"
@@ -657,6 +669,7 @@ func (server *ServerMonitor) GenerateDBTemplateV2() (string, error) {
 	svcsection["container#01"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetInitContainerSection(server.Port)
 	svcsection["container#db"] = server.OpenSVCGetDBContainerSection()
+	svcsection["volume#02"] = server.ClusterGroup.OpenSVCGetJobsVolumeSecret()
 	svcsection["container#jobs"] = server.OpenSVCGetJobsContainerSection()
 
 	//	svcsection["task#01"] = server.ClusterGroup.OpenSVCGetTaskJobsSection()
