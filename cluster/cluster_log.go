@@ -15,6 +15,7 @@ import (
 	"io"
 	"time"
 
+	teams "github.com/dasrick/go-teams-notify/v2"
 	"github.com/nsf/termbox-go"
 	"github.com/signal18/replication-manager/utils/s18log"
 	log "github.com/sirupsen/logrus"
@@ -174,7 +175,9 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 			if cluster.Conf.SlackURL != "" {
 				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Errorf(cliformat, args...)
 			}
-
+			if cluster.Conf.TeamsUrl != "" {
+				go cluster.sendMsTeams(level, format, args)
+			}
 		case "INFO":
 			log.WithField("cluster", cluster.Name).Infof(cliformat, args...)
 		case "DEBUG":
@@ -183,6 +186,9 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 			log.WithField("cluster", cluster.Name).Warnf(cliformat, args...)
 			if cluster.Conf.SlackURL != "" {
 				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Errorf(cliformat, args...)
+			}
+			if cluster.Conf.TeamsUrl != "" {
+				go cluster.sendMsTeams(level, format, args)
 			}
 		case "TEST":
 			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "test"}).Infof(cliformat, args...)
@@ -194,8 +200,10 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Errorf(cliformat, args...)
 			}
 			if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-				cluster.LogVault.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Errorf(cliformat, args...)
-
+				cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert"}).Errorf(cliformat, args...)
+			}
+			if cluster.Conf.TeamsUrl != "" {
+				go cluster.sendMsTeams(level, format, args)
 			}
 		case "STATE":
 			status := cliformat[0:6]
@@ -213,4 +221,33 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 	}
 
 	return line
+}
+
+func (cluster *Cluster) sendMsTeams(level string, format string, args ...interface{}) error {
+	log.Printf("COUCOU sendMsTeams")
+	// init the client
+	mstClient := teams.NewClient()
+
+	// setup webhook url
+	webhookUrl := cluster.Conf.TeamsUrl
+
+	// setup message card
+	msgCard := teams.NewMessageCard()
+	msgCard.Title = "Replication-Manager alert"
+	switch level {
+	case "ERROR":
+		msgCard.ThemeColor = "#4169e1"
+	case "ALERT":
+		msgCard.ThemeColor = "#b22222"
+	case "WARN":
+		msgCard.ThemeColor = "#112233"
+	}
+
+	msgCard.Text = fmt.Sprintf(format, args...)
+	// send
+	err := mstClient.Send(webhookUrl, msgCard)
+	if err != nil {
+		log.Printf("sendMSTeams error send alert : %s", err)
+	}
+	return nil
 }

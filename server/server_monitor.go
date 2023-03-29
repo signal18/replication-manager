@@ -183,6 +183,8 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.PushoverAppToken, "alert-pushover-app-token", "", "Pushover App Token for alerts")
 	monitorCmd.Flags().StringVar(&conf.PushoverUserToken, "alert-pushover-user-token", "", "Pushover User Token for alerts")
 
+	monitorCmd.Flags().StringVar(&conf.TeamsUrl, "alert-teams-url", "", "Teams url channel for alerts")
+
 	monitorCmd.Flags().BoolVar(&conf.RegistryConsul, "registry-consul", false, "Register write and read SRV DNS to consul")
 	monitorCmd.Flags().StringVar(&conf.RegistryHosts, "registry-servers", "127.0.0.1", "Comma-separated list of registry addresses")
 

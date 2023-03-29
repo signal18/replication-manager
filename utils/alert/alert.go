@@ -36,7 +36,7 @@ func (a *Alert) Email() error {
 	e := email.NewEmail()
 	e.From = a.From
 	e.To = strings.Split(a.To, ",")
-	subj := fmt.Sprintf("Repman alert - State change detected on host %s", a.Origin)
+	subj := fmt.Sprintf("Replication-Manager alert - State change detected on host %s", a.Origin)
 	e.Subject = subj
 	text := fmt.Sprintf(`Replication Manager has detected a change of state for host %s.
 New server state change from %s is %s.`, a.Origin, a.PrevState, a.State)

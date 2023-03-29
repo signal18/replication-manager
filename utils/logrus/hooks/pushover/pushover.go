@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	client "github.com/gregdel/pushover"
+	"github.com/siddontang/go/log"
 	"github.com/sirupsen/logrus"
 )
 
@@ -43,11 +44,19 @@ func NewHook(appToken, recipientToken string) *PushoverHook {
 }
 
 func (p *PushoverHook) Fire(entry *logrus.Entry) error {
+	pr := -1
+	if entry.Level == log.LevelError {
+		pr = 0
+	}
+	if entry.Data["type"].(string) == "alert" {
+		pr = 1
+	}
 	message := &client.Message{
 		Message:   entry.Message,
 		Timestamp: entry.Time.Unix(),
+		Title:     "Cluster: " + entry.Data["cluster"].(string),
+		Priority:  pr,
 	}
-
 	_, err := p.app.SendMessage(message, p.recipient)
 	if err != nil {
 		return fmt.Errorf("Could not send message to Pushover API: %s", err)

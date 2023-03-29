@@ -101,6 +101,7 @@ require (
 	github.com/StackExchange/wmi v0.0.0-20210224194228-fe8f1750fd46 // indirect
 	github.com/aclements/go-moremath v0.0.0-20170210193428-033754ab1fee // indirect
 	github.com/bluele/slack v0.0.0-20180528010058-b4b4d354a079 // indirect
+	github.com/dasrick/go-teams-notify/v2 v2.1.0 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
 	github.com/facebookgo/atomicfile v0.0.0-20151019160806-2de1f203e7d5 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
