@@ -1,0 +1,3052 @@
+{
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "schemes": [
+    "https"
+  ],
+  "swagger": "2.0",
+  "info": {
+    "description": "Replication Manager Monitoring and CLI for MariaDB and MySQL",
+    "title": "replication-manager",
+    "contact": {
+      "name": "Stephane Varoqui",
+      "email": "svaroqui@gmail.com"
+    },
+    "license": {
+      "name": "GPL",
+      "url": "http://opensource.org/licenses/GPL"
+    },
+    "version": "0.0.1"
+  },
+  "host": "localhost",
+  "basePath": "/",
+  "paths": {
+    "/api/clusters": {
+      "get": {
+        "description": "This will show all the available clusters",
+        "operationId": "clusters",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/clusters"
+          }
+        }
+      }
+    },
+    "/api/clusters/{clusterName}/actions/master-physical-backup": {
+      "get": {
+        "produces": [
+          "text/plain"
+        ],
+        "operationId": "master-physical-backup",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "cluster to filter by",
+            "name": "clusterName",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            }
+          },
+          "400": {
+            "description": "No cluster found",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "No cluster found:cluster_1"
+            }
+          },
+          "403": {
+            "description": "No valid ACL",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "No valid ACL"
+            }
+          }
+        }
+      }
+    },
+    "/api/clusters/{clusterName}/servers/{serverName}/is-master": {
+      "get": {
+        "produces": [
+          "text/plain"
+        ],
+        "operationId": "serverName-is-master",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "cluster to filter by",
+            "name": "clusterName",
+            "in": "path",
+            "required": true
+          },
+          {
+            "type": "string",
+            "description": "server to filter by",
+            "name": "serverName",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "200 -Valid Master!"
+            }
+          },
+          "500": {
+            "description": "No cluster",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "No cluster"
+            }
+          },
+          "503": {
+            "description": "Not a Valid Master",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "503 -Not a Valid Master!"
+            }
+          }
+        }
+      }
+    },
+    "/api/clusters/{clusterName}/servers/{serverName}/is-slave": {
+      "get": {
+        "produces": [
+          "text/plain"
+        ],
+        "operationId": "serverName-is-slave",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "cluster to filter by",
+            "name": "clusterName",
+            "in": "path",
+            "required": true
+          },
+          {
+            "type": "string",
+            "description": "server to filter by",
+            "name": "serverName",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "200 -Valid Slave!"
+            }
+          },
+          "500": {
+            "description": "No cluster",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "No cluster"
+            }
+          },
+          "503": {
+            "description": "Not a Valid Slave!",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "503 -Not a Valid Slave!"
+            }
+          }
+        }
+      }
+    },
+    "/api/clusters/{clusterName}/servers/{serverName}/master-status": {
+      "get": {
+        "produces": [
+          "text/plain"
+        ],
+        "operationId": "serverName-master-status",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "cluster to filter by",
+            "name": "clusterName",
+            "in": "path",
+            "required": true
+          },
+          {
+            "type": "string",
+            "description": "server to filter by",
+            "name": "serverName",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "No valid ACL",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "No valid ACL"
+            }
+          },
+          "500": {
+            "description": "No cluster",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "No cluster"
+            }
+          },
+          "503": {
+            "description": "Not a Valid Server!",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            },
+            "examples": {
+              "text/plain": "503 -Not a Valid Server!"
+            }
+          }
+        }
+      }
+    },
+    "/api/clusters/{clusterName}/status": {
+      "get": {
+        "description": "Shows the status for that specific named cluster",
+        "operationId": "clusterStatus",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "cluster to filter by",
+            "name": "clusterName",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/status"
+          }
+        }
+      }
+    },
+    "/api/heartbeat": {
+      "get": {
+        "operationId": "heartbeat",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/heartbeat"
+          }
+        }
+      }
+    },
+    "/api/prometheus": {
+      "get": {
+        "description": "Returns the Prometheus metrics for all database instances on the server\nin the Prometheus text format",
+        "produces": [
+          "text/plain; version=0.0.4"
+        ],
+        "operationId": "prometheus",
+        "responses": {
+          "200": {
+            "description": "Prometheus file format",
+            "schema": {
+              "type": "string"
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/status": {
+      "get": {
+        "description": "This will show the status of the cluster",
+        "operationId": "status",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/status"
+          }
+        }
+      }
+    },
+    "/api/timeout": {
+      "get": {
+        "operationId": "timeout",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/status"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "APIUser": {
+      "type": "object",
+      "properties": {
+        "grants": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "x-go-name": "Grants"
+        },
+        "user": {
+          "type": "string",
+          "x-go-name": "User"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/cluster"
+    },
+    "Agent": {
+      "type": "object",
+      "title": "The Agent describes the server where the cluster runs on.",
+      "properties": {
+        "cpuCores": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "CpuCores"
+        },
+        "cpuFreq": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "CpuFreq"
+        },
+        "hostName": {
+          "type": "string",
+          "x-go-name": "HostName"
+        },
+        "id": {
+          "type": "string",
+          "x-go-name": "Id"
+        },
+        "memBytes": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MemBytes"
+        },
+        "memFreeBytes": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MemFreeBytes"
+        },
+        "osKernel": {
+          "type": "string",
+          "x-go-name": "OsKernel"
+        },
+        "osName": {
+          "type": "string",
+          "x-go-name": "OsName"
+        },
+        "status": {
+          "type": "string",
+          "x-go-name": "Status"
+        },
+        "version": {
+          "type": "string",
+          "x-go-name": "Version"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/cluster"
+    },
+    "Cluster": {
+      "type": "object",
+      "properties": {
+        "activePassiveStatus": {
+          "type": "string",
+          "x-go-name": "Status"
+        },
+        "agents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Agent"
+          },
+          "x-go-name": "Agents"
+        },
+        "apiUsers": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/APIUser"
+          },
+          "x-go-name": "APIUsers"
+        },
+        "cleanReplication": {
+          "type": "boolean",
+          "x-go-name": "CleanAll"
+        },
+        "config": {
+          "$ref": "#/definitions/Config"
+        },
+        "configPrxTags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Tag"
+          },
+          "x-go-name": "ConfigPrxTags"
+        },
+        "configTags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Tag"
+          },
+          "x-go-name": "ConfigDBTags"
+        },
+        "connections": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "Connections"
+        },
+        "dbIndexSize": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "DBIndexSize"
+        },
+        "dbServers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "x-go-name": "ServerIdList"
+        },
+        "dbServersCrashes": {
+          "$ref": "#/definitions/crashList"
+        },
+        "dbServersTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "x-go-name": "DBTags"
+        },
+        "dbTableSize": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "DBTableSize"
+        },
+        "diskType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-go-name": "DiskType"
+        },
+        "failoverCounter": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "FailoverCtr"
+        },
+        "failoverLastTime": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "FailoverTs"
+        },
+        "fsType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "x-go-name": "FSType"
+        },
+        "haveDBTLSCert": {
+          "type": "boolean",
+          "x-go-name": "HaveDBTLSCert"
+        },
+        "haveDBTLSOldCert": {
+          "type": "boolean",
+          "x-go-name": "HaveDBTLSOldCert"
+        },
+        "isAllDbUp": {
+          "type": "boolean",
+          "x-go-name": "IsAllDbUp"
+        },
+        "isCapturing": {
+          "type": "boolean",
+          "x-go-name": "IsCapturing"
+        },
+        "isClusterDown": {
+          "type": "boolean",
+          "x-go-name": "IsClusterDown"
+        },
+        "isDown": {
+          "type": "boolean",
+          "x-go-name": "IsDown"
+        },
+        "isFailable": {
+          "type": "boolean",
+          "x-go-name": "IsFailable"
+        },
+        "isFailedArbitrator": {
+          "type": "boolean",
+          "x-go-name": "IsFailedArbitrator"
+        },
+        "isLostMajority": {
+          "type": "boolean",
+          "x-go-name": "IsLostMajority"
+        },
+        "isNeedDatabasesReprov": {
+          "type": "boolean",
+          "x-go-name": "IsNeedDatabasesReprov"
+        },
+        "isNeedDatabasesRestart": {
+          "type": "boolean",
+          "x-go-name": "IsNeedDatabasesRestart"
+        },
+        "isNeedDatabasesRollingReprov": {
+          "type": "boolean",
+          "x-go-name": "IsNeedDatabasesRollingReprov"
+        },
+        "isNeedDatabasesRollingRestart": {
+          "type": "boolean",
+          "x-go-name": "IsNeedDatabasesRollingRestart"
+        },
+        "isNeedProxiesRestart": {
+          "type": "boolean",
+          "x-go-name": "IsNeedProxiesReprov"
+        },
+        "isNeedProxyRestart": {
+          "type": "boolean",
+          "x-go-name": "IsNeedProxiesRestart"
+        },
+        "isNotMonitoring": {
+          "type": "boolean",
+          "x-go-name": "IsNotMonitoring"
+        },
+        "isPostgres": {
+          "type": "boolean",
+          "x-go-name": "IsPostgres"
+        },
+        "isProvision": {
+          "type": "boolean",
+          "x-go-name": "IsProvision"
+        },
+        "isSplitBrain": {
+          "type": "boolean",
+          "x-go-name": "IsSplitBrain"
+        },
+        "jobResults": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/JobResult"
+          },
+          "x-go-name": "JobResults"
+        },
+        "log": {
+          "$ref": "#/definitions/HttpLog"
+        },
+        "monitorSpin": {
+          "type": "string",
+          "x-go-name": "MonitorSpin"
+        },
+        "monitorType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-go-name": "MonitorType"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        },
+        "proxyServers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "x-go-name": "ProxyIdList"
+        },
+        "proxyServersTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "x-go-name": "ProxyTags"
+        },
+        "qps": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "QPS"
+        },
+        "slaHistory": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Sla"
+          },
+          "x-go-name": "SLAHistory"
+        },
+        "sqlErrorLog": {
+          "$ref": "#/definitions/HttpLog"
+        },
+        "sqlGeneralLog": {
+          "$ref": "#/definitions/HttpLog"
+        },
+        "tenant": {
+          "type": "string",
+          "x-go-name": "Tenant"
+        },
+        "topology": {
+          "type": "string",
+          "x-go-name": "Topology"
+        },
+        "topologyType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-go-name": "TopologyType"
+        },
+        "uptime": {
+          "type": "string",
+          "x-go-name": "Uptime"
+        },
+        "uptimeFailable": {
+          "type": "string",
+          "x-go-name": "UptimeFailable"
+        },
+        "uptimeSemisync": {
+          "type": "string",
+          "x-go-name": "UptimeSemiSync"
+        },
+        "vmType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "x-go-name": "VMType"
+        },
+        "waitingFailover": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "WaitingFailover"
+        },
+        "waitingRejoin": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "WaitingRejoin"
+        },
+        "waitingSwitchover": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "WaitingSwitchover"
+        },
+        "workingDir": {
+          "type": "string",
+          "x-go-name": "WorkingDir"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/cluster"
+    },
+    "Config": {
+      "type": "object",
+      "properties": {
+        "HostsDelayed": {
+          "type": "string"
+        },
+        "HostsDelayedTime": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "alertScript": {
+          "type": "string",
+          "x-go-name": "AlertScript"
+        },
+        "alertSlackChannel": {
+          "type": "string",
+          "x-go-name": "SlackChannel"
+        },
+        "alertSlackUrl": {
+          "type": "string",
+          "x-go-name": "SlackURL"
+        },
+        "alertSlackUser": {
+          "type": "string",
+          "x-go-name": "SlackUser"
+        },
+        "apiBind": {
+          "type": "string",
+          "x-go-name": "APIBind"
+        },
+        "apiCredentials": {
+          "type": "string",
+          "x-go-name": "APIUsers"
+        },
+        "apiCredentialsACLAllow": {
+          "type": "string",
+          "x-go-name": "APIUsersACLAllow"
+        },
+        "apiCredentialsACLDiscard": {
+          "type": "string",
+          "x-go-name": "APIUsersACLDiscard"
+        },
+        "apiCredentialsExternal": {
+          "type": "string",
+          "x-go-name": "APIUsersExternal"
+        },
+        "apiCredentialsSecureConfig": {
+          "type": "boolean",
+          "x-go-name": "APISecureConfig"
+        },
+        "apiHttpsBind": {
+          "type": "boolean",
+          "x-go-name": "APIHttpsBind"
+        },
+        "apiPort": {
+          "type": "string",
+          "x-go-name": "APIPort"
+        },
+        "arbitrationExternal": {
+          "type": "boolean",
+          "x-go-name": "Arbitration"
+        },
+        "arbitrationExternalHosts": {
+          "type": "string",
+          "x-go-name": "ArbitrationSasHosts"
+        },
+        "arbitrationExternalSecret": {
+          "type": "string",
+          "x-go-name": "ArbitrationSasSecret"
+        },
+        "arbitrationExternalUniqueId": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "ArbitrationSasUniqueId"
+        },
+        "arbitrationFailedMasterScript": {
+          "type": "string",
+          "x-go-name": "ArbitrationFailedMasterScript"
+        },
+        "arbitrationPeerHosts": {
+          "type": "string",
+          "x-go-name": "ArbitrationPeerHosts"
+        },
+        "arbitrationReadTimout": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "ArbitrationReadTimout"
+        },
+        "arbitratorBindAddress": {
+          "type": "string",
+          "x-go-name": "ArbitratorAddress"
+        },
+        "arbitratorDriver": {
+          "type": "string",
+          "x-go-name": "ArbitratorDriver"
+        },
+        "autorejoin": {
+          "type": "boolean",
+          "x-go-name": "Autorejoin"
+        },
+        "autorejoinBackupBinlog": {
+          "type": "boolean",
+          "x-go-name": "AutorejoinBackupBinlog"
+        },
+        "autorejoinFlashback": {
+          "type": "boolean",
+          "x-go-name": "AutorejoinFlashback"
+        },
+        "autorejoinFlashbackOnSync": {
+          "type": "boolean",
+          "x-go-name": "AutorejoinSemisync"
+        },
+        "autorejoinFlashbackOnUnsync": {
+          "type": "boolean",
+          "x-go-name": "AutorejoinNoSemisync"
+        },
+        "autorejoinLogicalBackup": {
+          "type": "boolean",
+          "x-go-name": "AutorejoinLogicalBackup"
+        },
+        "autorejoinMysqldump": {
+          "type": "boolean",
+          "x-go-name": "AutorejoinMysqldump"
+        },
+        "autorejoinPhysicalBackup": {
+          "type": "boolean",
+          "x-go-name": "AutorejoinPhysicalBackup"
+        },
+        "autorejoinScript": {
+          "type": "string",
+          "x-go-name": "RejoinScript"
+        },
+        "autorejoinSlavePositionalHeartbeat": {
+          "type": "boolean",
+          "x-go-name": "AutorejoinSlavePositionalHeartbeat"
+        },
+        "autorejoinZfsFlashback": {
+          "type": "boolean",
+          "x-go-name": "AutorejoinZFSFlashback"
+        },
+        "autoseed": {
+          "type": "boolean",
+          "x-go-name": "Autoseed"
+        },
+        "backup": {
+          "type": "boolean",
+          "x-go-name": "Backup"
+        },
+        "backupBinlogs": {
+          "type": "boolean",
+          "x-go-name": "BackupBinlogs"
+        },
+        "backupBinlogsKeep": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "BackupBinlogsKeep"
+        },
+        "backupKeepDaily": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "BackupKeepDaily"
+        },
+        "backupKeepHourly": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "BackupKeepHourly"
+        },
+        "backupKeepMonthly": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "BackupKeepMonthly"
+        },
+        "backupKeepWeekly": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "BackupKeepWeekly"
+        },
+        "backupKeepYearly": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "BackupKeepYearly"
+        },
+        "backupLockDDL": {
+          "type": "boolean",
+          "x-go-name": "BackupLockDDL"
+        },
+        "backupLogicalDumpSystemTables": {
+          "type": "boolean",
+          "x-go-name": "BackupLogicalDumpSystemTables"
+        },
+        "backupLogicalDumpThreads": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "BackupLogicalDumpThreads"
+        },
+        "backupLogicalLoadThreads": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "BackupLogicalLoadThreads"
+        },
+        "backupLogicalType": {
+          "type": "string",
+          "x-go-name": "BackupLogicalType"
+        },
+        "backupMydumperPath": {
+          "type": "string",
+          "x-go-name": "BackupMyDumperPath"
+        },
+        "backupMyloaderPath": {
+          "type": "string",
+          "x-go-name": "BackupMyLoaderPath"
+        },
+        "backupMysqlbinlogPath": {
+          "type": "string",
+          "x-go-name": "BackupMysqlbinlogPath"
+        },
+        "backupMysqlclientgPath": {
+          "type": "string",
+          "x-go-name": "BackupMysqlclientPath"
+        },
+        "backupMysqldumpOptions": {
+          "type": "string",
+          "x-go-name": "BackupMysqldumpOptions"
+        },
+        "backupMysqldumpPath": {
+          "type": "string",
+          "x-go-name": "BackupMysqldumpPath"
+        },
+        "backupPhysicalType": {
+          "type": "string",
+          "x-go-name": "BackupPhysicalType"
+        },
+        "backupRestic": {
+          "type": "boolean",
+          "x-go-name": "BackupRestic"
+        },
+        "backupResticAws": {
+          "type": "boolean",
+          "x-go-name": "BackupResticAws"
+        },
+        "backupResticBinaryPath": {
+          "type": "string",
+          "x-go-name": "BackupResticBinaryPath"
+        },
+        "backupResticRepository": {
+          "type": "string",
+          "x-go-name": "BackupResticRepository"
+        },
+        "backupStreaming": {
+          "type": "boolean",
+          "x-go-name": "BackupStreaming"
+        },
+        "backupStreamingBucket": {
+          "type": "string",
+          "x-go-name": "BackupStreamingBucket"
+        },
+        "backupStreamingDebug": {
+          "type": "boolean",
+          "x-go-name": "BackupStreamingDebug"
+        },
+        "backupStreamingEndpoint": {
+          "type": "string",
+          "x-go-name": "BackupStreamingEndpoint"
+        },
+        "backupStreamingRegion": {
+          "type": "string",
+          "x-go-name": "BackupStreamingRegion"
+        },
+        "checkBinlogFilters": {
+          "type": "boolean",
+          "x-go-name": "CheckBinFilter"
+        },
+        "checkGrants": {
+          "type": "boolean",
+          "x-go-name": "CheckGrants"
+        },
+        "checkReplicationFilters": {
+          "type": "boolean",
+          "x-go-name": "CheckReplFilter"
+        },
+        "checkReplicationState": {
+          "type": "boolean",
+          "x-go-name": "RplChecks"
+        },
+        "checkType": {
+          "type": "string",
+          "x-go-name": "CheckType"
+        },
+        "clusterHead": {
+          "type": "string",
+          "x-go-name": "ClusterHead"
+        },
+        "dbServersBackupHosts": {
+          "type": "string",
+          "x-go-name": "BackupServers"
+        },
+        "dbServersConnectTimeout": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "Timeout"
+        },
+        "dbServersCredential": {
+          "type": "string",
+          "x-go-name": "User"
+        },
+        "dbServersHosts": {
+          "type": "string",
+          "x-go-name": "Hosts"
+        },
+        "dbServersIgnoredHosts": {
+          "type": "string",
+          "x-go-name": "IgnoreSrv"
+        },
+        "dbServersIgnoredReadonly": {
+          "type": "string",
+          "x-go-name": "IgnoreSrvRO"
+        },
+        "dbServersLocality": {
+          "type": "string",
+          "x-go-name": "DBServersLocality"
+        },
+        "dbServersPreferedMaster": {
+          "type": "string",
+          "x-go-name": "PrefMaster"
+        },
+        "dbServersReadTimeout": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "ReadTimeout"
+        },
+        "dbServersTlsCaCert": {
+          "type": "string",
+          "x-go-name": "HostsTLSCA"
+        },
+        "dbServersTlsClientCert": {
+          "type": "string",
+          "x-go-name": "HostsTLSCLI"
+        },
+        "dbServersTlsClientKey": {
+          "type": "string",
+          "x-go-name": "HostsTLSKEY"
+        },
+        "dbServersUseGeneratedCert": {
+          "type": "boolean",
+          "x-go-name": "DBServersTLSUseGeneratedCertificate"
+        },
+        "eeplicationRestartOnSqlLErrorMatch": {
+          "type": "string",
+          "x-go-name": "ReplicationRestartOnSQLErrorMatch"
+        },
+        "enterprise": {
+          "type": "boolean",
+          "x-go-name": "Enterprise"
+        },
+        "extproxy": {
+          "type": "boolean",
+          "x-go-name": "ExtProxyOn"
+        },
+        "extproxyAddress": {
+          "type": "string",
+          "x-go-name": "ExtProxyVIP"
+        },
+        "failoverAtSync": {
+          "type": "boolean",
+          "x-go-name": "FailSync"
+        },
+        "failoverEventScheduler": {
+          "type": "boolean",
+          "x-go-name": "FailEventScheduler"
+        },
+        "failoverEventStatus": {
+          "type": "boolean",
+          "x-go-name": "FailEventStatus"
+        },
+        "failoverFalsePositiveExternal": {
+          "type": "boolean",
+          "x-go-name": "CheckFalsePositiveExternal"
+        },
+        "failoverFalsePositiveExternalPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "CheckFalsePositiveExternalPort"
+        },
+        "failoverFalsePositiveHeartbeat": {
+          "type": "boolean",
+          "x-go-name": "CheckFalsePositiveHeartbeat"
+        },
+        "failoverFalsePositiveHeartbeatTimeout": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "CheckFalsePositiveHeartbeatTimeout"
+        },
+        "failoverFalsePositiveMaxscale": {
+          "type": "boolean",
+          "x-go-name": "CheckFalsePositiveMaxscale"
+        },
+        "failoverFalsePositiveMaxscaleTimeout": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "CheckFalsePositiveMaxscaleTimeout"
+        },
+        "failoverFalsePositivePingCounter": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MaxFail"
+        },
+        "failoverLimit": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "FailLimit"
+        },
+        "failoverLogFileKeep": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "FailoverLogFileKeep"
+        },
+        "failoverMaxSlaveDelay": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "FailMaxDelay"
+        },
+        "failoverMode": {
+          "type": "string",
+          "x-go-name": "FailMode"
+        },
+        "failoverPostScript": {
+          "type": "string",
+          "x-go-name": "PostScript"
+        },
+        "failoverPreScript": {
+          "type": "string",
+          "x-go-name": "PreScript"
+        },
+        "failoverReadOnlyState": {
+          "type": "boolean",
+          "x-go-name": "ReadOnly"
+        },
+        "failoverResetTime": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "FailResetTime"
+        },
+        "failoverRestartUnsafe": {
+          "type": "boolean",
+          "x-go-name": "FailRestartUnsafe"
+        },
+        "failoverSuperReadOnlyState": {
+          "type": "boolean",
+          "x-go-name": "SuperReadOnly"
+        },
+        "failoverSwithToPrefered": {
+          "type": "boolean",
+          "x-go-name": "FailoverSwitchToPrefered"
+        },
+        "failoverTimeLimit": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "FailTime"
+        },
+        "forceBinlogAnnotate": {
+          "type": "boolean",
+          "x-go-name": "ForceBinlogAnnotate"
+        },
+        "forceBinlogChecksum": {
+          "type": "boolean",
+          "x-go-name": "ForceBinlogChecksum"
+        },
+        "forceBinlogCompress": {
+          "type": "boolean",
+          "x-go-name": "ForceBinlogCompress"
+        },
+        "forceBinlogRow": {
+          "type": "boolean",
+          "x-go-name": "ForceBinlogRow"
+        },
+        "forceBinlogSlowqueries": {
+          "type": "boolean",
+          "x-go-name": "ForceBinlogSlowqueries"
+        },
+        "forceDiskRelaylogSizeLimit": {
+          "type": "boolean",
+          "x-go-name": "ForceDiskRelayLogSizeLimit"
+        },
+        "forceDiskRelaylogSizeLimitSize": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "ForceDiskRelayLogSizeLimitSize"
+        },
+        "forceInmemoryBinlogCacheSize": {
+          "type": "boolean",
+          "x-go-name": "ForceInmemoryBinlogCacheSize"
+        },
+        "forceNoslaveBehind": {
+          "type": "boolean",
+          "x-go-name": "ForceNoslaveBehind"
+        },
+        "forceSlaveGtidMode": {
+          "type": "boolean",
+          "x-go-name": "ForceSlaveGtid"
+        },
+        "forceSlaveGtidModeStrict": {
+          "type": "boolean",
+          "x-go-name": "ForceSlaveGtidStrict"
+        },
+        "forceSlaveHeartbeat": {
+          "type": "boolean",
+          "x-go-name": "ForceSlaveHeartbeat"
+        },
+        "forceSlaveHeartbeatRetry": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "ForceSlaveHeartbeatRetry"
+        },
+        "forceSlaveHeartbeatTime": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "ForceSlaveHeartbeatTime"
+        },
+        "forceSlaveNoGtidMode": {
+          "type": "boolean",
+          "x-go-name": "ForceSlaveNoGtid"
+        },
+        "forceSlaveReadonly": {
+          "type": "boolean",
+          "x-go-name": "ForceSlaveReadOnly"
+        },
+        "forceSlaveSemisync": {
+          "type": "boolean",
+          "x-go-name": "ForceSlaveSemisync"
+        },
+        "forceSyncBinlog": {
+          "type": "boolean",
+          "x-go-name": "ForceSyncBinlog"
+        },
+        "forceSyncInnodb": {
+          "type": "boolean",
+          "x-go-name": "ForceSyncInnoDB"
+        },
+        "graphiteCarbonApiPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "GraphiteCarbonApiPort"
+        },
+        "graphiteCarbonHost": {
+          "type": "string",
+          "x-go-name": "GraphiteCarbonHost"
+        },
+        "graphiteCarbonLinkPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "GraphiteCarbonLinkPort"
+        },
+        "graphiteCarbonPicklePort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "GraphiteCarbonPicklePort"
+        },
+        "graphiteCarbonPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "GraphiteCarbonPort"
+        },
+        "graphiteCarbonPprofPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "GraphiteCarbonPprofPort"
+        },
+        "graphiteCarbonServerPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "GraphiteCarbonServerPort"
+        },
+        "graphiteEmbedded": {
+          "type": "boolean",
+          "x-go-name": "GraphiteEmbedded"
+        },
+        "graphiteMetrics": {
+          "type": "boolean",
+          "x-go-name": "GraphiteMetrics"
+        },
+        "haproxy": {
+          "type": "boolean",
+          "x-go-name": "HaproxyOn"
+        },
+        "haproxyAPIPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "HaproxyAPIPort"
+        },
+        "haproxyAPIReadBackend": {
+          "type": "string",
+          "x-go-name": "HaproxyAPIReadBackend"
+        },
+        "haproxyAPIWriteBackend": {
+          "type": "string",
+          "x-go-name": "HaproxyAPIWriteBackend"
+        },
+        "haproxyBinaryPath": {
+          "type": "string",
+          "x-go-name": "HaproxyBinaryPath"
+        },
+        "haproxyIpReadBind": {
+          "type": "string",
+          "x-go-name": "HaproxyReadBindIp"
+        },
+        "haproxyIpWriteBind": {
+          "type": "string",
+          "x-go-name": "HaproxyWriteBindIp"
+        },
+        "haproxyMode": {
+          "type": "string",
+          "x-go-name": "HaproxyMode"
+        },
+        "haproxyPassword": {
+          "type": "string",
+          "x-go-name": "HaproxyPassword"
+        },
+        "haproxyReadPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "HaproxyReadPort"
+        },
+        "haproxyServers": {
+          "type": "string",
+          "x-go-name": "HaproxyHosts"
+        },
+        "haproxyServers-ipv6": {
+          "type": "string",
+          "x-go-name": "HaproxyHostsIPV6"
+        },
+        "haproxyStatPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "HaproxyStatPort"
+        },
+        "haproxyWritePort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "HaproxyWritePort"
+        },
+        "haproxylUser": {
+          "type": "string",
+          "x-go-name": "HaproxyUser"
+        },
+        "heartbeatTable": {
+          "type": "boolean",
+          "x-go-name": "Heartbeat"
+        },
+        "httpAuth": {
+          "type": "boolean",
+          "x-go-name": "HttpAuth"
+        },
+        "httpBindAdress": {
+          "type": "string",
+          "x-go-name": "BindAddr"
+        },
+        "httpBootstrapButton": {
+          "type": "boolean",
+          "x-go-name": "HttpBootstrapButton"
+        },
+        "httpPort": {
+          "type": "string",
+          "x-go-name": "HttpPort"
+        },
+        "httpRefreshInterval": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "HttpRefreshInterval"
+        },
+        "httpRoot": {
+          "type": "string",
+          "x-go-name": "HttpRoot"
+        },
+        "httpServer": {
+          "type": "boolean",
+          "x-go-name": "HttpServ"
+        },
+        "httpSessionLifetime": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "SessionLifeTime"
+        },
+        "interactive": {
+          "type": "boolean",
+          "x-go-name": "Interactive"
+        },
+        "kubeConfig": {
+          "type": "string",
+          "x-go-name": "KubeConfig"
+        },
+        "logFailedElection": {
+          "type": "boolean",
+          "x-go-name": "LogFailedElection"
+        },
+        "logFile": {
+          "type": "string",
+          "x-go-name": "LogFile"
+        },
+        "logHeartbeat": {
+          "type": "boolean",
+          "x-go-name": "LogHeartbeat"
+        },
+        "logLevel": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "LogLevel"
+        },
+        "logRotateMaxAge": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "LogRotateMaxAge"
+        },
+        "logRotateMaxBackup": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "LogRotateMaxBackup"
+        },
+        "logRotateMaxSize": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "LogRotateMaxSize"
+        },
+        "logSqlInMonitoring": {
+          "type": "boolean",
+          "x-go-name": "LogSQLInMonitoring"
+        },
+        "logSst": {
+          "type": "boolean",
+          "x-go-name": "LogSST"
+        },
+        "logSyslog": {
+          "type": "boolean",
+          "x-go-name": "LogSyslog"
+        },
+        "mailFrom": {
+          "type": "string",
+          "x-go-name": "MailFrom"
+        },
+        "mailSmtpAddr": {
+          "type": "string",
+          "x-go-name": "MailSMTPAddr"
+        },
+        "mailSmtpPassword": {
+          "type": "string",
+          "x-go-name": "MailSMTPPassword"
+        },
+        "mailSmtpTlsSkipVerify": {
+          "type": "boolean",
+          "x-go-name": "MailSMTPTLSSkipVerify"
+        },
+        "mailSmtpUser": {
+          "type": "string",
+          "x-go-name": "MailSMTPUser"
+        },
+        "mailTo": {
+          "type": "string",
+          "x-go-name": "MailTo"
+        },
+        "maxscale": {
+          "type": "boolean",
+          "x-go-name": "MxsOn"
+        },
+        "maxscaleBinlog": {
+          "type": "boolean",
+          "x-go-name": "MxsBinlogOn"
+        },
+        "maxscaleBinlogPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MxsBinlogPort"
+        },
+        "maxscaleDisableMonitor": {
+          "type": "boolean",
+          "x-go-name": "MxsDisableMonitor"
+        },
+        "maxscaleGetInfoMethod": {
+          "type": "string",
+          "x-go-name": "MxsGetInfoMethod"
+        },
+        "maxscaleMaxinfoPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MxsMaxinfoPort"
+        },
+        "maxscalePass": {
+          "type": "string",
+          "x-go-name": "MxsPass"
+        },
+        "maxscalePort": {
+          "type": "string",
+          "x-go-name": "MxsPort"
+        },
+        "maxscaleReadPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MxsReadPort"
+        },
+        "maxscaleReadWritePort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MxsReadWritePort"
+        },
+        "maxscaleServerMatchPort": {
+          "type": "boolean",
+          "x-go-name": "MxsServerMatchPort"
+        },
+        "maxscaleServers": {
+          "type": "string",
+          "x-go-name": "MxsHost"
+        },
+        "maxscaleServers-ipv6": {
+          "type": "string",
+          "x-go-name": "MxsHostsIPV6"
+        },
+        "maxscaleUser": {
+          "type": "string",
+          "x-go-name": "MxsUser"
+        },
+        "maxscaleWritePort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MxsWritePort"
+        },
+        "maxscalemBinaryPath": {
+          "type": "string",
+          "x-go-name": "MxsBinaryPath"
+        },
+        "monitoringAddress": {
+          "type": "string",
+          "x-go-name": "MonitorAddress"
+        },
+        "monitoringAlertTrigger": {
+          "type": "string",
+          "x-go-name": "MonitoringAlertTrigger"
+        },
+        "monitoringBasedir": {
+          "type": "string",
+          "x-go-name": "BaseDir"
+        },
+        "monitoringCapture": {
+          "type": "boolean",
+          "x-go-name": "MonitorCapture"
+        },
+        "monitoringCaptureFileKeep": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MonitorCaptureFileKeep"
+        },
+        "monitoringCaptureTrigger": {
+          "type": "string",
+          "x-go-name": "MonitorCaptureTrigger"
+        },
+        "monitoringConfdir": {
+          "type": "string",
+          "x-go-name": "ConfDir"
+        },
+        "monitoringDatadir": {
+          "type": "string",
+          "x-go-name": "WorkingDir"
+        },
+        "monitoringDiskUsage": {
+          "type": "boolean",
+          "x-go-name": "MonitorDiskUsage"
+        },
+        "monitoringDiskUsagePct": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MonitorDiskUsagePct"
+        },
+        "monitoringErreurLogLength": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MonitorErrorLogLength"
+        },
+        "monitoringIgnoreErrors": {
+          "type": "string",
+          "x-go-name": "MonitorIgnoreError"
+        },
+        "monitoringInnoDBStatus": {
+          "type": "boolean",
+          "x-go-name": "MonitorInnoDBStatus"
+        },
+        "monitoringKeyPath": {
+          "type": "string",
+          "x-go-name": "MonitoringKeyPath"
+        },
+        "monitoringLongQueryLogLength": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MonitorLongQueryLogLength"
+        },
+        "monitoringLongQueryScript": {
+          "type": "string",
+          "x-go-name": "MonitorLongQueryScript"
+        },
+        "monitoringLongQueryTime": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MonitorLongQueryTime"
+        },
+        "monitoringLongQueryWithProcess": {
+          "type": "boolean",
+          "x-go-name": "MonitorLongQueryWithProcess"
+        },
+        "monitoringLongQueryWithTable": {
+          "type": "boolean",
+          "x-go-name": "MonitorLongQueryWithTable"
+        },
+        "monitoringPause": {
+          "type": "boolean",
+          "x-go-name": "MonitorPause"
+        },
+        "monitoringPerformanceSchema": {
+          "type": "boolean",
+          "x-go-name": "MonitorPFS"
+        },
+        "monitoringProcesslist": {
+          "type": "boolean",
+          "x-go-name": "MonitorProcessList"
+        },
+        "monitoringQueries": {
+          "type": "boolean",
+          "x-go-name": "MonitorQueries"
+        },
+        "monitoringQueryRules": {
+          "type": "boolean",
+          "x-go-name": "MonitorQueryRules"
+        },
+        "monitoringSSLCert": {
+          "type": "string",
+          "x-go-name": "MonitoringSSLCert"
+        },
+        "monitoringSSLKey": {
+          "type": "string",
+          "x-go-name": "MonitoringSSLKey"
+        },
+        "monitoringSaveConfig": {
+          "type": "boolean",
+          "x-go-name": "ConfRewrite"
+        },
+        "monitoringScheduler": {
+          "type": "boolean",
+          "x-go-name": "MonitorScheduler"
+        },
+        "monitoringSchemaChange": {
+          "type": "boolean",
+          "x-go-name": "MonitorSchemaChange"
+        },
+        "monitoringSchemaChangeScript": {
+          "type": "string",
+          "x-go-name": "MonitorSchemaChangeScript"
+        },
+        "monitoringSharedir": {
+          "type": "string",
+          "x-go-name": "ShareDir"
+        },
+        "monitoringSocket": {
+          "type": "string",
+          "x-go-name": "Socket"
+        },
+        "monitoringTenant": {
+          "type": "string",
+          "x-go-name": "MonitorTenant"
+        },
+        "monitoringTicker": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MonitoringTicker"
+        },
+        "monitoringTunnelCredential": {
+          "type": "string",
+          "x-go-name": "TunnelCredential"
+        },
+        "monitoringTunnelHost": {
+          "type": "string",
+          "x-go-name": "TunnelHost"
+        },
+        "monitoringTunnelKeyPath": {
+          "type": "string",
+          "x-go-name": "TunnelKeyPath"
+        },
+        "monitoringVariableDiff": {
+          "type": "boolean",
+          "x-go-name": "MonitorVariableDiff"
+        },
+        "monitoringWaitRetry": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MonitorWaitRetry"
+        },
+        "monitoringWriteHeartbeat": {
+          "type": "boolean",
+          "x-go-name": "MonitorWriteHeartbeat"
+        },
+        "monitoringWriteHeartbeatCredential": {
+          "type": "string",
+          "x-go-name": "MonitorWriteHeartbeatCredential"
+        },
+        "myproxy": {
+          "type": "boolean",
+          "x-go-name": "MyproxyOn"
+        },
+        "myproxyPassword": {
+          "type": "string",
+          "x-go-name": "MyproxyPassword"
+        },
+        "myproxyPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MyproxyPort"
+        },
+        "myproxyUser": {
+          "type": "string",
+          "x-go-name": "MyproxyUser"
+        },
+        "mysqlrouter": {
+          "type": "boolean",
+          "x-go-name": "MysqlRouterOn"
+        },
+        "mysqlrouterPass": {
+          "type": "string",
+          "x-go-name": "MysqlRouterPass"
+        },
+        "mysqlrouterPort": {
+          "type": "string",
+          "x-go-name": "MysqlRouterPort"
+        },
+        "mysqlrouterReadPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MysqlRouterReadPort"
+        },
+        "mysqlrouterReadWritePort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MysqlRouterReadWritePort"
+        },
+        "mysqlrouterServers": {
+          "type": "string",
+          "x-go-name": "MysqlRouterHosts"
+        },
+        "mysqlrouterUser": {
+          "type": "string",
+          "x-go-name": "MysqlRouterUser"
+        },
+        "mysqlrouterWritePort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MysqlRouterWritePort"
+        },
+        "onpremiseSsh": {
+          "type": "boolean",
+          "x-go-name": "OnPremiseSSH"
+        },
+        "onpremiseSshCredential": {
+          "type": "string",
+          "x-go-name": "OnPremiseSSHCredential"
+        },
+        "onpremiseSshPort": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "OnPremiseSSHPort"
+        },
+        "opensvcAdminUser": {
+          "type": "string",
+          "x-go-name": "ProvAdminUser"
+        },
+        "opensvcCodeapp": {
+          "type": "string",
+          "x-go-name": "ProvCodeApp"
+        },
+        "opensvcHost": {
+          "type": "string",
+          "x-go-name": "ProvHost"
+        },
+        "opensvcP12Certificate": {
+          "type": "string",
+          "x-go-name": "ProvOpensvcP12Certificate"
+        },
+        "opensvcP12Secret": {
+          "type": "string",
+          "x-go-name": "ProvOpensvcP12Secret"
+        },
+        "opensvcRegister": {
+          "type": "boolean",
+          "x-go-name": "ProvRegister"
+        },
+        "opensvcUseCollectorApi": {
+          "type": "boolean",
+          "x-go-name": "ProvOpensvcUseCollectorAPI"
+        },
+        "opensvcUser": {
+          "type": "string",
+          "x-go-name": "ProvUser"
+        },
+        "provDBApplyDynamicConfig": {
+          "type": "boolean",
+          "x-go-name": "ProvDBApplyDynamicConfig"
+        },
+        "provDbAgents": {
+          "type": "string",
+          "x-go-name": "ProvAgents"
+        },
+        "provDbBinaryBasedir": {
+          "type": "string",
+          "x-go-name": "ProvDBBinaryBasedir"
+        },
+        "provDbBinaryInTarball": {
+          "type": "boolean",
+          "x-go-name": "ProvBinaryInTarball"
+        },
+        "provDbBinaryTarballName": {
+          "type": "string",
+          "x-go-name": "ProvBinaryTarballName"
+        },
+        "provDbBootstrapScript": {
+          "type": "string",
+          "x-go-name": "ProvDbBootstrapScript"
+        },
+        "provDbCleanupScript": {
+          "type": "string",
+          "x-go-name": "ProvDbCleanupScript"
+        },
+        "provDbClientBasedir": {
+          "type": "string",
+          "x-go-name": "ProvDBClientBasedir"
+        },
+        "provDbCpuCores": {
+          "type": "string",
+          "x-go-name": "ProvCores"
+        },
+        "provDbDatadirVersion": {
+          "type": "string",
+          "x-go-name": "ProvDatadirVersion"
+        },
+        "provDbDiskDevice": {
+          "type": "string",
+          "x-go-name": "ProvDiskDevice"
+        },
+        "provDbDiskDockerSize": {
+          "type": "string",
+          "x-go-name": "ProvDiskDockerSize"
+        },
+        "provDbDiskFs": {
+          "type": "string",
+          "x-go-name": "ProvDiskFS"
+        },
+        "provDbDiskFsCompress": {
+          "type": "string",
+          "x-go-name": "ProvDiskFSCompress"
+        },
+        "provDbDiskIops": {
+          "type": "string",
+          "x-go-name": "ProvIops"
+        },
+        "provDbDiskIopsLatency": {
+          "type": "string",
+          "x-go-name": "ProvIopsLatency"
+        },
+        "provDbDiskPool": {
+          "type": "string",
+          "x-go-name": "ProvDiskPool"
+        },
+        "provDbDiskSize": {
+          "type": "string",
+          "x-go-name": "ProvDisk"
+        },
+        "provDbDiskSnapshotKeep": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "ProvDiskSnapshotKeep"
+        },
+        "provDbDiskSnapshotPreferedMaster": {
+          "type": "boolean",
+          "x-go-name": "ProvDiskSnapshot"
+        },
+        "provDbDiskSystemSize": {
+          "type": "string",
+          "x-go-name": "ProvDiskSystemSize"
+        },
+        "provDbDiskTempSize": {
+          "type": "string",
+          "x-go-name": "ProvDiskTempSize"
+        },
+        "provDbDiskType": {
+          "type": "string",
+          "x-go-name": "ProvDiskType"
+        },
+        "provDbDockerImg": {
+          "type": "string",
+          "x-go-name": "ProvDbImg"
+        },
+        "provDbDomain": {
+          "type": "string",
+          "x-go-name": "ProvDomain"
+        },
+        "provDbExpireLogDays": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "ProvExpireLogDays"
+        },
+        "provDbLoadCsv": {
+          "type": "string",
+          "x-go-name": "ProvDBLoadCSV"
+        },
+        "provDbLoadSql": {
+          "type": "string",
+          "x-go-name": "ProvDBLoadSQL"
+        },
+        "provDbMaxConnections": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "ProvMaxConnections"
+        },
+        "provDbMemory": {
+          "type": "string",
+          "x-go-name": "ProvMem"
+        },
+        "provDbMemorySharedPct": {
+          "type": "string",
+          "x-go-name": "ProvMemSharedPct"
+        },
+        "provDbMemoryThreadedPct": {
+          "type": "string",
+          "x-go-name": "ProvMemThreadedPct"
+        },
+        "provDbNetGateway": {
+          "type": "string",
+          "x-go-name": "ProvGateway"
+        },
+        "provDbNetIface": {
+          "type": "string",
+          "x-go-name": "ProvNetIface"
+        },
+        "provDbNetMask": {
+          "type": "string",
+          "x-go-name": "ProvNetmask"
+        },
+        "provDbServiceType": {
+          "type": "string",
+          "x-go-name": "ProvType"
+        },
+        "provDbStartScript": {
+          "type": "string",
+          "x-go-name": "ProvDbStartScript"
+        },
+        "provDbStopScript": {
+          "type": "string",
+          "x-go-name": "ProvDbStopScript"
+        },
+        "provDbTags": {
+          "type": "string",
+          "x-go-name": "ProvTags"
+        },
+        "provDbVolumeData": {
+          "type": "string",
+          "x-go-name": "ProvVolumeData"
+        },
+        "provDbVolumeDocker": {
+          "type": "string",
+          "x-go-name": "ProvVolumeDocker"
+        },
+        "provDockerDaemonPrivate": {
+          "type": "boolean",
+          "x-go-name": "ProvDockerDaemonPrivate"
+        },
+        "provNetCni": {
+          "type": "boolean",
+          "x-go-name": "ProvNetCNI"
+        },
+        "provNetCniCluster": {
+          "type": "string",
+          "x-go-name": "ProvNetCNICluster"
+        },
+        "provOrchestrator": {
+          "type": "string",
+          "x-go-name": "ProvOrchestrator"
+        },
+        "provOrchestratorCluster": {
+          "type": "string",
+          "x-go-name": "ProvOrchestratorCluster"
+        },
+        "provOrchestratorEnable": {
+          "type": "string",
+          "x-go-name": "ProvOrchestratorEnable"
+        },
+        "provProxyAgents": {
+          "type": "string",
+          "x-go-name": "ProvProxAgents"
+        },
+        "provProxyAgentsFailover": {
+          "type": "string",
+          "x-go-name": "ProvProxAgentsFailover"
+        },
+        "provProxyBootstrapScript": {
+          "type": "string",
+          "x-go-name": "ProvProxyBootstrapScript"
+        },
+        "provProxyCleanupScript": {
+          "type": "string",
+          "x-go-name": "ProvProxyCleanupScript"
+        },
+        "provProxyCpuCores": {
+          "type": "string",
+          "x-go-name": "ProvProxCores"
+        },
+        "provProxyDiskDevice": {
+          "type": "string",
+          "x-go-name": "ProvProxDiskDevice"
+        },
+        "provProxyDiskFs": {
+          "type": "string",
+          "x-go-name": "ProvProxDiskFS"
+        },
+        "provProxyDiskPool": {
+          "type": "string",
+          "x-go-name": "ProvProxDiskPool"
+        },
+        "provProxyDiskSize": {
+          "type": "string",
+          "x-go-name": "ProvProxDisk"
+        },
+        "provProxyDiskType": {
+          "type": "string",
+          "x-go-name": "ProvProxDiskType"
+        },
+        "provProxyDockerHaproxyImg": {
+          "type": "string",
+          "x-go-name": "ProvProxHaproxyImg"
+        },
+        "provProxyDockerMaxscaleImg": {
+          "type": "string",
+          "x-go-name": "ProvProxMaxscaleImg"
+        },
+        "provProxyDockerMysqlrouterImg": {
+          "type": "string",
+          "x-go-name": "ProvProxMysqlRouterImg"
+        },
+        "provProxyDockerProxysqlImg": {
+          "type": "string",
+          "x-go-name": "ProvProxProxysqlImg"
+        },
+        "provProxyDockerShardproxyImg": {
+          "type": "string",
+          "x-go-name": "ProvProxShardingImg"
+        },
+        "provProxyMemory": {
+          "type": "string",
+          "x-go-name": "ProvProxMem"
+        },
+        "provProxyNetGateway": {
+          "type": "string",
+          "x-go-name": "ProvProxGateway"
+        },
+        "provProxyNetIface": {
+          "type": "string",
+          "x-go-name": "ProvProxNetIface"
+        },
+        "provProxyNetMask": {
+          "type": "string",
+          "x-go-name": "ProvProxNetmask"
+        },
+        "provProxyRouteAddr": {
+          "type": "string",
+          "x-go-name": "ProvProxRouteAddr"
+        },
+        "provProxyRouteMask": {
+          "type": "string",
+          "x-go-name": "ProvProxRouteMask"
+        },
+        "provProxyRoutePolicy": {
+          "type": "string",
+          "x-go-name": "ProvProxRoutePolicy"
+        },
+        "provProxyRoutePort": {
+          "type": "string",
+          "x-go-name": "ProvProxRoutePort"
+        },
+        "provProxyServiceType": {
+          "type": "string",
+          "x-go-name": "ProvProxType"
+        },
+        "provProxyStartScript": {
+          "type": "string",
+          "x-go-name": "ProvProxyStartScript"
+        },
+        "provProxyStopScript": {
+          "type": "string",
+          "x-go-name": "ProvProxyStopScript"
+        },
+        "provProxyTags": {
+          "type": "string",
+          "x-go-name": "ProvProxTags"
+        },
+        "provProxyVolumeData": {
+          "type": "string",
+          "x-go-name": "ProvProxVolumeData"
+        },
+        "provServicePlan": {
+          "type": "string",
+          "x-go-name": "ProvServicePlan"
+        },
+        "provServicePlanRegistry": {
+          "type": "string",
+          "x-go-name": "ProvServicePlanRegistry"
+        },
+        "provSphinxAgents": {
+          "type": "string",
+          "x-go-name": "ProvSphinxAgents"
+        },
+        "provSphinxCpuCores": {
+          "type": "string",
+          "x-go-name": "ProvSphinxCores"
+        },
+        "provSphinxDiskDevice": {
+          "type": "string",
+          "x-go-name": "ProvSphinxDiskDevice"
+        },
+        "provSphinxDiskFs": {
+          "type": "string",
+          "x-go-name": "ProvSphinxDiskFS"
+        },
+        "provSphinxDiskPool": {
+          "type": "string",
+          "x-go-name": "ProvSphinxDiskPool"
+        },
+        "provSphinxDiskSize": {
+          "type": "string",
+          "x-go-name": "ProvSphinxDisk"
+        },
+        "provSphinxDiskType": {
+          "type": "string",
+          "x-go-name": "ProvSphinxDiskType"
+        },
+        "provSphinxDockerImg": {
+          "type": "string",
+          "x-go-name": "ProvSphinxImg"
+        },
+        "provSphinxMaxChildrens": {
+          "type": "string",
+          "x-go-name": "ProvSphinxMaxChildren"
+        },
+        "provSphinxMemory": {
+          "type": "string",
+          "x-go-name": "ProvSphinxMem"
+        },
+        "provSphinxReindexSchedule": {
+          "type": "string",
+          "x-go-name": "ProvSphinxCron"
+        },
+        "provSphinxServiceType": {
+          "type": "string",
+          "x-go-name": "ProvSphinxType"
+        },
+        "provSphinxTags": {
+          "type": "string",
+          "x-go-name": "ProvSphinxTags"
+        },
+        "provTlsServerCa": {
+          "type": "string",
+          "x-go-name": "ProvSSLCa"
+        },
+        "provTlsServerCert": {
+          "type": "string",
+          "x-go-name": "ProvSSLCert"
+        },
+        "provTlsServerKey": {
+          "type": "string",
+          "x-go-name": "ProvSSLKey"
+        },
+        "proxyServersBackendCompression": {
+          "type": "boolean",
+          "x-go-name": "PRXServersBackendCompression"
+        },
+        "proxyServersBackendMaxConnections": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "PRXServersBackendMaxConnections"
+        },
+        "proxyServersBackendMaxReplicationLag": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "PRXServersBackendMaxReplicationLag"
+        },
+        "proxyServersReadOnMaster": {
+          "type": "boolean",
+          "x-go-name": "PRXServersReadOnMaster"
+        },
+        "proxysql": {
+          "type": "boolean",
+          "x-go-name": "ProxysqlOn"
+        },
+        "proxysqlAdminPort": {
+          "type": "string",
+          "x-go-name": "ProxysqlAdminPort"
+        },
+        "proxysqlBinaryPath": {
+          "type": "string",
+          "x-go-name": "ProxysqlBinaryPath"
+        },
+        "proxysqlBootstrap": {
+          "type": "boolean",
+          "x-go-name": "ProxysqlBootstrap"
+        },
+        "proxysqlBootstrapHostgroups": {
+          "type": "boolean",
+          "x-go-name": "ProxysqlBootstrapHG"
+        },
+        "proxysqlBootstrapQueryRules": {
+          "type": "boolean",
+          "x-go-name": "ProxysqlBootstrapQueryRules"
+        },
+        "proxysqlBootstrapVariables": {
+          "type": "boolean",
+          "x-go-name": "ProxysqlBootstrapVariables"
+        },
+        "proxysqlBootstrapyUsers": {
+          "type": "boolean",
+          "x-go-name": "ProxysqlCopyGrants"
+        },
+        "proxysqlMasterIsReader": {
+          "type": "boolean",
+          "x-go-name": "ProxysqlMasterIsReader"
+        },
+        "proxysqlMultiplexing": {
+          "type": "boolean",
+          "x-go-name": "ProxysqlMultiplexing"
+        },
+        "proxysqlPassword": {
+          "type": "string",
+          "x-go-name": "ProxysqlPassword"
+        },
+        "proxysqlPort": {
+          "type": "string",
+          "x-go-name": "ProxysqlPort"
+        },
+        "proxysqlReaderHostgroup": {
+          "type": "string",
+          "x-go-name": "ProxysqlReaderHostgroup"
+        },
+        "proxysqlSaveToDisk": {
+          "type": "boolean",
+          "x-go-name": "ProxysqlSaveToDisk"
+        },
+        "proxysqlServers": {
+          "type": "string",
+          "x-go-name": "ProxysqlHosts"
+        },
+        "proxysqlServers-ipv6": {
+          "type": "string",
+          "x-go-name": "ProxysqlHostsIPV6"
+        },
+        "proxysqlUser": {
+          "type": "string",
+          "x-go-name": "ProxysqlUser"
+        },
+        "proxysqlWriterHostgroup": {
+          "type": "string",
+          "x-go-name": "ProxysqlWriterHostgroup"
+        },
+        "registryConsul": {
+          "type": "boolean",
+          "x-go-name": "RegistryConsul"
+        },
+        "registryServers": {
+          "type": "string",
+          "x-go-name": "RegistryHosts"
+        },
+        "replicationCredential": {
+          "type": "string",
+          "x-go-name": "RplUser"
+        },
+        "replicationErrorScript": {
+          "type": "string",
+          "x-go-name": "ReplicationErrorScript"
+        },
+        "replicationMasterConnectRetry": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "MasterConnectRetry"
+        },
+        "replicationMasterSlaveNeverRelay": {
+          "type": "boolean",
+          "x-go-name": "ReplicationNoRelay"
+        },
+        "replicationMasterSlavePgLogical": {
+          "type": "boolean",
+          "x-go-name": "MasterSlavePgLogical"
+        },
+        "replicationMasterSlavePgStream": {
+          "type": "boolean",
+          "x-go-name": "MasterSlavePgStream"
+        },
+        "replicationMultiMaster": {
+          "type": "boolean",
+          "x-go-name": "MultiMaster"
+        },
+        "replicationMultiMasterRing": {
+          "type": "boolean",
+          "x-go-name": "MultiMasterRing"
+        },
+        "replicationMultiMasterWsrep": {
+          "type": "boolean",
+          "x-go-name": "MultiMasterWsrep"
+        },
+        "replicationMultiMasterWsrepSSTMethod": {
+          "type": "string",
+          "x-go-name": "MultiMasterWsrepSSTMethod"
+        },
+        "replicationMultiTierSlave": {
+          "type": "boolean",
+          "x-go-name": "MultiTierSlave"
+        },
+        "replicationMultisourceHeadClusters": {
+          "type": "string",
+          "x-go-name": "ReplicationMultisourceHeadClusters"
+        },
+        "replicationSourceName": {
+          "type": "string",
+          "x-go-name": "MasterConn"
+        },
+        "replicationUseSsl": {
+          "type": "boolean",
+          "x-go-name": "ReplicationSSL"
+        },
+        "schedulerDatabaseLogsTableKeep": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "SchedulerMaintenanceDatabaseLogsTableKeep"
+        },
+        "schedulerDbServersLogicalBackup": {
+          "type": "boolean",
+          "x-go-name": "SchedulerBackupLogical"
+        },
+        "schedulerDbServersLogicalBackupCron": {
+          "type": "string",
+          "x-go-name": "BackupLogicalCron"
+        },
+        "schedulerDbServersLogs": {
+          "type": "boolean",
+          "x-go-name": "SchedulerDatabaseLogs"
+        },
+        "schedulerDbServersLogsCron": {
+          "type": "string",
+          "x-go-name": "BackupDatabaseLogCron"
+        },
+        "schedulerDbServersLogsTableRotate": {
+          "type": "boolean",
+          "x-go-name": "SchedulerDatabaseLogsTableRotate"
+        },
+        "schedulerDbServersLogsTableRotateCron": {
+          "type": "string",
+          "x-go-name": "SchedulerDatabaseLogsTableRotateCron"
+        },
+        "schedulerDbServersOptimize": {
+          "type": "boolean",
+          "x-go-name": "SchedulerDatabaseOptimize"
+        },
+        "schedulerDbServersOptimizeCron": {
+          "type": "string",
+          "x-go-name": "BackupDatabaseOptimizeCron"
+        },
+        "schedulerDbServersPhysicalBackup": {
+          "type": "boolean",
+          "x-go-name": "SchedulerBackupPhysical"
+        },
+        "schedulerDbServersPhysicalBackupCron": {
+          "type": "string",
+          "x-go-name": "BackupPhysicalCron"
+        },
+        "schedulerDbServersReceiverPorts": {
+          "type": "string",
+          "x-go-name": "SchedulerReceiverPorts"
+        },
+        "schedulerJobsSsh": {
+          "type": "boolean",
+          "x-go-name": "SchedulerJobsSSH"
+        },
+        "schedulerJobsSshCron": {
+          "type": "string",
+          "x-go-name": "SchedulerJobsSSHCron"
+        },
+        "schedulerRollingReprov": {
+          "type": "boolean",
+          "x-go-name": "SchedulerRollingReprov"
+        },
+        "schedulerRollingReprovCron": {
+          "type": "string",
+          "x-go-name": "SchedulerRollingReprovCron"
+        },
+        "schedulerRollingRestart": {
+          "type": "boolean",
+          "x-go-name": "SchedulerRollingRestart"
+        },
+        "schedulerRollingRestartCron": {
+          "type": "string",
+          "x-go-name": "SchedulerRollingRestartCron"
+        },
+        "schedulerSlaRotateCron": {
+          "type": "string",
+          "x-go-name": "SchedulerSLARotateCron"
+        },
+        "shardproxy": {
+          "type": "boolean",
+          "x-go-name": "MdbsProxyOn"
+        },
+        "shardproxyCopyGrants": {
+          "type": "boolean",
+          "x-go-name": "MdbsProxyCopyGrants"
+        },
+        "shardproxyCredential": {
+          "type": "string",
+          "x-go-name": "MdbsProxyCredential"
+        },
+        "shardproxyIgnoreTables": {
+          "type": "string",
+          "x-go-name": "MdbsIgnoreTables"
+        },
+        "shardproxyLoadSystem": {
+          "type": "boolean",
+          "x-go-name": "MdbsProxyLoadSystem"
+        },
+        "shardproxyServers": {
+          "type": "string",
+          "x-go-name": "MdbsProxyHosts"
+        },
+        "shardproxyServers-ipv6": {
+          "type": "string",
+          "x-go-name": "MdbsHostsIPV6"
+        },
+        "shardproxyUniversalTables": {
+          "type": "string",
+          "x-go-name": "MdbsUniversalTables"
+        },
+        "slaposConfig": {
+          "type": "string",
+          "x-go-name": "SlapOSConfig"
+        },
+        "slaposDbPartitions": {
+          "type": "string",
+          "x-go-name": "SlapOSDBPartitions"
+        },
+        "slaposHaproxyPartitions": {
+          "type": "string",
+          "x-go-name": "SlapOSHaProxyPartitions"
+        },
+        "slaposMaxscalePartitions": {
+          "type": "string",
+          "x-go-name": "SlapOSMaxscalePartitions"
+        },
+        "slaposProxysqlPartitions": {
+          "type": "string",
+          "x-go-name": "SlapOSProxySQLPartitions"
+        },
+        "slaposShardproxyPartitions": {
+          "type": "string",
+          "x-go-name": "SlapOSShardProxyPartitions"
+        },
+        "slaposSphinxPartitions": {
+          "type": "string",
+          "x-go-name": "SlapOSSphinxPartitions"
+        },
+        "sphinx": {
+          "type": "boolean",
+          "x-go-name": "SphinxOn"
+        },
+        "sphinxConfig": {
+          "type": "string",
+          "x-go-name": "SphinxConfig"
+        },
+        "sphinxPort": {
+          "type": "string",
+          "x-go-name": "SphinxPort"
+        },
+        "sphinxServers": {
+          "type": "string",
+          "x-go-name": "SphinxHosts"
+        },
+        "sphinxServers-ipv6": {
+          "type": "string",
+          "x-go-name": "SphinxHostsIPV6"
+        },
+        "sphinxSqlPort": {
+          "type": "string",
+          "x-go-name": "SphinxQLPort"
+        },
+        "switchoverAtEqualGtid": {
+          "type": "boolean",
+          "x-go-name": "SwitchGtidCheck"
+        },
+        "switchoverAtSync": {
+          "type": "boolean",
+          "x-go-name": "SwitchSync"
+        },
+        "switchoverDecreaseMaxConn": {
+          "type": "boolean",
+          "x-go-name": "SwitchDecreaseMaxConn"
+        },
+        "switchoverDecreaseMaxConnValue": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "SwitchDecreaseMaxConnValue"
+        },
+        "switchoverMaxSlaveDelay": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "SwitchMaxDelay"
+        },
+        "switchoverSlaveWaitCatch": {
+          "type": "boolean",
+          "x-go-name": "SwitchSlaveWaitCatch"
+        },
+        "switchoverWaitKill": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "SwitchWaitKill"
+        },
+        "switchoverWaitRouteChange": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "SwitchSlaveWaitRouteChange"
+        },
+        "switchoverWaitTrx": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "SwitchWaitTrx"
+        },
+        "switchoverWaitWriteQuery": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "SwitchWaitWrite"
+        },
+        "sysbenchBinaryPath": {
+          "type": "string",
+          "x-go-name": "SysbenchBinaryPath"
+        },
+        "sysbenchThreads": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "SysbenchThreads"
+        },
+        "sysbenchTime": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "SysbenchTime"
+        },
+        "sysbenchV1": {
+          "type": "boolean",
+          "x-go-name": "SysbenchV1"
+        },
+        "test": {
+          "type": "boolean",
+          "x-go-name": "Test"
+        },
+        "testInjectTraffic": {
+          "type": "boolean",
+          "x-go-name": "TestInjectTraffic"
+        },
+        "verbose": {
+          "type": "boolean",
+          "x-go-name": "Verbose"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/config"
+    },
+    "Crash": {
+      "description": "Crash will store informations on a crash based on the replication stream",
+      "type": "object",
+      "properties": {
+        "ElectedMasterURL": {
+          "type": "string"
+        },
+        "FailoverIOGtid": {
+          "$ref": "#/definitions/List"
+        },
+        "FailoverMasterLogFile": {
+          "type": "string"
+        },
+        "FailoverMasterLogPos": {
+          "type": "string"
+        },
+        "FailoverSemiSyncSlaveStatus": {
+          "type": "boolean"
+        },
+        "NewMasterLogFile": {
+          "type": "string"
+        },
+        "NewMasterLogPos": {
+          "type": "string"
+        },
+        "URL": {
+          "type": "string"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/cluster"
+    },
+    "Gtid": {
+      "description": "Gtid defines a GTID object",
+      "type": "object",
+      "properties": {
+        "domainId": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "DomainID"
+        },
+        "seqNo": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "SeqNo"
+        },
+        "serverId": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "ServerID"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/utils/gtid"
+    },
+    "Heartbeat": {
+      "type": "object",
+      "properties": {
+        "cluster": {
+          "type": "string",
+          "x-go-name": "Cluster"
+        },
+        "failed": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "Failed"
+        },
+        "hosts": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "Hosts"
+        },
+        "id": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "UID"
+        },
+        "master": {
+          "type": "string",
+          "x-go-name": "Master"
+        },
+        "secret": {
+          "type": "string",
+          "x-go-name": "Secret"
+        },
+        "status": {
+          "type": "string",
+          "x-go-name": "Status"
+        },
+        "uuid": {
+          "type": "string",
+          "x-go-name": "UUID"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/server"
+    },
+    "HttpLog": {
+      "description": "Collection of log messages",
+      "type": "object",
+      "properties": {
+        "buffer": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HttpMessage"
+          },
+          "x-go-name": "Buffer"
+        },
+        "len": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "Len"
+        },
+        "line": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "Line"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/utils/s18log"
+    },
+    "HttpMessage": {
+      "description": "Log message\nin: HttpMessage",
+      "type": "object",
+      "properties": {
+        "group": {
+          "type": "string",
+          "x-go-name": "Group"
+        },
+        "level": {
+          "type": "string",
+          "x-go-name": "Level"
+        },
+        "text": {
+          "type": "string",
+          "x-go-name": "Text"
+        },
+        "timestamp": {
+          "type": "string",
+          "x-go-name": "Timestamp"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/utils/s18log"
+    },
+    "JobResult": {
+      "type": "object",
+      "properties": {
+        "flashbackmariadbackup": {
+          "type": "boolean",
+          "x-go-name": "Flashbackmariadbackup"
+        },
+        "flashbackmysqldump": {
+          "type": "boolean",
+          "x-go-name": "Flashbackmysqldump"
+        },
+        "flashbackxtrabackup": {
+          "type": "boolean",
+          "x-go-name": "Flashbackxtrabackup"
+        },
+        "mariabackup": {
+          "type": "boolean",
+          "x-go-name": "Mariabackup"
+        },
+        "optimize": {
+          "type": "boolean",
+          "x-go-name": "Optimize"
+        },
+        "reseedmariabackup": {
+          "type": "boolean",
+          "x-go-name": "Reseedmariabackup"
+        },
+        "reseedmysqldump": {
+          "type": "boolean",
+          "x-go-name": "Reseedmysqldump"
+        },
+        "reseedxtrabackup": {
+          "type": "boolean",
+          "x-go-name": "Reseedxtrabackup"
+        },
+        "restart": {
+          "type": "boolean",
+          "x-go-name": "Restart"
+        },
+        "start": {
+          "type": "boolean",
+          "x-go-name": "Start"
+        },
+        "stop": {
+          "type": "boolean",
+          "x-go-name": "Stop"
+        },
+        "xtrabackup": {
+          "type": "boolean",
+          "x-go-name": "Xtrabackup"
+        },
+        "zfssnapback": {
+          "type": "boolean",
+          "x-go-name": "Zfssnapback"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/cluster"
+    },
+    "List": {
+      "description": "List defines a slice of GTIDs",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Gtid"
+      },
+      "x-go-package": "github.com/signal18/replication-manager/utils/gtid"
+    },
+    "Mutex": {
+      "description": "A Mutex must not be copied after first use.",
+      "type": "object",
+      "title": "A Mutex is a mutual exclusion lock.\nThe zero value for a Mutex is an unlocked mutex.",
+      "x-go-package": "sync"
+    },
+    "Sla": {
+      "type": "object",
+      "properties": {
+        "firsttime": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "Firsttime"
+        },
+        "lasttime": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "Lasttime"
+        },
+        "uptime": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "Uptime"
+        },
+        "uptimeFailable": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "UptimeFailable"
+        },
+        "uptimeSemisync": {
+          "type": "integer",
+          "format": "int64",
+          "x-go-name": "UptimeSemisync"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/utils/state"
+    },
+    "Tag": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string",
+          "x-go-name": "Category"
+        },
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "x-go-name": "Id"
+        },
+        "name": {
+          "type": "string",
+          "x-go-name": "Name"
+        }
+      },
+      "x-go-package": "github.com/signal18/replication-manager/cluster"
+    },
+    "crashList": {
+      "description": "Collection of Crash reports",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Crash"
+      },
+      "x-go-package": "github.com/signal18/replication-manager/cluster"
+    }
+  },
+  "responses": {
+    "agent": {
+      "description": "The Agent describes the server where the cluster runs on.",
+      "headers": {
+        "cpuCores": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "cpuFreq": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "hostName": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "memBytes": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "memFreeBytes": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "osKernel": {
+          "type": "string"
+        },
+        "osName": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "cluster": {
+      "description": "A Cluster has all the information associated with the configured cluster model\nand its servers.",
+      "schema": {
+        "$ref": "#/definitions/Cluster"
+      }
+    },
+    "clusters": {
+      "description": "A Clusters is a collection of Cluster objects",
+      "schema": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/Cluster"
+        }
+      }
+    },
+    "crash": {
+      "description": "Crash will store informations on a crash based on the replication stream",
+      "schema": {
+        "$ref": "#/definitions/List"
+      },
+      "headers": {
+        "ElectedMasterURL": {
+          "type": "string"
+        },
+        "FailoverIOGtid": {},
+        "FailoverMasterLogFile": {
+          "type": "string"
+        },
+        "FailoverMasterLogPos": {
+          "type": "string"
+        },
+        "FailoverSemiSyncSlaveStatus": {
+          "type": "boolean"
+        },
+        "NewMasterLogFile": {
+          "type": "string"
+        },
+        "NewMasterLogPos": {
+          "type": "string"
+        },
+        "URL": {
+          "type": "string"
+        }
+      }
+    },
+    "crashList": {
+      "description": "Collection of Crash reports",
+      "schema": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/Crash"
+        }
+      }
+    },
+    "heartbeat": {
+      "description": "A Heartbeat returns a quick overview of the cluster status",
+      "schema": {
+        "$ref": "#/definitions/Heartbeat"
+      }
+    },
+    "httplog": {
+      "description": "Collection of log messages",
+      "headers": {
+        "buffer": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/HttpMessage"
+          }
+        },
+        "len": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "line": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "httpmessage": {
+      "description": "Log message\nin: HttpMessage",
+      "headers": {
+        "group": {
+          "type": "string"
+        },
+        "level": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string"
+        }
+      }
+    },
+    "status": {
+      "description": "The Status contains string value for the alive status.\nPossible values are: running, starting, errors",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "alive": {
+            "type": "string",
+            "x-go-name": "Alive",
+            "example": "running"
+          }
+        }
+      },
+      "headers": {
+        "Access-Control-Allow-Origin": {
+          "type": "string",
+          "example": "*"
+        }
+      }
+    },
+    "termlog": {
+      "description": "Collection of log messages",
+      "schema": {
+        "$ref": "#/definitions/Mutex"
+      },
+      "headers": {
+        "Buffer": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "L": {},
+        "Len": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "Line": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "api_key": []
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+<md-content class="md-padding">
+
+
+
+<div ng-repeat="server in servers">
+    <div ng-if="server.id==selectedServer" ng-include src="'static/toolbar-server.html'"></div>
+    <md-card ng-if="server.id==selectedServer">
+    <md-card-content   class="serverlogitem">
+      <p  ng-switch="server.state" class="sectionheader">
+        <span ng-switch-when="Master" class="label label-primary">Master   {{server.host}}:{{server.port}}<label
+                ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+            <span ng-switch-when="Suspect" class="label label-warning">Suspect   {{server.host}}:{{server.port}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+            <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error   {{server.host}}:{{server.port}}<label
+                    ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+            <span ng-switch-when="StandAlone" class="label label-info">Standalone   {{server.host}}:{{server.port}}<label
+                    ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+            <span ng-switch-default class="label label-default">{{server.state}}  {{server.host}}:{{server.port}}
+                <label ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+     </p>
+     </md-card-content>
+     <table  border=1 >
+        <col  width="30%"/>
+        <col  width="60%"/>
+
+        <tr>
+           <th >Status</th>
+           <th >Value</th>
+
+        </tr>
+
+     <tr ng-repeat="v in statusinnodb">
+        <td class="process">{{ v.variableName }}</td>
+        <td class="process">{{ v.value }}    </td>
+     </tr>
+
+
+   <table>
+         </md-card>
+         <BR>
+
+</div>
+
+</md-content>

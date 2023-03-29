@@ -1,0 +1,32 @@
+<div class="container" ng-controller="LoginController">
+    <div class="row login-box ">
+        <div class="modal-header login-logo">
+            <img src="/static/img/logo.png" alt="Replication Manager">
+        </div>
+        <div class="modal-body">
+            <form name="login_form" ng-submit="login(user)">
+                <div class="form-group has-feedback">
+                    <input type="text" name="username" value="" placeholder="Username" class="form-control" id="username" maxlength="80" size="30" ng-model="user.username" required />
+                    <span class="glyphicon glyphicon-user form-control-feedback"></span>
+                    <span class="text-danger" ng-show="login_form.username.$touched && login_form.username.$invalid">The Username is required.</span>
+                </div>
+
+
+                <div class="form-group has-feedback">
+                    <input type="password" autocomplete="current-password" name="password" value="" placeholder="Password" class="form-control" id="password" size="30" ng-model="user.password" required />            <span class="glyphicon glyphicon-lock form-control-feedback"></span>
+                    <span class="text-danger" ng-show="login_form.password.$touched && login_form.password.$invalid">The Password is required.</span>
+                </div>
+
+                <div class="form-group has-feedback">
+                    <button type="submit" class="btn btn-primary float-right" ng-disabled="login_form.username.$dirty && login_form.username.$invalid ||
+                    login_form.password.$dirty && login_form.password.$invalid">Sign in</button>
+                    <a href="#">Forgot Password?</a>
+                </div>
+
+            </form>
+        </div>
+        <div ng-if="message" class="alert alert-danger">
+            {{message}}
+        </div>
+    </div>
+</div>

@@ -1,0 +1,107 @@
+<md-content class="md-padding">
+
+
+
+<div ng-repeat="server in servers">
+        <div ng-if="server.id==selectedServer" ng-include src="'static/toolbar-server.html'"></div>
+
+         <md-card ng-if="server.id==selectedServer">
+
+             <md-card-content>
+               <p  ng-switch="server.state" class="sectionheader">
+                 <span ng-switch-when="Master" class="label label-primary">Master   {{server.host}}:{{server.port}}<label
+                         ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+                     <span ng-switch-when="Suspect" class="label label-warning">Suspect   {{server.host}}:{{server.port}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                     <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error   {{server.host}}:{{server.port}}<label
+                             ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+                     <span ng-switch-when="StandAlone" class="label label-info">Standalone   {{server.host}}:{{server.port}}<label
+                             ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+                     <span ng-switch-default class="label label-default">{{server.state}}  {{server.host}}:{{server.port}}
+                         <label ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
+              </p>
+              </md-card-content>
+                <style>
+              table th:hover{
+      text-decoration: underline;
+      cursor: pointer;
+  }
+  .table .action-column{
+      width: 230px;
+  }
+  .table .action-column:hover{
+      text-decoration: none;
+      cursor: default;
+  }
+  .table tfoot .pagination{
+      float: right;
+      margin: 0;
+  }
+  .table tfoot .pagination li{
+      cursor: pointer;
+  }
+  .table tfoot select{
+      width: 90px;
+      float: right;
+      margin-right: 8px;
+  }
+    </style>
+    <table  bs-table-control="bsTableSlow"></table>
+<!--
+                   <table id="dtslowqueries" bs-table border=1 class="table slowlog" >
+                     <thead>
+                     <col width="3%"/>
+                     <col width="12%"/>
+                     <col width="34%"/>
+                     <col width="12%"/>
+                     <col width="6%"/>
+                     <col width="5%"/>
+                     <col width="5%"/>
+                     <col width="5%"/>
+                     <col width="6%"/>
+                     <col width="6%"/>
+                     <col width="6%"/>
+
+                      <tr >
+                         <th rowspan=2></th>
+                         <th rowspan=2>At</th>
+                         <th rowspan=2>Query</th>
+                         <th rowspan=2>User</th>
+                         <th rowspan=2>Time</th>
+                         <th rowspan=2>Lock</th>
+                         <th rowspan=2>Cache</th>
+                         <th rowspan=2>Thread</th>
+                         <th align="center" colspan=3>Rows</th>
+                      </tr>
+                      <tr>
+
+                         <th align="center">Examined</th>
+                         <th align="center">Send</th>
+                         <th align="center">Affected</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr ng-repeat="logline in slowqueries" >
+                      <th ng-click="queryExplainPFS(logline.digest)">
+                         <i href="queryExplainPFS(logline.digest)" class="fas fa-eye"></i>
+                        
+                        </th>
+
+                         <td class="stamp">{{ logline.timestamp }}</td>
+                         <td class="text">{{ logline.query }}    </td>
+                         <td class="text">{{ logline.user }}@{{ logline.host }}</td>
+                         <td class="text">{{ logline.timeMetrics.queryTime }}</td>
+                         <td class="text">{{ logline.timeMetrics.LockTime }}</td>
+                         <td class="text">{{ logline.boolMetrics.qcHit }}</td>
+                         <td class="text">{{ logline.numberMetrics.threadId }}</td>
+                         <td class="text">{{ logline.numberMetrics.rowsExamined }}</td>
+                         <td class="text">{{ logline.numberMetrics.rowsSent }}</td>
+                         <td class="text">{{ logline.numberMetrics.rowsAffected }}</td>
+                      </tr>
+                      <tbody>
+                   </table>
+-->
+             </md-card>
+             <BR><BR>
+</div>
+
+</md-content>

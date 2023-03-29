@@ -1,0 +1,20 @@
+<md-content class="md-padding">
+<div> aaa {{certificates}}</div>
+<md-card>
+   <md-card-content>
+      <p class="sectionheader">Client Certificates</p>
+   </md-card-content>
+
+   <table  class="table">
+      <tr ng-class="">
+         <td width="20%">Ca Cert:</td width="100%"><td><textarea  rows="10" cols="100">{{certificates.caCert}}</textarea></td>
+      </tr>
+  <tr ng-class="">
+         <td>Client Cert:  </td><td><textarea rows="10" cols="100" >{{certificates.clientCert}}</textarea></td>
+       </tr>
+  <tr ng-class="">
+          <td>Client Key:</td><td><textarea rows="10" cols="100" >{{certificates.clientKey}}</textarea></td>
+      </tr>
+   </table>
+</md-card>
+</md-content>

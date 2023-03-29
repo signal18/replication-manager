@@ -1,0 +1,24 @@
+
+<md-content class="md-padding">
+<md-card>
+   <md-card-content>
+      <p class="sectionheader">Backups</p>
+   </md-card-content>
+   <table ng-if="backups" class="table">
+      <tr>
+         <th width="8%">Id</th>
+         <th width="20%">Time</th>
+         <th>Path</th>
+         <th width="20%">Hostname</th>
+
+      </tr>
+      <tr ng-repeat="bck in backups" ng-class="">
+         <td>{{bck.short_id}}</td>
+         <td>{{bck.time}}</td>
+         <td>{{bck.paths[0]}}</td>
+         <td>{{bck.hostname}}</td>
+
+      </tr>
+   </table>
+</md-card>
+</md-content>
