@@ -2719,10 +2719,22 @@ func AddReplicationUser(db *sqlx.DB, myver *MySQLVersion, user string, password 
 	return nil
 }
 
-func SetUserPassword(db *sqlx.DB, myver *MySQLVersion, user_host string, user_name string, new_password string) error {
-	_, err := db.Exec("ALTER USER '" + user_name + "'@'" + user_host + "' IDENTIFIED BY '" + new_password + "'")
+func SetUserPassword(db *sqlx.DB, myver *MySQLVersion, user_host string, user_name string, new_password string) (string, error) {
+	query := "ALTER USER '" + user_name + "'@'" + user_host + "' IDENTIFIED BY '" + new_password + "'"
+	_, err := db.Exec(query)
 	if err != nil {
-		return err
+
+		return query, err
 	}
-	return nil
+	return query, nil
+}
+
+func RenameUserPassword(db *sqlx.DB, myver *MySQLVersion, user_host string, old_user_name string, new_password string, new_user_name string) (string, error) {
+	query := "RENAME USER '" + old_user_name + "'@'" + user_host + "' TO '" + new_user_name + "'@'" + user_host + "'"
+	_, err := db.Exec(query)
+	if err != nil {
+
+		return query, err
+	}
+	return query, nil
 }

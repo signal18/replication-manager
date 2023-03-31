@@ -1,0 +1,50 @@
+<md-card ng-if="settings.config.test">
+    <table class="table">
+        <tr>
+            <th colspan=3>
+              Tests
+            </th>
+        </tr>
+        <tr>
+          <td  colspan=2>
+                <label for="test" action="/runonetest" >
+                </label>
+                <md-select name="selectedTest" id="selectedTest" ng-model="selectedTest" ng-change="runonetest(selectedTest)">
+                    <md-option ng-selected="{{element == settings.tests}}"
+                               ng-repeat="element in settings.tests" value="{{element}}">{{element}}</md-option>
+                </md-select>
+          </td> <td>
+              <md-button type="button" class="btn btn-primary" ng-click="test()">Run Tests</md-button>
+          </td>
+        </tr>
+        <tr>
+          <td colspan=3>
+              <md-button type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</md-button>
+          </td>
+        </tr>
+        <tr>
+            <td colspan=2>
+                Waiting Rejoin
+            </td>
+            <td>
+              {{ selectedCluster.waitingRejoin }}
+            </td>
+        </tr>
+        <tr>
+            <td colspan=2>
+                Waiting Switchover
+            </td>
+            <td>
+              {{ selectedCluster.waitingSwitchover }}
+            </td>
+        </tr>
+        <tr>
+            <td colspan=2>
+                Waiting Failover
+            </td>
+            <td>
+              {{ selectedCluster.waitingFailover }}
+            </td>
+        </tr>
+    </table>
+</md-card>

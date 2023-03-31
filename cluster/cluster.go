@@ -26,6 +26,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
+	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
@@ -121,7 +122,9 @@ type Cluster struct {
 	vmaster                       *ServerMonitor              `json:"vmaster"`
 	mxs                           *maxscale.MaxScale          `json:"-"`
 	dbUser                        string                      `json:"-"`
+	oldDbUser                     string                      `json:"-"`
 	dbPass                        string                      `json:"-"`
+	oldDbPass                     string                      `json:"-"`
 	rplUser                       string                      `json:"-"`
 	rplPass                       string                      `json:"-"`
 	sme                           *state.StateMachine         `json:"-"`
@@ -177,6 +180,9 @@ type Cluster struct {
 	inInitNodes                   bool                        `json:"-"`
 	CanInitNodes                  bool                        `json:"canInitNodes"`
 	errorInitNodes                error                       `json:"-"`
+	inConnectVault                bool                        `json:"-"`
+	CanConnectVault               bool                        `json:"canConnectVault"`
+	errorConnectVault             error                       `json:"-"`
 	SqlErrorLog                   *logsql.Logger              `json:"-"`
 	SqlGeneralLog                 *logsql.Logger              `json:"-"`
 	sync.Mutex
@@ -278,6 +284,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.altertableCond = nbc.New()
 	cluster.canFlashBack = true
 	cluster.CanInitNodes = true
+	cluster.CanConnectVault = true
 	cluster.runOnceAfterTopology = true
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
@@ -343,6 +350,21 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		})
 	}
 	cluster.LogPrintf("ALERT", "Replication manager init cluster version : %s", cluster.Conf.Version)
+	if cluster.Conf.MailTo != "" {
+		msg := "Replication manager init cluster version : " + cluster.Conf.Version
+		subj := "Replication-Manager version"
+		alert := alert.Alert{}
+		alert.From = cluster.Conf.MailFrom
+		alert.To = cluster.Conf.MailTo
+		alert.Destination = cluster.Conf.MailSMTPAddr
+		alert.User = cluster.Conf.MailSMTPUser
+		alert.Password = cluster.Conf.MailSMTPPassword
+		alert.TlsVerify = cluster.Conf.MailSMTPTLSSkipVerify
+		err := alert.EmailMessage(msg, subj)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
+		}
+	}
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
 		Filename:   cluster.WorkingDir + "/sql_error.log",
@@ -517,6 +539,7 @@ func (cluster *Cluster) Run() {
 						cluster.MonitorVariablesDiff()
 						cluster.ResticFetchRepo()
 						cluster.IsValidBackup = cluster.HasValidBackup()
+						go cluster.CheckCredentialRotation()
 
 					} else {
 						cluster.sme.PreserveState("WARN0093")
@@ -527,6 +550,9 @@ func (cluster *Cluster) Run() {
 					if !cluster.CanInitNodes {
 						cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
 					}
+					if !cluster.CanConnectVault {
+						cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
+					}
 
 					if cluster.sme.GetHeartbeats()%36000 == 0 {
 						cluster.ResticPurgeRepo()
@@ -534,7 +560,6 @@ func (cluster *Cluster) Run() {
 						cluster.sme.PreserveState("WARN0094")
 					}
 				}
-
 				wg.Wait()
 				// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so elelection win but server is ignored see electFailoverCandidate
 				cluster.AddChildServers()

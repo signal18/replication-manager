@@ -1,0 +1,36 @@
+<md-sidenav class="md-sidenav-right" md-component-id="right" layout="column" layout-align="top center"
+            md-whiteframe="4" style="padding: 20px 20px 20px 20px;">
+    <ul class="nav navbar-nav">
+        <md-nav-list>
+          <md-list-item >
+            <md-button ng-if="selectedCluster"  ng-click="back()"  data-toggle="modal">
+
+                    <md-icon md-menu-align-target  class="fa fa-3x fa-arrow-circle-left"></md-icon>
+                    <br>Back<br/>
+            </md-button>
+            </md-list-item>
+
+            <md-list-item ng-if="isLoggedIn" >
+                        <md-button  ng-click="logout()"  data-target="#three" data-toggle="collapse">
+                        <md-icon class="fa fa-3x fa-sign-out"></md-icon>
+                      <br>Logout<br/>
+                </md-button>
+            </md-list-item>
+            <md-list-item >
+                <md-button  ng-click="newClusterDialog()" ng-if="settings.config.monitoringSaveConfig"  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-create']==false" data-toggle="modal" >
+                          <md-icon md-menu-align-target   class="fa fa-3x fa-plus-circle"></md-icon>
+                        <br>Add<br/><div ng-if="selectedClusterName">Shard </div>Cluster<br/>
+                </md-button>
+            </md-list-item>
+
+
+      <md-list-item ng-if="isLoggedIn" >
+      <md-button  ng-click="newUserDialog()"  data-target="#three" data-toggle="collapse">
+        <md-icon class="fa fa-3x fa-user"></md-icon>
+      <br>Add<br/>User<br/>
+      </md-button>
+     </md-list-item>
+
+        </md-nav-list>
+    </ul>
+</md-sidenav>

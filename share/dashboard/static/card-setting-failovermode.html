@@ -1,0 +1,23 @@
+<md-card>
+
+    <table ng-if="settings" class="table">
+
+        <tr>
+            <th>Failover Mode (interactive)</th>
+        </tr>
+        <tr>
+            <td>
+
+                <md-switch  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.interactive"
+                           ng-click="switchsettings('failover-mode')" aria-label="Mode Change">
+                    <span ng-if="selectedCluster.config.interactive"
+                          class="label label-primary">On-call (manual)</span><span
+                        ng-if="!selectedCluster.config.interactive"
+                        class="label label-warning">On-leave (auto)</span>
+
+            </md-switch>
+            </td>
+        </tr>
+
+    </table>
+</md-card>

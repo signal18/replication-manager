@@ -1,0 +1,13 @@
+<md-content class="md-padding">
+
+  <div ng-include src="'static/card-db-configurator.html'"></div>
+  <BR>
+  <div ng-include src="'static/card-proxy-configurator.html'"></div>
+  <BR>
+    <div ng-if="selectedCluster.config.provOrchestrator=='opensvc' || settings.config.provOrchestrator=='kube'" ng-include src="'static/card-prov-images.html'"></div>
+  <BR>
+    <div ng-if="selectedCluster.config.provOrchestrator=='opensvc' || settings.config.provOrchestrator=='kube'" ng-include src="'static/card-prov-disks.html'"></div>
+  <BR>
+    <div ng-if="selectedCluster.config.provOrchestrator=='opensvc' || settings.config.provOrchestrator=='kube'" ng-include src="'static/card-prov-vms.html'"></div>
+  <BR>
+</md-content>

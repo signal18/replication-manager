@@ -35,7 +35,7 @@ func (cluster *Cluster) AddDBTagConfig(tag string) {
 	if !cluster.Configurator.HaveDBTag(tag) {
 		cluster.Configurator.AddDBTag(tag)
 		cluster.Conf.ProvTags = cluster.Configurator.GetConfigDBTags()
-		cluster.SetClusterVariablesFromConfig()
+		cluster.SetClusterCredentialsFromConfig()
 	}
 }
 
@@ -66,7 +66,7 @@ func (cluster *Cluster) AddDBTag(tag string) {
 func (cluster *Cluster) AddProxyTag(tag string) {
 	cluster.Configurator.AddProxyTag(tag)
 	cluster.Conf.ProvProxTags = cluster.Configurator.GetConfigProxyTags()
-	cluster.SetClusterVariablesFromConfig()
+	cluster.SetClusterCredentialsFromConfig()
 	cluster.SetProxiesRestartCookie()
 }
 

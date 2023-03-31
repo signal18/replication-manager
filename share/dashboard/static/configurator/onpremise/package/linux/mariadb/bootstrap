@@ -1,0 +1,36 @@
+#!/bin/bash
+function help {
+	echo "Required Environment:" >&2
+	echo "  REPLICATION_MANAGER_USER" >&2
+	echo "  REPLICATION_MANAGER_PASSWORD" >&2
+	echo "  REPLICATION_MANAGER_URL" >&2
+	echo "  REPLICATION_MANAGER_CLUSTER_NAME" >&2
+	echo "  REPLICATION_MANAGER_HOST_NAME" >&2
+	echo "  REPLICATION_MANAGER_HOST_PORT" >&2
+}
+[ -z $REPLICATION_MANAGER_USER ] && help && exit 1
+[ -z $REPLICATION_MANAGER_PASSWORD ] && help && exit 1
+[ -z $REPLICATION_MANAGER_URL ] && help && exit 1
+[ -z $REPLICATION_MANAGER_CLUSTER_NAME ] && help && exit 1
+[ -z $REPLICATION_MANAGER_HOST_NAME ] && help && exit 1
+[ -z $REPLICATION_MANAGER_HOST_PORT ] && help && exit 1
+
+GET="wget -q --no-check-certificate -O- --header Content-Type:application/json"
+AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLICATION_MANAGER_PASSWORD\"}"
+TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html $REPLICATION_MANAGER_URL/api/login)
+function get {
+	$GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" $@
+}
+
+get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config > config.tar.gz
+if [ $? -eq 0 ]; then
+	mkdir /bootstrap
+	cat config.tar.gz  | tar xzvf - -C /bootstrap
+	chown -R mysql:mysql /bootstrap
+	mkdir -p /var/lib/replication-manager/$REPLICATION_MANAGER_CLUSTER_NAME/$REPLICATION_MANAGER_HOST_NAME_$REPLICATION_MANAGER_HOST_PORT
+	cp -rpn /bootstrap/* /var/lib/replication-manager/$REPLICATION_MANAGER_CLUSTER_NAME/$REPLICATION_MANAGER_HOST_NAME_$REPLICATION_MANAGER_HOST_PORT/
+	rm -rf /var/lib/replication-manager/$REPLICATION_MANAGER_CLUSTER_NAME/$REPLICATION_MANAGER_HOST_NAME_$REPLICATION_MANAGER_HOST_PORT/etc/mysql/conf.d
+	cp -r /bootstrap/etc/mysql/* /var/lib/replication-manager/$REPLICATION_MANAGER_CLUSTER_NAME/$REPLICATION_MANAGER_HOST_NAME_$REPLICATION_MANAGER_HOST_PORT/etc/mysql/
+	rm -rf config.tar.gz
+	rm -rf  /bootstrap
+fi

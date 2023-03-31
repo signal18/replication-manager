@@ -571,8 +571,8 @@ func (proxy *ProxySQLProxy) RotateMonitoringPasswords(password string) {
 		cluster.LogPrintf(LvlErr, "ProxySQL could not get mysql variables (%s)", err)
 	}
 	user := vars["MYSQL-MONITOR_USERNAME"]
-	cluster.LogPrintf(LvlInfo, "HOLA : user %s", user)
-	cluster.LogPrintf(LvlInfo, "HOLA : dbUser %s", cluster.dbUser)
+	//cluster.LogPrintf(LvlInfo, "RotationMonitorPasswords user %s", user)
+	//cluster.LogPrintf(LvlInfo, "RotationMonitorPasswords dbUser %s", cluster.dbUser)
 	if user == strings.ToUpper(cluster.dbUser) {
 		err = psql.SetMySQLVariable("mysql-monitor_password", password)
 		if err != nil {

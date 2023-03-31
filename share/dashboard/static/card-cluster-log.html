@@ -1,0 +1,24 @@
+<md-card>
+    <table ng-if="servers" class="table">
+        <tr>
+            <th>Cluster Logs</th>
+        </tr>
+    </table>
+<md-card-content ng-if="selectedCluster" style="height: 600px; overflow-y: auto">
+
+<table style="table-layout: fixed;width: 100%;" class="log">
+<tr ng-repeat="logline in selectedCluster.log.buffer" ng-if="logline.timestamp">
+<td width="150px" class="stamp">{{ logline.timestamp }}</td>
+<td width="70px" ng-switch="logline.level">
+<span ng-switch-when="INFO" class="label label-info">{{ logline.level }}</span>
+<span ng-switch-when="WARN" class="label label-warning">{{ logline.level }}</span>
+<span ng-switch-when="ERROR" class="label label-danger">{{ logline.level }}</span>
+<span ng-switch-when="DEBUG" class="label label-primary">{{ logline.level }}</span>
+<span ng-switch-default class="label label-default">{{ logline.level }}</span>
+<td class="text" style="word-wrap:break-word;white-space: normal;">{{ logline.text }}</td>
+</tr>
+</table>
+    </md-pre>
+</md-card-content>
+
+</md-card>

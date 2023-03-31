@@ -19,7 +19,6 @@ import (
 	"time"
 
 	vault "github.com/hashicorp/vault/api"
-	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/crypto"
@@ -479,10 +478,85 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 	cluster.testStopCluster = check
 }
 
-func (cluster *Cluster) SetClusterVariablesFromConfig() {
+func (cluster *Cluster) SetClusterCredentialsFromConfig() {
+	cluster.SetClusterMonitorCredentialsFromConfig()
+	cluster.SetClusterReplicationCredentialsFromConfig()
+}
+
+func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 	cluster.Configurator.SetConfig(cluster.Conf)
 
 	splitmonitoringuser := cluster.Conf.User
+
+	var err error
+	err = cluster.loadDBCertificates(cluster.WorkingDir)
+	if err != nil {
+		cluster.HaveDBTLSCert = false
+		cluster.LogPrintf(LvlInfo, "No database TLS certificates")
+	} else {
+		cluster.HaveDBTLSCert = true
+		cluster.LogPrintf(LvlInfo, "Database TLS certificates correctly loaded")
+	}
+	err = cluster.loadDBOldCertificates(cluster.WorkingDir + "/old_certs")
+	if err != nil {
+		cluster.HaveDBTLSOldCert = false
+		cluster.LogPrintf(LvlInfo, "No database previous TLS certificates")
+	} else {
+		cluster.HaveDBTLSOldCert = true
+		cluster.LogPrintf(LvlInfo, "Database TLS previous certificates correctly loaded")
+	}
+
+	if cluster.IsVaultUsed() {
+
+		cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
+		config := vault.DefaultConfig()
+
+		config.Address = cluster.Conf.VaultServerAddr
+
+		client, err := cluster.GetVaultConnection()
+
+		if err == nil {
+
+			if cluster.Conf.VaultMode == VaultConfigStoreV2 {
+				splitmonitoringuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "db-servers-credential")
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "Unable to get database server Vault credentials: %v", err)
+				}
+				//test
+				cluster.LogPrintf(LvlInfo, "Secret read from Vault for dbPass is %s", splitmonitoringuser)
+			} else {
+				splitmonitoringuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "")
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "Unable to get database server Vault credentials: %v", err)
+				}
+				if cluster.GetConf().LogLevel > 2 {
+					cluster.LogPrintf(LvlInfo, "Vault database monitoring credentials read : %s", splitmonitoringuser)
+				}
+
+			}
+		} else {
+			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
+		}
+
+	}
+
+	cluster.hostList = strings.Split(cluster.Conf.Hosts, ",")
+	cluster.dbUser, cluster.dbPass = misc.SplitPair(splitmonitoringuser)
+
+	if cluster.key != nil {
+		p := crypto.Password{Key: cluster.key}
+		p.CipherText = cluster.dbPass
+		p.Decrypt()
+		cluster.dbPass = p.PlainText
+		p.CipherText = cluster.rplPass
+		p.Decrypt()
+		cluster.rplPass = p.PlainText
+	}
+}
+
+func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
+	cluster.Configurator.SetConfig(cluster.Conf)
+
 	splitreplicationuser := cluster.Conf.RplUser
 
 	var err error
@@ -510,80 +584,32 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 
 		config.Address = cluster.Conf.VaultServerAddr
 
-		client, err := vault.NewClient(config)
-		if err != nil {
-			log.Fatalf("unable to initialize Vault client: %v", err)
-		}
+		client, err := cluster.GetVaultConnection()
 
-		roleID := cluster.Conf.VaultRoleId
-		secretID := &auth.SecretID{FromString: cluster.Conf.VaultSecretId}
-		if roleID == "" || secretID == nil {
-			log.Fatalf("no vault role-id or secret-id define")
-		}
+		if err == nil {
+			if cluster.Conf.VaultMode == VaultConfigStoreV2 {
+				splitreplicationuser, err = cluster.GetVaultCredentials(client, cluster.Conf.RplUser, "replication-credential")
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "Unable to get replication Vault credentials: %v", err)
+				}
+				//test
+				cluster.LogPrintf(LvlInfo, "Secret read from Vault for rplPass is %s", splitreplicationuser)
+			} else {
+				splitreplicationuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "")
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "Unable to get replication Vault credentials: %v", err)
+				}
+				if cluster.GetConf().LogLevel > 2 {
+					cluster.LogPrintf(LvlInfo, "Vault database replication credentials read : %s", splitreplicationuser)
+				}
 
-		appRoleAuth, err := auth.NewAppRoleAuth(
-			roleID,
-			secretID,
-		)
-		if err != nil {
-			log.Fatalf("unable to initialize AppRole auth method: %v", err)
-		}
-
-		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
-		if err != nil {
-			log.Fatalf("unable to initialize AppRole auth method: %v", err)
-		}
-		if authInfo == nil {
-			log.Fatalf("unable to initialize AppRole auth method: %v", err)
-		}
-
-		if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.User)
-
-			if err != nil {
-				log.Fatalf("unable to read secret: %v", err)
 			}
-			splitmonitoringuser = secret.Data["db-servers-credential"].(string)
-			cluster.LogPrintf(LvlDbg, "SetClusterVariablesFromConfig secret read for db-srv-credential : %s", splitmonitoringuser)
-
-			secret, err = client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.RplUser)
-			if err != nil {
-				log.Fatalf("unable to read secret: %v", err)
-			}
-			splitreplicationuser = secret.Data["replication-credential"].(string)
-
-			//test
-			cluster.LogPrintf(LvlInfo, "Secret read from Vault for dbPass is %s", splitmonitoringuser)
-			cluster.LogPrintf(LvlInfo, "Secret read from Vault for rplPass is %s", splitreplicationuser)
 		} else {
-			secret, err := client.KVv1("").Get(context.Background(), cluster.Conf.User)
-			if err != nil {
-				log.Fatalf("unable to read secret for database engine : %v", err)
-			}
-			splitmonitoringuser = secret.Data["username"].(string) + ":" + secret.Data["password"].(string)
-			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", err)
-			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", cluster.Conf.User)
-			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", cluster.Conf.RplUser)
-
-			secret, err = client.KVv1("").Get(context.Background(), cluster.Conf.RplUser)
-			if err != nil {
-				log.Fatalf("unable to read secret for database engine : %v", err)
-			}
-
-			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", secret.Data["username"].(string))
-			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", err)
-			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", secret.Data["password"].(string))
-
-			splitreplicationuser = secret.Data["username"].(string) + ":" + secret.Data["password"].(string)
-
-			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", splitmonitoringuser)
-			cluster.LogPrintf(LvlInfo, "COUCOU database engine read : %s", splitreplicationuser)
+			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
 		}
 
 	}
 
-	cluster.hostList = strings.Split(cluster.Conf.Hosts, ",")
-	cluster.dbUser, cluster.dbPass = misc.SplitPair(splitmonitoringuser)
 	cluster.rplUser, cluster.rplPass = misc.SplitPair(splitreplicationuser)
 
 	if cluster.key != nil {
@@ -595,7 +621,6 @@ func (cluster *Cluster) SetClusterVariablesFromConfig() {
 		p.Decrypt()
 		cluster.rplPass = p.PlainText
 	}
-
 }
 
 func (cluster *Cluster) SetBackupKeepYearly(keep string) error {
@@ -656,14 +681,54 @@ func (cluster *Cluster) SetEmptySla() {
 	cluster.sme.ResetUptime()
 }
 
-func (cluster *Cluster) SetDbServersCredential(credential string) {
+func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 	cluster.Conf.User = credential
-	cluster.SetClusterVariablesFromConfig()
+	cluster.SetClusterMonitorCredentialsFromConfig()
 	for _, srv := range cluster.Servers {
 		srv.SetCredential(srv.URL, cluster.dbUser, cluster.dbPass)
 	}
 	cluster.SetUnDiscovered()
 	cluster.SetDBRestartCookie()
+	if cluster.Conf.VaultMode == VaultConfigStoreV2 && !cluster.isMasterFailed() {
+		found_user := false
+		for _, u := range cluster.master.Users {
+			if u.User == cluster.dbUser {
+				found_user = true
+				logs, err := dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, cluster.dbPass)
+				cluster.LogSQL(logs, err, cluster.master.URL, "Security", LvlErr, "Alter user : %s", err)
+
+			}
+
+		}
+		cluster.LogPrintf("ALERT", "Monitoring password rotation")
+		if !found_user {
+			if cluster.oldDbUser != "root" {
+
+				for _, u := range cluster.master.Users {
+					if u.User == cluster.oldDbUser {
+						logs, err := dbhelper.RenameUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, cluster.dbPass, cluster.dbUser)
+						cluster.LogSQL(logs, err, cluster.master.URL, "Security", LvlErr, "Alter user : %s", err)
+						logs, err = dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, cluster.dbUser, cluster.dbPass)
+						cluster.LogSQL(logs, err, cluster.master.URL, "Security", LvlErr, "Alter user : %s", err)
+
+					}
+
+				}
+				cluster.LogPrintf("ALERT", "Monitoring user rotation")
+			} else {
+				cluster.LogPrintf(LvlErr, "Changing root user is not allowed")
+			}
+		}
+		for _, pri := range cluster.Proxies {
+			if prx, ok := pri.(*ProxySQLProxy); ok {
+				prx.RotateMonitoringPasswords(cluster.dbPass)
+			}
+		}
+		err := cluster.ProvisionRotatePasswords(cluster.dbPass)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
+		}
+	}
 }
 
 func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype string) {
@@ -717,7 +782,7 @@ func (cluster *Cluster) SetProxiesReprovCookie() {
 
 func (cluster *Cluster) SetReplicationCredential(credential string) {
 	cluster.Conf.RplUser = credential
-	cluster.SetClusterVariablesFromConfig()
+	cluster.SetClusterReplicationCredentialsFromConfig()
 	cluster.SetUnDiscovered()
 }
 

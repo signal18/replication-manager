@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 
+	vault "github.com/hashicorp/vault/api"
+	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
@@ -536,13 +539,13 @@ func (cluster *Cluster) GetTopology() string {
 }
 
 /*
-func (cluster *Cluster) GetDatabaseTags() []string {
-	return strings.Split(cluster.Conf.ProvTags, ",")
-}
+	func (cluster *Cluster) GetDatabaseTags() []string {
+		return strings.Split(cluster.Conf.ProvTags, ",")
+	}
 
-func (cluster *Cluster) GetProxyTags() []string {
-	return strings.Split(cluster.Conf.ProvProxTags, ",")
-}
+	func (cluster *Cluster) GetProxyTags() []string {
+		return strings.Split(cluster.Conf.ProvProxTags, ",")
+	}
 */
 func (cluster *Cluster) GetCron() []cron.Entry {
 
@@ -571,7 +574,7 @@ func (cluster *Cluster) getClusterByName(clname string) *Cluster {
 	return nil
 }
 
-//GetClusterFromShardProxy return all clusters sharing same proxy
+// GetClusterFromShardProxy return all clusters sharing same proxy
 func (cluster *Cluster) GetClusterListFromShardProxy(shardproxy string) map[string]*Cluster {
 	var clusters = make(map[string]*(Cluster))
 	for _, c := range cluster.clusterList {
@@ -767,4 +770,115 @@ func (cluster *Cluster) GetClientCertificates() (map[string]string, error) {
 	certs["clientKey"] = clientkey
 	certs["caCert"] = caCert
 	return certs, nil
+}
+
+func (cluster *Cluster) GetVaultCredentials(client *vault.Client, path string, key string) (string, error) {
+	if cluster.IsVaultUsed() {
+		if cluster.Conf.VaultMode == VaultConfigStoreV2 {
+			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), path)
+
+			if err != nil {
+				return "", err
+			}
+			return secret.Data[key].(string), nil
+		} else {
+			secret, err := client.KVv1("").Get(context.Background(), path)
+			if err != nil {
+				return "", err
+			}
+			return secret.Data["username"].(string) + ":" + secret.Data["password"].(string), nil
+		}
+	}
+	return "", errors.New("Failed to get vault credentials")
+}
+
+func (cluster *Cluster) GetVaultMonitorCredentials(client *vault.Client) (string, string, error) {
+	if cluster.Conf.VaultMode == VaultConfigStoreV2 {
+		secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.GetConf().User)
+
+		if err != nil {
+			return "", "", err
+		}
+		user, pass := misc.SplitPair(secret.Data["db-servers-credential"].(string))
+		return user, pass, nil
+	} else {
+		secret, err := client.KVv1("").Get(context.Background(), cluster.GetConf().User)
+		if err != nil {
+			return "", "", err
+		}
+		return secret.Data["username"].(string), secret.Data["password"].(string), nil
+	}
+}
+
+func (cluster *Cluster) GetVaultReplicationCredentials(client *vault.Client) (string, string, error) {
+	if cluster.Conf.VaultMode == VaultConfigStoreV2 {
+		secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.GetConf().RplUser)
+
+		if err != nil {
+			return "", "", err
+		}
+		user, pass := misc.SplitPair(secret.Data["replication-credential"].(string))
+		return user, pass, nil
+	} else {
+		secret, err := client.KVv1("").Get(context.Background(), cluster.GetConf().User)
+		if err != nil {
+			return "", "", err
+		}
+		return secret.Data["username"].(string), secret.Data["password"].(string), nil
+	}
+}
+
+func (cluster *Cluster) GetVaultConnection() (*vault.Client, error) {
+	if cluster.IsVaultUsed() {
+
+		cluster.LogPrintf(LvlDbg, "Vault AppRole Authentification")
+		config := vault.DefaultConfig()
+
+		config.Address = cluster.Conf.VaultServerAddr
+
+		client, err := vault.NewClient(config)
+		if err != nil {
+			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
+			cluster.CanConnectVault = false
+			cluster.errorConnectVault = err
+			return nil, err
+		}
+
+		roleID := cluster.Conf.VaultRoleId
+		secretID := &auth.SecretID{FromString: cluster.Conf.VaultSecretId}
+		if roleID == "" || secretID == nil {
+			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
+			cluster.CanConnectVault = false
+			cluster.errorConnectVault = err
+			return nil, err
+		}
+
+		appRoleAuth, err := auth.NewAppRoleAuth(
+			roleID,
+			secretID,
+		)
+		if err != nil {
+			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
+			cluster.CanConnectVault = false
+			cluster.errorConnectVault = err
+			return nil, err
+		}
+
+		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
+		if err != nil {
+			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
+			cluster.CanConnectVault = false
+			cluster.errorConnectVault = err
+			return nil, err
+		}
+		if authInfo == nil {
+			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
+			cluster.CanConnectVault = false
+			cluster.errorConnectVault = err
+			return nil, err
+		}
+		cluster.CanConnectVault = true
+		return client, err
+	}
+	return nil, errors.New("Not using Vault")
 }

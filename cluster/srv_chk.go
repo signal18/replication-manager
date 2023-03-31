@@ -1,7 +1,9 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <svaroqui@gmail.com>
+//
+//	Stephane Varoqui  <svaroqui@gmail.com>
+//
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -339,6 +341,36 @@ func (server *ServerMonitor) CheckPrivileges() {
 				if rpriv.Repl_slave_priv == "N" {
 					server.ClusterGroup.SetState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00007"], sv2.URL), ErrFrom: "CONF", ServerUrl: sv2.URL})
 				}
+			}
+		}
+	}
+}
+
+func (server *ServerMonitor) CheckMonitoringCredentialsRotation() {
+
+	if server.GetCluster().IsVaultUsed() {
+		client, err := server.GetCluster().GetVaultConnection()
+		if err != nil {
+			//server.GetCluster().LogPrintf(LvlErr, "Fail Vault connection: %v", err)
+			return
+		}
+		_, newpass, err := server.GetCluster().GetVaultMonitorCredentials(client)
+		if newpass != server.Pass && err == nil {
+
+			server.GetCluster().SetClusterMonitorCredentialsFromConfig()
+			server.SetCredential(server.URL, server.GetCluster().dbUser, server.GetCluster().dbPass)
+			server.ClusterGroup.LogPrintf(LvlInfo, "Vault monitoring user password rotation")
+			server.ClusterGroup.LogPrintf(LvlDbg, "Ping function User: %s, Pass: %s", server.User, server.Pass)
+
+			for _, pri := range server.GetCluster().Proxies {
+				if prx, ok := pri.(*ProxySQLProxy); ok {
+					prx.RotateMonitoringPasswords(newpass)
+				}
+			}
+			//upgrade openSVC secret
+			err = server.GetCluster().ProvisionRotatePasswords(newpass)
+			if err != nil {
+				server.GetCluster().LogPrintf(LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
 			}
 		}
 	}

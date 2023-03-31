@@ -1138,7 +1138,7 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "db-servers-hosts":
 		mycluster.SetDbServerHosts(value)
 	case "db-servers-credential":
-		mycluster.SetDbServersCredential(value)
+		mycluster.SetDbServersMonitoringCredential(value)
 	case "prov-service-plan":
 		mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":

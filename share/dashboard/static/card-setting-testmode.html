@@ -1,0 +1,30 @@
+<md-card>
+    <table ng-if="settings" class="table">
+        <tr>
+            <th>Test Mode</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.test"
+                           ng-click="switchsettings('test')" aria-label="Test Mode Change">
+                    <span ng-if="selectedCluster.config.test" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.test" class="label label-warning">Off</span>
+
+            </md-switch>
+            </td>
+        </tr>
+        <tr>
+            <th>Verbose</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.verbose"
+                           ng-click="switchsettings('verbose')" aria-label="Verbosity Change">
+                    <span ng-if="selectedCluster.config.verbose" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.verbose" class="label label-warning">Off</span>
+
+            </md-switch>
+            </td>
+        </tr>
+    </table>
+</md-card>

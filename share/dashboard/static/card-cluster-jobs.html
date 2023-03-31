@@ -1,0 +1,31 @@
+<md-card ng-if="settings.config.schedulerJobsSsh" >
+    <table class="table">
+      <tr >
+
+          <th>
+              Databases Jobs
+          </th>
+        </tr >
+      </table>
+      <div  ng-repeat="(server, jobs) in selectedCluster.jobResults"  >
+
+      <table class="table">
+        <tr ng-if="$first">
+         <td ng-repeat="(job, jobs) in jobs">
+           <span style="writing-mode: sideways-lr;text-align: left;padding:10px 5px 0;">{{job}}</span>
+         </td>
+         </tr>
+          <tr>
+            <td colspan="13">{{server}}</td>
+          </tr>
+
+            <tr>
+            <td  ng-repeat="(job, value) in jobs">
+              <md-icon md-menu-align-target ng-if="value==false"   class="fa fa-2x fa-power-off"  style="color:gray"></md-icon>
+              <md-icon md-menu-align-target ng-if="value==true"   class="fa fa-2x fa-power-off"  style="color:green"></md-icon>
+            </td>
+        </tr>
+
+    </table>
+    </div>
+</md-card>

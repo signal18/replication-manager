@@ -11,12 +11,10 @@ import (
 	"strings"
 
 	vault "github.com/hashicorp/vault/api"
-	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/sirupsen/logrus"
-	log "github.com/sirupsen/logrus"
 )
 
 var logger = logrus.New()
@@ -29,32 +27,13 @@ func (cluster *Cluster) RotatePasswords() error {
 
 		config.Address = cluster.Conf.VaultServerAddr
 
-		client, err := vault.NewClient(config)
+		client, err := cluster.GetVaultConnection()
+
 		if err != nil {
-			log.Fatalf("unable to initialize Vault client: %v", err)
+			//cluster.LogPrintf(LvlErr, "unable to initialize AppRole auth method: %v", err)
+			return err
 		}
 
-		roleID := cluster.Conf.VaultRoleId
-		secretID := &auth.SecretID{FromString: cluster.Conf.VaultSecretId}
-		if roleID == "" || secretID == nil {
-			log.Fatalf("no vault role-id or secret-id define")
-		}
-
-		appRoleAuth, err := auth.NewAppRoleAuth(
-			roleID,
-			secretID,
-		)
-		if err != nil {
-			log.Fatalf("unable to initialize AppRole auth method: %v", err)
-		}
-
-		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
-		if err != nil {
-			log.Fatalf("unable to initialize AppRole auth method: %v", err)
-		}
-		if authInfo == nil {
-			log.Fatalf("unable to initialize AppRole auth method: %v", err)
-		}
 		if cluster.GetConf().VaultMode == VaultDbEngine {
 
 			if cluster.GetConf().User == cluster.GetConf().RplUser {

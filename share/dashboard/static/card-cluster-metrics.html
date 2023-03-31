@@ -1,0 +1,13 @@
+<md-card ng-if="servers">
+    <table class="table">
+        <tr>
+            <th colspan="4">Cluster Workload</th>
+        </tr>
+        <tr>
+            <td><ng-gauge type="arch" value="selectedCluster.qps" thick="5" size="105"   min="0" max="300000"  cap="round"  label="Questions" /></td>
+            <td><ng-gauge type="arch" value="selectedCluster.connections" thick="5" size="105"   min="0" max="300000"  cap="round"  label="Threads"/></td>
+            <td><ng-gauge type="arch" value="selectedCluster.dbTableSize/1024/1024/1024" thick="5" size="105"   min="0" max="10000"  cap="round"  label="Tables Gb" /></td>
+            <td><ng-gauge type="arch" value="selectedCluster.dbIndexSize/1024/1024/1024" thick="5" size="105"   min="0" max="10000"  cap="round"  label="Indexes Gb" /></td>
+        </tr>
+    </table>
+</md-card>

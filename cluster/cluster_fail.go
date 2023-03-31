@@ -1030,21 +1030,6 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		}
 		return false
 	}
-	//if master is alived and connection issues, we have to refetch password from vault
-	if ss.SlaveIORunning.String == "Connecting" && !cluster.IsMasterFailed() {
-		cluster.LogPrintf(LvlDbg, "isSlaveElect lastIOErrno: %s", ss.LastIOErrno.String)
-		if ss.LastIOErrno.String == "1045" {
-			cluster.sme.AddState("ERR00088", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00088"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
-			if cluster.IsVaultUsed() {
-				cluster.SetReplicationCredential(cluster.GetConf().RplUser)
-				cluster.LogPrintf(LvlInfo, "Vault replication user password rotation")
-				err = sl.rejoinSlaveChangePassword(ss)
-				if err != nil {
-					cluster.LogPrintf(LvlWarn, "Rejoin slave change password error: %s", err)
-				}
-			}
-		}
-	}
 
 	/* binlog + ping  */
 	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host, sl.DBVersion) == false {
@@ -1077,6 +1062,15 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		}
 		return false
+	}
+
+	//if master is alived and connection issues, we have to refetch password from vault
+	if ss.SlaveIORunning.String == "Connecting" && !cluster.IsMasterFailed() {
+		cluster.LogPrintf(LvlDbg, "isSlaveElect lastIOErrno: %s", ss.LastIOErrno.String)
+		if ss.LastIOErrno.String == "1045" {
+			cluster.sme.AddState("ERR00088", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00088"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+			sl.SetReplicationCredentialsRotation(ss)
+		}
 	}
 
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.FailSync && cluster.Conf.RplChecks {

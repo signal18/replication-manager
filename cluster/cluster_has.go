@@ -326,3 +326,37 @@ func (cluster *Cluster) IsVaultUsed() bool {
 	}
 	return true
 }
+
+func (cluster *Cluster) HasReplicationCredentialsRotation() bool {
+	if cluster.IsVaultUsed() {
+		client, err := cluster.GetVaultConnection()
+		if err != nil {
+			//cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)
+			return false
+		}
+		_, newpass, err := cluster.GetVaultReplicationCredentials(client)
+		if newpass != cluster.rplPass && err == nil {
+			return true
+		}
+		return false
+	}
+	return false
+}
+
+func (cluster *Cluster) HasMonitoringCredentialsRotation() bool {
+	if cluster.IsVaultUsed() {
+		client, err := cluster.GetVaultConnection()
+		if err != nil {
+			//cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)
+			return false
+		}
+		newuser, newpass, err := cluster.GetVaultMonitorCredentials(client)
+		if (newpass != cluster.dbPass || newuser != cluster.dbUser) && err == nil {
+			cluster.oldDbUser = cluster.dbUser
+			cluster.oldDbPass = cluster.dbPass
+			return true
+		}
+		return false
+	}
+	return false
+}

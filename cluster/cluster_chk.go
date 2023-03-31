@@ -120,6 +120,9 @@ func (cluster *Cluster) isAutomaticFailover() bool {
 }
 
 func (cluster *Cluster) isMasterFailed() bool {
+	if cluster.master == nil {
+		return true
+	}
 	if cluster.master.State == stateFailed {
 		return true
 	}
@@ -652,7 +655,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	}
 }
 
-//CheckSameServerID Check against the servers that all server id are differents
+// CheckSameServerID Check against the servers that all server id are differents
 func (cluster *Cluster) CheckSameServerID() {
 	for _, s := range cluster.Servers {
 		if s.IsFailed() {
@@ -709,4 +712,28 @@ func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
 		}
 	}
 	return true
+}
+
+func (cluster *Cluster) CheckCredentialRotation() {
+	if cluster.inConnectVault {
+		return
+	}
+	cluster.inConnectVault = true
+	defer func() { cluster.inConnectVault = false }()
+	if cluster.HasReplicationCredentialsRotation() {
+		cluster.LogPrintf(LvlInfo, "TEST checkReplicationCredentialsRotation")
+		cluster.SetClusterReplicationCredentialsFromConfig()
+		for _, slave := range cluster.slaves {
+			ss, err := slave.GetSlaveStatus(slave.ReplicationSourceName)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "No replication channel %s on slave %s : %s", slave.ReplicationSourceName, slave.URL, err)
+			}
+			slave.SetReplicationCredentialsRotation(ss)
+		}
+	}
+	if cluster.HasMonitoringCredentialsRotation() {
+		cluster.LogPrintf(LvlInfo, "TEST checkCredentialsRotation")
+		cluster.SetClusterMonitorCredentialsFromConfig()
+		cluster.SetDbServersMonitoringCredential(cluster.Conf.User)
+	}
 }

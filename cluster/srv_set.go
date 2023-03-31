@@ -369,3 +369,25 @@ func (server *ServerMonitor) SetBackupPhysicalCookie() error {
 func (server *ServerMonitor) SetBackupLogicalCookie() error {
 	return server.createCookie("cookie_logicalbackup")
 }
+
+func (server *ServerMonitor) SetReplicationCredentialsRotation(ss *dbhelper.SlaveStatus) {
+
+	if server.GetCluster().IsVaultUsed() {
+		server.GetCluster().SetClusterReplicationCredentialsFromConfig()
+		server.GetCluster().LogPrintf(LvlInfo, "Vault replication user password rotation")
+		err := server.rejoinSlaveChangePassword(ss)
+		if err != nil {
+			server.GetCluster().LogPrintf(LvlWarn, "Rejoin slave change password error: %s", err)
+		}
+		if server.GetCluster().Conf.VaultMode == VaultConfigStoreV2 {
+			for _, u := range server.GetCluster().master.Users {
+				if u.User == server.GetCluster().rplUser {
+					logs, err := dbhelper.SetUserPassword(server.GetCluster().master.Conn, server.GetCluster().master.DBVersion, u.Host, u.User, server.GetCluster().rplPass)
+					server.ClusterGroup.LogSQL(logs, err, server.URL, "Security", LvlErr, "Alter user : %s", err)
+
+				}
+
+			}
+		}
+	}
+}
