@@ -127,6 +127,8 @@ type Cluster struct {
 	oldDbPass                     string                      `json:"-"`
 	rplUser                       string                      `json:"-"`
 	rplPass                       string                      `json:"-"`
+	proxysqlUser                  string                      `json:"-"`
+	proxysqlPass                  string                      `json:"-"`
 	sme                           *state.StateMachine         `json:"-"`
 	runOnceAfterTopology          bool                        `json:"-"`
 	logPtr                        *os.File                    `json:"-"`

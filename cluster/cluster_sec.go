@@ -67,6 +67,7 @@ func (cluster *Cluster) RotatePasswords() error {
 
 			new_password_db := misc.GetUUID()
 			new_password_rpl := misc.GetUUID()
+			new_password_proxysql := misc.GetUUID()
 
 			if cluster.dbUser == cluster.rplUser {
 				new_password_rpl = new_password_db
@@ -79,6 +80,11 @@ func (cluster *Cluster) RotatePasswords() error {
 			secretData_rpl := map[string]interface{}{
 				"replication-credential": cluster.rplUser + ":" + new_password_rpl,
 			}
+
+			secretData_proxysql := map[string]interface{}{
+				"proxysql-password": new_password_proxysql,
+			}
+
 			_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.GetConf().User, secretData_db)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Password rotation cancel, unable to write secret: %v", err)
@@ -90,6 +96,13 @@ func (cluster *Cluster) RotatePasswords() error {
 				cluster.LogPrintf(LvlErr, "Password rotation cancel, unable to write secret: %v", err)
 				return err
 			}
+
+			_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.GetConf().ProxysqlPassword, secretData_proxysql)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Password rotation cancel, unable to write secret: %v", err)
+				return err
+			}
+
 			cluster.LogPrintf(LvlInfo, "Secret written successfully. New password generated: db-servers-credential %s, replication-credential %s", new_password_db, new_password_rpl)
 
 			for _, u := range cluster.master.Users {
@@ -114,7 +127,10 @@ func (cluster *Cluster) RotatePasswords() error {
 			for _, pri := range cluster.Proxies {
 				if prx, ok := pri.(*ProxySQLProxy); ok {
 					prx.RotateMonitoringPasswords(new_password_db)
+					prx.RotationAdminPasswords(new_password_proxysql)
+					prx.SetCredential(prx.User + ":" + new_password_proxysql)
 				}
+
 			}
 			err = cluster.ProvisionRotatePasswords(new_password_db)
 			if err != nil {

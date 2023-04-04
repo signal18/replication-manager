@@ -340,6 +340,16 @@ func (psql *ProxySQL) LoadMySQLVariablesToRuntime() error {
 	return err
 }
 
+func (psql *ProxySQL) LoadAdminVariablesToRuntime() error {
+	_, err := psql.Connection.Exec("LOAD ADMIN VARIABLES TO RUNTIME")
+	return err
+}
+
+func (psql *ProxySQL) SaveAdminVariablesToDisk() error {
+	_, err := psql.Connection.Exec("SAVE ADMIN VARIABLES TO DISK")
+	return err
+}
+
 func (psql *ProxySQL) SaveMySQLVariablesToDisk() error {
 	_, err := psql.Connection.Exec("SAVE MYSQL VARIABLES TO DISK")
 	return err

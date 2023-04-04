@@ -27,8 +27,8 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 	prx.Type = config.ConstProxySqlproxy
 	prx.Port = conf.ProxysqlAdminPort
 	prx.ReadWritePort, _ = strconv.Atoi(conf.ProxysqlPort)
-	prx.User = conf.ProxysqlUser
-	prx.Pass = conf.ProxysqlPassword
+	prx.User = cluster.proxysqlUser
+	prx.Pass = cluster.proxysqlPass
 	prx.ReaderHostgroup, _ = strconv.Atoi(conf.ProxysqlReaderHostgroup)
 	prx.WriterHostgroup, _ = strconv.Atoi(conf.ProxysqlWriterHostgroup)
 	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
@@ -570,19 +570,55 @@ func (proxy *ProxySQLProxy) RotateMonitoringPasswords(password string) {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "ProxySQL could not get mysql variables (%s)", err)
 	}
-	user := vars["MYSQL-MONITOR_USERNAME"]
+	mon_user := vars["MYSQL-MONITOR_USERNAME"]
 	//cluster.LogPrintf(LvlInfo, "RotationMonitorPasswords user %s", user)
 	//cluster.LogPrintf(LvlInfo, "RotationMonitorPasswords dbUser %s", cluster.dbUser)
-	if user == strings.ToUpper(cluster.dbUser) {
-		err = psql.SetMySQLVariable("mysql-monitor_password", password)
+	err = psql.SetMySQLVariable("mysql-monitor_password", password)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL could not set mysql variables (%s)", err)
+	}
+
+	if mon_user != strings.ToUpper(cluster.dbUser) {
+		err = psql.SetMySQLVariable("mysql-monitor_username", cluster.dbUser)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "ProxySQL could not set mysql variables (%s)", err)
 		}
-		err = psql.LoadMySQLVariablesToRuntime()
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "ProxySQL could not load varibles to runtime (%s)", err)
-		}
-		cluster.LogPrintf(LvlInfo, "Password rotation is done for the proxySQL monitor")
+	}
+	err = psql.LoadMySQLVariablesToRuntime()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL could not load varibles to runtime (%s)", err)
+	}
+
+	err = psql.SaveMySQLVariablesToDisk()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL could not save admin variables to disk (%s)", err)
+	}
+
+	cluster.LogPrintf(LvlInfo, "Password rotation is done for the proxySQL monitor")
+}
+
+func (proxy *ProxySQLProxy) RotationAdminPasswords(password string) {
+	cluster := proxy.ClusterGroup
+	psql, err := proxy.Connect()
+	if err != nil {
+		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		return
+	}
+	defer psql.Connection.Close()
+
+	err = psql.SetMySQLVariable("admin-admin_credentials", proxy.User+":"+password)
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL could not set mysql variables (%s)", err)
+	}
+
+	err = psql.LoadAdminVariablesToRuntime()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL could not load admin variables to runtime (%s)", err)
+	}
+
+	err = psql.SaveAdminVariablesToDisk()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL could not save admin variables to disk (%s)", err)
 	}
 
 }

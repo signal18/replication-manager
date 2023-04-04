@@ -481,6 +481,48 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 func (cluster *Cluster) SetClusterCredentialsFromConfig() {
 	cluster.SetClusterMonitorCredentialsFromConfig()
 	cluster.SetClusterReplicationCredentialsFromConfig()
+	cluster.SetClusterProxySqlCredentialsFromConfig()
+}
+
+func (cluster *Cluster) SetClusterProxySqlCredentialsFromConfig() {
+	cluster.proxysqlPass = cluster.Conf.ProxysqlPassword
+	cluster.proxysqlUser = cluster.Conf.ProxysqlUser
+	if cluster.IsVaultUsed() {
+
+		cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
+		config := vault.DefaultConfig()
+
+		config.Address = cluster.Conf.VaultServerAddr
+
+		client, err := cluster.GetVaultConnection()
+
+		if err == nil {
+
+			if cluster.Conf.VaultMode == VaultConfigStoreV2 {
+				cluster.proxysqlPass, err = cluster.GetVaultCredentials(client, cluster.Conf.ProxysqlPassword, "proxysql-password")
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "Unable to get proxysql server Vault password: %v", err)
+					cluster.proxysqlPass = cluster.Conf.ProxysqlPassword
+				}
+				cluster.proxysqlUser, err = cluster.GetVaultCredentials(client, cluster.Conf.ProxysqlUser, "proxysql-user")
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "Unable to get proxysql server Vault user: %v", err)
+					cluster.proxysqlUser = cluster.Conf.ProxysqlUser
+				}
+				//test
+				cluster.LogPrintf(LvlInfo, "Secret read from Vault for proxysql is %s:%s", cluster.proxysqlUser, cluster.proxysqlPass)
+			}
+		} else {
+			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
+		}
+	}
+
+	if cluster.key != nil {
+		p := crypto.Password{Key: cluster.key}
+		p.CipherText = cluster.proxysqlPass
+		p.Decrypt()
+		cluster.proxysqlPass = p.PlainText
+	}
 }
 
 func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
@@ -521,6 +563,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 				splitmonitoringuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "db-servers-credential")
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "Unable to get database server Vault credentials: %v", err)
+					splitmonitoringuser = cluster.Conf.User
 				}
 				//test
 				cluster.LogPrintf(LvlInfo, "Secret read from Vault for dbPass is %s", splitmonitoringuser)
@@ -528,6 +571,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 				splitmonitoringuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "")
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "Unable to get database server Vault credentials: %v", err)
+					splitmonitoringuser = cluster.Conf.User
 				}
 				if cluster.GetConf().LogLevel > 2 {
 					cluster.LogPrintf(LvlInfo, "Vault database monitoring credentials read : %s", splitmonitoringuser)
@@ -591,6 +635,7 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 				splitreplicationuser, err = cluster.GetVaultCredentials(client, cluster.Conf.RplUser, "replication-credential")
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "Unable to get replication Vault credentials: %v", err)
+					splitreplicationuser = cluster.Conf.RplUser
 				}
 				//test
 				cluster.LogPrintf(LvlInfo, "Secret read from Vault for rplPass is %s", splitreplicationuser)
@@ -598,6 +643,7 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 				splitreplicationuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "")
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "Unable to get replication Vault credentials: %v", err)
+					splitreplicationuser = cluster.Conf.RplUser
 				}
 				if cluster.GetConf().LogLevel > 2 {
 					cluster.LogPrintf(LvlInfo, "Vault database replication credentials read : %s", splitreplicationuser)
@@ -716,6 +762,8 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 				}
 				cluster.LogPrintf("ALERT", "Monitoring user rotation")
 			} else {
+				//si on est en dynamique config:
+				//créer un nouveau user diff de root qui possède les mêmes droits
 				cluster.LogPrintf(LvlErr, "Changing root user is not allowed")
 			}
 		}
