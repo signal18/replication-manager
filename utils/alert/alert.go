@@ -58,3 +58,27 @@ New server state change from %s is %s.`, a.Origin, a.PrevState, a.State)
 
 	return err
 }
+
+func (a *Alert) EmailMessage(msg string, subj string) error {
+	e := email.NewEmail()
+	e.From = a.From
+	e.To = strings.Split(a.To, ",")
+	e.Subject = subj
+	e.Text = []byte(msg)
+	var err error
+	if a.User == "" {
+		if a.TlsVerify {
+			err = e.SendWithTLS(a.Destination, nil, &tls.Config{InsecureSkipVerify: true})
+		} else {
+			err = e.Send(a.Destination, nil)
+		}
+	} else {
+		if a.TlsVerify {
+			err = e.SendWithTLS(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]), &tls.Config{InsecureSkipVerify: true})
+		} else {
+			err = e.Send(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]))
+		}
+	}
+
+	return err
+}

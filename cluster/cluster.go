@@ -26,6 +26,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
+	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
@@ -333,6 +334,22 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		})
 	}
 	cluster.LogPrintf("ALERT", "Replication manager init cluster version : %s", cluster.Conf.Version)
+
+	if cluster.Conf.MailTo != "" {
+		msg := "Replication manager init cluster version : " + cluster.Conf.Version
+		subj := "Replication-Manager version"
+		alert := alert.Alert{}
+		alert.From = cluster.Conf.MailFrom
+		alert.To = cluster.Conf.MailTo
+		alert.Destination = cluster.Conf.MailSMTPAddr
+		alert.User = cluster.Conf.MailSMTPUser
+		alert.Password = cluster.Conf.MailSMTPPassword
+		alert.TlsVerify = cluster.Conf.MailSMTPTLSSkipVerify
+		err := alert.EmailMessage(msg, subj)
+		if err != nil {
+			cluster.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
+		}
+	}
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
 		Filename:   cluster.WorkingDir + "/sql_error.log",
