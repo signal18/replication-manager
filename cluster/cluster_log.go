@@ -223,7 +223,6 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 }
 
 func (cluster *Cluster) sendMsTeams(level string, format string, args ...interface{}) error {
-	log.Printf("COUCOU sendMsTeams")
 	// init the client
 	mstClient := teams.NewClient()
 
