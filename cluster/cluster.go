@@ -15,8 +15,10 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"sync"
+	t "text/template"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -88,6 +90,7 @@ type Cluster struct {
 	IsNotMonitoring               bool                        `json:"isNotMonitoring"`
 	IsCapturing                   bool                        `json:"isCapturing"`
 	Conf                          config.Config               `json:"config"`
+	Confs                         *config.ConfVersion         `json:"-"`
 	CleanAll                      bool                        `json:"cleanReplication"` //used in testing
 	Topology                      string                      `json:"topology"`
 	Uptime                        string                      `json:"uptime"`
@@ -271,7 +274,9 @@ const (
 )
 
 // Init initial cluster definition
-func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+	cluster.Confs = confs
+	conf := confs.ConfInit
 	cluster.SqlErrorLog = logsql.New()
 	cluster.SqlGeneralLog = logsql.New()
 	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
@@ -679,6 +684,7 @@ func (cluster *Cluster) Stop() {
 
 }
 
+/*
 func (cluster *Cluster) Save() error {
 
 	type Save struct {
@@ -716,6 +722,103 @@ func (cluster *Cluster) Save() error {
 		if err != nil {
 			if os.IsPermission(err) {
 				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/config.toml")
+			}
+			return err
+		}
+		defer file.Close()
+		err = toml.NewEncoder(file).Encode(myconf)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}*/
+
+func (cluster *Cluster) Save() error {
+
+	type Save struct {
+		Servers    string      `json:"servers"`
+		Crashes    crashList   `json:"crashes"`
+		SLA        state.Sla   `json:"sla"`
+		SLAHistory []state.Sla `json:"slaHistory"`
+		IsAllDbUp  bool        `json:"provisioned"`
+	}
+
+	var clsave Save
+	clsave.Crashes = cluster.Crashes
+	clsave.Servers = cluster.Conf.Hosts
+	clsave.SLA = cluster.sme.GetSla()
+	clsave.IsAllDbUp = cluster.IsAllDbUp
+	clsave.SLAHistory = cluster.SLAHistory
+
+	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
+	err := ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
+	if err != nil {
+		return err
+	}
+
+	saveQeueryRules, _ := json.MarshalIndent(cluster.QueryRules, "", "\t")
+	err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/queryrules.json", saveQeueryRules, 0644)
+	if err != nil {
+		return err
+	}
+	if cluster.Conf.ConfRewrite {
+		var myconf = make(map[string]config.Config)
+
+		myconf["saved-"+cluster.Name] = cluster.Conf
+
+		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/config.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/config.toml")
+			}
+			return err
+		}
+		defer file.Close()
+
+		values := reflect.ValueOf(myconf["saved-"+cluster.Name])
+		types := values.Type()
+		s := ""
+		ss := ""
+		file.WriteString("[saved-" + cluster.Name + "]\n")
+		for i := 0; i < values.NumField(); i++ {
+			if values.Field(i).String() != "" {
+				if types.Field(i).Type.String() == "string" {
+					s = "   " + types.Field(i).Name + " = \"" + values.Field(i).String() + "\"\n"
+				}
+				if types.Field(i).Type.String() == "bool" || types.Field(i).Type.String() == "int" || types.Field(i).Type.String() == "uint64" || types.Field(i).Type.String() == "int64" {
+					s = "   " + types.Field(i).Name + " = "
+					ss = format(" {{.}} \n", values.Field(i))
+				}
+				file.WriteString(s)
+				file.WriteString(ss)
+				ss = ""
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func format(s string, v interface{}) string {
+	c, b := new(t.Template), new(strings.Builder)
+	t.Must(c.Parse(s)).Execute(b, v)
+	return b.String()
+}
+
+func (cluster *Cluster) Overwrite() error {
+
+	if cluster.Conf.ConfRewrite {
+		var myconf = make(map[string]config.Config)
+
+		myconf["overwrite-"+cluster.Name] = cluster.Conf
+
+		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml")
 			}
 			return err
 		}

@@ -64,6 +64,8 @@ type ReplicationManager struct {
 	ClusterList                                      []string                    `json:"clusters"`
 	Tests                                            []string                    `json:"tests"`
 	Conf                                             config.Config               `json:"config"`
+	ConfFlag                                         config.Config               `json:"-"`
+	ConfigPathList                                   []string                    `json:"-"`
 	Logs                                             s18log.HttpLog              `json:"logs"`
 	ServicePlans                                     []config.ServicePlan        `json:"servicePlans"`
 	ServiceOrchestrators                             []config.ConfigVariableType `json:"serviceOrchestrators"`
@@ -83,7 +85,7 @@ type ReplicationManager struct {
 	exit                                             bool
 	isStarted                                        bool
 	Confs                                            map[string]config.Config
-	ForcedConfs                                      map[string]config.Config
+	VersionConfs                                     map[string]*config.ConfVersion
 	grpcServer                                       *grpc.Server               `json:"-"`
 	grpcWrapped                                      *grpcweb.WrappedGrpcServer `json:"-"`
 	V3Up                                             chan bool                  `json:"-"`
@@ -239,13 +241,33 @@ func (repman *ReplicationManager) initEmbed() error {
 }
 
 func (repman *ReplicationManager) InitConfig(conf config.Config) {
-	repman.ForcedConfs = make(map[string]config.Config)
+	repman.VersionConfs = make(map[string]*config.ConfVersion)
 	// call after init if configuration file is provide
+
+	//if repman is embed, create folders and load missing embedded files
 	if conf.WithEmbed == "ON" {
 		repman.initEmbed()
 	}
+
+	//init viper to read config file .toml
 	fistRead := viper.GetViper()
 	fistRead.SetConfigType("toml")
+
+	var test config.Config
+
+	secRead := viper.GetViper()
+	secRead.SetConfigType("toml")
+
+	var repman_default config.Config
+	fistRead.Unmarshal(repman_default)
+
+	repman.ConfFlag = repman_default
+
+	//fmt.Printf("%+v\n", fistRead)
+	fistRead.Debug()
+	fmt.Printf("%+v\n", fistRead.AllSettings())
+
+	//if a config file is already define
 	if conf.ConfigFile != "" {
 		if _, err := os.Stat(conf.ConfigFile); os.IsNotExist(err) {
 			//	log.Fatal("No config file " + conf.ConfigFile)
@@ -254,16 +276,20 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		fistRead.SetConfigFile(conf.ConfigFile)
 
 	} else {
+		//adds config files by searching them in different folders
 		fistRead.SetConfigName("config")
 		fistRead.AddConfigPath("/etc/replication-manager/")
 		fistRead.AddConfigPath(".")
 		fistRead.AddConfigPath("./.replication-manager")
+
+		//if tarball, add config path
 		if conf.WithTarball == "ON" {
 			fistRead.AddConfigPath("/usr/local/replication-manager/etc")
 			if _, err := os.Stat("/usr/local/replication-manager/etc/config.toml"); os.IsNotExist(err) {
 				log.Warning("No config file /usr/local/replication-manager/etc/config.toml")
 			}
 		}
+		//if embed, add config path
 		if conf.WithEmbed == "ON" {
 			if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
 				log.Warning("No config file ./.replication-manager/config.toml ")
@@ -274,8 +300,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			}
 		}
 	}
+	//default path for cluster config
 	conf.ClusterConfigPath = conf.WorkingDir + "/cluster.d"
 
+	//search for default section in config file and read
+	//setEnvPrefix is case insensitive
 	fistRead.SetEnvPrefix("DEFAULT")
 	err := fistRead.ReadInConfig()
 	if err == nil {
@@ -283,29 +312,41 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			"file": fistRead.ConfigFileUsed(),
 		}).Debug("Using config file")
 	} else {
-
 		//	if _, ok := err.(fistRead.ConfigParseError); ok {
 		//log.WithError(err).Fatal("Could not parse config file")
 		log.Errorf("Could not parse config file: %s", err)
 	}
 
-	// Proceed include files
+	//recup tous les param set dans le default
+	secRead = fistRead.Sub("default")
+	secRead.UnmarshalKey("default", test)
+	fmt.Printf("%+v\n", secRead)
 
+	//from here first read as the combination of default sections variables but not forced parameters
+	//fmt.Printf("%+v\n", fistRead)
+
+	// Proceed include files
+	//if include is defined in a config file
 	if fistRead.GetString("default.include") != "" {
 		log.Info("Reading default section include directory: " + fistRead.GetString("default.include"))
 
 		if _, err := os.Stat(fistRead.GetString("default.include")); os.IsNotExist(err) {
 			log.Warning("Include config directory does not exist " + conf.Include)
 		} else {
+			//if this path exist, set cluster config path to it
 			conf.ClusterConfigPath = fistRead.GetString("default.include")
 		}
 
+		//load files from the include path
 		files, err := ioutil.ReadDir(conf.ClusterConfigPath)
 		if err != nil {
 			log.Infof("No config include directory %s ", conf.ClusterConfigPath)
 		}
+		//read and set config from all files in the include path
 		for _, f := range files {
 			if !f.IsDir() && strings.HasSuffix(f.Name(), ".toml") {
+				file_name := strings.Split(f.Name(), ".")
+				cluster_name := file_name[0]
 				fistRead.SetConfigName(f.Name())
 				fistRead.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
 				//	viper.Debug()
@@ -316,6 +357,13 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 				if err != nil {
 					log.Fatal("Config error in " + conf.ClusterConfigPath + "/" + f.Name() + ":" + err.Error())
 				}
+
+				//recup tous les param set dans le include
+				fmt.Printf("%+v\n", secRead.AllSettings())
+				secRead = fistRead.Sub(cluster_name)
+				secRead.UnmarshalKey(cluster_name, test)
+				fmt.Printf("%+v\n", secRead.AllSettings())
+				fmt.Printf("KEY : %s", secRead.AllKeys())
 			}
 		}
 	} else {
@@ -323,15 +371,19 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	}
 
 	// Proceed dynamic config
-
 	if fistRead.GetBool("default.monitoring-save-config") {
+		//read working dir from config
 		if fistRead.GetString("default.monitoring-datadir") != "" {
 			conf.WorkingDir = fistRead.GetString("default.monitoring-datadir")
 		}
+
+		//load files from the working dir
 		files, err := ioutil.ReadDir(conf.WorkingDir)
 		if err != nil {
 			log.Infof("No working directory %s ", conf.WorkingDir)
 		}
+
+		//read and set config from all files in the working dir
 		for _, f := range files {
 			if f.IsDir() && f.Name() != "graphite" {
 				fistRead.SetConfigName(f.Name())
@@ -352,9 +404,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		log.Warning("No monitoring-save-config variable in default section config change lost on restart")
 	}
 
+	//contain a list of cluster name
 	var strClusters string
 	strClusters = cfgGroup
 
+	//if cluster name is empty, go discover cluster
 	if strClusters == "" {
 		// Discovering the clusters from all merged conf files build clusterDiscovery map
 		strClusters = repman.DiscoverClusters(fistRead)
@@ -362,12 +416,16 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	}
 
 	cfgGroupIndex = 0
+	//extract the default section of the config files
 	cf1 := fistRead.Sub("Default")
+	//init viper to save the config
 	vipersave := viper.GetViper()
+
 	//cf1.Debug()
 	if cf1 == nil {
 		log.Warning("config.toml has no [Default] configuration group and config group has not been specified")
 	} else {
+		//save all default section in conf
 		cf1.AutomaticEnv()
 		cf1.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 		cf1.SetEnvPrefix("DEFAULT")
@@ -380,8 +438,12 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		repman.Conf = conf
 	}
 	//	backupvipersave := viper.GetViper()
+
+	//if clusters have been discovered
 	if strClusters != "" {
+		//set cluster list
 		repman.ClusterList = strings.Split(strClusters, ",")
+		//add config from cluster to the config map
 		for _, cluster := range repman.ClusterList {
 			//vipersave := backupvipersave
 
@@ -394,17 +456,20 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		log.WithField("cluster", repman.ClusterList[cfgGroupIndex]).Debug("Default Cluster set")
 
 	} else {
+		//add default to the clusterlist if no cluster discover
 		repman.ClusterList = append(repman.ClusterList, "Default")
 		log.WithField("cluster", repman.ClusterList[cfgGroupIndex]).Debug("Default Cluster set")
 
 		confs["Default"] = conf
 
 	}
+	fmt.Printf("%+v\n", fistRead.AllSettings())
 	repman.Confs = confs
 	//repman.Conf = conf
 }
 
 func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, cluster string, conf config.Config) config.Config {
+	confs := new(config.ConfVersion)
 
 	clusterconf := conf
 	//vipersave := viper.GetViper()
@@ -441,8 +506,11 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, cluste
 			//		fmt.Printf("include config for cluster %s %+v\n", cluster, clusterconf)
 
 		}
+		confs.ConfImmutable = clusterconf
+		confs.ConfFlag = repman.ConfFlag
 
-		repman.ForcedConfs[cluster] = clusterconf
+		fmt.Printf("%+v\n", cf2.AllSettings())
+
 		if clusterconf.ConfRewrite {
 			cf3 := fistRead.Sub("saved-" + cluster)
 			if cf3 == nil {
@@ -454,7 +522,11 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, cluste
 				//	vipersave.MergeConfigMap(cf3.AllSettings())
 				//	vipersave.Unmarshal(&clusterconf)
 			}
+			confs.ConfDynamic = clusterconf
 		}
+		confs.ConfInit = clusterconf
+
+		repman.VersionConfs[cluster] = confs
 	}
 	return clusterconf
 }
@@ -719,7 +791,8 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 		myClusterConf.ShareDir = myClusterConf.BaseDir + "/share"
 		myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
 	}
-	repman.currentCluster.Init(myClusterConf, clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname, k)
+	repman.VersionConfs[clusterName].ConfInit = myClusterConf
+	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname, k)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 	go repman.currentCluster.Run()
@@ -945,4 +1018,9 @@ func (repman *ReplicationManager) InitGrants() error {
 	repman.ServiceAcl = acls
 	sort.Sort(GrantSorter(repman.ServiceAcl))
 	return nil
+}
+
+func IsDefault(p string, v *viper.Viper) bool {
+
+	return false
 }

@@ -8,6 +8,8 @@ package cluster
 
 import (
 	"fmt"
+	"log"
+	"reflect"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -358,5 +360,60 @@ func (cluster *Cluster) HasMonitoringCredentialsRotation() bool {
 		}
 		return false
 	}
+	return false
+}
+
+func (cluster *Cluster) IsVariableDiffFromRepmanDefault(v string) bool {
+	values_clust := reflect.ValueOf(cluster.Conf)
+	types_clust := values_clust.Type()
+
+	values_def := reflect.ValueOf(cluster.Confs.ConfInit)
+	types_def := values_def.Type()
+
+	var val_clust reflect.Value
+	var val_def reflect.Value
+
+	for i := 0; i < values_clust.NumField(); i++ {
+		if types_clust.Field(i).Name == v {
+			val_clust = values_clust.Field(i)
+		}
+		if types_def.Field(i).Name == v {
+			val_def = values_def.Field(i)
+		}
+
+	}
+
+	return val_clust == val_def
+}
+
+func (cluster *Cluster) IsVariableImmutable(v string) bool {
+	values := reflect.ValueOf(cluster.Conf)
+	types := values.Type()
+
+	values_flag := reflect.ValueOf(cluster.Confs.ConfFlag)
+	//types_flag := values_flag.Type()
+
+	for i := 0; i < values.NumField(); i++ {
+		if types.Field(i).Name == v {
+			if types.Field(i).Type.String() == "string" {
+				if values.Field(i).String() != "" && values.Field(i).String() != values_flag.Field(i).String() {
+					log.Printf("TESTE IMMUTABLE val : %s (string)", values.Field(i).String())
+					return true
+				}
+			}
+			if types.Field(i).Type.String() == "bool" {
+				if values.Field(i).String() != "true" {
+					log.Printf("TESTE IMMUTABLE val : %s (bool)", values.Field(i).String())
+					return true
+				}
+
+			}
+			if types.Field(i).Type.String() == "int" || types.Field(i).Type.String() == "uint64" || types.Field(i).Type.String() == "int64" {
+
+			}
+		}
+
+	}
+
 	return false
 }

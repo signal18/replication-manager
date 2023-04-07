@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -585,6 +586,14 @@ type MyDumperMetaData struct {
 	EndTimestamp   time.Time `json:"start_timestamp" db:"start_timestamp"`
 }
 
+type ConfVersion struct {
+	ConfDynamic   Config `json:"-"`
+	ConfFlag      Config `json:"-"`
+	ConfImmutable Config `json:"-"`
+	ConfInit      Config `json:"-"`
+	ConfDecode    Config `json:"-"`
+}
+
 const (
 	ConstStreamingSubDir string = "backups"
 )
@@ -1046,4 +1055,15 @@ func (conf *Config) GetTarballUrl(name string) (string, error) {
 		}
 	}
 	return "", errors.New("tarball not found in collection")
+}
+
+func (conf *Config) GetStringValue(name string) string {
+	values := reflect.ValueOf(conf)
+	types := values.Type()
+	for i := 0; i < values.NumField(); i++ {
+		if types.Field(i).Name == name {
+			return values.Field(i).String()
+		}
+	}
+	return ""
 }

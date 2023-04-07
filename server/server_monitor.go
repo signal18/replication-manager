@@ -14,6 +14,7 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"hash/crc64"
 	"io/ioutil"
 	"runtime"
@@ -550,10 +551,29 @@ func init() {
 
 		}
 	}
+
 	//cobra.OnInitialize()
 	initLogFlags(monitorCmd)
+	a, _ := monitorCmd.Flags().GetBool("test")
+	fmt.Printf("COUCOU %t : %t", monitorCmd.Flags().Lookup("test").Changed, a)
 
 	viper.BindPFlags(monitorCmd.Flags())
+
+	a, _ = monitorCmd.Flags().GetBool("test")
+
+	fmt.Printf("COUCOU %t : %t", monitorCmd.Flags().Lookup("test").Changed, a)
+	/*
+		var test config.Config
+
+		values := reflect.ValueOf(test)
+		types := values.Type()
+		for i := 0; i < values.NumField(); i++ {
+			fmt.Printf("HAS CHANGED FROM DEFAULT : %s\n", types.Field(i).Name)
+			if monitorCmd.Flags().Lookup(types.Field(i).Name).Changed {
+
+				fmt.Printf("HAS CHANGED FROM DEFAULT : %s, %s\n", types.Field(i).Name, values.Field(i).String())
+			}
+		}*/
 
 }
 
