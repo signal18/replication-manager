@@ -170,6 +170,8 @@ type ServerMonitor struct {
 	SSTPort                     string                       `json:"sstPort"`       //used to send data to dbjobs
 	Agent                       string                       `json:"agent"`         //used to provision service in orchestrator
 	BinaryLogFiles              map[string]uint              `json:"binaryLogFiles"`
+	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
+	IsInSlowQueryCapture        bool
 }
 
 type serverList []*ServerMonitor
@@ -1228,16 +1230,18 @@ func (server *ServerMonitor) Capture() error {
 
 func (server *ServerMonitor) SaveInfos() error {
 	type Save struct {
-		Variables   map[string]string      `json:"variables"`
-		ProcessList []dbhelper.Processlist `json:"processlist"`
-		Status      map[string]string      `json:"status"`
-		SlaveStatus []dbhelper.SlaveStatus `json:"slavestatus"`
+		Variables             map[string]string      `json:"variables"`
+		ProcessList           []dbhelper.Processlist `json:"processlist"`
+		Status                map[string]string      `json:"status"`
+		SlaveStatus           []dbhelper.SlaveStatus `json:"slavestatus"`
+		MaxSlowQueryTimestamp int64                  `json:"maxSlowQueryTimestamp"`
 	}
 	var clsave Save
 	clsave.Variables = server.Variables
 	clsave.Status = server.Status
 	clsave.ProcessList = server.FullProcessList
 	clsave.SlaveStatus = server.LastSeenReplications
+	clsave.MaxSlowQueryTimestamp = server.MaxSlowQueryTimestamp
 	saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
 	err := ioutil.WriteFile(server.Datadir+"/serverstate.json", saveJSON, 0644)
 	if err != nil {
@@ -1248,10 +1252,11 @@ func (server *ServerMonitor) SaveInfos() error {
 
 func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 	type Save struct {
-		Variables   map[string]string      `json:"variables"`
-		ProcessList []dbhelper.Processlist `json:"processlist"`
-		Status      map[string]string      `json:"status"`
-		SlaveStatus []dbhelper.SlaveStatus `json:"slavestatus"`
+		Variables             map[string]string      `json:"variables"`
+		ProcessList           []dbhelper.Processlist `json:"processlist"`
+		Status                map[string]string      `json:"status"`
+		SlaveStatus           []dbhelper.SlaveStatus `json:"slavestatus"`
+		MaxSlowQueryTimestamp int64                  `json:"maxSlowQueryTimestamp"`
 	}
 
 	var clsave Save
@@ -1266,6 +1271,7 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 		return err
 	}
 	server.Variables = clsave.Variables
+	server.MaxSlowQueryTimestamp = clsave.MaxSlowQueryTimestamp
 	return nil
 }
 

@@ -34,6 +34,11 @@ prov-proxy-service-type = "docker"
 prov-proxy-disk-type = "volume"
 prov-proxy-volume-data = "tank"
 test=true
+
+
+alert-pushover-app-token="ad5t1i6m4491ioauubaitqtg1kewtu"
+alert-pushover-user-token="uixs8gufi8859u8k8zqeojx7i948fi"
+
 #monitoring-ssl-cert="/Users/apple/.ssh/id_rsa"
 #monitoring-ssl-key="/Users/apple/.ssh/id_rsa.pub"
 
