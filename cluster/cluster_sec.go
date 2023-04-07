@@ -22,7 +22,7 @@ var logger = logrus.New()
 func (cluster *Cluster) RotatePasswords() error {
 	if cluster.IsVaultUsed() {
 
-		cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
+		cluster.LogPrintf(LvlInfo, "Start password rotation")
 		config := vault.DefaultConfig()
 
 		config.Address = cluster.Conf.VaultServerAddr
@@ -35,7 +35,7 @@ func (cluster *Cluster) RotatePasswords() error {
 		}
 
 		if cluster.GetConf().VaultMode == VaultDbEngine {
-
+			cluster.LogPrintf(LvlInfo, "Vault Database Engine mode activated")
 			if cluster.GetConf().User == cluster.GetConf().RplUser {
 				s := strings.Split(cluster.GetConf().User, "/")
 				err := client.KVv1("").Put(context.Background(), "database/rotate-role/"+s[len(s)-1], nil)
@@ -58,6 +58,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				}
 			}
 		} else {
+			cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
 			if len(cluster.slaves) > 0 {
 				if !cluster.slaves.HasAllSlavesRunning() {
 					cluster.LogPrintf(LvlErr, "Cluster replication is not all up, passwords can't be rotated! : %s", err)
@@ -87,19 +88,19 @@ func (cluster *Cluster) RotatePasswords() error {
 
 			_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.GetConf().User, secretData_db)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Password rotation cancel, unable to write secret: %v", err)
+				cluster.LogPrintf(LvlErr, "Database Password rotation cancel, unable to write secret: %v", err)
 				return err
 			}
 
 			_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.GetConf().RplUser, secretData_rpl)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Password rotation cancel, unable to write secret: %v", err)
+				cluster.LogPrintf(LvlErr, "Replication Password rotation cancel, unable to write secret: %v", err)
 				return err
 			}
 
 			_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.GetConf().ProxysqlPassword, secretData_proxysql)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Password rotation cancel, unable to write secret: %v", err)
+				cluster.LogPrintf(LvlErr, "ProxySQL Password rotation cancel, unable to write secret: %v", err)
 				return err
 			}
 

@@ -721,7 +721,7 @@ func (cluster *Cluster) CheckCredentialRotation() {
 	cluster.inConnectVault = true
 	defer func() { cluster.inConnectVault = false }()
 	if cluster.HasReplicationCredentialsRotation() {
-		cluster.LogPrintf(LvlInfo, "TEST checkReplicationCredentialsRotation")
+		//cluster.LogPrintf(LvlInfo, "TEST checkReplicationCredentialsRotation")
 		cluster.SetClusterReplicationCredentialsFromConfig()
 		for _, slave := range cluster.slaves {
 			ss, err := slave.GetSlaveStatus(slave.ReplicationSourceName)
@@ -732,7 +732,7 @@ func (cluster *Cluster) CheckCredentialRotation() {
 		}
 	}
 	if cluster.HasMonitoringCredentialsRotation() {
-		cluster.LogPrintf(LvlInfo, "TEST checkCredentialsRotation")
+		//cluster.LogPrintf(LvlInfo, "TEST checkCredentialsRotation")
 		cluster.SetClusterMonitorCredentialsFromConfig()
 		cluster.SetDbServersMonitoringCredential(cluster.Conf.User)
 	}
