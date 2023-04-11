@@ -260,14 +260,10 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 	//var repman_default config.Config
 	//fistRead.Unmarshal(&repman_default)
-
 	//repman.ConfFlag = repman_default
 
-	//fmt.Printf("%+v\n", fistRead)
-	//fistRead.Debug()
 	fmt.Printf("REPMAN DEFAULT FLAG: ")
-	//fmt.Printf("%+v\n", fistRead.AllSettings())
-	fmt.Printf("%+v\n", repman.ConfFlag)
+
 	repman.ConfFlag.PrintConf()
 
 	//if a config file is already define
@@ -325,10 +321,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	secRead.UnmarshalKey("default", &test)
 
 	fmt.Printf("REPMAN DEFAULT SECTION : ")
-	fmt.Printf("%+v\n", secRead)
+	test.PrintConf()
 
 	//from here first read as the combination of default sections variables but not forced parameters
-	//fmt.Printf("%+v\n", fistRead)
 
 	// Proceed include files
 	//if include is defined in a config file
