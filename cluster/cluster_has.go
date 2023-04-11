@@ -8,7 +8,6 @@ package cluster
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"strings"
 
@@ -387,36 +386,10 @@ func (cluster *Cluster) IsVariableDiffFromRepmanDefault(v string) bool {
 }
 
 func (cluster *Cluster) IsVariableImmutable(v string) bool {
-	values := reflect.ValueOf(cluster.Conf)
-	types := values.Type()
-
-	values_flag := reflect.ValueOf(cluster.Confs.ConfFlag)
-	//types_flag := values_flag.Type()
-
-	for i := 0; i < values.NumField(); i++ {
-		if types.Field(i).Name == v {
-			if types.Field(i).Type.String() == "string" {
-				if values.Field(i).String() != "" && values.Field(i).String() != values_flag.Field(i).String() {
-					log.Printf("TESTE IMMUTABLE val : %s (string)", values.Field(i).String())
-					return true
-				}
-			}
-			if types.Field(i).Type.String() == "bool" {
-				if values.Field(i).String() != values_flag.Field(i).String() {
-					log.Printf("TESTE IMMUTABLE val : %s (bool)", values.Field(i).String())
-					return true
-				}
-
-			}
-			if types.Field(i).Type.String() == "int" || types.Field(i).Type.String() == "uint64" || types.Field(i).Type.String() == "int64" {
-				if values.Field(i).String() != values_flag.Field(i).String() {
-					log.Printf("TESTE IMMUTABLE val : %s (int)", values.Field(i).String())
-					return true
-				}
-			}
-		}
-
+	_, ok := cluster.ImmuableMap[v]
+	if !ok {
+		return false
 	}
-
-	return false
+	//cluster.LogPrintf(LvlErr, "TEST immuable : %t", ok)
+	return true
 }

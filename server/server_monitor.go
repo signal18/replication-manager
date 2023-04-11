@@ -14,7 +14,6 @@ package server
 
 import (
 	"bytes"
-	"fmt"
 	"hash/crc64"
 	"io/ioutil"
 	"runtime"
@@ -557,8 +556,6 @@ func init() {
 
 	//cobra.OnInitialize()
 	initLogFlags(monitorCmd)
-	a, _ := monitorCmd.Flags().GetBool("test")
-	fmt.Printf("COUCOU %t : %t", monitorCmd.Flags().Lookup("test").Changed, a)
 
 	//conf des defaults flag sans les paramètres en ligne de commande
 	//var repman_default config.Config
@@ -685,7 +682,7 @@ For interacting with this daemon use,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		RepMan = new(ReplicationManager)
-
+		RepMan.CommandLineFlag = GetCommandLineFlag(cmd)
 		RepMan.ConfFlag = repman_default
 		RepMan.InitConfig(conf)
 		RepMan.Run()
@@ -694,4 +691,15 @@ For interacting with this daemon use,
 		// Close connections on exit.
 		RepMan.Stop()
 	},
+}
+
+func GetCommandLineFlag(cmd *cobra.Command) []string {
+	var cmd_flag []string
+	flag := viper.AllKeys()
+	for _, f := range flag {
+		if cmd.Flags().Changed(f) {
+			cmd_flag = append(cmd_flag, f)
+		}
+	}
+	return cmd_flag
 }

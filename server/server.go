@@ -49,36 +49,38 @@ var RepMan *ReplicationManager
 
 // Global variables
 type ReplicationManager struct {
-	OpenSVC                                          opensvc.Collector           `json:"-"`
-	Version                                          string                      `json:"version"`
-	Fullversion                                      string                      `json:"fullVersion"`
-	Os                                               string                      `json:"os"`
-	Arch                                             string                      `json:"arch"`
-	MemProfile                                       string                      `json:"memprofile"`
-	Clusters                                         map[string]*cluster.Cluster `json:"-"`
-	Agents                                           []opensvc.Host              `json:"agents"`
-	UUID                                             string                      `json:"uuid"`
-	Hostname                                         string                      `json:"hostname"`
-	Status                                           string                      `json:"status"`
-	SplitBrain                                       bool                        `json:"spitBrain"`
-	ClusterList                                      []string                    `json:"clusters"`
-	Tests                                            []string                    `json:"tests"`
-	Conf                                             config.Config               `json:"config"`
-	ConfFlag                                         config.Config               `json:"-"`
-	ConfigPathList                                   []string                    `json:"-"`
-	Logs                                             s18log.HttpLog              `json:"logs"`
-	ServicePlans                                     []config.ServicePlan        `json:"servicePlans"`
-	ServiceOrchestrators                             []config.ConfigVariableType `json:"serviceOrchestrators"`
-	ServiceAcl                                       []config.Grant              `json:"serviceAcl"`
-	ServiceRepos                                     []config.DockerRepo         `json:"serviceRepos"`
-	ServiceTarballs                                  []config.Tarball            `json:"serviceTarballs"`
-	ServiceFS                                        map[string]bool             `json:"serviceFS"`
-	ServiceVM                                        map[string]bool             `json:"serviceVM"`
-	ServiceDisk                                      map[string]string           `json:"serviceDisk"`
-	ServicePool                                      map[string]bool             `json:"servicePool"`
-	BackupLogicalList                                map[string]bool             `json:"backupLogicalList"`
-	BackupPhysicalList                               map[string]bool             `json:"backupPhysicalList"`
-	currentCluster                                   *cluster.Cluster            `json:"-"`
+	OpenSVC                                          opensvc.Collector                 `json:"-"`
+	Version                                          string                            `json:"version"`
+	Fullversion                                      string                            `json:"fullVersion"`
+	Os                                               string                            `json:"os"`
+	Arch                                             string                            `json:"arch"`
+	MemProfile                                       string                            `json:"memprofile"`
+	Clusters                                         map[string]*cluster.Cluster       `json:"-"`
+	Agents                                           []opensvc.Host                    `json:"agents"`
+	UUID                                             string                            `json:"uuid"`
+	Hostname                                         string                            `json:"hostname"`
+	Status                                           string                            `json:"status"`
+	SplitBrain                                       bool                              `json:"spitBrain"`
+	ClusterList                                      []string                          `json:"clusters"`
+	Tests                                            []string                          `json:"tests"`
+	Conf                                             config.Config                     `json:"config"`
+	ConfFlag                                         config.Config                     `json:"-"`
+	ImmuableMaps                                     map[string]map[string]interface{} `json:"-"`
+	CommandLineFlag                                  []string                          `json:"-"`
+	ConfigPathList                                   []string                          `json:"-"`
+	Logs                                             s18log.HttpLog                    `json:"logs"`
+	ServicePlans                                     []config.ServicePlan              `json:"servicePlans"`
+	ServiceOrchestrators                             []config.ConfigVariableType       `json:"serviceOrchestrators"`
+	ServiceAcl                                       []config.Grant                    `json:"serviceAcl"`
+	ServiceRepos                                     []config.DockerRepo               `json:"serviceRepos"`
+	ServiceTarballs                                  []config.Tarball                  `json:"serviceTarballs"`
+	ServiceFS                                        map[string]bool                   `json:"serviceFS"`
+	ServiceVM                                        map[string]bool                   `json:"serviceVM"`
+	ServiceDisk                                      map[string]string                 `json:"serviceDisk"`
+	ServicePool                                      map[string]bool                   `json:"servicePool"`
+	BackupLogicalList                                map[string]bool                   `json:"backupLogicalList"`
+	BackupPhysicalList                               map[string]bool                   `json:"backupPhysicalList"`
+	currentCluster                                   *cluster.Cluster                  `json:"-"`
 	tlog                                             s18log.TermLog
 	termlength                                       int
 	exitMsg                                          string
@@ -242,6 +244,8 @@ func (repman *ReplicationManager) initEmbed() error {
 
 func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	repman.VersionConfs = make(map[string]*config.ConfVersion)
+	repman.ImmuableMaps = make(map[string]map[string]interface{})
+	ImmuableMap := make(map[string]interface{})
 	// call after init if configuration file is provide
 
 	//if repman is embed, create folders and load missing embedded files
@@ -253,18 +257,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	fistRead := viper.GetViper()
 	fistRead.SetConfigType("toml")
 
-	var test config.Config
-
-	secRead := viper.GetViper()
-	secRead.SetConfigType("toml")
-
-	//var repman_default config.Config
-	//fistRead.Unmarshal(&repman_default)
-	//repman.ConfFlag = repman_default
-
-	fmt.Printf("REPMAN DEFAULT FLAG: ")
-
-	repman.ConfFlag.PrintConf()
+	//fmt.Printf("REPMAN DEFAULT FLAG: ")
+	//ConfFlag is already set in server_monitor to get all default value flag (without being overwrited by command line flag)
+	//repman.ConfFlag.PrintConf()
 
 	//if a config file is already define
 	if conf.ConfigFile != "" {
@@ -311,17 +306,26 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			"file": fistRead.ConfigFileUsed(),
 		}).Debug("Using config file")
 	} else {
-		//	if _, ok := err.(fistRead.ConfigParseError); ok {
-		//log.WithError(err).Fatal("Could not parse config file")
 		log.Errorf("Could not parse config file: %s", err)
 	}
 
-	//recup tous les param set dans le default
-	secRead = fistRead.Sub("default")
-	secRead.UnmarshalKey("default", &test)
+	//recup tous les param set dans le default (avec les lignes de commandes)
+	//err = fistRead.MergeInConfig()
+	if err != nil {
+		log.Fatal("Config error in " + conf.ClusterConfigPath + ":" + err.Error())
+	}
+	secRead := fistRead.Sub("DEFAULT")
+	//var test config.Config
+	//secRead.UnmarshalKey("default", &test)
 
-	fmt.Printf("REPMAN DEFAULT SECTION : ")
-	test.PrintConf()
+	fmt.Printf("REPMAN DEFAULT SECTION : %s", secRead.AllSettings())
+	//Add immuatable flag from default section
+	for _, f := range secRead.AllKeys() {
+		ImmuableMap[f] = secRead.Get(f)
+	}
+	fmt.Printf("REPMAN DEFAULT SECTION : %s", ImmuableMap)
+
+	//test.PrintConf()
 
 	//from here first read as the combination of default sections variables but not forced parameters
 
@@ -345,8 +349,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//read and set config from all files in the include path
 		for _, f := range files {
 			if !f.IsDir() && strings.HasSuffix(f.Name(), ".toml") {
-				file_name := strings.Split(f.Name(), ".")
-				cluster_name := file_name[0]
+				//file_name := strings.Split(f.Name(), ".")
+				//cluster_name := file_name[0]
 				fistRead.SetConfigName(f.Name())
 				fistRead.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
 				//	viper.Debug()
@@ -359,11 +363,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 				}
 
 				//recup tous les param set dans le include
-				fmt.Printf("%+v\n", secRead.AllSettings())
-				secRead = fistRead.Sub(cluster_name)
-				secRead.UnmarshalKey(cluster_name, &test)
-				fmt.Printf("%+v\n", secRead.AllSettings())
-				fmt.Printf("KEY : %s", secRead.AllKeys())
+				//secRead = fistRead.Sub(cluster_name)
+				//secRead.UnmarshalKey(cluster_name, &test)
 			}
 		}
 	} else {
@@ -435,6 +436,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		vipersave.Unmarshal(&conf)
 		//	fmt.Printf("%+v\n", conf)
 		//os.Exit(3)
+		//conf.PrintConf()
 		repman.Conf = conf
 	}
 	//	backupvipersave := viper.GetViper()
@@ -447,7 +449,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		for _, cluster := range repman.ClusterList {
 			//vipersave := backupvipersave
 
-			confs[cluster] = repman.GetClusterConfig(fistRead, cluster, conf)
+			confs[cluster] = repman.GetClusterConfig(fistRead, ImmuableMap, cluster, conf)
 			cfgGroupIndex++
 
 		}
@@ -463,34 +465,38 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		confs["Default"] = conf
 
 	}
-	fmt.Printf("%+v\n", fistRead.AllSettings())
+
+	//fmt.Printf("%+v\n", fistRead.AllSettings())
 	repman.Confs = confs
 	//repman.Conf = conf
 }
 
-func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, cluster string, conf config.Config) config.Config {
+func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, ImmuableMap map[string]interface{}, cluster string, conf config.Config) config.Config {
 	confs := new(config.ConfVersion)
 
+	//Add immuatable flag from command line
+	for _, f := range repman.CommandLineFlag {
+		ImmuableMap[f] = fistRead.Get(f)
+	}
+
+	//set the default config
 	clusterconf := conf
-	//vipersave := viper.GetViper()
+
+	//conf.PrintConf()
+	//fmt.Printf("%+v\n", fistRead.AllSettings())
+
+	//if name cluster is defined
 	if cluster != "" {
 		log.WithField("group", cluster).Debug("Reading configuration group")
-		def := fistRead.Sub("Default")
-		//	def.Debug()
-		def.AutomaticEnv()
-		def.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
-		def.SetEnvPrefix("DEFAULT")
-		if def != nil {
-			repman.initAlias(def)
-			def.Unmarshal(&clusterconf)
 
-		}
-		//fmt.Printf("default for cluster %s %+v\n", cluster, clusterconf)
-
+		//extract the cluster config from the viper
 		cf2 := fistRead.Sub(cluster)
+		//fmt.Printf("%+v\n", cf2.AllSettings())
 
-		//def.SetEnvPrefix(strings.ToUpper(cluster))
-		//
+		//Add immuatable flag from cluster section
+		for _, f := range cf2.AllKeys() {
+			ImmuableMap[f] = cf2.Get(f)
+		}
 
 		if cf2 == nil {
 			log.WithField("group", cluster).Infof("Could not parse configuration group")
@@ -498,29 +504,28 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, cluste
 			cf2.AutomaticEnv()
 			cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 			repman.initAlias(cf2)
-			//	cf2.Unmarshal(&def)
 			cf2.Unmarshal(&clusterconf)
-			//			fmt.Printf("include config cf2 for cluster %s %+v\n", cluster, clusterconf)
-			//		vipersave.MergeConfigMap(cf2.AllSettings())
-			//	vipersave.Unmarshal(&clusterconf)
-			//		fmt.Printf("include config for cluster %s %+v\n", cluster, clusterconf)
-
 		}
+		//clusterconf.PrintConf()
+
+		//save the immuable map for the cluster
+		//fmt.Printf("Immuatable map : %s\n", ImmuableMap)
+		repman.ImmuableMaps[cluster] = ImmuableMap
+
+		//store default cluster config in immutable config (all parameter set in default and cluster section, default value and command line)
 		confs.ConfImmutable = clusterconf
 		confs.ConfFlag = repman.ConfFlag
 
-		fmt.Printf("%+v\n", cf2.AllSettings())
+		//fmt.Printf("%+v\n", cf2.AllSettings())
 
+		//if dynamic config, load modified parameter from the saved config
 		if clusterconf.ConfRewrite {
 			cf3 := fistRead.Sub("saved-" + cluster)
 			if cf3 == nil {
 				log.WithField("group", cluster).Info("Could not parse saved configuration group")
 			} else {
 				repman.initAlias(cf3)
-				cf3.Unmarshal(&def)
 				cf3.Unmarshal(&clusterconf)
-				//	vipersave.MergeConfigMap(cf3.AllSettings())
-				//	vipersave.Unmarshal(&clusterconf)
 			}
 			confs.ConfDynamic = clusterconf
 		}
@@ -792,7 +797,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 		myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
 	}
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
-	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname, k)
+	repman.currentCluster.Init(repman.VersionConfs[clusterName], repman.ImmuableMaps[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname, k)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 	go repman.currentCluster.Run()

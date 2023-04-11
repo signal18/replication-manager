@@ -91,6 +91,7 @@ type Cluster struct {
 	IsCapturing                   bool                        `json:"isCapturing"`
 	Conf                          config.Config               `json:"config"`
 	Confs                         *config.ConfVersion         `json:"-"`
+	ImmuableMap                   map[string]interface{}      `json:"-"`
 	CleanAll                      bool                        `json:"cleanReplication"` //used in testing
 	Topology                      string                      `json:"topology"`
 	Uptime                        string                      `json:"uptime"`
@@ -274,8 +275,10 @@ const (
 )
 
 // Init initial cluster definition
-func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface{}, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.Confs = confs
+	cluster.ImmuableMap = imm
+
 	conf := confs.ConfInit
 	cluster.SqlErrorLog = logsql.New()
 	cluster.SqlGeneralLog = logsql.New()
@@ -336,6 +339,10 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	}
 
 	cluster.LogPushover = log.New()
+
+	cluster.LogPrintf(LvlErr, "TEST is immuable test : %t", cluster.IsVariableImmutable("test"))
+	cluster.LogPrintf(LvlErr, "TEST is immuable replication-credential: %t", cluster.IsVariableImmutable("replication-credential"))
+	cluster.LogPrintf(LvlErr, "TEST immuable map : %s", cluster.ImmuableMap)
 
 	if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
 		cluster.LogPushover.AddHook(
