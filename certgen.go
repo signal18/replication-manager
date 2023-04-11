@@ -7,6 +7,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -25,6 +26,7 @@ var (
 )
 
 func main() {
+	fmt.Printf("COUCOU")
 	flag.Parse()
 
 	if len(*host) == 0 {

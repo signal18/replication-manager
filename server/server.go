@@ -258,14 +258,17 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	secRead := viper.GetViper()
 	secRead.SetConfigType("toml")
 
-	var repman_default config.Config
-	fistRead.Unmarshal(repman_default)
+	//var repman_default config.Config
+	//fistRead.Unmarshal(&repman_default)
 
-	repman.ConfFlag = repman_default
+	//repman.ConfFlag = repman_default
 
 	//fmt.Printf("%+v\n", fistRead)
-	fistRead.Debug()
-	fmt.Printf("%+v\n", fistRead.AllSettings())
+	//fistRead.Debug()
+	fmt.Printf("REPMAN DEFAULT FLAG: ")
+	//fmt.Printf("%+v\n", fistRead.AllSettings())
+	fmt.Printf("%+v\n", repman.ConfFlag)
+	repman.ConfFlag.PrintConf()
 
 	//if a config file is already define
 	if conf.ConfigFile != "" {
@@ -319,7 +322,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 	//recup tous les param set dans le default
 	secRead = fistRead.Sub("default")
-	secRead.UnmarshalKey("default", test)
+	secRead.UnmarshalKey("default", &test)
+
+	fmt.Printf("REPMAN DEFAULT SECTION : ")
 	fmt.Printf("%+v\n", secRead)
 
 	//from here first read as the combination of default sections variables but not forced parameters
@@ -361,7 +366,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 				//recup tous les param set dans le include
 				fmt.Printf("%+v\n", secRead.AllSettings())
 				secRead = fistRead.Sub(cluster_name)
-				secRead.UnmarshalKey(cluster_name, test)
+				secRead.UnmarshalKey(cluster_name, &test)
 				fmt.Printf("%+v\n", secRead.AllSettings())
 				fmt.Printf("KEY : %s", secRead.AllKeys())
 			}

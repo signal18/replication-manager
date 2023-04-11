@@ -24,11 +24,14 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+var repman_default config.Config
 
 func init() {
 
@@ -557,11 +560,16 @@ func init() {
 	a, _ := monitorCmd.Flags().GetBool("test")
 	fmt.Printf("COUCOU %t : %t", monitorCmd.Flags().Lookup("test").Changed, a)
 
+	//conf des defaults flag sans les paramètres en ligne de commande
+	//var repman_default config.Config
+
+	v := viper.GetViper()
+	v.SetConfigType("toml")
+	v.Unmarshal(&repman_default)
+	//repman_default.PrintConf()
+
 	viper.BindPFlags(monitorCmd.Flags())
 
-	a, _ = monitorCmd.Flags().GetBool("test")
-
-	fmt.Printf("COUCOU %t : %t", monitorCmd.Flags().Lookup("test").Changed, a)
 	/*
 		var test config.Config
 
@@ -677,6 +685,8 @@ For interacting with this daemon use,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		RepMan = new(ReplicationManager)
+
+		RepMan.ConfFlag = repman_default
 		RepMan.InitConfig(conf)
 		RepMan.Run()
 	},

@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"reflect"
 	"strconv"
@@ -1066,4 +1067,23 @@ func (conf *Config) GetStringValue(name string) string {
 		}
 	}
 	return ""
+}
+
+func (conf Config) PrintConf() {
+	values := reflect.ValueOf(conf)
+	types := values.Type()
+	log.Printf("PRINT CONF")
+	for i := 0; i < values.NumField(); i++ {
+
+		if types.Field(i).Type.String() == "string" {
+			fmt.Printf("%s : %s (string)\n", types.Field(i).Name, values.Field(i).String())
+		}
+		if types.Field(i).Type.String() == "bool" {
+			fmt.Printf("%s : %t (bool)\n", types.Field(i).Name, values.Field(i))
+		}
+		if types.Field(i).Type.String() == "int" || types.Field(i).Type.String() == "uint64" || types.Field(i).Type.String() == "int64" {
+			fmt.Printf("%s : %d (int)\n", types.Field(i).Name, values.Field(i))
+		}
+
+	}
 }

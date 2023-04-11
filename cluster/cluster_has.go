@@ -402,14 +402,17 @@ func (cluster *Cluster) IsVariableImmutable(v string) bool {
 				}
 			}
 			if types.Field(i).Type.String() == "bool" {
-				if values.Field(i).String() != "true" {
+				if values.Field(i).String() != values_flag.Field(i).String() {
 					log.Printf("TESTE IMMUTABLE val : %s (bool)", values.Field(i).String())
 					return true
 				}
 
 			}
 			if types.Field(i).Type.String() == "int" || types.Field(i).Type.String() == "uint64" || types.Field(i).Type.String() == "int64" {
-
+				if values.Field(i).String() != values_flag.Field(i).String() {
+					log.Printf("TESTE IMMUTABLE val : %s (int)", values.Field(i).String())
+					return true
+				}
 			}
 		}
 
