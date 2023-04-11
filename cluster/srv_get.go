@@ -523,6 +523,15 @@ func (server *ServerMonitor) GetSlowLogTable() {
 	if server.IsDown() {
 		return
 	}
+	if !server.GetCluster().GetConf().MonitorQueries {
+		return
+	}
+	if server.IsInSlowQueryCapture {
+		return
+	}
+	server.IsInSlowQueryCapture = true
+	defer func() { server.IsInSlowQueryCapture = false }()
+
 	f, err := os.OpenFile(server.Datadir+"/log/log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Error writing slow queries %s", err)
@@ -538,9 +547,9 @@ func (server *ServerMonitor) GetSlowLogTable() {
 	slowqueries := []dbhelper.LogSlow{}
 
 	if server.DBVersion.IsMySQLOrPercona() {
-		err = server.Conn.Select(&slowqueries, "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id, 0 as rows_affected FROM  mysql.slow_log")
+		err = server.Conn.Select(&slowqueries, "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id, 0 as rows_affected FROM  mysql.slow_log WHERE start_time > FROM_UNIXTIME("+strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10)+")")
 	} else {
-		err = server.Conn.Select(&slowqueries, "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id,0 as rows_affected FROM  mysql.slow_log")
+		err = server.Conn.Select(&slowqueries, "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id,0 as rows_affected FROM  mysql.slow_log WHERE start_time > FROM_UNIXTIME("+strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10)+")")
 	}
 
 	if err != nil {
@@ -560,8 +569,9 @@ func (server *ServerMonitor) GetSlowLogTable() {
 			s.Start_time,
 			strings.Replace(strings.Replace(s.Sql_text.String, "\r\n", " ", -1), "\n", " ", -1),
 		)
+		server.MaxSlowQueryTimestamp = s.Start_time
 	}
-	server.ExecQueryNoBinLog("TRUNCATE mysql.slow_log")
+	//	server.ExecQueryNoBinLog("TRUNCATE mysql.slow_log")
 }
 
 func (server *ServerMonitor) GetTables() []v3.Table {
