@@ -1551,9 +1551,11 @@ func GetQueries(db *sqlx.DB) (map[string]PFSQuery, string, error) {
 	A.SUM_ROWS_EXAMINED AS rows_scanned,
 	round(A.sum_timer_wait/1000000000000, 6) as value
 	FROM performance_schema.events_statements_summary_by_digest A
-	WHERE A.digest_text is not null
-	ORDER BY A.sum_timer_wait desc
-	LIMIT 50`
+	WHERE A.digest_text is not null`
+
+	// Do not order as it's eavy fot temporary directory
+	//ORDER BY A.sum_timer_wait desc
+	//LIMIT 50`
 
 	rows, err := db.Queryx(query)
 	if err != nil {
