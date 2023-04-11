@@ -174,6 +174,7 @@ type ServerMonitor struct {
 	BinaryLogFiles              map[string]uint              `json:"binaryLogFiles"`
 	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
 	IsInSlowQueryCapture        bool
+	IsInPFSQueryCapture         bool
 }
 
 type serverList []*ServerMonitor
@@ -762,19 +763,13 @@ func (server *ServerMonitor) Refresh() error {
 			server.EngineInnoDB, logs, err = dbhelper.GetEngineInnoDBVariables(server.Conn)
 			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get engine innodb status %s %s", server.URL, err)
 		}
-		if server.ClusterGroup.Conf.MonitorPFS && server.HavePFSSlowQueryLog && server.HavePFS {
-			// GET PFS query digest
-			server.PFSQueries, logs, err = dbhelper.GetQueries(server.Conn)
-			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get queries %s %s", server.URL, err)
-		}
+		go server.GetPFSQueries()
+		go server.GetSlowLogTable()
 		if server.HaveDiskMonitor {
 			server.Disks, logs, err = dbhelper.GetDisks(server.Conn, server.DBVersion)
 		}
 		if server.ClusterGroup.Conf.MonitorScheduler {
 			server.CheckDisks()
-		}
-		if server.HasLogsInSystemTables() {
-			go server.GetSlowLogTable()
 		}
 
 	} // End not PG
