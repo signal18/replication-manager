@@ -384,6 +384,23 @@ func (server *ServerMonitor) GetErrorLog() s18log.HttpLog {
 	return server.ErrorLog
 }
 
+func (server *ServerMonitor) GetPFSQueries() {
+	if !(server.ClusterGroup.Conf.MonitorPFS && server.HavePFSSlowQueryLog && server.HavePFS) {
+		return
+	}
+	if server.IsInPFSQueryCapture {
+		return
+	}
+	server.IsInPFSQueryCapture = true
+	defer func() { server.IsInPFSQueryCapture = false }()
+
+	var err error
+	logs := ""
+	// GET PFS query digest
+	server.PFSQueries, logs, err = dbhelper.GetQueries(server.Conn)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get queries %s %s", server.URL, err)
+}
+
 func (server *ServerMonitor) GetPFSStatements() []dbhelper.PFSQuery {
 	var rows []dbhelper.PFSQuery
 	for _, v := range server.PFSQueries {
