@@ -1,0 +1,11 @@
+[default]
+monitoring-sharedir="./.replication-manager/share"
+monitoring-datadir="./.replication-manager/data"
+monitorinf-basedir="./"
+prov-orchestrator = "onpremise"
+[mycluster]
+db-servers-hosts="localhost:3306"
+db-servers-credential="root:"
+
+
+test=false
