@@ -65,7 +65,8 @@ type ReplicationManager struct {
 	Tests                                            []string                          `json:"tests"`
 	Conf                                             config.Config                     `json:"config"`
 	ConfFlag                                         config.Config                     `json:"-"`
-	ImmuableMaps                                     map[string]map[string]interface{} `json:"-"`
+	ImmuableFlagMaps                                 map[string]map[string]interface{} `json:"-"`
+	DynamicFlagMaps                                  map[string]map[string]interface{} `json:"-"`
 	CommandLineFlag                                  []string                          `json:"-"`
 	ConfigPathList                                   []string                          `json:"-"`
 	Logs                                             s18log.HttpLog                    `json:"logs"`
@@ -244,8 +245,10 @@ func (repman *ReplicationManager) initEmbed() error {
 
 func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	repman.VersionConfs = make(map[string]*config.ConfVersion)
-	repman.ImmuableMaps = make(map[string]map[string]interface{})
+	repman.ImmuableFlagMaps = make(map[string]map[string]interface{})
+	repman.DynamicFlagMaps = make(map[string]map[string]interface{})
 	ImmuableMap := make(map[string]interface{})
+	DynamicMap := make(map[string]interface{})
 	// call after init if configuration file is provide
 
 	//if repman is embed, create folders and load missing embedded files
@@ -318,12 +321,12 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	//var test config.Config
 	//secRead.UnmarshalKey("default", &test)
 
-	fmt.Printf("REPMAN DEFAULT SECTION : %s", secRead.AllSettings())
+	//fmt.Printf("REPMAN DEFAULT SECTION : %s", secRead.AllSettings())
+
 	//Add immuatable flag from default section
 	for _, f := range secRead.AllKeys() {
 		ImmuableMap[f] = secRead.Get(f)
 	}
-	fmt.Printf("REPMAN DEFAULT SECTION : %s", ImmuableMap)
 
 	//test.PrintConf()
 
@@ -378,6 +381,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			conf.WorkingDir = fistRead.GetString("default.monitoring-datadir")
 		}
 
+		dynRead := viper.GetViper()
+		dynRead.SetConfigType("toml")
+
 		//load files from the working dir
 		files, err := ioutil.ReadDir(conf.WorkingDir)
 		if err != nil {
@@ -387,19 +393,24 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//read and set config from all files in the working dir
 		for _, f := range files {
 			if f.IsDir() && f.Name() != "graphite" {
-				fistRead.SetConfigName(f.Name())
+				//fistRead.SetConfigName(f.Name())
+				dynRead.SetConfigName(f.Name())
 				if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/config.toml"); os.IsNotExist(err) {
 					log.Warning("No monitoring saved config found " + conf.WorkingDir + "/" + f.Name() + "/config.toml")
 				} else {
 					log.Infof("Parsing saved config from working directory %s ", conf.WorkingDir+"/"+f.Name()+"/config.toml")
 					fistRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/config.toml")
+					dynRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/config.toml")
 					err := fistRead.MergeInConfig()
+					err = dynRead.MergeInConfig()
 					if err != nil {
 						log.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/config.toml" + ":" + err.Error())
 					}
 				}
 			}
 		}
+		//fmt.Printf("%+v\n", dynRead.AllSettings())
+		//fmt.Printf("%s\n", dynRead.AllKeys())
 
 	} else {
 		log.Warning("No monitoring-save-config variable in default section config change lost on restart")
@@ -449,7 +460,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		for _, cluster := range repman.ClusterList {
 			//vipersave := backupvipersave
 
-			confs[cluster] = repman.GetClusterConfig(fistRead, ImmuableMap, cluster, conf)
+			confs[cluster] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cluster, conf)
 			cfgGroupIndex++
 
 		}
@@ -471,12 +482,28 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	//repman.Conf = conf
 }
 
-func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, ImmuableMap map[string]interface{}, cluster string, conf config.Config) config.Config {
+func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, ImmuableMap map[string]interface{}, DynamicMap map[string]interface{}, cluster string, conf config.Config) config.Config {
 	confs := new(config.ConfVersion)
+	clustImmuableMap := make(map[string]interface{})
+	clustDynamicMap := make(map[string]interface{})
+
+	//to copy default immuable flag in the immuable flag cluster map
+	for k, v := range ImmuableMap {
+		clustImmuableMap[k] = v
+	}
+
+	//to copy default dynamic flag in the dynamic flag cluster map
+	for k, v := range DynamicMap {
+		clustDynamicMap[k] = v
+	}
 
 	//Add immuatable flag from command line
 	for _, f := range repman.CommandLineFlag {
-		ImmuableMap[f] = fistRead.Get(f)
+		v := fistRead.Get(f)
+		if v != nil {
+			clustImmuableMap[f] = v
+		}
+
 	}
 
 	//set the default config
@@ -491,12 +518,6 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 
 		//extract the cluster config from the viper
 		cf2 := fistRead.Sub(cluster)
-		//fmt.Printf("%+v\n", cf2.AllSettings())
-
-		//Add immuatable flag from cluster section
-		for _, f := range cf2.AllKeys() {
-			ImmuableMap[f] = cf2.Get(f)
-		}
 
 		if cf2 == nil {
 			log.WithField("group", cluster).Infof("Could not parse configuration group")
@@ -506,11 +527,17 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 			repman.initAlias(cf2)
 			cf2.Unmarshal(&clusterconf)
 		}
+
+		//Add immuatable flag from cluster section
+		for _, f := range cf2.AllKeys() {
+			clustImmuableMap[f] = cf2.Get(f)
+		}
+
 		//clusterconf.PrintConf()
 
 		//save the immuable map for the cluster
 		//fmt.Printf("Immuatable map : %s\n", ImmuableMap)
-		repman.ImmuableMaps[cluster] = ImmuableMap
+		repman.ImmuableFlagMaps[cluster] = clustImmuableMap
 
 		//store default cluster config in immutable config (all parameter set in default and cluster section, default value and command line)
 		confs.ConfImmutable = clusterconf
@@ -528,7 +555,24 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 				cf3.Unmarshal(&clusterconf)
 			}
 			confs.ConfDynamic = clusterconf
+			//to add flag in cluster dynamic map only if not defined yet or if the flag value read is diff from immuable flag value
+			for _, f := range cf2.AllKeys() {
+				v := cf2.Get(f)
+				if v != nil {
+					imm_v, ok := clustImmuableMap[f]
+					if ok && imm_v != v {
+						clustDynamicMap[f] = v
+					}
+					if !ok {
+						clustDynamicMap[f] = v
+					}
+
+				}
+
+			}
 		}
+		fmt.Printf("GET CLUST CONF Dynamic map : %s\n", clustDynamicMap)
+		repman.DynamicFlagMaps[cluster] = clustDynamicMap
 		confs.ConfInit = clusterconf
 
 		repman.VersionConfs[cluster] = confs
@@ -797,7 +841,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 		myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
 	}
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
-	repman.currentCluster.Init(repman.VersionConfs[clusterName], repman.ImmuableMaps[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname, k)
+	repman.currentCluster.Init(repman.VersionConfs[clusterName], repman.ImmuableFlagMaps[clusterName], repman.DynamicFlagMaps[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname, k)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 	go repman.currentCluster.Run()

@@ -1088,6 +1088,9 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 	case "monitoring-processlist":
 		mycluster.SwitchMonitoringProcesslist()
 	}
+	if mycluster.IsVariableDiffFromRepmanDefault(setting) {
+		mycluster.AddDynamicFlagMap(setting, "bool")
+	}
 }
 
 func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {
@@ -1100,8 +1103,15 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			return
 		}
 		setting := vars["settingName"]
-		mycluster.LogPrintf("INFO", "API receive set setting %s", setting)
-		repman.setSetting(mycluster, setting, vars["settingValue"])
+		//not immuable
+		if !mycluster.IsVariableImmutable(setting) {
+			mycluster.LogPrintf("INFO", "API receive set setting %s", setting)
+			repman.setSetting(mycluster, setting, vars["settingValue"])
+		} else {
+			mycluster.LogPrintf(cluster.LvlErr, "Can not overwrite immuable parameter defined in config , please use config-merge command to preserve them between restart")
+			mycluster.LogPrintf("INFO", "API receive set setting %s", setting)
+			repman.setSetting(mycluster, setting, vars["settingValue"])
+		}
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -1233,6 +1243,9 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetSchedulerJobsSshCron(value)
 	case "backup-binlogs-keep":
 		mycluster.SetBackupBinlogsKeep(value)
+	}
+	if mycluster.IsVariableDiffFromRepmanDefault(name) {
+		mycluster.AddDynamicFlagMap(name, value)
 	}
 }
 

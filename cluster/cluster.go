@@ -21,7 +21,6 @@ import (
 	t "text/template"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/bluele/logrus_slack"
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/cluster/nbc"
@@ -91,7 +90,8 @@ type Cluster struct {
 	IsCapturing                   bool                        `json:"isCapturing"`
 	Conf                          config.Config               `json:"config"`
 	Confs                         *config.ConfVersion         `json:"-"`
-	ImmuableMap                   map[string]interface{}      `json:"-"`
+	ImmuableFlagMap               map[string]interface{}      `json:"-"`
+	DynamicFlagMap                map[string]interface{}      `json:"-"`
 	CleanAll                      bool                        `json:"cleanReplication"` //used in testing
 	Topology                      string                      `json:"topology"`
 	Uptime                        string                      `json:"uptime"`
@@ -275,10 +275,10 @@ const (
 )
 
 // Init initial cluster definition
-func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface{}, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface{}, dyn map[string]interface{}, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.Confs = confs
-	cluster.ImmuableMap = imm
-
+	cluster.ImmuableFlagMap = imm
+	cluster.DynamicFlagMap = dyn
 	conf := confs.ConfInit
 	cluster.SqlErrorLog = logsql.New()
 	cluster.SqlGeneralLog = logsql.New()
@@ -340,9 +340,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface
 
 	cluster.LogPushover = log.New()
 
-	cluster.LogPrintf(LvlErr, "TEST is immuable test : %t", cluster.IsVariableImmutable("test"))
-	cluster.LogPrintf(LvlErr, "TEST is immuable replication-credential: %t", cluster.IsVariableImmutable("replication-credential"))
-	cluster.LogPrintf(LvlErr, "TEST immuable map : %s", cluster.ImmuableMap)
+	//fmt.Printf("TEST immuable map : %s", cluster.ImmuableFlagMap)
+	//fmt.Printf("TEST is immuable test : %t", cluster.IsVariableImmutable("test"))
 
 	if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
 		cluster.LogPushover.AddHook(
@@ -784,26 +783,46 @@ func (cluster *Cluster) Save() error {
 		}
 		defer file.Close()
 
-		values := reflect.ValueOf(myconf["saved-"+cluster.Name])
-		types := values.Type()
+		/*
+			values := reflect.ValueOf(myconf["saved-"+cluster.Name])
+			types := values.Type()
+			s := ""
+			ss := ""
+			file.WriteString("[saved-" + cluster.Name + "]\n")
+			for i := 0; i < values.NumField(); i++ {
+				_, ok := cluster.ImmuableFlagMap[types.Name()]
+				if values.Field(i).String() != "" || !ok {
+					if types.Field(i).Type.String() == "string" {
+						s = "   " + types.Field(i).Name + " = \"" + values.Field(i).String() + "\"\n"
+					}
+					if types.Field(i).Type.String() == "bool" || types.Field(i).Type.String() == "int" || types.Field(i).Type.String() == "uint64" || types.Field(i).Type.String() == "int64" {
+						s = "   " + types.Field(i).Name + " = "
+						ss = format(" {{.}} \n", values.Field(i))
+					}
+					file.WriteString(s)
+					file.WriteString(ss)
+					ss = ""
+				}
+			}*/
 		s := ""
 		ss := ""
 		file.WriteString("[saved-" + cluster.Name + "]\n")
-		for i := 0; i < values.NumField(); i++ {
-			if values.Field(i).String() != "" {
-				if types.Field(i).Type.String() == "string" {
-					s = "   " + types.Field(i).Name + " = \"" + values.Field(i).String() + "\"\n"
-				}
-				if types.Field(i).Type.String() == "bool" || types.Field(i).Type.String() == "int" || types.Field(i).Type.String() == "uint64" || types.Field(i).Type.String() == "int64" {
-					s = "   " + types.Field(i).Name + " = "
-					ss = format(" {{.}} \n", values.Field(i))
-				}
-				file.WriteString(s)
-				file.WriteString(ss)
-				ss = ""
+		for tag := range cluster.DynamicFlagMap {
+			s = "   " + tag + " = "
+			fmt.Printf("SAVE : %s", tag)
+			if reflect.TypeOf(cluster.DynamicFlagMap[tag]).String() == "string" {
+				s += "'"
+				ss = format("{{.}}", cluster.DynamicFlagMap[tag]) + "'\n"
+			} else {
+				ss = format(" {{.}} \n", cluster.DynamicFlagMap[tag])
 			}
+			file.WriteString(s)
+			file.WriteString(ss)
 		}
-
+		err = cluster.Overwrite()
+		if err != nil {
+			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
+		}
 	}
 
 	return nil
@@ -830,9 +849,24 @@ func (cluster *Cluster) Overwrite() error {
 			return err
 		}
 		defer file.Close()
-		err = toml.NewEncoder(file).Encode(myconf)
-		if err != nil {
-			return err
+		s := ""
+		ss := ""
+		file.WriteString("[overwrite-" + cluster.Name + "]\n")
+		for tag := range cluster.ImmuableFlagMap {
+			_, ok := cluster.DynamicFlagMap[tag]
+			if ok {
+				s = "   " + tag + " = "
+				if reflect.TypeOf(cluster.DynamicFlagMap[tag]).String() == "string" {
+					s += "'"
+					ss = format("{{.}}", cluster.DynamicFlagMap[tag]) + "'\n"
+				} else {
+					ss = format(" {{.}} \n", cluster.DynamicFlagMap[tag])
+				}
+
+				file.WriteString(s)
+				file.WriteString(ss)
+			}
+
 		}
 	}
 
