@@ -206,7 +206,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 				go cluster.sendMsTeams(level, format, args)
 			}
 		case "START":
-			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "start", "channel": "StdOut"}).Warnf(cliformat, args...)
+			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut"}).Warnf(cliformat, args...)
 			if cluster.Conf.SlackURL != "" {
 				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "start", "channel": "Slack"}).Warnf(cliformat, args...)
 			}
