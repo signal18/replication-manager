@@ -1069,6 +1069,17 @@ func (conf *Config) GetStringValue(name string) string {
 	return ""
 }
 
+func (conf *Config) GetBool(name string) bool {
+	values := reflect.ValueOf(conf)
+	types := values.Type()
+	for i := 0; i < values.NumField(); i++ {
+		if types.Field(i).Name == name {
+			return values.Field(i).Bool()
+		}
+	}
+	return false
+}
+
 func (conf Config) PrintConf() {
 	values := reflect.ValueOf(conf)
 	types := values.Type()

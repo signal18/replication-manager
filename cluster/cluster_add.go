@@ -98,7 +98,8 @@ func (cluster *Cluster) AddDynamicFlagMap(name string, val string) {
 		if ok {
 			cluster.DynamicFlagMap[name] = !b.(bool)
 		} else {
-			cluster.DynamicFlagMap[name] = true
+
+			cluster.DynamicFlagMap[name] = !cluster.Confs.ConfFlag.GetBool(name)
 		}
 
 	} else {
