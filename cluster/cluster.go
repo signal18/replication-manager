@@ -333,11 +333,11 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 			Timeout:        5 * time.Second, // request timeout for calling slack api
 		})
 	}
-	cluster.LogPrintf("ALERT", "Replication manager init cluster version : %s", cluster.Conf.Version)
+	cluster.LogPrintf("ALERT", "Replication manager started with version: %s", cluster.Conf.Version)
 
 	if cluster.Conf.MailTo != "" {
-		msg := "Replication manager init cluster version : " + cluster.Conf.Version
-		subj := "Replication-Manager version"
+		msg := "Replication manager started with version: " + cluster.Conf.Version
+		subj := "Replication-Manager started"
 		alert := alert.Alert{}
 		alert.From = cluster.Conf.MailFrom
 		alert.To = cluster.Conf.MailTo

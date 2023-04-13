@@ -161,20 +161,20 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MariadbShardProxy) {
 		query := "CREATE SERVER IF NOT EXISTS RW" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + misc.Unbracket(cluster.master.Host) + "', DATABASE '" + s + "', USER '" + cluster.master.User + "', PASSWORD '" + cluster.master.Pass + "', PORT " + cluster.master.Port + ")"
 		_, err = proxy.ShardProxy.Conn.Exec(query)
 		if err != nil {
-			cluster.LogPrintf("ERROR: query %s %s", query, err)
+			cluster.LogPrintf(LvlInfo, "query %s %s", query, err)
 		}
 		for _, slave := range cluster.slaves {
 
 			query := "CREATE SERVER IF NOT EXISTS RO" + strconv.FormatUint(checksum64, 10) + " FOREIGN DATA WRAPPER mysql OPTIONS (HOST '" + misc.Unbracket(slave.Host) + "', DATABASE '" + s + "', USER '" + slave.User + "', PASSWORD '" + slave.Pass + "', PORT " + slave.Port + ")"
 			_, err = proxy.ShardProxy.Conn.Exec(query)
 			if err != nil {
-				cluster.LogPrintf("ERROR: query %s %s", query, err)
+				cluster.LogPrintf(LvlInfo, "query %s %s", query, err)
 			}
 		}
-		query = "CREATE DATABASE IF NOT EXISTS " + s
-		_, err = proxy.ShardProxy.Conn.Exec(query)
+		query2 := "CREATE DATABASE IF NOT EXISTS " + s
+		_, err = proxy.ShardProxy.Conn.Exec(query2)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Failed query %s %s", query, err)
+			cluster.LogPrintf(LvlInfo, "Failed query %s %s", query2, err)
 		}
 
 	}

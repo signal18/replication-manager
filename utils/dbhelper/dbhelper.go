@@ -1697,7 +1697,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Tabl
 	var tblList []v3.Table
 
 	logs := ""
-	query := GetNoBlockOnMedataLock(db, myver) + "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')"
+	query := GetNoBlockOnMedataLock(db, myver) + "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema', 'sys') AND SCHEMA_NAME NOT LIKE '#%'"
 	if myver.IsPPostgreSQL() {
 		query = `SELECT SCHEMA_NAME AS "SCHEMA_NAME" FROM information_schema.schemata  WHERE SCHEMA_NAME not in ('information_schema','pg_catalog')`
 	}
@@ -1814,7 +1814,7 @@ func GetProxySQLUsers(db *sqlx.DB) (map[string]Grant, string, error) {
 
 func GetSchemas(db *sqlx.DB) ([]string, string, error) {
 	sch := []string{}
-	query := "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE  SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema')"
+	query := "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE  SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema','sys') AND SCHEMA_NAME NOT LIKE '#%' "
 	err := db.Select(&sch, query)
 	if err != nil {
 		return nil, query, errors.New("Could not get table list")
