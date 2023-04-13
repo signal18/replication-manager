@@ -311,8 +311,8 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {
 		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
 	}
-
 	cluster.LogPushover = log.New()
+	cluster.LogPushover.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 
 	if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
 		cluster.LogPushover.AddHook(
@@ -322,6 +322,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	}
 
 	cluster.LogSlack = log.New()
+	cluster.LogSlack.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 
 	if cluster.Conf.SlackURL != "" {
 		cluster.LogSlack.AddHook(&logrus_slack.SlackHook{
@@ -333,7 +334,7 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 			Timeout:        5 * time.Second, // request timeout for calling slack api
 		})
 	}
-	cluster.LogPrintf("ALERT", "Replication manager started with version: %s", cluster.Conf.Version)
+	cluster.LogPrintf("START", "Replication manager started with version: %s", cluster.Conf.Version)
 
 	if cluster.Conf.MailTo != "" {
 		msg := "Replication manager started with version: " + cluster.Conf.Version
