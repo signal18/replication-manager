@@ -49,14 +49,9 @@ func (p *PushoverHook) Fire(entry *logrus.Entry) error {
 	if entry.Level == log.LevelError {
 		pr = 0
 	}
-	if entry.Data["type"] != nil {
-		if entry.Data["type"].(string) == "alert" {
-			pr = 1
-		}
-	}
-	title := "No cluster!"
-	if entry.Data["cluster"] != nil {
-		title = "Cluster: " + entry.Data["cluster"].(string)
+	fmt.Printf("FIRE PUSHOVER : %s", entry.Data["type"].(string))
+	if entry.Data["type"].(string) == "alert" {
+		pr = 1
 	}
 	message := &client.Message{
 		Message:   entry.Message,
