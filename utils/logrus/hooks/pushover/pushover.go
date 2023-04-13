@@ -48,7 +48,6 @@ func (p *PushoverHook) Fire(entry *logrus.Entry) error {
 	if entry.Level == log.LevelError {
 		pr = 0
 	}
-	fmt.Printf("FIRE PUSHOVER : %s", entry.Data["type"].(string))
 	if entry.Data["type"].(string) == "alert" {
 		pr = 1
 	}
