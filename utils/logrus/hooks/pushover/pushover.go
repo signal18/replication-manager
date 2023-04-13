@@ -49,14 +49,8 @@ func (p *PushoverHook) Fire(entry *logrus.Entry) error {
 	if entry.Level == log.LevelError {
 		pr = 0
 	}
-	if entry.Level == log.LevelWarn {
-		pr = 0
-	}
 	if entry.Data["type"] != nil {
 		if entry.Data["type"].(string) == "alert" {
-			pr = 1
-		}
-		if entry.Data["type"].(string) == "start" {
 			pr = 1
 		}
 	}
