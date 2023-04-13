@@ -23,6 +23,7 @@ var defaultLevels []logrus.Level = []logrus.Level{
 	logrus.PanicLevel,
 	logrus.FatalLevel,
 	logrus.ErrorLevel,
+	logrus.WarnLevel,
 }
 
 func (p *PushoverHook) Levels() []logrus.Level {
@@ -48,8 +49,20 @@ func (p *PushoverHook) Fire(entry *logrus.Entry) error {
 	if entry.Level == log.LevelError {
 		pr = 0
 	}
-	if entry.Data["type"].(string) == "alert" {
-		pr = 1
+	if entry.Level == log.LevelWarn {
+		pr = 0
+	}
+	if entry.Data["type"] != nil {
+		if entry.Data["type"].(string) == "alert" {
+			pr = 1
+		}
+		if entry.Data["type"].(string) == "start" {
+			pr = 1
+		}
+	}
+	title := "No cluster!"
+	if entry.Data["cluster"] != nil {
+		title = "Cluster: " + entry.Data["cluster"].(string)
 	}
 	message := &client.Message{
 		Message:   entry.Message,
@@ -61,6 +74,6 @@ func (p *PushoverHook) Fire(entry *logrus.Entry) error {
 	if err != nil {
 		return fmt.Errorf("Could not send message to Pushover API: %s", err)
 	}
-
+	fmt.Printf("Message from PUSHOVER is send!!, %s, %d", entry.Data["type"].(string), pr)
 	return nil
 }
