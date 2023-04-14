@@ -1072,11 +1072,14 @@ func (conf *Config) GetStringValue(name string) string {
 func (conf *Config) GetBool(name string) bool {
 	values := reflect.ValueOf(conf)
 	types := values.Type()
-	for i := 0; i < values.NumField(); i++ {
-		if types.Field(i).Name == name {
-			return values.Field(i).Bool()
+	if values != reflect.Zero(types) {
+		for i := 0; i < values.NumField(); i++ {
+			if types.Field(i).Name == name {
+				return values.Field(i).Bool()
+			}
 		}
 	}
+
 	return false
 }
 

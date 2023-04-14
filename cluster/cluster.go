@@ -92,6 +92,7 @@ type Cluster struct {
 	Confs                         *config.ConfVersion         `json:"-"`
 	ImmuableFlagMap               map[string]interface{}      `json:"-"`
 	DynamicFlagMap                map[string]interface{}      `json:"-"`
+	DefaultFlagMap                map[string]interface{}      `json:"-"`
 	CleanAll                      bool                        `json:"cleanReplication"` //used in testing
 	Topology                      string                      `json:"topology"`
 	Uptime                        string                      `json:"uptime"`
@@ -275,10 +276,11 @@ const (
 )
 
 // Init initial cluster definition
-func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface{}, dyn map[string]interface{}, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface{}, dyn map[string]interface{}, def map[string]interface{}, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.Confs = confs
 	cluster.ImmuableFlagMap = imm
 	cluster.DynamicFlagMap = dyn
+	cluster.DefaultFlagMap = def
 	conf := confs.ConfInit
 	cluster.SqlErrorLog = logsql.New()
 	cluster.SqlGeneralLog = logsql.New()

@@ -31,6 +31,7 @@ import (
 )
 
 var repman_default config.Config
+var defaultFlagMap map[string]interface{}
 
 func init() {
 
@@ -558,10 +559,15 @@ func init() {
 	initLogFlags(monitorCmd)
 
 	//conf des defaults flag sans les paramètres en ligne de commande
-	//var repman_default config.Config
-
 	v := viper.GetViper()
 	v.SetConfigType("toml")
+
+	defaultFlagMap = make(map[string]interface{})
+
+	for _, f := range v.AllKeys() {
+		defaultFlagMap[f] = v.Get(f)
+	}
+
 	v.Unmarshal(&repman_default)
 	//repman_default.PrintConf()
 
@@ -684,6 +690,7 @@ For interacting with this daemon use,
 		RepMan = new(ReplicationManager)
 		RepMan.CommandLineFlag = GetCommandLineFlag(cmd)
 		RepMan.ConfFlag = repman_default
+		RepMan.DefaultFlagMap = defaultFlagMap
 		RepMan.InitConfig(conf)
 		RepMan.Run()
 	},

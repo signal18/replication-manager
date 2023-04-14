@@ -67,6 +67,7 @@ type ReplicationManager struct {
 	ConfFlag                                         config.Config                     `json:"-"`
 	ImmuableFlagMaps                                 map[string]map[string]interface{} `json:"-"`
 	DynamicFlagMaps                                  map[string]map[string]interface{} `json:"-"`
+	DefaultFlagMap                                   map[string]interface{}            `json:"-"`
 	CommandLineFlag                                  []string                          `json:"-"`
 	ConfigPathList                                   []string                          `json:"-"`
 	Logs                                             s18log.HttpLog                    `json:"logs"`
@@ -263,6 +264,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	//fmt.Printf("REPMAN DEFAULT FLAG: ")
 	//ConfFlag is already set in server_monitor to get all default value flag (without being overwrited by command line flag)
 	//repman.ConfFlag.PrintConf()
+	fmt.Printf("DEFAULT FLAG MAP %s", repman.DefaultFlagMap)
 
 	//if a config file is already define
 	if conf.ConfigFile != "" {
@@ -571,7 +573,7 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 
 			}
 		}
-		fmt.Printf("GET CLUST CONF Dynamic map : %s\n", clustDynamicMap)
+		//fmt.Printf("GET CLUST CONF Dynamic map : %s\n", clustDynamicMap)
 		repman.DynamicFlagMaps[cluster] = clustDynamicMap
 		confs.ConfInit = clusterconf
 
@@ -841,7 +843,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 		myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
 	}
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
-	repman.currentCluster.Init(repman.VersionConfs[clusterName], repman.ImmuableFlagMaps[clusterName], repman.DynamicFlagMaps[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname, k)
+	repman.currentCluster.Init(repman.VersionConfs[clusterName], repman.ImmuableFlagMaps[clusterName], repman.DynamicFlagMaps[clusterName], repman.DefaultFlagMap, clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname, k)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 	go repman.currentCluster.Run()
