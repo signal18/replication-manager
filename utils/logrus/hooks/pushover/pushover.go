@@ -67,13 +67,12 @@ func (p *PushoverHook) Fire(entry *logrus.Entry) error {
 	message := &client.Message{
 		Message:   entry.Message,
 		Timestamp: entry.Time.Unix(),
-		Title:     "Cluster: " + entry.Data["cluster"].(string),
+		Title:     title,
 		Priority:  pr,
 	}
 	_, err := p.app.SendMessage(message, p.recipient)
 	if err != nil {
 		return fmt.Errorf("Could not send message to Pushover API: %s", err)
 	}
-	fmt.Printf("Message from PUSHOVER is send!!, %s, %d", entry.Data["type"].(string), pr)
 	return nil
 }
