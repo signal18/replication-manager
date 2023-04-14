@@ -67,7 +67,7 @@ func (p *PushoverHook) Fire(entry *logrus.Entry) error {
 	message := &client.Message{
 		Message:   entry.Message,
 		Timestamp: entry.Time.Unix(),
-		Title:     "Cluster: " + entry.Data["cluster"].(string),
+		Title:     title,
 		Priority:  pr,
 	}
 	_, err := p.app.SendMessage(message, p.recipient)
