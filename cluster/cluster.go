@@ -15,13 +15,12 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"reflect"
 	"strings"
 	"sync"
-	t "text/template"
 	"time"
 
 	"github.com/bluele/logrus_slack"
+	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
@@ -784,42 +783,27 @@ func (cluster *Cluster) Save() error {
 		}
 		defer file.Close()
 
-		/*
-			values := reflect.ValueOf(myconf["saved-"+cluster.Name])
-			types := values.Type()
-			s := ""
-			ss := ""
-			file.WriteString("[saved-" + cluster.Name + "]\n")
-			for i := 0; i < values.NumField(); i++ {
-				_, ok := cluster.ImmuableFlagMap[types.Name()]
-				if values.Field(i).String() != "" || !ok {
-					if types.Field(i).Type.String() == "string" {
-						s = "   " + types.Field(i).Name + " = \"" + values.Field(i).String() + "\"\n"
-					}
-					if types.Field(i).Type.String() == "bool" || types.Field(i).Type.String() == "int" || types.Field(i).Type.String() == "uint64" || types.Field(i).Type.String() == "int64" {
-						s = "   " + types.Field(i).Name + " = "
-						ss = format(" {{.}} \n", values.Field(i))
-					}
-					file.WriteString(s)
-					file.WriteString(ss)
-					ss = ""
-				}
-			}*/
-		s := ""
-		ss := ""
-		file.WriteString("[saved-" + cluster.Name + "]\n")
-		for tag := range cluster.DynamicFlagMap {
-			s = "   " + tag + " = "
-			fmt.Printf("SAVE : %s", tag)
-			if reflect.TypeOf(cluster.DynamicFlagMap[tag]).String() == "string" {
-				s += "'"
-				ss = format("{{.}}", cluster.DynamicFlagMap[tag]) + "'\n"
+		readconf, _ := toml.Marshal(cluster.Conf)
+		t, _ := toml.LoadBytes(readconf)
+		s := t
+		keys := t.Keys()
+		for _, key := range keys {
+			_, ok := cluster.ImmuableFlagMap[key]
+			if ok {
+				s.Delete(key)
 			} else {
-				ss = format(" {{.}} \n", cluster.DynamicFlagMap[tag])
+				v, ok := cluster.DefaultFlagMap[key]
+				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
+					s.Delete(key)
+				}
+				if !ok {
+					s.Delete(key)
+				}
 			}
-			file.WriteString(s)
-			file.WriteString(ss)
 		}
+		file.WriteString("[saved-" + cluster.Name + "]\n")
+		s.WriteTo(file)
+
 		err = cluster.Overwrite()
 		if err != nil {
 			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
@@ -827,12 +811,6 @@ func (cluster *Cluster) Save() error {
 	}
 
 	return nil
-}
-
-func format(s string, v interface{}) string {
-	c, b := new(t.Template), new(strings.Builder)
-	t.Must(c.Parse(s)).Execute(b, v)
-	return b.String()
 }
 
 func (cluster *Cluster) Overwrite() error {
@@ -850,25 +828,26 @@ func (cluster *Cluster) Overwrite() error {
 			return err
 		}
 		defer file.Close()
-		s := ""
-		ss := ""
-		file.WriteString("[overwrite-" + cluster.Name + "]\n")
-		for tag := range cluster.ImmuableFlagMap {
-			_, ok := cluster.DynamicFlagMap[tag]
-			if ok {
-				s = "   " + tag + " = "
-				if reflect.TypeOf(cluster.DynamicFlagMap[tag]).String() == "string" {
-					s += "'"
-					ss = format("{{.}}", cluster.DynamicFlagMap[tag]) + "'\n"
-				} else {
-					ss = format(" {{.}} \n", cluster.DynamicFlagMap[tag])
-				}
 
-				file.WriteString(s)
-				file.WriteString(ss)
+		readconf, _ := toml.Marshal(cluster.Conf)
+		t, _ := toml.LoadBytes(readconf)
+		s := t
+		keys := t.Keys()
+		for _, key := range keys {
+
+			v, ok := cluster.ImmuableFlagMap[key]
+			if !ok {
+				s.Delete(key)
+			} else {
+
+				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
+					s.Delete(key)
+				}
 			}
 
 		}
+		file.WriteString("[overwrite-" + cluster.Name + "]\n")
+		s.WriteTo(file)
 	}
 
 	return nil

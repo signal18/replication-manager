@@ -1088,9 +1088,6 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 	case "monitoring-processlist":
 		mycluster.SwitchMonitoringProcesslist()
 	}
-	if mycluster.IsVariableDiffFromRepmanDefault(setting) {
-		mycluster.AddDynamicFlagMap(setting, "bool")
-	}
 }
 
 func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {
@@ -1244,9 +1241,6 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "backup-binlogs-keep":
 		mycluster.SetBackupBinlogsKeep(value)
 	}
-	if mycluster.IsVariableDiffFromRepmanDefault(name) {
-		mycluster.AddDynamicFlagMap(name, value)
-	}
 }
 
 func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *http.Request) {
@@ -1275,7 +1269,6 @@ func (repman *ReplicationManager) handlerMuxAddProxyTag(w http.ResponseWriter, r
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.AddProxyTag(vars["tagValue"])
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return

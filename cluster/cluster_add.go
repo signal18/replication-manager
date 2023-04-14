@@ -7,8 +7,6 @@
 package cluster
 
 import (
-	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -38,7 +36,6 @@ func (cluster *Cluster) AddDBTagConfig(tag string) {
 		cluster.Configurator.AddDBTag(tag)
 		cluster.Conf.ProvTags = cluster.Configurator.GetConfigDBTags()
 		cluster.SetClusterCredentialsFromConfig()
-		cluster.AddDBTagDynamicFlagMap(tag)
 	}
 }
 
@@ -64,47 +61,6 @@ func (cluster *Cluster) AddDBTag(tag string) {
 		}
 	}
 
-}
-
-func (cluster *Cluster) AddDBTagDynamicFlagMap(tag string) {
-	//to add dynamic tag in the cluster dynamic flag map
-	v, ok := cluster.DynamicFlagMap["prov-db-tags"]
-	if ok {
-		str := fmt.Sprintf("%v", v)
-		if !strings.Contains(str, tag) {
-			str += "," + tag
-			cluster.DynamicFlagMap["prov-db-tags"] = str
-		}
-	} else {
-		v, ok := cluster.ImmuableFlagMap["prov-db-tags"]
-		if ok {
-			imm_tag := fmt.Sprintf("%v", v)
-			cluster.DynamicFlagMap["prov-db-tags"] = imm_tag + "," + tag
-		} else {
-			cluster.DynamicFlagMap["prov-db-tags"] = tag
-		}
-
-	}
-}
-
-func (cluster *Cluster) AddDynamicFlagMap(name string, val string) {
-	//to add dynamic setting in the cluster dynamic flag map
-	if name == "failover-max-slave-delay" {
-		cluster.DynamicFlagMap[name], _ = strconv.ParseInt(val, 10, 64)
-	} else if name == "failover-limit" {
-		cluster.DynamicFlagMap[name], _ = strconv.Atoi(val)
-	} else if val == "bool" {
-		b, ok := cluster.ImmuableFlagMap[name]
-		if ok {
-			cluster.DynamicFlagMap[name] = !b.(bool)
-		} else {
-
-			cluster.DynamicFlagMap[name] = !cluster.GetBoolDefaultFlagMap(name)
-		}
-
-	} else {
-		cluster.DynamicFlagMap[name] = val
-	}
 }
 
 func (cluster *Cluster) AddProxyTag(tag string) {

@@ -349,7 +349,7 @@ type Config struct {
 	OnPremiseSSHStartDbScript                 string `mapstructure:"onpremise-ssh-start-db-script" toml:"onpremise-ssh-start-db-script" json:"onpremiseSshStartDbScript"`
 	OnPremiseSSHStartProxyScript              string `mapstructure:"onpremise-ssh-start-proxy-script" toml:"onpremise-ssh-start-proxy-script" json:"onpremiseSshStartProxyScript"`
 	OnPremiseSSHDbJobScript                   string `mapstructure:"onpremise-ssh-db-job-script" toml:"onpremise-ssh-db-job-script" json:"onpremiseSshDbJobScript"`
-	ProvOpensvcP12Certificate                 string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificat" json:"opensvcP12Certificate"`
+	ProvOpensvcP12Certificate                 string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificate" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
 	ProvOpensvcUseCollectorAPI                bool   `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
 	ProvOpensvcCollectorAccount               string `mapstructure:"opensvc-collector-account" toml:"opensvc-collector-account" json:"opensvcCollectorAccount"`
@@ -588,11 +588,10 @@ type MyDumperMetaData struct {
 }
 
 type ConfVersion struct {
-	ConfDynamic   Config `json:"-"`
-	ConfFlag      Config `json:"-"`
-	ConfImmutable Config `json:"-"`
-	ConfInit      Config `json:"-"`
-	ConfDecode    Config `json:"-"`
+	ConfInit     Config `json:"-"`
+	ConfDecode   Config `json:"-"`
+	ConfDynamic  Config `json:"-"`
+	ConfImmuable Config `json:"-"`
 }
 
 const (
@@ -1056,31 +1055,6 @@ func (conf *Config) GetTarballUrl(name string) (string, error) {
 		}
 	}
 	return "", errors.New("tarball not found in collection")
-}
-
-func (conf *Config) GetStringValue(name string) string {
-	values := reflect.ValueOf(conf)
-	types := values.Type()
-	for i := 0; i < values.NumField(); i++ {
-		if types.Field(i).Name == name {
-			return values.Field(i).String()
-		}
-	}
-	return ""
-}
-
-func (conf *Config) GetBool(name string) bool {
-	values := reflect.ValueOf(conf)
-	types := values.Type()
-	if values != reflect.Zero(types) {
-		for i := 0; i < values.NumField(); i++ {
-			if types.Field(i).Name == name {
-				return values.Field(i).Bool()
-			}
-		}
-	}
-
-	return false
 }
 
 func (conf Config) PrintConf() {

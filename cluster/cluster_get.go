@@ -882,11 +882,3 @@ func (cluster *Cluster) GetVaultConnection() (*vault.Client, error) {
 	}
 	return nil, errors.New("Not using Vault")
 }
-
-func (cluster *Cluster) GetBoolDefaultFlagMap(name string) bool {
-	v, ok := cluster.DefaultFlagMap[name]
-	if ok {
-		return v.(bool)
-	}
-	return false
-}

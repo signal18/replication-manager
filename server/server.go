@@ -64,7 +64,6 @@ type ReplicationManager struct {
 	ClusterList                                      []string                          `json:"clusters"`
 	Tests                                            []string                          `json:"tests"`
 	Conf                                             config.Config                     `json:"config"`
-	ConfFlag                                         config.Config                     `json:"-"`
 	ImmuableFlagMaps                                 map[string]map[string]interface{} `json:"-"`
 	DynamicFlagMaps                                  map[string]map[string]interface{} `json:"-"`
 	DefaultFlagMap                                   map[string]interface{}            `json:"-"`
@@ -261,10 +260,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	fistRead := viper.GetViper()
 	fistRead.SetConfigType("toml")
 
-	//fmt.Printf("REPMAN DEFAULT FLAG: ")
-	//ConfFlag is already set in server_monitor to get all default value flag (without being overwrited by command line flag)
-	//repman.ConfFlag.PrintConf()
-	fmt.Printf("DEFAULT FLAG MAP %s", repman.DefaultFlagMap)
+	//DefaultFlagMap is a map that contain all default flag value, set in the server_monitor.go file
+	//fmt.Printf("%s", repman.DefaultFlagMap)
 
 	//if a config file is already define
 	if conf.ConfigFile != "" {
@@ -327,7 +324,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 	//Add immuatable flag from default section
 	for _, f := range secRead.AllKeys() {
-		ImmuableMap[f] = secRead.Get(f)
+		v := secRead.Get(f)
+		if v != nil {
+			ImmuableMap[f] = secRead.Get(f)
+		}
+
 	}
 
 	//test.PrintConf()
@@ -532,7 +533,11 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 
 		//Add immuatable flag from cluster section
 		for _, f := range cf2.AllKeys() {
-			clustImmuableMap[f] = cf2.Get(f)
+			v := cf2.Get(f)
+			if v != nil {
+				clustImmuableMap[f] = v
+			}
+
 		}
 
 		//clusterconf.PrintConf()
@@ -542,8 +547,7 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 		repman.ImmuableFlagMaps[cluster] = clustImmuableMap
 
 		//store default cluster config in immutable config (all parameter set in default and cluster section, default value and command line)
-		confs.ConfImmutable = clusterconf
-		confs.ConfFlag = repman.ConfFlag
+		confs.ConfImmuable = clusterconf
 
 		//fmt.Printf("%+v\n", cf2.AllSettings())
 
@@ -555,25 +559,25 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 			} else {
 				repman.initAlias(cf3)
 				cf3.Unmarshal(&clusterconf)
-			}
-			confs.ConfDynamic = clusterconf
-			//to add flag in cluster dynamic map only if not defined yet or if the flag value read is diff from immuable flag value
-			for _, f := range cf2.AllKeys() {
-				v := cf2.Get(f)
-				if v != nil {
-					imm_v, ok := clustImmuableMap[f]
-					if ok && imm_v != v {
-						clustDynamicMap[f] = v
-					}
-					if !ok {
-						clustDynamicMap[f] = v
+				//to add flag in cluster dynamic map only if not defined yet or if the flag value read is diff from immuable flag value
+				for _, f := range cf3.AllKeys() {
+					v := cf3.Get(f)
+					if v != nil {
+						imm_v, ok := clustImmuableMap[f]
+						if ok && imm_v != v {
+							clustDynamicMap[f] = v
+						}
+						if !ok {
+							clustDynamicMap[f] = v
+						}
+
 					}
 
 				}
-
 			}
+			confs.ConfDynamic = clusterconf
+
 		}
-		//fmt.Printf("GET CLUST CONF Dynamic map : %s\n", clustDynamicMap)
 		repman.DynamicFlagMaps[cluster] = clustDynamicMap
 		confs.ConfInit = clusterconf
 
