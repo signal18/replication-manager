@@ -74,6 +74,5 @@ func (p *PushoverHook) Fire(entry *logrus.Entry) error {
 	if err != nil {
 		return fmt.Errorf("Could not send message to Pushover API: %s", err)
 	}
-	fmt.Printf("Message from PUSHOVER is send!!, %s, %d", entry.Data["type"].(string), pr)
 	return nil
 }
