@@ -342,9 +342,6 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface
 	cluster.LogPushover = log.New()
 	cluster.LogPushover.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 
-	//fmt.Printf("TEST immuable map : %s", cluster.ImmuableFlagMap)
-	//fmt.Printf("TEST is immuable test : %t", cluster.IsVariableImmutable("test"))
-
 	if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
 		cluster.LogPushover.AddHook(
 			pushover.NewHook(cluster.Conf.PushoverAppToken, cluster.Conf.PushoverUserToken),
@@ -368,8 +365,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface
 	cluster.LogPrintf("START", "Replication manager started with version: %s", cluster.Conf.Version)
 
 	if cluster.Conf.MailTo != "" {
-		msg := "Replication manager init cluster version : " + cluster.Conf.Version
-		subj := "Replication-Manager version"
+		msg := "Replication manager started with version: " + cluster.Conf.Version
+		subj := "Replication-Manager started"
 		alert := alert.Alert{}
 		alert.From = cluster.Conf.MailFrom
 		alert.To = cluster.Conf.MailTo

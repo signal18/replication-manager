@@ -549,6 +549,7 @@ func (server *ServerMonitor) GetSlowLogTable() {
 	}
 	server.IsInSlowQueryCapture = true
 	defer func() { server.IsInSlowQueryCapture = false }()
+
 	f, err := os.OpenFile(server.Datadir+"/log/log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Error writing slow queries %s", err)
@@ -587,7 +588,6 @@ func (server *ServerMonitor) GetSlowLogTable() {
 		)
 		server.MaxSlowQueryTimestamp = s.Start_time
 	}
-
 	//	server.ExecQueryNoBinLog("TRUNCATE mysql.slow_log")
 }
 

@@ -489,7 +489,7 @@ func (cluster *Cluster) SetClusterProxySqlCredentialsFromConfig() {
 	cluster.proxysqlUser = cluster.Conf.ProxysqlUser
 	if cluster.IsVaultUsed() {
 
-		cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
+		//cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
 		config := vault.DefaultConfig()
 
 		config.Address = cluster.Conf.VaultServerAddr
@@ -510,7 +510,7 @@ func (cluster *Cluster) SetClusterProxySqlCredentialsFromConfig() {
 					cluster.proxysqlUser = cluster.Conf.ProxysqlUser
 				}
 				//test
-				cluster.LogPrintf(LvlInfo, "Secret read from Vault for proxysql is %s:%s", cluster.proxysqlUser, cluster.proxysqlPass)
+				//cluster.LogPrintf(LvlInfo, "Secret read from Vault for proxysql is %s:%s", cluster.proxysqlUser, cluster.proxysqlPass)
 			}
 		} else {
 			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
@@ -566,16 +566,17 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 					splitmonitoringuser = cluster.Conf.User
 				}
 				//test
-				cluster.LogPrintf(LvlInfo, "Secret read from Vault for dbPass is %s", splitmonitoringuser)
+				//cluster.LogPrintf(LvlInfo, "Secret read from Vault for dbPass is %s", splitmonitoringuser)
 			} else {
 				splitmonitoringuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "")
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "Unable to get database server Vault credentials: %v", err)
 					splitmonitoringuser = cluster.Conf.User
 				}
-				if cluster.GetConf().LogLevel > 2 {
-					cluster.LogPrintf(LvlInfo, "Vault database monitoring credentials read : %s", splitmonitoringuser)
-				}
+				/*
+					if cluster.GetConf().LogLevel > 2 {
+						cluster.LogPrintf(LvlInfo, "Vault database monitoring credentials read : %s", splitmonitoringuser)
+					}*/
 
 			}
 		} else {
@@ -638,17 +639,18 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 					splitreplicationuser = cluster.Conf.RplUser
 				}
 				//test
-				cluster.LogPrintf(LvlInfo, "Secret read from Vault for rplPass is %s", splitreplicationuser)
+				//cluster.LogPrintf(LvlInfo, "Secret read from Vault for rplPass is %s", splitreplicationuser)
 			} else {
 				splitreplicationuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "")
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "Unable to get replication Vault credentials: %v", err)
 					splitreplicationuser = cluster.Conf.RplUser
 				}
-				if cluster.GetConf().LogLevel > 2 {
-					cluster.LogPrintf(LvlInfo, "Vault database replication credentials read : %s", splitreplicationuser)
-				}
-
+				/*
+					if cluster.GetConf().LogLevel > 2 {
+						cluster.LogPrintf(LvlInfo, "Vault database replication credentials read : %s", splitreplicationuser)
+					}
+				*/
 			}
 		} else {
 			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)

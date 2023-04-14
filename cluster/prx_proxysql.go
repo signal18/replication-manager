@@ -366,11 +366,11 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				// if the master comes back from a previously failed or standalone state, reintroduce it in
 				// the appropriate HostGroup
 
-				cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting online failed server %s", s.URL)
+				cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 				if psql.ExistAsWriterOrOffline(misc.Unbracket(s.Host), s.Port) {
 					err = psql.SetOnline(misc.Unbracket(s.Host), s.Port)
 					if err != nil {
-						cluster.sme.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+						cluster.LogPrintf(LvlErr, "Monitor ProxySQL setting online failed server %s", s.URL)
 					}
 				} else {
 					//scenario restart with failed leader
