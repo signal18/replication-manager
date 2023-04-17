@@ -99,6 +99,7 @@ var clusterError = map[string]string{
 	"ERR00087": "Skip slave in election %s IO Thread is stopped with valid leader",
 	"ERR00088": "Authentification error in replication IO thread",
 	"ERR00089": "Authentification error to Vault %s",
+	"ERR00090": "Monitoring save config enable but no encryption key for password, see the keygen command",
 	"WARN0022": "Rejoining standalone server %s to master %s",
 	"WARN0023": "Number of failed master ping has been reached",
 	"WARN0045": "Provision task is in queue",

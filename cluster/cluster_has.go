@@ -360,3 +360,13 @@ func (cluster *Cluster) HasMonitoringCredentialsRotation() bool {
 	}
 	return false
 }
+
+func (cluster *Cluster) IsMonitoringSaveConfig() bool {
+	if cluster.Conf.ConfRewrite {
+		if cluster.Conf.KeyPath == "" {
+
+		}
+		return true
+	}
+	return false
+}

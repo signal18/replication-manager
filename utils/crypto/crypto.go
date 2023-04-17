@@ -52,18 +52,19 @@ func (p *Password) Encrypt() {
 	return
 }
 
-func (p *Password) Decrypt() {
+func (p *Password) Decrypt() error {
+	log.Println("COUCOU pass is: %s", p.CipherText)
 	ciphertext, _ := hex.DecodeString(p.CipherText)
 
 	block, err := aes.NewCipher(p.Key)
 	if err != nil {
 		log.Println("ERROR: Could not get new cipher:", err)
-		return
+		return err
 	}
 
 	if len(ciphertext) < aes.BlockSize {
-		log.Println("ERROR: ciphertext too short")
-		return
+		//log.Println("ERROR: ciphertext too short")
+		return errors.New("Ciphertext too short")
 	}
 	iv := ciphertext[:aes.BlockSize]
 	ciphertext = ciphertext[aes.BlockSize:]
@@ -72,7 +73,7 @@ func (p *Password) Decrypt() {
 
 	stream.XORKeyStream(ciphertext, ciphertext)
 	p.PlainText = string(ciphertext)
-	return
+	return nil
 }
 
 func WriteKey(key []byte, keyPath string, overwrite bool) error {

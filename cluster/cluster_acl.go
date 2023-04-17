@@ -102,8 +102,13 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		if k != nil {
 			p := crypto.Password{Key: k}
 			p.CipherText = newapiuser.Password
-			p.Decrypt()
-			newapiuser.Password = p.PlainText
+			err = p.Decrypt()
+			if err != nil {
+				cluster.LogPrintf(LvlWarn, "Password decryption error on api user: %s,%s", newapiuser.User, err)
+			} else {
+				newapiuser.Password = p.PlainText
+			}
+
 		}
 		usersAllowACL := strings.Split(cluster.Conf.APIUsersACLAllow, ",")
 		newapiuser.Grants = make(map[string]bool)

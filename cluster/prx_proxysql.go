@@ -47,8 +47,12 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 	if cluster.key != nil {
 		p := crypto.Password{Key: cluster.key}
 		p.CipherText = prx.Pass
-		p.Decrypt()
-		prx.Pass = p.PlainText
+		err := p.Decrypt()
+		if err != nil {
+			cluster.LogPrintf(LvlWarn, "Password decryption error on proxySQL user: %s,%s", prx.User, err)
+		} else {
+			prx.Pass = p.PlainText
+		}
 	}
 
 	return prx

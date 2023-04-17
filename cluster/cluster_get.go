@@ -24,6 +24,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/cron"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -881,4 +882,13 @@ func (cluster *Cluster) GetVaultConnection() (*vault.Client, error) {
 		return client, err
 	}
 	return nil, errors.New("Not using Vault")
+}
+
+func (cluster *Cluster) GetPasswordKey(MonitoringKeyPath string) ([]byte, error) {
+	k, err := crypto.ReadKey(MonitoringKeyPath)
+	if err != nil {
+		k = nil
+	}
+	return k, err
+
 }
