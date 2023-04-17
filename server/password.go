@@ -25,6 +25,7 @@ func init() {
 	rootCmd.AddCommand(passwordCmd)
 	keygenCmd.Flags().StringVar(&keyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	keygenCmd.Flags().BoolVar(&overwrite, "overwrite", false, "Overwrite the previous key")
+	passwordCmd.Flags().StringVar(&keyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 }
 
 var keygenCmd = &cobra.Command{
