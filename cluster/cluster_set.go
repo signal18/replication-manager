@@ -520,8 +520,13 @@ func (cluster *Cluster) SetClusterProxySqlCredentialsFromConfig() {
 	if cluster.key != nil {
 		p := crypto.Password{Key: cluster.key}
 		p.CipherText = cluster.proxysqlPass
-		p.Decrypt()
-		cluster.proxysqlPass = p.PlainText
+		err := p.Decrypt()
+		if err != nil {
+			cluster.LogPrintf(LvlWarn, "Password decryption error on proxysql user: %s,%s", cluster.proxysqlUser, err)
+		} else {
+			cluster.proxysqlPass = p.PlainText
+		}
+
 	}
 }
 
@@ -591,11 +596,13 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 	if cluster.key != nil {
 		p := crypto.Password{Key: cluster.key}
 		p.CipherText = cluster.dbPass
-		p.Decrypt()
-		cluster.dbPass = p.PlainText
-		p.CipherText = cluster.rplPass
-		p.Decrypt()
-		cluster.rplPass = p.PlainText
+		err := p.Decrypt()
+		if err != nil {
+			cluster.LogPrintf(LvlWarn, "Password decryption error on database user: %s,%s", cluster.dbUser, err)
+		} else {
+			cluster.dbPass = p.PlainText
+		}
+
 	}
 }
 
@@ -662,12 +669,13 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 
 	if cluster.key != nil {
 		p := crypto.Password{Key: cluster.key}
-		p.CipherText = cluster.dbPass
-		p.Decrypt()
-		cluster.dbPass = p.PlainText
 		p.CipherText = cluster.rplPass
-		p.Decrypt()
-		cluster.rplPass = p.PlainText
+		err = p.Decrypt()
+		if err != nil {
+			cluster.LogPrintf(LvlWarn, "Password decryption error on replication user: %s,%s", cluster.rplUser, err)
+		} else {
+			cluster.rplPass = p.PlainText
+		}
 	}
 }
 

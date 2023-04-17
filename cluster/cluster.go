@@ -553,12 +553,14 @@ func (cluster *Cluster) Run() {
 						cluster.ResticFetchRepo()
 						cluster.IsValidBackup = cluster.HasValidBackup()
 						go cluster.CheckCredentialRotation()
+						cluster.CheckCanSaveDynamicConfig()
 
 					} else {
 						cluster.sme.PreserveState("WARN0093")
 						cluster.sme.PreserveState("WARN0084")
 						cluster.sme.PreserveState("WARN0095")
 						cluster.sme.PreserveState("WARN0101")
+						cluster.sme.PreserveState("ERR00090")
 					}
 					if !cluster.CanInitNodes {
 						cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})

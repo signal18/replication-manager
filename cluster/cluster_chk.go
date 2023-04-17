@@ -737,3 +737,10 @@ func (cluster *Cluster) CheckCredentialRotation() {
 		cluster.SetDbServersMonitoringCredential(cluster.Conf.User)
 	}
 }
+
+func (cluster *Cluster) CheckCanSaveDynamicConfig() {
+	_, err := cluster.GetPasswordKey(cluster.Conf.MonitoringKeyPath)
+	if err != nil && cluster.GetConf().ConfRewrite {
+		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00090"]), ErrFrom: "CLUSTER"})
+	}
+}

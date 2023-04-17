@@ -1,7 +1,9 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <svaroqui@gmail.com>
+//
+//	Stephane Varoqui  <svaroqui@gmail.com>
+//
 // This source code is licensed under the GNU General Public License, version 3.
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
@@ -38,7 +40,12 @@ func NewMaxscaleProxy(placement int, cluster *Cluster, proxyHost string) *Maxsca
 	if cluster.key != nil {
 		p := crypto.Password{Key: cluster.key}
 		p.CipherText = prx.Pass
-		p.Decrypt()
+		err := p.Decrypt()
+		if err != nil {
+			cluster.LogPrintf(LvlWarn, "Password decryption error on maxscale proxy user: %s,%s", prx.User, err)
+		} else {
+			prx.Pass = p.PlainText
+		}
 		prx.Pass = p.PlainText
 	}
 	prx.ReadPort = conf.MxsReadPort

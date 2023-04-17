@@ -40,9 +40,9 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
-	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 var RepMan *ReplicationManager
@@ -820,19 +820,11 @@ func (repman *ReplicationManager) Run() error {
 
 func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Cluster, error) {
 
-	k, err := crypto.ReadKey(repman.Conf.MonitoringKeyPath)
+	repman.currentCluster = new(cluster.Cluster)
+	k, err := repman.currentCluster.GetPasswordKey(repman.Conf.MonitoringKeyPath)
 	if err != nil {
-		log.WithError(err).Info("No existing password encryption scheme")
 		k = nil
 	}
-	/*	apiUser, apiPass = misc.SplitPair(repman.Conf.APIUser)
-		if k != nil {
-			p := crypto.Password{Key: k}
-			p.CipherText = apiPass
-			p.Decrypt()
-			apiPass = p.PlainText
-		}*/
-	repman.currentCluster = new(cluster.Cluster)
 	myClusterConf := repman.Confs[clusterName]
 	if myClusterConf.MonitorAddress == "localhost" {
 		myClusterConf.MonitorAddress = repman.resolveHostIp()
@@ -846,8 +838,15 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 		myClusterConf.ShareDir = myClusterConf.BaseDir + "/share"
 		myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
 	}
+
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], repman.ImmuableFlagMaps[clusterName], repman.DynamicFlagMaps[clusterName], repman.DefaultFlagMap, clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname, k)
+	if k == nil {
+		repman.currentCluster.LogPrintf(cluster.LvlInfo, "No existing password encryption key")
+		repman.currentCluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(repman.currentCluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
+
+	}
+
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 	go repman.currentCluster.Run()

@@ -388,4 +388,5 @@ func (cluster *Cluster) IsVariableDiffFromRepmanDefault(v string) bool {
 func (cluster *Cluster) IsVariableImmutable(v string) bool {
 	_, ok := cluster.ImmuableFlagMap[v]
 	return ok
+
 }
