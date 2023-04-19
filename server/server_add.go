@@ -6,9 +6,14 @@
 
 package server
 
-import "github.com/signal18/replication-manager/config"
+import (
+	"fmt"
+
+	"github.com/signal18/replication-manager/config"
+)
 
 func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead string) error {
+	fmt.Printf("ADD CLUSTER\n")
 	var myconf = make(map[string]config.Config)
 
 	myconf[clusterName] = repman.Conf
@@ -16,6 +21,13 @@ func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead str
 	repman.ClusterList = append(repman.ClusterList, clusterName)
 	//repman.ClusterList = repman.ClusterList
 	repman.Confs[clusterName] = repman.Conf
+
+	repman.VersionConfs[clusterName] = new(config.ConfVersion)
+	repman.VersionConfs[clusterName].ConfInit = repman.Conf
+
+	repman.ImmuableFlagMaps[clusterName] = repman.ImmuableFlagMaps["default"]
+	repman.DynamicFlagMaps[clusterName] = repman.DynamicFlagMaps["default"]
+
 	repman.Unlock()
 	/*file, err := os.OpenFile(repman.Conf.ClusterConfigPath+"/"+clusterName+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 	if err != nil {
@@ -29,9 +41,14 @@ func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead str
 	if err != nil {
 		return err
 	}*/
+	//confs[clusterName] = repman.GetClusterConfig(fistRead, repman.ImmuableFlagMaps["default"], repman.DynamicFlagMaps["default"], clusterName, conf)
 
 	cluster, _ := repman.StartCluster(clusterName)
+	fmt.Printf("ADD CLUSTER CONF :\n")
+	cluster.Conf.PrintConf()
+
 	cluster.SetClusterHead(clusterHead)
+	//cluster.SetClusterHead(clusterName)
 	cluster.SetClusterList(repman.Clusters)
 	cluster.Save()
 

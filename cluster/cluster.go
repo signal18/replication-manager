@@ -20,6 +20,10 @@ import (
 	"time"
 
 	"github.com/bluele/logrus_slack"
+	"github.com/go-git/go-git/v5"
+	git_ex "github.com/go-git/go-git/v5/_examples"
+	git_obj "github.com/go-git/go-git/v5/plumbing/object"
+	git_http "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/cluster/nbc"
@@ -28,6 +32,7 @@ import (
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/cron"
+	crypto "github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -274,6 +279,28 @@ const (
 	VaultDbEngine      string = "database_engine"
 )
 
+// to store the flags to encrypt in the git (in Save() function)
+var encryptFlag = map[string]int{
+	"api-credentials":                       0,
+	"api-credentials-external":              0,
+	"db-servers-credential":                 0,
+	"monitoring-write-heartbeat-credential": 0,
+	"onpremise-ssh-credential":              0,
+	"replication-credential":                0,
+	"shardproxy-credential":                 0,
+	"backup-restic-password":                1,
+	"haproxy-password":                      1,
+	"maxscale-pass":                         1,
+	"myproxy-password":                      1,
+	"proxysql-password":                     1,
+	"vault-secret-id":                       1,
+	"opensvc-p12-secret":                    1,
+	"backup-restic-aws-access-secret":       1,
+	"backup-streaming-aws-access-secret":    1,
+	"arbitration-external-secret":           1,
+	"alert-pushover-user-token":             1,
+	"mail-smtp-password":                    1}
+
 // Init initial cluster definition
 func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface{}, dyn map[string]interface{}, def map[string]interface{}, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
 	cluster.Confs = confs
@@ -417,7 +444,10 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface
 	cluster.createKeys()
 	cluster.GetPersitentState()
 
-	cluster.newServerList()
+	err = cluster.newServerList()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Could not set server list %s", err)
+	}
 	err = cluster.newProxyList()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not set proxy list %s", err)
@@ -435,7 +465,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface
 		cluster.DropDBTagConfig("threadpool")
 		cluster.AddDBTagConfig("pkg")
 	}
-
+	//fmt.Printf("INIT CLUSTER CONF :\n")
+	cluster.Conf.PrintConf()
 	return nil
 }
 
@@ -577,7 +608,11 @@ func (cluster *Cluster) Run() {
 				}
 				wg.Wait()
 				// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so elelection win but server is ignored see electFailoverCandidate
-				cluster.AddChildServers()
+				err := cluster.AddChildServers()
+
+				if err != nil {
+					cluster.LogPrintf(LvlInfo, "Fail of AddChildServers %s", err)
+				}
 
 				cluster.IsFailable = cluster.GetStatus()
 				// CheckFailed trigger failover code if passing all false positiv and constraints
@@ -771,7 +806,47 @@ func (cluster *Cluster) Save() error {
 	if err != nil {
 		return err
 	}
+
 	if cluster.Conf.ConfRewrite {
+		//clone git repository in case its the first time
+		if cluster.Conf.GitUrl != "" {
+			if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/.git"); err == nil {
+				path := cluster.Conf.WorkingDir + "/" + cluster.Name
+
+				// We instantiate a new repository targeting the given path (the .git folder)
+				r, err := git.PlainOpen(path)
+				git_ex.CheckIfError(err)
+
+				// Get the working directory for the repository
+				w, err := r.Worktree()
+				git_ex.CheckIfError(err)
+
+				// Pull the latest changes from the origin remote and merge into the current branch
+				git_ex.Info("git pull origin")
+				err = w.Pull(&git.PullOptions{RemoteName: "origin"})
+				//git_ex.CheckIfError(err)
+			} else {
+				url := cluster.Conf.GitUrl
+				directory := cluster.Conf.WorkingDir + "/" + cluster.Name
+
+				// Clone the given repository to the given directory
+				git_ex.Info("git clone %s %s --recursive", url, directory)
+
+				_, err := git.PlainClone(directory, false, &git.CloneOptions{
+					URL:               url,
+					RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+					Auth: &git_http.BasicAuth{
+						Username: "replication-manager", // yes, this can be anything except an empty string
+						Password: cluster.Conf.GitAccesToken,
+					},
+				})
+
+				git_ex.CheckIfError(err)
+			}
+
+		}
+		//fmt.Printf("SAVE CLUSTER \n")
+		//cluster.Conf.PrintConf()
 		var myconf = make(map[string]config.Config)
 
 		myconf["saved-"+cluster.Name] = cluster.Conf
@@ -803,8 +878,81 @@ func (cluster *Cluster) Save() error {
 				}
 			}
 		}
+		for _, key := range keys {
+
+			_, ok := encryptFlag[key]
+			if ok {
+				v := s.Get(key)
+				str := fmt.Sprintf("%v", v)
+				tmp := strings.Split(str, ":")
+				if len(tmp) == 2 {
+					str = tmp[1]
+					v = tmp[0]
+				}
+
+				p := crypto.Password{PlainText: str}
+				var err error
+				key_path, ok := cluster.ImmuableFlagMap["monitoring-key-path"]
+				if ok {
+					p.Key, err = crypto.ReadKey(fmt.Sprintf("%v", key_path))
+					if err != nil {
+						log.Fatalln(err)
+					}
+					p.Encrypt()
+
+					if len(tmp) == 2 {
+						str = fmt.Sprintf("%v", v)
+						str = str + p.CipherText
+						v = str
+					} else {
+						v = p.CipherText
+					}
+				} else {
+					cluster.LogPrintf(LvlWarn, "Missing key file or wrong key path")
+				}
+
+			}
+		}
 		file.WriteString("[saved-" + cluster.Name + "]\n")
 		s.WriteTo(file)
+		fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.ImmuableFlagMap)
+
+		//to load the new generated config file in github
+		if cluster.Conf.GitUrl != "" {
+			directory := cluster.Conf.WorkingDir + "/" + cluster.Name
+			r, err := git.PlainOpen(directory)
+			git_ex.CheckIfError(err)
+
+			w, err := r.Worktree()
+			git_ex.CheckIfError(err)
+
+			msg := "Update config.toml file"
+
+			// Adds the new file to the staging area.
+			git_ex.Info("git add" + directory + "/config.toml")
+			_, err = w.Add("config.toml")
+			git_ex.CheckIfError(err)
+
+			git_ex.Info("git commit -m \"New config file\"")
+			_, err = w.Commit(msg, &git.CommitOptions{
+				Author: &git_obj.Signature{
+					Name:  "Replication-manager",
+					Email: cluster.Conf.MailFrom,
+					When:  time.Now(),
+				},
+			})
+
+			git_ex.CheckIfError(err)
+
+			git_ex.Info("git push")
+			// push using default options
+			err = r.Push(&git.PushOptions{Auth: &git_http.BasicAuth{
+				Username: "toto", // yes, this can be anything except an empty string
+				Password: cluster.Conf.GitAccesToken,
+			}})
+			git_ex.CheckIfError(err)
+
+		}
 
 		err = cluster.Overwrite()
 		if err != nil {

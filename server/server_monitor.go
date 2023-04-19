@@ -58,9 +58,10 @@ func init() {
 	}
 	monitorCmd.Flags().StringVar(&conf.WorkingDir, "monitoring-datadir", "/var/lib/replication-manager", "Path to write temporary and persistent files")
 	monitorCmd.Flags().Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in seconds")
-	monitorCmd.Flags().StringVar(&conf.TunnelHost, "monitoring-tunnel-host", "", "Bastion host to access to monitor topology via SSH tunnel host:22")
-	monitorCmd.Flags().StringVar(&conf.TunnelCredential, "monitoring-tunnel-credential", "root:", "Credential Access to bastion host topology via SSH tunnel")
-	monitorCmd.Flags().StringVar(&conf.TunnelKeyPath, "monitoring-tunnel-key-path", "/Users/apple/.ssh/id_rsa", "Tunnel private key path")
+	//not working so far
+	//monitorCmd.Flags().StringVar(&conf.TunnelHost, "monitoring-tunnel-host", "", "Bastion host to access to monitor topology via SSH tunnel host:22")
+	//monitorCmd.Flags().StringVar(&conf.TunnelCredential, "monitoring-tunnel-credential", "root:", "Credential Access to bastion host topology via SSH tunnel")
+	//monitorCmd.Flags().StringVar(&conf.TunnelKeyPath, "monitoring-tunnel-key-path", "/Users/apple/.ssh/id_rsa", "Tunnel private key path")
 	monitorCmd.Flags().BoolVar(&conf.MonitorWriteHeartbeat, "monitoring-write-heartbeat", false, "Inject heartbeat into proxy or via external vip")
 	monitorCmd.Flags().BoolVar(&conf.ConfRewrite, "monitoring-save-config", false, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	monitorCmd.Flags().StringVar(&conf.MonitorWriteHeartbeatCredential, "monitoring-write-heartbeat-credential", "", "Database user:password to inject traffic into proxy or via external vip")
@@ -212,6 +213,9 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.VaultMode, "vault-mode", cluster.VaultConfigStoreV2, "Vault mode : config_store_v2|database_engine")
 	monitorCmd.Flags().StringVar(&conf.VaultMount, "vault-mount", "secret", "Vault mount for the secret")
 	monitorCmd.Flags().StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius")
+
+	monitorCmd.Flags().StringVar(&conf.GitUrl, "git-url", "", "GitHub URL repository to store config file")
+	monitorCmd.Flags().StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
 
 	//monitorCmd.Flags().BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	conf.Daemon = true
@@ -371,7 +375,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.BackupStreaming, "backup-streaming", false, "Backup streaming to cloud ")
 	monitorCmd.Flags().BoolVar(&conf.BackupStreamingDebug, "backup-streaming-debug", false, "Debug mode for streaming to cloud ")
 	monitorCmd.Flags().StringVar(&conf.BackupStreamingAwsAccessKeyId, "backup-streaming-aws-access-key-id", "admin", "Backup AWS key id")
-	monitorCmd.Flags().StringVar(&conf.BackupStreamingAwsAccessSecret, "backup-streaming-aws-access-secret", "secret", "Backup AWS key sercret")
+	monitorCmd.Flags().StringVar(&conf.BackupStreamingAwsAccessSecret, "backup-streaming-aws-access-secret", "secret", "Backup AWS key secret")
 	monitorCmd.Flags().StringVar(&conf.BackupStreamingEndpoint, "backup-streaming-endpoint", "https://s3.signal18.io/", "Backup AWS endpoint")
 	monitorCmd.Flags().StringVar(&conf.BackupStreamingRegion, "backup-streaming-region", "fr-1", "Backup AWS region")
 	monitorCmd.Flags().StringVar(&conf.BackupStreamingBucket, "backup-streaming-bucket", "repman", "Backup AWS bucket")

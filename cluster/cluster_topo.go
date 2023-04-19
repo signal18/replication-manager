@@ -95,7 +95,10 @@ func (cluster *Cluster) AddChildServers() error {
 					cluster.Servers = append(cluster.Servers, srv)
 					wg := new(sync.WaitGroup)
 					wg.Add(1)
-					cluster.TopologyDiscover(wg)
+					err = cluster.TopologyDiscover(wg)
+					if err != nil {
+						cluster.LogPrintf(LvlWarn, "AddChildServers : Fail to discover a topology %s", err)
+					}
 					wg.Wait()
 					return nil
 					// leave for next monitor loop to remove the sever if no more link

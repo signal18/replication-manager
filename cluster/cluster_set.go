@@ -969,10 +969,15 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 				}
 			}
 			//	cluster.LogPrintf(LvlErr, strings.Join(hosts, ","))
-			cluster.SetDbServerHosts(strings.Join(hosts, ","))
-
+			err = cluster.SetDbServerHosts(strings.Join(hosts, ","))
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "SetServicePlan : Fail SetDbServerHosts : %s, for hosts : %s", err, strings.Join(hosts, ","))
+			}
 			cluster.sme.SetFailoverState()
-			cluster.newServerList()
+			err = cluster.newServerList()
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "SetServicePlan : Fail newServerList : %s", err)
+			}
 			wg := new(sync.WaitGroup)
 			wg.Add(1)
 			go cluster.TopologyDiscover(wg)
@@ -997,11 +1002,24 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 					} else {
 						cluster.LogPrintf(LvlInfo, "Adding shard proxy monitor 127.0.0.1:%s", portshardproxy)
 					}
-					cluster.AddSeededProxy(config.ConstProxySqlproxy, "127.0.0.1", portproxysql, "", "")
-					cluster.AddSeededProxy(config.ConstProxySpider, "127.0.0.1", portshardproxy, "", "")
+					err = cluster.AddSeededProxy(config.ConstProxySqlproxy, "127.0.0.1", portproxysql, "", "")
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Fail adding proxysql monitor on 127.0.0.1 %s", err)
+					}
+					err = cluster.AddSeededProxy(config.ConstProxySpider, "127.0.0.1", portshardproxy, "", "")
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Fail adding shard proxy monitor on 127.0.0.1 %s", err)
+					}
 				} else {
-					cluster.AddSeededProxy(config.ConstProxySpider, "shardproxy1", "3306", "", "")
-					cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, "", "")
+					err = cluster.AddSeededProxy(config.ConstProxySpider, "shardproxy1", "3306", "", "")
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Fail adding shard proxy monitor on 3306 %s", err)
+					}
+
+					err = cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, "", "")
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Fail adding proxysql monitor on %s %s", cluster.Conf.ProxysqlPort, err)
+					}
 				}
 			} else {
 				cluster.LogPrintf(LvlInfo, "Copy proxy list from cluster head %s", cluster.Conf.ClusterHead)

@@ -8,6 +8,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -795,7 +796,8 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 			mycluster.LogPrintf(cluster.LvlInfo, "Prefered master: not found in database servers %s", newPrefMaster)
 		}
 		mycluster.MasterFailover(false)
-		mycluster.SetPrefMaster(savedPrefMaster)
+		mycluster.Conf.PrefMaster = (savedPrefMaster)
+
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -1459,6 +1461,7 @@ func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter
 }
 
 func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("HANDLER MUX SERVER ADD\n")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])

@@ -459,6 +459,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	if strClusters != "" {
 		//set cluster list
 		repman.ClusterList = strings.Split(strClusters, ",")
+		repman.ImmuableFlagMaps["default"] = ImmuableMap
 		//add config from cluster to the config map
 		for _, cluster := range repman.ClusterList {
 			//vipersave := backupvipersave
@@ -513,7 +514,6 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 	clusterconf := conf
 
 	//conf.PrintConf()
-	//fmt.Printf("%+v\n", fistRead.AllSettings())
 
 	//if name cluster is defined
 	if cluster != "" {
@@ -529,15 +529,16 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 			cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 			repman.initAlias(cf2)
 			cf2.Unmarshal(&clusterconf)
-		}
+			//fmt.Printf("saved conf :")
+			//clusterconf.PrintConf()
+			//Add immuatable flag from cluster section
+			for _, f := range cf2.AllKeys() {
+				v := cf2.Get(f)
+				if v != nil {
+					clustImmuableMap[f] = v
+				}
 
-		//Add immuatable flag from cluster section
-		for _, f := range cf2.AllKeys() {
-			v := cf2.Get(f)
-			if v != nil {
-				clustImmuableMap[f] = v
 			}
-
 		}
 
 		//clusterconf.PrintConf()
@@ -550,13 +551,22 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 		confs.ConfImmuable = clusterconf
 
 		//fmt.Printf("%+v\n", cf2.AllSettings())
-
+		repman.DynamicFlagMaps["default"] = clustDynamicMap
 		//if dynamic config, load modified parameter from the saved config
 		if clusterconf.ConfRewrite {
+
 			cf3 := fistRead.Sub("saved-" + cluster)
+
+			//cf4 := repman.CleanupDynamicConfig(clustImmuableMap, cf3)
 			if cf3 == nil {
 				log.WithField("group", cluster).Info("Could not parse saved configuration group")
 			} else {
+				for _, f := range cf3.AllKeys() {
+					v, ok := clustImmuableMap[f]
+					if ok {
+						cf3.Set(f, v)
+					}
+				}
 				repman.initAlias(cf3)
 				cf3.Unmarshal(&clusterconf)
 				//to add flag in cluster dynamic map only if not defined yet or if the flag value read is diff from immuable flag value
@@ -579,12 +589,28 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 
 		}
 		repman.DynamicFlagMaps[cluster] = clustDynamicMap
+
 		confs.ConfInit = clusterconf
+		//fmt.Printf("init conf : ")
+		//clusterconf.PrintConf()
 
 		repman.VersionConfs[cluster] = confs
 	}
 	return clusterconf
 }
+
+/*
+func CleanupDynamicConfig(clustImmuableMap map[string]interface{}, cf viper.Viper, cluster string) viper.Viper {
+	//if admin change immuable value that is already saved in dynamic config, we need to remove it before parse
+	for _, f := range cf.AllKeys() {
+		_, ok := clustImmuableMap[f]
+		if ok {
+			delete(cf.Get(f).(map[string]interface{}), f)
+		}
+
+	}
+
+}*/
 
 func (repman *ReplicationManager) initAlias(v *viper.Viper) {
 	v.RegisterAlias("monitoring-config-rewrite", "monitoring-save-config")

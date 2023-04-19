@@ -532,6 +532,8 @@ type Config struct {
 	VaultMode                                 string `mapstructure:"vault-mode" toml:"vault-mode" json:"vaultMode"`
 	VaultMount                                string `mapstructure:"vault-mount" toml:"vault-mount" json:"vaultMount"`
 	VaultAuth                                 string `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
+	GitUrl                                    string `mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
+	GitAccesToken                             string `mapstructure:"git-acces-token" toml:"git-acces-token" json:"gitAccesToken"`
 
 	//	BackupResticStoragePolicy                 string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API

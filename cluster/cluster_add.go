@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -16,6 +17,7 @@ import (
 )
 
 func (cluster *Cluster) AddSeededServer(srv string) error {
+	fmt.Printf("ADD SEEDED SERVER\n")
 	if cluster.Conf.Hosts != "" {
 		cluster.Conf.Hosts = cluster.Conf.Hosts + "," + srv
 	} else {
