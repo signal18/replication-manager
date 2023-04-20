@@ -796,7 +796,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 			mycluster.LogPrintf(cluster.LvlInfo, "Prefered master: not found in database servers %s", newPrefMaster)
 		}
 		mycluster.MasterFailover(false)
-		mycluster.Conf.PrefMaster = (savedPrefMaster)
+		mycluster.SetPrefMaster(savedPrefMaster)
 
 	} else {
 		http.Error(w, "No cluster", 500)

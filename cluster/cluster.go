@@ -611,7 +611,7 @@ func (cluster *Cluster) Run() {
 				err := cluster.AddChildServers()
 
 				if err != nil {
-					cluster.LogPrintf(LvlInfo, "Fail of AddChildServers %s", err)
+					cluster.LogPrintf(LvlDbg, "Fail of AddChildServers %s", err)
 				}
 
 				cluster.IsFailable = cluster.GetStatus()

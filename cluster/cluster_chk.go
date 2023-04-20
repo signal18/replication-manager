@@ -121,7 +121,7 @@ func (cluster *Cluster) isAutomaticFailover() bool {
 
 func (cluster *Cluster) isMasterFailed() bool {
 	if cluster.master == nil {
-		return true
+		return false
 	}
 	if cluster.master.State == stateFailed {
 		return true
