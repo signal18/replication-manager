@@ -53,7 +53,6 @@ func (p *Password) Encrypt() {
 }
 
 func (p *Password) Decrypt() error {
-	log.Println("COUCOU pass is: %s", p.CipherText)
 	ciphertext, _ := hex.DecodeString(p.CipherText)
 
 	block, err := aes.NewCipher(p.Key)
