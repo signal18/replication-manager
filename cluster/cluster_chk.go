@@ -120,8 +120,10 @@ func (cluster *Cluster) isAutomaticFailover() bool {
 }
 
 func (cluster *Cluster) isMasterFailed() bool {
+	//if master not discover, we can considered it not failed
+	//can cause infinity loops if set to true
 	if cluster.master == nil {
-		return true
+		return false
 	}
 	if cluster.master.State == stateFailed {
 		return true
