@@ -16,7 +16,7 @@ BIN-EMBED = $(BIN)
 PROTO_DIR = signal18/replication-manager/v3
 EMBED = -X github.com/signal18/replication-manager/server.WithEmbed=ON
 
-all: bin tar cli arb emb
+all: bin tar cli arb
 
 bin: osc tst pro osc-cgo emb
 
