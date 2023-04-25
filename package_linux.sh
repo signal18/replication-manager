@@ -45,13 +45,15 @@ fpm --package replication-manager-client-$version.tar -C "$builddir"/package -s 
 
 mkdir -p "$builddir"/package/usr/share/replication-manager/dashboard
 mkdir -p "$builddir"/package/etc/replication-manager
+mkdir -p "$builddir"/package/etc/replication-manager/cluster.d
 mkdir -p "$builddir"/package/etc/systemd/system
 mkdir -p "$builddir"/package/etc/init.d
-mkdir -p "$builddir"/package/var/lib/replication-manager/cluster.d
+mkdir -p "$builddir"/package/var/lib/replication-manager
 mkdir -p "$builddir"/tar/bin
 mkdir -p "$builddir"/tar/etc
+mkdir -p "$builddir"/tar/etc/cluster.d
 mkdir -p "$builddir"/tar/share
-mkdir -p "$builddir"/tar/data/cluster.d
+mkdir -p "$builddir"/tar/data
 
 echo "# Copying files to build dir"
 cp -r dashboard/* "$builddir"/package/usr/share/replication-manager/dashboard/
@@ -86,9 +88,9 @@ do
     cp "$builddir"/binaries/replication-manager-$flavor "$builddir"/package/usr/bin/
     cp service/replication-manager-$flavor.service "$builddir"/package/etc/systemd/system/replication-manager.service
     cp service/replication-manager-$flavor.init.el6 "$builddir"/package/etc/init.d/replication-manager
-    fpm ${cflags[@]} --rpm-os linux -C "$builddir"/package -s dir -t rpm --config-files /etc/replication-manager/cluster.d/cluster1.toml --config-files /etc/replication-manager/config.toml -n replication-manager-$flavor --epoch $epoch --description "$description - $extra_desc" -p "$builddir/release"
+    fpm ${cflags[@]} --rpm-os linux -C "$builddir"/package -s dir -t rpm --config-files /etc/replication-manager/cluster.d/cluster1.toml --config-files /etc/replication-manager/config.toml.sample -n replication-manager-$flavor --epoch $epoch --description "$description - $extra_desc" -p "$builddir/release"
     cp service/replication-manager-$flavor.init.deb7 "$builddir"/package/etc/init.d/replication-manager
-    fpm ${cflags[@]} -C "$builddir"/package -s dir -t deb --config-files /etc/replication-manager/cluster.d/cluster1.toml --config-files /etc/replication-manager/config.toml -n replication-manager-$flavor --description "$description - $extra_desc" -p "$builddir/release"
+    fpm ${cflags[@]} -C "$builddir"/package -s dir -t deb --config-files /etc/replication-manager/cluster.d/cluster1.toml.sample --config-files /etc/replication-manager/config.toml -n replication-manager-$flavor --description "$description - $extra_desc" -p "$builddir/release"
     rm -f "$builddir"/package/usr/bin/replication-manager-$flavor
 
     echo "# Building tarball replication-manager-$flavor"
