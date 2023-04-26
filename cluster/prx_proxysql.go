@@ -325,8 +325,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 		}
 
 		// nothing should be done if no bootstrap
-		if cluster.Conf.ProxysqlBootstrap {
-
+		if cluster.Conf.ProxysqlBootstrap && cluster.IsDiscovered() {
 			// if ProxySQL and replication-manager states differ, resolve the conflict
 			if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave && !s.IsIgnored() {
 				if cluster.Conf.ProxysqlDebug {
@@ -625,4 +624,19 @@ func (proxy *ProxySQLProxy) RotationAdminPasswords(password string) {
 		cluster.LogPrintf(LvlErr, "ProxySQL could not save admin variables to disk (%s)", err)
 	}
 
+}
+
+func (proxy *ProxySQLProxy) Shutdown() {
+	cluster := proxy.ClusterGroup
+	psql, err := proxy.Connect()
+	if err != nil {
+		cluster.sme.AddState("ERR00051", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00051"], err), ErrFrom: "MON"})
+		return
+	}
+	defer psql.Connection.Close()
+
+	err = psql.Shutdown()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "ProxySQL could not shutdown (%s)", err)
+	}
 }

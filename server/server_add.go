@@ -7,13 +7,10 @@
 package server
 
 import (
-	"fmt"
-
 	"github.com/signal18/replication-manager/config"
 )
 
 func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead string) error {
-	fmt.Printf("ADD CLUSTER\n")
 	var myconf = make(map[string]config.Config)
 
 	myconf[clusterName] = repman.Conf
@@ -44,8 +41,9 @@ func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead str
 	//confs[clusterName] = repman.GetClusterConfig(fistRead, repman.ImmuableFlagMaps["default"], repman.DynamicFlagMaps["default"], clusterName, conf)
 
 	cluster, _ := repman.StartCluster(clusterName)
-	fmt.Printf("ADD CLUSTER CONF :\n")
-	cluster.Conf.PrintConf()
+	//fmt.Printf("ADD CLUSTER def map :\n")
+	//fmt.Printf("%s\n", repman.ImmuableFlagMaps)
+	//cluster.Conf.PrintConf()
 
 	cluster.SetClusterHead(clusterHead)
 	//cluster.SetClusterHead(clusterName)

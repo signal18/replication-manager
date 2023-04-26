@@ -24,10 +24,6 @@ func (cluster *Cluster) Bootstrap() error {
 	if err != nil {
 		return err
 	}
-	err = cluster.WaitDatabaseCanConn()
-	if err != nil {
-		return err
-	}
 
 	err = cluster.BootstrapReplication(true)
 	if err != nil {
@@ -99,7 +95,10 @@ func (cluster *Cluster) ProvisionServices() error {
 			}
 		}
 	}
-
+	err := cluster.WaitDatabaseCanConn()
+	if err != nil {
+		return err
+	}
 	for _, prx := range cluster.Proxies {
 		switch cluster.GetOrchestrator() {
 		case config.ConstOrchestratorOpenSVC:
@@ -230,11 +229,12 @@ func (cluster *Cluster) Unprovision() error {
 			}
 		}
 	}
-	cluster.slaves = nil
-	cluster.master = nil
-	cluster.vmaster = nil
-	cluster.IsAllDbUp = false
-	cluster.sme.RemoveFailoverState()
+	err := cluster.WaitClusterStop()
+	if err == nil {
+		cluster.ResetStates()
+	} else {
+		cluster.LogPrintf(LvlErr, "Failed to wait for all databases down : %s", err)
+	}
 
 	for _, prx := range cluster.Proxies {
 		/*	prx, ok := pri.(*Proxy)

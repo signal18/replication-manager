@@ -423,6 +423,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	var strClusters string
 	strClusters = cfgGroup
 
+	//fmt.Printf("%+v\n", fistRead.AllSettings())
+
 	//if cluster name is empty, go discover cluster
 	if strClusters == "" {
 		// Discovering the clusters from all merged conf files build clusterDiscovery map
@@ -434,7 +436,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	//extract the default section of the config files
 	cf1 := fistRead.Sub("Default")
 	//init viper to save the config
-	vipersave := viper.GetViper()
+	//vipersave := viper.GetViper()
 
 	//cf1.Debug()
 	if cf1 == nil {
@@ -445,9 +447,10 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		cf1.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 		cf1.SetEnvPrefix("DEFAULT")
 
-		vipersave.MergeConfigMap(cf1.AllSettings())
-		//fmt.Printf("%+v\n", vipersave.AllSettings())
-		vipersave.Unmarshal(&conf)
+		//vipersave.MergeConfigMap(cf1.AllSettings())
+		//fmt.Printf("%+v\n", cf1.AllSettings())
+		//vipersave.Unmarshal(&conf)
+		cf1.Unmarshal(&conf)
 		//	fmt.Printf("%+v\n", conf)
 		//os.Exit(3)
 		//conf.PrintConf()

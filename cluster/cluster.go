@@ -466,7 +466,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface
 		cluster.AddDBTagConfig("pkg")
 	}
 	//fmt.Printf("INIT CLUSTER CONF :\n")
-	cluster.Conf.PrintConf()
+	//cluster.Conf.PrintConf()
 	return nil
 }
 
@@ -538,13 +538,17 @@ func (cluster *Cluster) Run() {
 			default:
 				if cluster.Conf.LogLevel > 2 {
 					cluster.LogPrintf(LvlDbg, "Monitoring server loop")
-					for k, v := range cluster.Servers {
-						cluster.LogPrintf(LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
-					}
-					if cluster.GetMaster() != nil {
-						cluster.LogPrintf(LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.GetMaster().State, cluster.GetMaster().PrevState)
-						for k, v := range cluster.slaves {
-							cluster.LogPrintf(LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+					if cluster.Servers[0] != nil {
+						cluster.LogPrintf(LvlDbg, "Servers not nil : %v\n", cluster.Servers)
+						for k, v := range cluster.Servers {
+							cluster.LogPrintf(LvlDbg, "Servers loops k : %d, url : %s, state : %s, prevstate %s", k, v.URL, v.State, v.PrevState)
+							cluster.LogPrintf(LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+						}
+						if cluster.GetMaster() != nil {
+							cluster.LogPrintf(LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.GetMaster().State, cluster.GetMaster().PrevState)
+							for k, v := range cluster.slaves {
+								cluster.LogPrintf(LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+							}
 						}
 					}
 				}
@@ -913,9 +917,10 @@ func (cluster *Cluster) Save() error {
 
 			}
 		}
-		file.WriteString("[saved-" + cluster.Name + "]\n")
+		file.WriteString("[saved-" + cluster.Name + "]\ntitle = \"" + cluster.Name + "\" \n")
 		s.WriteTo(file)
-		fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.ImmuableFlagMap)
+		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.ImmuableFlagMap)
+		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.DynamicFlagMap)
 
 		//to load the new generated config file in github
 		if cluster.Conf.GitUrl != "" {
@@ -960,6 +965,75 @@ func (cluster *Cluster) Save() error {
 		}
 	}
 
+	return nil
+}
+
+func (cluster *Cluster) SaveClusterFromScratch() error {
+	var myconf = make(map[string]config.Config)
+
+	myconf[cluster.Name] = cluster.Conf
+
+	file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+	if err != nil {
+		if os.IsPermission(err) {
+			cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml")
+		}
+		return err
+	}
+	defer file.Close()
+
+	readconf, _ := toml.Marshal(cluster.Conf)
+	t, _ := toml.LoadBytes(readconf)
+	s := t
+	keys := t.Keys()
+	for _, key := range keys {
+		_, ok := cluster.ImmuableFlagMap[key]
+		if !ok {
+			s.Delete(key)
+		} else {
+			v, ok := cluster.DefaultFlagMap[key]
+			if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
+				s.Delete(key)
+			}
+		}
+	}
+	for _, key := range keys {
+
+		_, ok := encryptFlag[key]
+		if ok {
+			v := s.Get(key)
+			str := fmt.Sprintf("%v", v)
+			tmp := strings.Split(str, ":")
+			if len(tmp) == 2 {
+				str = tmp[1]
+				v = tmp[0]
+			}
+
+			p := crypto.Password{PlainText: str}
+			var err error
+			key_path, ok := cluster.ImmuableFlagMap["monitoring-key-path"]
+			if ok {
+				p.Key, err = crypto.ReadKey(fmt.Sprintf("%v", key_path))
+				if err != nil {
+					log.Fatalln(err)
+				}
+				p.Encrypt()
+
+				if len(tmp) == 2 {
+					str = fmt.Sprintf("%v", v)
+					str = str + p.CipherText
+					v = str
+				} else {
+					v = p.CipherText
+				}
+			} else {
+				cluster.LogPrintf(LvlWarn, "Missing key file or wrong key path")
+			}
+
+		}
+	}
+	file.WriteString("[" + cluster.Name + "]\n title = \"" + cluster.Name + " \" \n")
+	s.WriteTo(file)
 	return nil
 }
 
@@ -1017,7 +1091,7 @@ func (cluster *Cluster) InitAgent(conf config.Config) {
 	return
 }
 
-func (cluster *Cluster) ReloadConfig(conf config.Config) {
+/*func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Conf = conf
 	cluster.Configurator.SetConfig(conf)
 	cluster.sme.SetFailoverState()
@@ -1032,6 +1106,19 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.newProxyList()
 	cluster.sme.RemoveFailoverState()
 	cluster.initProxies()
+}*/
+
+func (cluster *Cluster) ReloadConfig(conf config.Config) {
+	cluster.Conf = conf
+	cluster.Configurator.SetConfig(conf)
+	cluster.sme.SetFailoverState()
+	cluster.ResetStates()
+
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go cluster.TopologyDiscover(wg)
+	wg.Wait()
+
 }
 
 func (cluster *Cluster) FailoverForce() error {
@@ -1400,4 +1487,47 @@ func (cluster *Cluster) ReloadCertificates() {
 	for _, pri := range cluster.Proxies {
 		pri.CertificatesReload()
 	}
+}
+
+func (cluster *Cluster) ResetStates() {
+	cluster.slaves = nil
+	cluster.master = nil
+	cluster.oldMaster = nil
+	cluster.vmaster = nil
+	cluster.Servers = nil
+	cluster.Proxies = nil
+	//
+	cluster.ServerIdList = nil
+	cluster.hostList = nil
+	cluster.clusterList = nil
+	cluster.proxyList = nil
+	cluster.ProxyIdList = nil
+	//cluster.FailoverCtr = 0
+	cluster.SetFailoverCtr(0)
+	//cluster.FailoverTs = 0
+	cluster.SetFailTime(0)
+	cluster.Connections = 0
+	cluster.SLAHistory = nil
+	//
+	cluster.Crashes = nil
+
+	cluster.IsAllDbUp = false
+	cluster.IsDown = true
+	cluster.IsClusterDown = true
+	cluster.IsProvision = false
+	cluster.IsNotMonitoring = true
+	cluster.Topology = topoUnknown
+
+	cluster.canFlashBack = true
+	cluster.CanInitNodes = true
+	cluster.CanConnectVault = true
+	cluster.runOnceAfterTopology = true
+	cluster.testStopCluster = true
+	cluster.testStartCluster = true
+
+	cluster.SetUnDiscovered()
+	cluster.newServerList()
+	cluster.newProxyList()
+	cluster.sme.RemoveFailoverState()
+	cluster.initProxies()
 }

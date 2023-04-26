@@ -4,8 +4,8 @@
 ## change the service file  in /etc/systemd/system/replication-manager.service to looks like :
 ## replication-manager-osc  --config=./etc/config.toml.sample  --cluster=Cluster01,Cluster_Test_2_Nodes monitor
 
-[MasterSlaveProxysql]
-title = "MasterSlaveProxysql"
+[emma]
+title = "emma"
 
 prov-orchestrator = "local"
 db-servers-hosts = "127.0.0.1:3313,127.0.0.1:3314"
@@ -21,5 +21,6 @@ proxysql-port=3303
 proxysql-admin-port = 6032
 proxysql-servers="127.0.0.1"
 proxysql-multiplexing = false
-proxysql-password = "admin"
 proxysql-user = "admin"
+proxysql-password = "admin"
+proxysql-binary-path = "/usr/bin/proxysql"

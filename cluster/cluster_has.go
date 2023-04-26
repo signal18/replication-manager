@@ -150,7 +150,7 @@ func (cluster *Cluster) HasAllDbUp() bool {
 	}
 	for _, s := range cluster.Servers {
 		if s != nil {
-			if s.State == stateFailed /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+			if s.State == stateFailed || s.State == stateErrorAuth /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
 				return false
 			}
 			if s.State == stateSuspect && cluster.GetTopology() != topoUnknown {
@@ -161,6 +161,23 @@ func (cluster *Cluster) HasAllDbUp() bool {
 			if s.Conn == nil {
 				return false
 			}
+
+		}
+	}
+
+	return true
+}
+
+func (cluster *Cluster) HasAllDbDown() bool {
+	if cluster.Servers == nil {
+		return true
+	}
+	for _, s := range cluster.Servers {
+		if s != nil {
+			if s.State != stateFailed /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+				return false
+			}
+
 		}
 	}
 

@@ -65,7 +65,6 @@ func (psql *ProxySQL) Connect() error {
 		ReadTimeout:          time.Second * 15,
 		AllowNativePasswords: true,
 	}
-
 	var err error
 	psql.Connection, err = sqlx.Connect("mysql", ProxysqlConfig.FormatDSN())
 	if err != nil {
@@ -357,5 +356,10 @@ func (psql *ProxySQL) SaveMySQLVariablesToDisk() error {
 
 func (psql *ProxySQL) SaveMySQLUsersToDisk() error {
 	_, err := psql.Connection.Exec("SAVE MYSQL USERS TO DISK")
+	return err
+}
+
+func (psql *ProxySQL) Shutdown() error {
+	_, err := psql.Connection.Exec("PROXYSQL KILL")
 	return err
 }

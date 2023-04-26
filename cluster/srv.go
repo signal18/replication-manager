@@ -414,6 +414,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 	// From here we have a new connection
 
+	if server.State == stateErrorAuth {
+		server.SetState(stateSuspect)
+	}
+
 	// For orchestrator to trigger a start via tracking state URL
 	if server.PrevState == stateFailed {
 		server.DelWaitStartCookie()

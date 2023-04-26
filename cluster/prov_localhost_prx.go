@@ -85,10 +85,10 @@ func (cluster *Cluster) LocalhostStartProxyService(pri DatabaseProxy) error {
 
 func (cluster *Cluster) LocalhostStopProxyService(pri DatabaseProxy) error {
 	if prx, ok := pri.(*HaproxyProxy); ok {
-		cluster.LocalhostStartHaProxyService(prx)
+		cluster.LocalhostStopHaProxyService(prx)
 	}
 	if prx, ok := pri.(*ProxySQLProxy); ok {
-		cluster.LocalhostStartProxySQLService(prx)
+		cluster.LocalhostStopProxySQLService(prx)
 	}
 
 	return nil

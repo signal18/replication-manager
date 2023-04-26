@@ -80,6 +80,11 @@ func (server *ServerMonitor) SetFailed() {
 
 func (server *ServerMonitor) SetMaster() {
 	server.SetState(stateMaster)
+	//server.ClusterGroup.LogPrintf(LvlInfo, "Server %s state transition from %s changed to: %s in SetMaster", server.URL, server.PrevState, stateMaster)
+	_, file, no, ok := runtime.Caller(1)
+	if ok {
+		server.ClusterGroup.LogPrintf(LvlDbg, "SetMaster called from %s#%d\n", file, no)
+	}
 	for _, s := range server.ClusterGroup.Servers {
 		s.HaveNoMasterOnStart = false
 	}

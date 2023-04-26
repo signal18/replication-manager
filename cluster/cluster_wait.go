@@ -124,6 +124,9 @@ func (cluster *Cluster) WaitClusterStop() error {
 			if cluster.sme.IsInState("ERR00021") == true {
 				exitloop = 9999999
 			}
+			if cluster.HasAllDbDown() {
+				exitloop = 9999999
+			}
 
 		}
 	}
