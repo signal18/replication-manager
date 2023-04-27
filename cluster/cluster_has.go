@@ -150,7 +150,7 @@ func (cluster *Cluster) HasAllDbUp() bool {
 	}
 	for _, s := range cluster.Servers {
 		if s != nil {
-			if s.State == stateFailed || s.State == stateErrorAuth /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+			if s.State == stateFailed /*|| s.State == stateErrorAuth && misc.Contains(cluster.ignoreList, s.URL) == false*/ {
 				return false
 			}
 			if s.State == stateSuspect && cluster.GetTopology() != topoUnknown {

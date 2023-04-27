@@ -10,8 +10,8 @@ backup-mysqlclient-path ="/usr/bin/mysql"
 backup-mysqlbinlog-path = "/usr/bin/mysqlbinlog"
 backup-mysqldump-options = "--hex-blob --single-transaction --verbose --all-databases --add-drop-database"
 
-monitoring-save-config = true
-monitoring-key-path = ".replication-manager.key"
+#monitoring-save-config = true
+#monitoring-key-path = ".replication-manager.key"
 
 monitoring-sharedir="./share"
 monitoring-datadir="/home/emma/repdata"

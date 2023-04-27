@@ -355,7 +355,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			if server.ClusterGroup.master == nil {
 				server.ClusterGroup.LogPrintf(LvlDbg, "Master not defined")
 			}
-			if server.ClusterGroup.GetMaster() != nil && server.URL == server.ClusterGroup.GetMaster().URL {
+			if server.ClusterGroup.GetMaster() != nil && server.URL == server.ClusterGroup.GetMaster().URL && server.GetCluster().GetTopology() != topoUnknown {
 				server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
 				if server.ClusterGroup.GetMaster().FailCount <= server.ClusterGroup.Conf.MaxFail {
 					server.ClusterGroup.LogPrintf("INFO", "Master Failure detected! Retry %d/%d", server.ClusterGroup.master.FailCount, server.ClusterGroup.Conf.MaxFail)
@@ -374,7 +374,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			} else {
 				// not the master or a virtual master
 				server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection of no master FailCount %d MaxFail %d", server.FailCount, server.ClusterGroup.Conf.MaxFail)
-				if server.FailCount >= server.ClusterGroup.Conf.MaxFail {
+				if server.FailCount >= server.ClusterGroup.Conf.MaxFail && server.GetCluster().GetTopology() != topoUnknown {
 					if server.FailCount == server.ClusterGroup.Conf.MaxFail {
 						server.ClusterGroup.LogPrintf("INFO", "Declaring replica %s as failed", server.URL)
 						server.SetState(stateFailed)
@@ -414,7 +414,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 	// From here we have a new connection
 
-	if server.State == stateErrorAuth {
+	//Without topology we should never declare a server failed
+	if (server.State == stateErrorAuth || server.State == stateFailed) && server.GetCluster().GetTopology() == topoUnknown && server.PrevState != stateSuspect {
 		server.SetState(stateSuspect)
 	}
 

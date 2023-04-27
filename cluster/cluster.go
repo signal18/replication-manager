@@ -1490,6 +1490,7 @@ func (cluster *Cluster) ReloadCertificates() {
 }
 
 func (cluster *Cluster) ResetStates() {
+	cluster.SetUnDiscovered()
 	cluster.slaves = nil
 	cluster.master = nil
 	cluster.oldMaster = nil
@@ -1516,7 +1517,6 @@ func (cluster *Cluster) ResetStates() {
 	cluster.IsClusterDown = true
 	cluster.IsProvision = false
 	cluster.IsNotMonitoring = true
-	cluster.Topology = topoUnknown
 
 	cluster.canFlashBack = true
 	cluster.CanInitNodes = true
@@ -1525,7 +1525,6 @@ func (cluster *Cluster) ResetStates() {
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 
-	cluster.SetUnDiscovered()
 	cluster.newServerList()
 	cluster.newProxyList()
 	cluster.sme.RemoveFailoverState()
