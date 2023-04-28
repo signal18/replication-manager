@@ -814,51 +814,19 @@ func (cluster *Cluster) Save() error {
 	if cluster.Conf.ConfRewrite {
 		//clone git repository in case its the first time
 		if cluster.Conf.GitUrl != "" {
-			if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/.git"); err == nil {
-				path := cluster.Conf.WorkingDir + "/" + cluster.Name
-
-				// We instantiate a new repository targeting the given path (the .git folder)
-				r, err := git.PlainOpen(path)
-				git_ex.CheckIfError(err)
-
-				// Get the working directory for the repository
-				w, err := r.Worktree()
-				git_ex.CheckIfError(err)
-
-				// Pull the latest changes from the origin remote and merge into the current branch
-				git_ex.Info("git pull origin")
-				err = w.Pull(&git.PullOptions{RemoteName: "origin"})
-				//git_ex.CheckIfError(err)
-			} else {
-				url := cluster.Conf.GitUrl
-				directory := cluster.Conf.WorkingDir + "/" + cluster.Name
-
-				// Clone the given repository to the given directory
-				git_ex.Info("git clone %s %s --recursive", url, directory)
-
-				_, err := git.PlainClone(directory, false, &git.CloneOptions{
-					URL:               url,
-					RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
-					Auth: &git_http.BasicAuth{
-						Username: "replication-manager", // yes, this can be anything except an empty string
-						Password: cluster.Conf.GitAccesToken,
-					},
-				})
-
-				git_ex.CheckIfError(err)
-			}
-
+			CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitAccesToken, cluster.WorkingDir, cluster.Name)
 		}
+
 		//fmt.Printf("SAVE CLUSTER \n")
 		//cluster.Conf.PrintConf()
 		var myconf = make(map[string]config.Config)
 
 		myconf["saved-"+cluster.Name] = cluster.Conf
 
-		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/config.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
-				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/config.toml")
+				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml")
 			}
 			return err
 		}
@@ -924,38 +892,51 @@ func (cluster *Cluster) Save() error {
 
 		//to load the new generated config file in github
 		if cluster.Conf.GitUrl != "" {
-			directory := cluster.Conf.WorkingDir + "/" + cluster.Name
-			r, err := git.PlainOpen(directory)
-			git_ex.CheckIfError(err)
+			/*
+				directory := cluster.Conf.WorkingDir + "/" + cluster.Name
+				r, err := git.PlainOpen(directory)
+				if err != nil {
+					log.Errorf("Git error : cannot PlainOpen : %s", err)
+				}
 
-			w, err := r.Worktree()
-			git_ex.CheckIfError(err)
+				w, err := r.Worktree()
+				if err != nil {
+					log.Errorf("Git error : cannot Worktree : %s", err)
+				}
 
-			msg := "Update config.toml file"
+				msg := "Update " + cluster.Name + ".toml file"
 
-			// Adds the new file to the staging area.
-			git_ex.Info("git add" + directory + "/config.toml")
-			_, err = w.Add("config.toml")
-			git_ex.CheckIfError(err)
+				// Adds the new file to the staging area.
+				git_ex.Info("git add " + cluster.Name + ".toml")
+				_, err = w.Add(cluster.Name + ".toml")
+				if err != nil {
+					log.Errorf("Git error : cannot Add %s : %s", cluster.Name+".toml", err)
+				}
 
-			git_ex.Info("git commit -m \"New config file\"")
-			_, err = w.Commit(msg, &git.CommitOptions{
-				Author: &git_obj.Signature{
-					Name:  "Replication-manager",
-					Email: cluster.Conf.MailFrom,
-					When:  time.Now(),
-				},
-			})
+				git_ex.Info("git commit -a -m \"New config file\"")
+				_, err = w.Commit(msg, &git.CommitOptions{
+					Author: &git_obj.Signature{
+						Name:  "Replication-manager",
+						Email: cluster.Conf.MailFrom,
+						When:  time.Now(),
+					},
+				})
 
-			git_ex.CheckIfError(err)
+				if err != nil {
+					log.Errorf("Git error : cannot Commit : %s", err)
+				}
 
-			git_ex.Info("git push")
-			// push using default options
-			err = r.Push(&git.PushOptions{Auth: &git_http.BasicAuth{
-				Username: "toto", // yes, this can be anything except an empty string
-				Password: cluster.Conf.GitAccesToken,
-			}})
-			git_ex.CheckIfError(err)
+				git_ex.Info("git push")
+				// push using default options
+				err = r.Push(&git.PushOptions{Auth: &git_http.BasicAuth{
+					Username: "toto", // yes, this can be anything except an empty string
+					Password: cluster.Conf.GitAccesToken,
+				}})
+				if err != nil {
+					log.Errorf("Git error : cannot Push : %s", err)
+
+				}*/
+			PushConfigToGit(cluster.Conf.GitAccesToken, cluster.WorkingDir, cluster.Name)
 
 		}
 
@@ -966,6 +947,104 @@ func (cluster *Cluster) Save() error {
 	}
 
 	return nil
+}
+
+func PushConfigToGit(tok string, dir string, name string) {
+	path := dir
+	if !strings.Contains(dir, name) {
+		path += "/" + name
+	}
+	//directory := cluster.Conf.WorkingDir + "/" + cluster.Name
+	r, err := git.PlainOpen(path)
+	if err != nil {
+		log.Errorf("Git error : cannot PlainOpen : %s", err)
+	}
+
+	w, err := r.Worktree()
+	if err != nil {
+		log.Errorf("Git error : cannot Worktree : %s", err)
+	}
+
+	msg := "Update " + name + ".toml file"
+
+	// Adds the new file to the staging area.
+	git_ex.Info("git add " + name + ".toml")
+	_, err = w.Add(name + ".toml")
+	if err != nil {
+		log.Errorf("Git error : cannot Add %s : %s", name+".toml", err)
+	}
+
+	git_ex.Info("git commit -a -m \"New config file\"")
+	_, err = w.Commit(msg, &git.CommitOptions{
+		Author: &git_obj.Signature{
+			Name: "Replication-manager",
+			When: time.Now(),
+		},
+	})
+
+	if err != nil {
+		log.Errorf("Git error : cannot Commit : %s", err)
+	}
+
+	git_ex.Info("git push")
+	// push using default options
+	err = r.Push(&git.PushOptions{Auth: &git_http.BasicAuth{
+		Username: "toto", // yes, this can be anything except an empty string
+		Password: tok,
+	}})
+	if err != nil {
+		log.Errorf("Git error : cannot Push : %s", err)
+
+	}
+}
+
+func CloneConfigFromGit(url string, tok string, dir string, name string) {
+	//fmt.Printf("Clone from git : url %s, tok %s, dir %s, name %s\n", url, tok, dir, name)
+	path := dir
+	if !strings.Contains(dir, name) {
+		path += "/" + name
+	}
+	if _, err := os.Stat(path + "/.git"); err == nil {
+
+		// We instantiate a new repository targeting the given path (the .git folder)
+		r, err := git.PlainOpen(path)
+		if err != nil {
+			log.Errorf("Git error : cannot PlainOpen : %s", err)
+			return
+		}
+
+		// Get the working directory for the repository
+		w, err := r.Worktree()
+		if err != nil {
+			log.Errorf("Git error : cannot Worktree : %s", err)
+			return
+		}
+
+		// Pull the latest changes from the origin remote and merge into the current branch
+		git_ex.Info("git pull origin")
+		err = w.Pull(&git.PullOptions{RemoteName: "origin"})
+
+		if err != nil && fmt.Sprintf("%v", err) != "already up-to-date" {
+			log.Errorf("Git error : cannot Pull : %s", err)
+		}
+
+	} else {
+		// Clone the given repository to the given directory
+		git_ex.Info("git clone %s %s --recursive", url, path)
+
+		_, err := git.PlainClone(path, false, &git.CloneOptions{
+			URL:               url,
+			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+			Auth: &git_http.BasicAuth{
+				Username: "replication-manager", // yes, this can be anything except an empty string
+				Password: tok,
+			},
+		})
+
+		if err != nil {
+			log.Errorf("Git error : cannot Clone %s repository : %s", url, err)
+		}
+	}
 }
 
 func (cluster *Cluster) SaveClusterFromScratch() error {

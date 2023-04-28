@@ -396,18 +396,24 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//read and set config from all files in the working dir
 		for _, f := range files {
 			if f.IsDir() && f.Name() != "graphite" {
+				//load config file from git hub
+				if fistRead.GetString("default.git-url") != "" && fistRead.GetString("default.git-acces-token") != "" {
+					cluster.CloneConfigFromGit(fistRead.GetString("default.git-url"), fistRead.GetString("default.git-acces-token"), conf.WorkingDir, f.Name())
+				}
+
 				//fistRead.SetConfigName(f.Name())
 				dynRead.SetConfigName(f.Name())
-				if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/config.toml"); os.IsNotExist(err) {
-					log.Warning("No monitoring saved config found " + conf.WorkingDir + "/" + f.Name() + "/config.toml")
+				if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml"); os.IsNotExist(err) {
+					log.Warning("No monitoring saved config found " + conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
 				} else {
-					log.Infof("Parsing saved config from working directory %s ", conf.WorkingDir+"/"+f.Name()+"/config.toml")
-					fistRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/config.toml")
-					dynRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/config.toml")
+
+					log.Infof("Parsing saved config from working directory %s ", conf.WorkingDir+"/"+f.Name()+"/"+f.Name()+".toml")
+					fistRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
+					dynRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
 					err := fistRead.MergeInConfig()
 					err = dynRead.MergeInConfig()
 					if err != nil {
-						log.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/config.toml" + ":" + err.Error())
+						log.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
 					}
 				}
 			}
