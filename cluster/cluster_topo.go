@@ -149,7 +149,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	wg.Wait()
 
 	//	cluster.pingServerList()
-	if cluster.sme.IsInFailover() {
+	if cluster.StateMachine.IsInFailover() {
 		cluster.LogPrintf(LvlDbg, "In Failover skip topology detection")
 		return errors.New("In Failover skip topology detection")
 	}
@@ -414,7 +414,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 	}
 
-	if cluster.sme.CanMonitor() {
+	if cluster.StateMachine.CanMonitor() {
 		return nil
 	}
 	return errors.New("Error found in State Machine Engine")

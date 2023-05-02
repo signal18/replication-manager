@@ -52,11 +52,11 @@ func (cluster *Cluster) HasSchedulerEntry(myname string) bool {
 
 func (cluster *Cluster) HasNoValidSlave() bool {
 	//All slave stopped
-	if cluster.sme.IsInState("ERR00010") {
+	if cluster.StateMachine.IsInState("ERR00010") {
 		return true
 	}
 	// Any issues on all slaves expeting delay and network
-	if cluster.sme.IsInState("ERR00085") {
+	if cluster.StateMachine.IsInState("ERR00085") {
 		return true
 	}
 	return false
@@ -324,11 +324,11 @@ func (cluster *Cluster) IsVerbose() bool {
 }
 
 func (cluster *Cluster) IsInFailover() bool {
-	return cluster.sme.IsInFailover()
+	return cluster.StateMachine.IsInFailover()
 }
 
 func (cluster *Cluster) IsDiscovered() bool {
-	return cluster.sme.IsDiscovered()
+	return cluster.StateMachine.IsDiscovered()
 }
 
 func (cluster *Cluster) IsMultiMaster() bool {

@@ -23,13 +23,13 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 	} else {
 		cluster.Conf.Hosts = srv
 	}
-	cluster.sme.SetFailoverState()
+	cluster.StateMachine.SetFailoverState()
 	cluster.newServerList()
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.TopologyDiscover(wg)
 	wg.Wait()
-	cluster.sme.RemoveFailoverState()
+	cluster.StateMachine.RemoveFailoverState()
 	return nil
 }
 
@@ -118,11 +118,11 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 			cluster.Conf.MdbsProxyHosts = srv + ":" + port
 		}
 	}
-	cluster.sme.SetFailoverState()
+	cluster.StateMachine.SetFailoverState()
 	cluster.Lock()
 	cluster.newProxyList()
 	cluster.Unlock()
-	cluster.sme.RemoveFailoverState()
+	cluster.StateMachine.RemoveFailoverState()
 	return nil
 }
 

@@ -161,7 +161,7 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MariadbShardProxy) {
 	}
 	schemas, _, err := cluster.master.GetSchemas()
 	if err != nil {
-		cluster.sme.AddState("WARN0089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0089"], cluster.master.URL), ErrFrom: "PROXY", ServerUrl: cluster.master.URL})
+		cluster.StateMachine.AddState("WARN0089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0089"], cluster.master.URL), ErrFrom: "PROXY", ServerUrl: cluster.master.URL})
 		return
 	}
 	foundReplicationManagerSchema := false
@@ -205,7 +205,7 @@ func (proxy *MariadbShardProxy) CertificatesReload() error {
 func (proxy *MariadbShardProxy) Refresh() error {
 	if proxy.ShardProxy == nil {
 		//proxy.ClusterGroup.LogPrintf(LvlErr, "Sharding proxy refresh no database monitor yet initialize")
-		proxy.ClusterGroup.sme.AddState("ERR00086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(proxy.ClusterGroup.GetErrorList()["ERR00086"]), ErrFrom: "PROXY", ServerUrl: proxy.GetURL()})
+		proxy.ClusterGroup.StateMachine.AddState("ERR00086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(proxy.ClusterGroup.GetErrorList()["ERR00086"]), ErrFrom: "PROXY", ServerUrl: proxy.GetURL()})
 		return errors.New("Sharding proxy refresh no database monitor yet initialize")
 	}
 	wg := new(sync.WaitGroup)

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/share"
+	"github.com/spf13/viper"
 )
 
 type Config struct {
@@ -1076,4 +1077,74 @@ func (conf Config) PrintConf() {
 		}
 
 	}
+}
+
+func (conf Config) MergeConfig(path string, name string, ImmMap map[string]interface{}, DefMap map[string]interface{}, confPath string) error {
+	dynRead := viper.GetViper()
+	dynRead.SetConfigType("toml")
+
+	dynMap := make(map[string]interface{})
+
+	if _, err := os.Stat(path + "/" + name + "/overwrite.toml"); os.IsNotExist(err) {
+		fmt.Printf("No monitoring saved config found " + path + "/" + name + "/overwrite.toml")
+		return err
+	} else {
+		fmt.Printf("Parsing saved config from working directory %s ", path+"/"+name+"/overwrite.toml")
+		if _, err := os.Stat(path + "/" + name + "/overwrite.toml"); !os.IsNotExist(err) {
+			dynRead.SetConfigFile(path + "/" + name + "/overwrite.toml")
+		}
+		//dynRead = dynRead.Sub("overwrite-" + name)
+		for _, f := range dynRead.AllKeys() {
+			v := dynRead.Get(f)
+			_, ok := ImmMap[f]
+			if ok && v != nil && v != ImmMap[f] {
+				fmt.Printf("viper value : %s = %s\n", f, v)
+
+				fmt.Printf("Imm value : %s = %s\n", f, ImmMap[f])
+				_, ok := DefMap[f]
+				if ok && v != DefMap[f] {
+					dynMap[f] = dynRead.Get(f)
+					fmt.Printf("default value : %s = %s\n", f, DefMap[f])
+				}
+				if !ok {
+					dynMap[f] = dynRead.Get(f)
+				}
+
+			}
+
+		}
+
+		err = dynRead.MergeInConfig()
+		if err != nil {
+			fmt.Printf("Config error in " + path + "/" + name + "/overwrite.toml" + ":" + err.Error())
+			return err
+		}
+	}
+
+	//dynRead.Unmarshal(&conf)
+	//conf.PrintConf()
+	fmt.Printf("%v", DefMap)
+	conf.WriteMergeConfig(confPath, dynMap)
+	return nil
+}
+
+func (conf Config) WriteMergeConfig(confPath string, dynMap map[string]interface{}) error {
+	input, err := ioutil.ReadFile("myfile")
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	lines := strings.Split(string(input), "\n")
+
+	for i, line := range lines {
+		if strings.Contains(line, "]") {
+			lines[i] = "LOL"
+		}
+	}
+	output := strings.Join(lines, "\n")
+	err = ioutil.WriteFile("myfile", []byte(output), 0644)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return nil
 }

@@ -62,16 +62,16 @@ func (m Map) Search(key string) bool {
 }
 
 type StateMachine struct {
-	CurState               *Map
-	OldState               *Map
-	discovered             bool
-	sla                    Sla
-	lastState              int64
-	heartbeats             int64
-	inFailover             bool
-	inSchemaMonitor        bool
-	SchemaMonitorStartTime int64
-	SchemaMonitorEndTime   int64
+	CurState               *Map  `json:"-"`
+	OldState               *Map  `json:"-"`
+	Discovered             bool  `json:"discovered"`
+	sla                    Sla   `json:"-"`
+	lastState              int64 `json:"-"`
+	heartbeats             int64 `json:"-"`
+	InFailover             bool  `json:"inFailover"`
+	InSchemaMonitor        bool  `json:"inSchemaMonitor"`
+	SchemaMonitorStartTime int64 `json:"-"`
+	SchemaMonitorEndTime   int64 `json:"-"`
 	sync.Mutex
 }
 
@@ -123,7 +123,7 @@ func (SM *StateMachine) Init() {
 
 	SM.CurState = NewMap()
 	SM.OldState = NewMap()
-	SM.discovered = false
+	SM.Discovered = false
 	SM.sla.Init()
 	SM.lastState = 0
 	SM.heartbeats = 0
@@ -132,34 +132,34 @@ func (SM *StateMachine) Init() {
 func (SM *StateMachine) SetMonitorSchemaState() {
 	SM.Lock()
 	SM.SchemaMonitorStartTime = time.Now().Unix()
-	SM.inSchemaMonitor = true
+	SM.InSchemaMonitor = true
 	SM.Unlock()
 }
 func (SM *StateMachine) RemoveMonitorSchemaState() {
 	SM.Lock()
-	SM.inSchemaMonitor = false
+	SM.InSchemaMonitor = false
 	SM.SchemaMonitorEndTime = time.Now().Unix()
 	SM.Unlock()
 }
 
 func (SM *StateMachine) SetFailoverState() {
 	SM.Lock()
-	SM.inFailover = true
+	SM.InFailover = true
 	SM.Unlock()
 }
 
 func (SM *StateMachine) RemoveFailoverState() {
 	SM.Lock()
-	SM.inFailover = false
+	SM.InFailover = false
 	SM.Unlock()
 }
 
 func (SM *StateMachine) IsInFailover() bool {
-	return SM.inFailover
+	return SM.InFailover
 }
 
 func (SM *StateMachine) IsInSchemaMonitor() bool {
-	return SM.inSchemaMonitor
+	return SM.InSchemaMonitor
 }
 
 func (SM *StateMachine) AddState(key string, s State) {
@@ -220,7 +220,7 @@ func (SM *StateMachine) IsFailable() bool {
 			return false
 		}
 	}
-	SM.discovered = true
+	SM.Discovered = true
 	SM.Unlock()
 	return true
 
@@ -268,19 +268,19 @@ func (SM *StateMachine) CanMonitor() bool {
 			return false
 		}
 	}
-	SM.discovered = true
+	SM.Discovered = true
 	SM.Unlock()
 	return true
 }
 
 func (SM *StateMachine) UnDiscovered() {
 	SM.Lock()
-	SM.discovered = false
+	SM.Discovered = false
 	SM.Unlock()
 }
 
 func (SM *StateMachine) IsDiscovered() bool {
-	return SM.discovered
+	return SM.Discovered
 }
 
 func (SM *StateMachine) GetStates() []string {

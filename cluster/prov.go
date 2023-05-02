@@ -53,7 +53,7 @@ func (cluster *Cluster) Bootstrap() error {
 
 func (cluster *Cluster) ProvisionServices() error {
 
-	cluster.sme.SetFailoverState()
+	cluster.StateMachine.SetFailoverState()
 	// delete the cluster state here
 	path := cluster.WorkingDir + ".json"
 	os.Remove(path)
@@ -132,14 +132,14 @@ func (cluster *Cluster) ProvisionServices() error {
 		}
 	}
 
-	cluster.sme.RemoveFailoverState()
+	cluster.StateMachine.RemoveFailoverState()
 
 	return nil
 
 }
 
 func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
-	cluster.sme.SetFailoverState()
+	cluster.StateMachine.SetFailoverState()
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionDatabaseService(server)
@@ -152,13 +152,13 @@ func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 	case config.ConstOrchestratorOnPremise:
 		go cluster.OnPremiseProvisionDatabaseService(server)
 	default:
-		cluster.sme.RemoveFailoverState()
+		cluster.StateMachine.RemoveFailoverState()
 		return nil
 	}
 	cluster.ProvisionDatabaseScript(server)
 	select {
 	case err := <-cluster.errorChan:
-		cluster.sme.RemoveFailoverState()
+		cluster.StateMachine.RemoveFailoverState()
 		if err == nil {
 			server.SetProvisionCookie()
 		} else {
@@ -187,7 +187,7 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 	cluster.ProvisionProxyScript(prx)
 	select {
 	case err := <-cluster.errorChan:
-		cluster.sme.RemoveFailoverState()
+		cluster.StateMachine.RemoveFailoverState()
 		if err == nil {
 			prx.SetProvisionCookie()
 		} else {
@@ -199,7 +199,7 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 
 func (cluster *Cluster) Unprovision() error {
 
-	cluster.sme.SetFailoverState()
+	cluster.StateMachine.SetFailoverState()
 	for _, server := range cluster.Servers {
 		switch cluster.GetOrchestrator() {
 		case config.ConstOrchestratorOpenSVC:
@@ -455,7 +455,7 @@ func (cluster *Cluster) StartAllNodes() error {
 func (cluster *Cluster) BootstrapReplicationCleanup() error {
 
 	cluster.LogPrintf(LvlInfo, "Cleaning up replication on existing servers")
-	cluster.sme.SetFailoverState()
+	cluster.StateMachine.SetFailoverState()
 	for _, server := range cluster.Servers {
 		err := server.Refresh()
 		if err != nil {
@@ -500,7 +500,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 	cluster.master = nil
 	cluster.vmaster = nil
 	cluster.slaves = nil
-	cluster.sme.RemoveFailoverState()
+	cluster.StateMachine.RemoveFailoverState()
 	return nil
 }
 
@@ -534,17 +534,17 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		return errors.New("Environment already has an existing master/slave setup")
 	}
 
-	cluster.sme.SetFailoverState()
+	cluster.StateMachine.SetFailoverState()
 	masterKey := 0
 	if cluster.Conf.PrefMaster != "" {
 		masterKey = func() int {
 			for k, server := range cluster.Servers {
 				if server.IsPrefered() {
-					cluster.sme.RemoveFailoverState()
+					cluster.StateMachine.RemoveFailoverState()
 					return k
 				}
 			}
-			cluster.sme.RemoveFailoverState()
+			cluster.StateMachine.RemoveFailoverState()
 			return -1
 		}()
 	}
@@ -601,14 +601,14 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				if relaykey == key {
 					err = server.ChangeMasterTo(cluster.Servers[masterKey], "CURRENT_POS")
 					if err != nil {
-						cluster.sme.RemoveFailoverState()
+						cluster.StateMachine.RemoveFailoverState()
 						return err
 					}
 
 				} else {
 					err = server.ChangeMasterTo(cluster.Servers[relaykey], "CURRENT_POS")
 					if err != nil {
-						cluster.sme.RemoveFailoverState()
+						cluster.StateMachine.RemoveFailoverState()
 						return err
 					}
 				}
@@ -629,7 +629,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			if key == 0 {
 				err = server.ChangeMasterTo(cluster.Servers[1], "CURRENT_POS")
 				if err != nil {
-					cluster.sme.RemoveFailoverState()
+					cluster.StateMachine.RemoveFailoverState()
 					return err
 				}
 				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
@@ -639,7 +639,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			if key == 1 {
 				err = server.ChangeMasterTo(cluster.Servers[0], "CURRENT_POS")
 				if err != nil {
-					cluster.sme.RemoveFailoverState()
+					cluster.StateMachine.RemoveFailoverState()
 					return err
 				}
 			}
@@ -657,7 +657,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			i := (len(cluster.Servers) + key - 1) % len(cluster.Servers)
 			err = server.ChangeMasterTo(cluster.Servers[i], "SLAVE_POS")
 			if err != nil {
-				cluster.sme.RemoveFailoverState()
+				cluster.StateMachine.RemoveFailoverState()
 				return err
 			}
 
@@ -665,7 +665,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 
 		}
 	}
-	cluster.sme.RemoveFailoverState()
+	cluster.StateMachine.RemoveFailoverState()
 	// speed up topology discovery
 	wg.Add(1)
 	cluster.TopologyDiscover(wg)

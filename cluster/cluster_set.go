@@ -30,14 +30,14 @@ import (
 
 func (cluster *Cluster) SetStatus() {
 	if cluster.master == nil {
-		cluster.sme.SetMasterUpAndSync(false, false, false)
+		cluster.StateMachine.SetMasterUpAndSync(false, false, false)
 	} else {
-		cluster.sme.SetMasterUpAndSync(!cluster.master.IsDown(), cluster.master.SemiSyncMasterStatus, cluster.master.HaveHealthyReplica)
+		cluster.StateMachine.SetMasterUpAndSync(!cluster.master.IsDown(), cluster.master.SemiSyncMasterStatus, cluster.master.HaveHealthyReplica)
 	}
 	cluster.Uptime = cluster.GetStateMachine().GetUptime()
 	cluster.UptimeFailable = cluster.GetStateMachine().GetUptimeFailable()
 	cluster.UptimeSemiSync = cluster.GetStateMachine().GetUptimeSemiSync()
-	cluster.IsNotMonitoring = cluster.sme.IsInFailover()
+	cluster.IsNotMonitoring = cluster.StateMachine.IsInFailover()
 	cluster.IsCapturing = cluster.IsInCaptureMode()
 	cluster.MonitorSpin = fmt.Sprintf("%d ", cluster.GetStateMachine().GetHeartbeats())
 	cluster.IsProvision = cluster.IsProvisioned()
@@ -733,8 +733,8 @@ func (cluster *Cluster) SetBackupPhysicalType(backup string) {
 
 func (cluster *Cluster) SetEmptySla() {
 	cluster.LogPrintf(LvlInfo, "Rotate SLA")
-	cluster.SLAHistory = append(cluster.SLAHistory, cluster.sme.GetSla())
-	cluster.sme.ResetUptime()
+	cluster.SLAHistory = append(cluster.SLAHistory, cluster.StateMachine.GetSla())
+	cluster.StateMachine.ResetUptime()
 }
 
 func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
@@ -845,7 +845,7 @@ func (cluster *Cluster) SetReplicationCredential(credential string) {
 }
 
 func (cluster *Cluster) SetUnDiscovered() {
-	cluster.sme.UnDiscovered()
+	cluster.StateMachine.UnDiscovered()
 	cluster.Topology = topoUnknown
 }
 
@@ -874,7 +874,7 @@ func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
 
 func (cluster *Cluster) SetState(key string, s state.State) {
 	if !strings.Contains(cluster.Conf.MonitorIgnoreError, key) {
-		cluster.sme.AddState(key, s)
+		cluster.StateMachine.AddState(key, s)
 	}
 }
 
@@ -973,7 +973,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "SetServicePlan : Fail SetDbServerHosts : %s, for hosts : %s", err, strings.Join(hosts, ","))
 			}
-			cluster.sme.SetFailoverState()
+			cluster.StateMachine.SetFailoverState()
 			err = cluster.newServerList()
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "SetServicePlan : Fail newServerList : %s", err)
@@ -982,7 +982,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			wg.Add(1)
 			go cluster.TopologyDiscover(wg)
 			wg.Wait()
-			cluster.sme.RemoveFailoverState()
+			cluster.StateMachine.RemoveFailoverState()
 			cluster.Conf.ProxysqlOn = true
 			cluster.Conf.ProxysqlHosts = ""
 			cluster.Conf.MdbsProxyOn = true
