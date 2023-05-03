@@ -213,7 +213,7 @@ func (proxy *MariadbShardProxy) Refresh() error {
 	go proxy.ShardProxy.Ping(wg)
 	wg.Wait()
 
-	err := proxy.Refresh()
+	err := proxy.ShardProxy.Refresh()
 	if err != nil {
 		//proxy.ClusterGroup.LogPrintf(LvlErr, "Sharding proxy refresh error (%s)", err)
 		return err

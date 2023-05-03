@@ -260,7 +260,9 @@ func (proxy *ProxySQLProxy) Failover() {
 }
 
 func (proxy *ProxySQLProxy) Refresh() error {
+
 	cluster := proxy.ClusterGroup
+	cluster.LogPrintf(LvlErr, "ProxySQL port : %s, user %s, pass %s\n", proxy.Port, proxy.User, proxy.Pass)
 	if cluster.Conf.ProxysqlOn == false {
 		return nil
 	}

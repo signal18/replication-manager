@@ -96,7 +96,7 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 		}
 	case config.ConstProxySqlproxy:
 		cluster.Conf.ProxysqlOn = true
-		cluster.Conf.ProxysqlAdminPort = port
+		cluster.Conf.ProxysqlPort = port
 		if user != "" || password != "" {
 			cluster.Conf.ProxysqlUser = user
 			cluster.Conf.ProxysqlPassword = password
@@ -118,6 +118,7 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 			cluster.Conf.MdbsProxyHosts = srv + ":" + port
 		}
 	}
+	cluster.SetClusterProxySqlCredentialsFromConfig()
 	cluster.StateMachine.SetFailoverState()
 	cluster.Lock()
 	cluster.newProxyList()

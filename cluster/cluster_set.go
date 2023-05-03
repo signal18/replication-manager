@@ -1015,8 +1015,8 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Fail adding shard proxy monitor on 3306 %s", err)
 					}
-
-					err = cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, "", "")
+					cluster.Conf.ProxysqlUser = "external"
+					err = cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, cluster.Conf.ProxysqlUser, cluster.Conf.ProxysqlPassword)
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Fail adding proxysql monitor on %s %s", cluster.Conf.ProxysqlPort, err)
 					}

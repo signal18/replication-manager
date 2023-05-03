@@ -932,7 +932,10 @@ function (
               console.log("Error in set orchetrator.");
             });
           };
-
+      var deleteCluster = function (cluster) {
+        console.log("cluster "+ cluster + " deleted.."  );
+        $http.get('/api/clusters/actions/delete/' +cluster)
+      };
     var createClusterSetPlan = function (cluster,plan) {
         console.log('Setting plan..' + plan);
         httpGetWithoutResponse('/api/clusters/'+ cluster + '/settings/actions/set/prov-service-plan/'+plan);
@@ -1593,6 +1596,34 @@ function (
         $mdSidenav('right').close();
         $scope.menuOpened = false;
       };
+      $scope.closeDeleteClusterDialog = function () {
+        $mdDialog.hide({contentElement: '#myDeleteClusterDialog',});
+        if (confirm("Confirm Deleting Cluster : " + $scope.selectedClusterName )) {
+          deleteCluster($scope.selectedClusterName);
+
+          $scope.selectedClusterName = $scope.dlgAddClusterName;
+          $scope.servers={};
+          $scope.slaves={};
+          $scope.master={};
+          $scope.alerts={};
+          $scope.logs={};
+          $scope.proxies={};
+        //  $scope.callServices();
+        //  $scope.setClusterCredentialDialog();
+        }
+        $mdSidenav('right').close();
+        $scope.menuOpened = false;
+      };
+      $scope.deleteClusterDialog = function () {
+        $scope.menuOpened = true;
+         $mdDialog.show({
+           contentElement: '#myDeleteClusterDialog',
+          preserveScope: true,
+           parent: angular.element(document.body),
+           //      clickOutsideToClose: false,
+           //    escapeToClose: false,
+         });
+       };
       $scope.cancelNewClusterDialog = function () {
         $mdDialog.hide({contentElement: '#myNewClusterDialog',});
         $mdSidenav('right').close();

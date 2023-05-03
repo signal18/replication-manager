@@ -23,6 +23,13 @@
                 </md-button>
             </md-list-item>
 
+            <md-list-item >
+              <md-button  ng-click="deleteClusterDialog()" ng-if="settings.config.monitoringSaveConfig"  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-delete']==false" data-toggle="modal" >
+                        <md-icon md-menu-align-target   class="fa fa-3x fa-solid fa-trash"></md-icon>
+                      <br>Delete<br/><div ng-if="selectedClusterName">Shard </div>Cluster<br/>
+              </md-button>
+          </md-list-item>
+
 
       <md-list-item ng-if="isLoggedIn" >
       <md-button  ng-click="newUserDialog()"  data-target="#three" data-toggle="collapse">

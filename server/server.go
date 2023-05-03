@@ -321,15 +321,17 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	//secRead.UnmarshalKey("default", &test)
 
 	//fmt.Printf("REPMAN DEFAULT SECTION : %s", secRead.AllSettings())
+	if secRead != nil {
+		for _, f := range secRead.AllKeys() {
+			v := secRead.Get(f)
+			if v != nil {
+				ImmuableMap[f] = secRead.Get(f)
+			}
+
+		}
+	}
 
 	//Add immuatable flag from default section
-	for _, f := range secRead.AllKeys() {
-		v := secRead.Get(f)
-		if v != nil {
-			ImmuableMap[f] = secRead.Get(f)
-		}
-
-	}
 
 	//test.PrintConf()
 
