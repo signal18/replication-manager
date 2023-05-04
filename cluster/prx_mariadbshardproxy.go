@@ -41,7 +41,7 @@ func NewMariadbShardProxy(placement int, cluster *Cluster, proxyHost string) *Ma
 	prx.User, prx.Pass = misc.SplitPair(conf.MdbsProxyCredential)
 	prx.ReadPort, _ = strconv.Atoi(prx.GetPort())
 	prx.ReadWritePort, _ = strconv.Atoi(prx.GetPort())
-	prx.Name = proxyHost
+	prx.Name = prx.Host
 	if conf.ProvNetCNI {
 		if conf.ClusterHead == "" {
 			prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
@@ -50,6 +50,7 @@ func NewMariadbShardProxy(placement int, cluster *Cluster, proxyHost string) *Ma
 		}
 		prx.Port = "3306"
 	}
+
 	prx.WritePort, _ = strconv.Atoi(prx.GetPort())
 	if cluster.Conf.ProvNetCNI {
 		host := strings.Split(prx.Host, ".")[0]
