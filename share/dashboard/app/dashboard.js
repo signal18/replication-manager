@@ -896,8 +896,8 @@ function (
       };
 
       var createCluster = function (cluster,plan,orchestrator,headcluster) {
-          alert(headcluster);
-          if (headcluster) {
+          alert(cluster);
+          if (cluster) {
 
           $http.get('/api/clusters/' + headcluster  + '/actions/add/' +cluster)
           .then(
@@ -933,6 +933,7 @@ function (
             });
           };
       var deleteCluster = function (cluster) {
+        alert(cluster)
         console.log("cluster "+ cluster + " deleted.."  );
         $http.get('/api/clusters/actions/delete/' +cluster)
       };

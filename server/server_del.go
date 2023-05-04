@@ -7,7 +7,6 @@
 package server
 
 import (
-	"fmt"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -15,17 +14,19 @@ import (
 
 func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 
-	fmt.Printf("COUCOU\n")
 	cl := repman.getClusterByName(clusterName)
-	//if cl.IsProvision {
-	err := cl.Unprovision()
-	if err != nil {
-		log.Errorf("Fail to unprovision cluster : %s", err)
+	if cl != nil {
+		//if cl.IsProvision {
+		err := cl.Unprovision()
+		if err != nil {
+			log.Errorf("Unprovision cluster fail: %s", err)
+		}
+		err = cl.WaitClusterStop()
+		if err != nil {
+			log.Errorf("Wait for stop cluster fail: %s", err)
+		}
 	}
-	err = cl.WaitClusterStop()
-	if err != nil {
-		log.Errorf("Fail to wait for stop cluster : %s", err)
-	}
+
 	//}
 	cl.Stop()
 	i := 0
@@ -34,14 +35,16 @@ func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 		if repman.ClusterList[i] != clusterName {
 			newClusterList = append(newClusterList, repman.ClusterList[i])
 		}
+		i++
 
 	}
 
 	repman.ClusterList = newClusterList
 	delete(repman.Clusters, clusterName)
-	err = os.RemoveAll(cl.WorkingDir)
+	err := os.RemoveAll(cl.WorkingDir)
 	if err != nil {
-		log.Errorf("Fail to delete cluster working directory : %s", err)
+		log.Errorf("Delete cluster working directory fail: %s", err)
+
 	}
 	if repman.currentCluster == cl {
 		repman.currentCluster = nil

@@ -1111,12 +1111,9 @@ func (conf Config) MergeConfig(path string, name string, ImmMap map[string]inter
 				if !ok {
 					dynMap[f] = dynRead.Get(f)
 				}
-
 			}
-
 		}
 	}
-
 	//fmt.Printf("%v\n", DefMap)
 	//fmt.Printf("%v\n", dynMap)
 	//fmt.Printf("%v\n", ImmMap)
@@ -1127,7 +1124,8 @@ func (conf Config) MergeConfig(path string, name string, ImmMap map[string]inter
 func (conf Config) WriteMergeConfig(confPath string, dynMap map[string]interface{}) error {
 	input, err := ioutil.ReadFile(confPath)
 	if err != nil {
-		log.Fatalln(err)
+		fmt.Printf("Cannot read config file %s : %s", confPath, err)
+		return err
 	}
 
 	lines := strings.Split(string(input), "\n")
@@ -1152,7 +1150,8 @@ func (conf Config) WriteMergeConfig(confPath string, dynMap map[string]interface
 	output := strings.Join(lines, "\n")
 	err = ioutil.WriteFile(confPath, []byte(output), 0644)
 	if err != nil {
-		log.Fatalln(err)
+		fmt.Printf("Cannot write config file %s : %s", confPath, err)
+		return err
 	}
 	return nil
 }

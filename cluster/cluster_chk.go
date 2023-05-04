@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -744,5 +745,32 @@ func (cluster *Cluster) CheckCanSaveDynamicConfig() {
 	_, err := cluster.GetPasswordKey(cluster.Conf.MonitoringKeyPath)
 	if err != nil && cluster.GetConf().ConfRewrite {
 		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00090"]), ErrFrom: "CLUSTER"})
+	}
+}
+
+func (cluster *Cluster) CheckIsOverwrite() {
+	cluster.LogPrintf(LvlDbg, "Check overwrite conf path : %s\n", cluster.Conf.WorkingDir+"/"+cluster.Name)
+	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/overwrite.toml"); !os.IsNotExist(err) {
+		input, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/overwrite.toml")
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Cannot read config file %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", err)
+			return
+		}
+
+		lines := strings.Split(string(input), "\n")
+		for i, line := range lines {
+			if i == 1 {
+				line = strings.ReplaceAll(line, " ", "")
+				if line != "" {
+					cluster.SetState("WARN0102", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0102"]), ErrFrom: "CLUSTER"})
+					cluster.LogPrintf(LvlErr, "An immutable parameter has been changed in cluster %s and is tracked in overwrite.toml. Use the config-merge command to save your changes.\n", cluster.Name)
+					cluster.LogPrintf(LvlDbg, "Check overwrite is not empty line %d : %s\n", i, line)
+				} else {
+					cluster.LogPrintf(LvlDbg, "Check overwrite is empty line %d : %s\n", i, line)
+				}
+
+			}
+			//cluster.SetState("WARN0102", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0102"]), ErrFrom: "CLUSTER"})
+		}
 	}
 }

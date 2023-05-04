@@ -588,6 +588,7 @@ func (cluster *Cluster) Run() {
 						cluster.IsValidBackup = cluster.HasValidBackup()
 						go cluster.CheckCredentialRotation()
 						cluster.CheckCanSaveDynamicConfig()
+						cluster.CheckIsOverwrite()
 
 					} else {
 						cluster.StateMachine.PreserveState("WARN0093")
@@ -595,6 +596,7 @@ func (cluster *Cluster) Run() {
 						cluster.StateMachine.PreserveState("WARN0095")
 						cluster.StateMachine.PreserveState("WARN0101")
 						cluster.StateMachine.PreserveState("ERR00090")
+						cluster.StateMachine.PreserveState("WARN0102")
 					}
 					if !cluster.CanInitNodes {
 						cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
@@ -861,14 +863,12 @@ func (cluster *Cluster) Save() error {
 					str = tmp[1]
 					v = tmp[0]
 				}
-
 				p := crypto.Password{PlainText: str}
 				var err error
-				key_path, ok := cluster.ImmuableFlagMap["monitoring-key-path"]
-				if ok {
-					p.Key, err = crypto.ReadKey(fmt.Sprintf("%v", key_path))
+				if cluster.key != nil {
+					p.Key, err = crypto.ReadKey(fmt.Sprintf("%v", cluster.GetConf().MonitoringKeyPath))
 					if err != nil {
-						log.Fatalln(err)
+						cluster.LogPrintf(LvlErr, "Missing key file or wrong key path")
 					}
 					p.Encrypt()
 
@@ -876,9 +876,12 @@ func (cluster *Cluster) Save() error {
 						str = fmt.Sprintf("%v", v)
 						str = str + p.CipherText
 						v = str
+
 					} else {
 						v = p.CipherText
 					}
+					cluster.LogPrintf(LvlWarn, "Encryption key during saving done for key %s : %s\n", key, v)
+					s.Set(key, v)
 				} else {
 					cluster.LogPrintf(LvlWarn, "Missing key file or wrong key path")
 				}
@@ -1023,81 +1026,6 @@ func CloneConfigFromGit(url string, tok string, dir string) {
 	}
 }
 
-func (cluster *Cluster) SaveClusterFromScratch() error {
-	var myconf = make(map[string]config.Config)
-
-	myconf[cluster.Name] = cluster.Conf
-
-	file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-	if err != nil {
-		if os.IsPermission(err) {
-			cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml")
-		}
-		return err
-	}
-	defer file.Close()
-
-	readconf, _ := toml.Marshal(cluster.Conf)
-	t, _ := toml.LoadBytes(readconf)
-	s := t
-	keys := t.Keys()
-	for _, key := range keys {
-		_, ok := cluster.ImmuableFlagMap[key]
-		if !ok {
-			s.Delete(key)
-		} else {
-			v, ok := cluster.DefaultFlagMap[key]
-			if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
-				s.Delete(key)
-			}
-		}
-	}
-	for _, key := range keys {
-
-		_, ok := encryptFlag[key]
-		if ok {
-			v := s.Get(key)
-			str := fmt.Sprintf("%v", v)
-			tmp := strings.Split(str, ":")
-			if len(tmp) == 2 {
-				str = tmp[1]
-				v = tmp[0]
-			}
-
-			p := crypto.Password{PlainText: str}
-			var err error
-			key_path, ok := cluster.ImmuableFlagMap["monitoring-key-path"]
-			if ok {
-				p.Key, err = crypto.ReadKey(fmt.Sprintf("%v", key_path))
-				if err != nil {
-					log.Fatalln(err)
-				}
-				p.Encrypt()
-
-				if len(tmp) == 2 {
-					str = fmt.Sprintf("%v", v)
-					str = str + p.CipherText
-					v = str
-				} else {
-					v = p.CipherText
-				}
-			} else {
-				cluster.LogPrintf(LvlWarn, "Missing key file or wrong key path")
-			}
-
-		}
-	}
-	file.WriteString("[" + cluster.Name + "]\n title = \"" + cluster.Name + " \" \n")
-	s.WriteTo(file)
-
-	err = cluster.Overwrite()
-	if err != nil {
-		cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
-	}
-
-	return nil
-}
-
 func (cluster *Cluster) Overwrite() error {
 
 	if cluster.Conf.ConfRewrite {
@@ -1130,6 +1058,43 @@ func (cluster *Cluster) Overwrite() error {
 				}
 			}
 
+		}
+		//to encode credentials flag
+		for _, key := range keys {
+			_, ok := encryptFlag[key]
+			if ok {
+				v := s.Get(key)
+				if v != nil {
+					str := fmt.Sprintf("%v", v)
+					tmp := strings.Split(str, ":")
+					if len(tmp) == 2 {
+						str = tmp[1]
+						v = tmp[0]
+					}
+					p := crypto.Password{PlainText: str}
+					var err error
+					if cluster.key != nil {
+						p.Key, err = crypto.ReadKey(fmt.Sprintf("%v", cluster.GetConf().MonitoringKeyPath))
+						if err != nil {
+							cluster.LogPrintf(LvlErr, "Missing key file or wrong key path")
+						}
+						p.Encrypt()
+
+						if len(tmp) == 2 {
+							str = fmt.Sprintf("%v", v)
+							str = str + p.CipherText
+							v = str
+
+						} else {
+							v = p.CipherText
+						}
+						cluster.LogPrintf(LvlWarn, "Encryption key during saving done for key %s : %s\n", key, v)
+						s.Set(key, v)
+					} else {
+						cluster.LogPrintf(LvlWarn, "Missing key file or wrong key path")
+					}
+				}
+			}
 		}
 		file.WriteString("[overwrite-" + cluster.Name + "]\n")
 		s.WriteTo(file)
