@@ -20,6 +20,7 @@ import (
 
 var (
 	memprofile string
+	cpuprofile string
 	// Version is the semantic version number, e.g. 1.0.1
 	Version string
 	// Provisoning to add flags for compile
@@ -88,6 +89,7 @@ func init() {
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	rootCmd.PersistentFlags().BoolVar(&conf.Verbose, "verbose", false, "Print detailed execution info")
 	rootCmd.PersistentFlags().StringVar(&memprofile, "memprofile", "", "Write a memory profile to this file readable by pprof")
+	rootCmd.PersistentFlags().StringVar(&cpuprofile, "cpuprofile", "", "Write a cpu profile to this file readable by pprof")
 
 	//configMergeCmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Cluster name (default is none)")
 	//configMergeCmd.PersistentFlags().StringVar(&conf.ConfigFile, "config", "", "Configuration file (default is config.toml)")

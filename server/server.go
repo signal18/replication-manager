@@ -55,6 +55,7 @@ type ReplicationManager struct {
 	Os                                               string                            `json:"os"`
 	Arch                                             string                            `json:"arch"`
 	MemProfile                                       string                            `json:"memprofile"`
+	CpuProfile                                       string                            `json:"cpuprofile"`
 	Clusters                                         map[string]*cluster.Cluster       `json:"-"`
 	Agents                                           []opensvc.Host                    `json:"agents"`
 	UUID                                             string                            `json:"uuid"`
@@ -688,11 +689,21 @@ func (repman *ReplicationManager) InitRestic() error {
 
 func (repman *ReplicationManager) Run() error {
 	var err error
+
 	repman.Version = Version
 	repman.Fullversion = FullVersion
 	repman.Arch = GoArch
 	repman.Os = GoOS
-	//repman.MemProfile = repman.Conf.MemProfile
+	repman.MemProfile = memprofile
+	repman.CpuProfile = cpuprofile
+	if repman.CpuProfile != "" {
+		fcpupprof, err := os.Create(repman.CpuProfile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(fcpupprof)
+
+	}
 
 	repman.Clusters = make(map[string]*cluster.Cluster)
 	repman.UUID = misc.GetUUID()
@@ -705,7 +716,6 @@ func (repman *ReplicationManager) Run() error {
 	repman.Hostname, err = os.Hostname()
 	regtest := new(regtest.RegTest)
 	repman.Tests = regtest.GetTests()
-
 	if err != nil {
 		log.Fatalln("ERROR: replication-manager could not get hostname from system")
 	}
@@ -867,6 +877,9 @@ func (repman *ReplicationManager) Run() error {
 		log.Println(repman.exitMsg)
 	}
 	fmt.Println("Cleanup before leaving")
+	if repman.CpuProfile != "" {
+		pprof.StopCPUProfile()
+	}
 	repman.Stop()
 	os.Exit(1)
 	return nil
@@ -1028,15 +1041,16 @@ func (repman *ReplicationManager) resolveHostIp() string {
 func (repman *ReplicationManager) Stop() {
 
 	//termbox.Close()
-	fmt.Println("Prof profile into file: " + memprofile)
-	if memprofile != "" {
-		f, err := os.Create(memprofile)
+	fmt.Println("Prof profile into file: " + repman.MemProfile)
+	if repman.MemProfile != "" {
+		f, err := os.Create(repman.MemProfile)
 		if err != nil {
 			log.Fatal(err)
 		}
 		pprof.WriteHeapProfile(f)
 		f.Close()
 	}
+
 }
 
 func (repman *ReplicationManager) DownloadFile(url string, file string) error {
