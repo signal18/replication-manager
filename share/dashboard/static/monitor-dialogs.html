@@ -25,7 +25,7 @@
                            selected="{{ element === ctrl.selectedClusterName ? 'selected' : '' }}">
                                 {{element}}</md-option>
                 </md-select>
-            <md-button ng-click="closeDeleteClusterDialog()" class="md-primary">
+            <md-button ng-click="closeDeleteClusterDialog(selectedClusterName)" class="md-primary">
                 Ok
             </md-button>
         </md-dialog>

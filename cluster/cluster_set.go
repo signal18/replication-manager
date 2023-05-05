@@ -1286,3 +1286,7 @@ func (cluster *Cluster) SetProvProxyServiceType(value string) error {
 	cluster.SetProxiesReprovCookie()
 	return nil
 }
+
+func (cluster *Cluster) Exit() {
+	cluster.exit = true
+}

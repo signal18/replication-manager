@@ -822,10 +822,12 @@ func (repman *ReplicationManager) Run() error {
 
 	for _, gl := range repman.ClusterList {
 		repman.StartCluster(gl)
+		log.Errorf("TEST StartCluster")
 	}
 	for _, cluster := range repman.Clusters {
 		cluster.SetClusterList(repman.Clusters)
 	}
+
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
 
 	// HTTP server should start after Cluster Init or may lead to various nil pointer if clients still requesting
@@ -899,7 +901,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 		repman.currentCluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(repman.currentCluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
 
 	}
-
+	repman.currentCluster.LogPrintf(cluster.LvlErr, "TEST INIT\n")
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 	go repman.currentCluster.Run()

@@ -13,7 +13,7 @@ import (
 )
 
 func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
-
+	log.Warnf("Delete Cluster %s \n", clusterName)
 	cl := repman.getClusterByName(clusterName)
 	if cl != nil {
 		//if cl.IsProvision {
@@ -27,8 +27,6 @@ func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 		}
 	}
 
-	//}
-	cl.Stop()
 	i := 0
 	var newClusterList []string
 	if i < len(repman.ClusterList) {
@@ -40,8 +38,12 @@ func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 	}
 
 	repman.ClusterList = newClusterList
-	delete(repman.Clusters, clusterName)
-	err := os.RemoveAll(cl.WorkingDir)
+	_, ok := repman.Clusters[clusterName]
+	if ok {
+		delete(repman.Clusters, clusterName)
+	}
+
+	err := os.RemoveAll(repman.Conf.WorkingDir + "/" + clusterName)
 	if err != nil {
 		log.Errorf("Delete cluster working directory fail: %s", err)
 
@@ -49,6 +51,7 @@ func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 	if repman.currentCluster == cl {
 		repman.currentCluster = nil
 	}
+	log.Warnf("Cluster %s is delete\n", clusterName)
 	return nil
 
 }

@@ -440,7 +440,10 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface
 	cluster.SqlGeneralLog.AddHook(hookgen)
 	cluster.LoadAPIUsers()
 	// createKeys do nothing yet
-	cluster.createKeys()
+	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-key.pem"); os.IsNotExist(err) {
+		go cluster.createKeys()
+	}
+
 	cluster.GetPersitentState()
 
 	err = cluster.newServerList()
@@ -852,38 +855,42 @@ func (cluster *Cluster) Save() error {
 				}
 			}
 		}
+		//to encrypt credentials before writting in the config file
 		for _, key := range keys {
 
 			_, ok := encryptFlag[key]
 			if ok {
 				v := s.Get(key)
-				str := fmt.Sprintf("%v", v)
-				tmp := strings.Split(str, ":")
-				if len(tmp) == 2 {
-					str = tmp[1]
-					v = tmp[0]
-				}
-				p := crypto.Password{PlainText: str}
-				var err error
-				if cluster.key != nil {
-					p.Key, err = crypto.ReadKey(fmt.Sprintf("%v", cluster.GetConf().MonitoringKeyPath))
-					if err != nil {
-						cluster.LogPrintf(LvlErr, "Missing key file or wrong key path")
-					}
-					p.Encrypt()
+				if v != nil {
 
+					str := fmt.Sprintf("%v", v)
+					tmp := strings.Split(str, ":")
 					if len(tmp) == 2 {
-						str = fmt.Sprintf("%v", v)
-						str = str + p.CipherText
-						v = str
-
-					} else {
-						v = p.CipherText
+						str = tmp[1]
+						v = tmp[0]
 					}
-					cluster.LogPrintf(LvlWarn, "Encryption key during saving done for key %s : %s\n", key, v)
-					s.Set(key, v)
-				} else {
-					cluster.LogPrintf(LvlWarn, "Missing key file or wrong key path")
+					p := crypto.Password{PlainText: str}
+					var err error
+					if cluster.key != nil {
+						p.Key, err = crypto.ReadKey(cluster.GetConf().MonitoringKeyPath)
+						if err != nil {
+							cluster.LogPrintf(LvlErr, "Missing key file or wrong key path")
+						}
+						p.Encrypt()
+
+						if len(tmp) == 2 {
+							str = fmt.Sprintf("%v", v)
+							str = str + ":" + p.CipherText
+							v = str
+
+						} else {
+							v = p.CipherText
+						}
+						cluster.LogPrintf(LvlDbg, "Encryption key during saving done for key %s : %s\n", key, v)
+						s.Set(key, v)
+					} else {
+						cluster.LogPrintf(LvlWarn, "Missing key file or wrong key path")
+					}
 				}
 
 			}
@@ -1088,7 +1095,7 @@ func (cluster *Cluster) Overwrite() error {
 						} else {
 							v = p.CipherText
 						}
-						cluster.LogPrintf(LvlWarn, "Encryption key during saving done for key %s : %s\n", key, v)
+						cluster.LogPrintf(LvlDbg, "Encryption key during saving done for key %s : %s\n", key, v)
 						s.Set(key, v)
 					} else {
 						cluster.LogPrintf(LvlWarn, "Missing key file or wrong key path")
