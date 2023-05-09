@@ -532,7 +532,6 @@ func (cluster *Cluster) SetClusterProxySqlCredentialsFromConfig() {
 
 func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 	cluster.Configurator.SetConfig(cluster.Conf)
-
 	splitmonitoringuser := cluster.Conf.User
 
 	var err error
@@ -604,6 +603,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 		}
 
 	}
+	cluster.Save()
 }
 
 func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
