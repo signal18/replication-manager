@@ -226,7 +226,7 @@ func (sst *SST) stream_copy_to_file() <-chan int {
 			if con, ok := sst.in.(net.Conn); ok {
 
 				if sst.cluster.Conf.LogSST {
-					sst.cluster.LogPrintf(LvlErr, "SST closing connection from stream_copy %v ", con.RemoteAddr())
+					sst.cluster.LogPrintf(LvlInfo, "SST closing connection from stream_copy %v ", con.RemoteAddr())
 				}
 				sst.in.(net.Conn).Close()
 			}
@@ -261,7 +261,7 @@ func (sst *SST) stream_copy_to_restic() <-chan int {
 			if con, ok := sst.in.(net.Conn); ok {
 
 				if sst.cluster.Conf.LogSST {
-					sst.cluster.LogPrintf(LvlErr, "SST closing connection from stream_copy %v ", con.RemoteAddr())
+					sst.cluster.LogPrintf(LvlInfo, "SST closing connection from stream_copy %v ", con.RemoteAddr())
 				}
 				sst.in.(net.Conn).Close()
 			}

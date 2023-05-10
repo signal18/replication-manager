@@ -119,6 +119,7 @@ type ServerMonitor struct {
 	IsCompute                   bool                         `json:"isCompute"` //Used to idenfied spider compute nide
 	IsDelayed                   bool                         `json:"isDelayed"`
 	IsFull                      bool                         `json:"isFull"`
+	IsConfigGen                 bool                         `json:"isConfigGen"`
 	Ignored                     bool                         `json:"ignored"`
 	Prefered                    bool                         `json:"prefered"`
 	PreferedBackup              bool                         `json:"preferedBackup"`
@@ -170,7 +171,10 @@ type ServerMonitor struct {
 	PostgressDB                 string                       `json:"postgressDB"`
 	TLSConfigUsed               string                       `json:"tlsConfigUsed"` //used to track TLS config during key rotation
 	SSTPort                     string                       `json:"sstPort"`       //used to send data to dbjobs
-	Agent                       string                       `json:"agent"`         //used to provision service in orchestrator
+	SSTPhysicalBackupPort       string                       `json:"sstPhysicalBackupPort"`
+	SSTLogErrorPort             string                       `json:"sstLogErrorPort"`
+	SSTSlowQueryPort            string                       `json:"sstSlowQueryPort"`
+	Agent                       string                       `json:"agent"` //used to provision service in orchestrator
 	BinaryLogFiles              map[string]uint              `json:"binaryLogFiles"`
 	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
 	IsInSlowQueryCapture        bool

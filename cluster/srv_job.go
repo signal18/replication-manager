@@ -926,12 +926,19 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 		stderr bytes.Buffer
 	)
 	scriptpath := server.Datadir + "/init/init/dbjobs_new"
-	if server.GetCluster().GetConf().OnPremiseSSHDbJobScript == "" {
+
+	if _, err := os.Stat(scriptpath); os.IsNotExist(err) && server.GetCluster().GetConf().OnPremiseSSHDbJobScript == "" && !server.IsConfigGen {
+		server.GetDatabaseConfig()
+
+	}
+
+	if server.GetCluster().GetConf().OnPremiseSSHDbJobScript != "" {
 		scriptpath = server.GetCluster().GetConf().OnPremiseSSHDbJobScript
 	}
+
 	filerc, err2 := os.Open(scriptpath)
 	if err2 != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err2)
+		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s, scriptpath : %s", err2, scriptpath)
 		return errors.New("Cancel dbjob can't open script")
 
 	}
@@ -946,6 +953,8 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 		server.ClusterGroup.LogPrintf(LvlErr, "Database jobs run via SSH: %s", stderr.String())
 	}
 	out := stdout.String()
+
+	server.ClusterGroup.LogPrintf(LvlInfo, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, stderr.String())
 
 	res := new(JobResult)
 	val := reflect.ValueOf(res).Elem()
