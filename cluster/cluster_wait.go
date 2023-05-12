@@ -261,7 +261,7 @@ func (cluster *Cluster) WaitBootstrapDiscovery() error {
 		}
 	}
 	if exitloop == 9999999 {
-		cluster.LogPrintf(LvlInfo, "Cluster is Bootstraped and discovery")
+		cluster.LogPrintf(LvlInfo, "Cluster is bootstraped and discovered")
 	} else {
 		cluster.LogPrintf(LvlErr, "Bootstrap timeout")
 		return errors.New("Failed Bootstrap timeout")

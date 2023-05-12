@@ -152,7 +152,7 @@ func (cluster *Cluster) SetSchedulerBackupLogs() {
 		cluster.LogPrintf(LvlInfo, "Disable database logs error fetching")
 		cluster.scheduler.Remove(cluster.idSchedulerErrorLogs)
 	}
-	if cluster.Conf.SchedulerDatabaseLogs {
+	if cluster.Conf.SchedulerDatabaseLogs && cluster.scheduler != nil {
 		var err error
 		cluster.LogPrintf(LvlInfo, "Schedule database logs error fetching at: %s", cluster.Conf.BackupDatabaseLogCron)
 		cluster.idSchedulerErrorLogs, err = cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseLogCron, func() {
