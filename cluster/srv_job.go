@@ -108,10 +108,12 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 			return jobid, err
 		} else {
 	*/
+
 	port, err := server.ClusterGroup.SSTRunReceiverToFile(server.GetMyBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream", ConstJobCreateFile)
 	if err != nil {
 		return 0, nil
 	}
+
 	jobid, err := server.JobInsertTaks(server.ClusterGroup.Conf.BackupPhysicalType, port, server.ClusterGroup.Conf.MonitorAddress)
 
 	return jobid, err
@@ -954,7 +956,9 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	}
 	out := stdout.String()
 
-	server.ClusterGroup.LogPrintf(LvlInfo, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, stderr.String())
+	if server.GetCluster().Conf.LogSST {
+		server.ClusterGroup.LogPrintf(LvlInfo, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, stderr.String())
+	}
 
 	res := new(JobResult)
 	val := reflect.ValueOf(res).Elem()

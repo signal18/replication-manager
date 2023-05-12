@@ -195,6 +195,7 @@ type Cluster struct {
 	errorConnectVault             error                       `json:"-"`
 	SqlErrorLog                   *logsql.Logger              `json:"-"`
 	SqlGeneralLog                 *logsql.Logger              `json:"-"`
+	SstAvailablePorts             map[string]string           `json:"sstAvailablePorts"`
 	sync.Mutex
 	crcTable *crc64.Table
 }
@@ -307,6 +308,25 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface
 	cluster.DynamicFlagMap = dyn
 	cluster.DefaultFlagMap = def
 	conf := confs.ConfInit
+
+	cluster.Conf = conf
+
+	cluster.tlog = tlog
+	cluster.htlog = loghttp
+	cluster.termlength = termlength
+	cluster.Name = cfgGroup
+
+	cluster.runUUID = runUUID
+	cluster.repmgrHostname = repmgrHostname
+	cluster.repmgrVersion = repmgrVersion
+	cluster.key = key
+
+	cluster.InitFromConf()
+
+	return nil
+}
+
+func (cluster *Cluster) InitFromConf() {
 	cluster.SqlErrorLog = logsql.New()
 	cluster.SqlGeneralLog = logsql.New()
 	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
@@ -326,36 +346,34 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 
-	cluster.tlog = tlog
-	cluster.htlog = loghttp
-	cluster.termlength = termlength
-	cluster.Name = cfgGroup
-	cluster.WorkingDir = conf.WorkingDir + "/" + cluster.Name
-	cluster.runUUID = runUUID
-	cluster.repmgrHostname = repmgrHostname
-	cluster.repmgrVersion = repmgrVersion
-	cluster.key = key
-
-	if conf.Arbitration {
+	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
+	if cluster.Conf.Arbitration {
 		cluster.Status = ConstMonitorStandby
 	} else {
 		cluster.Status = ConstMonitorActif
 	}
 	cluster.benchmarkType = "sysbench"
 	cluster.Log = s18log.NewHttpLog(200)
-	cluster.MonitorType = conf.GetMonitorType()
-	cluster.TopologyType = conf.GetTopologyType()
-	cluster.FSType = conf.GetFSType()
-	cluster.DiskType = conf.GetDiskType()
-	cluster.VMType = conf.GetVMType()
-	cluster.Grants = conf.GetGrantType()
+
+	cluster.MonitorType = cluster.Conf.GetMonitorType()
+	cluster.TopologyType = cluster.Conf.GetTopologyType()
+	cluster.FSType = cluster.Conf.GetFSType()
+	cluster.DiskType = cluster.Conf.GetDiskType()
+	cluster.VMType = cluster.Conf.GetVMType()
+	cluster.Grants = cluster.Conf.GetGrantType()
+
 	cluster.QueryRules = make(map[uint32]config.QueryRule)
 	cluster.Schedule = make(map[string]cron.Entry)
 	cluster.JobResults = make(map[string]*JobResult)
+	cluster.SstAvailablePorts = make(map[string]string)
+	lstPort := strings.Split(cluster.Conf.SchedulerSenderPorts, ",")
+	for _, p := range lstPort {
+		cluster.SstAvailablePorts[p] = p
+	}
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.StateMachine = new(state.StateMachine)
 	cluster.StateMachine.Init()
-	cluster.Conf = conf
+
 	if cluster.Conf.Interactive {
 		cluster.LogPrintf(LvlInfo, "Failover in interactive mode")
 	} else {
@@ -469,7 +487,6 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface
 	}
 	//fmt.Printf("INIT CLUSTER CONF :\n")
 	//cluster.Conf.PrintConf()
-	return nil
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
@@ -1144,6 +1161,7 @@ func (cluster *Cluster) InitAgent(conf config.Config) {
 func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Conf = conf
 	cluster.Configurator.SetConfig(conf)
+	cluster.InitFromConf()
 	cluster.StateMachine.SetFailoverState()
 	cluster.ResetStates()
 

@@ -238,7 +238,7 @@ func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 	}
 	if cluster.Conf.SchedulerJobsSSH {
 		var err error
-		cluster.LogPrintf(LvlInfo, "Schedule Sla rotate at: %s", cluster.Conf.SchedulerJobsSSHCron)
+		cluster.LogPrintf(LvlInfo, "Schedule SshDbJob rotate at: %s", cluster.Conf.SchedulerJobsSSHCron)
 		cluster.idSchedulerDbsjobsSsh, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerJobsSSHCron, func() {
 			for _, s := range cluster.Servers {
 				s.JobRunViaSSH()

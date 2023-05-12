@@ -90,7 +90,7 @@ func (cluster *Cluster) SSTRunReceiverToRestic(filename string) (string, error) 
 		return "", err
 	}
 
-	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":0")
+	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":"+cluster.SSTGetSenderPort())
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Exiting SST on socket listen %s", err)
 		return "", err
@@ -128,16 +128,16 @@ func (cluster *Cluster) SSTRunReceiverToFile(filename string, openfile string) (
 
 	sst.outfilewriter = io.MultiWriter(writers...)
 
-	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":0")
+	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":"+cluster.SSTGetSenderPort())
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Exiting SST on socket listen %s", err)
 		return "", err
 	}
 	sst.tcplistener = sst.listener.(*net.TCPListener)
-	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 120))
+	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 3600))
 	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
 	if sst.cluster.Conf.LogSST {
-		cluster.LogPrintf(LvlInfo, "Listening for SST on port %d", destinationPort)
+		cluster.LogPrintf(LvlInfo, "Listening for SST on port to file %d", destinationPort)
 	}
 	SSTs.Lock()
 	SSTs.SSTconnections[destinationPort] = sst
@@ -161,6 +161,7 @@ func (sst *SST) tcp_con_handle_to_file() {
 		sst.listener.Close()
 		SSTs.Lock()
 		delete(SSTs.SSTconnections, port)
+		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
 	}()
 
@@ -196,6 +197,7 @@ func (sst *SST) tcp_con_handle_to_restic() {
 		sst.listener.Close()
 		SSTs.Lock()
 		delete(SSTs.SSTconnections, port)
+		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
 	}()
 
@@ -360,4 +362,19 @@ func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor) {
 		total = total + uint64(bts)
 	}
 	cluster.LogPrintf(LvlInfo, "Backup has been sent via SSL , closing connection!")
+}
+
+func (cluster *Cluster) SSTGetSenderPort() string {
+	port := "0"
+	if cluster.Conf.SchedulerSenderPorts != "" {
+		for k, v := range cluster.SstAvailablePorts {
+			delete(cluster.SstAvailablePorts, k)
+			return v
+		}
+	}
+	return port
+}
+
+func (cluster *Cluster) SSTSenderFreePort(port string) {
+	cluster.SstAvailablePorts[port] = port
 }

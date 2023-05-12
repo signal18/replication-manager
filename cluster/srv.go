@@ -171,10 +171,7 @@ type ServerMonitor struct {
 	PostgressDB                 string                       `json:"postgressDB"`
 	TLSConfigUsed               string                       `json:"tlsConfigUsed"` //used to track TLS config during key rotation
 	SSTPort                     string                       `json:"sstPort"`       //used to send data to dbjobs
-	SSTPhysicalBackupPort       string                       `json:"sstPhysicalBackupPort"`
-	SSTLogErrorPort             string                       `json:"sstLogErrorPort"`
-	SSTSlowQueryPort            string                       `json:"sstSlowQueryPort"`
-	Agent                       string                       `json:"agent"` //used to provision service in orchestrator
+	Agent                       string                       `json:"agent"`         //used to provision service in orchestrator
 	BinaryLogFiles              map[string]uint              `json:"binaryLogFiles"`
 	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
 	IsInSlowQueryCapture        bool
