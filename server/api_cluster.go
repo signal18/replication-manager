@@ -1112,7 +1112,7 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.LogPrintf("INFO", "API receive set setting %s", setting)
 			repman.setSetting(mycluster, setting, vars["settingValue"])
 		} else {
-			mycluster.LogPrintf(cluster.LvlErr, "Can not overwrite immuable parameter defined in config , please use config-merge command to preserve them between restart")
+			mycluster.LogPrintf(cluster.LvlWarn, "Overwriting an immuable parameter defined in config , please use config-merge command to preserve them between restart")
 			mycluster.LogPrintf("INFO", "API receive set setting %s", setting)
 			repman.setSetting(mycluster, setting, vars["settingValue"])
 		}

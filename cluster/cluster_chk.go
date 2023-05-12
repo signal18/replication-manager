@@ -763,7 +763,6 @@ func (cluster *Cluster) CheckIsOverwrite() {
 				line = strings.ReplaceAll(line, " ", "")
 				if line != "" {
 					cluster.SetState("WARN0102", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0102"]), ErrFrom: "CLUSTER"})
-					cluster.LogPrintf(LvlErr, "An immutable parameter has been changed in cluster %s and is tracked in overwrite.toml. Use the config-merge command to save your changes.\n", cluster.Name)
 					cluster.LogPrintf(LvlDbg, "Check overwrite is not empty line %d : %s\n", i, line)
 				} else {
 					cluster.LogPrintf(LvlDbg, "Check overwrite is empty line %d : %s\n", i, line)
