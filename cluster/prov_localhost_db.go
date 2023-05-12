@@ -31,6 +31,7 @@ func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonito
 		return err
 	}
 	cluster.LogPrintf(LvlInfo, "Remove datadir done: %s", out.Bytes())
+	cluster.master = nil
 	cluster.errorChan <- nil
 	return nil
 }
@@ -173,7 +174,7 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 		return errors.New("mysqld --version not found ")
 	}
 	time.Sleep(time.Millisecond * 2000)
-	if !strings.Contains(version, "mariadb") {
+	if strings.Contains(version, "mariadb") {
 		user = "root"
 	}
 	mariadbdCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.GetDatabaseSocket(), "--user="+user, "--bind-address=0.0.0.0", "--pid_file="+path+"/"+server.Id+".pid")
@@ -203,6 +204,7 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 		}
 		dsn := user + ":@unix(" + server.GetDatabaseSocket() + ")/?timeout=15s"
 		conn, err2 := sqlx.Open("mysql", dsn)
+		cluster.LogPrintf(LvlDbg, "DNS start prov localhost first time : %s\n", dsn)
 		if err2 == nil {
 			defer conn.Close()
 			_, err := conn.Exec("set sql_log_bin=0")
@@ -262,9 +264,16 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 				cluster.LogPrintf(LvlErr, " %s %s ", "flush privileges", err)
 			}
 
+			_, err = conn.Exec("reset master")
+			if err != nil {
+				haveerror = true
+				cluster.LogPrintf(LvlErr, " %s %s ", "reset master", err)
+			}
+
 			if !haveerror {
 				exitloop = 100
 			}
+
 		} else {
 			cluster.LogPrintf(LvlErr, "Database connection to init user  %s ", err2)
 		}

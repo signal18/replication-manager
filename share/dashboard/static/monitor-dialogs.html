@@ -15,6 +15,23 @@
     </div>
 </div>
 
+<div class="hidden">
+    <div class="md-dialog-container" id="myDeleteClusterDialog">
+        <md-dialog class="padding20">
+            <h2 class="md-title">Choose a Cluster</h2>
+            <md-select width="100px" name="repeatSelect" id="repeatSelect" ng-model="selectedClusterName">
+                <md-option ng-selected="{{element == selectedClusterName}}"
+                           ng-repeat="element in settings.clusters" ng-value="element"
+                           selected="{{ element === ctrl.selectedClusterName ? 'selected' : '' }}">
+                                {{element}}</md-option>
+                </md-select>
+            <md-button ng-click="closeDeleteClusterDialog(selectedClusterName)" class="md-primary">
+                Ok
+            </md-button>
+        </md-dialog>
+    </div>
+</div>
+
 
 <div class="hidden">
     <div class="md-dialog-container"  id="myNewClusterDialog">

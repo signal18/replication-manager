@@ -130,7 +130,7 @@ func (server *ServerMonitor) GetDatabaseClientBasedir() string {
 	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
 		return server.SlapOSDatadir + "/usr/bin/"
 	}
-	return "/usr/bin/mysql"
+	return "/usr/bin"
 }
 
 func (server *ServerMonitor) GetConfigVariable(variable string) string {
@@ -150,6 +150,7 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Database Config generation "+server.Datadir+"/config.tar.gz error: %s", err)
 	}
+	server.IsConfigGen = true
 	return ""
 }
 

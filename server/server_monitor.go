@@ -14,6 +14,7 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"hash/crc64"
 	"io/ioutil"
 	"runtime"
@@ -29,6 +30,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+var defaultFlagMap map[string]interface{}
+
 func init() {
 
 	conf.ProvOrchestrator = "local"
@@ -37,6 +40,7 @@ func init() {
 
 	//monitorCmd.AddCommand(rootCmd)
 	rootCmd.AddCommand(monitorCmd)
+	rootCmd.AddCommand(configMergeCmd)
 	if WithDeprecate == "ON" {
 		//	initDeprecated() // not needed used alias in main
 	}
@@ -56,9 +60,10 @@ func init() {
 	}
 	monitorCmd.Flags().StringVar(&conf.WorkingDir, "monitoring-datadir", "/var/lib/replication-manager", "Path to write temporary and persistent files")
 	monitorCmd.Flags().Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in seconds")
-	monitorCmd.Flags().StringVar(&conf.TunnelHost, "monitoring-tunnel-host", "", "Bastion host to access to monitor topology via SSH tunnel host:22")
-	monitorCmd.Flags().StringVar(&conf.TunnelCredential, "monitoring-tunnel-credential", "root:", "Credential Access to bastion host topology via SSH tunnel")
-	monitorCmd.Flags().StringVar(&conf.TunnelKeyPath, "monitoring-tunnel-key-path", "/Users/apple/.ssh/id_rsa", "Tunnel private key path")
+	//not working so far
+	//monitorCmd.Flags().StringVar(&conf.TunnelHost, "monitoring-tunnel-host", "", "Bastion host to access to monitor topology via SSH tunnel host:22")
+	//monitorCmd.Flags().StringVar(&conf.TunnelCredential, "monitoring-tunnel-credential", "root:", "Credential Access to bastion host topology via SSH tunnel")
+	//monitorCmd.Flags().StringVar(&conf.TunnelKeyPath, "monitoring-tunnel-key-path", "/Users/apple/.ssh/id_rsa", "Tunnel private key path")
 	monitorCmd.Flags().BoolVar(&conf.MonitorWriteHeartbeat, "monitoring-write-heartbeat", false, "Inject heartbeat into proxy or via external vip")
 	monitorCmd.Flags().BoolVar(&conf.ConfRewrite, "monitoring-save-config", false, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	monitorCmd.Flags().StringVar(&conf.MonitorWriteHeartbeatCredential, "monitoring-write-heartbeat-credential", "", "Database user:password to inject traffic into proxy or via external vip")
@@ -211,6 +216,9 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.VaultMount, "vault-mount", "secret", "Vault mount for the secret")
 	monitorCmd.Flags().StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius")
 
+	monitorCmd.Flags().StringVar(&conf.GitUrl, "git-url", "", "GitHub URL repository to store config file")
+	monitorCmd.Flags().StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
+
 	//monitorCmd.Flags().BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	conf.Daemon = true
 
@@ -332,11 +340,13 @@ func init() {
 	}
 
 	monitorCmd.Flags().StringVar(&conf.SchedulerReceiverPorts, "scheduler-db-servers-receiver-ports", "4444", "Scheduler TCP port to send data to db node, if list port affection is modulo db nodes")
+	monitorCmd.Flags().StringVar(&conf.SchedulerSenderPorts, "scheduler-db-servers-sender-ports", "", "Scheduler TCP port to receive data from db node, consume one port per tranfert if not set, pick one available port")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerReceiverUseSSL, "scheduler-db-servers-receiver-use-ssl", false, "Listner to send data to db node is use SSL")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerBackupLogical, "scheduler-db-servers-logical-backup", true, "Schedule logical backup")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerBackupPhysical, "scheduler-db-servers-physical-backup", false, "Schedule logical backup")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerDatabaseLogs, "scheduler-db-servers-logs", false, "Schedule database logs fetching")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerDatabaseOptimize, "scheduler-db-servers-optimize", true, "Schedule database optimize")
+
 	monitorCmd.Flags().StringVar(&conf.BackupLogicalCron, "scheduler-db-servers-logical-backup-cron", "0 0 1 * * 6", "Logical backup cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().StringVar(&conf.BackupPhysicalCron, "scheduler-db-servers-physical-backup-cron", "0 0 0 * * 0-4", "Physical backup cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().StringVar(&conf.BackupDatabaseOptimizeCron, "scheduler-db-servers-optimize-cron", "0 0 3 1 * 5", "Optimize cron expression represents a set of times, using 6 space-separated fields.")
@@ -369,7 +379,7 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.BackupStreaming, "backup-streaming", false, "Backup streaming to cloud ")
 	monitorCmd.Flags().BoolVar(&conf.BackupStreamingDebug, "backup-streaming-debug", false, "Debug mode for streaming to cloud ")
 	monitorCmd.Flags().StringVar(&conf.BackupStreamingAwsAccessKeyId, "backup-streaming-aws-access-key-id", "admin", "Backup AWS key id")
-	monitorCmd.Flags().StringVar(&conf.BackupStreamingAwsAccessSecret, "backup-streaming-aws-access-secret", "secret", "Backup AWS key sercret")
+	monitorCmd.Flags().StringVar(&conf.BackupStreamingAwsAccessSecret, "backup-streaming-aws-access-secret", "secret", "Backup AWS key secret")
 	monitorCmd.Flags().StringVar(&conf.BackupStreamingEndpoint, "backup-streaming-endpoint", "https://s3.signal18.io/", "Backup AWS endpoint")
 	monitorCmd.Flags().StringVar(&conf.BackupStreamingRegion, "backup-streaming-region", "fr-1", "Backup AWS region")
 	monitorCmd.Flags().StringVar(&conf.BackupStreamingBucket, "backup-streaming-bucket", "repman", "Backup AWS bucket")
@@ -401,7 +411,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.ProvIopsLatency, "prov-db-disk-iops-latency", "0.002", "IO latency in s")
 	monitorCmd.Flags().StringVar(&conf.ProvCores, "prov-db-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 	monitorCmd.Flags().BoolVar(&conf.ProvDBApplyDynamicConfig, "prov-db-apply-dynamic-config", false, "Dynamic database config change")
-	monitorCmd.Flags().StringVar(&conf.ProvTags, "prov-db-tags", "semisync,row,innodb,noquerycache,threadpool,slow,pfs,docker,linux,readonly,diskmonitor,sqlerror,compressbinlog", "playbook configuration tags")
+	monitorCmd.Flags().StringVar(&conf.ProvTags, "prov-db-tags", "semisync,row,innodb,noquerycache,threadpool,slow,pfs,docker,linux,readonly,diskmonitor,sqlerror,compressbinlog,readonly", "playbook configuration tags")
 	monitorCmd.Flags().StringVar(&conf.ProvDomain, "prov-db-domain", "0", "Config domain id for the cluster")
 	monitorCmd.Flags().StringVar(&conf.ProvMem, "prov-db-memory", "256", "Memory in M for micro service VM")
 	monitorCmd.Flags().StringVar(&conf.ProvMemSharedPct, "prov-db-memory-shared-pct", "threads:16,innodb:60,myisam:10,aria:10,rocksdb:1,tokudb:1,s3:1,archive:1,querycache:0", "% memory shared per buffer")
@@ -550,10 +560,26 @@ func init() {
 
 		}
 	}
+
+	//configMergeCmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Cluster name (default is none)")
+	//configMergeCmd.PersistentFlags().StringVar(&conf.ConfigFile, "config", "", "Configuration file (default is config.toml)")
+
 	//cobra.OnInitialize()
 	initLogFlags(monitorCmd)
+	initLogFlags(configMergeCmd)
+
+	//conf des defaults flag sans les paramètres en ligne de commande
+	v := viper.GetViper()
+	v.SetConfigType("toml")
+
+	defaultFlagMap = make(map[string]interface{})
+
+	for _, f := range v.AllKeys() {
+		defaultFlagMap[f] = v.Get(f)
+	}
 
 	viper.BindPFlags(monitorCmd.Flags())
+	viper.BindPFlags(configMergeCmd.Flags())
 
 }
 
@@ -657,6 +683,8 @@ For interacting with this daemon use,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		RepMan = new(ReplicationManager)
+		RepMan.CommandLineFlag = GetCommandLineFlag(cmd)
+		RepMan.DefaultFlagMap = defaultFlagMap
 		RepMan.InitConfig(conf)
 		RepMan.Run()
 	},
@@ -664,4 +692,37 @@ For interacting with this daemon use,
 		// Close connections on exit.
 		RepMan.Stop()
 	},
+}
+
+var configMergeCmd = &cobra.Command{
+	Use:   "config-merge",
+	Short: "Merges the initial configuration file with the dynamic one",
+	Long:  `Merges all parameters modified in dynamic mode with the original parameters (including immutable parameters) by merging the config files generated by the dynamic mode. Be careful, this command overwrites the original config file.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("Start config-merge command !\n")
+		fmt.Printf("Cluster: %s\n", cfgGroup)
+		fmt.Printf("Config : %s\n", conf.ConfigFile)
+		RepMan = new(ReplicationManager)
+		RepMan.DefaultFlagMap = defaultFlagMap
+		RepMan.InitConfig(conf)
+		ImmFlagMap := RepMan.ImmuableFlagMaps[cfgGroup]
+		err := conf.MergeConfig(conf.WorkingDir, cfgGroup, ImmFlagMap, RepMan.DefaultFlagMap, conf.ConfigFile)
+		if err != nil {
+			fmt.Printf("Config merge command fail: %s", err)
+			return
+		}
+		fmt.Printf("Success of the configuration merge command!")
+		//RepMan.DynamicFlagMaps
+	},
+}
+
+func GetCommandLineFlag(cmd *cobra.Command) []string {
+	var cmd_flag []string
+	flag := viper.AllKeys()
+	for _, f := range flag {
+		if cmd.Flags().Changed(f) {
+			cmd_flag = append(cmd_flag, f)
+		}
+	}
+	return cmd_flag
 }

@@ -84,7 +84,7 @@ func (c *Config) GetFrontends() []*Frontend {
 	return c.Frontends
 }
 
-//updates the whole config in one go
+// updates the whole config in one go
 func (c *Config) UpdateConfig(config *Config) *Error {
 
 	/* we use a temporary config so we can bail out of any changes when validation
@@ -222,7 +222,9 @@ func (c *Config) AddBackend(backend *Backend) *Error {
 
 }
 
-/* Deleting a backend is tricky. Frontends have a default backend. Removing that backend and then reloading
+/*
+	Deleting a backend is tricky. Frontends have a default backend. Removing that backend and then reloading
+
 the configuration will crash Haproxy. This means some extra protection is put into this method to check
 if this backend is still used. If not, it can be deleted.
 */

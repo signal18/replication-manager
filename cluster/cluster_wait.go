@@ -19,7 +19,7 @@ import (
 )
 
 func (cluster *Cluster) WaitFailoverEndState() {
-	for cluster.sme.IsInFailover() {
+	for cluster.StateMachine.IsInFailover() {
 		time.Sleep(time.Second)
 		cluster.LogPrintf(LvlInfo, "Waiting for failover stopped.")
 	}
@@ -121,7 +121,10 @@ func (cluster *Cluster) WaitClusterStop() error {
 			cluster.LogPrintf(LvlInfo, "Waiting for cluster shutdown")
 			exitloop++
 			// All cluster down
-			if cluster.sme.IsInState("ERR00021") == true {
+			if cluster.StateMachine.IsInState("ERR00021") == true {
+				exitloop = 9999999
+			}
+			if cluster.HasAllDbDown() {
 				exitloop = 9999999
 			}
 
@@ -251,7 +254,7 @@ func (cluster *Cluster) WaitBootstrapDiscovery() error {
 		case <-ticker.C:
 			cluster.LogPrintf(LvlInfo, "Waiting Bootstrap and discovery")
 			exitloop++
-			if cluster.sme.IsDiscovered() {
+			if cluster.StateMachine.IsDiscovered() {
 				exitloop = 9999999
 			}
 

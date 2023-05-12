@@ -41,7 +41,7 @@ func NewMariadbShardProxy(placement int, cluster *Cluster, proxyHost string) *Ma
 	prx.User, prx.Pass = misc.SplitPair(conf.MdbsProxyCredential)
 	prx.ReadPort, _ = strconv.Atoi(prx.GetPort())
 	prx.ReadWritePort, _ = strconv.Atoi(prx.GetPort())
-	prx.Name = proxyHost
+	prx.Name = prx.Host
 	if conf.ProvNetCNI {
 		if conf.ClusterHead == "" {
 			prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
@@ -50,6 +50,7 @@ func NewMariadbShardProxy(placement int, cluster *Cluster, proxyHost string) *Ma
 		}
 		prx.Port = "3306"
 	}
+
 	prx.WritePort, _ = strconv.Atoi(prx.GetPort())
 	if cluster.Conf.ProvNetCNI {
 		host := strings.Split(prx.Host, ".")[0]
@@ -161,7 +162,7 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MariadbShardProxy) {
 	}
 	schemas, _, err := cluster.master.GetSchemas()
 	if err != nil {
-		cluster.sme.AddState("WARN0089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0089"], cluster.master.URL), ErrFrom: "PROXY", ServerUrl: cluster.master.URL})
+		cluster.StateMachine.AddState("WARN0089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0089"], cluster.master.URL), ErrFrom: "PROXY", ServerUrl: cluster.master.URL})
 		return
 	}
 	foundReplicationManagerSchema := false
@@ -205,14 +206,15 @@ func (proxy *MariadbShardProxy) CertificatesReload() error {
 func (proxy *MariadbShardProxy) Refresh() error {
 	if proxy.ShardProxy == nil {
 		//proxy.ClusterGroup.LogPrintf(LvlErr, "Sharding proxy refresh no database monitor yet initialize")
-		proxy.ClusterGroup.sme.AddState("ERR00086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(proxy.ClusterGroup.GetErrorList()["ERR00086"]), ErrFrom: "PROXY", ServerUrl: proxy.GetURL()})
+		proxy.ClusterGroup.StateMachine.AddState("ERR00086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(proxy.ClusterGroup.GetErrorList()["ERR00086"]), ErrFrom: "PROXY", ServerUrl: proxy.GetURL()})
 		return errors.New("Sharding proxy refresh no database monitor yet initialize")
 	}
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go proxy.ShardProxy.Ping(wg)
 	wg.Wait()
-	err := proxy.Refresh()
+
+	err := proxy.ShardProxy.Refresh()
 	if err != nil {
 		//proxy.ClusterGroup.LogPrintf(LvlErr, "Sharding proxy refresh error (%s)", err)
 		return err

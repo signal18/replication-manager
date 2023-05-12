@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -51,11 +52,11 @@ func (cluster *Cluster) HasSchedulerEntry(myname string) bool {
 
 func (cluster *Cluster) HasNoValidSlave() bool {
 	//All slave stopped
-	if cluster.sme.IsInState("ERR00010") {
+	if cluster.StateMachine.IsInState("ERR00010") {
 		return true
 	}
 	// Any issues on all slaves expeting delay and network
-	if cluster.sme.IsInState("ERR00085") {
+	if cluster.StateMachine.IsInState("ERR00085") {
 		return true
 	}
 	return false
@@ -149,7 +150,7 @@ func (cluster *Cluster) HasAllDbUp() bool {
 	}
 	for _, s := range cluster.Servers {
 		if s != nil {
-			if s.State == stateFailed /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+			if s.State == stateFailed /*|| s.State == stateErrorAuth && misc.Contains(cluster.ignoreList, s.URL) == false*/ {
 				return false
 			}
 			if s.State == stateSuspect && cluster.GetTopology() != topoUnknown {
@@ -160,6 +161,23 @@ func (cluster *Cluster) HasAllDbUp() bool {
 			if s.Conn == nil {
 				return false
 			}
+
+		}
+	}
+
+	return true
+}
+
+func (cluster *Cluster) HasAllDbDown() bool {
+	if cluster.Servers == nil {
+		return true
+	}
+	for _, s := range cluster.Servers {
+		if s != nil {
+			if s.State != stateFailed /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
+				return false
+			}
+
 		}
 	}
 
@@ -306,11 +324,11 @@ func (cluster *Cluster) IsVerbose() bool {
 }
 
 func (cluster *Cluster) IsInFailover() bool {
-	return cluster.sme.IsInFailover()
+	return cluster.StateMachine.IsInFailover()
 }
 
 func (cluster *Cluster) IsDiscovered() bool {
-	return cluster.sme.IsDiscovered()
+	return cluster.StateMachine.IsDiscovered()
 }
 
 func (cluster *Cluster) IsMultiMaster() bool {
@@ -361,12 +379,31 @@ func (cluster *Cluster) HasMonitoringCredentialsRotation() bool {
 	return false
 }
 
-func (cluster *Cluster) IsMonitoringSaveConfig() bool {
-	if cluster.Conf.ConfRewrite {
-		if cluster.Conf.KeyPath == "" {
+func (cluster *Cluster) IsVariableDiffFromRepmanDefault(v string) bool {
+	values_clust := reflect.ValueOf(cluster.Conf)
+	types_clust := values_clust.Type()
 
+	values_def := reflect.ValueOf(cluster.Confs.ConfInit)
+	types_def := values_def.Type()
+
+	var val_clust reflect.Value
+	var val_def reflect.Value
+
+	for i := 0; i < values_clust.NumField(); i++ {
+		if types_clust.Field(i).Name == v {
+			val_clust = values_clust.Field(i)
 		}
-		return true
+		if types_def.Field(i).Name == v {
+			val_def = values_def.Field(i)
+		}
+
 	}
-	return false
+
+	return val_clust == val_def
+}
+
+func (cluster *Cluster) IsVariableImmutable(v string) bool {
+	_, ok := cluster.ImmuableFlagMap[v]
+	return ok
+
 }

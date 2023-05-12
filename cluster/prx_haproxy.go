@@ -204,12 +204,12 @@ func (proxy *HaproxyProxy) Refresh() error {
 
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
-			cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
+			cluster.StateMachine.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
 			return err
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
+			cluster.StateMachine.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
 			return err
 		}
 		defer resp.Body.Close()
@@ -236,7 +236,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 
 		showleaderstate, err := haRuntime.ApiCmd(cmd)
 		if err != nil {
-			cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
+			cluster.StateMachine.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
 			return err
 		}
 
@@ -274,7 +274,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 	result, err := haRuntime.ApiCmd("show stat")
 
 	if err != nil {
-		cluster.sme.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
+		cluster.StateMachine.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
 		return err
 	}
 	if cluster.Conf.HaproxyDebug {
@@ -296,7 +296,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 			return err
 		}
 		if len(line) < 73 {
-			cluster.sme.AddState("WARN0078", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0078"], err), ErrFrom: "MON"})
+			cluster.StateMachine.AddState("WARN0078", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0078"], err), ErrFrom: "MON"})
 			return errors.New(clusterError["WARN0078"])
 		}
 		if strings.Contains(strings.ToLower(line[0]), "write") {

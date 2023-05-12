@@ -95,7 +95,10 @@ func (cluster *Cluster) AddChildServers() error {
 					cluster.Servers = append(cluster.Servers, srv)
 					wg := new(sync.WaitGroup)
 					wg.Add(1)
-					cluster.TopologyDiscover(wg)
+					err = cluster.TopologyDiscover(wg)
+					if err != nil {
+						cluster.LogPrintf(LvlWarn, "AddChildServers : Fail to discover a topology %s", err)
+					}
 					wg.Wait()
 					return nil
 					// leave for next monitor loop to remove the sever if no more link
@@ -146,7 +149,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	wg.Wait()
 
 	//	cluster.pingServerList()
-	if cluster.sme.IsInFailover() {
+	if cluster.StateMachine.IsInFailover() {
 		cluster.LogPrintf(LvlDbg, "In Failover skip topology detection")
 		return errors.New("In Failover skip topology detection")
 	}
@@ -411,7 +414,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 	}
 
-	if cluster.sme.CanMonitor() {
+	if cluster.StateMachine.CanMonitor() {
 		return nil
 	}
 	return errors.New("Error found in State Machine Engine")
