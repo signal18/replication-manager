@@ -1,7 +1,7 @@
 [Default]
 
 include = "./etc/local/masterslave/proxysql"
-prov-orchestrator = "onpremise"
+prov-orchestrator = "local"
 onpremise-ssh = true
 onpremise-ssh-credential = "emma:"
 scheduler-jobs-ssh = true

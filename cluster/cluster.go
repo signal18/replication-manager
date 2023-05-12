@@ -665,6 +665,11 @@ func (cluster *Cluster) StateProcessing() {
 		master := cluster.GetMaster()
 		for _, s := range cstates {
 			servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+			if s.ErrKey == "WARN0073" {
+				for _, s := range cluster.Servers {
+					s.SetBackupPhysicalCookie()
+				}
+			}
 			if s.ErrKey == "WARN0074" {
 				cluster.LogPrintf(LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
 				if master != nil {

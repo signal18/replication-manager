@@ -122,12 +122,13 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 }
 
 func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
+	server.ClusterGroup.LogPrintf(LvlErr, "COUCOU RESEED PHYSICAL BACKUP\n")
 	if server.ClusterGroup.master != nil && !server.ClusterGroup.GetBackupServer().HasBackupPhysicalCookie() {
 		server.createCookie("cookie_waitbackup")
 		return 0, errors.New("No Physical Backup")
 	}
 	jobid, err := server.JobInsertTaks("reseed"+server.ClusterGroup.Conf.BackupPhysicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
-
+	server.ClusterGroup.LogPrintf(LvlErr, "COUCOU RESEED PHYSICAL BACKUP INSERT\n")
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 		return jobid, err
