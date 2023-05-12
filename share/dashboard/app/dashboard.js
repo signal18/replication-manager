@@ -896,7 +896,7 @@ function (
       };
 
       var createCluster = function (cluster,plan,orchestrator,headcluster) {
-          alert(headcluster);
+          alert(cluster);
           if (headcluster) {
 
           $http.get('/api/clusters/' + headcluster  + '/actions/add/' +cluster)
@@ -932,7 +932,11 @@ function (
               console.log("Error in set orchetrator.");
             });
           };
-
+      var deleteCluster = function (cluster) {
+        alert(cluster)
+        console.log("cluster "+ cluster + " deleted.."  );
+        $http.get('/api/clusters/actions/delete/' +cluster)
+      };
     var createClusterSetPlan = function (cluster,plan) {
         console.log('Setting plan..' + plan);
         httpGetWithoutResponse('/api/clusters/'+ cluster + '/settings/actions/set/prov-service-plan/'+plan);
@@ -1519,6 +1523,7 @@ function (
         httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
       };
 
+
       
 
       $scope.openCluster = function (clusterName) {
@@ -1593,6 +1598,39 @@ function (
         $mdSidenav('right').close();
         $scope.menuOpened = false;
       };
+      $scope.closeDeleteClusterDialog = function (cluster) {
+        $mdDialog.hide({contentElement: '#myDeleteClusterDialog',});
+          if (confirm("Confirm Deleting Cluster : " + cluster)) {
+            deleteCluster(cluster);
+
+            //$scope.selectedClusterName = $scope.dlgAddClusterName;
+            $scope.servers={};
+            $scope.slaves={};
+            $scope.master={};
+            $scope.alerts={};
+            $scope.logs={};
+            $scope.proxies={};
+          //  $scope.callServices();
+          //  $scope.setClusterCredentialDialog();
+          }
+        
+          $mdSidenav('right').close();
+          $scope.menuOpened = false;
+        
+        
+      };
+      $scope.deleteClusterDialog = function () {
+        $scope.menuOpened = true;
+         $mdDialog.show({
+          scope: $scope,
+          contentElement: '#myDeleteClusterDialog',
+          preserveScope: true,
+          parent: angular.element(document.body),
+           //      clickOutsideToClose: false,
+           //    escapeToClose: false,
+         });
+       };
+      
       $scope.cancelNewClusterDialog = function () {
         $mdDialog.hide({contentElement: '#myNewClusterDialog',});
         $mdSidenav('right').close();
@@ -1649,13 +1687,14 @@ function (
           contentElement: '#myClusterCredentialDialog',
           parent: angular.element(document.body),
           clickOutsideToClose: false,
+          preserveScope: true,
           escapeToClose: false,
         });
       };
       
-      $scope.closeClusterCredentialDialog = function () {
+      $scope.closeClusterCredentialDialog = function (user,pass) {
         $mdDialog.hide({contentElement: '#myClusterCredentialDialog',});
-        if (confirm("Confirm set user/password")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/db-servers-credential/' + $scope.dlgClusterUser + ':' + $scope.dlgClusterPassword);
+        if (confirm("Confirm set user/password")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/db-servers-credential/' + user + ':' + pass);
       };
       $scope.cancelClusterCredentialDialog = function () {
         $mdDialog.hide({contentElement: '#myClusterCredentialDialog',});
@@ -1669,9 +1708,9 @@ function (
           escapeToClose: false,
         });
       };
-      $scope.closeRplCredentialDialog = function () {
+      $scope.closeRplCredentialDialog = function (user,pass) {
         $mdDialog.hide({contentElement: '#myRplCredentialDialog',});
-        if (confirm("Confirm set user/password")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/replication-credential/' + $scope.dlgRplUser + ':' + $scope.dlgRplPassword);
+        if (confirm("Confirm set user/password")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/replication-credential/' + user + ':' + pass);
       };
       $scope.cancelRplCredentialDialog = function () {
         $mdDialog.hide({contentElement: '#myRplCredentialDialog',});

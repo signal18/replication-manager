@@ -15,12 +15,15 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/share"
+	"github.com/spf13/viper"
 )
 
 type Config struct {
@@ -347,7 +350,7 @@ type Config struct {
 	OnPremiseSSHStartDbScript                 string `mapstructure:"onpremise-ssh-start-db-script" toml:"onpremise-ssh-start-db-script" json:"onpremiseSshStartDbScript"`
 	OnPremiseSSHStartProxyScript              string `mapstructure:"onpremise-ssh-start-proxy-script" toml:"onpremise-ssh-start-proxy-script" json:"onpremiseSshStartProxyScript"`
 	OnPremiseSSHDbJobScript                   string `mapstructure:"onpremise-ssh-db-job-script" toml:"onpremise-ssh-db-job-script" json:"onpremiseSshDbJobScript"`
-	ProvOpensvcP12Certificate                 string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificat" json:"opensvcP12Certificate"`
+	ProvOpensvcP12Certificate                 string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificate" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
 	ProvOpensvcUseCollectorAPI                bool   `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
 	ProvOpensvcCollectorAccount               string `mapstructure:"opensvc-collector-account" toml:"opensvc-collector-account" json:"opensvcCollectorAccount"`
@@ -466,6 +469,7 @@ type Config struct {
 	ConfigFile                                string `mapstructure:"config" toml:"-" json:"-"`
 	MonitorScheduler                          bool   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
 	SchedulerReceiverPorts                    string `mapstructure:"scheduler-db-servers-receiver-ports" toml:"scheduler-db-servers-receiver-ports" json:"schedulerDbServersReceiverPorts"`
+	SchedulerSenderPorts                      string `mapstructure:"scheduler-db-servers-sender-ports" toml:"scheduler-db-servers-sender-ports" json:"schedulerDbServersSenderPorts"`
 	SchedulerReceiverUseSSL                   bool   `mapstructure:"scheduler-db-servers-receiver-use-ssl" toml:"scheduler-db-servers-receiver-use-ssl" json:"schedulerDbServersReceiverUseSSL"`
 	SchedulerBackupLogical                    bool   `mapstructure:"scheduler-db-servers-logical-backup" toml:"scheduler-db-servers-logical-backup" json:"schedulerDbServersLogicalBackup"`
 	SchedulerBackupPhysical                   bool   `mapstructure:"scheduler-db-servers-physical-backup" toml:"scheduler-db-servers-physical-backup" json:"schedulerDbServersPhysicalBackup"`
@@ -530,6 +534,8 @@ type Config struct {
 	VaultMode                                 string `mapstructure:"vault-mode" toml:"vault-mode" json:"vaultMode"`
 	VaultMount                                string `mapstructure:"vault-mount" toml:"vault-mount" json:"vaultMount"`
 	VaultAuth                                 string `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
+	GitUrl                                    string `mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
+	GitAccesToken                             string `mapstructure:"git-acces-token" toml:"git-acces-token" json:"gitAccesToken"`
 
 	//	BackupResticStoragePolicy                 string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
@@ -583,6 +589,13 @@ type MyDumperMetaData struct {
 	BinLogFilePos  uint64    `json:"log_pos" db:"log_pos"`
 	BinLogUuid     string    `json:"log_uuid" db:"log_uuid"`
 	EndTimestamp   time.Time `json:"start_timestamp" db:"start_timestamp"`
+}
+
+type ConfVersion struct {
+	ConfInit     Config `json:"-"`
+	ConfDecode   Config `json:"-"`
+	ConfDynamic  Config `json:"-"`
+	ConfImmuable Config `json:"-"`
 }
 
 const (
@@ -667,6 +680,7 @@ const (
 	GrantDBConfigGet               string = "db-config-get"
 	GrantDBDebug                   string = "db-debug"
 	GrantClusterCreate             string = "cluster-create"
+	GrantClusterDelete             string = "cluster-delete"
 	GrantClusterDrop               string = "cluster-drop"
 	GrantClusterCreateMonitor      string = "cluster-create-monitor"
 	GrantClusterDropMonitor        string = "cluster-drop-monitor"
@@ -1046,4 +1060,99 @@ func (conf *Config) GetTarballUrl(name string) (string, error) {
 		}
 	}
 	return "", errors.New("tarball not found in collection")
+}
+
+func (conf Config) PrintConf() {
+	values := reflect.ValueOf(conf)
+	types := values.Type()
+	log.Printf("PRINT CONF")
+	for i := 0; i < values.NumField(); i++ {
+
+		if types.Field(i).Type.String() == "string" {
+			fmt.Printf("%s : %s (string)\n", types.Field(i).Name, values.Field(i).String())
+		}
+		if types.Field(i).Type.String() == "bool" {
+			fmt.Printf("%s : %t (bool)\n", types.Field(i).Name, values.Field(i))
+		}
+		if types.Field(i).Type.String() == "int" || types.Field(i).Type.String() == "uint64" || types.Field(i).Type.String() == "int64" {
+			fmt.Printf("%s : %d (int)\n", types.Field(i).Name, values.Field(i))
+		}
+
+	}
+}
+
+func (conf Config) MergeConfig(path string, name string, ImmMap map[string]interface{}, DefMap map[string]interface{}, confPath string) error {
+	dynRead := viper.GetViper()
+	viper.SetConfigName("overwrite")
+	dynRead.SetConfigType("toml")
+
+	dynMap := make(map[string]interface{})
+
+	if _, err := os.Stat(path + "/" + name + "/overwrite.toml"); os.IsNotExist(err) {
+		fmt.Printf("No monitoring saved config found " + path + "/" + name + "/overwrite.toml")
+		return err
+	} else {
+		fmt.Printf("Parsing saved config from working directory %s ", path+"/"+name+"/overwrite.toml")
+
+		dynRead.AddConfigPath(path + "/" + name)
+		err := dynRead.ReadInConfig()
+		if err != nil {
+			fmt.Printf("Could not read in config : " + path + "/" + name + "/overwrite.toml")
+		}
+		dynRead = dynRead.Sub("overwrite-" + name)
+		fmt.Printf("%v\n", dynRead.AllSettings())
+		for _, f := range dynRead.AllKeys() {
+			v := dynRead.Get(f)
+			_, ok := ImmMap[f]
+			if ok && v != nil && v != ImmMap[f] {
+				_, ok := DefMap[f]
+				if ok && v != DefMap[f] {
+					dynMap[f] = dynRead.Get(f)
+				}
+				if !ok {
+					dynMap[f] = dynRead.Get(f)
+				}
+			}
+		}
+	}
+	//fmt.Printf("%v\n", DefMap)
+	//fmt.Printf("%v\n", dynMap)
+	//fmt.Printf("%v\n", ImmMap)
+	conf.WriteMergeConfig(confPath, dynMap)
+	return nil
+}
+
+func (conf Config) WriteMergeConfig(confPath string, dynMap map[string]interface{}) error {
+	input, err := ioutil.ReadFile(confPath)
+	if err != nil {
+		fmt.Printf("Cannot read config file %s : %s", confPath, err)
+		return err
+	}
+
+	lines := strings.Split(string(input), "\n")
+
+	for i, line := range lines {
+		for k, v := range dynMap {
+			tmp := strings.Split(line, "=")
+			tmp[0] = strings.ReplaceAll(tmp[0], " ", "")
+			if tmp[0] == k {
+				//fmt.Printf("Write Merge Conf : line %s, k %s, v %v\n", line, k, v)
+				switch v.(type) {
+				case string:
+					lines[i] = k + " = " + fmt.Sprintf("\"%v\"", v)
+				default:
+					lines[i] = k + " = " + fmt.Sprintf("%v", v)
+				}
+
+			}
+		}
+
+	}
+	output := strings.Join(lines, "\n")
+	err = ioutil.WriteFile(confPath, []byte(output), 0644)
+	if err != nil {
+		fmt.Printf("Cannot write config file %s : %s", confPath, err)
+		return err
+	}
+	return nil
 }

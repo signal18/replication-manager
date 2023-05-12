@@ -8,6 +8,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -237,6 +238,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/actions/add/{clusterName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterAdd)),
+	))
+
+	router.Handle("/api/clusters/actions/delete/{clusterName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterDelete)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/topology/servers", negroni.New(
@@ -796,6 +802,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 		}
 		mycluster.MasterFailover(false)
 		mycluster.SetPrefMaster(savedPrefMaster)
+
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -1100,8 +1107,15 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			return
 		}
 		setting := vars["settingName"]
-		mycluster.LogPrintf("INFO", "API receive set setting %s", setting)
-		repman.setSetting(mycluster, setting, vars["settingValue"])
+		//not immuable
+		if !mycluster.IsVariableImmutable(setting) {
+			mycluster.LogPrintf("INFO", "API receive set setting %s", setting)
+			repman.setSetting(mycluster, setting, vars["settingValue"])
+		} else {
+			mycluster.LogPrintf(cluster.LvlErr, "Can not overwrite immuable parameter defined in config , please use config-merge command to preserve them between restart")
+			mycluster.LogPrintf("INFO", "API receive set setting %s", setting)
+			repman.setSetting(mycluster, setting, vars["settingValue"])
+		}
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -1138,7 +1152,10 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "db-servers-hosts":
 		mycluster.SetDbServerHosts(value)
 	case "db-servers-credential":
-		mycluster.SetDbServersMonitoringCredential(value)
+		mycluster.Conf.User = value
+		mycluster.SetClusterMonitorCredentialsFromConfig()
+		mycluster.ReloadConfig(mycluster.Conf)
+		//mycluster.SetDbServersMonitoringCredential(value)
 	case "prov-service-plan":
 		mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":
@@ -1262,7 +1279,6 @@ func (repman *ReplicationManager) handlerMuxAddProxyTag(w http.ResponseWriter, r
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.AddProxyTag(vars["tagValue"])
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return
@@ -1453,6 +1469,7 @@ func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter
 }
 
 func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("HANDLER MUX SERVER ADD\n")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])

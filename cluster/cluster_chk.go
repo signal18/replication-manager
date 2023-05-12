@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -26,8 +27,8 @@ import (
 
 func (cluster *Cluster) CheckFailed() {
 	// Don't trigger a failover if a switchover is happening
-	if cluster.sme.IsInFailover() {
-		cluster.sme.AddState("ERR00001", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00001"]), ErrFrom: "CHECK"})
+	if cluster.StateMachine.IsInFailover() {
+		cluster.StateMachine.AddState("ERR00001", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00001"]), ErrFrom: "CHECK"})
 		return
 	}
 	if cluster.master == nil {
@@ -115,7 +116,7 @@ func (cluster *Cluster) isAutomaticFailover() bool {
 	if cluster.Conf.Interactive == false {
 		return true
 	}
-	cluster.sme.AddState("ERR00002", state.State{ErrType: "ERR00002", ErrDesc: fmt.Sprintf(clusterError["ERR00002"]), ErrFrom: "CHECK"})
+	cluster.StateMachine.AddState("ERR00002", state.State{ErrType: "ERR00002", ErrDesc: fmt.Sprintf(clusterError["ERR00002"]), ErrFrom: "CHECK"})
 	return false
 }
 
@@ -136,10 +137,10 @@ func (cluster *Cluster) isMaxMasterFailedCountReached() bool {
 	// no illimited failed count
 
 	if cluster.GetMaster().FailCount >= cluster.Conf.MaxFail {
-		cluster.sme.AddState("WARN0023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0023"]), ErrFrom: "CHECK"})
+		cluster.StateMachine.AddState("WARN0023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0023"]), ErrFrom: "CHECK"})
 		return true
 	} else {
-		//	cluster.sme.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%d", cluster.master.State, cluster.Conf.Interactive, cluster.Conf.MaxFail), ErrFrom: "CONF"})
+		//	cluster.StateMachine.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%d", cluster.master.State, cluster.Conf.Interactive, cluster.Conf.MaxFail), ErrFrom: "CONF"})
 	}
 	return false
 }
@@ -151,7 +152,7 @@ func (cluster *Cluster) isMaxClusterFailoverCountNotReached() bool {
 		return true
 	}
 	if cluster.FailoverCtr == cluster.Conf.FailLimit {
-		cluster.sme.AddState("ERR00027", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00027"]), ErrFrom: "CHECK"})
+		cluster.StateMachine.AddState("ERR00027", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00027"]), ErrFrom: "CHECK"})
 		return false
 	}
 	return true
@@ -165,7 +166,7 @@ func (cluster *Cluster) isBetweenFailoverTimeValid() bool {
 	}
 	//	cluster.LogPrintf("CHECK: Failover Time to short with previous failover")
 	if rem > 0 {
-		cluster.sme.AddState("ERR00029", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00029"]), ErrFrom: "CHECK"})
+		cluster.StateMachine.AddState("ERR00029", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00029"]), ErrFrom: "CHECK"})
 		return false
 	}
 	return true
@@ -194,7 +195,7 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				}
 				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
-					cluster.sme.AddState("ERR00028", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.URL), ErrFrom: "CHECK"})
+					cluster.StateMachine.AddState("ERR00028", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.URL), ErrFrom: "CHECK"})
 					return true
 				}
 			}
@@ -254,7 +255,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 
 	time.Sleep(time.Duration(cluster.Conf.CheckFalsePositiveMaxscaleTimeout) * time.Second)
 	if strings.Contains(cluster.master.MxsServerStatus, "Running") {
-		cluster.sme.AddState("ERR00030", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00030"], cluster.master.MxsServerStatus), ErrFrom: "CHECK"})
+		cluster.StateMachine.AddState("ERR00030", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00030"], cluster.master.MxsServerStatus), ErrFrom: "CHECK"})
 		return true
 	}
 	return false
@@ -272,7 +273,7 @@ func (cluster *Cluster) isFoundCandidateMaster() bool {
 	}
 	if key == -1 {
 		// No candidates found in slaves list
-		cluster.sme.AddState("ERR00032", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00032"]), ErrFrom: "CHECK"})
+		cluster.StateMachine.AddState("ERR00032", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00032"]), ErrFrom: "CHECK"})
 		return false
 	}
 	return true
@@ -299,7 +300,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	resp, err := client.Do(req)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "%s", err.Error())
-		cluster.sme.AddState("ERR00022", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
+		cluster.StateMachine.AddState("ERR00022", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
 	defer resp.Body.Close()
@@ -313,14 +314,14 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Arbitrator sent invalid JSON")
-		cluster.sme.AddState("ERR00022", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
+		cluster.StateMachine.AddState("ERR00022", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
 	if r.Arbitration == "winner" {
 		cluster.LogPrintf(LvlInfo, "Arbitrator says: winner")
 		return true
 	}
-	cluster.sme.AddState("ERR00022", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
+	cluster.StateMachine.AddState("ERR00022", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 	return false
 }
 
@@ -338,7 +339,7 @@ func (cluster *Cluster) isExternalOk() bool {
 		return false
 	}
 	if req.StatusCode == 200 {
-		cluster.sme.AddState("ERR00031", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00031"]), ErrFrom: "CHECK"})
+		cluster.StateMachine.AddState("ERR00031", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00031"]), ErrFrom: "CHECK"})
 		return true
 	}
 	return false
@@ -349,7 +350,7 @@ func (cluster *Cluster) isArbitratorAlive() bool {
 		return true
 	}
 	if cluster.IsFailedArbitrator {
-		cluster.sme.AddState("ERR00055", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00055"], cluster.Conf.ArbitrationSasHosts), ErrFrom: "CHECK"})
+		cluster.StateMachine.AddState("ERR00055", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00055"], cluster.Conf.ArbitrationSasHosts), ErrFrom: "CHECK"})
 		return false
 	}
 	return true
@@ -364,7 +365,7 @@ func (cluster *Cluster) isNotFirstSlave() bool {
 	// - first replication-manager start on no topology
 	// - all cluster down
 	if cluster.master == nil {
-		cluster.sme.AddState("ERR00026", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
+		cluster.StateMachine.AddState("ERR00026", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
 		return false
 	}
 
@@ -744,5 +745,32 @@ func (cluster *Cluster) CheckCanSaveDynamicConfig() {
 	_, err := cluster.GetPasswordKey(cluster.Conf.MonitoringKeyPath)
 	if err != nil && cluster.GetConf().ConfRewrite {
 		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00090"]), ErrFrom: "CLUSTER"})
+	}
+}
+
+func (cluster *Cluster) CheckIsOverwrite() {
+	cluster.LogPrintf(LvlDbg, "Check overwrite conf path : %s\n", cluster.Conf.WorkingDir+"/"+cluster.Name)
+	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/overwrite.toml"); !os.IsNotExist(err) {
+		input, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/overwrite.toml")
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Cannot read config file %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", err)
+			return
+		}
+
+		lines := strings.Split(string(input), "\n")
+		for i, line := range lines {
+			if i == 1 {
+				line = strings.ReplaceAll(line, " ", "")
+				if line != "" {
+					cluster.SetState("WARN0102", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0102"]), ErrFrom: "CLUSTER"})
+					cluster.LogPrintf(LvlErr, "An immutable parameter has been changed in cluster %s and is tracked in overwrite.toml. Use the config-merge command to save your changes.\n", cluster.Name)
+					cluster.LogPrintf(LvlDbg, "Check overwrite is not empty line %d : %s\n", i, line)
+				} else {
+					cluster.LogPrintf(LvlDbg, "Check overwrite is empty line %d : %s\n", i, line)
+				}
+
+			}
+			//cluster.SetState("WARN0102", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0102"]), ErrFrom: "CLUSTER"})
+		}
 	}
 }

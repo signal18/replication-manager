@@ -531,6 +531,7 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 }
 
 func (server *ServerMonitor) GetSlowLogTable() {
+
 	if server.ClusterGroup.IsInFailover() {
 		return
 	}
@@ -568,7 +569,6 @@ func (server *ServerMonitor) GetSlowLogTable() {
 	} else {
 		err = server.Conn.Select(&slowqueries, "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id,0 as rows_affected FROM  mysql.slow_log WHERE start_time > FROM_UNIXTIME("+strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10)+")")
 	}
-
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Could not get slow queries from table %s", err)
 	}

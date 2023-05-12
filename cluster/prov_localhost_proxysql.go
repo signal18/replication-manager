@@ -17,7 +17,23 @@ import (
 // TODO: Make all of these part of ProxySQLProxy and not Cluster
 
 func (cluster *Cluster) LocalhostUnprovisionProxySQLService(prx *ProxySQLProxy) error {
-	cluster.LocalhostStopProxysqlService(prx)
+	cluster.LocalhostStopProxySQLService(prx)
+
+	out := &bytes.Buffer{}
+	path := prx.Datadir //+ "/var"
+	//os.RemoveAll(path)
+
+	cmd := exec.Command("rm", "-rf", path)
+
+	cmd.Stdout = out
+	err := cmd.Run()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.errorChan <- err
+		return err
+	}
+	cluster.LogPrintf(LvlInfo, "Remove datadir done: %s", out.Bytes())
+
 	cluster.errorChan <- nil
 	return nil
 }
@@ -51,12 +67,12 @@ func (cluster *Cluster) LocalhostProvisionProxySQLService(prx *ProxySQLProxy) er
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStopProxysqlService(prx *ProxySQLProxy) error {
+func (cluster *Cluster) LocalhostStopProxySQLService(prx *ProxySQLProxy) error {
 
 	//	cluster.LogPrintf("TEST", "Killing database %s %d", server.Id, server.Process.Pid)
-
-	killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", prx.Process.Pid))
-	killCmd.Run()
+	prx.Shutdown()
+	//killCmd := exec.Command("kill", "-9", fmt.Sprintf("%d", prx.Process.Pid))
+	//killCmd.Run()
 	return nil
 }
 

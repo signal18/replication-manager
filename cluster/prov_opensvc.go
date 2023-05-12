@@ -150,10 +150,10 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 		time.Sleep(2 * time.Second)
 		status := svc.GetActionStatus(strconv.Itoa(idaction))
 		if status == "Q" {
-			cluster.sme.AddState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
+			cluster.StateMachine.AddState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
 		}
 		if status == "W" {
-			cluster.sme.AddState("WARN0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0046"]), ErrFrom: "TOPO"})
+			cluster.StateMachine.AddState("WARN0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0046"]), ErrFrom: "TOPO"})
 		}
 		if status == "T" {
 			return nil

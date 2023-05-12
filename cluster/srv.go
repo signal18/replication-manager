@@ -119,6 +119,7 @@ type ServerMonitor struct {
 	IsCompute                   bool                         `json:"isCompute"` //Used to idenfied spider compute nide
 	IsDelayed                   bool                         `json:"isDelayed"`
 	IsFull                      bool                         `json:"isFull"`
+	IsConfigGen                 bool                         `json:"isConfigGen"`
 	Ignored                     bool                         `json:"ignored"`
 	Prefered                    bool                         `json:"prefered"`
 	PreferedBackup              bool                         `json:"preferedBackup"`
@@ -330,7 +331,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	if err != nil {
 		// Copy the last known server states or they will be cleared at next monitoring loop
 		if server.State != stateFailed {
-			server.ClusterGroup.sme.CopyOldStateFromUnknowServer(server.URL)
+			server.ClusterGroup.StateMachine.CopyOldStateFromUnknowServer(server.URL)
 		}
 		// server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection handling for server %s %s", server.URL, err)
 		// server.ClusterGroup.LogPrintf(LvlErr, "Failure detection handling for server %s %s", server.URL, err)
@@ -355,8 +356,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			if server.ClusterGroup.master == nil {
 				server.ClusterGroup.LogPrintf(LvlDbg, "Master not defined")
 			}
-			if server.ClusterGroup.GetMaster() != nil && server.URL == server.ClusterGroup.GetMaster().URL {
-				server.FailSuspectHeartbeat = server.ClusterGroup.sme.GetHeartbeats()
+			if server.ClusterGroup.GetMaster() != nil && server.URL == server.ClusterGroup.GetMaster().URL && server.GetCluster().GetTopology() != topoUnknown {
+				server.FailSuspectHeartbeat = server.ClusterGroup.StateMachine.GetHeartbeats()
 				if server.ClusterGroup.GetMaster().FailCount <= server.ClusterGroup.Conf.MaxFail {
 					server.ClusterGroup.LogPrintf("INFO", "Master Failure detected! Retry %d/%d", server.ClusterGroup.master.FailCount, server.ClusterGroup.Conf.MaxFail)
 				}
@@ -374,7 +375,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			} else {
 				// not the master or a virtual master
 				server.ClusterGroup.LogPrintf(LvlDbg, "Failure detection of no master FailCount %d MaxFail %d", server.FailCount, server.ClusterGroup.Conf.MaxFail)
-				if server.FailCount >= server.ClusterGroup.Conf.MaxFail {
+				if server.FailCount >= server.ClusterGroup.Conf.MaxFail && server.GetCluster().GetTopology() != topoUnknown {
 					if server.FailCount == server.ClusterGroup.Conf.MaxFail {
 						server.ClusterGroup.LogPrintf("INFO", "Declaring replica %s as failed", server.URL)
 						server.SetState(stateFailed)
@@ -414,6 +415,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 	// From here we have a new connection
 
+	//Without topology we should never declare a server failed
+	if (server.State == stateErrorAuth || server.State == stateFailed) && server.GetCluster().GetTopology() == topoUnknown && server.PrevState != stateSuspect {
+		server.SetState(stateSuspect)
+	}
+
 	// For orchestrator to trigger a start via tracking state URL
 	if server.PrevState == stateFailed {
 		server.DelWaitStartCookie()
@@ -430,7 +436,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		return
 	}
 	// We will leave when in failover to avoid refreshing variables and status
-	if server.ClusterGroup.sme.IsInFailover() {
+	if server.ClusterGroup.StateMachine.IsInFailover() {
 		//	conn.Close()
 		server.ClusterGroup.LogPrintf(LvlDbg, "Inside failover, skiping refresh")
 		return
@@ -446,7 +452,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	defer conn.Close()
 
 	// Reset FailCount
-	if (server.State != stateFailed && server.State != stateErrorAuth && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.sme.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
+	if (server.State != stateFailed && server.State != stateErrorAuth && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((server.ClusterGroup.StateMachine.GetHeartbeats() - server.FailSuspectHeartbeat) * server.ClusterGroup.Conf.MonitoringTicker) > server.ClusterGroup.Conf.FailResetTime)*/ {
 		server.FailCount = 0
 		server.FailSuspectHeartbeat = 0
 	}
@@ -682,19 +688,19 @@ func (server *ServerMonitor) Refresh() error {
 			if err != nil {
 				server.ClusterGroup.SetState("ERR00073", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
 			}
-			if server.ClusterGroup.sme.GetHeartbeats()%30 == 0 {
+			if server.ClusterGroup.StateMachine.GetHeartbeats()%30 == 0 {
 				server.SaveInfos()
 				if server.GetCluster().GetTopology() != topoActivePassive && server.GetCluster().GetTopology() != topoMultiMasterWsrep {
 					server.CheckPrivileges()
 				}
 
 			} else {
-				server.ClusterGroup.sme.PreserveState("ERR00007")
-				server.ClusterGroup.sme.PreserveState("ERR00006")
-				server.ClusterGroup.sme.PreserveState("ERR00008")
-				server.ClusterGroup.sme.PreserveState("ERR00015")
-				server.ClusterGroup.sme.PreserveState("ERR00078")
-				server.ClusterGroup.sme.PreserveState("ERR00009")
+				server.ClusterGroup.StateMachine.PreserveState("ERR00007")
+				server.ClusterGroup.StateMachine.PreserveState("ERR00006")
+				server.ClusterGroup.StateMachine.PreserveState("ERR00008")
+				server.ClusterGroup.StateMachine.PreserveState("ERR00015")
+				server.ClusterGroup.StateMachine.PreserveState("ERR00078")
+				server.ClusterGroup.StateMachine.PreserveState("ERR00009")
 			}
 			if server.ClusterGroup.Conf.FailEventScheduler && server.IsMaster() && !server.HasEventScheduler() {
 				server.ClusterGroup.LogPrintf(LvlInfo, "Enable Event Scheduler on master")
@@ -856,7 +862,7 @@ func (server *ServerMonitor) Refresh() error {
 	}
 	// monitor plugins
 	if !server.DBVersion.IsPPostgreSQL() {
-		if server.ClusterGroup.sme.GetHeartbeats()%60 == 0 {
+		if server.ClusterGroup.StateMachine.GetHeartbeats()%60 == 0 {
 			if server.ClusterGroup.Conf.MonitorPlugins {
 				server.Plugins, logs, err = dbhelper.GetPlugins(server.Conn, server.DBVersion)
 				server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")

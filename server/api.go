@@ -437,6 +437,13 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 
 }
 
+func (repman *ReplicationManager) handlerMuxClusterDelete(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	repman.DeleteCluster(vars["clusterName"])
+
+}
+
 // swagger:operation GET /api/prometheus prometheus
 // Returns the Prometheus metrics for all database instances on the server
 // in the Prometheus text format

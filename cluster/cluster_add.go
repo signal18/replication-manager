@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -16,18 +17,19 @@ import (
 )
 
 func (cluster *Cluster) AddSeededServer(srv string) error {
+	fmt.Printf("ADD SEEDED SERVER\n")
 	if cluster.Conf.Hosts != "" {
 		cluster.Conf.Hosts = cluster.Conf.Hosts + "," + srv
 	} else {
 		cluster.Conf.Hosts = srv
 	}
-	cluster.sme.SetFailoverState()
+	cluster.StateMachine.SetFailoverState()
 	cluster.newServerList()
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.TopologyDiscover(wg)
 	wg.Wait()
-	cluster.sme.RemoveFailoverState()
+	cluster.StateMachine.RemoveFailoverState()
 	return nil
 }
 
@@ -94,7 +96,7 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 		}
 	case config.ConstProxySqlproxy:
 		cluster.Conf.ProxysqlOn = true
-		cluster.Conf.ProxysqlAdminPort = port
+		cluster.Conf.ProxysqlPort = port
 		if user != "" || password != "" {
 			cluster.Conf.ProxysqlUser = user
 			cluster.Conf.ProxysqlPassword = password
@@ -116,11 +118,12 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 			cluster.Conf.MdbsProxyHosts = srv + ":" + port
 		}
 	}
-	cluster.sme.SetFailoverState()
+	cluster.SetClusterProxySqlCredentialsFromConfig()
+	cluster.StateMachine.SetFailoverState()
 	cluster.Lock()
 	cluster.newProxyList()
 	cluster.Unlock()
-	cluster.sme.RemoveFailoverState()
+	cluster.StateMachine.RemoveFailoverState()
 	return nil
 }
 

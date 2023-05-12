@@ -204,6 +204,21 @@ func (cluster *Cluster) SwitchProxySQL() {
 	cluster.Conf.ProxysqlOn = !cluster.Conf.ProxysqlOn
 }
 
+func (cluster *Cluster) SwitchMdbsProxy() {
+	cluster.Conf.MdbsProxyOn = !cluster.Conf.MdbsProxyOn
+}
+
+func (cluster *Cluster) SwitchHaProxy() {
+	cluster.Conf.HaproxyOn = !cluster.Conf.HaproxyOn
+}
+func (cluster *Cluster) SwitchMaxscaleProxy() {
+	cluster.Conf.MxsOn = !cluster.Conf.MxsOn
+}
+
+func (cluster *Cluster) SwitchMyProxy() {
+	cluster.Conf.MyproxyOn = !cluster.Conf.MyproxyOn
+}
+
 func (cluster *Cluster) SwitchProxysqlBootstrap() {
 	cluster.Conf.ProxysqlBootstrap = !cluster.Conf.ProxysqlBootstrap
 }

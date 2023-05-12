@@ -134,8 +134,8 @@ func (cluster *Cluster) GetPersitentState() error {
 	}
 	cluster.SLAHistory = clsave.SLAHistory
 	cluster.Crashes = clsave.Crashes
-	cluster.sme.SetSla(clsave.SLA)
-	cluster.sme.SetMasterUpAndSyncRestart()
+	cluster.StateMachine.SetSla(clsave.SLA)
+	cluster.StateMachine.SetMasterUpAndSyncRestart()
 
 	return nil
 }
@@ -180,7 +180,7 @@ func (cluster *Cluster) GetWaitTrx() int64 {
 }
 
 func (cluster *Cluster) GetStateMachine() *state.StateMachine {
-	return cluster.sme
+	return cluster.StateMachine
 }
 
 func (cluster *Cluster) GetMasterFailCount() int {
@@ -281,7 +281,7 @@ func (cluster *Cluster) GetDbPass() string {
 }
 
 func (cluster *Cluster) GetStatus() bool {
-	return cluster.sme.IsFailable()
+	return cluster.StateMachine.IsFailable()
 }
 
 func (cluster *Cluster) GetGroupReplicationWhiteList() string {

@@ -81,7 +81,7 @@ require (
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
 	github.com/yoheimuta/protolint v0.32.0
-	golang.org/x/crypto v0.5.0
+	golang.org/x/crypto v0.6.0
 	golang.org/x/net v0.7.0
 	google.golang.org/genproto v0.0.0-20210617175327-b9e0b3197ced
 	google.golang.org/grpc v1.38.0
@@ -113,6 +113,8 @@ require (
 	github.com/facebookgo/subset v0.0.0-20200203212716-c811ad88dec4 // indirect
 	github.com/fastly/go-utils v0.0.0-20180712184237-d95a45783239 // indirect
 	github.com/gin-gonic/gin v1.7.2 // indirect
+	github.com/go-git/go-git v4.7.0+incompatible // indirect
+	github.com/go-git/go-git/v5 v5.6.1 // indirect
 	github.com/go-ole/go-ole v1.2.5 // indirect
 	github.com/gonum/blas v0.0.0-20180125090452-e7c5890b24cf // indirect
 	github.com/gonum/floats v0.0.0-20180125090339-7de1f4ea7ab5 // indirect
@@ -124,16 +126,17 @@ require (
 	github.com/gregdel/pushover v1.1.0
 	github.com/hashicorp/vault/api v1.9.0 // indirect
 	github.com/hashicorp/vault/api/auth/approle v0.4.0 // indirect
-	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
 	github.com/juju/testing v0.0.0-20220203020004-a0ff61f03494 // indirect
 	github.com/lestrrat/go-envload v0.0.0-20180220120943-6ed08b54a570 // indirect
 	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/miekg/dns v1.1.43 // indirect
+	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pkg/xattr v0.4.6
 	github.com/rs/cors v1.7.0 // indirect
 	github.com/siddontang/go-log v0.0.0-20190221022429-1e957dd83bed // indirect
 	github.com/smartystreets/goconvey v1.7.2 // indirect
 	google.golang.org/grpc/examples v0.0.0-20220316190256-c4cabf78f4a2 // indirect
+	gopkg.in/src-d/go-git.v4 v4.13.1 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 )

@@ -598,6 +598,11 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterDelete] {
+		if strings.Contains(URL, "/api/clusters/actions/delete") {
+			return true
+		}
+	}
 	/*	case cluster.APIUsers[strUser].Grants[config.GrantClusterGrant] == true:
 			return false
 		case cluster.APIUsers[strUser].Grants[config.GrantClusterDropMonitor] == true:

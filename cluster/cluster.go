@@ -19,8 +19,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/bluele/logrus_slack"
+	"github.com/go-git/go-git/v5"
+	git_obj "github.com/go-git/go-git/v5/plumbing/object"
+	git_http "github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
@@ -28,6 +31,7 @@ import (
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/cron"
+	crypto "github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -88,6 +92,10 @@ type Cluster struct {
 	IsNotMonitoring               bool                        `json:"isNotMonitoring"`
 	IsCapturing                   bool                        `json:"isCapturing"`
 	Conf                          config.Config               `json:"config"`
+	Confs                         *config.ConfVersion         `json:"-"`
+	ImmuableFlagMap               map[string]interface{}      `json:"-"`
+	DynamicFlagMap                map[string]interface{}      `json:"-"`
+	DefaultFlagMap                map[string]interface{}      `json:"-"`
 	CleanAll                      bool                        `json:"cleanReplication"` //used in testing
 	Topology                      string                      `json:"topology"`
 	Uptime                        string                      `json:"uptime"`
@@ -129,7 +137,7 @@ type Cluster struct {
 	rplPass                       string                      `json:"-"`
 	proxysqlUser                  string                      `json:"-"`
 	proxysqlPass                  string                      `json:"-"`
-	sme                           *state.StateMachine         `json:"-"`
+	StateMachine                  *state.StateMachine         `json:"stateMachine"`
 	runOnceAfterTopology          bool                        `json:"-"`
 	logPtr                        *os.File                    `json:"-"`
 	termlength                    int                         `json:"-"`
@@ -187,6 +195,7 @@ type Cluster struct {
 	errorConnectVault             error                       `json:"-"`
 	SqlErrorLog                   *logsql.Logger              `json:"-"`
 	SqlGeneralLog                 *logsql.Logger              `json:"-"`
+	SstAvailablePorts             map[string]string           `json:"sstAvailablePorts"`
 	sync.Mutex
 	crcTable *crc64.Table
 }
@@ -270,8 +279,54 @@ const (
 	VaultDbEngine      string = "database_engine"
 )
 
+// to store the flags to encrypt in the git (in Save() function)
+var encryptFlag = map[string]int{
+	"api-credentials":                       0,
+	"api-credentials-external":              0,
+	"db-servers-credential":                 0,
+	"monitoring-write-heartbeat-credential": 0,
+	"onpremise-ssh-credential":              0,
+	"replication-credential":                0,
+	"shardproxy-credential":                 0,
+	"backup-restic-password":                1,
+	"haproxy-password":                      1,
+	"maxscale-pass":                         1,
+	"myproxy-password":                      1,
+	"proxysql-password":                     1,
+	"vault-secret-id":                       1,
+	"opensvc-p12-secret":                    1,
+	"backup-restic-aws-access-secret":       1,
+	"backup-streaming-aws-access-secret":    1,
+	"arbitration-external-secret":           1,
+	"alert-pushover-user-token":             1,
+	"mail-smtp-password":                    1}
+
 // Init initial cluster definition
-func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface{}, dyn map[string]interface{}, def map[string]interface{}, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
+	cluster.Confs = confs
+	cluster.ImmuableFlagMap = imm
+	cluster.DynamicFlagMap = dyn
+	cluster.DefaultFlagMap = def
+	conf := confs.ConfInit
+
+	cluster.Conf = conf
+
+	cluster.tlog = tlog
+	cluster.htlog = loghttp
+	cluster.termlength = termlength
+	cluster.Name = cfgGroup
+
+	cluster.runUUID = runUUID
+	cluster.repmgrHostname = repmgrHostname
+	cluster.repmgrVersion = repmgrVersion
+	cluster.key = key
+
+	cluster.InitFromConf()
+
+	return nil
+}
+
+func (cluster *Cluster) InitFromConf() {
 	cluster.SqlErrorLog = logsql.New()
 	cluster.SqlGeneralLog = logsql.New()
 	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
@@ -291,36 +346,34 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 
-	cluster.tlog = tlog
-	cluster.htlog = loghttp
-	cluster.termlength = termlength
-	cluster.Name = cfgGroup
-	cluster.WorkingDir = conf.WorkingDir + "/" + cluster.Name
-	cluster.runUUID = runUUID
-	cluster.repmgrHostname = repmgrHostname
-	cluster.repmgrVersion = repmgrVersion
-	cluster.key = key
-
-	if conf.Arbitration {
+	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
+	if cluster.Conf.Arbitration {
 		cluster.Status = ConstMonitorStandby
 	} else {
 		cluster.Status = ConstMonitorActif
 	}
 	cluster.benchmarkType = "sysbench"
 	cluster.Log = s18log.NewHttpLog(200)
-	cluster.MonitorType = conf.GetMonitorType()
-	cluster.TopologyType = conf.GetTopologyType()
-	cluster.FSType = conf.GetFSType()
-	cluster.DiskType = conf.GetDiskType()
-	cluster.VMType = conf.GetVMType()
-	cluster.Grants = conf.GetGrantType()
+
+	cluster.MonitorType = cluster.Conf.GetMonitorType()
+	cluster.TopologyType = cluster.Conf.GetTopologyType()
+	cluster.FSType = cluster.Conf.GetFSType()
+	cluster.DiskType = cluster.Conf.GetDiskType()
+	cluster.VMType = cluster.Conf.GetVMType()
+	cluster.Grants = cluster.Conf.GetGrantType()
+
 	cluster.QueryRules = make(map[uint32]config.QueryRule)
 	cluster.Schedule = make(map[string]cron.Entry)
 	cluster.JobResults = make(map[string]*JobResult)
+	cluster.SstAvailablePorts = make(map[string]string)
+	lstPort := strings.Split(cluster.Conf.SchedulerSenderPorts, ",")
+	for _, p := range lstPort {
+		cluster.SstAvailablePorts[p] = p
+	}
 	// Initialize the state machine at this stage where everything is fine.
-	cluster.sme = new(state.StateMachine)
-	cluster.sme.Init()
-	cluster.Conf = conf
+	cluster.StateMachine = new(state.StateMachine)
+	cluster.StateMachine.Init()
+
 	if cluster.Conf.Interactive {
 		cluster.LogPrintf(LvlInfo, "Failover in interactive mode")
 	} else {
@@ -405,10 +458,16 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 	cluster.SqlGeneralLog.AddHook(hookgen)
 	cluster.LoadAPIUsers()
 	// createKeys do nothing yet
-	cluster.createKeys()
+	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-key.pem"); os.IsNotExist(err) {
+		go cluster.createKeys()
+	}
+
 	cluster.GetPersitentState()
 
-	cluster.newServerList()
+	err = cluster.newServerList()
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Could not set server list %s", err)
+	}
 	err = cluster.newProxyList()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Could not set proxy list %s", err)
@@ -426,8 +485,8 @@ func (cluster *Cluster) Init(conf config.Config, cfgGroup string, tlog *s18log.T
 		cluster.DropDBTagConfig("threadpool")
 		cluster.AddDBTagConfig("pkg")
 	}
-
-	return nil
+	//fmt.Printf("INIT CLUSTER CONF :\n")
+	//cluster.Conf.PrintConf()
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
@@ -498,13 +557,17 @@ func (cluster *Cluster) Run() {
 			default:
 				if cluster.Conf.LogLevel > 2 {
 					cluster.LogPrintf(LvlDbg, "Monitoring server loop")
-					for k, v := range cluster.Servers {
-						cluster.LogPrintf(LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
-					}
-					if cluster.GetMaster() != nil {
-						cluster.LogPrintf(LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.GetMaster().State, cluster.GetMaster().PrevState)
-						for k, v := range cluster.slaves {
-							cluster.LogPrintf(LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+					if cluster.Servers[0] != nil {
+						cluster.LogPrintf(LvlDbg, "Servers not nil : %v\n", cluster.Servers)
+						for k, v := range cluster.Servers {
+							cluster.LogPrintf(LvlDbg, "Servers loops k : %d, url : %s, state : %s, prevstate %s", k, v.URL, v.State, v.PrevState)
+							cluster.LogPrintf(LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+						}
+						if cluster.GetMaster() != nil {
+							cluster.LogPrintf(LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.GetMaster().State, cluster.GetMaster().PrevState)
+							for k, v := range cluster.slaves {
+								cluster.LogPrintf(LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+							}
 						}
 					}
 				}
@@ -531,13 +594,13 @@ func (cluster *Cluster) Run() {
 						wg.Add(1)
 						go cluster.refreshProxies(wg)
 					}
-					if cluster.sme.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.sme.IsInSchemaMonitor() {
+					if cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.StateMachine.IsInSchemaMonitor() {
 						go cluster.MonitorSchema()
 					}
 					if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
 						cluster.InjectProxiesTraffic()
 					}
-					if cluster.sme.GetHeartbeats()%30 == 0 {
+					if cluster.StateMachine.GetHeartbeats()%30 == 0 {
 						go cluster.initOrchetratorNodes()
 						cluster.MonitorQueryRules()
 						cluster.MonitorVariablesDiff()
@@ -545,13 +608,15 @@ func (cluster *Cluster) Run() {
 						cluster.IsValidBackup = cluster.HasValidBackup()
 						go cluster.CheckCredentialRotation()
 						cluster.CheckCanSaveDynamicConfig()
+						cluster.CheckIsOverwrite()
 
 					} else {
-						cluster.sme.PreserveState("WARN0093")
-						cluster.sme.PreserveState("WARN0084")
-						cluster.sme.PreserveState("WARN0095")
-						cluster.sme.PreserveState("WARN0101")
-						cluster.sme.PreserveState("ERR00090")
+						cluster.StateMachine.PreserveState("WARN0093")
+						cluster.StateMachine.PreserveState("WARN0084")
+						cluster.StateMachine.PreserveState("WARN0095")
+						cluster.StateMachine.PreserveState("WARN0101")
+						cluster.StateMachine.PreserveState("ERR00090")
+						cluster.StateMachine.PreserveState("WARN0102")
 					}
 					if !cluster.CanInitNodes {
 						cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
@@ -560,15 +625,19 @@ func (cluster *Cluster) Run() {
 						cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
 					}
 
-					if cluster.sme.GetHeartbeats()%36000 == 0 {
+					if cluster.StateMachine.GetHeartbeats()%36000 == 0 {
 						cluster.ResticPurgeRepo()
 					} else {
-						cluster.sme.PreserveState("WARN0094")
+						cluster.StateMachine.PreserveState("WARN0094")
 					}
 				}
 				wg.Wait()
 				// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so elelection win but server is ignored see electFailoverCandidate
-				cluster.AddChildServers()
+				err := cluster.AddChildServers()
+
+				if err != nil {
+					cluster.LogPrintf(LvlDbg, "Fail of AddChildServers %s", err)
+				}
 
 				cluster.IsFailable = cluster.GetStatus()
 				// CheckFailed trigger failover code if passing all false positiv and constraints
@@ -586,9 +655,9 @@ func (cluster *Cluster) Run() {
 }
 
 func (cluster *Cluster) StateProcessing() {
-	if !cluster.sme.IsInFailover() {
+	if !cluster.StateMachine.IsInFailover() {
 		// trigger action on resolving states
-		cstates := cluster.sme.GetResolvedStates()
+		cstates := cluster.StateMachine.GetResolvedStates()
 		mybcksrv := cluster.GetBackupServer()
 		master := cluster.GetMaster()
 		for _, s := range cstates {
@@ -648,28 +717,28 @@ func (cluster *Cluster) StateProcessing() {
 		}
 		var states []string
 		if cluster.runOnceAfterTopology {
-			states = cluster.sme.GetFirstStates()
+			states = cluster.StateMachine.GetFirstStates()
 
 		} else {
-			states = cluster.sme.GetStates()
+			states = cluster.StateMachine.GetStates()
 		}
 		for i := range states {
 			cluster.LogPrintf("STATE", states[i])
 		}
 		// trigger action on resolving states
-		ostates := cluster.sme.GetOpenStates()
+		ostates := cluster.StateMachine.GetOpenStates()
 		for _, s := range ostates {
 			cluster.CheckCapture(s)
 		}
 
-		for _, s := range cluster.sme.GetLastOpenedStates() {
+		for _, s := range cluster.StateMachine.GetLastOpenedStates() {
 
 			cluster.CheckAlert(s)
 
 		}
 
-		cluster.sme.ClearState()
-		if cluster.sme.GetHeartbeats()%60 == 0 {
+		cluster.StateMachine.ClearState()
+		if cluster.StateMachine.GetHeartbeats()%60 == 0 {
 			cluster.Save()
 		}
 
@@ -683,6 +752,7 @@ func (cluster *Cluster) Stop() {
 
 }
 
+/*
 func (cluster *Cluster) Save() error {
 
 	type Save struct {
@@ -696,7 +766,7 @@ func (cluster *Cluster) Save() error {
 	var clsave Save
 	clsave.Crashes = cluster.Crashes
 	clsave.Servers = cluster.Conf.Hosts
-	clsave.SLA = cluster.sme.GetSla()
+	clsave.SLA = cluster.StateMachine.GetSla()
 	clsave.IsAllDbUp = cluster.IsAllDbUp
 	clsave.SLAHistory = cluster.SLAHistory
 
@@ -731,6 +801,330 @@ func (cluster *Cluster) Save() error {
 	}
 
 	return nil
+}*/
+
+func (cluster *Cluster) Save() error {
+
+	type Save struct {
+		Servers    string      `json:"servers"`
+		Crashes    crashList   `json:"crashes"`
+		SLA        state.Sla   `json:"sla"`
+		SLAHistory []state.Sla `json:"slaHistory"`
+		IsAllDbUp  bool        `json:"provisioned"`
+	}
+
+	var clsave Save
+	clsave.Crashes = cluster.Crashes
+	clsave.Servers = cluster.Conf.Hosts
+	clsave.SLA = cluster.StateMachine.GetSla()
+	clsave.IsAllDbUp = cluster.IsAllDbUp
+	clsave.SLAHistory = cluster.SLAHistory
+
+	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
+	err := ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
+	if err != nil {
+		return err
+	}
+
+	saveQeueryRules, _ := json.MarshalIndent(cluster.QueryRules, "", "\t")
+	err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/queryrules.json", saveQeueryRules, 0644)
+	if err != nil {
+		return err
+	}
+
+	if cluster.Conf.ConfRewrite {
+		//clone git repository in case its the first time
+		if cluster.Conf.GitUrl != "" {
+			CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitAccesToken, cluster.GetConf().WorkingDir)
+
+		}
+
+		//fmt.Printf("SAVE CLUSTER \n")
+		//cluster.Conf.PrintConf()
+		var myconf = make(map[string]config.Config)
+
+		myconf["saved-"+cluster.Name] = cluster.Conf
+
+		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml")
+			}
+			return err
+		}
+		defer file.Close()
+
+		readconf, _ := toml.Marshal(cluster.Conf)
+		t, _ := toml.LoadBytes(readconf)
+		s := t
+		keys := t.Keys()
+		for _, key := range keys {
+			_, ok := cluster.ImmuableFlagMap[key]
+			if ok {
+				s.Delete(key)
+			} else {
+				v, ok := cluster.DefaultFlagMap[key]
+				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
+					s.Delete(key)
+				}
+				if !ok {
+					s.Delete(key)
+				}
+			}
+		}
+		//to encrypt credentials before writting in the config file
+		for _, key := range keys {
+
+			_, ok := encryptFlag[key]
+			if ok {
+				v := s.Get(key)
+				if v != nil {
+
+					str := fmt.Sprintf("%v", v)
+					tmp := strings.Split(str, ":")
+					if len(tmp) == 2 {
+						str = tmp[1]
+						v = tmp[0]
+					}
+					p := crypto.Password{PlainText: str}
+					var err error
+					if cluster.key != nil {
+						p.Key, err = crypto.ReadKey(cluster.GetConf().MonitoringKeyPath)
+						if err != nil {
+							cluster.LogPrintf(LvlErr, "Missing key file or wrong key path")
+						}
+						p.Encrypt()
+
+						if len(tmp) == 2 {
+							str = fmt.Sprintf("%v", v)
+							str = str + ":" + p.CipherText
+							v = str
+
+						} else {
+							v = p.CipherText
+						}
+						cluster.LogPrintf(LvlDbg, "Encryption key during saving done for key %s : %s\n", key, v)
+						s.Set(key, v)
+					} else {
+						cluster.LogPrintf(LvlWarn, "Missing key file or wrong key path")
+					}
+				}
+
+			}
+		}
+		file.WriteString("[saved-" + cluster.Name + "]\ntitle = \"" + cluster.Name + "\" \n")
+		s.WriteTo(file)
+		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.ImmuableFlagMap)
+		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.DynamicFlagMap)
+
+		//to load the new generated config file in github
+		if cluster.Conf.GitUrl != "" {
+			PushConfigToGit(cluster.Conf.GitAccesToken, cluster.GetConf().WorkingDir, cluster.Name)
+		}
+
+		err = cluster.Overwrite()
+		if err != nil {
+			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
+		}
+	}
+
+	return nil
+}
+
+func PushConfigToGit(tok string, dir string, name string) {
+	//fmt.Printf("Push from git : tok %s, dir %s, name %s\n", tok, dir, name)
+	path := dir
+	/*
+		if !strings.Contains(dir, name) {
+			path += "/" + name
+		}*/
+	//directory := cluster.Conf.WorkingDir + "/" + cluster.Name
+	r, err := git.PlainOpen(path)
+	if err != nil {
+		log.Errorf("Git error : cannot PlainOpen : %s", err)
+	}
+
+	w, err := r.Worktree()
+	if err != nil {
+		log.Errorf("Git error : cannot Worktree : %s", err)
+	}
+
+	msg := "Update " + name + ".toml file"
+
+	// Adds the new file to the staging area.
+	//git_ex.Info("git add " + name + ".toml")
+	//_, err = w.Add(name + "/" + name + ".toml")
+	_, err = w.Add(name)
+	if err != nil {
+		log.Errorf("Git error : cannot Add %s : %s", name+".toml", err)
+	}
+	_, err = w.Add(name + "/" + name + ".toml")
+	if err != nil {
+		log.Errorf("Git error : cannot Add %s : %s", name+"/"+name+".toml", err)
+	}
+
+	//git_ex.Info("git commit -a -m \"New config file\"")
+	_, err = w.Commit(msg, &git.CommitOptions{
+		Author: &git_obj.Signature{
+			Name: "Replication-manager",
+			When: time.Now(),
+		},
+	})
+
+	if err != nil {
+		log.Errorf("Git error : cannot Commit : %s", err)
+	}
+
+	//git_ex.Info("git push")
+	// push using default options
+	err = r.Push(&git.PushOptions{Auth: &git_http.BasicAuth{
+		Username: "toto", // yes, this can be anything except an empty string
+		Password: tok,
+	}})
+	if err != nil {
+		log.Errorf("Git error : cannot Push : %s", err)
+
+	}
+}
+
+func CloneConfigFromGit(url string, tok string, dir string) {
+
+	//fmt.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
+	if _, err := os.Stat(dir + "/.gitignore"); os.IsNotExist(err) {
+		file, err := os.Create(dir + "/.gitignore")
+		if err != nil {
+			if os.IsPermission(err) {
+				log.Errorf(LvlInfo, "File permission denied: %s, %s", dir+".gitignore", err)
+			}
+		}
+		defer file.Close()
+		file.WriteString("/*\n!/*/*.toml\n")
+		file.Sync()
+	}
+
+	path := dir
+	/*
+		if !strings.Contains(dir, name) {
+			path += "/" + name
+		}*/
+	if _, err := os.Stat(path + "/.git"); err == nil {
+
+		// We instantiate a new repository targeting the given path (the .git folder)
+		r, err := git.PlainOpen(path)
+		if err != nil {
+			log.Errorf("Git error : cannot PlainOpen : %s", err)
+			return
+		}
+
+		// Get the working directory for the repository
+		w, err := r.Worktree()
+		if err != nil {
+			log.Errorf("Git error : cannot Worktree : %s", err)
+			return
+		}
+
+		// Pull the latest changes from the origin remote and merge into the current branch
+		//git_ex.Info("git pull origin")
+		err = w.Pull(&git.PullOptions{RemoteName: "origin"})
+
+		if err != nil && fmt.Sprintf("%v", err) != "already up-to-date" {
+			log.Errorf("Git error : cannot Pull : %s", err)
+		}
+
+	} else {
+		// Clone the given repository to the given directory
+		//git_ex.Info("git clone %s %s --recursive", url, path)
+
+		_, err := git.PlainClone(path, false, &git.CloneOptions{
+			URL:               url,
+			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+			Auth: &git_http.BasicAuth{
+				Username: "replication-manager", // yes, this can be anything except an empty string
+				Password: tok,
+			},
+		})
+
+		if err != nil {
+			log.Errorf("Git error : cannot Clone %s repository : %s", url, err)
+		}
+	}
+}
+
+func (cluster *Cluster) Overwrite() error {
+
+	if cluster.Conf.ConfRewrite {
+		var myconf = make(map[string]config.Config)
+
+		myconf["overwrite-"+cluster.Name] = cluster.Conf
+
+		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml")
+			}
+			return err
+		}
+		defer file.Close()
+
+		readconf, _ := toml.Marshal(cluster.Conf)
+		t, _ := toml.LoadBytes(readconf)
+		s := t
+		keys := t.Keys()
+		for _, key := range keys {
+
+			v, ok := cluster.ImmuableFlagMap[key]
+			if !ok {
+				s.Delete(key)
+			} else {
+
+				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
+					s.Delete(key)
+				}
+			}
+
+		}
+		//to encode credentials flag
+		for _, key := range keys {
+			_, ok := encryptFlag[key]
+			if ok {
+				v := s.Get(key)
+				if v != nil {
+					str := fmt.Sprintf("%v", v)
+					tmp := strings.Split(str, ":")
+					if len(tmp) == 2 {
+						str = tmp[1]
+						v = tmp[0]
+					}
+					p := crypto.Password{PlainText: str}
+					var err error
+					if cluster.key != nil {
+						p.Key, err = crypto.ReadKey(fmt.Sprintf("%v", cluster.GetConf().MonitoringKeyPath))
+						if err != nil {
+							cluster.LogPrintf(LvlErr, "Missing key file or wrong key path")
+						}
+						p.Encrypt()
+
+						if len(tmp) == 2 {
+							str = fmt.Sprintf("%v", v)
+							str = str + p.CipherText
+							v = str
+
+						} else {
+							v = p.CipherText
+						}
+						cluster.LogPrintf(LvlDbg, "Encryption key during saving done for key %s : %s\n", key, v)
+						s.Set(key, v)
+					} else {
+						cluster.LogPrintf(LvlWarn, "Missing key file or wrong key path")
+					}
+				}
+			}
+		}
+		file.WriteString("[overwrite-" + cluster.Name + "]\n")
+		s.WriteTo(file)
+	}
+
+	return nil
 }
 
 func (cluster *Cluster) InitAgent(conf config.Config) {
@@ -747,10 +1141,10 @@ func (cluster *Cluster) InitAgent(conf config.Config) {
 	return
 }
 
-func (cluster *Cluster) ReloadConfig(conf config.Config) {
+/*func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Conf = conf
 	cluster.Configurator.SetConfig(conf)
-	cluster.sme.SetFailoverState()
+	cluster.StateMachine.SetFailoverState()
 	cluster.runOnceAfterTopology = true
 
 	cluster.SetUnDiscovered()
@@ -760,8 +1154,22 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	go cluster.TopologyDiscover(wg)
 	wg.Wait()
 	cluster.newProxyList()
-	cluster.sme.RemoveFailoverState()
+	cluster.StateMachine.RemoveFailoverState()
 	cluster.initProxies()
+}*/
+
+func (cluster *Cluster) ReloadConfig(conf config.Config) {
+	cluster.Conf = conf
+	cluster.Configurator.SetConfig(conf)
+	cluster.InitFromConf()
+	cluster.StateMachine.SetFailoverState()
+	cluster.ResetStates()
+
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go cluster.TopologyDiscover(wg)
+	wg.Wait()
+
 }
 
 func (cluster *Cluster) FailoverForce() error {
@@ -788,11 +1196,11 @@ func (cluster *Cluster) FailoverForce() error {
 	wg.Wait()
 
 	if err != nil {
-		for _, s := range cluster.sme.GetStates() {
+		for _, s := range cluster.StateMachine.GetStates() {
 			cluster.LogPrint(s)
 		}
 		// Test for ERR00012 - No master detected
-		if cluster.sme.CurState.Search("ERR00012") {
+		if cluster.StateMachine.CurState.Search("ERR00012") {
 			for _, s := range cluster.Servers {
 				if s.State == "" {
 					s.SetState(stateFailed)
@@ -962,7 +1370,7 @@ func (cluster *Cluster) MonitorSchema() {
 	if cluster.GetMaster().Conn == nil {
 		return
 	}
-	cluster.sme.SetMonitorSchemaState()
+	cluster.StateMachine.SetMonitorSchemaState()
 	cluster.GetMaster().Conn.SetConnMaxLifetime(3595 * time.Second)
 
 	tables, tablelist, logs, err := dbhelper.GetTables(cluster.GetMaster().Conn, cluster.GetMaster().DBVersion)
@@ -1029,7 +1437,7 @@ func (cluster *Cluster) MonitorSchema() {
 	cluster.DBIndexSize = totindexsize
 	cluster.DBTableSize = tottablesize
 	cluster.GetMaster().DictTables = tables
-	cluster.sme.RemoveMonitorSchemaState()
+	cluster.StateMachine.RemoveMonitorSchemaState()
 }
 
 func (cluster *Cluster) MonitorQueryRules() {
@@ -1130,4 +1538,46 @@ func (cluster *Cluster) ReloadCertificates() {
 	for _, pri := range cluster.Proxies {
 		pri.CertificatesReload()
 	}
+}
+
+func (cluster *Cluster) ResetStates() {
+	cluster.SetUnDiscovered()
+	cluster.slaves = nil
+	cluster.master = nil
+	cluster.oldMaster = nil
+	cluster.vmaster = nil
+	cluster.Servers = nil
+	cluster.Proxies = nil
+	//
+	cluster.ServerIdList = nil
+	cluster.hostList = nil
+	cluster.clusterList = nil
+	cluster.proxyList = nil
+	cluster.ProxyIdList = nil
+	//cluster.FailoverCtr = 0
+	cluster.SetFailoverCtr(0)
+	//cluster.FailoverTs = 0
+	cluster.SetFailTime(0)
+	cluster.Connections = 0
+	cluster.SLAHistory = nil
+	//
+	cluster.Crashes = nil
+
+	cluster.IsAllDbUp = false
+	cluster.IsDown = true
+	cluster.IsClusterDown = true
+	cluster.IsProvision = false
+	cluster.IsNotMonitoring = true
+
+	cluster.canFlashBack = true
+	cluster.CanInitNodes = true
+	cluster.CanConnectVault = true
+	cluster.runOnceAfterTopology = true
+	cluster.testStopCluster = true
+	cluster.testStartCluster = true
+
+	cluster.newServerList()
+	cluster.newProxyList()
+	cluster.StateMachine.RemoveFailoverState()
+	cluster.initProxies()
 }

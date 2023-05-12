@@ -30,14 +30,14 @@ import (
 
 func (cluster *Cluster) SetStatus() {
 	if cluster.master == nil {
-		cluster.sme.SetMasterUpAndSync(false, false, false)
+		cluster.StateMachine.SetMasterUpAndSync(false, false, false)
 	} else {
-		cluster.sme.SetMasterUpAndSync(!cluster.master.IsDown(), cluster.master.SemiSyncMasterStatus, cluster.master.HaveHealthyReplica)
+		cluster.StateMachine.SetMasterUpAndSync(!cluster.master.IsDown(), cluster.master.SemiSyncMasterStatus, cluster.master.HaveHealthyReplica)
 	}
 	cluster.Uptime = cluster.GetStateMachine().GetUptime()
 	cluster.UptimeFailable = cluster.GetStateMachine().GetUptimeFailable()
 	cluster.UptimeSemiSync = cluster.GetStateMachine().GetUptimeSemiSync()
-	cluster.IsNotMonitoring = cluster.sme.IsInFailover()
+	cluster.IsNotMonitoring = cluster.StateMachine.IsInFailover()
 	cluster.IsCapturing = cluster.IsInCaptureMode()
 	cluster.MonitorSpin = fmt.Sprintf("%d ", cluster.GetStateMachine().GetHeartbeats())
 	cluster.IsProvision = cluster.IsProvisioned()
@@ -238,7 +238,7 @@ func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 	}
 	if cluster.Conf.SchedulerJobsSSH {
 		var err error
-		cluster.LogPrintf(LvlInfo, "Schedule Sla rotate at: %s", cluster.Conf.SchedulerJobsSSHCron)
+		cluster.LogPrintf(LvlInfo, "Schedule SshDbJob rotate at: %s", cluster.Conf.SchedulerJobsSSHCron)
 		cluster.idSchedulerDbsjobsSsh, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerJobsSSHCron, func() {
 			for _, s := range cluster.Servers {
 				s.JobRunViaSSH()
@@ -532,7 +532,6 @@ func (cluster *Cluster) SetClusterProxySqlCredentialsFromConfig() {
 
 func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 	cluster.Configurator.SetConfig(cluster.Conf)
-
 	splitmonitoringuser := cluster.Conf.User
 
 	var err error
@@ -604,6 +603,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 		}
 
 	}
+	cluster.Save()
 }
 
 func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
@@ -733,8 +733,8 @@ func (cluster *Cluster) SetBackupPhysicalType(backup string) {
 
 func (cluster *Cluster) SetEmptySla() {
 	cluster.LogPrintf(LvlInfo, "Rotate SLA")
-	cluster.SLAHistory = append(cluster.SLAHistory, cluster.sme.GetSla())
-	cluster.sme.ResetUptime()
+	cluster.SLAHistory = append(cluster.SLAHistory, cluster.StateMachine.GetSla())
+	cluster.StateMachine.ResetUptime()
 }
 
 func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
@@ -845,7 +845,7 @@ func (cluster *Cluster) SetReplicationCredential(credential string) {
 }
 
 func (cluster *Cluster) SetUnDiscovered() {
-	cluster.sme.UnDiscovered()
+	cluster.StateMachine.UnDiscovered()
 	cluster.Topology = topoUnknown
 }
 
@@ -874,7 +874,7 @@ func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
 
 func (cluster *Cluster) SetState(key string, s state.State) {
 	if !strings.Contains(cluster.Conf.MonitorIgnoreError, key) {
-		cluster.sme.AddState(key, s)
+		cluster.StateMachine.AddState(key, s)
 	}
 }
 
@@ -969,15 +969,20 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 				}
 			}
 			//	cluster.LogPrintf(LvlErr, strings.Join(hosts, ","))
-			cluster.SetDbServerHosts(strings.Join(hosts, ","))
-
-			cluster.sme.SetFailoverState()
-			cluster.newServerList()
+			err = cluster.SetDbServerHosts(strings.Join(hosts, ","))
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "SetServicePlan : Fail SetDbServerHosts : %s, for hosts : %s", err, strings.Join(hosts, ","))
+			}
+			cluster.StateMachine.SetFailoverState()
+			err = cluster.newServerList()
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "SetServicePlan : Fail newServerList : %s", err)
+			}
 			wg := new(sync.WaitGroup)
 			wg.Add(1)
 			go cluster.TopologyDiscover(wg)
 			wg.Wait()
-			cluster.sme.RemoveFailoverState()
+			cluster.StateMachine.RemoveFailoverState()
 			cluster.Conf.ProxysqlOn = true
 			cluster.Conf.ProxysqlHosts = ""
 			cluster.Conf.MdbsProxyOn = true
@@ -997,11 +1002,24 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 					} else {
 						cluster.LogPrintf(LvlInfo, "Adding shard proxy monitor 127.0.0.1:%s", portshardproxy)
 					}
-					cluster.AddSeededProxy(config.ConstProxySqlproxy, "127.0.0.1", portproxysql, "", "")
-					cluster.AddSeededProxy(config.ConstProxySpider, "127.0.0.1", portshardproxy, "", "")
+					err = cluster.AddSeededProxy(config.ConstProxySqlproxy, "127.0.0.1", portproxysql, "", "")
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Fail adding proxysql monitor on 127.0.0.1 %s", err)
+					}
+					err = cluster.AddSeededProxy(config.ConstProxySpider, "127.0.0.1", portshardproxy, "", "")
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Fail adding shard proxy monitor on 127.0.0.1 %s", err)
+					}
 				} else {
-					cluster.AddSeededProxy(config.ConstProxySpider, "shardproxy1", "3306", "", "")
-					cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, "", "")
+					err = cluster.AddSeededProxy(config.ConstProxySpider, "shardproxy1", "3306", "", "")
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Fail adding shard proxy monitor on 3306 %s", err)
+					}
+					cluster.Conf.ProxysqlUser = "external"
+					err = cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, cluster.Conf.ProxysqlUser, cluster.Conf.ProxysqlPassword)
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Fail adding proxysql monitor on %s %s", cluster.Conf.ProxysqlPort, err)
+					}
 				}
 			} else {
 				cluster.LogPrintf(LvlInfo, "Copy proxy list from cluster head %s", cluster.Conf.ClusterHead)
@@ -1034,6 +1052,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops))
 			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
 			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
+			cluster.Save()
 			return nil
 		}
 	}
@@ -1266,4 +1285,8 @@ func (cluster *Cluster) SetProvProxyServiceType(value string) error {
 	cluster.Conf.ProvProxType = value
 	cluster.SetProxiesReprovCookie()
 	return nil
+}
+
+func (cluster *Cluster) Exit() {
+	cluster.exit = true
 }

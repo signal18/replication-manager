@@ -138,15 +138,8 @@ func (cluster *Cluster) RotatePasswords() error {
 				cluster.LogPrintf(LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
 			}
 			if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {
-				//logger := logrus.New()
 				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster. Check the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
 				cluster.LogPrintf("ALERT", msg)
-
-				//entry := logrus.NewEntry(logger)
-				//msg := "COUCOU test"
-				//entry.Log(logrus.ErrorLevel, msg)
-				//p := pushover.NewHook(cluster.GetConf().PushoverAppToken, cluster.GetConf().PushoverUserToken)
-				//p.Fire(entry)
 
 			}
 			if cluster.Conf.MailTo != "" {

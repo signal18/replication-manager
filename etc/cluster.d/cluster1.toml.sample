@@ -1,0 +1,203 @@
+[cluster1]
+title = "cluster1"
+prov-orchestrator = "onpremise"
+prov-db-tags = "innodb,noquerycache,slow,pfs,pkg,linux,smallredolog,logtotable"
+prov-db-memory = "256"
+prov-db-memory-shared-pct = "threads:16,innodb:60,myisam:10,aria:10,rocksdb:1,tokudb:1,s3:1,archive:1,querycache:0"
+prov-db-disk-size = "1"
+prov-db-cpu-cores = "1"
+prov-db-disk-iops = "300"
+
+db-servers-hosts = "127.0.0.1:3331"
+db-servers-prefered-master = "127.0.0.1:3331"
+db-servers-credential = "root:mariadb"
+db-servers-connect-timeout = 1
+replication-credential = "root:mariadb"
+
+verbose = false
+log-failed-election  = true
+log-level = 1
+log-rotate-max-age = 7
+log-rotate-max-backup = 7
+log-rotate-max-size = 5
+log-sql-in-monitoring   = true
+log-sst = true
+
+##############
+## TOPOLOGY ##
+##############
+
+replication-multi-master = false
+replication-multi-tier-slave = false
+
+############
+# BACKUPS ##
+###########
+
+
+backup-streaming = false
+backup-streaming-aws-access-key-id = "admin"
+backup-streaming-aws-access-secret = "xxxx"
+backup-streaming-endpoint= "https://s3.signal18.io/"
+backup-streaming-region= "fr-1"
+backup-streaming-bucket= "repman"
+
+backup-restic = true
+backup-restic-aws =  false
+backup-physical-type = "mariabackup"
+backup-logical-type = "mysqldump"
+backup-restic-aws-access-secret = "xxxx"
+backup-restic-password = "xxxx"
+backup-restic-binary-path = "/usr/local/bin/restic"
+
+monitoring-scheduler = true
+scheduler-db-servers-logical-backup  = false
+scheduler-db-servers-logical-backup-cron= "0 0 1 * * 6"
+scheduler-db-servers-logs   =  false
+scheduler-db-servers-logs-cron = "0 0 * * * *"
+scheduler-db-servers-logs-table-keep = 4
+scheduler-db-servers-logs-table-rotate  = false
+scheduler-db-servers-logs-table-rotate-cron = "0 0 0/6 * * *"
+scheduler-db-servers-optimize  = false
+scheduler-db-servers-optimize-cron = "0 0 3 1 * 5"
+scheduler-db-servers-physical-backup = false
+scheduler-db-servers-physical-backup-cron = "0 0 0 * * *"
+
+##############
+## FAILOVER ##
+##############
+
+failover-mode = "manual"
+failover-pre-script = ""
+failover-post-script = ""
+
+## Slaves will re enter with read-only
+
+failover-readonly-state = true
+failover-event-scheduler = false
+failover-event-status = false
+
+## Failover after N failures detection
+
+failover-falsepositive-ping-counter = 5
+
+## Cancel failover if already N failover
+## Cancel failover if last failover was N seconds before
+## Cancel failover in semi-sync when one slave is not in sync
+## Cancel failover if one slave receive master heartbeat
+## Cancel failover when replication delay is more than N seconds
+
+failover-limit = 0
+failover-time-limit = 0
+failover-at-sync = false
+failover-max-slave-delay = 30
+failover-restart-unsafe = false
+
+# failover-falsepositive-heartbeat = true
+# failover-falsepositive-heartbeat-timeout = 3
+# failover-falsepositive-maxscale = false
+# failover-falsepositive-maxscale-timeout = 14
+# failover-falsepositive-external = false
+# failover-falsepositive-external-port = 80
+
+################
+## SWITCHOVER ##
+################
+
+## In switchover Wait N milliseconds before killing long running transactions
+## Cancel switchover if transaction running more than N seconds
+## Cancel switchover if write query running more than N seconds
+## Cancel switchover if one of the slaves is not synced based on GTID equality
+
+switchover-wait-kill = 5000
+switchover-wait-trx = 10
+switchover-wait-write-query = 10
+switchover-at-equal-gtid = false
+switchover-at-sync = false
+switchover-max-slave-delay = 30
+
+############
+## REJOIN ##
+############
+
+autorejoin = true
+autorejoin-script = ""
+autorejoin-semisync = true
+autorejoin-backup-binlog = true
+autorejoin-flashback = false
+autorejoin-mysqldump = false
+
+####################
+## CHECKS & FORCE ##
+####################
+
+check-replication-filters = true
+check-binlog-filters = true
+check-replication-state = true
+
+force-slave-heartbeat= false
+force-slave-heartbeat-retry = 5
+force-slave-heartbeat-time = 3
+force-slave-gtid-mode = false
+force-slave-semisync = false
+force-slave-failover-readonly-state = false
+force-binlog-row = false
+force-binlog-annotate = false
+force-binlog-slowqueries = false
+force-binlog-compress = false
+force-binlog-checksum = false
+force-inmemory-binlog-cache-size = false
+force-disk-relaylog-size-limit = false
+force-disk-relaylog-size-limit-size = 1000000000
+force-sync-binlog = false
+force-sync-innodb = false
+
+##############
+## MAXSCALE ##
+##############
+
+## for 2 nodes cluster maxscale can be driven by replication manager
+
+maxscale = false
+maxscale-binlog = false
+maxscale-servers = "192.168.0.201"
+maxscale-port = 4003
+maxscale-user = "admin"
+maxscale-pass = "mariadb"
+
+## When true replication manager drive maxscale server state
+## Not required unless multiple maxscale or release does not support detect_stale_slave
+
+maxscale-disable-monitor = false
+
+## maxinfo|maxadmin
+
+maxscale-get-info-method = "maxadmin"
+maxscale-maxinfo-port = 4002
+
+maxscale-write-port = 4007
+maxscale-read-port = 4008
+maxscale-read-write-port = 4006
+maxscale-binlog-port = 4000
+
+#############
+## HAPROXY ##
+#############
+
+## Wrapper mode unless maxscale or proxysql required to be located with replication-manager
+
+haproxy = false
+haproxy-binary-path = "/usr/sbin/haproxy"
+
+## Read write traffic
+## Read only load balance least connection traffic
+haproxy-write-port = 3306
+haproxy-read-port = 3307
+
+####################
+## SHARDING PROXY ##
+####################
+
+mdbshardproxy = false
+mdbshardproxy-hosts = "127.0.0.1:3306"
+mdbshardproxy-user = "root:mariadb"
