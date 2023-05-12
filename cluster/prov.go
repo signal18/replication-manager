@@ -47,6 +47,11 @@ func (cluster *Cluster) Bootstrap() error {
 		if err != nil {
 			return errors.New("Abording test, can't create bench table")
 		}
+		if cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
+			for _, server := range cluster.Servers {
+				server.JobsCreateTable()
+			}
+		}
 	}
 	return nil
 }

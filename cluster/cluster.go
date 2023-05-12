@@ -487,6 +487,7 @@ func (cluster *Cluster) InitFromConf() {
 	}
 	//fmt.Printf("INIT CLUSTER CONF :\n")
 	//cluster.Conf.PrintConf()
+	cluster.initScheduler()
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
@@ -517,6 +518,9 @@ func (cluster *Cluster) initOrchetratorNodes() {
 func (cluster *Cluster) initScheduler() {
 	if cluster.Conf.MonitorScheduler {
 		cluster.LogPrintf(LvlInfo, "Starting cluster scheduler")
+		if cluster.scheduler != nil {
+			cluster.scheduler.Stop()
+		}
 		cluster.scheduler = cron.New()
 		cluster.SetSchedulerBackupLogical()
 		cluster.SetSchedulerLogsTableRotate()
@@ -534,7 +538,6 @@ func (cluster *Cluster) initScheduler() {
 }
 
 func (cluster *Cluster) Run() {
-	cluster.initScheduler()
 	interval := time.Second
 
 	for cluster.exit == false {

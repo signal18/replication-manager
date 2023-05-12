@@ -340,7 +340,7 @@ func init() {
 	}
 
 	monitorCmd.Flags().StringVar(&conf.SchedulerReceiverPorts, "scheduler-db-servers-receiver-ports", "4444", "Scheduler TCP port to send data to db node, if list port affection is modulo db nodes")
-	monitorCmd.Flags().StringVar(&conf.SchedulerSenderPorts, "scheduler-db-servers-sender-ports", "", "Scheduler TCP port to receive data from db node, consume one port per tranfert if not set, pick one available port")
+	monitorCmd.Flags().StringVar(&conf.SchedulerSenderPorts, "scheduler-db-servers-sender-ports", "", "Scheduler TCP port to receive data from db node, consume one port per transfert if not set, pick one available port")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerReceiverUseSSL, "scheduler-db-servers-receiver-use-ssl", false, "Listner to send data to db node is use SSL")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerBackupLogical, "scheduler-db-servers-logical-backup", true, "Schedule logical backup")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerBackupPhysical, "scheduler-db-servers-physical-backup", false, "Schedule logical backup")
