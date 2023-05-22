@@ -2,29 +2,32 @@
 
 include = "./etc/local/masterslave/proxysql"
 prov-orchestrator = "local"
-onpremise-ssh = true
-onpremise-ssh-credential = "emma:"
-scheduler-jobs-ssh = true
+#onpremise-ssh = true
+#onpremise-ssh-credential = "emma:"
+#scheduler-jobs-ssh = true
 monitoring-address = "127.0.0.1"
-monitoring-scheduler = true
-scheduler-db-servers-logs = true
-scheduler-db-servers-logs-cron = "0 * * * * *"
-scheduler-db-servers-physical-backup = false
-backup-physical-type = "mariabackup"
-scheduler-db-servers-optimize = false
-scheduler-db-servers-logical-backup = false
-scheduler-db-servers-logs-table-rotate = false
-scheduler-db-servers-sender-ports="4445,4446,4447,4448,4449"
+#monitoring-scheduler = true
+#scheduler-db-servers-logs = true
+#scheduler-db-servers-logs-cron = "0 * * * * *"
+#scheduler-db-servers-physical-backup = false
+#backup-physical-type = "mariabackup"
+#scheduler-db-servers-optimize = false
+#scheduler-db-servers-logical-backup = false
+#scheduler-db-servers-logs-table-rotate = false
+#scheduler-db-servers-sender-ports="4445,4446,4447,4448,4449"
 
 #mariadb
 prov-db-binary-basedir= "/usr/sbin"
 prov-db-client-basedir= "/usr/bin"
-backup-mysqlclient-path ="/usr/bin/mysql"
-backup-mysqlbinlog-path = "/usr/bin/mysqlbinlog"
-backup-mysqldump-options = "--hex-blob --single-transaction --verbose --all-databases --add-drop-database"
+#backup-mysqlclient-path ="/usr/bin/mysql"
+#backup-mysqlbinlog-path = "/usr/bin/mysqlbinlog"
+#backup-mysqldump-options = "--hex-blob --single-transaction --verbose --all-databases --add-drop-database"
 
-#monitoring-save-config = true
-#monitoring-key-path = ".replication-manager.key"
+monitoring-save-config = true
+monitoring-key-path = ".replication-manager.key"
+
+git-url = "https://github.com/emmaloubersac/Test.git"
+git-acces-token = "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"
 
 monitoring-sharedir="./share"
 monitoring-datadir="/home/emma/repdata"

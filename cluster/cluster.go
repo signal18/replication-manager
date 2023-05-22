@@ -61,141 +61,142 @@ type ClusterResponse struct {
 }
 
 type Cluster struct {
-	Name                          string                      `json:"name"`
-	Tenant                        string                      `json:"tenant"`
-	WorkingDir                    string                      `json:"workingDir"`
-	Servers                       serverList                  `json:"-"`
-	ServerIdList                  []string                    `json:"dbServers"`
-	Crashes                       crashList                   `json:"dbServersCrashes"`
-	Proxies                       proxyList                   `json:"-"`
-	ProxyIdList                   []string                    `json:"proxyServers"`
-	FailoverCtr                   int                         `json:"failoverCounter"`
-	FailoverTs                    int64                       `json:"failoverLastTime"`
-	Status                        string                      `json:"activePassiveStatus"`
-	IsSplitBrain                  bool                        `json:"isSplitBrain"`
-	IsSplitBrainBck               bool                        `json:"-"`
-	IsFailedArbitrator            bool                        `json:"isFailedArbitrator"`
-	IsLostMajority                bool                        `json:"isLostMajority"`
-	IsDown                        bool                        `json:"isDown"`
-	IsClusterDown                 bool                        `json:"isClusterDown"`
-	IsAllDbUp                     bool                        `json:"isAllDbUp"`
-	IsFailable                    bool                        `json:"isFailable"`
-	IsPostgres                    bool                        `json:"isPostgres"`
-	IsProvision                   bool                        `json:"isProvision"`
-	IsNeedProxiesRestart          bool                        `json:"isNeedProxyRestart"`
-	IsNeedProxiesReprov           bool                        `json:"isNeedProxiesRestart"`
-	IsNeedDatabasesRestart        bool                        `json:"isNeedDatabasesRestart"`
-	IsNeedDatabasesRollingRestart bool                        `json:"isNeedDatabasesRollingRestart"`
-	IsNeedDatabasesRollingReprov  bool                        `json:"isNeedDatabasesRollingReprov"`
-	IsNeedDatabasesReprov         bool                        `json:"isNeedDatabasesReprov"`
-	IsValidBackup                 bool                        `json:"isValidBackup"`
-	IsNotMonitoring               bool                        `json:"isNotMonitoring"`
-	IsCapturing                   bool                        `json:"isCapturing"`
-	Conf                          config.Config               `json:"config"`
-	Confs                         *config.ConfVersion         `json:"-"`
-	ImmuableFlagMap               map[string]interface{}      `json:"-"`
-	DynamicFlagMap                map[string]interface{}      `json:"-"`
-	DefaultFlagMap                map[string]interface{}      `json:"-"`
-	CleanAll                      bool                        `json:"cleanReplication"` //used in testing
-	Topology                      string                      `json:"topology"`
-	Uptime                        string                      `json:"uptime"`
-	UptimeFailable                string                      `json:"uptimeFailable"`
-	UptimeSemiSync                string                      `json:"uptimeSemisync"`
-	MonitorSpin                   string                      `json:"monitorSpin"`
-	DBTableSize                   int64                       `json:"dbTableSize"`
-	DBIndexSize                   int64                       `json:"dbIndexSize"`
-	Connections                   int                         `json:"connections"`
-	QPS                           int64                       `json:"qps"`
-	LogPushover                   *log.Logger                 `json:"-"`
-	Log                           s18log.HttpLog              `json:"log"`
-	LogSlack                      *log.Logger                 `json:"-"`
-	JobResults                    map[string]*JobResult       `json:"jobResults"`
-	Grants                        map[string]string           `json:"-"`
-	tlog                          *s18log.TermLog             `json:"-"`
-	htlog                         *s18log.HttpLog             `json:"-"`
-	SQLGeneralLog                 s18log.HttpLog              `json:"sqlGeneralLog"`
-	SQLErrorLog                   s18log.HttpLog              `json:"sqlErrorLog"`
-	MonitorType                   map[string]string           `json:"monitorType"`
-	TopologyType                  map[string]string           `json:"topologyType"`
-	FSType                        map[string]bool             `json:"fsType"`
-	DiskType                      map[string]string           `json:"diskType"`
-	VMType                        map[string]bool             `json:"vmType"`
-	Agents                        []Agent                     `json:"agents"`
-	hostList                      []string                    `json:"-"`
-	proxyList                     []string                    `json:"-"`
-	clusterList                   map[string]*Cluster         `json:"-"`
-	slaves                        serverList                  `json:"slaves"`
-	master                        *ServerMonitor              `json:"master"`
-	oldMaster                     *ServerMonitor              `json:"oldmaster"`
-	vmaster                       *ServerMonitor              `json:"vmaster"`
-	mxs                           *maxscale.MaxScale          `json:"-"`
-	dbUser                        string                      `json:"-"`
-	oldDbUser                     string                      `json:"-"`
-	dbPass                        string                      `json:"-"`
-	oldDbPass                     string                      `json:"-"`
-	rplUser                       string                      `json:"-"`
-	rplPass                       string                      `json:"-"`
-	proxysqlUser                  string                      `json:"-"`
-	proxysqlPass                  string                      `json:"-"`
-	StateMachine                  *state.StateMachine         `json:"stateMachine"`
-	runOnceAfterTopology          bool                        `json:"-"`
-	logPtr                        *os.File                    `json:"-"`
-	termlength                    int                         `json:"-"`
-	runUUID                       string                      `json:"-"`
-	cfgGroupDisplay               string                      `json:"-"`
-	repmgrVersion                 string                      `json:"-"`
-	repmgrHostname                string                      `json:"-"`
-	key                           []byte                      `json:"-"`
-	exitMsg                       string                      `json:"-"`
-	exit                          bool                        `json:"-"`
-	canFlashBack                  bool                        `json:"-"`
-	failoverCond                  *nbc.NonBlockingChan        `json:"-"`
-	switchoverCond                *nbc.NonBlockingChan        `json:"-"`
-	rejoinCond                    *nbc.NonBlockingChan        `json:"-"`
-	bootstrapCond                 *nbc.NonBlockingChan        `json:"-"`
-	altertableCond                *nbc.NonBlockingChan        `json:"-"`
-	addtableCond                  *nbc.NonBlockingChan        `json:"-"`
-	statecloseChan                chan state.State            `json:"-"`
-	switchoverChan                chan bool                   `json:"-"`
-	errorChan                     chan error                  `json:"-"`
-	testStopCluster               bool                        `json:"-"`
-	testStartCluster              bool                        `json:"-"`
-	lastmaster                    *ServerMonitor              `json:"-"`
-	benchmarkType                 string                      `json:"-"`
-	HaveDBTLSCert                 bool                        `json:"haveDBTLSCert"`
-	HaveDBTLSOldCert              bool                        `json:"haveDBTLSOldCert"`
-	tlsconf                       *tls.Config                 `json:"-"`
-	tlsoldconf                    *tls.Config                 `json:"-"`
-	tunnel                        *ssh.Client                 `json:"-"`
-	QueryRules                    map[uint32]config.QueryRule `json:"-"`
-	Backups                       []v3.Backup                 `json:"-"`
-	SLAHistory                    []state.Sla                 `json:"slaHistory"`
-	APIUsers                      map[string]APIUser          `json:"apiUsers"`
-	Schedule                      map[string]cron.Entry       `json:"-"`
-	scheduler                     *cron.Cron                  `json:"-"`
-	idSchedulerPhysicalBackup     cron.EntryID                `json:"-"`
-	idSchedulerLogicalBackup      cron.EntryID                `json:"-"`
-	idSchedulerOptimize           cron.EntryID                `json:"-"`
-	idSchedulerErrorLogs          cron.EntryID                `json:"-"`
-	idSchedulerLogRotateTable     cron.EntryID                `json:"-"`
-	idSchedulerSLARotate          cron.EntryID                `json:"-"`
-	idSchedulerRollingRestart     cron.EntryID                `json:"-"`
-	idSchedulerDbsjobsSsh         cron.EntryID                `json:"-"`
-	idSchedulerRollingReprov      cron.EntryID                `json:"-"`
-	WaitingRejoin                 int                         `json:"waitingRejoin"`
-	WaitingSwitchover             int                         `json:"waitingSwitchover"`
-	WaitingFailover               int                         `json:"waitingFailover"`
-	Configurator                  configurator.Configurator   `json:"configurator"`
-	DiffVariables                 []VariableDiff              `json:"diffVariables"`
-	inInitNodes                   bool                        `json:"-"`
-	CanInitNodes                  bool                        `json:"canInitNodes"`
-	errorInitNodes                error                       `json:"-"`
-	inConnectVault                bool                        `json:"-"`
-	CanConnectVault               bool                        `json:"canConnectVault"`
-	errorConnectVault             error                       `json:"-"`
-	SqlErrorLog                   *logsql.Logger              `json:"-"`
-	SqlGeneralLog                 *logsql.Logger              `json:"-"`
-	SstAvailablePorts             map[string]string           `json:"sstAvailablePorts"`
+	Name                          string                 `json:"name"`
+	Tenant                        string                 `json:"tenant"`
+	WorkingDir                    string                 `json:"workingDir"`
+	Servers                       serverList             `json:"-"`
+	ServerIdList                  []string               `json:"dbServers"`
+	Crashes                       crashList              `json:"dbServersCrashes"`
+	Proxies                       proxyList              `json:"-"`
+	ProxyIdList                   []string               `json:"proxyServers"`
+	FailoverCtr                   int                    `json:"failoverCounter"`
+	FailoverTs                    int64                  `json:"failoverLastTime"`
+	Status                        string                 `json:"activePassiveStatus"`
+	IsSplitBrain                  bool                   `json:"isSplitBrain"`
+	IsSplitBrainBck               bool                   `json:"-"`
+	IsFailedArbitrator            bool                   `json:"isFailedArbitrator"`
+	IsLostMajority                bool                   `json:"isLostMajority"`
+	IsDown                        bool                   `json:"isDown"`
+	IsClusterDown                 bool                   `json:"isClusterDown"`
+	IsAllDbUp                     bool                   `json:"isAllDbUp"`
+	IsFailable                    bool                   `json:"isFailable"`
+	IsPostgres                    bool                   `json:"isPostgres"`
+	IsProvision                   bool                   `json:"isProvision"`
+	IsNeedProxiesRestart          bool                   `json:"isNeedProxyRestart"`
+	IsNeedProxiesReprov           bool                   `json:"isNeedProxiesRestart"`
+	IsNeedDatabasesRestart        bool                   `json:"isNeedDatabasesRestart"`
+	IsNeedDatabasesRollingRestart bool                   `json:"isNeedDatabasesRollingRestart"`
+	IsNeedDatabasesRollingReprov  bool                   `json:"isNeedDatabasesRollingReprov"`
+	IsNeedDatabasesReprov         bool                   `json:"isNeedDatabasesReprov"`
+	IsValidBackup                 bool                   `json:"isValidBackup"`
+	IsNotMonitoring               bool                   `json:"isNotMonitoring"`
+	IsCapturing                   bool                   `json:"isCapturing"`
+	Conf                          config.Config          `json:"config"`
+	Confs                         *config.ConfVersion    `json:"-"`
+	ImmuableFlagMap               map[string]interface{} `json:"-"`
+	DynamicFlagMap                map[string]interface{} `json:"-"`
+	DefaultFlagMap                map[string]interface{} `json:"-"`
+	CleanAll                      bool                   `json:"cleanReplication"` //used in testing
+	Topology                      string                 `json:"topology"`
+	Uptime                        string                 `json:"uptime"`
+	UptimeFailable                string                 `json:"uptimeFailable"`
+	UptimeSemiSync                string                 `json:"uptimeSemisync"`
+	MonitorSpin                   string                 `json:"monitorSpin"`
+	DBTableSize                   int64                  `json:"dbTableSize"`
+	DBIndexSize                   int64                  `json:"dbIndexSize"`
+	Connections                   int                    `json:"connections"`
+	QPS                           int64                  `json:"qps"`
+	LogPushover                   *log.Logger            `json:"-"`
+	Log                           s18log.HttpLog         `json:"log"`
+	LogSlack                      *log.Logger            `json:"-"`
+	JobResults                    map[string]*JobResult  `json:"jobResults"`
+	Grants                        map[string]string      `json:"-"`
+	tlog                          *s18log.TermLog        `json:"-"`
+	htlog                         *s18log.HttpLog        `json:"-"`
+	SQLGeneralLog                 s18log.HttpLog         `json:"sqlGeneralLog"`
+	SQLErrorLog                   s18log.HttpLog         `json:"sqlErrorLog"`
+	MonitorType                   map[string]string      `json:"monitorType"`
+	TopologyType                  map[string]string      `json:"topologyType"`
+	FSType                        map[string]bool        `json:"fsType"`
+	DiskType                      map[string]string      `json:"diskType"`
+	VMType                        map[string]bool        `json:"vmType"`
+	Agents                        []Agent                `json:"agents"`
+	hostList                      []string               `json:"-"`
+	proxyList                     []string               `json:"-"`
+	clusterList                   map[string]*Cluster    `json:"-"`
+	slaves                        serverList             `json:"slaves"`
+	master                        *ServerMonitor         `json:"master"`
+	oldMaster                     *ServerMonitor         `json:"oldmaster"`
+	vmaster                       *ServerMonitor         `json:"vmaster"`
+	mxs                           *maxscale.MaxScale     `json:"-"`
+	//dbUser                        string                      `json:"-"`
+	oldDbUser string `json:"-"`
+	//dbPass                        string                      `json:"-"`
+	oldDbPass string `json:"-"`
+	//rplUser                   string                      `json:"-"`
+	//rplPass                   string                      `json:"-"`
+	//proxysqlUser              string                      `json:"-"`
+	//proxysqlPass              string                      `json:"-"`
+	StateMachine              *state.StateMachine         `json:"stateMachine"`
+	runOnceAfterTopology      bool                        `json:"-"`
+	logPtr                    *os.File                    `json:"-"`
+	termlength                int                         `json:"-"`
+	runUUID                   string                      `json:"-"`
+	cfgGroupDisplay           string                      `json:"-"`
+	repmgrVersion             string                      `json:"-"`
+	repmgrHostname            string                      `json:"-"`
+	key                       []byte                      `json:"-"`
+	exitMsg                   string                      `json:"-"`
+	exit                      bool                        `json:"-"`
+	canFlashBack              bool                        `json:"-"`
+	failoverCond              *nbc.NonBlockingChan        `json:"-"`
+	switchoverCond            *nbc.NonBlockingChan        `json:"-"`
+	rejoinCond                *nbc.NonBlockingChan        `json:"-"`
+	bootstrapCond             *nbc.NonBlockingChan        `json:"-"`
+	altertableCond            *nbc.NonBlockingChan        `json:"-"`
+	addtableCond              *nbc.NonBlockingChan        `json:"-"`
+	statecloseChan            chan state.State            `json:"-"`
+	switchoverChan            chan bool                   `json:"-"`
+	errorChan                 chan error                  `json:"-"`
+	testStopCluster           bool                        `json:"-"`
+	testStartCluster          bool                        `json:"-"`
+	lastmaster                *ServerMonitor              `json:"-"`
+	benchmarkType             string                      `json:"-"`
+	HaveDBTLSCert             bool                        `json:"haveDBTLSCert"`
+	HaveDBTLSOldCert          bool                        `json:"haveDBTLSOldCert"`
+	tlsconf                   *tls.Config                 `json:"-"`
+	tlsoldconf                *tls.Config                 `json:"-"`
+	tunnel                    *ssh.Client                 `json:"-"`
+	QueryRules                map[uint32]config.QueryRule `json:"-"`
+	Backups                   []v3.Backup                 `json:"-"`
+	SLAHistory                []state.Sla                 `json:"slaHistory"`
+	APIUsers                  map[string]APIUser          `json:"apiUsers"`
+	Schedule                  map[string]cron.Entry       `json:"-"`
+	scheduler                 *cron.Cron                  `json:"-"`
+	idSchedulerPhysicalBackup cron.EntryID                `json:"-"`
+	idSchedulerLogicalBackup  cron.EntryID                `json:"-"`
+	idSchedulerOptimize       cron.EntryID                `json:"-"`
+	idSchedulerErrorLogs      cron.EntryID                `json:"-"`
+	idSchedulerLogRotateTable cron.EntryID                `json:"-"`
+	idSchedulerSLARotate      cron.EntryID                `json:"-"`
+	idSchedulerRollingRestart cron.EntryID                `json:"-"`
+	idSchedulerDbsjobsSsh     cron.EntryID                `json:"-"`
+	idSchedulerRollingReprov  cron.EntryID                `json:"-"`
+	WaitingRejoin             int                         `json:"waitingRejoin"`
+	WaitingSwitchover         int                         `json:"waitingSwitchover"`
+	WaitingFailover           int                         `json:"waitingFailover"`
+	Configurator              configurator.Configurator   `json:"configurator"`
+	DiffVariables             []VariableDiff              `json:"diffVariables"`
+	inInitNodes               bool                        `json:"-"`
+	CanInitNodes              bool                        `json:"canInitNodes"`
+	errorInitNodes            error                       `json:"-"`
+	inConnectVault            bool                        `json:"-"`
+	CanConnectVault           bool                        `json:"canConnectVault"`
+	errorConnectVault         error                       `json:"-"`
+	SqlErrorLog               *logsql.Logger              `json:"-"`
+	SqlGeneralLog             *logsql.Logger              `json:"-"`
+	SstAvailablePorts         map[string]string           `json:"sstAvailablePorts"`
+	encryptedFlags            map[string]Secret           `json:"-"`
 	sync.Mutex
 	crcTable *crc64.Table
 }
@@ -279,27 +280,10 @@ const (
 	VaultDbEngine      string = "database_engine"
 )
 
-// to store the flags to encrypt in the git (in Save() function)
-var encryptFlag = map[string]int{
-	"api-credentials":                       0,
-	"api-credentials-external":              0,
-	"db-servers-credential":                 0,
-	"monitoring-write-heartbeat-credential": 0,
-	"onpremise-ssh-credential":              0,
-	"replication-credential":                0,
-	"shardproxy-credential":                 0,
-	"backup-restic-password":                1,
-	"haproxy-password":                      1,
-	"maxscale-pass":                         1,
-	"myproxy-password":                      1,
-	"proxysql-password":                     1,
-	"vault-secret-id":                       1,
-	"opensvc-p12-secret":                    1,
-	"backup-restic-aws-access-secret":       1,
-	"backup-streaming-aws-access-secret":    1,
-	"arbitration-external-secret":           1,
-	"alert-pushover-user-token":             1,
-	"mail-smtp-password":                    1}
+type Secret struct {
+	OldValue string
+	Value    string
+}
 
 // Init initial cluster definition
 func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface{}, dyn map[string]interface{}, def map[string]interface{}, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string, key []byte) error {
@@ -345,6 +329,28 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.runOnceAfterTopology = true
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
+
+	// to store the flags to encrypt in the git (in Save() function)
+	cluster.encryptedFlags = map[string]Secret{
+		"api-credentials":                       {"", ""},
+		"api-credentials-external":              {"", ""},
+		"db-servers-credential":                 {"", ""},
+		"monitoring-write-heartbeat-credential": {"", ""},
+		"onpremise-ssh-credential":              {"", ""},
+		"replication-credential":                {"", ""},
+		"shardproxy-credential":                 {"", ""},
+		"backup-restic-password":                {"", ""},
+		"haproxy-password":                      {"", ""},
+		"maxscale-pass":                         {"", ""},
+		"myproxy-password":                      {"", ""},
+		"proxysql-password":                     {"", ""},
+		"vault-secret-id":                       {"", ""},
+		"opensvc-p12-secret":                    {"", ""},
+		"backup-restic-aws-access-secret":       {"", ""},
+		"backup-streaming-aws-access-secret":    {"", ""},
+		"arbitration-external-secret":           {"", ""},
+		"alert-pushover-user-token":             {"", ""},
+		"mail-smtp-password":                    {"", ""}}
 
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
 	if cluster.Conf.Arbitration {
@@ -457,10 +463,6 @@ func (cluster *Cluster) InitFromConf() {
 	}
 	cluster.SqlGeneralLog.AddHook(hookgen)
 	cluster.LoadAPIUsers()
-	// createKeys do nothing yet
-	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-key.pem"); os.IsNotExist(err) {
-		go cluster.createKeys()
-	}
 
 	cluster.GetPersitentState()
 
@@ -488,6 +490,7 @@ func (cluster *Cluster) InitFromConf() {
 	//fmt.Printf("INIT CLUSTER CONF :\n")
 	//cluster.Conf.PrintConf()
 	cluster.initScheduler()
+
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
@@ -539,6 +542,11 @@ func (cluster *Cluster) initScheduler() {
 
 func (cluster *Cluster) Run() {
 	interval := time.Second
+
+	// createKeys do nothing yet
+	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-key.pem"); os.IsNotExist(err) {
+		go cluster.createKeys()
+	}
 
 	for cluster.exit == false {
 		if !cluster.Conf.MonitorPause {
@@ -882,42 +890,15 @@ func (cluster *Cluster) Save() error {
 		}
 		//to encrypt credentials before writting in the config file
 		for _, key := range keys {
-
-			_, ok := encryptFlag[key]
-			if ok {
-				v := s.Get(key)
-				if v != nil {
-
-					str := fmt.Sprintf("%v", v)
-					tmp := strings.Split(str, ":")
-					if len(tmp) == 2 {
-						str = tmp[1]
-						v = tmp[0]
-					}
-					p := crypto.Password{PlainText: str}
-					var err error
-					if cluster.key != nil {
-						p.Key, err = crypto.ReadKey(cluster.GetConf().MonitoringKeyPath)
-						if err != nil {
-							cluster.LogPrintf(LvlErr, "Missing key file or wrong key path")
-						}
-						p.Encrypt()
-
-						if len(tmp) == 2 {
-							str = fmt.Sprintf("%v", v)
-							str = str + ":" + p.CipherText
-							v = str
-
-						} else {
-							v = p.CipherText
-						}
-						cluster.LogPrintf(LvlDbg, "Encryption key during saving done for key %s : %s\n", key, v)
+			_, ok := cluster.ImmuableFlagMap[key]
+			if !ok {
+				value, ok := cluster.encryptedFlags[key]
+				if ok && value.Value != cluster.DefaultFlagMap[key] {
+					v := cluster.GetEncryptedValueFromMemory(key)
+					if v != "" {
 						s.Set(key, v)
-					} else {
-						cluster.LogPrintf(LvlWarn, "Missing key file or wrong key path")
 					}
 				}
-
 			}
 		}
 		file.WriteString("[saved-" + cluster.Name + "]\ntitle = \"" + cluster.Name + "\" \n")
@@ -1092,47 +1073,110 @@ func (cluster *Cluster) Overwrite() error {
 
 		}
 		//to encode credentials flag
-		for _, key := range keys {
-			_, ok := encryptFlag[key]
-			if ok {
-				v := s.Get(key)
-				if v != nil {
-					str := fmt.Sprintf("%v", v)
-					tmp := strings.Split(str, ":")
-					if len(tmp) == 2 {
-						str = tmp[1]
-						v = tmp[0]
-					}
-					p := crypto.Password{PlainText: str}
-					var err error
-					if cluster.key != nil {
-						p.Key, err = crypto.ReadKey(fmt.Sprintf("%v", cluster.GetConf().MonitoringKeyPath))
-						if err != nil {
-							cluster.LogPrintf(LvlErr, "Missing key file or wrong key path")
-						}
-						p.Encrypt()
+		if !cluster.IsVaultUsed() {
+			for _, key := range keys {
+				_, ok := cluster.ImmuableFlagMap[key]
+				if ok {
+					_, ok = cluster.encryptedFlags[key]
+					if ok && cluster.encryptedFlags[key] != cluster.ImmuableFlagMap[key] {
 
-						if len(tmp) == 2 {
-							str = fmt.Sprintf("%v", v)
-							str = str + p.CipherText
-							v = str
-
-						} else {
-							v = p.CipherText
+						v := cluster.GetEncryptedValueFromMemory(key)
+						//cluster.LogPrintf(LvlErr, "TEST Encrypt val from mem : key %s, value %s", key, v)
+						if v != "" {
+							s.Set(key, v)
 						}
-						cluster.LogPrintf(LvlDbg, "Encryption key during saving done for key %s : %s\n", key, v)
-						s.Set(key, v)
-					} else {
-						cluster.LogPrintf(LvlWarn, "Missing key file or wrong key path")
 					}
 				}
 			}
 		}
+		//cluster.LogPrintf(LvlErr, "TEST ImmuableMap : %v", cluster.ImmuableFlagMap)
+		//cluster.LogPrintf(LvlErr, "TEST decryptedFlag : %v", cluster.encryptedFlags)
+
 		file.WriteString("[overwrite-" + cluster.Name + "]\n")
 		s.WriteTo(file)
 	}
 
 	return nil
+}
+
+func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
+	switch key {
+	case "api-credentials":
+		var tab_ApiUser []string
+		lst_Users := strings.Split(cluster.Conf.APIUsers, ",")
+		for ind := range lst_Users {
+			user_pass := strings.Split(lst_Users[ind], ":")
+			APIuser := cluster.APIUsers[user_pass[0]]
+			tab_ApiUser = append(tab_ApiUser, APIuser.User+":"+cluster.GetEncryptedString(APIuser.Password))
+		}
+
+		return strings.Join(tab_ApiUser, ",")
+	case "api-credentials-external":
+		var tab_ApiUser []string
+		lst_Users := strings.Split(cluster.Conf.APIUsersExternal, ",")
+		for ind := range lst_Users {
+			user_pass := strings.Split(lst_Users[ind], ":")
+			APIuser := cluster.APIUsers[user_pass[0]]
+			tab_ApiUser = append(tab_ApiUser, APIuser.User+":"+cluster.GetEncryptedString(APIuser.Password))
+		}
+
+		return strings.Join(tab_ApiUser, ",")
+	case "db-servers-credential":
+		return cluster.GetDbUser() + ":" + cluster.GetEncryptedString(cluster.GetDbPass())
+	case "monitoring-write-heartbeat-credential":
+		return cluster.GetMonitorWriteHearbeatUser() + ":" + cluster.GetEncryptedString(cluster.GetMonitorWriteHeartbeatPass())
+	case "onpremise-ssh-credential":
+		return cluster.GetOnPremiseSSHUser() + ":" + cluster.GetEncryptedString(cluster.GetOnPremiseSSHPass())
+
+	case "replication-credential":
+		return cluster.GetRplUser() + ":" + cluster.GetEncryptedString(cluster.GetRplPass())
+	case "shardproxy-credential":
+		return cluster.GetShardUser() + ":" + cluster.GetEncryptedString(cluster.GetShardPass())
+	case "backup-restic-password":
+		return cluster.GetEncryptedString(cluster.GetDecryptedValue("backup-restic-password"))
+	case "haproxy-password":
+		return cluster.GetEncryptedString(cluster.GetDecryptedValue("haproxy-password"))
+	case "maxscale-pass":
+		return cluster.GetEncryptedString(cluster.GetDecryptedValue("maxscale-pass"))
+	case "myproxy-password":
+		return cluster.GetEncryptedString(cluster.GetDecryptedValue("proxysql-password"))
+	case "proxysql-password":
+		return cluster.GetEncryptedString(cluster.GetDecryptedValue("proxysql-password"))
+	case "vault-secret-id":
+		return cluster.GetEncryptedString(cluster.GetDecryptedValue("vault-secret-id"))
+	case "opensvc-p12-secret":
+		return cluster.GetEncryptedString(cluster.GetDecryptedValue("opensvc-p12-secret"))
+	case "backup-restic-aws-access-secret":
+		return cluster.GetEncryptedString(cluster.GetDecryptedValue("backup-restic-aws-access-secret"))
+	case "backup-streaming-aws-access-secret":
+		return cluster.GetEncryptedString(cluster.GetDecryptedValue("backup-streaming-aws-access-secret"))
+	case "arbitration-external-secret":
+		return cluster.GetEncryptedString(cluster.GetDecryptedValue("arbitration-external-secret"))
+	case "alert-pushover-user-token":
+		return cluster.GetEncryptedString(cluster.GetDecryptedValue("alert-pushover-user-token"))
+	case "mail-smtp-password":
+		return cluster.GetEncryptedString(cluster.GetDecryptedValue("mail-smtp-password"))
+	default:
+		return ""
+	}
+
+	return ""
+}
+
+func (cluster *Cluster) GetEncryptedString(str string) string {
+	p := crypto.Password{PlainText: str}
+	var err error
+	if cluster.key != nil {
+		p.Key, err = crypto.ReadKey(fmt.Sprintf("%v", cluster.GetConf().MonitoringKeyPath))
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Missing key file or wrong key path")
+			return str
+		}
+		p.Encrypt()
+
+		return p.CipherText
+	}
+	return str
 }
 
 func (cluster *Cluster) InitAgent(conf config.Config) {
@@ -1148,23 +1192,6 @@ func (cluster *Cluster) InitAgent(conf config.Config) {
 	}
 	return
 }
-
-/*func (cluster *Cluster) ReloadConfig(conf config.Config) {
-	cluster.Conf = conf
-	cluster.Configurator.SetConfig(conf)
-	cluster.StateMachine.SetFailoverState()
-	cluster.runOnceAfterTopology = true
-
-	cluster.SetUnDiscovered()
-	cluster.newServerList()
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	go cluster.TopologyDiscover(wg)
-	wg.Wait()
-	cluster.newProxyList()
-	cluster.StateMachine.RemoveFailoverState()
-	cluster.initProxies()
-}*/
 
 func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Conf = conf
@@ -1278,6 +1305,9 @@ func (cluster *Cluster) agentFlagCheck() {
 }
 
 func (cluster *Cluster) BackupLogs() {
+	if !cluster.Conf.SchedulerDatabaseLogs {
+		return
+	}
 	for _, s := range cluster.Servers {
 		s.JobBackupErrorLog()
 		s.JobBackupSlowQueryLog()

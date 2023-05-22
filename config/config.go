@@ -302,6 +302,8 @@ type Config struct {
 	SphinxQLPort                              string `mapstructure:"sphinx-sql-port" toml:"sphinx-sql-port" json:"sphinxSqlPort"`
 	SphinxPort                                string `mapstructure:"sphinx-port" toml:"sphinx-port" json:"sphinxPort"`
 	RegistryConsul                            bool   `mapstructure:"registry-consul" toml:"registry-consul" json:"registryConsul"`
+	RegistryConsulCredential                  string `mapstructure:"registry-consul-credential" toml:"registry-consul-credential" json:"registryConsulCredential"`
+	RegistryConsulToken                       string `mapstructure:"registry-consul-token" toml:"registry-consul-token" json:"registryConsulToken"`
 	RegistryHosts                             string `mapstructure:"registry-servers" toml:"registry-servers" json:"registryServers"`
 	KeyPath                                   string `mapstructure:"keypath" toml:"-" json:"-"`
 	Topology                                  string `mapstructure:"topology" toml:"-" json:"-"` // use by bootstrap

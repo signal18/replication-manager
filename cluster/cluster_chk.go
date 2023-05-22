@@ -737,7 +737,7 @@ func (cluster *Cluster) CheckCredentialRotation() {
 	if cluster.HasMonitoringCredentialsRotation() {
 		//cluster.LogPrintf(LvlInfo, "TEST checkCredentialsRotation")
 		cluster.SetClusterMonitorCredentialsFromConfig()
-		cluster.SetDbServersMonitoringCredential(cluster.Conf.User)
+		cluster.SetDbServersMonitoringCredential(cluster.GetDecryptedValue("db-servers-credential"))
 	}
 }
 

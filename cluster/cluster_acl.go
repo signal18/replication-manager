@@ -12,7 +12,6 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
-	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/misc"
 	"google.golang.org/grpc/codes"
 )
@@ -87,29 +86,13 @@ func (cluster *Cluster) SetGrant(user string, grant string, enable bool) {
 }
 
 func (cluster *Cluster) LoadAPIUsers() error {
-
-	k, err := crypto.ReadKey(cluster.Conf.MonitoringKeyPath)
-	if err != nil {
-		cluster.LogPrintf(LvlInfo, "No existing password encryption scheme in LoadAPIUsers")
-		k = nil
-	}
 	credentials := strings.Split(cluster.Conf.APIUsers+","+cluster.Conf.APIUsersExternal, ",")
 	meUsers := make(map[string]APIUser)
 	for _, credential := range credentials {
 		var newapiuser APIUser
 
 		newapiuser.User, newapiuser.Password = misc.SplitPair(credential)
-		if k != nil {
-			p := crypto.Password{Key: k}
-			p.CipherText = newapiuser.Password
-			err = p.Decrypt()
-			if err != nil {
-				cluster.LogPrintf(LvlWarn, "Password decryption error on api user: %s,%s", newapiuser.User, err)
-			} else {
-				newapiuser.Password = p.PlainText
-			}
-
-		}
+		newapiuser.Password = cluster.GetDecryptedPassword("api-credentials", newapiuser.Password)
 		usersAllowACL := strings.Split(cluster.Conf.APIUsersACLAllow, ",")
 		newapiuser.Grants = make(map[string]bool)
 		for _, userACL := range usersAllowACL {

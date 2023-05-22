@@ -38,7 +38,7 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 
 	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
 
-	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
+	dsn := cluster.GetDbUser() + ":" + cluster.GetDbPass() + "@"
 	if prx.GetHost() != "" {
 		dsn += "tcp(" + prx.GetHost() + ":" + strconv.Itoa(prx.GetWritePort()) + ")/" + params
 	} else {
@@ -56,9 +56,9 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 func (prx *Proxy) GetClusterConnection() (*sqlx.DB, error) {
 	cluster := prx.ClusterGroup
 	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
-	dsn := cluster.dbUser + ":" + cluster.dbPass + "@"
+	dsn := cluster.GetDbUser() + ":" + cluster.GetDbPass() + "@"
 	if cluster.Conf.MonitorWriteHeartbeatCredential != "" {
-		dsn = cluster.Conf.MonitorWriteHeartbeatCredential + "@"
+		dsn = cluster.GetDecryptedValue("monitoring-write-heartbeat-credential") + "@"
 	}
 
 	if prx.Host != "" {
@@ -76,7 +76,7 @@ func (proxy *Proxy) GetProxyConfig() string {
 	proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
 	err := proxy.ClusterGroup.Configurator.GenerateProxyConfig(proxy.Datadir, proxy.ClusterGroup.Conf.WorkingDir+"/"+proxy.ClusterGroup.Name, proxy.GetEnv())
 	if err != nil {
-		proxy.ClusterGroup.LogPrintf(LvlErr, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz error: %s", err)
+		proxy.ClusterGroup.LogPrintf(LvlErr, " "+proxy.Datadir+"/config.tar.gz error: %s", err)
 	}
 	return ""
 }
@@ -172,8 +172,8 @@ func (proxy *Proxy) GetBaseEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":                 proxy.ClusterGroup.Conf.ProvCores,
 		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                  string(proxy.Id[2:10]),
 		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":                 string(proxy.Id[2:10]),
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":       proxy.ClusterGroup.dbPass,
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":           proxy.ClusterGroup.dbUser,
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":       proxy.ClusterGroup.GetDbPass(),
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":           proxy.ClusterGroup.GetDbUser(),
 		"%%ENV:SERVER_IP%%":                              proxy.GetBindAddress(),
 		"%%ENV:EXTRA_BIND_SERVER_IPV6%%":                 proxy.GetBindAddressExtraIPV6(),
 		"%%ENV:SVC_CONF_ENV_PROXY_USE_SSL%%":             proxy.GetUseSSL(),

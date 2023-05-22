@@ -15,7 +15,7 @@ import (
 
 	"github.com/micro/go-micro/registry"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 type ConsulProxy struct {
@@ -30,8 +30,7 @@ func NewConsulProxy(placement int, cluster *Cluster, proxyHost string) *ConsulPr
 	prx.Type = config.ConstProxyConsul
 	prx.Port = conf.ProxysqlAdminPort
 	prx.ReadWritePort, _ = strconv.Atoi(conf.ProxysqlPort)
-	prx.User = conf.ProxysqlUser
-	prx.Pass = conf.ProxysqlPassword
+	prx.User, prx.Pass = misc.SplitPair(conf.RegistryConsulCredential)
 	prx.ReaderHostgroup, _ = strconv.Atoi(conf.ProxysqlReaderHostgroup)
 	prx.WriterHostgroup, _ = strconv.Atoi(conf.ProxysqlWriterHostgroup)
 	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
@@ -47,17 +46,7 @@ func NewConsulProxy(placement int, cluster *Cluster, proxyHost string) *ConsulPr
 		}
 	}
 
-	if cluster.key != nil {
-		p := crypto.Password{Key: cluster.key}
-		p.CipherText = prx.Pass
-		err := p.Decrypt()
-		if err != nil {
-			cluster.LogPrintf(LvlWarn, "Password decryption error on consul proxy user: %s,%s", prx.User, err)
-		} else {
-			prx.Pass = p.PlainText
-		}
-
-	}
+	prx.Pass = cluster.GetDecryptedPassword("registry-consul-credential", prx.Pass)
 
 	return prx
 }

@@ -1437,8 +1437,8 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:        "",
 			Port:        "",
-			User:        server.ClusterGroup.rplUser,
-			Password:    server.ClusterGroup.rplPass,
+			User:        server.ClusterGroup.GetRplUser(),
+			Password:    server.ClusterGroup.GetRplPass(),
 			Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 			Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 			Mode:        "GROUP_REPL",
@@ -1459,8 +1459,8 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:        master.Host,
 			Port:        master.Port,
-			User:        server.ClusterGroup.rplUser,
-			Password:    server.ClusterGroup.rplPass,
+			User:        server.ClusterGroup.GetRplUser(),
+			Password:    server.ClusterGroup.GetRplPass(),
 			Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 			Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 			Mode:        master_use_gitd,
@@ -1476,8 +1476,8 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:        master.Host,
 			Port:        master.Port,
-			User:        server.ClusterGroup.rplUser,
-			Password:    server.ClusterGroup.rplPass,
+			User:        server.ClusterGroup.GetRplUser(),
+			Password:    server.ClusterGroup.GetRplPass(),
 			Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 			Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 			Mode:        "MASTER_AUTO_POSITION",
@@ -1494,8 +1494,8 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:        master.Host,
 			Port:        master.Port,
-			User:        server.ClusterGroup.rplUser,
-			Password:    server.ClusterGroup.rplPass,
+			User:        server.ClusterGroup.GetRplUser(),
+			Password:    server.ClusterGroup.GetRplPass(),
 			Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 			Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 			Mode:        "POSITIONAL",

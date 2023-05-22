@@ -290,8 +290,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		var changemasteropt dbhelper.ChangeMasterOpt
 		changemasteropt.Host = cluster.master.Host
 		changemasteropt.Port = cluster.master.Port
-		changemasteropt.User = cluster.rplUser
-		changemasteropt.Password = cluster.rplPass
+		changemasteropt.User = cluster.GetRplUser()
+		changemasteropt.Password = cluster.GetRplPass()
 		changemasteropt.Logfile = cluster.master.BinaryLogFile
 		changemasteropt.Logpos = cluster.master.BinaryLogPos
 		changemasteropt.Retry = strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry)
@@ -398,8 +398,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		var changemasteropt dbhelper.ChangeMasterOpt
 		changemasteropt.Host = cluster.master.Host
 		changemasteropt.Port = cluster.master.Port
-		changemasteropt.User = cluster.rplUser
-		changemasteropt.Password = cluster.rplPass
+		changemasteropt.User = cluster.GetRplUser()
+		changemasteropt.Password = cluster.GetRplPass()
 		changemasteropt.Retry = strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry)
 		changemasteropt.Heartbeat = strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime)
 		changemasteropt.SSL = cluster.Conf.ReplicationSSL
@@ -444,8 +444,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			logs, changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:        cluster.master.Host,
 				Port:        cluster.master.Port,
-				User:        cluster.rplUser,
-				Password:    cluster.rplPass,
+				User:        cluster.GetRplUser(),
+				Password:    cluster.GetRplPass(),
 				Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
 				Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 				Mode:        "MASTER_AUTO_POSITION",
@@ -461,8 +461,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			logs, changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 				Host:        cluster.master.Host,
 				Port:        cluster.master.Port,
-				User:        cluster.rplUser,
-				Password:    cluster.rplPass,
+				User:        cluster.GetRplUser(),
+				Password:    cluster.GetRplPass(),
 				Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
 				Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 				Mode:        "SLAVE_POS",
@@ -479,8 +479,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				logs, changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 					Host:        cluster.master.Host,
 					Port:        cluster.master.Port,
-					User:        cluster.rplUser,
-					Password:    cluster.rplPass,
+					User:        cluster.GetRplUser(),
+					Password:    cluster.GetRplPass(),
 					Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
 					Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 					Mode:        "SLAVE_POS",
@@ -494,8 +494,8 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				logs, changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 					Host:      cluster.master.Host,
 					Port:      cluster.master.Port,
-					User:      cluster.rplUser,
-					Password:  cluster.rplPass,
+					User:      cluster.GetRplUser(),
+					Password:  cluster.GetRplPass(),
 					Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
 					Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 					Mode:      "MXS",
@@ -618,7 +618,7 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 			cluster.LogPrintf(LvlInfo, "Failover replication source %s ", rep.ConnectionName.String)
 			// need a way to found parent replication password
 			if parentCluster != nil {
-				myparentrplpassword = parentCluster.rplPass
+				myparentrplpassword = parentCluster.GetRplPass()
 			} else {
 				cluster.LogPrintf(LvlErr, "Unable to found a monitored cluster for replication source %s ", rep.ConnectionName.String)
 				cluster.LogPrintf(LvlErr, "Moving source %s with empty password to preserve replication stream on new master", rep.ConnectionName.String)
@@ -1415,8 +1415,8 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 		logs, changeMasterErr = dbhelper.ChangeMaster(child.Conn, dbhelper.ChangeMasterOpt{
 			Host:        parent.Host,
 			Port:        parent.Port,
-			User:        cluster.rplUser,
-			Password:    cluster.rplPass,
+			User:        cluster.GetRplUser(),
+			Password:    cluster.GetRplPass(),
 			Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
 			Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 			Mode:        "",
@@ -1430,8 +1430,8 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 		logs, changeMasterErr = dbhelper.ChangeMaster(child.Conn, dbhelper.ChangeMasterOpt{
 			Host:        parent.Host,
 			Port:        parent.Port,
-			User:        cluster.rplUser,
-			Password:    cluster.rplPass,
+			User:        cluster.GetRplUser(),
+			Password:    cluster.GetRplPass(),
 			Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
 			Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 			Mode:        "SLAVE_POS",

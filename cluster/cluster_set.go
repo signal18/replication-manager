@@ -21,7 +21,6 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
-	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -95,6 +94,7 @@ func (cluster *Cluster) SetSchedulerBackupLogical() {
 	if cluster.HasSchedulerEntry("backuplogical") {
 		cluster.scheduler.Remove(cluster.idSchedulerLogicalBackup)
 		cluster.LogPrintf(LvlInfo, "Disable database logical backup ")
+		delete(cluster.Schedule, "backuplogical")
 	}
 	if cluster.Conf.SchedulerBackupLogical {
 		var err error
@@ -117,6 +117,7 @@ func (cluster *Cluster) SetSchedulerBackupPhysical() {
 	if cluster.HasSchedulerEntry("backupphysical") {
 		cluster.LogPrintf(LvlInfo, "Disable database physical backup")
 		cluster.scheduler.Remove(cluster.idSchedulerPhysicalBackup)
+		delete(cluster.Schedule, "backupphysical")
 	}
 	if cluster.Conf.SchedulerBackupPhysical {
 		var err error
@@ -134,6 +135,7 @@ func (cluster *Cluster) SetSchedulerLogsTableRotate() {
 	if cluster.HasSchedulerEntry("logstablerotate") {
 		cluster.LogPrintf(LvlInfo, "Disable database logs table rotate")
 		cluster.scheduler.Remove(cluster.idSchedulerLogRotateTable)
+		delete(cluster.Schedule, "logstablerotate")
 	}
 	if cluster.Conf.SchedulerDatabaseLogsTableRotate {
 		var err error
@@ -151,6 +153,7 @@ func (cluster *Cluster) SetSchedulerBackupLogs() {
 	if cluster.HasSchedulerEntry("errorlogs") {
 		cluster.LogPrintf(LvlInfo, "Disable database logs error fetching")
 		cluster.scheduler.Remove(cluster.idSchedulerErrorLogs)
+		delete(cluster.Schedule, "errorlogs")
 	}
 	if cluster.Conf.SchedulerDatabaseLogs && cluster.scheduler != nil {
 		var err error
@@ -168,6 +171,7 @@ func (cluster *Cluster) SetSchedulerOptimize() {
 	if cluster.HasSchedulerEntry("optimize") {
 		cluster.LogPrintf(LvlInfo, "Disable database optimize")
 		cluster.scheduler.Remove(cluster.idSchedulerOptimize)
+		delete(cluster.Schedule, "optimize")
 	}
 	if cluster.Conf.SchedulerDatabaseOptimize {
 		var err error
@@ -185,6 +189,7 @@ func (cluster *Cluster) SetSchedulerRollingRestart() {
 	if cluster.HasSchedulerEntry("rollingrestart") {
 		cluster.LogPrintf(LvlInfo, "Disable rolling restart")
 		cluster.scheduler.Remove(cluster.idSchedulerRollingRestart)
+		delete(cluster.Schedule, "rollingrestart")
 	}
 	if cluster.Conf.SchedulerRollingRestart {
 		var err error
@@ -202,6 +207,7 @@ func (cluster *Cluster) SetSchedulerRollingReprov() {
 	if cluster.HasSchedulerEntry("rollingreprov") {
 		cluster.LogPrintf(LvlInfo, "Disable rolling reprov")
 		cluster.scheduler.Remove(cluster.idSchedulerRollingReprov)
+		delete(cluster.Schedule, "rollingreprov")
 	}
 	if cluster.Conf.SchedulerRollingReprov {
 		var err error
@@ -219,6 +225,7 @@ func (cluster *Cluster) SetSchedulerSlaRotate() {
 	if cluster.HasSchedulerEntry("slarotate") {
 		cluster.LogPrintf(LvlInfo, "Disable rotate Sla ")
 		cluster.scheduler.Remove(cluster.idSchedulerSLARotate)
+		delete(cluster.Schedule, "slarotate")
 	}
 
 	var err error
@@ -235,6 +242,7 @@ func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 	if cluster.HasSchedulerEntry("dbjobsssh") {
 		cluster.LogPrintf(LvlInfo, "Disable Db Jobs SSH Execution ")
 		cluster.scheduler.Remove(cluster.idSchedulerDbsjobsSsh)
+		delete(cluster.Schedule, "dbjobsssh")
 	}
 	if cluster.Conf.SchedulerJobsSSH {
 		var err error
@@ -479,13 +487,66 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 }
 
 func (cluster *Cluster) SetClusterCredentialsFromConfig() {
+	cluster.DecryptSecretsFromConfig()
+
 	cluster.SetClusterMonitorCredentialsFromConfig()
 	cluster.SetClusterReplicationCredentialsFromConfig()
 	cluster.SetClusterProxySqlCredentialsFromConfig()
+	cluster.LogPrintf(LvlErr, "TEST %v", cluster.encryptedFlags)
+}
+
+func (cluster *Cluster) DecryptSecretsFromConfig() {
+	for k := range cluster.encryptedFlags {
+		origin_value, ok := cluster.DynamicFlagMap[k]
+		if !ok {
+			origin_value, ok = cluster.ImmuableFlagMap[k]
+			if !ok {
+				origin_value = cluster.DefaultFlagMap[k]
+			}
+
+		}
+		var secret Secret
+		secret.Value = fmt.Sprintf("%v", origin_value)
+		if cluster.IsVaultUsed() {
+			config := vault.DefaultConfig()
+
+			config.Address = cluster.Conf.VaultServerAddr
+
+			client, err := cluster.GetVaultConnection()
+
+			if err == nil {
+
+				if cluster.Conf.VaultMode == VaultConfigStoreV2 {
+					vault_value, err := cluster.GetVaultCredentials(client, secret.Value, k)
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Unable to get %s Vault secret: %v", k, err)
+					} else {
+						secret.Value = vault_value
+					}
+				}
+			} else {
+				cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			}
+		} else {
+
+			lst_cred := strings.Split(secret.Value, ",")
+			var tab_cred []string
+			for _, cred := range lst_cred {
+				if strings.Contains(cred, ":") {
+					user, pass := misc.SplitPair(cred)
+					tab_cred = append(tab_cred, user+":"+cluster.GetDecryptedPassword(k, pass))
+				} else {
+					tab_cred = append(tab_cred, cluster.GetDecryptedPassword(k, cred))
+				}
+			}
+			secret.Value = strings.Join(tab_cred, ",")
+		}
+		cluster.encryptedFlags[k] = secret
+	}
 }
 
 func (cluster *Cluster) SetClusterProxySqlCredentialsFromConfig() {
-	cluster.proxysqlPass = cluster.Conf.ProxysqlPassword
+	/*cluster.proxysqlPass = cluster.Conf.ProxysqlPassword
 	cluster.proxysqlUser = cluster.Conf.ProxysqlUser
 	if cluster.IsVaultUsed() {
 
@@ -517,22 +578,12 @@ func (cluster *Cluster) SetClusterProxySqlCredentialsFromConfig() {
 		}
 	}
 
-	if cluster.key != nil {
-		p := crypto.Password{Key: cluster.key}
-		p.CipherText = cluster.proxysqlPass
-		err := p.Decrypt()
-		if err != nil {
-			cluster.LogPrintf(LvlWarn, "Password decryption error on proxysql user: %s,%s", cluster.proxysqlUser, err)
-		} else {
-			cluster.proxysqlPass = p.PlainText
-		}
-
-	}
+	cluster.proxysqlPass = cluster.GetDecryptedPassword("proxysql-password", cluster.proxysqlPass)*/
 }
 
 func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 	cluster.Configurator.SetConfig(cluster.Conf)
-	splitmonitoringuser := cluster.Conf.User
+	//splitmonitoringuser := cluster.Conf.User
 
 	var err error
 	err = cluster.loadDBCertificates(cluster.WorkingDir)
@@ -552,7 +603,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 		cluster.LogPrintf(LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
 
-	if cluster.IsVaultUsed() {
+	/*if cluster.IsVaultUsed() {
 
 		cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
 		config := vault.DefaultConfig()
@@ -577,39 +628,31 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 					cluster.LogPrintf(LvlErr, "Unable to get database server Vault credentials: %v", err)
 					splitmonitoringuser = cluster.Conf.User
 				}
-				/*
+
 					if cluster.GetConf().LogLevel > 2 {
 						cluster.LogPrintf(LvlInfo, "Vault database monitoring credentials read : %s", splitmonitoringuser)
-					}*/
+					}
 
 			}
 		} else {
 			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
 		}
 
-	}
+	}*/
 
 	cluster.hostList = strings.Split(cluster.Conf.Hosts, ",")
-	cluster.dbUser, cluster.dbPass = misc.SplitPair(splitmonitoringuser)
+	/*
+		cluster.dbUser, cluster.dbPass = misc.SplitPair(splitmonitoringuser)
 
-	if cluster.key != nil {
-		p := crypto.Password{Key: cluster.key}
-		p.CipherText = cluster.dbPass
-		err := p.Decrypt()
-		if err != nil {
-			cluster.LogPrintf(LvlWarn, "Password decryption error on database user: %s,%s", cluster.dbUser, err)
-		} else {
-			cluster.dbPass = p.PlainText
-		}
+		cluster.dbPass = cluster.GetDecryptedPassword("db-servers-credential", cluster.dbPass)*/
 
-	}
 	cluster.Save()
 }
 
 func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 	cluster.Configurator.SetConfig(cluster.Conf)
 
-	splitreplicationuser := cluster.Conf.RplUser
+	//splitreplicationuser := cluster.Conf.RplUser
 
 	var err error
 	err = cluster.loadDBCertificates(cluster.WorkingDir)
@@ -628,55 +671,47 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 		cluster.HaveDBTLSOldCert = true
 		cluster.LogPrintf(LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
+	/*
+	   if cluster.IsVaultUsed() {
 
-	if cluster.IsVaultUsed() {
+	   	cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
+	   	config := vault.DefaultConfig()
 
-		cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
-		config := vault.DefaultConfig()
+	   	config.Address = cluster.Conf.VaultServerAddr
 
-		config.Address = cluster.Conf.VaultServerAddr
+	   	client, err := cluster.GetVaultConnection()
 
-		client, err := cluster.GetVaultConnection()
+	   	if err == nil {
+	   		if cluster.Conf.VaultMode == VaultConfigStoreV2 {
+	   			splitreplicationuser, err = cluster.GetVaultCredentials(client, cluster.Conf.RplUser, "replication-credential")
+	   			if err != nil {
+	   				cluster.LogPrintf(LvlErr, "Unable to get replication Vault credentials: %v", err)
+	   				splitreplicationuser = cluster.Conf.RplUser
+	   			}
+	   			//test
+	   			//cluster.LogPrintf(LvlInfo, "Secret read from Vault for rplPass is %s", splitreplicationuser)
+	   		} else {
+	   			splitreplicationuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "")
+	   			if err != nil {
+	   				cluster.LogPrintf(LvlErr, "Unable to get replication Vault credentials: %v", err)
+	   				splitreplicationuser = cluster.Conf.RplUser
+	   			}
+	   			/*
+	   				if cluster.GetConf().LogLevel > 2 {
+	   					cluster.LogPrintf(LvlInfo, "Vault database replication credentials read : %s", splitreplicationuser)
+	   				}
 
-		if err == nil {
-			if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-				splitreplicationuser, err = cluster.GetVaultCredentials(client, cluster.Conf.RplUser, "replication-credential")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "Unable to get replication Vault credentials: %v", err)
-					splitreplicationuser = cluster.Conf.RplUser
-				}
-				//test
-				//cluster.LogPrintf(LvlInfo, "Secret read from Vault for rplPass is %s", splitreplicationuser)
-			} else {
-				splitreplicationuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "Unable to get replication Vault credentials: %v", err)
-					splitreplicationuser = cluster.Conf.RplUser
-				}
-				/*
-					if cluster.GetConf().LogLevel > 2 {
-						cluster.LogPrintf(LvlInfo, "Vault database replication credentials read : %s", splitreplicationuser)
-					}
-				*/
-			}
-		} else {
-			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
-		}
+	   		}
+	   	} else {
+	   		cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
+	   	}
 
-	}
+	   }
 
-	cluster.rplUser, cluster.rplPass = misc.SplitPair(splitreplicationuser)
+	   cluster.rplUser, cluster.rplPass = misc.SplitPair(splitreplicationuser)
 
-	if cluster.key != nil {
-		p := crypto.Password{Key: cluster.key}
-		p.CipherText = cluster.rplPass
-		err = p.Decrypt()
-		if err != nil {
-			cluster.LogPrintf(LvlWarn, "Password decryption error on replication user: %s,%s", cluster.rplUser, err)
-		} else {
-			cluster.rplPass = p.PlainText
-		}
-	}
+	   cluster.rplPass = cluster.GetDecryptedPassword("replication-credential", cluster.rplPass)
+	*/
 }
 
 func (cluster *Cluster) SetBackupKeepYearly(keep string) error {
@@ -739,18 +774,22 @@ func (cluster *Cluster) SetEmptySla() {
 
 func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 	cluster.Conf.User = credential
+	var Secret Secret
+	Secret.OldValue = cluster.encryptedFlags["db-server-credential"].Value
+	Secret.Value = credential
+	cluster.encryptedFlags["db-server-credential"] = Secret
 	cluster.SetClusterMonitorCredentialsFromConfig()
 	for _, srv := range cluster.Servers {
-		srv.SetCredential(srv.URL, cluster.dbUser, cluster.dbPass)
+		srv.SetCredential(srv.URL, cluster.GetDbUser(), cluster.GetDbPass())
 	}
 	cluster.SetUnDiscovered()
 	cluster.SetDBRestartCookie()
 	if cluster.Conf.VaultMode == VaultConfigStoreV2 && !cluster.isMasterFailed() {
 		found_user := false
 		for _, u := range cluster.master.Users {
-			if u.User == cluster.dbUser {
+			if u.User == cluster.GetDbUser() {
 				found_user = true
-				logs, err := dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, cluster.dbPass)
+				logs, err := dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, cluster.GetDbPass())
 				cluster.LogSQL(logs, err, cluster.master.URL, "Security", LvlErr, "Alter user : %s", err)
 
 			}
@@ -762,9 +801,9 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 
 				for _, u := range cluster.master.Users {
 					if u.User == cluster.oldDbUser {
-						logs, err := dbhelper.RenameUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, cluster.dbPass, cluster.dbUser)
+						logs, err := dbhelper.RenameUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, cluster.GetDbPass(), cluster.GetDbUser())
 						cluster.LogSQL(logs, err, cluster.master.URL, "Security", LvlErr, "Alter user : %s", err)
-						logs, err = dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, cluster.dbUser, cluster.dbPass)
+						logs, err = dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, cluster.GetDbUser(), cluster.GetDbPass())
 						cluster.LogSQL(logs, err, cluster.master.URL, "Security", LvlErr, "Alter user : %s", err)
 
 					}
@@ -779,10 +818,10 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 		}
 		for _, pri := range cluster.Proxies {
 			if prx, ok := pri.(*ProxySQLProxy); ok {
-				prx.RotateMonitoringPasswords(cluster.dbPass)
+				prx.RotateMonitoringPasswords(cluster.GetDbPass())
 			}
 		}
-		err := cluster.ProvisionRotatePasswords(cluster.dbPass)
+		err := cluster.ProvisionRotatePasswords(cluster.GetDbPass())
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
 		}

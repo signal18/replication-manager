@@ -20,8 +20,8 @@ func (cluster *Cluster) UnprovisionDatabaseScript(server *ServerMonitor) error {
 	if cluster.Conf.ProvDbCleanupScript == "" {
 		return nil
 	}
-	scriptCmd := exec.Command(cluster.Conf.ProvDbCleanupScript, misc.Unbracket(server.Host), server.Port, cluster.dbUser, cluster.dbPass, cluster.Name)
-	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.dbPass, "XXXX", 1))
+	scriptCmd := exec.Command(cluster.Conf.ProvDbCleanupScript, misc.Unbracket(server.Host), server.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
+	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -48,8 +48,8 @@ func (cluster *Cluster) ProvisionDatabaseScript(server *ServerMonitor) error {
 	if cluster.Conf.ProvDbBootstrapScript == "" {
 		return nil
 	}
-	scriptCmd := exec.Command(cluster.Conf.ProvDbBootstrapScript, misc.Unbracket(server.Host), server.Port, cluster.dbUser, cluster.dbPass, cluster.Name)
-	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.dbPass, "XXXX", 1))
+	scriptCmd := exec.Command(cluster.Conf.ProvDbBootstrapScript, misc.Unbracket(server.Host), server.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
+	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -76,8 +76,8 @@ func (cluster *Cluster) StopDatabaseScript(server *ServerMonitor) error {
 	if cluster.Conf.ProvDbStopScript == "" {
 		return nil
 	}
-	scriptCmd := exec.Command(cluster.Conf.ProvDbStopScript, misc.Unbracket(server.Host), server.Port, cluster.dbUser, cluster.dbPass, cluster.Name)
-	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.dbPass, "XXXX", 1))
+	scriptCmd := exec.Command(cluster.Conf.ProvDbStopScript, misc.Unbracket(server.Host), server.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
+	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -104,8 +104,8 @@ func (cluster *Cluster) StartDatabaseScript(server *ServerMonitor) error {
 	if cluster.Conf.ProvDbStartScript == "" {
 		return nil
 	}
-	scriptCmd := exec.Command(cluster.Conf.ProvDbStartScript, misc.Unbracket(server.Host), server.Port, cluster.dbUser, cluster.dbPass, cluster.Name)
-	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.dbPass, "XXXX", 1))
+	scriptCmd := exec.Command(cluster.Conf.ProvDbStartScript, misc.Unbracket(server.Host), server.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
+	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()

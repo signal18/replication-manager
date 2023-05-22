@@ -750,8 +750,8 @@ size = ` + collector.ProvDisk + `g
 docker_imgage = ` + collector.ProvDockerImg + `
 ` + ipPods + `
 ` + portPods + `
-mysql_root_password = ` + server.ClusterGroup.dbPass + `
-mysql_root_user = ` + server.ClusterGroup.dbUser + `
+mysql_root_password = ` + server.ClusterGroup.GetDbPass() + `
+mysql_root_user = ` + server.ClusterGroup.GetDbUser() + `
 network = ` + network + `
 gateway =  ` + collector.ProvNetGateway + `
 netmask =  ` + collector.ProvNetMask + `

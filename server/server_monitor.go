@@ -188,9 +188,13 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.PushoverAppToken, "alert-pushover-app-token", "", "Pushover App Token for alerts")
 	monitorCmd.Flags().StringVar(&conf.PushoverUserToken, "alert-pushover-user-token", "", "Pushover User Token for alerts")
 
+	monitorCmd.Flags().StringVar(&conf.ProvOpensvcP12Secret, "opensvc-p12-secret", "", "OpenSVC Secret")
+
 	monitorCmd.Flags().StringVar(&conf.TeamsUrl, "alert-teams-url", "", "Teams url channel for alerts")
 
 	monitorCmd.Flags().BoolVar(&conf.RegistryConsul, "registry-consul", false, "Register write and read SRV DNS to consul")
+	monitorCmd.Flags().StringVar(&conf.RegistryConsulCredential, "registry-consul-credential", ":", "Consul credential user:password")
+	monitorCmd.Flags().StringVar(&conf.RegistryConsulToken, "registry-consul-token", "", "Consul Token")
 	monitorCmd.Flags().StringVar(&conf.RegistryHosts, "registry-servers", "127.0.0.1", "Comma-separated list of registry addresses")
 
 	conf.CheckType = "tcp"

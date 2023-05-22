@@ -16,7 +16,6 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/maxscale"
-	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/pflag"
 )
@@ -37,17 +36,7 @@ func NewMaxscaleProxy(placement int, cluster *Cluster, proxyHost string) *Maxsca
 	prx.Port = conf.MxsPort
 	prx.User = conf.MxsUser
 	prx.Pass = conf.MxsPass
-	if cluster.key != nil {
-		p := crypto.Password{Key: cluster.key}
-		p.CipherText = prx.Pass
-		err := p.Decrypt()
-		if err != nil {
-			cluster.LogPrintf(LvlWarn, "Password decryption error on maxscale proxy user: %s,%s", prx.User, err)
-		} else {
-			prx.Pass = p.PlainText
-		}
-		prx.Pass = p.PlainText
-	}
+	prx.Pass = cluster.GetDecryptedValue("maxscale-pass")
 	prx.ReadPort = conf.MxsReadPort
 	prx.WritePort = conf.MxsWritePort
 	prx.ReadWritePort = conf.MxsReadWritePort

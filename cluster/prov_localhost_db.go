@@ -239,20 +239,20 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 				haveerror = true
 				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
 			}
-			grants = "grant all on *.* to '" + server.ClusterGroup.rplUser + "'@'localhost' identified by '" + server.ClusterGroup.rplPass + "'"
+			grants = "grant all on *.* to '" + server.ClusterGroup.GetRplUser() + "'@'localhost' identified by '" + server.ClusterGroup.GetRplPass() + "'"
 			_, err = conn.Exec(grants)
 			if err != nil {
 				haveerror = true
 				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
 			}
 			cluster.LogPrintf(LvlInfo, "%s", grants)
-			grants = "grant all on *.* to '" + server.ClusterGroup.rplUser + "'@'%' identified by '" + server.ClusterGroup.rplPass + "'"
+			grants = "grant all on *.* to '" + server.ClusterGroup.GetRplUser() + "'@'%' identified by '" + server.ClusterGroup.GetRplPass() + "'"
 			_, err = conn.Exec(grants)
 			if err != nil {
 				haveerror = true
 				cluster.LogPrintf(LvlErr, " %s %s ", grants, err)
 			}
-			grants = "grant all on *.* to '" + server.ClusterGroup.rplUser + "'@'127.0.0.1' identified by '" + server.ClusterGroup.rplPass + "'"
+			grants = "grant all on *.* to '" + server.ClusterGroup.GetRplUser() + "'@'127.0.0.1' identified by '" + server.ClusterGroup.GetRplPass() + "'"
 			_, err = conn.Exec(grants)
 			if err != nil {
 				haveerror = true

@@ -305,19 +305,19 @@ func (server *ServerMonitor) CheckPrivileges() {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Privilege check on %s", server.URL)
 	}
 	if server.State != "" && !server.IsDown() && server.IsRelay == false {
-		myhost, logs, err := dbhelper.GetHostFromConnection(server.Conn, server.ClusterGroup.dbUser, server.DBVersion)
+		myhost, logs, err := dbhelper.GetHostFromConnection(server.Conn, server.ClusterGroup.GetDbUser(), server.DBVersion)
 		server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlErr, "Check Privileges can't get hostname from server %s connection on %s: %s", server.State, server.URL, err)
 		myip, err := misc.GetIPSafe(misc.Unbracket(myhost))
 		if server.ClusterGroup.Conf.LogLevel > 2 {
 			server.ClusterGroup.LogPrintf(LvlDbg, "Client connection found on server %s with IP %s for host %s", server.URL, myip, myhost)
 		}
 		if err != nil {
-			server.ClusterGroup.SetState("ERR00078", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.dbUser, server.URL, myhost, err), ErrFrom: "CONF", ServerUrl: server.URL})
+			server.ClusterGroup.SetState("ERR00078", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.GetDbUser(), server.URL, myhost, err), ErrFrom: "CONF", ServerUrl: server.URL})
 		} else {
-			priv, logs, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, myip, server.DBVersion)
-			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, err))
+			priv, logs, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.GetDbUser(), server.ClusterGroup.repmgrHostname, myip, server.DBVersion)
+			server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.GetDbUser(), server.ClusterGroup.repmgrHostname, err))
 			if err != nil {
-				server.ClusterGroup.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.dbUser, server.ClusterGroup.repmgrHostname, err), ErrFrom: "CONF", ServerUrl: server.URL})
+				server.ClusterGroup.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], server.ClusterGroup.GetDbUser(), server.ClusterGroup.repmgrHostname, err), ErrFrom: "CONF", ServerUrl: server.URL})
 			}
 			if priv.Repl_client_priv == "N" {
 				server.ClusterGroup.SetState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00006"], server.URL), ErrFrom: "CONF", ServerUrl: server.URL})
@@ -333,10 +333,10 @@ func (server *ServerMonitor) CheckPrivileges() {
 		for _, sv2 := range server.ClusterGroup.Servers {
 			if sv2.URL != server.URL && sv2.IsRelay == false && !sv2.IsDown() {
 				rplhost, _ := misc.GetIPSafe(misc.Unbracket(sv2.Host))
-				rpriv, logs, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.rplUser, sv2.Host, rplhost, server.DBVersion)
-				server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, fmt.Sprintf(clusterError["ERR00015"], server.ClusterGroup.rplUser, sv2.URL, err))
+				rpriv, logs, err := dbhelper.GetPrivileges(server.Conn, server.ClusterGroup.GetDbUser(), sv2.Host, rplhost, server.DBVersion)
+				server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, fmt.Sprintf(clusterError["ERR00015"], server.ClusterGroup.GetRplUser(), sv2.URL, err))
 				if err != nil {
-					server.ClusterGroup.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], server.ClusterGroup.rplUser, sv2.URL, err), ErrFrom: "CONF", ServerUrl: sv2.URL})
+					server.ClusterGroup.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], server.ClusterGroup.GetRplUser(), sv2.URL, err), ErrFrom: "CONF", ServerUrl: sv2.URL})
 				}
 				if rpriv.Repl_slave_priv == "N" {
 					server.ClusterGroup.SetState("ERR00007", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00007"], sv2.URL), ErrFrom: "CONF", ServerUrl: sv2.URL})
@@ -347,7 +347,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 }
 
 func (server *ServerMonitor) CheckMonitoringCredentialsRotation() {
-
+	cluster := server.GetCluster()
 	if server.GetCluster().IsVaultUsed() {
 		client, err := server.GetCluster().GetVaultConnection()
 		if err != nil {
@@ -356,9 +356,13 @@ func (server *ServerMonitor) CheckMonitoringCredentialsRotation() {
 		}
 		_, newpass, err := server.GetCluster().GetVaultMonitorCredentials(client)
 		if newpass != server.Pass && err == nil {
+			var new_Secret Secret
+			new_Secret.OldValue = cluster.encryptedFlags["db-servers-credential"].Value
+			new_Secret.Value = cluster.GetDbUser() + ":" + newpass
+			cluster.encryptedFlags["db-servers-credential"] = new_Secret
 
 			server.GetCluster().SetClusterMonitorCredentialsFromConfig()
-			server.SetCredential(server.URL, server.GetCluster().dbUser, server.GetCluster().dbPass)
+			server.SetCredential(server.URL, server.GetCluster().GetDbUser(), server.GetCluster().GetDbPass())
 			server.ClusterGroup.LogPrintf(LvlInfo, "Vault monitoring user password rotation")
 			server.ClusterGroup.LogPrintf(LvlDbg, "Ping function User: %s, Pass: %s", server.User, server.Pass)
 

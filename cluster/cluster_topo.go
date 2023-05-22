@@ -54,7 +54,7 @@ func (cluster *Cluster) newServerList() error {
 	if cluster.Conf.Hosts != "" {
 
 		for k, url := range cluster.hostList {
-			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, false, cluster.GetDomain())
+			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), false, cluster.GetDomain())
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", cluster.Servers[k].URL, err)
 			}
@@ -83,7 +83,7 @@ func (cluster *Cluster) AddChildServers() error {
 				if !cluster.HasServer(sv) {
 					cluster.LogPrintf(LvlInfo, "Inter cluster multi-source  %s add server not yet discovered  %s  ", sv.URL, cluster.Conf.MasterConn)
 
-					srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.dbUser, sv.ClusterGroup.dbPass, false, c.GetDomain())
+					srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.GetDbUser(), sv.ClusterGroup.GetDbPass(), false, c.GetDomain())
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Inter cluster multi-source %s add server not yet discovered  %s error %s", sv.URL, cluster.Conf.MasterConn, err)
 

@@ -52,7 +52,7 @@ func (cluster *Cluster) OnPremiseConnectProxy(server DatabaseProxy) (*sshclient.
 		return nil, errors.New("onpremise-ssh disable ")
 	}
 
-	user, _ := misc.SplitPair(cluster.Conf.OnPremiseSSHCredential)
+	user, _ := misc.SplitPair(cluster.GetDecryptedValue("onpremise-ssh-credential"))
 	key := os.Getenv("HOME") + "/.ssh/id_rsa"
 	client, err := sshcli.DialWithKey(misc.Unbracket(server.GetHost())+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, key)
 	if err != nil {

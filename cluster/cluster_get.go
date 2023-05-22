@@ -273,11 +273,56 @@ func (cluster *Cluster) GetTestMode() bool {
 }
 
 func (cluster *Cluster) GetDbUser() string {
-	return cluster.dbUser
+	user, _ := misc.SplitPair(cluster.encryptedFlags["db-servers-credential"].Value)
+	return user
 }
 
 func (cluster *Cluster) GetDbPass() string {
-	return cluster.dbPass
+	_, pass := misc.SplitPair(cluster.encryptedFlags["db-servers-credential"].Value)
+	return pass
+}
+
+func (cluster *Cluster) GetRplUser() string {
+	user, _ := misc.SplitPair(cluster.encryptedFlags["replication-credential"].Value)
+	return user
+}
+
+func (cluster *Cluster) GetRplPass() string {
+	_, pass := misc.SplitPair(cluster.encryptedFlags["replication-credential"].Value)
+	return pass
+}
+
+func (cluster *Cluster) GetShardUser() string {
+	user, _ := misc.SplitPair(cluster.encryptedFlags["shardproxy-credential"].Value)
+	return user
+}
+
+func (cluster *Cluster) GetShardPass() string {
+	_, pass := misc.SplitPair(cluster.encryptedFlags["shardproxy-credential"].Value)
+	return pass
+}
+func (cluster *Cluster) GetMonitorWriteHearbeatUser() string {
+	user, _ := misc.SplitPair(cluster.encryptedFlags["monitoring-write-heartbeat-credential"].Value)
+	return user
+}
+
+func (cluster *Cluster) GetMonitorWriteHeartbeatPass() string {
+	_, pass := misc.SplitPair(cluster.encryptedFlags["monitoring-write-heartbeat-credential"].Value)
+	return pass
+}
+
+func (cluster *Cluster) GetOnPremiseSSHUser() string {
+	user, _ := misc.SplitPair(cluster.encryptedFlags["onpremise-ssh-credential"].Value)
+	return user
+}
+
+func (cluster *Cluster) GetOnPremiseSSHPass() string {
+	_, pass := misc.SplitPair(cluster.encryptedFlags["onpremise-ssh-credential"].Value)
+	return pass
+}
+
+func (cluster *Cluster) GetDecryptedValue(key string) string {
+	return cluster.encryptedFlags[key].Value
 }
 
 func (cluster *Cluster) GetStatus() bool {
@@ -891,4 +936,20 @@ func (cluster *Cluster) GetPasswordKey(MonitoringKeyPath string) ([]byte, error)
 	}
 	return k, err
 
+}
+
+func (cluster *Cluster) GetDecryptedPassword(key string, value string) string {
+	if cluster.key != nil {
+		p := crypto.Password{Key: cluster.key}
+		p.CipherText = value
+		err := p.Decrypt()
+		if err != nil {
+			cluster.LogPrintf(LvlWarn, "Password decryption error on %s: %s", key, err)
+			return value
+		} else {
+			return p.PlainText
+		}
+
+	}
+	return value
 }

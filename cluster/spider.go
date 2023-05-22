@@ -32,7 +32,7 @@ func (cluster *Cluster) SpiderShardsDiscovery() {
 				if extraUrl != "" {
 					for j, url := range strings.Split(extraUrl, ",") {
 						var err error
-						srv, err := cluster.newServerMonitor(url, cluster.dbUser, cluster.dbPass, true, cluster.GetDomain())
+						srv, err := cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), true, cluster.GetDomain())
 						srv.SetState(stateShard)
 						cluster.Servers = append(cluster.Servers, srv)
 						if err != nil {
@@ -63,7 +63,7 @@ func (cluster *Cluster) SpiderSetShardsRepl() {
 						cluster.LogPrintf(LvlWarn, "Can not set heartbeat table to %s", url)
 						return
 					}
-					_, err = dbhelper.SetMultiSourceRepl(cluster.Servers[k].Conn, host, port, cluster.rplUser, cluster.rplPass, "")
+					_, err = dbhelper.SetMultiSourceRepl(cluster.Servers[k].Conn, host, port, cluster.GetRplUser(), cluster.GetRplPass(), "")
 					if err != nil {
 						log.Fatalf("ERROR: Can not set heartbeat replication from %s to %s : %s", url, url2, err)
 					}

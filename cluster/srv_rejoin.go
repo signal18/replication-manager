@@ -232,8 +232,8 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 		logs, err := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:      realmaster.Host,
 			Port:      realmaster.Port,
-			User:      server.ClusterGroup.rplUser,
-			Password:  server.ClusterGroup.rplPass,
+			User:      server.ClusterGroup.GetRplUser(),
+			Password:  server.ClusterGroup.GetRplPass(),
 			Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 			Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 			Mode:      "MXS",
@@ -251,8 +251,8 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 		logs, err := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:        realmaster.Host,
 			Port:        realmaster.Port,
-			User:        server.ClusterGroup.rplUser,
-			Password:    server.ClusterGroup.rplPass,
+			User:        server.ClusterGroup.GetRplUser(),
+			Password:    server.ClusterGroup.GetRplPass(),
 			Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 			Heartbeat:   strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 			Mode:        "POSITIONAL",
@@ -290,8 +290,8 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	}
 
 	binlogCmd := exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--flashback", "--to-last-log", server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
-	clientCmd := exec.Command(server.ClusterGroup.GetMysqlclientPath(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
-	server.ClusterGroup.LogPrintf("INFO", "FlashBack: %s %s", server.ClusterGroup.GetMysqlBinlogPath(), strings.Replace(strings.Join(binlogCmd.Args, " "), server.ClusterGroup.rplPass, "XXXX", -1))
+	clientCmd := exec.Command(server.ClusterGroup.GetMysqlclientPath(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.GetDbUser(), "--password="+server.ClusterGroup.GetDbPass())
+	server.ClusterGroup.LogPrintf("INFO", "FlashBack: %s %s", server.ClusterGroup.GetMysqlBinlogPath(), strings.Replace(strings.Join(binlogCmd.Args, " "), server.ClusterGroup.GetRplPass(), "XXXX", -1))
 	var err error
 	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
 	if err != nil {
@@ -299,11 +299,11 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 		return err
 	}
 	if err := binlogCmd.Start(); err != nil {
-		server.ClusterGroup.LogPrintf("ERROR", "Failed mysqlbinlog command: %s at %s", err, strings.Replace(binlogCmd.Path, server.ClusterGroup.rplPass, "XXXX", -1))
+		server.ClusterGroup.LogPrintf("ERROR", "Failed mysqlbinlog command: %s at %s", err, strings.Replace(binlogCmd.Path, server.ClusterGroup.GetRplPass(), "XXXX", -1))
 		return err
 	}
 	if err := clientCmd.Run(); err != nil {
-		server.ClusterGroup.LogPrintf("ERROR", "Error starting client: %s at %s", err, strings.Replace(clientCmd.Path, server.ClusterGroup.rplPass, "XXXX", -1))
+		server.ClusterGroup.LogPrintf("ERROR", "Error starting client: %s at %s", err, strings.Replace(clientCmd.Path, server.ClusterGroup.GetRplPass(), "XXXX", -1))
 		return err
 	}
 	logs, err := dbhelper.SetGTIDSlavePos(server.Conn, crash.FailoverIOGtid.Sprint())
@@ -347,8 +347,8 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 		logs, err3 := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 			Host:      realmaster.Host,
 			Port:      realmaster.Port,
-			User:      server.ClusterGroup.rplUser,
-			Password:  server.ClusterGroup.rplPass,
+			User:      server.ClusterGroup.GetRplUser(),
+			Password:  server.ClusterGroup.GetRplPass(),
 			Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 			Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 			Mode:      "MXS",
@@ -450,8 +450,8 @@ func (server *ServerMonitor) rejoinMasterAsSlave() error {
 func (server *ServerMonitor) rejoinSlaveChangePassword(ss *dbhelper.SlaveStatus) error {
 
 	logs, err := dbhelper.ChangeReplicationPassword(server.Conn, dbhelper.ChangeMasterOpt{
-		User:     server.ClusterGroup.rplUser,
-		Password: server.ClusterGroup.rplPass,
+		User:     server.ClusterGroup.GetRplUser(),
+		Password: server.ClusterGroup.GetRplPass(),
 		Channel:  server.ClusterGroup.Conf.MasterConn,
 	}, server.DBVersion)
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Change master for password rotation : %s", err)
@@ -538,8 +538,8 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 							logs, changeMasterErr := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 								Host:        server.ClusterGroup.master.Host,
 								Port:        server.ClusterGroup.master.Port,
-								User:        server.ClusterGroup.rplUser,
-								Password:    server.ClusterGroup.rplPass,
+								User:        server.ClusterGroup.GetRplUser(),
+								Password:    server.ClusterGroup.GetRplPass(),
 								Logfile:     myparentss.MasterLogFile.String,
 								Logpos:      myparentss.ReadMasterLogPos.String,
 								Retry:       strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
@@ -662,8 +662,8 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	server.ClusterGroup.LogPrintf("INFO", "Backup ahead binlog events of previously failed server %s", server.URL)
 	filepath.Walk(server.ClusterGroup.Conf.WorkingDir+"/", server.deletefiles)
 
-	cmdrun = exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
-	server.ClusterGroup.LogPrintf("INFO", "Backup %s %s", server.ClusterGroup.GetMysqlBinlogPath(), strings.Replace(strings.Join(cmdrun.Args, " "), server.ClusterGroup.rplPass, "XXXX", -1))
+	cmdrun = exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+server.ClusterGroup.GetRplUser(), "--password="+server.ClusterGroup.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.ClusterGroup.Conf.WorkingDir+"/"+server.ClusterGroup.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
+	server.ClusterGroup.LogPrintf("INFO", "Backup %s %s", server.ClusterGroup.GetMysqlBinlogPath(), strings.Replace(strings.Join(cmdrun.Args, " "), server.ClusterGroup.GetRplPass(), "XXXX", -1))
 
 	var outrun bytes.Buffer
 	cmdrun.Stdout = &outrun

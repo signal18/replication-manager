@@ -122,13 +122,11 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 }
 
 func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
-	server.ClusterGroup.LogPrintf(LvlErr, "COUCOU RESEED PHYSICAL BACKUP\n")
 	if server.ClusterGroup.master != nil && !server.ClusterGroup.GetBackupServer().HasBackupPhysicalCookie() {
 		server.createCookie("cookie_waitbackup")
 		return 0, errors.New("No Physical Backup")
 	}
 	jobid, err := server.JobInsertTaks("reseed"+server.ClusterGroup.Conf.BackupPhysicalType, server.SSTPort, server.ClusterGroup.Conf.MonitorAddress)
-	server.ClusterGroup.LogPrintf(LvlErr, "COUCOU RESEED PHYSICAL BACKUP INSERT\n")
 	if err != nil {
 		server.ClusterGroup.LogPrintf(LvlErr, "Receive reseed physical backup %s request for server: %s %s", server.ClusterGroup.Conf.BackupPhysicalType, server.URL, err)
 		return jobid, err
@@ -138,8 +136,8 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      server.ClusterGroup.master.Host,
 		Port:      server.ClusterGroup.master.Port,
-		User:      server.ClusterGroup.rplUser,
-		Password:  server.ClusterGroup.rplPass,
+		User:      server.ClusterGroup.GetRplUser(),
+		Password:  server.ClusterGroup.GetRplPass(),
 		Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
@@ -176,8 +174,8 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      server.ClusterGroup.master.Host,
 		Port:      server.ClusterGroup.master.Port,
-		User:      server.ClusterGroup.rplUser,
-		Password:  server.ClusterGroup.rplPass,
+		User:      server.ClusterGroup.GetRplUser(),
+		Password:  server.ClusterGroup.GetRplPass(),
 		Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
@@ -213,8 +211,8 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      server.ClusterGroup.master.Host,
 		Port:      server.ClusterGroup.master.Port,
-		User:      server.ClusterGroup.rplUser,
-		Password:  server.ClusterGroup.rplPass,
+		User:      server.ClusterGroup.GetRplUser(),
+		Password:  server.ClusterGroup.GetRplPass(),
 		Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
@@ -267,8 +265,8 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      server.ClusterGroup.master.Host,
 		Port:      server.ClusterGroup.master.Port,
-		User:      server.ClusterGroup.rplUser,
-		Password:  server.ClusterGroup.rplPass,
+		User:      server.ClusterGroup.GetRplUser(),
+		Password:  server.ClusterGroup.GetRplPass(),
 		Retry:     strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 		Heartbeat: strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
@@ -383,10 +381,10 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 	threads := strconv.Itoa(server.ClusterGroup.Conf.BackupLogicalLoadThreads)
 
 	myargs := strings.Split(strings.ReplaceAll(server.ClusterGroup.Conf.BackupMyLoaderOptions, "  ", " "), " ")
-	myargs = append(myargs, "--directory="+server.ClusterGroup.master.GetMasterBackupDirectory(), "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+	myargs = append(myargs, "--directory="+server.ClusterGroup.master.GetMasterBackupDirectory(), "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.GetDbUser(), "--password="+server.ClusterGroup.GetDbPass())
 	dumpCmd := exec.Command(server.ClusterGroup.GetMyLoaderPath(), myargs...)
 
-	server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
+	server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s", strings.Replace(dumpCmd.String(), server.ClusterGroup.GetDbPass(), "XXXX", 1))
 
 	stdoutIn, _ := dumpCmd.StdoutPipe()
 	stderrIn, _ := dumpCmd.StderrPipe()
@@ -427,7 +425,7 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 
 	cmd := exec.Command(server.ClusterGroup.Conf.BackupLoadScript, misc.Unbracket(server.Host), misc.Unbracket(server.ClusterGroup.master.Host))
 
-	server.ClusterGroup.LogPrintf(LvlInfo, "Command backup load script: %s", strings.Replace(cmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
+	server.ClusterGroup.LogPrintf(LvlInfo, "Command backup load script: %s", strings.Replace(cmd.String(), server.ClusterGroup.GetDbPass(), "XXXX", 1))
 
 	stdoutIn, _ := cmd.StdoutPipe()
 	stderrIn, _ := cmd.StderrPipe()
@@ -650,7 +648,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 	if server.ClusterGroup.Conf.BackupSaveScript != "" {
 		scriptCmd := exec.Command(server.ClusterGroup.Conf.BackupSaveScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port)
-		server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s", strings.Replace(scriptCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
+		server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s", strings.Replace(scriptCmd.String(), server.ClusterGroup.GetDbPass(), "XXXX", 1))
 		stdoutIn, _ := scriptCmd.StdoutPipe()
 		stderrIn, _ := scriptCmd.StderrPipe()
 		scriptCmd.Start()
@@ -725,10 +723,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		}
 
 		dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+server.ClusterGroup.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
-		dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser /*"--log-error="+server.GetMyBackupDirectory()+"dump_error.log"*/)
+		dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.GetDbUser() /*"--log-error="+server.GetMyBackupDirectory()+"dump_error.log"*/)
 		dumpCmd := exec.Command(server.ClusterGroup.GetMysqlDumpPath(), dumpargs...)
 
-		server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", -1))
+		server.ClusterGroup.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), server.ClusterGroup.GetDbPass(), "XXXX", -1))
 		f, err := os.Create(server.GetMyBackupDirectory() + "mysqldump.sql.gz")
 		if err != nil {
 			server.ClusterGroup.LogPrintf(LvlErr, "Error mysqldump backup request: %s", err)
@@ -773,9 +771,9 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		conf := dumplingext.DefaultConfig()
 		conf.Database = ""
 		conf.Host = misc.Unbracket(server.Host)
-		conf.User = server.ClusterGroup.dbUser
+		conf.User = server.ClusterGroup.GetDbUser()
 		conf.Port, _ = strconv.Atoi(server.Port)
-		conf.Password = server.ClusterGroup.dbPass
+		conf.Password = server.ClusterGroup.GetDbPass()
 
 		conf.Threads = server.ClusterGroup.Conf.BackupLogicalDumpThreads
 		conf.FileSize = 1000
@@ -799,10 +797,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 		threads := strconv.Itoa(server.ClusterGroup.Conf.BackupLogicalDumpThreads)
 		myargs := strings.Split(strings.ReplaceAll(server.ClusterGroup.Conf.BackupMyLoaderOptions, "  ", " "), " ")
-		myargs = append(myargs, "--outputdir="+server.GetMyBackupDirectory(), "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.dbUser, "--password="+server.ClusterGroup.dbPass)
+		myargs = append(myargs, "--outputdir="+server.GetMyBackupDirectory(), "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+server.ClusterGroup.GetDbUser(), "--password="+server.ClusterGroup.GetDbPass())
 		dumpCmd := exec.Command(server.ClusterGroup.GetMyDumperPath(), myargs...)
 
-		server.ClusterGroup.LogPrintf(LvlInfo, "%s", strings.Replace(dumpCmd.String(), server.ClusterGroup.dbPass, "XXXX", 1))
+		server.ClusterGroup.LogPrintf(LvlInfo, "%s", strings.Replace(dumpCmd.String(), server.ClusterGroup.GetDbPass(), "XXXX", 1))
 		stdoutIn, _ := dumpCmd.StdoutPipe()
 		stderrIn, _ := dumpCmd.StderrPipe()
 		dumpCmd.Start()
@@ -990,8 +988,8 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string) error {
 		return errors.New("Copy binlog not enable")
 	}
 
-	cmdrun := exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+server.ClusterGroup.rplUser, "--password="+server.ClusterGroup.rplPass, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory(), binlogfile)
-	server.ClusterGroup.LogPrintf(LvlInfo, "%s", strings.Replace(cmdrun.String(), server.ClusterGroup.rplPass, "XXXX", 1))
+	cmdrun := exec.Command(server.ClusterGroup.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+server.ClusterGroup.GetRplUser(), "--password="+server.ClusterGroup.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory(), binlogfile)
+	server.ClusterGroup.LogPrintf(LvlInfo, "%s", strings.Replace(cmdrun.String(), server.ClusterGroup.GetRplPass(), "XXXX", 1))
 
 	var outrun bytes.Buffer
 	cmdrun.Stdout = &outrun
@@ -1095,7 +1093,7 @@ func (cluster *Cluster) CreateTmpClientConfFile() (string, error) {
 		return "", err
 	}
 
-	if _, err := confOut.Write([]byte("[client]\npassword=" + cluster.dbPass + "\n")); err != nil {
+	if _, err := confOut.Write([]byte("[client]\npassword=" + cluster.GetDbPass() + "\n")); err != nil {
 		return "", err
 	}
 	if err := confOut.Close(); err != nil {
@@ -1133,15 +1131,15 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 	dumpargs := strings.Split(strings.ReplaceAll(dumpstring, "  ", " "), " ")
 
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+source.ClusterGroup.dbUser /*, "--log-error="+source.GetMyBackupDirectory()+"dump_error.log"*/)
+	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+source.ClusterGroup.GetDbUser() /*, "--log-error="+source.GetMyBackupDirectory()+"dump_error.log"*/)
 
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
 	stderrIn, _ := dumpCmd.StderrPipe()
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.dbUser, `--force`, `--batch` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
 	stderrOut, _ := clientCmd.StderrPipe()
 
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
-	cluster.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.dbPass, "XXXX", -1))
+	cluster.LogPrintf(LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 
 	iodumpreader, err := dumpCmd.StdoutPipe()
 	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), iodumpreader)
@@ -1152,11 +1150,11 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 		return err
 	}*/
 	if err := dumpCmd.Start(); err != nil {
-		cluster.LogPrintf(LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(dumpCmd.String(), cluster.dbPass, "XXXX", -1))
+		cluster.LogPrintf(LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 		return err
 	}
 	if err := clientCmd.Start(); err != nil {
-		cluster.LogPrintf(LvlErr, "Can't start mysql client:%s at %s", err, strings.Replace(clientCmd.String(), cluster.dbPass, "XXXX", -1))
+		cluster.LogPrintf(LvlErr, "Can't start mysql client:%s at %s", err, strings.Replace(clientCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 		return err
 	}
 	var wg sync.WaitGroup

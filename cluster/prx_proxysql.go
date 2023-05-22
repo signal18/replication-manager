@@ -8,7 +8,6 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/proxysql"
-	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -27,8 +26,8 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 	prx.Type = config.ConstProxySqlproxy
 	prx.Port = conf.ProxysqlAdminPort
 	prx.ReadWritePort, _ = strconv.Atoi(conf.ProxysqlPort)
-	prx.User = cluster.proxysqlUser
-	prx.Pass = cluster.proxysqlPass
+	prx.User = cluster.Conf.ProxysqlUser
+	prx.Pass = cluster.GetDecryptedValue("proxysql-password")
 	prx.ReaderHostgroup, _ = strconv.Atoi(conf.ProxysqlReaderHostgroup)
 	prx.WriterHostgroup, _ = strconv.Atoi(conf.ProxysqlWriterHostgroup)
 	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
@@ -44,16 +43,7 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 		}
 	}
 
-	if cluster.key != nil {
-		p := crypto.Password{Key: cluster.key}
-		p.CipherText = prx.Pass
-		err := p.Decrypt()
-		if err != nil {
-			cluster.LogPrintf(LvlWarn, "Password decryption error on proxySQL user: %s,%s", prx.User, err)
-		} else {
-			prx.Pass = p.PlainText
-		}
-	}
+	prx.Pass = cluster.GetDecryptedPassword("proxysql-password", prx.Pass)
 
 	return prx
 }
@@ -439,7 +429,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 					cluster.StateMachine.AddState("ERR00057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00057"], user.User), ErrFrom: "MON", ServerUrl: proxy.Name})
 				} else {
 					if u.Password != "" && u.Password != "invalid" {
-						if u.User != cluster.dbUser {
+						if u.User != cluster.GetDbUser() {
 							uniUsers[u.User+":"+u.Password] = u
 						} else if cluster.Conf.MonitorWriteHeartbeatCredential == "" {
 							//  load the repman DB user in proxy beacause we don't have an extra user to query master
@@ -585,8 +575,8 @@ func (proxy *ProxySQLProxy) RotateMonitoringPasswords(password string) {
 		cluster.LogPrintf(LvlErr, "ProxySQL could not set mysql variables (%s)", err)
 	}
 
-	if mon_user != strings.ToUpper(cluster.dbUser) {
-		err = psql.SetMySQLVariable("mysql-monitor_username", cluster.dbUser)
+	if mon_user != strings.ToUpper(cluster.GetDbUser()) {
+		err = psql.SetMySQLVariable("mysql-monitor_username", cluster.GetDbUser())
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "ProxySQL could not set mysql variables (%s)", err)
 		}

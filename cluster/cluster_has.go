@@ -353,7 +353,13 @@ func (cluster *Cluster) HasReplicationCredentialsRotation() bool {
 			return false
 		}
 		_, newpass, err := cluster.GetVaultReplicationCredentials(client)
-		if newpass != cluster.rplPass && err == nil {
+		if newpass != cluster.GetRplPass() && err == nil {
+			var new_Secret Secret
+
+			new_Secret.OldValue = cluster.encryptedFlags["replication-credential"].Value
+			new_Secret.Value = cluster.GetRplUser() + ":" + newpass
+			cluster.encryptedFlags["replication-credential"] = new_Secret
+
 			return true
 		}
 		return false
@@ -369,9 +375,9 @@ func (cluster *Cluster) HasMonitoringCredentialsRotation() bool {
 			return false
 		}
 		newuser, newpass, err := cluster.GetVaultMonitorCredentials(client)
-		if (newpass != cluster.dbPass || newuser != cluster.dbUser) && err == nil {
-			cluster.oldDbUser = cluster.dbUser
-			cluster.oldDbPass = cluster.dbPass
+		if (newpass != cluster.GetDbPass() || newuser != cluster.GetDbUser()) && err == nil {
+			cluster.oldDbUser = cluster.GetDbUser()
+			cluster.oldDbPass = cluster.GetDbPass()
 			return true
 		}
 		return false

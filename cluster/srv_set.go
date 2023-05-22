@@ -249,8 +249,8 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 	changeOpt := dbhelper.ChangeMasterOpt{
 		Host:        master.Host,
 		Port:        master.Port,
-		User:        master.ClusterGroup.rplUser,
-		Password:    master.ClusterGroup.rplPass,
+		User:        master.ClusterGroup.GetRplUser(),
+		Password:    master.ClusterGroup.GetRplPass(),
 		Retry:       strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 		Heartbeat:   strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		SSL:         server.ClusterGroup.Conf.ReplicationSSL,
@@ -283,8 +283,8 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 		server.ClusterGroup.LogPrintf(LvlInfo, "Doing MySQL GTID switch of the old master")
 		changeOpt.Host = server.ClusterGroup.master.Host
 		changeOpt.Port = server.ClusterGroup.master.Port
-		changeOpt.User = server.ClusterGroup.rplUser
-		changeOpt.Password = server.ClusterGroup.rplPass
+		changeOpt.User = server.ClusterGroup.GetRplUser()
+		changeOpt.Password = server.ClusterGroup.GetRplPass()
 		changeOpt.Retry = strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry)
 		changeOpt.Heartbeat = strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime)
 		changeOpt.Mode = "MASTER_AUTO_POSITION"
@@ -292,8 +292,8 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 	} else {
 		changeOpt.Host = master.Host
 		changeOpt.Port = master.Port
-		changeOpt.User = master.ClusterGroup.rplUser
-		changeOpt.Password = master.ClusterGroup.rplPass
+		changeOpt.User = master.ClusterGroup.GetRplUser()
+		changeOpt.Password = master.ClusterGroup.GetRplPass()
 		changeOpt.Retry = strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry)
 		changeOpt.Heartbeat = strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime)
 		changeOpt.Mode = "CURRENT_POS"
@@ -306,8 +306,8 @@ func (server *ServerMonitor) SetReplicationFromMaxsaleServer(master *ServerMonit
 	return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      master.Host,
 		Port:      master.Port,
-		User:      master.ClusterGroup.rplUser,
-		Password:  master.ClusterGroup.rplPass,
+		User:      master.ClusterGroup.GetRplUser(),
+		Password:  master.ClusterGroup.GetRplPass(),
 		Retry:     strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 		Heartbeat: strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "MXS",
@@ -386,8 +386,8 @@ func (server *ServerMonitor) SetReplicationCredentialsRotation(ss *dbhelper.Slav
 		}
 		if server.GetCluster().Conf.VaultMode == VaultConfigStoreV2 {
 			for _, u := range server.GetCluster().master.Users {
-				if u.User == server.GetCluster().rplUser {
-					logs, err := dbhelper.SetUserPassword(server.GetCluster().master.Conn, server.GetCluster().master.DBVersion, u.Host, u.User, server.GetCluster().rplPass)
+				if u.User == server.GetCluster().GetRplUser() {
+					logs, err := dbhelper.SetUserPassword(server.GetCluster().master.Conn, server.GetCluster().master.DBVersion, u.Host, u.User, server.GetCluster().GetRplPass())
 					server.ClusterGroup.LogSQL(logs, err, server.URL, "Security", LvlErr, "Alter user : %s", err)
 
 				}
