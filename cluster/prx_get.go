@@ -139,7 +139,11 @@ func (proxy *Proxy) GetConfigDatadir() string {
 	if proxy.GetOrchestrator() == config.ConstOrchestratorSlapOS {
 		return proxy.SlapOSDatadir
 	}
-	return "/tmp"
+	if proxy.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
+		return "/var/lib/" + proxy.Type
+	}
+
+	return "/var/lib/" + proxy.Type
 }
 
 func (proxy *Proxy) GetConfigConfigdir() string {
