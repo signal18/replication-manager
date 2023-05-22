@@ -90,19 +90,19 @@ func (cluster *Cluster) RotatePasswords() error {
 			_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.GetConf().User, secretData_db)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Database Password rotation cancel, unable to write secret: %v", err)
-				return err
+				new_password_db = cluster.GetDbPass()
 			}
 
 			_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.GetConf().RplUser, secretData_rpl)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Replication Password rotation cancel, unable to write secret: %v", err)
-				return err
+				new_password_rpl = cluster.GetRplPass()
 			}
 
 			_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.Conf.ProxysqlPassword, secretData_proxysql)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "ProxySQL Password rotation cancel, unable to write secret: %v", err)
-				return err
+				new_password_proxysql = cluster.GetDecryptedValue("proxysql-password")
 			}
 			cluster.LogPrintf(LvlErr, "TEST password Rotation new mdp : %s, %s, decrypt val %s", new_password_db, new_password_proxysql, cluster.GetDecryptedValue("proxysql-password"))
 			cluster.LogPrintf(LvlInfo, "Secret written successfully. New password generated: db-servers-credential %s, replication-credential %s", new_password_db, new_password_rpl)
