@@ -491,8 +491,8 @@ func (cluster *Cluster) SetClusterCredentialsFromConfig() {
 
 	cluster.SetClusterMonitorCredentialsFromConfig()
 	cluster.SetClusterReplicationCredentialsFromConfig()
-	cluster.SetClusterProxySqlCredentialsFromConfig()
-	cluster.LogPrintf(LvlErr, "TEST %v", cluster.encryptedFlags)
+	cluster.SetClusterProxyCredentialsFromConfig()
+	//cluster.LogPrintf(LvlErr, "TEST %v", cluster.encryptedFlags)
 }
 
 func (cluster *Cluster) DecryptSecretsFromConfig() {
@@ -508,6 +508,7 @@ func (cluster *Cluster) DecryptSecretsFromConfig() {
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
 		if cluster.IsVaultUsed() {
+			cluster.LogPrintf(LvlInfo, "Decrypting all the secret variables on Vault")
 			config := vault.DefaultConfig()
 
 			config.Address = cluster.Conf.VaultServerAddr
@@ -519,7 +520,7 @@ func (cluster *Cluster) DecryptSecretsFromConfig() {
 				if cluster.Conf.VaultMode == VaultConfigStoreV2 {
 					vault_value, err := cluster.GetVaultCredentials(client, secret.Value, k)
 					if err != nil {
-						cluster.LogPrintf(LvlErr, "Unable to get %s Vault secret: %v", k, err)
+						cluster.LogPrintf(LvlWarn, "Unable to get %s Vault secret: %v", k, err)
 					} else {
 						secret.Value = vault_value
 					}
@@ -528,7 +529,7 @@ func (cluster *Cluster) DecryptSecretsFromConfig() {
 				cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			}
 		} else {
-
+			cluster.LogPrintf(LvlInfo, "Decrypting all the secret variables")
 			lst_cred := strings.Split(secret.Value, ",")
 			var tab_cred []string
 			for _, cred := range lst_cred {
@@ -545,40 +546,33 @@ func (cluster *Cluster) DecryptSecretsFromConfig() {
 	}
 }
 
-func (cluster *Cluster) SetClusterProxySqlCredentialsFromConfig() {
-	/*cluster.proxysqlPass = cluster.Conf.ProxysqlPassword
-	cluster.proxysqlUser = cluster.Conf.ProxysqlUser
+func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
+
 	if cluster.IsVaultUsed() {
-
-		//cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
-		config := vault.DefaultConfig()
-
-		config.Address = cluster.Conf.VaultServerAddr
-
 		client, err := cluster.GetVaultConnection()
-
-		if err == nil {
-
-			if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-				cluster.proxysqlPass, err = cluster.GetVaultCredentials(client, cluster.Conf.ProxysqlPassword, "proxysql-password")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "Unable to get proxysql server Vault password: %v", err)
-					cluster.proxysqlPass = cluster.Conf.ProxysqlPassword
-				}
-				cluster.proxysqlUser, err = cluster.GetVaultCredentials(client, cluster.Conf.ProxysqlUser, "proxysql-user")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "Unable to get proxysql server Vault user: %v", err)
-					cluster.proxysqlUser = cluster.Conf.ProxysqlUser
-				}
-				//test
-				//cluster.LogPrintf(LvlInfo, "Secret read from Vault for proxysql is %s:%s", cluster.proxysqlUser, cluster.proxysqlPass)
-			}
-		} else {
+		if err != nil {
 			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			return
 		}
-	}
+		if cluster.Conf.ProxysqlOn {
+			user, pass, _ := cluster.GetVaultProxySQLCredentials(client)
+			var newSecret Secret
+			newSecret.OldValue = cluster.encryptedFlags["proxysql-user"].Value
+			newSecret.Value = user
+			cluster.encryptedFlags["proxysql-user"] = newSecret
+			newSecret.OldValue = cluster.encryptedFlags["proxysql-password"].Value
+			newSecret.Value = pass
+			cluster.encryptedFlags["proxysql-password"] = newSecret
+		}
+		if cluster.Conf.MdbsProxyOn {
+			user, pass, _ := cluster.GetVaultShardProxyCredentials(client)
+			var newSecret Secret
+			newSecret.OldValue = cluster.encryptedFlags["shardproxy-credential"].Value
+			newSecret.Value = user + ":" + pass
+			cluster.encryptedFlags["shardproxy-credential"] = newSecret
+		}
 
-	cluster.proxysqlPass = cluster.GetDecryptedPassword("proxysql-password", cluster.proxysqlPass)*/
+	}
 }
 
 func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
@@ -603,42 +597,19 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 		cluster.LogPrintf(LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
 
-	/*if cluster.IsVaultUsed() {
-
-		cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
-		config := vault.DefaultConfig()
-
-		config.Address = cluster.Conf.VaultServerAddr
-
+	if cluster.IsVaultUsed() {
 		client, err := cluster.GetVaultConnection()
-
-		if err == nil {
-
-			if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-				splitmonitoringuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "db-servers-credential")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "Unable to get database server Vault credentials: %v", err)
-					splitmonitoringuser = cluster.Conf.User
-				}
-				//test
-				//cluster.LogPrintf(LvlInfo, "Secret read from Vault for dbPass is %s", splitmonitoringuser)
-			} else {
-				splitmonitoringuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "")
-				if err != nil {
-					cluster.LogPrintf(LvlErr, "Unable to get database server Vault credentials: %v", err)
-					splitmonitoringuser = cluster.Conf.User
-				}
-
-					if cluster.GetConf().LogLevel > 2 {
-						cluster.LogPrintf(LvlInfo, "Vault database monitoring credentials read : %s", splitmonitoringuser)
-					}
-
-			}
-		} else {
+		if err != nil {
 			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			return
 		}
+		user, pass, _ := cluster.GetVaultReplicationCredentials(client)
+		var newSecret Secret
+		newSecret.OldValue = cluster.encryptedFlags["db-servers-credential"].Value
+		newSecret.Value = user + ":" + pass
+		cluster.encryptedFlags["db-servers-credential"] = newSecret
 
-	}*/
+	}
 
 	cluster.hostList = strings.Split(cluster.Conf.Hosts, ",")
 	/*
@@ -671,47 +642,19 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 		cluster.HaveDBTLSOldCert = true
 		cluster.LogPrintf(LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
-	/*
-	   if cluster.IsVaultUsed() {
+	if cluster.IsVaultUsed() {
+		client, err := cluster.GetVaultConnection()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			return
+		}
+		user, pass, _ := cluster.GetVaultReplicationCredentials(client)
+		var newSecret Secret
+		newSecret.OldValue = cluster.encryptedFlags["replication-credential"].Value
+		newSecret.Value = user + ":" + pass
+		cluster.encryptedFlags["replication-credential"] = newSecret
 
-	   	cluster.LogPrintf(LvlInfo, "Vault config store v2 mode activated")
-	   	config := vault.DefaultConfig()
-
-	   	config.Address = cluster.Conf.VaultServerAddr
-
-	   	client, err := cluster.GetVaultConnection()
-
-	   	if err == nil {
-	   		if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-	   			splitreplicationuser, err = cluster.GetVaultCredentials(client, cluster.Conf.RplUser, "replication-credential")
-	   			if err != nil {
-	   				cluster.LogPrintf(LvlErr, "Unable to get replication Vault credentials: %v", err)
-	   				splitreplicationuser = cluster.Conf.RplUser
-	   			}
-	   			//test
-	   			//cluster.LogPrintf(LvlInfo, "Secret read from Vault for rplPass is %s", splitreplicationuser)
-	   		} else {
-	   			splitreplicationuser, err = cluster.GetVaultCredentials(client, cluster.Conf.User, "")
-	   			if err != nil {
-	   				cluster.LogPrintf(LvlErr, "Unable to get replication Vault credentials: %v", err)
-	   				splitreplicationuser = cluster.Conf.RplUser
-	   			}
-	   			/*
-	   				if cluster.GetConf().LogLevel > 2 {
-	   					cluster.LogPrintf(LvlInfo, "Vault database replication credentials read : %s", splitreplicationuser)
-	   				}
-
-	   		}
-	   	} else {
-	   		cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
-	   	}
-
-	   }
-
-	   cluster.rplUser, cluster.rplPass = misc.SplitPair(splitreplicationuser)
-
-	   cluster.rplPass = cluster.GetDecryptedPassword("replication-credential", cluster.rplPass)
-	*/
+	}
 }
 
 func (cluster *Cluster) SetBackupKeepYearly(keep string) error {
@@ -774,11 +717,6 @@ func (cluster *Cluster) SetEmptySla() {
 
 func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 	cluster.Conf.User = credential
-	var Secret Secret
-	Secret.OldValue = cluster.encryptedFlags["db-server-credential"].Value
-	Secret.Value = credential
-	cluster.encryptedFlags["db-server-credential"] = Secret
-	cluster.SetClusterMonitorCredentialsFromConfig()
 	for _, srv := range cluster.Servers {
 		srv.SetCredential(srv.URL, cluster.GetDbUser(), cluster.GetDbPass())
 	}
@@ -797,10 +735,11 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 		}
 		cluster.LogPrintf("ALERT", "Monitoring password rotation")
 		if !found_user {
-			if cluster.oldDbUser != "root" {
+			oldDbUser, _ := misc.SplitPair(cluster.encryptedFlags["db-servers-credential"].OldValue)
+			if oldDbUser != "root" {
 
 				for _, u := range cluster.master.Users {
-					if u.User == cluster.oldDbUser {
+					if u.User == oldDbUser {
 						logs, err := dbhelper.RenameUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, cluster.GetDbPass(), cluster.GetDbUser())
 						cluster.LogSQL(logs, err, cluster.master.URL, "Security", LvlErr, "Alter user : %s", err)
 						logs, err = dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, cluster.GetDbUser(), cluster.GetDbPass())
@@ -832,14 +771,44 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 	switch proxytype {
 	case config.ConstProxySpider:
 		cluster.Conf.MdbsProxyCredential = credential
+		for _, pri := range cluster.Proxies {
+			_, pass := misc.SplitPair(credential)
+			if prx, ok := pri.(*MariadbShardProxy); ok {
+
+				prx.RotateProxyPasswords(pass)
+				prx.SetCredential(credential)
+				cluster.LogPrintf(LvlErr, "COUCOU change password for proxy %s", pass)
+				prx.ShardProxy.SetCredential(prx.ShardProxy.URL, prx.User, pass)
+				for _, u := range prx.ShardProxy.Users {
+					if u.User == prx.User {
+						dbhelper.SetUserPassword(prx.ShardProxy.Conn, prx.ShardProxy.DBVersion, u.Host, u.User, pass)
+					}
+
+				}
+
+			}
+		}
 	case config.ConstProxySqlproxy:
 		cluster.Conf.ProxysqlUser, cluster.Conf.ProxysqlPassword = misc.SplitPair(credential)
+		for _, pri := range cluster.Proxies {
+			_, pass := misc.SplitPair(credential)
+			if prx, ok := pri.(*ProxySQLProxy); ok {
+
+				prx.RotateProxyPasswords(pass)
+				prx.SetCredential(credential)
+				prx.SetRestartCookie()
+
+			}
+		}
 	case config.ConstProxyMaxscale:
 		cluster.Conf.MxsUser, cluster.Conf.MxsPass = misc.SplitPair(credential)
-	}
-	for _, prx := range cluster.Proxies {
-		prx.SetCredential(credential)
-		prx.SetRestartCookie()
+
+		/*for _, pri := range cluster.Proxies {
+
+			pri.SetCredential(credential)
+			pri.SetRestartCookie()
+
+		}*/
 	}
 }
 

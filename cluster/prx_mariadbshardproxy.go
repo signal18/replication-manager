@@ -38,7 +38,7 @@ func NewMariadbShardProxy(placement int, cluster *Cluster, proxyHost string) *Ma
 	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSShardProxyPartitions, conf.MdbsHostsIPV6)
 	prx.Type = config.ConstProxySpider
 	prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
-	prx.User, prx.Pass = misc.SplitPair(conf.MdbsProxyCredential)
+	prx.User, prx.Pass = misc.SplitPair(cluster.GetDecryptedValue("shardproxy-credential"))
 	prx.ReadPort, _ = strconv.Atoi(prx.GetPort())
 	prx.ReadWritePort, _ = strconv.Atoi(prx.GetPort())
 	prx.Name = prx.Host
@@ -253,6 +253,14 @@ func (proxy *MariadbShardProxy) Refresh() error {
 	}
 	proxy.ClusterGroup.CheckMdbShardServersSchema(proxy)
 	return nil
+}
+
+func (proxy *MariadbShardProxy) RotateProxyPasswords(password string) {
+	if proxy.ShardProxy.IsRunning() {
+		proxy.ShardProxy.SetCredential(proxy.ShardProxy.URL, proxy.ShardProxy.User, password)
+	}
+
+	return
 }
 
 func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *MariadbShardProxy) error {

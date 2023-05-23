@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -737,8 +738,19 @@ func (cluster *Cluster) CheckCredentialRotation() {
 	if cluster.HasMonitoringCredentialsRotation() {
 		//cluster.LogPrintf(LvlInfo, "TEST checkCredentialsRotation")
 		cluster.SetClusterMonitorCredentialsFromConfig()
-		cluster.SetDbServersMonitoringCredential(cluster.GetDecryptedValue("db-servers-credential"))
+		cluster.SetDbServersMonitoringCredential(cluster.encryptedFlags["db-servers-credential"].Value)
 	}
+	if cluster.HasProxyCredentialsRotation() {
+		cluster.SetClusterProxyCredentialsFromConfig()
+		if cluster.Conf.ProxysqlOn {
+			cluster.SetProxyServersCredential(cluster.encryptedFlags["proxysql-user"].Value+":"+cluster.encryptedFlags["proxysql-password"].Value, config.ConstProxySqlproxy)
+		}
+		if cluster.Conf.MdbsProxyOn {
+			cluster.SetProxyServersCredential(cluster.encryptedFlags["shardproxy-credential"].Value, config.ConstProxySpider)
+		}
+
+	}
+
 }
 
 func (cluster *Cluster) CheckCanSaveDynamicConfig() {

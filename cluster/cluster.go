@@ -130,9 +130,9 @@ type Cluster struct {
 	vmaster                       *ServerMonitor         `json:"vmaster"`
 	mxs                           *maxscale.MaxScale     `json:"-"`
 	//dbUser                        string                      `json:"-"`
-	oldDbUser string `json:"-"`
+	//oldDbUser string `json:"-"`
 	//dbPass                        string                      `json:"-"`
-	oldDbPass string `json:"-"`
+	//oldDbPass string `json:"-"`
 	//rplUser                   string                      `json:"-"`
 	//rplPass                   string                      `json:"-"`
 	//proxysqlUser              string                      `json:"-"`

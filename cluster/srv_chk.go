@@ -354,27 +354,43 @@ func (server *ServerMonitor) CheckMonitoringCredentialsRotation() {
 			//server.GetCluster().LogPrintf(LvlErr, "Fail Vault connection: %v", err)
 			return
 		}
-		_, newpass, err := server.GetCluster().GetVaultMonitorCredentials(client)
-		if newpass != server.Pass && err == nil {
-			var new_Secret Secret
-			new_Secret.OldValue = cluster.encryptedFlags["db-servers-credential"].Value
-			new_Secret.Value = cluster.GetDbUser() + ":" + newpass
-			cluster.encryptedFlags["db-servers-credential"] = new_Secret
+		//if opensvc and shard proxy clusterhead
+		if server.IsCompute && cluster.Conf.ClusterHead == "" {
+			_, newpass, err := server.GetCluster().GetVaultShardProxyCredentials(client)
+			server.ClusterGroup.LogPrintf(LvlErr, "Vault shard proxy check rotation %s , %s , %s", server.Pass, newpass, err)
+			if newpass != server.Pass && err == nil {
+				server.ClusterGroup.LogPrintf(LvlErr, "Vault shard proxy is Shard proxy and clusterhead")
 
-			server.GetCluster().SetClusterMonitorCredentialsFromConfig()
-			server.SetCredential(server.URL, server.GetCluster().GetDbUser(), server.GetCluster().GetDbPass())
-			server.ClusterGroup.LogPrintf(LvlInfo, "Vault monitoring user password rotation")
-			server.ClusterGroup.LogPrintf(LvlDbg, "Ping function User: %s, Pass: %s", server.User, server.Pass)
+				cluster.SetClusterProxyCredentialsFromConfig()
+				server.GetCluster().SetClusterMonitorCredentialsFromConfig()
+				server.SetCredential(server.URL, cluster.GetShardUser(), cluster.GetShardPass())
+				for _, u := range server.Users {
+					if u.User == server.GetCluster().GetShardUser() {
+						dbhelper.SetUserPassword(server.Conn, server.DBVersion, u.Host, u.User, cluster.GetShardPass())
+					}
 
-			for _, pri := range server.GetCluster().Proxies {
-				if prx, ok := pri.(*ProxySQLProxy); ok {
-					prx.RotateMonitoringPasswords(newpass)
 				}
 			}
-			//upgrade openSVC secret
-			err = server.GetCluster().ProvisionRotatePasswords(newpass)
-			if err != nil {
-				server.GetCluster().LogPrintf(LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
+		} else {
+			//if is database
+			_, newpass, err := server.GetCluster().GetVaultMonitorCredentials(client)
+			if newpass != server.Pass && err == nil {
+
+				server.GetCluster().SetClusterMonitorCredentialsFromConfig()
+				server.SetCredential(server.URL, server.GetCluster().GetDbUser(), server.GetCluster().GetDbPass())
+				server.ClusterGroup.LogPrintf(LvlInfo, "Vault monitoring user password rotation")
+				server.ClusterGroup.LogPrintf(LvlDbg, "Ping function User: %s, Pass: %s", server.User, server.Pass)
+
+				for _, pri := range server.GetCluster().Proxies {
+					if prx, ok := pri.(*ProxySQLProxy); ok {
+						prx.RotateMonitoringPasswords(newpass)
+					}
+				}
+				//upgrade openSVC secret
+				err = server.GetCluster().ProvisionRotatePasswords(newpass)
+				if err != nil {
+					server.GetCluster().LogPrintf(LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
+				}
 			}
 		}
 	}

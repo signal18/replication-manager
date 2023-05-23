@@ -30,7 +30,7 @@ func (cluster *Cluster) OpenSVCGetShardproxyContainerSection(server *MariadbShar
 		} else {
 			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw`
 			svccontainer["type"] = server.ClusterGroup.Conf.ProvType
-			svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
+			svccontainer["secrets_environment"] = "MYSQL_ROOT_PASSWORD=env/SHARDPROXY_ROOT_PASSWORD"
 			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
 			svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 		}
@@ -134,4 +134,16 @@ run_args = -e SHARDPROXY_ROOT_PASSWORD={env.mysql_root_password}
 		}
 	}
 	return vm
+}
+
+func (cluster *Cluster) OpenSVCGetShardProxyVolumeSecret() map[string]string {
+	svcvol := make(map[string]string)
+	svcvol["name"] = "{name}-sec"
+	svcvol["type"] = "shm"
+	svcvol["size"] = "1m"
+	svcvol["secrets"] = "env/SHARDPROXY_ROOT_PASSWORD:/"
+	svcvol["user"] = "99"
+	svcvol["perm"] = "600"
+	svcvol["dirperm"] = "700"
+	return svcvol
 }

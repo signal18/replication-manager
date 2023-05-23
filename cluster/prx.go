@@ -151,6 +151,8 @@ type DatabaseProxy interface {
 	DelRestartCookie() error
 	DelWaitStartCookie() error
 	DelWaitStopCookie() error
+
+	RotateProxyPasswords(password string)
 }
 
 type Backend struct {

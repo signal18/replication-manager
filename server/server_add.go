@@ -28,13 +28,17 @@ func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead str
 	//confs[clusterName] = repman.GetClusterConfig(fistRead, repman.ImmuableFlagMaps["default"], repman.DynamicFlagMaps["default"], clusterName, conf)
 
 	cluster, _ := repman.StartCluster(clusterName)
+
+	for _, cluster := range repman.Clusters {
+		cluster.SetClusterList(repman.Clusters)
+	}
 	//fmt.Printf("ADD CLUSTER def map :\n")
 	//fmt.Printf("%s\n", repman.ImmuableFlagMaps)
 	//cluster.Conf.PrintConf()
 
-	cluster.SetClusterHead(clusterHead)
+	//cluster.SetClusterHead(clusterHead)
 	//cluster.SetClusterHead(clusterName)
-	cluster.SetClusterList(repman.Clusters)
+	//cluster.SetClusterList(repman.Clusters)
 	cluster.Save()
 	return nil
 

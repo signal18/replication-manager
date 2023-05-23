@@ -359,6 +359,8 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabasePr
 		svcsection["container#prx"] = cluster.OpenSVCGetShardproxyContainerSection(prx)
 	}
 
+	svcsection["volume#02"] = cluster.OpenSVCGetShardProxyVolumeSecret()
+
 	if prx, ok := pri.(*SphinxProxy); ok {
 		svcsection["container#prx"] = cluster.OpenSVCGetSphinxContainerSection(prx)
 		svcsection["task#01"] = cluster.OpenSVCGetSphinxTaskSection(prx)

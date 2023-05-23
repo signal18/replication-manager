@@ -164,7 +164,6 @@ func (cluster *Cluster) HasAllDbUp() bool {
 
 		}
 	}
-
 	return true
 }
 
@@ -181,6 +180,23 @@ func (cluster *Cluster) HasAllDbDown() bool {
 		}
 	}
 
+	return true
+}
+
+func (cluster *Cluster) HasAllProxyUp() bool {
+	if cluster.Proxies == nil {
+		return false
+	}
+
+	for _, pri := range cluster.Proxies {
+
+		if prx, ok := pri.(*Proxy); ok {
+			if prx.IsDown() {
+				return false
+			}
+		}
+
+	}
 	return true
 }
 
@@ -376,9 +392,41 @@ func (cluster *Cluster) HasMonitoringCredentialsRotation() bool {
 		}
 		newuser, newpass, err := cluster.GetVaultMonitorCredentials(client)
 		if (newpass != cluster.GetDbPass() || newuser != cluster.GetDbUser()) && err == nil {
-			cluster.oldDbUser = cluster.GetDbUser()
-			cluster.oldDbPass = cluster.GetDbPass()
+			//cluster.SetClusterMonitorCredentialsFromConfig()
+			//cluster.oldDbUser = cluster.GetDbUser()
+			//cluster.oldDbPass = cluster.GetDbPass()
 			return true
+		}
+		return false
+	}
+	return false
+}
+
+func (cluster *Cluster) HasProxyCredentialsRotation() bool {
+	if cluster.IsVaultUsed() {
+		client, err := cluster.GetVaultConnection()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)
+			return false
+		}
+		if cluster.Conf.ProxysqlOn {
+			newuser, newpass, err := cluster.GetVaultProxySQLCredentials(client)
+			if (newpass != cluster.encryptedFlags["proxysql-password"].Value || newuser != cluster.encryptedFlags["proxysql-user"].Value) && err == nil {
+				//cluster.SetClusterProxyCredentialsFromConfig()
+				//cluster.oldDbUser = cluster.GetDbUser()
+				//cluster.oldDbPass = cluster.GetDbPass()
+				return true
+			}
+		}
+
+		if cluster.Conf.MdbsProxyOn {
+			newuser, newpass, err := cluster.GetVaultShardProxyCredentials(client)
+			if (newpass != cluster.GetShardPass() || newuser != cluster.GetShardUser()) && err == nil {
+				//cluster.SetClusterProxyCredentialsFromConfig()
+				//cluster.oldDbUser = cluster.GetDbUser()
+				//cluster.oldDbPass = cluster.GetDbPass()
+				return true
+			}
 		}
 		return false
 	}

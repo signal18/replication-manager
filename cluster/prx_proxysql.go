@@ -594,7 +594,7 @@ func (proxy *ProxySQLProxy) RotateMonitoringPasswords(password string) {
 	cluster.LogPrintf(LvlInfo, "Password rotation is done for the proxySQL monitor")
 }
 
-func (proxy *ProxySQLProxy) RotationAdminPasswords(password string) {
+func (proxy *ProxySQLProxy) RotateProxyPasswords(password string) {
 	cluster := proxy.ClusterGroup
 	psql, err := proxy.Connect()
 	if err != nil {

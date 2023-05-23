@@ -118,7 +118,7 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 			cluster.Conf.MdbsProxyHosts = srv + ":" + port
 		}
 	}
-	cluster.SetClusterProxySqlCredentialsFromConfig()
+	cluster.SetClusterProxyCredentialsFromConfig()
 	cluster.StateMachine.SetFailoverState()
 	cluster.Lock()
 	cluster.newProxyList()

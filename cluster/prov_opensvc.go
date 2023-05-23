@@ -121,6 +121,10 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
 	}
+	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not add key to secret: %s %s ", "SHARDPROXY_ROOT_PASSWORD", err)
+	}
 	err = svc.CreateConfigV2(cluster.Name, "env", agent)
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Can not create config: %s ", err)
