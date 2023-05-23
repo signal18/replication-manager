@@ -137,7 +137,7 @@ func (cluster *Cluster) createKeys() error {
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
 			Organization:  []string{"Signal18"},
-			CommonName:    "Signal18CA",
+			CommonName:    cluster.Name + "." + cluster.GetCloudSubDomain() + ".cloud18.io",
 			Country:       []string{"FR"},
 			Province:      []string{""},
 			Locality:      []string{"Paris"},

@@ -989,3 +989,7 @@ func (cluster *Cluster) GetDecryptedPassword(key string, value string) string {
 	}
 	return value
 }
+
+func (cluster *Cluster) GetCloudSubDomain() string {
+	return cluster.GetConf().Cloud18SubDomain
+}

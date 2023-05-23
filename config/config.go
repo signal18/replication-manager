@@ -538,6 +538,10 @@ type Config struct {
 	VaultAuth                                 string `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
 	GitUrl                                    string `mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
 	GitAccesToken                             string `mapstructure:"git-acces-token" toml:"git-acces-token" json:"gitAccesToken"`
+	Cloud18SubDomain                          string `mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
+	Cloud18                                   bool   `mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
+	Cloud18Portal                             string `mapstructure:"cloud18-portal" toml:"cloud18-portal" json:"cloud18Portal"`
+	Cloud18Credentials                        string `mapstructure:"cloud18-credentials" toml:"cloud18-credentials" json:"cloud18Credentials"`
 
 	//	BackupResticStoragePolicy                 string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API

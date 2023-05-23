@@ -536,6 +536,11 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.ProvDBCompliance, "prov-db-compliance", "", "Path of compliance file for DB configuration")
 		monitorCmd.Flags().StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
 
+		monitorCmd.Flags().BoolVar(&conf.Cloud18, "cloud18", false, "Enable Cloud 18 DBAAS")
+		monitorCmd.Flags().StringVar(&conf.Cloud18SubDomain, "cloud18-sub-domain", "signal18", "DNS sub domain per organisation")
+		monitorCmd.Flags().StringVar(&conf.Cloud18Portal, "cloud18-portal", "portal.signal18.io", "Cloud 18 Portal")
+		monitorCmd.Flags().StringVar(&conf.Cloud18Credentials, "cloud18-credentials", "stephane@signal18.io:token", "email:token")
+
 		if WithOpenSVC == "ON" {
 
 			monitorCmd.Flags().BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
