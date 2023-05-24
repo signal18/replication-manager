@@ -529,7 +529,8 @@ func (cluster *Cluster) DecryptSecretsFromConfig() {
 				cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			}
 		} else {
-			cluster.LogPrintf(LvlInfo, "Decrypting all the secret variables")
+			cluster.LogPrintf(LvlInfo, "Decrypting secret variable %s", k)
+
 			lst_cred := strings.Split(secret.Value, ",")
 			var tab_cred []string
 			for _, cred := range lst_cred {

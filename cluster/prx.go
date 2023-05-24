@@ -77,6 +77,7 @@ type DatabaseProxy interface {
 	GetType() string
 	CertificatesReload() error
 	IsRunning() bool
+	IsIgnored() bool
 	SetCredential(credential string)
 
 	GetFailCount() int
@@ -108,7 +109,6 @@ type DatabaseProxy interface {
 
 	IsFilterInTags(filter string) bool
 	IsDown() bool
-
 	GetProxyConfig() string
 	// GetInitContainer(collector opensvc.Collector) string
 	GetBindAddress() string
@@ -196,6 +196,12 @@ func (cluster *Cluster) newProxyList() error {
 	if cluster.Conf.ProxysqlOn {
 		for k, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
 			prx := NewProxySQLProxy(k, cluster, proxyHost)
+			cluster.AddProxy(prx)
+		}
+	}
+	if cluster.Conf.ProxyJanitorHosts != "" {
+		for k, proxyHost := range strings.Split(cluster.Conf.ProxyJanitorHosts, ",") {
+			prx := NewProxyJanitor(k, cluster, proxyHost)
 			cluster.AddProxy(prx)
 		}
 	}
