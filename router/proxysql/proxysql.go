@@ -102,6 +102,12 @@ func (psql *ProxySQL) AddServerAsWriter(host string, port string, use_ssl string
 	return err
 }
 
+func (psql *ProxySQL) AddFastRouting(user string, schema string, hg string) error {
+	sql := fmt.Sprintf("INSERT IGNORE INTO mysql_query_rules_fast_routing (username,schemaname,flagIN,destination_hostgroup,comment) VALUES ('%s','%s','%s','%s','%s')", user, schema, "0", hg, "")
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
 func (psql *ProxySQL) AddShardServer(host string, port string, use_ssl string) error {
 	sql := fmt.Sprintf("INSERT INTO mysql_servers (hostname, port,hostgroup_id,use_ssl) VALUES('%s','%s',999,'%s')", host, port, use_ssl)
 	_, err := psql.Connection.Exec(sql)

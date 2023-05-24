@@ -273,6 +273,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 			if _, ok := myprxusermap[user.User+"_"+strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10)+":"+user.Password]; !ok {
 				cluster.LogPrintf(LvlInfo, "Add ProxyJanitor user %s ", user.User+"_"+strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10))
 				err := psql.AddUser(user.User+"_"+strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10), user.Password)
+				psql.AddFastRouting(user.User+"_"+strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10), "replication_manager_schema", strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10))
 				if err != nil {
 					cluster.StateMachine.AddState("ERR00054", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00054"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
 				} else {

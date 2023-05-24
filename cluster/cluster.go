@@ -931,7 +931,7 @@ func CloneConfigFromGit(url string, tok string, dir string) {
 		file, err := os.Create(dir + "/.gitignore")
 		if err != nil {
 			if os.IsPermission(err) {
-				log.Errorf(LvlInfo, "File permission denied: %s, %s", dir+".gitignore", err)
+				log.Errorf("File permission denied: %s, %s", dir+".gitignore", err)
 			}
 		}
 		defer file.Close()
