@@ -471,7 +471,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		cf1.AutomaticEnv()
 		cf1.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 		cf1.SetEnvPrefix("DEFAULT")
-
+		repman.initAlias(cf1)
 		//vipersave.MergeConfigMap(cf1.AllSettings())
 		//fmt.Printf("%+v\n", cf1.AllSettings())
 		//vipersave.Unmarshal(&conf)
@@ -657,7 +657,7 @@ func (repman *ReplicationManager) initAlias(v *viper.Viper) {
 	v.RegisterAlias("ignore-servers", "db-servers-ignored-hosts")
 	v.RegisterAlias("master-connection", "replication-master-connection")
 	v.RegisterAlias("master-connect-retry", "replication-master-connection-retry")
-	v.RegisterAlias("api-user", "api-credential")
+	//v.RegisterAlias("api-user", "api-credential")
 	v.RegisterAlias("readonly", "failover-readonly-state")
 	v.RegisterAlias("maxscale-host", "maxscale-servers")
 	v.RegisterAlias("mdbshardproxy-hosts", "mdbshardproxy-servers")
@@ -676,6 +676,7 @@ func (repman *ReplicationManager) initAlias(v *viper.Viper) {
 	v.RegisterAlias("maxdelay", "failover-max-slave-delay")
 	v.RegisterAlias("maxscale-host", "maxscale-servers")
 	v.RegisterAlias("maxscale-pass", "maxscale-password")
+	v.RegisterAlias("api-credential", "api-credentials")
 }
 
 func (repman *ReplicationManager) InitRestic() error {

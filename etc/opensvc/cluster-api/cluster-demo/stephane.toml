@@ -4,6 +4,7 @@ opensvc-use-collector-api = false
 opensvc-p12-certificate = "etc/opensvc/cluster-api/cluster-demo/signal18.p12"
 opensvc-host = "10.8.0.15:1215"
 opensvc-p12-secret = "36vf2cczf8rms8hh"
+api-credential = "admin:new_pass"
 
 include ="etc/opensvc/cluster-api/cluster-demo/stephane.d"
 # log-heartbeat = true

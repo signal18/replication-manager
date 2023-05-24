@@ -674,6 +674,8 @@ func initDeprecated() {
 	monitorCmd.Flags().MarkDeprecated("gtidcheck", "Deprecate for switchover-at-equal-gtid")
 	monitorCmd.Flags().Int64Var(&conf.FailMaxDelay, "maxdelay", 0, "Deprecate Maximum replication delay before initiating failover")
 	monitorCmd.Flags().MarkDeprecated("maxdelay", "Deprecate for failover-max-slave-delay")
+	monitorCmd.Flags().StringVar(&conf.APIUsers, "api-credential", "admin:repman", "Deprecate for api-credentials")
+	monitorCmd.Flags().MarkDeprecated("api-credential", "Deprecate for failover-max-slave-delay")
 
 }
 
