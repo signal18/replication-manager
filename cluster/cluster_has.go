@@ -362,7 +362,7 @@ func (cluster *Cluster) IsVaultUsed() bool {
 }
 
 func (cluster *Cluster) HasReplicationCredentialsRotation() bool {
-	if cluster.IsVaultUsed() {
+	if cluster.IsVaultUsed() && IsPath(cluster.Conf.RplUser) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
 			//cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)
@@ -384,7 +384,7 @@ func (cluster *Cluster) HasReplicationCredentialsRotation() bool {
 }
 
 func (cluster *Cluster) HasMonitoringCredentialsRotation() bool {
-	if cluster.IsVaultUsed() {
+	if cluster.IsVaultUsed() && IsPath(cluster.Conf.User) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
 			//cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)
@@ -403,7 +403,7 @@ func (cluster *Cluster) HasMonitoringCredentialsRotation() bool {
 }
 
 func (cluster *Cluster) HasProxyCredentialsRotation() bool {
-	if cluster.IsVaultUsed() {
+	if cluster.IsVaultUsed() && IsPath(cluster.Conf.ProxysqlPassword) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)

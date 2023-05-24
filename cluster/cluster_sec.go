@@ -99,7 +99,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				new_password_rpl = cluster.GetRplPass()
 			}
 
-			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() {
+			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && IsPath(cluster.Conf.ProxysqlPassword) {
 
 				secretData_proxysql := map[string]interface{}{
 					"proxysql-password": new_password_proxysql,
@@ -112,7 +112,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				cluster.SetClusterProxyCredentialsFromConfig()
 			}
 
-			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() {
+			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && IsPath(cluster.Conf.MdbsProxyCredential) {
 
 				secretData_shardproxy := map[string]interface{}{
 					"shardproxy-credential": cluster.GetShardUser() + ":" + new_password_shard,
@@ -156,7 +156,7 @@ func (cluster *Cluster) RotatePasswords() error {
 
 			}
 
-			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() {
+			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && IsPath(cluster.Conf.ProxysqlPassword) {
 				for _, pri := range cluster.Proxies {
 					if prx, ok := pri.(*ProxySQLProxy); ok {
 						prx.RotateMonitoringPasswords(new_password_db)
@@ -166,7 +166,7 @@ func (cluster *Cluster) RotatePasswords() error {
 
 				}
 			}
-			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() {
+			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && IsPath(cluster.Conf.MdbsProxyCredential) {
 				for _, pri := range cluster.Proxies {
 					if prx, ok := pri.(*MariadbShardProxy); ok {
 						prx.RotateProxyPasswords(new_password_shard)

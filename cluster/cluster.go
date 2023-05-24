@@ -768,57 +768,6 @@ func (cluster *Cluster) Stop() {
 
 }
 
-/*
-func (cluster *Cluster) Save() error {
-
-	type Save struct {
-		Servers    string      `json:"servers"`
-		Crashes    crashList   `json:"crashes"`
-		SLA        state.Sla   `json:"sla"`
-		SLAHistory []state.Sla `json:"slaHistory"`
-		IsAllDbUp  bool        `json:"provisioned"`
-	}
-
-	var clsave Save
-	clsave.Crashes = cluster.Crashes
-	clsave.Servers = cluster.Conf.Hosts
-	clsave.SLA = cluster.StateMachine.GetSla()
-	clsave.IsAllDbUp = cluster.IsAllDbUp
-	clsave.SLAHistory = cluster.SLAHistory
-
-	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
-	err := ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
-	if err != nil {
-		return err
-	}
-
-	saveQeueryRules, _ := json.MarshalIndent(cluster.QueryRules, "", "\t")
-	err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/queryrules.json", saveQeueryRules, 0644)
-	if err != nil {
-		return err
-	}
-	if cluster.Conf.ConfRewrite {
-		var myconf = make(map[string]config.Config)
-
-		myconf["saved-"+cluster.Name] = cluster.Conf
-
-		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/config.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-		if err != nil {
-			if os.IsPermission(err) {
-				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/config.toml")
-			}
-			return err
-		}
-		defer file.Close()
-		err = toml.NewEncoder(file).Encode(myconf)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}*/
-
 func (cluster *Cluster) Save() error {
 
 	type Save struct {
@@ -882,14 +831,20 @@ func (cluster *Cluster) Save() error {
 				v, ok := cluster.DefaultFlagMap[key]
 				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
 					s.Delete(key)
-				}
-				if !ok {
+				} else if !ok {
 					s.Delete(key)
+				} else if _, ok = cluster.encryptedFlags[key]; ok && cluster.encryptedFlags[key].Value != v {
+					v := cluster.GetEncryptedValueFromMemory(key)
+					if v != "" {
+						s.Set(key, v)
+					} else {
+						s.Delete(key)
+					}
 				}
 			}
 		}
 		//to encrypt credentials before writting in the config file
-		for _, key := range keys {
+		/*for _, key := range keys {
 			_, ok := cluster.ImmuableFlagMap[key]
 			if !ok {
 				value, ok := cluster.encryptedFlags[key]
@@ -900,7 +855,7 @@ func (cluster *Cluster) Save() error {
 					}
 				}
 			}
-		}
+		}*/
 		file.WriteString("[saved-" + cluster.Name + "]\ntitle = \"" + cluster.Name + "\" \n")
 		s.WriteTo(file)
 		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.ImmuableFlagMap)
@@ -923,11 +878,6 @@ func (cluster *Cluster) Save() error {
 func PushConfigToGit(tok string, dir string, name string) {
 	//fmt.Printf("Push from git : tok %s, dir %s, name %s\n", tok, dir, name)
 	path := dir
-	/*
-		if !strings.Contains(dir, name) {
-			path += "/" + name
-		}*/
-	//directory := cluster.Conf.WorkingDir + "/" + cluster.Name
 	r, err := git.PlainOpen(path)
 	if err != nil {
 		log.Errorf("Git error : cannot PlainOpen : %s", err)
@@ -941,8 +891,6 @@ func PushConfigToGit(tok string, dir string, name string) {
 	msg := "Update " + name + ".toml file"
 
 	// Adds the new file to the staging area.
-	//git_ex.Info("git add " + name + ".toml")
-	//_, err = w.Add(name + "/" + name + ".toml")
 	_, err = w.Add(name)
 	if err != nil {
 		log.Errorf("Git error : cannot Add %s : %s", name+".toml", err)
@@ -952,7 +900,6 @@ func PushConfigToGit(tok string, dir string, name string) {
 		log.Errorf("Git error : cannot Add %s : %s", name+"/"+name+".toml", err)
 	}
 
-	//git_ex.Info("git commit -a -m \"New config file\"")
 	_, err = w.Commit(msg, &git.CommitOptions{
 		Author: &git_obj.Signature{
 			Name: "Replication-manager",
@@ -964,7 +911,6 @@ func PushConfigToGit(tok string, dir string, name string) {
 		log.Errorf("Git error : cannot Commit : %s", err)
 	}
 
-	//git_ex.Info("git push")
 	// push using default options
 	err = r.Push(&git.PushOptions{Auth: &git_http.BasicAuth{
 		Username: "toto", // yes, this can be anything except an empty string
@@ -992,10 +938,6 @@ func CloneConfigFromGit(url string, tok string, dir string) {
 	}
 
 	path := dir
-	/*
-		if !strings.Contains(dir, name) {
-			path += "/" + name
-		}*/
 	if _, err := os.Stat(path + "/.git"); err == nil {
 
 		// We instantiate a new repository targeting the given path (the .git folder)
@@ -1068,17 +1010,25 @@ func (cluster *Cluster) Overwrite() error {
 
 				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
 					s.Delete(key)
+				} else if _, ok = cluster.encryptedFlags[key]; ok && cluster.encryptedFlags[key].Value != v {
+					v := cluster.GetEncryptedValueFromMemory(key)
+					if v != "" {
+						s.Set(key, v)
+					} else {
+						s.Delete(key)
+					}
 				}
+
 			}
 
 		}
 		//to encode credentials flag
-		if !cluster.IsVaultUsed() {
+		/*if !cluster.IsVaultUsed() {
 			for _, key := range keys {
 				_, ok := cluster.ImmuableFlagMap[key]
 				if ok {
 					_, ok = cluster.encryptedFlags[key]
-					if ok && cluster.encryptedFlags[key] != cluster.ImmuableFlagMap[key] {
+					if ok && cluster.encryptedFlags[key].Value != cluster.ImmuableFlagMap[key] {
 
 						v := cluster.GetEncryptedValueFromMemory(key)
 						//cluster.LogPrintf(LvlErr, "TEST Encrypt val from mem : key %s, value %s", key, v)
@@ -1088,7 +1038,7 @@ func (cluster *Cluster) Overwrite() error {
 					}
 				}
 			}
-		}
+		}*/
 		//cluster.LogPrintf(LvlErr, "TEST ImmuableMap : %v", cluster.ImmuableFlagMap)
 		//cluster.LogPrintf(LvlErr, "TEST decryptedFlag : %v", cluster.encryptedFlags)
 
@@ -1122,6 +1072,9 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 
 		return strings.Join(tab_ApiUser, ",")
 	case "db-servers-credential":
+		if IsPath(cluster.Conf.User) && cluster.IsVaultUsed() {
+			return ""
+		}
 		return cluster.GetDbUser() + ":" + cluster.GetEncryptedString(cluster.GetDbPass())
 	case "monitoring-write-heartbeat-credential":
 		return cluster.GetMonitorWriteHearbeatUser() + ":" + cluster.GetEncryptedString(cluster.GetMonitorWriteHeartbeatPass())
@@ -1129,8 +1082,14 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.GetOnPremiseSSHUser() + ":" + cluster.GetEncryptedString(cluster.GetOnPremiseSSHPass())
 
 	case "replication-credential":
+		if IsPath(cluster.Conf.RplUser) && cluster.IsVaultUsed() {
+			return ""
+		}
 		return cluster.GetRplUser() + ":" + cluster.GetEncryptedString(cluster.GetRplPass())
 	case "shardproxy-credential":
+		if IsPath(cluster.Conf.MdbsProxyCredential) && cluster.IsVaultUsed() {
+			return ""
+		}
 		return cluster.GetShardUser() + ":" + cluster.GetEncryptedString(cluster.GetShardPass())
 	case "backup-restic-password":
 		return cluster.GetEncryptedString(cluster.GetDecryptedValue("backup-restic-password"))
@@ -1141,6 +1100,9 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 	case "myproxy-password":
 		return cluster.GetEncryptedString(cluster.GetDecryptedValue("proxysql-password"))
 	case "proxysql-password":
+		if IsPath(cluster.Conf.ProxysqlPassword) && cluster.IsVaultUsed() {
+			return ""
+		}
 		return cluster.GetEncryptedString(cluster.GetDecryptedValue("proxysql-password"))
 	case "vault-secret-id":
 		return cluster.GetEncryptedString(cluster.GetDecryptedValue("vault-secret-id"))
@@ -1159,8 +1121,6 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 	default:
 		return ""
 	}
-
-	return ""
 }
 
 func (cluster *Cluster) GetEncryptedString(str string) string {
@@ -1179,6 +1139,10 @@ func (cluster *Cluster) GetEncryptedString(str string) string {
 	return str
 }
 
+func IsPath(str string) bool {
+	return strings.Contains(str, "/")
+}
+
 func (cluster *Cluster) InitAgent(conf config.Config) {
 	cluster.Conf = conf
 	cluster.agentFlagCheck()
@@ -1190,7 +1154,6 @@ func (cluster *Cluster) InitAgent(conf config.Config) {
 			conf.LogFile = ""
 		}
 	}
-	return
 }
 
 func (cluster *Cluster) ReloadConfig(conf config.Config) {

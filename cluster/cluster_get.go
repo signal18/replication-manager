@@ -819,7 +819,7 @@ func (cluster *Cluster) GetClientCertificates() (map[string]string, error) {
 }
 
 func (cluster *Cluster) GetVaultCredentials(client *vault.Client, path string, key string) (string, error) {
-	if cluster.IsVaultUsed() {
+	if cluster.IsVaultUsed() && IsPath(path) {
 		if cluster.Conf.VaultMode == VaultConfigStoreV2 {
 			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), path)
 

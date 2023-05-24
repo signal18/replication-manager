@@ -507,7 +507,7 @@ func (cluster *Cluster) DecryptSecretsFromConfig() {
 		}
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
-		if cluster.IsVaultUsed() {
+		if cluster.IsVaultUsed() && IsPath(secret.Value) {
 			cluster.LogPrintf(LvlInfo, "Decrypting all the secret variables on Vault")
 			config := vault.DefaultConfig()
 
@@ -554,7 +554,7 @@ func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
 			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
-		if cluster.Conf.ProxysqlOn {
+		if cluster.Conf.ProxysqlOn && IsPath(cluster.Conf.ProxysqlPassword) {
 			user, pass, _ := cluster.GetVaultProxySQLCredentials(client)
 			var newSecret Secret
 			newSecret.OldValue = cluster.encryptedFlags["proxysql-user"].Value
@@ -564,7 +564,7 @@ func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
 			newSecret.Value = pass
 			cluster.encryptedFlags["proxysql-password"] = newSecret
 		}
-		if cluster.Conf.MdbsProxyOn {
+		if cluster.Conf.MdbsProxyOn && IsPath(cluster.Conf.MdbsProxyCredential) {
 			user, pass, _ := cluster.GetVaultShardProxyCredentials(client)
 			var newSecret Secret
 			newSecret.OldValue = cluster.encryptedFlags["shardproxy-credential"].Value
@@ -597,7 +597,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 		cluster.LogPrintf(LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
 
-	if cluster.IsVaultUsed() {
+	if cluster.IsVaultUsed() && IsPath(cluster.Conf.User) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
@@ -642,7 +642,7 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 		cluster.HaveDBTLSOldCert = true
 		cluster.LogPrintf(LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
-	if cluster.IsVaultUsed() {
+	if cluster.IsVaultUsed() && IsPath(cluster.Conf.RplUser) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
