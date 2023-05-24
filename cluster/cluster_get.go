@@ -975,7 +975,8 @@ func (cluster *Cluster) GetPasswordKey(MonitoringKeyPath string) ([]byte, error)
 }
 
 func (cluster *Cluster) GetDecryptedPassword(key string, value string) string {
-	if cluster.key != nil {
+	if cluster.key != nil && strings.HasPrefix(value, "hash_") {
+		value = strings.TrimLeft(value, "hash_")
 		p := crypto.Password{Key: cluster.key}
 		p.CipherText = value
 		err := p.Decrypt()
@@ -992,4 +993,10 @@ func (cluster *Cluster) GetDecryptedPassword(key string, value string) string {
 
 func (cluster *Cluster) GetCloudSubDomain() string {
 	return cluster.GetConf().Cloud18SubDomain
+}
+
+func (cluster *Cluster) GetUniqueId() uint64 {
+	var sid uint64
+	sid, _ = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+cluster.GetCloudSubDomain()), cluster.GetCrcTable()), 10), 10, 64)
+	return sid
 }

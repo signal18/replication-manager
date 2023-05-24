@@ -303,6 +303,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, imm map[string]interface
 	cluster.runUUID = runUUID
 	cluster.repmgrHostname = repmgrHostname
 	cluster.repmgrVersion = repmgrVersion
+	/* key to decript secret variables map */
 	cluster.key = key
 
 	cluster.InitFromConf()
@@ -344,6 +345,7 @@ func (cluster *Cluster) InitFromConf() {
 		"maxscale-pass":                         {"", ""},
 		"myproxy-password":                      {"", ""},
 		"proxysql-password":                     {"", ""},
+		"janitorproxy-password":                 {"", ""},
 		"vault-secret-id":                       {"", ""},
 		"opensvc-p12-secret":                    {"", ""},
 		"backup-restic-aws-access-secret":       {"", ""},
@@ -1174,7 +1176,7 @@ func (cluster *Cluster) GetEncryptedString(str string) string {
 		}
 		p.Encrypt()
 
-		return p.CipherText
+		return "hash_" + p.CipherText
 	}
 	return str
 }
