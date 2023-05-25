@@ -1544,13 +1544,14 @@ func (cluster *Cluster) ReloadCertificates() {
 }
 
 func (cluster *Cluster) ResetStates() {
+	cluster.LogPrintf(LvlInfo, "Reload cluster TLS certificates")
 	cluster.SetUnDiscovered()
 	cluster.slaves = nil
 	cluster.master = nil
 	cluster.oldMaster = nil
 	cluster.vmaster = nil
-	cluster.Servers = nil
-	cluster.Proxies = nil
+	//cluster.Servers = nil
+	//cluster.Proxies = nil
 	//
 	cluster.ServerIdList = nil
 	cluster.hostList = nil

@@ -492,7 +492,7 @@ func (cluster *Cluster) SetClusterCredentialsFromConfig() {
 	cluster.SetClusterMonitorCredentialsFromConfig()
 	cluster.SetClusterReplicationCredentialsFromConfig()
 	cluster.SetClusterProxyCredentialsFromConfig()
-	//cluster.LogPrintf(LvlErr, "TEST %v", cluster.encryptedFlags)
+	cluster.LogPrintf(LvlErr, "TEST %v", cluster.encryptedFlags)
 }
 
 func (cluster *Cluster) DecryptSecretsFromConfig() {
@@ -521,7 +521,7 @@ func (cluster *Cluster) DecryptSecretsFromConfig() {
 					vault_value, err := cluster.GetVaultCredentials(client, secret.Value, k)
 					if err != nil {
 						cluster.LogPrintf(LvlWarn, "Unable to get %s Vault secret: %v", k, err)
-					} else {
+					} else if vault_value != "" {
 						secret.Value = vault_value
 					}
 				}
@@ -771,7 +771,12 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype string) {
 	switch proxytype {
 	case config.ConstProxySpider:
-		cluster.Conf.MdbsProxyCredential = credential
+		//cluster.Conf.MdbsProxyCredential = credential
+		var newSecret Secret
+		newSecret.OldValue = cluster.encryptedFlags["shardproxy-credential"].Value
+		newSecret.Value = credential
+		cluster.encryptedFlags["shardproxy-credential"] = newSecret
+
 		for _, pri := range cluster.Proxies {
 			_, pass := misc.SplitPair(credential)
 			if prx, ok := pri.(*MariadbShardProxy); ok {
@@ -790,13 +795,22 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 			}
 		}
 	case config.ConstProxySqlproxy:
-		cluster.Conf.ProxysqlUser, cluster.Conf.ProxysqlPassword = misc.SplitPair(credential)
+		//cluster.Conf.ProxysqlUser, cluster.Conf.ProxysqlPassword
+		user, pass := misc.SplitPair(credential)
+		var newSecret Secret
+		newSecret.OldValue = cluster.encryptedFlags["proxysql-password"].Value
+		newSecret.Value = pass
+		cluster.encryptedFlags["proxysql-password"] = newSecret
+		newSecret.OldValue = cluster.encryptedFlags["proxysql-user"].Value
+		newSecret.Value = user
+		cluster.encryptedFlags["proxysql-user"] = newSecret
 		for _, pri := range cluster.Proxies {
 			_, pass := misc.SplitPair(credential)
 			if prx, ok := pri.(*ProxySQLProxy); ok {
 
 				prx.RotateProxyPasswords(pass)
 				prx.SetCredential(credential)
+				pri.SetCredential(credential)
 				prx.SetRestartCookie()
 
 			}
@@ -1024,8 +1038,8 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Fail adding shard proxy monitor on 3306 %s", err)
 					}
-					cluster.Conf.ProxysqlUser = "external"
-					err = cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, cluster.Conf.ProxysqlUser, cluster.Conf.ProxysqlPassword)
+					//cluster.Conf.ProxysqlUser = "external"
+					err = cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, "external", cluster.encryptedFlags["proxysql-password"].Value)
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Fail adding proxysql monitor on %s %s", cluster.Conf.ProxysqlPort, err)
 					}

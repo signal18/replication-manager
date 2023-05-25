@@ -107,7 +107,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.Conf.ProxysqlPassword, secretData_proxysql)
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "ProxySQL Password rotation cancel, unable to write secret: %v", err)
-					new_password_proxysql = cluster.GetDecryptedValue("proxysql-password")
+					new_password_proxysql = cluster.encryptedFlags["proxysql-password"].Value
 				}
 				cluster.SetClusterProxyCredentialsFromConfig()
 			}

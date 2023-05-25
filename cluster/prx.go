@@ -343,6 +343,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 				if pr.GetFailCount() >= cluster.Conf.MaxFail {
 					if pr.GetFailCount() == cluster.Conf.MaxFail {
 						cluster.LogPrintf("INFO", "Declaring %s proxy as failed %s:%s %s", pr.GetType(), pr.GetHost(), pr.GetPort(), err)
+						cluster.LogPrintf("INFO", "TEST Declaring %s proxy as failed mdp : %s", pr.GetPass())
 					}
 					pr.SetState(stateFailed)
 					pr.DelWaitStopCookie()

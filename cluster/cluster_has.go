@@ -403,13 +403,13 @@ func (cluster *Cluster) HasMonitoringCredentialsRotation() bool {
 }
 
 func (cluster *Cluster) HasProxyCredentialsRotation() bool {
-	if cluster.IsVaultUsed() && IsPath(cluster.Conf.ProxysqlPassword) {
+	if cluster.IsVaultUsed() {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)
 			return false
 		}
-		if cluster.Conf.ProxysqlOn {
+		if cluster.Conf.ProxysqlOn && IsPath(cluster.Conf.ProxysqlPassword) {
 			newuser, newpass, err := cluster.GetVaultProxySQLCredentials(client)
 			if (newpass != cluster.encryptedFlags["proxysql-password"].Value || newuser != cluster.encryptedFlags["proxysql-user"].Value) && err == nil {
 				//cluster.SetClusterProxyCredentialsFromConfig()
@@ -419,7 +419,7 @@ func (cluster *Cluster) HasProxyCredentialsRotation() bool {
 			}
 		}
 
-		if cluster.Conf.MdbsProxyOn {
+		if cluster.Conf.MdbsProxyOn && IsPath(cluster.Conf.MdbsProxyCredential) {
 			newuser, newpass, err := cluster.GetVaultShardProxyCredentials(client)
 			if (newpass != cluster.GetShardPass() || newuser != cluster.GetShardUser()) && err == nil {
 				//cluster.SetClusterProxyCredentialsFromConfig()

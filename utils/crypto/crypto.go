@@ -16,7 +16,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"strings"
 )
 
 type Password struct {
@@ -62,10 +61,6 @@ func (p *Password) Decrypt() error {
 		return err
 	}
 
-	if !strings.Contains(string(ciphertext), "hash_") {
-		//log.Println("ERROR: ciphertext too short")
-		return errors.New("Not encrypted ciphertext")
-	}
 	iv := ciphertext[:aes.BlockSize]
 	ciphertext = ciphertext[aes.BlockSize:]
 
