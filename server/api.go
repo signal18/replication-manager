@@ -280,8 +280,8 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	log.Printf("COUCOU test sign in: %v\n", user)
-	log.Printf("COUCOU test sign in: %v\n", auth_try)
+	//log.Printf("COUCOU test sign in: %v\n", user)
+	//log.Printf("COUCOU test sign in: %v\n", auth_try)
 
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
