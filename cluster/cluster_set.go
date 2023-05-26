@@ -505,19 +505,28 @@ func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
 		if cluster.Conf.ProxysqlOn && cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) {
 			user, pass, _ := cluster.GetVaultProxySQLCredentials(client)
 			var newSecret config.Secret
-			newSecret.OldValue = cluster.Conf.Secrets["proxysql-user"].Value
-			newSecret.Value = user
-			cluster.Conf.Secrets["proxysql-user"] = newSecret
-			newSecret.OldValue = cluster.Conf.Secrets["proxysql-password"].Value
-			newSecret.Value = pass
-			cluster.Conf.Secrets["proxysql-password"] = newSecret
+			if pass != "" {
+				newSecret.OldValue = cluster.Conf.Secrets["proxysql-password"].Value
+				newSecret.Value = pass
+				cluster.Conf.Secrets["proxysql-password"] = newSecret
+			}
+
+			if user != "" {
+				newSecret.OldValue = cluster.Conf.Secrets["proxysql-user"].Value
+				newSecret.Value = user
+				cluster.Conf.Secrets["proxysql-user"] = newSecret
+			}
+
 		}
 		if cluster.Conf.MdbsProxyOn && cluster.Conf.IsPath(cluster.Conf.MdbsProxyCredential) {
 			user, pass, _ := cluster.GetVaultShardProxyCredentials(client)
 			var newSecret config.Secret
-			newSecret.OldValue = cluster.Conf.Secrets["shardproxy-credential"].Value
-			newSecret.Value = user + ":" + pass
-			cluster.Conf.Secrets["shardproxy-credential"] = newSecret
+			if user != "" && pass != "" {
+
+				newSecret.OldValue = cluster.Conf.Secrets["shardproxy-credential"].Value
+				newSecret.Value = user + ":" + pass
+				cluster.Conf.Secrets["shardproxy-credential"] = newSecret
+			}
 		}
 
 	}
