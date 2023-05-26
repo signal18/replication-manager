@@ -15,14 +15,19 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
+
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v5"
+	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/signal18/replication-manager/share"
+	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/misc"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
@@ -90,8 +95,8 @@ type Config struct {
 	LogFailedElection                   bool   `mapstructure:"log-failed-election"  toml:"log-failed-election" json:"logFailedElection"`
 	User                                string `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                               string `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
-	HostsDelayed                        string `mapstructure:"replication-delayed-hosts", toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
-	HostsDelayedTime                    int    `mapstructure:"replication-delayed-time", toml:"replication-delayed-time" json:"replicationDelayedTime"`
+	HostsDelayed                        string `mapstructure:"replication-delayed-hosts" toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
+	HostsDelayedTime                    int    `mapstructure:"replication-delayed-time" toml:"replication-delayed-time" json:"replicationDelayedTime"`
 	DBServersTLSUseGeneratedCertificate bool   `mapstructure:"db-servers-tls-use-generated-cert" toml:"db-servers-tls-use-generated-cert" json:"dbServersUseGeneratedCert"`
 	HostsTLSCA                          string `mapstructure:"db-servers-tls-ca-cert" toml:"db-servers-tls-ca-cert" json:"dbServersTlsCaCert"`
 	HostsTlsCliKey                      string `mapstructure:"db-servers-tls-client-key" toml:"db-servers-tls-client-key" json:"dbServersTlsClientKey"`
@@ -296,262 +301,266 @@ type Config struct {
 	ProxyJanitorPassword                string `mapstructure:"proxyjanitor-password" toml:"proxyjanitor-password" json:"proxyjanitorlPassword"`
 	ProxyJanitorBinaryPath              string `mapstructure:"proxyjanitor-binary-path" toml:"proxyjanitor-binary-path" json:"proxyjanitorBinaryPath"`
 
-	MysqlRouterOn                             bool   `mapstructure:"mysqlrouter" toml:"mysqlrouter" json:"mysqlrouter"`
-	MysqlRouterHosts                          string `mapstructure:"mysqlrouter-servers" toml:"mysqlrouter-servers" json:"mysqlrouterServers"`
-	MysqlRouterPort                           string `mapstructure:"mysqlrouter-port" toml:"mysqlrouter-port" json:"mysqlrouterPort"`
-	MysqlRouterUser                           string `mapstructure:"mysqlrouter-user" toml:"mysqlrouter-user" json:"mysqlrouterUser"`
-	MysqlRouterPass                           string `mapstructure:"mysqlrouter-pass" toml:"mysqlrouter-pass" json:"mysqlrouterPass"`
-	MysqlRouterWritePort                      int    `mapstructure:"mysqlrouter-write-port" toml:"mysqlrouter-write-port" json:"mysqlrouterWritePort"`
-	MysqlRouterReadPort                       int    `mapstructure:"mysqlrouter-read-port" toml:"mysqlrouter-read-port" json:"mysqlrouterReadPort"`
-	MysqlRouterReadWritePort                  int    `mapstructure:"mysqlrouter-read-write-port" toml:"mysqlrouter-read-write-port" json:"mysqlrouterReadWritePort"`
-	SphinxOn                                  bool   `mapstructure:"sphinx" toml:"sphinx" json:"sphinx"`
-	SphinxHosts                               string `mapstructure:"sphinx-servers" toml:"sphinx-servers" json:"sphinxServers"`
-	SphinxHostsIPV6                           string `mapstructure:"sphinx-servers-ipv6" toml:"sphinx-servers-ipv6" json:"sphinxServers-ipv6"`
-	SphinxConfig                              string `mapstructure:"sphinx-config" toml:"sphinx-config" json:"sphinxConfig"`
-	SphinxQLPort                              string `mapstructure:"sphinx-sql-port" toml:"sphinx-sql-port" json:"sphinxSqlPort"`
-	SphinxPort                                string `mapstructure:"sphinx-port" toml:"sphinx-port" json:"sphinxPort"`
-	RegistryConsul                            bool   `mapstructure:"registry-consul" toml:"registry-consul" json:"registryConsul"`
-	RegistryConsulCredential                  string `mapstructure:"registry-consul-credential" toml:"registry-consul-credential" json:"registryConsulCredential"`
-	RegistryConsulToken                       string `mapstructure:"registry-consul-token" toml:"registry-consul-token" json:"registryConsulToken"`
-	RegistryHosts                             string `mapstructure:"registry-servers" toml:"registry-servers" json:"registryServers"`
-	KeyPath                                   string `mapstructure:"keypath" toml:"-" json:"-"`
-	Topology                                  string `mapstructure:"topology" toml:"-" json:"-"` // use by bootstrap
-	GraphiteMetrics                           bool   `mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
-	GraphiteEmbedded                          bool   `mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
-	GraphiteCarbonHost                        string `mapstructure:"graphite-carbon-host" toml:"graphite-carbon-host" json:"graphiteCarbonHost"`
-	GraphiteCarbonPort                        int    `mapstructure:"graphite-carbon-port" toml:"graphite-carbon-port" json:"graphiteCarbonPort"`
-	GraphiteCarbonApiPort                     int    `mapstructure:"graphite-carbon-api-port" toml:"graphite-carbon-api-port" json:"graphiteCarbonApiPort"`
-	GraphiteCarbonServerPort                  int    `mapstructure:"graphite-carbon-server-port" toml:"graphite-carbon-server-port" json:"graphiteCarbonServerPort"`
-	GraphiteCarbonLinkPort                    int    `mapstructure:"graphite-carbon-link-port" toml:"graphite-carbon-link-port" json:"graphiteCarbonLinkPort"`
-	GraphiteCarbonPicklePort                  int    `mapstructure:"graphite-carbon-pickle-port" toml:"graphite-carbon-pickle-port" json:"graphiteCarbonPicklePort"`
-	GraphiteCarbonPprofPort                   int    `mapstructure:"graphite-carbon-pprof-port" toml:"graphite-carbon-pprof-port" json:"graphiteCarbonPprofPort"`
-	SysbenchBinaryPath                        string `mapstructure:"sysbench-binary-path" toml:"sysbench-binary-path" json:"sysbenchBinaryPath"`
-	SysbenchTest                              string `mapstructure:"sysbench-test" toml:"sysbench-test" json:"sysbenchBinaryTest"`
-	SysbenchV1                                bool   `mapstructure:"sysbench-v1" toml:"sysbench-v1" json:"sysbenchV1"`
-	SysbenchTime                              int    `mapstructure:"sysbench-time" toml:"sysbench-time" json:"sysbenchTime"`
-	SysbenchThreads                           int    `mapstructure:"sysbench-threads" toml:"sysbench-threads" json:"sysbenchThreads"`
-	SysbenchTables                            int    `mapstructure:"sysbench-tables" toml:"sysbench-tables" json:"sysbenchTables"`
-	SysbenchScale                             int    `mapstructure:"sysbench-scale" toml:"sysbench-scale" json:"sysbenchScale"`
-	Arbitration                               bool   `mapstructure:"arbitration-external" toml:"arbitration-external" json:"arbitrationExternal"`
-	ArbitrationSasSecret                      string `mapstructure:"arbitration-external-secret" toml:"arbitration-external-secret" json:"arbitrationExternalSecret"`
-	ArbitrationSasHosts                       string `mapstructure:"arbitration-external-hosts" toml:"arbitration-external-hosts" json:"arbitrationExternalHosts"`
-	ArbitrationSasUniqueId                    int    `mapstructure:"arbitration-external-unique-id" toml:"arbitration-external-unique-id" json:"arbitrationExternalUniqueId"`
-	ArbitrationPeerHosts                      string `mapstructure:"arbitration-peer-hosts" toml:"arbitration-peer-hosts" json:"arbitrationPeerHosts"`
-	ArbitrationFailedMasterScript             string `mapstructure:"arbitration-failed-master-script" toml:"arbitration-failed-master-script" json:"arbitrationFailedMasterScript"`
-	ArbitratorAddress                         string `mapstructure:"arbitrator-bind-address" toml:"arbitrator-bind-address" json:"arbitratorBindAddress"`
-	ArbitratorDriver                          string `mapstructure:"arbitrator-driver" toml:"arbitrator-driver" json:"arbitratorDriver"`
-	ArbitrationReadTimout                     int    `mapstructure:"arbitration-read-timeout" toml:"arbitration-read-timeout" json:"arbitrationReadTimout"`
-	SwitchoverCopyOldLeaderGtid               bool   `toml:"-" json:"-"` //suspicious code
-	Test                                      bool   `mapstructure:"test" toml:"test" json:"test"`
-	TestInjectTraffic                         bool   `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
-	Enterprise                                bool   `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector
-	KubeConfig                                string `mapstructure:"kube-config" toml:"kube-config" json:"kubeConfig"`
-	SlapOSConfig                              string `mapstructure:"slapos-config" toml:"slapos-config" json:"slaposConfig"`
-	SlapOSDBPartitions                        string `mapstructure:"slapos-db-partitions" toml:"slapos-db-partitions" json:"slaposDbPartitions"`
-	SlapOSProxySQLPartitions                  string `mapstructure:"slapos-proxysql-partitions" toml:"slapos-proxysql-partitions" json:"slaposProxysqlPartitions"`
-	SlapOSHaProxyPartitions                   string `mapstructure:"slapos-haproxy-partitions" toml:"slapos-haproxy-partitions" json:"slaposHaproxyPartitions"`
-	SlapOSMaxscalePartitions                  string `mapstructure:"slapos-maxscale-partitions" toml:"slapos-maxscale-partitions" json:"slaposMaxscalePartitions"`
-	SlapOSShardProxyPartitions                string `mapstructure:"slapos-shardproxy-partitions" toml:"slapos-shardproxy-partitions" json:"slaposShardproxyPartitions"`
-	SlapOSSphinxPartitions                    string `mapstructure:"slapos-sphinx-partitions" toml:"slapos-sphinx-partitions" json:"slaposSphinxPartitions"`
-	ProvHost                                  string `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
-	OnPremiseSSH                              bool   `mapstructure:"onpremise-ssh" toml:"onpremise-ssh" json:"onpremiseSsh"`
-	OnPremiseSSHPort                          int    `mapstructure:"onpremise-ssh-port" toml:"onpremise-ssh-port" json:"onpremiseSshPort"`
-	OnPremiseSSHCredential                    string `mapstructure:"onpremise-ssh-credential" toml:"onpremise-ssh-credential" json:"onpremiseSshCredential"`
-	OnPremiseSSHPrivateKey                    string `mapstructure:"onpremise-ssh-private-key" toml:"onpremise-ssh-private-key" json:"onpremiseSshPrivateKey"`
-	OnPremiseSSHStartDbScript                 string `mapstructure:"onpremise-ssh-start-db-script" toml:"onpremise-ssh-start-db-script" json:"onpremiseSshStartDbScript"`
-	OnPremiseSSHStartProxyScript              string `mapstructure:"onpremise-ssh-start-proxy-script" toml:"onpremise-ssh-start-proxy-script" json:"onpremiseSshStartProxyScript"`
-	OnPremiseSSHDbJobScript                   string `mapstructure:"onpremise-ssh-db-job-script" toml:"onpremise-ssh-db-job-script" json:"onpremiseSshDbJobScript"`
-	ProvOpensvcP12Certificate                 string `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificate" json:"opensvcP12Certificate"`
-	ProvOpensvcP12Secret                      string `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
-	ProvOpensvcUseCollectorAPI                bool   `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
-	ProvOpensvcCollectorAccount               string `mapstructure:"opensvc-collector-account" toml:"opensvc-collector-account" json:"opensvcCollectorAccount"`
-	ProvRegister                              bool   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
-	ProvAdminUser                             string `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
-	ProvUser                                  string `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
-	ProvCodeApp                               string `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
-	ProvSerialized                            bool   `mapstructure:"prov-serialized" toml:"prov-serialized" json:"provSerialized"`
-	ProvOrchestrator                          string `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
-	ProvOrchestratorEnable                    string `mapstructure:"prov-orchestrator-enable" toml:"prov-orchestrator-enable" json:"provOrchestratorEnable"`
-	ProvOrchestratorCluster                   string `mapstructure:"prov-orchestrator-cluster" toml:"prov-orchestrator-cluster" json:"provOrchestratorCluster"`
-	ProvDBApplyDynamicConfig                  bool   `mapstructure:"prov-db-apply-dynamic-config" toml:"prov-db-apply-dynamic-config" json:"provDBApplyDynamicConfig"`
-	ProvDBClientBasedir                       string `mapstructure:"prov-db-client-basedir" toml:"prov-db-client-basedir" json:"provDbClientBasedir"`
-	ProvDBBinaryBasedir                       string `mapstructure:"prov-db-binary-basedir" toml:"prov-db-binary-basedir" json:"provDbBinaryBasedir"`
-	ProvType                                  string `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
-	ProvAgents                                string `mapstructure:"prov-db-agents" toml:"prov-db-agents" json:"provDbAgents"`
-	ProvMem                                   string `mapstructure:"prov-db-memory" toml:"prov-db-memory" json:"provDbMemory"`
-	ProvMemSharedPct                          string `mapstructure:"prov-db-memory-shared-pct" toml:"prov-db-memory-shared-pct" json:"provDbMemorySharedPct"`
-	ProvMemThreadedPct                        string `mapstructure:"prov-db-memory-threaded-pct" toml:"prov-db-memory-threaded-pct" json:"provDbMemoryThreadedPct"`
-	ProvIops                                  string `mapstructure:"prov-db-disk-iops" toml:"prov-db-disk-iops" json:"provDbDiskIops"`
-	ProvIopsLatency                           string `mapstructure:"prov-db-disk-iops-latency" toml:"prov-db-disk-iops-latency" json:"provDbDiskIopsLatency"`
-	ProvExpireLogDays                         int    `mapstructure:"prov-db-expire-log-days" toml:"prov-db-expire-log-days" json:"provDbExpireLogDays"`
-	ProvMaxConnections                        int    `mapstructure:"prov-db-max-connections" toml:"prov-db-max-connections" json:"provDbMaxConnections"`
-	ProvCores                                 string `mapstructure:"prov-db-cpu-cores" toml:"prov-db-cpu-cores" json:"provDbCpuCores"`
-	ProvTags                                  string `mapstructure:"prov-db-tags" toml:"prov-db-tags" json:"provDbTags"`
-	ProvBinaryInTarball                       bool   `mapstructure:"prov-db-binary-in-tarball" toml:"prov-db-binary-in-tarball" json:"provDbBinaryInTarball"`
-	ProvBinaryTarballName                     string `mapstructure:"prov-db-binary-tarball-name" toml:"prov-db-binary-tarball-name" json:"provDbBinaryTarballName"`
-	ProvDomain                                string `mapstructure:"prov-db-domain" toml:"prov-db-domain" json:"provDbDomain"`
-	ProvDisk                                  string `mapstructure:"prov-db-disk-size" toml:"prov-db-disk-size" json:"provDbDiskSize"`
-	ProvDiskSystemSize                        string `mapstructure:"prov-db-disk-system-size" toml:"prov-db-disk-system-size" json:"provDbDiskSystemSize"`
-	ProvDiskTempSize                          string `mapstructure:"prov-db-disk-temp-size" toml:"prov-db-disk-temp-size" json:"provDbDiskTempSize"`
-	ProvDiskDockerSize                        string `mapstructure:"prov-db-disk-docker-size" toml:"prov-db-disk-docker-size" json:"provDbDiskDockerSize"`
-	ProvVolumeDocker                          string `mapstructure:"prov-db-volume-docker" toml:"prov-db-volume-docker" json:"provDbVolumeDocker"`
-	ProvVolumeData                            string `mapstructure:"prov-db-volume-data" toml:"prov-db-volume-data" json:"provDbVolumeData"`
-	ProvDiskFS                                string `mapstructure:"prov-db-disk-fs" toml:"prov-db-disk-fs" json:"provDbDiskFs"`
-	ProvDiskFSCompress                        string `mapstructure:"prov-db-disk-fs-compress" toml:"prov-db-disk-fs-compress" json:"provDbDiskFsCompress"`
-	ProvDiskPool                              string `mapstructure:"prov-db-disk-pool" toml:"prov-db-disk-pool" json:"provDbDiskPool"`
-	ProvDiskDevice                            string `mapstructure:"prov-db-disk-device" toml:"prov-db-disk-device" json:"provDbDiskDevice"`
-	ProvDiskType                              string `mapstructure:"prov-db-disk-type" toml:"prov-db-disk-type" json:"provDbDiskType"`
-	ProvDiskSnapshot                          bool   `mapstructure:"prov-db-disk-snapshot-prefered-master" toml:"prov-db-disk-snapshot-prefered-master" json:"provDbDiskSnapshotPreferedMaster"`
-	ProvDiskSnapshotKeep                      int    `mapstructure:"prov-db-disk-snapshot-keep" toml:"prov-db-disk-snapshot-keep" json:"provDbDiskSnapshotKeep"`
-	ProvNetIface                              string `mapstructure:"prov-db-net-iface" toml:"prov-db-net-iface" json:"provDbNetIface"`
-	ProvNetmask                               string `mapstructure:"prov-db-net-mask" toml:"prov-db-net-mask" json:"provDbNetMask"`
-	ProvGateway                               string `mapstructure:"prov-db-net-gateway" toml:"prov-db-net-gateway" json:"provDbNetGateway"`
-	ProvDbImg                                 string `mapstructure:"prov-db-docker-img" toml:"prov-db-docker-img" json:"provDbDockerImg"`
-	ProvDatadirVersion                        string `mapstructure:"prov-db-datadir-version" toml:"prov-db-datadir-version" json:"provDbDatadirVersion"`
-	ProvDBLoadSQL                             string `mapstructure:"prov-db-load-sql" toml:"prov-db-load-sql" json:"provDbLoadSql"`
-	ProvDBLoadCSV                             string `mapstructure:"prov-db-load-csv" toml:"prov-db-load-csv" json:"provDbLoadCsv"`
-	ProvProxType                              string `mapstructure:"prov-proxy-service-type" toml:"prov-proxy-service-type" json:"provProxyServiceType"`
-	ProvProxAgents                            string `mapstructure:"prov-proxy-agents" toml:"prov-proxy-agents" json:"provProxyAgents"`
-	ProvProxAgentsFailover                    string `mapstructure:"prov-proxy-agents-failover" toml:"prov-proxy-agents-failover" json:"provProxyAgentsFailover"`
-	ProvProxMem                               string `mapstructure:"prov-proxy-memory" toml:"prov-proxy-memory" json:"provProxyMemory"`
-	ProvProxCores                             string `mapstructure:"prov-proxy-cpu-cores" toml:"prov-proxy-cpu-cores" json:"provProxyCpuCores"`
-	ProvProxDisk                              string `mapstructure:"prov-proxy-disk-size" toml:"prov-proxy-disk-size" json:"provProxyDiskSize"`
-	ProvProxDiskFS                            string `mapstructure:"prov-proxy-disk-fs" toml:"prov-proxy-disk-fs" json:"provProxyDiskFs"`
-	ProvProxDiskPool                          string `mapstructure:"prov-proxy-disk-pool" toml:"prov-proxy-disk-pool" json:"provProxyDiskPool"`
-	ProvProxDiskDevice                        string `mapstructure:"prov-proxy-disk-device" toml:"prov-proxy-disk-device" json:"provProxyDiskDevice"`
-	ProvProxDiskType                          string `mapstructure:"prov-proxy-disk-type" toml:"prov-proxy-disk-type" json:"provProxyDiskType"`
-	ProvProxVolumeData                        string `mapstructure:"prov-proxy-volume-data" toml:"prov-proxy-volume-data" json:"provProxyVolumeData"`
-	ProvProxNetIface                          string `mapstructure:"prov-proxy-net-iface" toml:"prov-proxy-net-iface" json:"provProxyNetIface"`
-	ProvProxNetmask                           string `mapstructure:"prov-proxy-net-mask" toml:"prov-proxy-net-mask" json:"provProxyNetMask"`
-	ProvProxGateway                           string `mapstructure:"prov-proxy-net-gateway" toml:"prov-proxy-net-gateway" json:"provProxyNetGateway"`
-	ProvProxRouteAddr                         string `mapstructure:"prov-proxy-route-addr" toml:"prov-proxy-route-addr" json:"provProxyRouteAddr"`
-	ProvProxRoutePort                         string `mapstructure:"prov-proxy-route-port" toml:"prov-proxy-route-port" json:"provProxyRoutePort"`
-	ProvProxRouteMask                         string `mapstructure:"prov-proxy-route-mask" toml:"prov-proxy-route-mask" json:"provProxyRouteMask"`
-	ProvProxRoutePolicy                       string `mapstructure:"prov-proxy-route-policy" toml:"prov-proxy-route-policy" json:"provProxyRoutePolicy"`
-	ProvProxShardingImg                       string `mapstructure:"prov-proxy-docker-shardproxy-img" toml:"prov-proxy-docker-shardproxy-img" json:"provProxyDockerShardproxyImg"`
-	ProvProxMaxscaleImg                       string `mapstructure:"prov-proxy-docker-maxscale-img" toml:"prov-proxy-docker-maxscale-img" json:"provProxyDockerMaxscaleImg"`
-	ProvProxHaproxyImg                        string `mapstructure:"prov-proxy-docker-haproxy-img" toml:"prov-proxy-docker-haproxy-img" json:"provProxyDockerHaproxyImg"`
-	ProvProxProxysqlImg                       string `mapstructure:"prov-proxy-docker-proxysql-img" toml:"prov-proxy-docker-proxysql-img" json:"provProxyDockerProxysqlImg"`
-	ProvProxMysqlRouterImg                    string `mapstructure:"prov-proxy-docker-mysqlrouter-img" toml:"prov-proxy-docker-mysqlrouter-img" json:"provProxyDockerMysqlrouterImg"`
-	ProvProxTags                              string `mapstructure:"prov-proxy-tags" toml:"prov-proxy-tags" json:"provProxyTags"`
-	ProvSphinxAgents                          string `mapstructure:"prov-sphinx-agents" toml:"prov-sphinx-agents" json:"provSphinxAgents"`
-	ProvSphinxImg                             string `mapstructure:"prov-sphinx-docker-img" toml:"prov-sphinx-docker-img" json:"provSphinxDockerImg"`
-	ProvSphinxMem                             string `mapstructure:"prov-sphinx-memory" toml:"prov-sphinx-memory" json:"provSphinxMemory"`
-	ProvSphinxDisk                            string `mapstructure:"prov-sphinx-disk-size" toml:"prov-sphinx-disk-size" json:"provSphinxDiskSize"`
-	ProvSphinxCores                           string `mapstructure:"prov-sphinx-cpu-cores" toml:"prov-sphinx-cpu-cores" json:"provSphinxCpuCores"`
-	ProvSphinxMaxChildren                     string `mapstructure:"prov-sphinx-max-childrens" toml:"prov-sphinx-max-childrens" json:"provSphinxMaxChildrens"`
-	ProvSphinxDiskPool                        string `mapstructure:"prov-sphinx-disk-pool" toml:"prov-sphinx-disk-pool" json:"provSphinxDiskPool"`
-	ProvSphinxDiskFS                          string `mapstructure:"prov-sphinx-disk-fs" toml:"prov-sphinx-disk-fs" json:"provSphinxDiskFs"`
-	ProvSphinxDiskDevice                      string `mapstructure:"prov-sphinx-disk-device" toml:"prov-sphinx-disk-device" json:"provSphinxDiskDevice"`
-	ProvSphinxDiskType                        string `mapstructure:"prov-sphinx-disk-type" toml:"prov-sphinx-disk-type" json:"provSphinxDiskType"`
-	ProvSphinxTags                            string `mapstructure:"prov-sphinx-tags" toml:"prov-sphinx-tags" json:"provSphinxTags"`
-	ProvSphinxCron                            string `mapstructure:"prov-sphinx-reindex-schedule" toml:"prov-sphinx-reindex-schedule" json:"provSphinxReindexSchedule"`
-	ProvSphinxType                            string `mapstructure:"prov-sphinx-service-type" toml:"prov-sphinx-service-type" json:"provSphinxServiceType"`
-	ProvSSLCa                                 string `mapstructure:"prov-tls-server-ca" toml:"prov-tls-server-ca" json:"provTlsServerCa"`
-	ProvSSLCert                               string `mapstructure:"prov-tls-server-cert" toml:"prov-tls-server-cert" json:"provTlsServerCert"`
-	ProvSSLKey                                string `mapstructure:"prov-tls-server-key" toml:"prov-tls-server-key" json:"provTlsServerKey"`
-	ProvSSLCaUUID                             string `mapstructure:"prov-tls-server-ca-uuid" toml:"-" json:"-"`
-	ProvSSLCertUUID                           string `mapstructure:"prov-tls-server-cert-uuid" toml:"-" json:"-"`
-	ProvSSLKeyUUID                            string `mapstructure:"prov-tls-server-key-uuid" toml:"-" json:"-"`
-	ProvNetCNI                                bool   `mapstructure:"prov-net-cni" toml:"prov-net-cni" json:"provNetCni"`
-	ProvNetCNICluster                         string `mapstructure:"prov-net-cni-cluster" toml:"prov-net-cni-cluster" json:"provNetCniCluster"`
-	ProvDockerDaemonPrivate                   bool   `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
-	ProvServicePlan                           string `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
-	ProvServicePlanRegistry                   string `mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
-	ProvDbBootstrapScript                     string `mapstructure:"prov-db-bootstrap-script" toml:"prov-db-bootstrap-script" json:"provDbBootstrapScript"`
-	ProvProxyBootstrapScript                  string `mapstructure:"prov-proxy-bootstrap-script" toml:"prov-proxy-bootstrap-script" json:"provProxyBootstrapScript"`
-	ProvDbCleanupScript                       string `mapstructure:"prov-db-cleanup-script" toml:"prov-db-cleanup-script" json:"provDbCleanupScript"`
-	ProvProxyCleanupScript                    string `mapstructure:"prov-proxy-cleanup-script" toml:"prov-proxy-cleanup-script" json:"provProxyCleanupScript"`
-	ProvDbStartScript                         string `mapstructure:"prov-db-start-script" toml:"prov-db-start-script" json:"provDbStartScript"`
-	ProvProxyStartScript                      string `mapstructure:"prov-proxy-start-script" toml:"prov-proxy-start-script" json:"provProxyStartScript"`
-	ProvDbStopScript                          string `mapstructure:"prov-db-stop-script" toml:"prov-db-stop-script" json:"provDbStopScript"`
-	ProvProxyStopScript                       string `mapstructure:"prov-proxy-stop-script" toml:"prov-proxy-stop-script" json:"provProxyStopScript"`
-	ProvDBCompliance                          string `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`
-	ProvProxyCompliance                       string `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
-	APIUsers                                  string `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
-	APIUsersExternal                          string `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
-	APIUsersACLAllow                          string `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
-	APIUsersACLDiscard                        string `mapstructure:"api-credentials-acl-discard" toml:"api-credentials-acl-discard" json:"apiCredentialsACLDiscard"`
-	APISecureConfig                           bool   `mapstructure:"api-credentials-secure-config" toml:"api-credentials-secure-config" json:"apiCredentialsSecureConfig"`
-	APIPort                                   string `mapstructure:"api-port" toml:"api-port" json:"apiPort"`
-	APIBind                                   string `mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
-	APIHttpsBind                              bool   `mapstructure:"api-https-bind" toml:"api-secure" json:"apiHttpsBind"`
-	AlertScript                               string `mapstructure:"alert-script" toml:"alert-script" json:"alertScript"`
-	ConfigFile                                string `mapstructure:"config" toml:"-" json:"-"`
-	MonitorScheduler                          bool   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
-	SchedulerReceiverPorts                    string `mapstructure:"scheduler-db-servers-receiver-ports" toml:"scheduler-db-servers-receiver-ports" json:"schedulerDbServersReceiverPorts"`
-	SchedulerSenderPorts                      string `mapstructure:"scheduler-db-servers-sender-ports" toml:"scheduler-db-servers-sender-ports" json:"schedulerDbServersSenderPorts"`
-	SchedulerReceiverUseSSL                   bool   `mapstructure:"scheduler-db-servers-receiver-use-ssl" toml:"scheduler-db-servers-receiver-use-ssl" json:"schedulerDbServersReceiverUseSSL"`
-	SchedulerBackupLogical                    bool   `mapstructure:"scheduler-db-servers-logical-backup" toml:"scheduler-db-servers-logical-backup" json:"schedulerDbServersLogicalBackup"`
-	SchedulerBackupPhysical                   bool   `mapstructure:"scheduler-db-servers-physical-backup" toml:"scheduler-db-servers-physical-backup" json:"schedulerDbServersPhysicalBackup"`
-	SchedulerDatabaseLogs                     bool   `mapstructure:"scheduler-db-servers-logs" toml:"scheduler-db-servers-logs" json:"schedulerDbServersLogs"`
-	SchedulerDatabaseOptimize                 bool   `mapstructure:"scheduler-db-servers-optimize" toml:"scheduler-db-servers-optimize" json:"schedulerDbServersOptimize"`
-	BackupLogicalCron                         string `mapstructure:"scheduler-db-servers-logical-backup-cron" toml:"scheduler-db-servers-logical-backup-cron" json:"schedulerDbServersLogicalBackupCron"`
-	BackupPhysicalCron                        string `mapstructure:"scheduler-db-servers-physical-backup-cron" toml:"scheduler-db-servers-physical-backup-cron" json:"schedulerDbServersPhysicalBackupCron"`
-	BackupDatabaseLogCron                     string `mapstructure:"scheduler-db-servers-logs-cron" toml:"scheduler-db-servers-logs-cron" json:"schedulerDbServersLogsCron"`
-	BackupDatabaseOptimizeCron                string `mapstructure:"scheduler-db-servers-optimize-cron" toml:"scheduler-db-servers-optimize-cron" json:"schedulerDbServersOptimizeCron"`
-	BackupSaveScript                          string `mapstructure:"backup-save-script" toml:"backup-save-script" json:"backupSaveScript"`
-	BackupLoadScript                          string `mapstructure:"backup-load-script" toml:"backup-load-script" json:"backupLoadScript"`
-	SchedulerDatabaseLogsTableRotate          bool   `mapstructure:"scheduler-db-servers-logs-table-rotate" toml:"scheduler-db-servers-logs-table-rotate" json:"schedulerDbServersLogsTableRotate"`
-	SchedulerDatabaseLogsTableRotateCron      string `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDbServersLogsTableRotateCron"`
-	SchedulerMaintenanceDatabaseLogsTableKeep int    `mapstructure:"scheduler-db-servers-logs-table-keep" toml:"scheduler-db-servers-logs-table-keep" json:"schedulerDatabaseLogsTableKeep"`
-	SchedulerSLARotateCron                    string `mapstructure:"scheduler-sla-rotate-cron" toml:"scheduler-sla-rotate-cron" json:"schedulerSlaRotateCron"`
-	SchedulerRollingRestart                   bool   `mapstructure:"scheduler-rolling-restart" toml:"scheduler-rolling-restart" json:"schedulerRollingRestart"`
-	SchedulerRollingRestartCron               string `mapstructure:"scheduler-rolling-restart-cron" toml:"scheduler-rolling-restart-cron" json:"schedulerRollingRestartCron"`
-	SchedulerRollingReprov                    bool   `mapstructure:"scheduler-rolling-reprov" toml:"scheduler-rolling-reprov" json:"schedulerRollingReprov"`
-	SchedulerRollingReprovCron                string `mapstructure:"scheduler-rolling-reprov-cron" toml:"scheduler-rolling-reprov-cron" json:"schedulerRollingReprovCron"`
-	SchedulerJobsSSH                          bool   `mapstructure:"scheduler-jobs-ssh" toml:"scheduler-jobs-ssh" json:"schedulerJobsSsh"`
-	SchedulerJobsSSHCron                      string `mapstructure:"scheduler-jobs-ssh-cron" toml:"scheduler-jobs-ssh-cron" json:"schedulerJobsSshCron"`
-	Backup                                    bool   `mapstructure:"backup" toml:"backup" json:"backup"`
-	BackupLogicalType                         string `mapstructure:"backup-logical-type" toml:"backup-logical-type" json:"backupLogicalType"`
-	BackupLogicalLoadThreads                  int    `mapstructure:"backup-logical-load-threads" toml:"backup-logical-load-threads" json:"backupLogicalLoadThreads"`
-	BackupLogicalDumpThreads                  int    `mapstructure:"backup-logical-dump-threads" toml:"backup-logical-dump-threads" json:"backupLogicalDumpThreads"`
-	BackupLogicalDumpSystemTables             bool   `mapstructure:"backup-logical-dump-system-tables" toml:"backup-logical-dump-system-tables" json:"backupLogicalDumpSystemTables"`
-	BackupPhysicalType                        string `mapstructure:"backup-physical-type" toml:"backup-physical-type" json:"backupPhysicalType"`
-	BackupKeepHourly                          int    `mapstructure:"backup-keep-hourly" toml:"backup-keep-hourly" json:"backupKeepHourly"`
-	BackupKeepDaily                           int    `mapstructure:"backup-keep-daily" toml:"backup-keep-daily" json:"backupKeepDaily"`
-	BackupKeepWeekly                          int    `mapstructure:"backup-keep-weekly" toml:"backup-keep-weekly" json:"backupKeepWeekly"`
-	BackupKeepMonthly                         int    `mapstructure:"backup-keep-monthly" toml:"backup-keep-monthly" json:"backupKeepMonthly"`
-	BackupKeepYearly                          int    `mapstructure:"backup-keep-yearly" toml:"backup-keep-yearly" json:"backupKeepYearly"`
-	BackupRestic                              bool   `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
-	BackupResticBinaryPath                    string `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
-	BackupResticAwsAccessKeyId                string `mapstructure:"backup-restic-aws-access-key-id" toml:"backup-restic-aws-access-key-id" json:"-"`
-	BackupResticAwsAccessSecret               string `mapstructure:"backup-restic-aws-access-secret"  toml:"backup-restic-aws-access-secret" json:"-"`
-	BackupResticRepository                    string `mapstructure:"backup-restic-repository" toml:"backup-restic-repository" json:"backupResticRepository"`
-	BackupResticPassword                      string `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
-	BackupResticAws                           bool   `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
-	BackupStreaming                           bool   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`
-	BackupStreamingDebug                      bool   `mapstructure:"backup-streaming-debug" toml:"backup-streaming-debug" json:"backupStreamingDebug"`
-	BackupStreamingAwsAccessKeyId             string `mapstructure:"backup-streaming-aws-access-key-id" toml:"backup-streaming-aws-access-key-id" json:"-"`
-	BackupStreamingAwsAccessSecret            string `mapstructure:"backup-streaming-aws-access-secret"  toml:"backup-streaming-aws-access-secret" json:"-"`
-	BackupStreamingEndpoint                   string `mapstructure:"backup-streaming-endpoint" toml:"backup-streaming-endpoint" json:"backupStreamingEndpoint"`
-	BackupStreamingRegion                     string `mapstructure:"backup-streaming-region" toml:"backup-streaming-region" json:"backupStreamingRegion"`
-	BackupStreamingBucket                     string `mapstructure:"backup-streaming-bucket" toml:"backup-streaming-bucket" json:"backupStreamingBucket"`
-	BackupMysqldumpPath                       string `mapstructure:"backup-mysqldump-path" toml:"backup-mysqldump-path" json:"backupMysqldumpPath"`
-	BackupMysqldumpOptions                    string `mapstructure:"backup-mysqldump-options" toml:"backup-mysqldump-options" json:"backupMysqldumpOptions"`
-	BackupMyDumperPath                        string `mapstructure:"backup-mydumper-path" toml:"backup-mydumper-path" json:"backupMydumperPath"`
-	BackupMyLoaderPath                        string `mapstructure:"backup-myloader-path" toml:"backup-myloader-path" json:"backupMyloaderPath"`
-	BackupMyLoaderOptions                     string `mapstructure:"backup-myloader-options" toml:"backup-myloader-options" json:"backupMyloaderOptions"`
-	BackupMyDumperOptions                     string `mapstructure:"backup-mydumper-options" toml:"backup-mydumper-options" json:"backupMyDumperOptions"`
-	BackupMysqlbinlogPath                     string `mapstructure:"backup-mysqlbinlog-path" toml:"backup-mysqlbinlog-path" json:"backupMysqlbinlogPath"`
-	BackupMysqlclientPath                     string `mapstructure:"backup-mysqlclient-path" toml:"backup-mysqlclient-path" json:"backupMysqlclientgPath"`
-	BackupBinlogs                             bool   `mapstructure:"backup-binlogs" toml:"backup-binlogs" json:"backupBinlogs"`
-	BackupBinlogsKeep                         int    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
-	BackupLockDDL                             bool   `mapstructure:"backup-lockddl" toml:"backup-lockddl" json:"backupLockDDL"`
-	ClusterConfigPath                         string `mapstructure:"cluster-config-file" toml:"-" json:"-"`
-	VaultServerAddr                           string `mapstructure:"vault-server-addr" toml:"vault-server-addr" json:"vaultServerAddr"`
-	VaultRoleId                               string `mapstructure:"vault-role-id" toml:"vault-role-id" json:"vaultRoleId"`
-	VaultSecretId                             string `mapstructure:"vault-secret-id" toml:"vault-secret-id" json:"vaultSecretId"`
-	VaultMode                                 string `mapstructure:"vault-mode" toml:"vault-mode" json:"vaultMode"`
-	VaultMount                                string `mapstructure:"vault-mount" toml:"vault-mount" json:"vaultMount"`
-	VaultAuth                                 string `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
-	GitUrl                                    string `mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
-	GitAccesToken                             string `mapstructure:"git-acces-token" toml:"git-acces-token" json:"gitAccesToken"`
-	Cloud18SubDomain                          string `mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
-	Cloud18                                   bool   `mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
-	Cloud18Portal                             string `mapstructure:"cloud18-portal" toml:"cloud18-portal" json:"cloud18Portal"`
-	Cloud18Credentials                        string `mapstructure:"cloud18-credentials" toml:"cloud18-credentials" json:"cloud18Credentials"`
-
+	MysqlRouterOn                             bool                   `mapstructure:"mysqlrouter" toml:"mysqlrouter" json:"mysqlrouter"`
+	MysqlRouterHosts                          string                 `mapstructure:"mysqlrouter-servers" toml:"mysqlrouter-servers" json:"mysqlrouterServers"`
+	MysqlRouterPort                           string                 `mapstructure:"mysqlrouter-port" toml:"mysqlrouter-port" json:"mysqlrouterPort"`
+	MysqlRouterUser                           string                 `mapstructure:"mysqlrouter-user" toml:"mysqlrouter-user" json:"mysqlrouterUser"`
+	MysqlRouterPass                           string                 `mapstructure:"mysqlrouter-pass" toml:"mysqlrouter-pass" json:"mysqlrouterPass"`
+	MysqlRouterWritePort                      int                    `mapstructure:"mysqlrouter-write-port" toml:"mysqlrouter-write-port" json:"mysqlrouterWritePort"`
+	MysqlRouterReadPort                       int                    `mapstructure:"mysqlrouter-read-port" toml:"mysqlrouter-read-port" json:"mysqlrouterReadPort"`
+	MysqlRouterReadWritePort                  int                    `mapstructure:"mysqlrouter-read-write-port" toml:"mysqlrouter-read-write-port" json:"mysqlrouterReadWritePort"`
+	SphinxOn                                  bool                   `mapstructure:"sphinx" toml:"sphinx" json:"sphinx"`
+	SphinxHosts                               string                 `mapstructure:"sphinx-servers" toml:"sphinx-servers" json:"sphinxServers"`
+	SphinxHostsIPV6                           string                 `mapstructure:"sphinx-servers-ipv6" toml:"sphinx-servers-ipv6" json:"sphinxServers-ipv6"`
+	SphinxConfig                              string                 `mapstructure:"sphinx-config" toml:"sphinx-config" json:"sphinxConfig"`
+	SphinxQLPort                              string                 `mapstructure:"sphinx-sql-port" toml:"sphinx-sql-port" json:"sphinxSqlPort"`
+	SphinxPort                                string                 `mapstructure:"sphinx-port" toml:"sphinx-port" json:"sphinxPort"`
+	RegistryConsul                            bool                   `mapstructure:"registry-consul" toml:"registry-consul" json:"registryConsul"`
+	RegistryConsulCredential                  string                 `mapstructure:"registry-consul-credential" toml:"registry-consul-credential" json:"registryConsulCredential"`
+	RegistryConsulToken                       string                 `mapstructure:"registry-consul-token" toml:"registry-consul-token" json:"registryConsulToken"`
+	RegistryHosts                             string                 `mapstructure:"registry-servers" toml:"registry-servers" json:"registryServers"`
+	KeyPath                                   string                 `mapstructure:"keypath" toml:"-" json:"-"`
+	Topology                                  string                 `mapstructure:"topology" toml:"-" json:"-"` // use by bootstrap
+	GraphiteMetrics                           bool                   `mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
+	GraphiteEmbedded                          bool                   `mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
+	GraphiteCarbonHost                        string                 `mapstructure:"graphite-carbon-host" toml:"graphite-carbon-host" json:"graphiteCarbonHost"`
+	GraphiteCarbonPort                        int                    `mapstructure:"graphite-carbon-port" toml:"graphite-carbon-port" json:"graphiteCarbonPort"`
+	GraphiteCarbonApiPort                     int                    `mapstructure:"graphite-carbon-api-port" toml:"graphite-carbon-api-port" json:"graphiteCarbonApiPort"`
+	GraphiteCarbonServerPort                  int                    `mapstructure:"graphite-carbon-server-port" toml:"graphite-carbon-server-port" json:"graphiteCarbonServerPort"`
+	GraphiteCarbonLinkPort                    int                    `mapstructure:"graphite-carbon-link-port" toml:"graphite-carbon-link-port" json:"graphiteCarbonLinkPort"`
+	GraphiteCarbonPicklePort                  int                    `mapstructure:"graphite-carbon-pickle-port" toml:"graphite-carbon-pickle-port" json:"graphiteCarbonPicklePort"`
+	GraphiteCarbonPprofPort                   int                    `mapstructure:"graphite-carbon-pprof-port" toml:"graphite-carbon-pprof-port" json:"graphiteCarbonPprofPort"`
+	SysbenchBinaryPath                        string                 `mapstructure:"sysbench-binary-path" toml:"sysbench-binary-path" json:"sysbenchBinaryPath"`
+	SysbenchTest                              string                 `mapstructure:"sysbench-test" toml:"sysbench-test" json:"sysbenchBinaryTest"`
+	SysbenchV1                                bool                   `mapstructure:"sysbench-v1" toml:"sysbench-v1" json:"sysbenchV1"`
+	SysbenchTime                              int                    `mapstructure:"sysbench-time" toml:"sysbench-time" json:"sysbenchTime"`
+	SysbenchThreads                           int                    `mapstructure:"sysbench-threads" toml:"sysbench-threads" json:"sysbenchThreads"`
+	SysbenchTables                            int                    `mapstructure:"sysbench-tables" toml:"sysbench-tables" json:"sysbenchTables"`
+	SysbenchScale                             int                    `mapstructure:"sysbench-scale" toml:"sysbench-scale" json:"sysbenchScale"`
+	Arbitration                               bool                   `mapstructure:"arbitration-external" toml:"arbitration-external" json:"arbitrationExternal"`
+	ArbitrationSasSecret                      string                 `mapstructure:"arbitration-external-secret" toml:"arbitration-external-secret" json:"arbitrationExternalSecret"`
+	ArbitrationSasHosts                       string                 `mapstructure:"arbitration-external-hosts" toml:"arbitration-external-hosts" json:"arbitrationExternalHosts"`
+	ArbitrationSasUniqueId                    int                    `mapstructure:"arbitration-external-unique-id" toml:"arbitration-external-unique-id" json:"arbitrationExternalUniqueId"`
+	ArbitrationPeerHosts                      string                 `mapstructure:"arbitration-peer-hosts" toml:"arbitration-peer-hosts" json:"arbitrationPeerHosts"`
+	ArbitrationFailedMasterScript             string                 `mapstructure:"arbitration-failed-master-script" toml:"arbitration-failed-master-script" json:"arbitrationFailedMasterScript"`
+	ArbitratorAddress                         string                 `mapstructure:"arbitrator-bind-address" toml:"arbitrator-bind-address" json:"arbitratorBindAddress"`
+	ArbitratorDriver                          string                 `mapstructure:"arbitrator-driver" toml:"arbitrator-driver" json:"arbitratorDriver"`
+	ArbitrationReadTimout                     int                    `mapstructure:"arbitration-read-timeout" toml:"arbitration-read-timeout" json:"arbitrationReadTimout"`
+	SwitchoverCopyOldLeaderGtid               bool                   `toml:"-" json:"-"` //suspicious code
+	Test                                      bool                   `mapstructure:"test" toml:"test" json:"test"`
+	TestInjectTraffic                         bool                   `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
+	Enterprise                                bool                   `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector
+	KubeConfig                                string                 `mapstructure:"kube-config" toml:"kube-config" json:"kubeConfig"`
+	SlapOSConfig                              string                 `mapstructure:"slapos-config" toml:"slapos-config" json:"slaposConfig"`
+	SlapOSDBPartitions                        string                 `mapstructure:"slapos-db-partitions" toml:"slapos-db-partitions" json:"slaposDbPartitions"`
+	SlapOSProxySQLPartitions                  string                 `mapstructure:"slapos-proxysql-partitions" toml:"slapos-proxysql-partitions" json:"slaposProxysqlPartitions"`
+	SlapOSHaProxyPartitions                   string                 `mapstructure:"slapos-haproxy-partitions" toml:"slapos-haproxy-partitions" json:"slaposHaproxyPartitions"`
+	SlapOSMaxscalePartitions                  string                 `mapstructure:"slapos-maxscale-partitions" toml:"slapos-maxscale-partitions" json:"slaposMaxscalePartitions"`
+	SlapOSShardProxyPartitions                string                 `mapstructure:"slapos-shardproxy-partitions" toml:"slapos-shardproxy-partitions" json:"slaposShardproxyPartitions"`
+	SlapOSSphinxPartitions                    string                 `mapstructure:"slapos-sphinx-partitions" toml:"slapos-sphinx-partitions" json:"slaposSphinxPartitions"`
+	ProvHost                                  string                 `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
+	OnPremiseSSH                              bool                   `mapstructure:"onpremise-ssh" toml:"onpremise-ssh" json:"onpremiseSsh"`
+	OnPremiseSSHPort                          int                    `mapstructure:"onpremise-ssh-port" toml:"onpremise-ssh-port" json:"onpremiseSshPort"`
+	OnPremiseSSHCredential                    string                 `mapstructure:"onpremise-ssh-credential" toml:"onpremise-ssh-credential" json:"onpremiseSshCredential"`
+	OnPremiseSSHPrivateKey                    string                 `mapstructure:"onpremise-ssh-private-key" toml:"onpremise-ssh-private-key" json:"onpremiseSshPrivateKey"`
+	OnPremiseSSHStartDbScript                 string                 `mapstructure:"onpremise-ssh-start-db-script" toml:"onpremise-ssh-start-db-script" json:"onpremiseSshStartDbScript"`
+	OnPremiseSSHStartProxyScript              string                 `mapstructure:"onpremise-ssh-start-proxy-script" toml:"onpremise-ssh-start-proxy-script" json:"onpremiseSshStartProxyScript"`
+	OnPremiseSSHDbJobScript                   string                 `mapstructure:"onpremise-ssh-db-job-script" toml:"onpremise-ssh-db-job-script" json:"onpremiseSshDbJobScript"`
+	ProvOpensvcP12Certificate                 string                 `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificate" json:"opensvcP12Certificate"`
+	ProvOpensvcP12Secret                      string                 `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
+	ProvOpensvcUseCollectorAPI                bool                   `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
+	ProvOpensvcCollectorAccount               string                 `mapstructure:"opensvc-collector-account" toml:"opensvc-collector-account" json:"opensvcCollectorAccount"`
+	ProvRegister                              bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
+	ProvAdminUser                             string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
+	ProvUser                                  string                 `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
+	ProvCodeApp                               string                 `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
+	ProvSerialized                            bool                   `mapstructure:"prov-serialized" toml:"prov-serialized" json:"provSerialized"`
+	ProvOrchestrator                          string                 `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
+	ProvOrchestratorEnable                    string                 `mapstructure:"prov-orchestrator-enable" toml:"prov-orchestrator-enable" json:"provOrchestratorEnable"`
+	ProvOrchestratorCluster                   string                 `mapstructure:"prov-orchestrator-cluster" toml:"prov-orchestrator-cluster" json:"provOrchestratorCluster"`
+	ProvDBApplyDynamicConfig                  bool                   `mapstructure:"prov-db-apply-dynamic-config" toml:"prov-db-apply-dynamic-config" json:"provDBApplyDynamicConfig"`
+	ProvDBClientBasedir                       string                 `mapstructure:"prov-db-client-basedir" toml:"prov-db-client-basedir" json:"provDbClientBasedir"`
+	ProvDBBinaryBasedir                       string                 `mapstructure:"prov-db-binary-basedir" toml:"prov-db-binary-basedir" json:"provDbBinaryBasedir"`
+	ProvType                                  string                 `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
+	ProvAgents                                string                 `mapstructure:"prov-db-agents" toml:"prov-db-agents" json:"provDbAgents"`
+	ProvMem                                   string                 `mapstructure:"prov-db-memory" toml:"prov-db-memory" json:"provDbMemory"`
+	ProvMemSharedPct                          string                 `mapstructure:"prov-db-memory-shared-pct" toml:"prov-db-memory-shared-pct" json:"provDbMemorySharedPct"`
+	ProvMemThreadedPct                        string                 `mapstructure:"prov-db-memory-threaded-pct" toml:"prov-db-memory-threaded-pct" json:"provDbMemoryThreadedPct"`
+	ProvIops                                  string                 `mapstructure:"prov-db-disk-iops" toml:"prov-db-disk-iops" json:"provDbDiskIops"`
+	ProvIopsLatency                           string                 `mapstructure:"prov-db-disk-iops-latency" toml:"prov-db-disk-iops-latency" json:"provDbDiskIopsLatency"`
+	ProvExpireLogDays                         int                    `mapstructure:"prov-db-expire-log-days" toml:"prov-db-expire-log-days" json:"provDbExpireLogDays"`
+	ProvMaxConnections                        int                    `mapstructure:"prov-db-max-connections" toml:"prov-db-max-connections" json:"provDbMaxConnections"`
+	ProvCores                                 string                 `mapstructure:"prov-db-cpu-cores" toml:"prov-db-cpu-cores" json:"provDbCpuCores"`
+	ProvTags                                  string                 `mapstructure:"prov-db-tags" toml:"prov-db-tags" json:"provDbTags"`
+	ProvBinaryInTarball                       bool                   `mapstructure:"prov-db-binary-in-tarball" toml:"prov-db-binary-in-tarball" json:"provDbBinaryInTarball"`
+	ProvBinaryTarballName                     string                 `mapstructure:"prov-db-binary-tarball-name" toml:"prov-db-binary-tarball-name" json:"provDbBinaryTarballName"`
+	ProvDomain                                string                 `mapstructure:"prov-db-domain" toml:"prov-db-domain" json:"provDbDomain"`
+	ProvDisk                                  string                 `mapstructure:"prov-db-disk-size" toml:"prov-db-disk-size" json:"provDbDiskSize"`
+	ProvDiskSystemSize                        string                 `mapstructure:"prov-db-disk-system-size" toml:"prov-db-disk-system-size" json:"provDbDiskSystemSize"`
+	ProvDiskTempSize                          string                 `mapstructure:"prov-db-disk-temp-size" toml:"prov-db-disk-temp-size" json:"provDbDiskTempSize"`
+	ProvDiskDockerSize                        string                 `mapstructure:"prov-db-disk-docker-size" toml:"prov-db-disk-docker-size" json:"provDbDiskDockerSize"`
+	ProvVolumeDocker                          string                 `mapstructure:"prov-db-volume-docker" toml:"prov-db-volume-docker" json:"provDbVolumeDocker"`
+	ProvVolumeData                            string                 `mapstructure:"prov-db-volume-data" toml:"prov-db-volume-data" json:"provDbVolumeData"`
+	ProvDiskFS                                string                 `mapstructure:"prov-db-disk-fs" toml:"prov-db-disk-fs" json:"provDbDiskFs"`
+	ProvDiskFSCompress                        string                 `mapstructure:"prov-db-disk-fs-compress" toml:"prov-db-disk-fs-compress" json:"provDbDiskFsCompress"`
+	ProvDiskPool                              string                 `mapstructure:"prov-db-disk-pool" toml:"prov-db-disk-pool" json:"provDbDiskPool"`
+	ProvDiskDevice                            string                 `mapstructure:"prov-db-disk-device" toml:"prov-db-disk-device" json:"provDbDiskDevice"`
+	ProvDiskType                              string                 `mapstructure:"prov-db-disk-type" toml:"prov-db-disk-type" json:"provDbDiskType"`
+	ProvDiskSnapshot                          bool                   `mapstructure:"prov-db-disk-snapshot-prefered-master" toml:"prov-db-disk-snapshot-prefered-master" json:"provDbDiskSnapshotPreferedMaster"`
+	ProvDiskSnapshotKeep                      int                    `mapstructure:"prov-db-disk-snapshot-keep" toml:"prov-db-disk-snapshot-keep" json:"provDbDiskSnapshotKeep"`
+	ProvNetIface                              string                 `mapstructure:"prov-db-net-iface" toml:"prov-db-net-iface" json:"provDbNetIface"`
+	ProvNetmask                               string                 `mapstructure:"prov-db-net-mask" toml:"prov-db-net-mask" json:"provDbNetMask"`
+	ProvGateway                               string                 `mapstructure:"prov-db-net-gateway" toml:"prov-db-net-gateway" json:"provDbNetGateway"`
+	ProvDbImg                                 string                 `mapstructure:"prov-db-docker-img" toml:"prov-db-docker-img" json:"provDbDockerImg"`
+	ProvDatadirVersion                        string                 `mapstructure:"prov-db-datadir-version" toml:"prov-db-datadir-version" json:"provDbDatadirVersion"`
+	ProvDBLoadSQL                             string                 `mapstructure:"prov-db-load-sql" toml:"prov-db-load-sql" json:"provDbLoadSql"`
+	ProvDBLoadCSV                             string                 `mapstructure:"prov-db-load-csv" toml:"prov-db-load-csv" json:"provDbLoadCsv"`
+	ProvProxType                              string                 `mapstructure:"prov-proxy-service-type" toml:"prov-proxy-service-type" json:"provProxyServiceType"`
+	ProvProxAgents                            string                 `mapstructure:"prov-proxy-agents" toml:"prov-proxy-agents" json:"provProxyAgents"`
+	ProvProxAgentsFailover                    string                 `mapstructure:"prov-proxy-agents-failover" toml:"prov-proxy-agents-failover" json:"provProxyAgentsFailover"`
+	ProvProxMem                               string                 `mapstructure:"prov-proxy-memory" toml:"prov-proxy-memory" json:"provProxyMemory"`
+	ProvProxCores                             string                 `mapstructure:"prov-proxy-cpu-cores" toml:"prov-proxy-cpu-cores" json:"provProxyCpuCores"`
+	ProvProxDisk                              string                 `mapstructure:"prov-proxy-disk-size" toml:"prov-proxy-disk-size" json:"provProxyDiskSize"`
+	ProvProxDiskFS                            string                 `mapstructure:"prov-proxy-disk-fs" toml:"prov-proxy-disk-fs" json:"provProxyDiskFs"`
+	ProvProxDiskPool                          string                 `mapstructure:"prov-proxy-disk-pool" toml:"prov-proxy-disk-pool" json:"provProxyDiskPool"`
+	ProvProxDiskDevice                        string                 `mapstructure:"prov-proxy-disk-device" toml:"prov-proxy-disk-device" json:"provProxyDiskDevice"`
+	ProvProxDiskType                          string                 `mapstructure:"prov-proxy-disk-type" toml:"prov-proxy-disk-type" json:"provProxyDiskType"`
+	ProvProxVolumeData                        string                 `mapstructure:"prov-proxy-volume-data" toml:"prov-proxy-volume-data" json:"provProxyVolumeData"`
+	ProvProxNetIface                          string                 `mapstructure:"prov-proxy-net-iface" toml:"prov-proxy-net-iface" json:"provProxyNetIface"`
+	ProvProxNetmask                           string                 `mapstructure:"prov-proxy-net-mask" toml:"prov-proxy-net-mask" json:"provProxyNetMask"`
+	ProvProxGateway                           string                 `mapstructure:"prov-proxy-net-gateway" toml:"prov-proxy-net-gateway" json:"provProxyNetGateway"`
+	ProvProxRouteAddr                         string                 `mapstructure:"prov-proxy-route-addr" toml:"prov-proxy-route-addr" json:"provProxyRouteAddr"`
+	ProvProxRoutePort                         string                 `mapstructure:"prov-proxy-route-port" toml:"prov-proxy-route-port" json:"provProxyRoutePort"`
+	ProvProxRouteMask                         string                 `mapstructure:"prov-proxy-route-mask" toml:"prov-proxy-route-mask" json:"provProxyRouteMask"`
+	ProvProxRoutePolicy                       string                 `mapstructure:"prov-proxy-route-policy" toml:"prov-proxy-route-policy" json:"provProxyRoutePolicy"`
+	ProvProxShardingImg                       string                 `mapstructure:"prov-proxy-docker-shardproxy-img" toml:"prov-proxy-docker-shardproxy-img" json:"provProxyDockerShardproxyImg"`
+	ProvProxMaxscaleImg                       string                 `mapstructure:"prov-proxy-docker-maxscale-img" toml:"prov-proxy-docker-maxscale-img" json:"provProxyDockerMaxscaleImg"`
+	ProvProxHaproxyImg                        string                 `mapstructure:"prov-proxy-docker-haproxy-img" toml:"prov-proxy-docker-haproxy-img" json:"provProxyDockerHaproxyImg"`
+	ProvProxProxysqlImg                       string                 `mapstructure:"prov-proxy-docker-proxysql-img" toml:"prov-proxy-docker-proxysql-img" json:"provProxyDockerProxysqlImg"`
+	ProvProxMysqlRouterImg                    string                 `mapstructure:"prov-proxy-docker-mysqlrouter-img" toml:"prov-proxy-docker-mysqlrouter-img" json:"provProxyDockerMysqlrouterImg"`
+	ProvProxTags                              string                 `mapstructure:"prov-proxy-tags" toml:"prov-proxy-tags" json:"provProxyTags"`
+	ProvSphinxAgents                          string                 `mapstructure:"prov-sphinx-agents" toml:"prov-sphinx-agents" json:"provSphinxAgents"`
+	ProvSphinxImg                             string                 `mapstructure:"prov-sphinx-docker-img" toml:"prov-sphinx-docker-img" json:"provSphinxDockerImg"`
+	ProvSphinxMem                             string                 `mapstructure:"prov-sphinx-memory" toml:"prov-sphinx-memory" json:"provSphinxMemory"`
+	ProvSphinxDisk                            string                 `mapstructure:"prov-sphinx-disk-size" toml:"prov-sphinx-disk-size" json:"provSphinxDiskSize"`
+	ProvSphinxCores                           string                 `mapstructure:"prov-sphinx-cpu-cores" toml:"prov-sphinx-cpu-cores" json:"provSphinxCpuCores"`
+	ProvSphinxMaxChildren                     string                 `mapstructure:"prov-sphinx-max-childrens" toml:"prov-sphinx-max-childrens" json:"provSphinxMaxChildrens"`
+	ProvSphinxDiskPool                        string                 `mapstructure:"prov-sphinx-disk-pool" toml:"prov-sphinx-disk-pool" json:"provSphinxDiskPool"`
+	ProvSphinxDiskFS                          string                 `mapstructure:"prov-sphinx-disk-fs" toml:"prov-sphinx-disk-fs" json:"provSphinxDiskFs"`
+	ProvSphinxDiskDevice                      string                 `mapstructure:"prov-sphinx-disk-device" toml:"prov-sphinx-disk-device" json:"provSphinxDiskDevice"`
+	ProvSphinxDiskType                        string                 `mapstructure:"prov-sphinx-disk-type" toml:"prov-sphinx-disk-type" json:"provSphinxDiskType"`
+	ProvSphinxTags                            string                 `mapstructure:"prov-sphinx-tags" toml:"prov-sphinx-tags" json:"provSphinxTags"`
+	ProvSphinxCron                            string                 `mapstructure:"prov-sphinx-reindex-schedule" toml:"prov-sphinx-reindex-schedule" json:"provSphinxReindexSchedule"`
+	ProvSphinxType                            string                 `mapstructure:"prov-sphinx-service-type" toml:"prov-sphinx-service-type" json:"provSphinxServiceType"`
+	ProvSSLCa                                 string                 `mapstructure:"prov-tls-server-ca" toml:"prov-tls-server-ca" json:"provTlsServerCa"`
+	ProvSSLCert                               string                 `mapstructure:"prov-tls-server-cert" toml:"prov-tls-server-cert" json:"provTlsServerCert"`
+	ProvSSLKey                                string                 `mapstructure:"prov-tls-server-key" toml:"prov-tls-server-key" json:"provTlsServerKey"`
+	ProvSSLCaUUID                             string                 `mapstructure:"prov-tls-server-ca-uuid" toml:"-" json:"-"`
+	ProvSSLCertUUID                           string                 `mapstructure:"prov-tls-server-cert-uuid" toml:"-" json:"-"`
+	ProvSSLKeyUUID                            string                 `mapstructure:"prov-tls-server-key-uuid" toml:"-" json:"-"`
+	ProvNetCNI                                bool                   `mapstructure:"prov-net-cni" toml:"prov-net-cni" json:"provNetCni"`
+	ProvNetCNICluster                         string                 `mapstructure:"prov-net-cni-cluster" toml:"prov-net-cni-cluster" json:"provNetCniCluster"`
+	ProvDockerDaemonPrivate                   bool                   `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
+	ProvServicePlan                           string                 `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
+	ProvServicePlanRegistry                   string                 `mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
+	ProvDbBootstrapScript                     string                 `mapstructure:"prov-db-bootstrap-script" toml:"prov-db-bootstrap-script" json:"provDbBootstrapScript"`
+	ProvProxyBootstrapScript                  string                 `mapstructure:"prov-proxy-bootstrap-script" toml:"prov-proxy-bootstrap-script" json:"provProxyBootstrapScript"`
+	ProvDbCleanupScript                       string                 `mapstructure:"prov-db-cleanup-script" toml:"prov-db-cleanup-script" json:"provDbCleanupScript"`
+	ProvProxyCleanupScript                    string                 `mapstructure:"prov-proxy-cleanup-script" toml:"prov-proxy-cleanup-script" json:"provProxyCleanupScript"`
+	ProvDbStartScript                         string                 `mapstructure:"prov-db-start-script" toml:"prov-db-start-script" json:"provDbStartScript"`
+	ProvProxyStartScript                      string                 `mapstructure:"prov-proxy-start-script" toml:"prov-proxy-start-script" json:"provProxyStartScript"`
+	ProvDbStopScript                          string                 `mapstructure:"prov-db-stop-script" toml:"prov-db-stop-script" json:"provDbStopScript"`
+	ProvProxyStopScript                       string                 `mapstructure:"prov-proxy-stop-script" toml:"prov-proxy-stop-script" json:"provProxyStopScript"`
+	ProvDBCompliance                          string                 `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`
+	ProvProxyCompliance                       string                 `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
+	APIUsers                                  string                 `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
+	APIUsersExternal                          string                 `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
+	APIUsersACLAllow                          string                 `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
+	APIUsersACLDiscard                        string                 `mapstructure:"api-credentials-acl-discard" toml:"api-credentials-acl-discard" json:"apiCredentialsACLDiscard"`
+	APISecureConfig                           bool                   `mapstructure:"api-credentials-secure-config" toml:"api-credentials-secure-config" json:"apiCredentialsSecureConfig"`
+	APIPort                                   string                 `mapstructure:"api-port" toml:"api-port" json:"apiPort"`
+	APIBind                                   string                 `mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
+	APIHttpsBind                              bool                   `mapstructure:"api-https-bind" toml:"api-secure" json:"apiHttpsBind"`
+	AlertScript                               string                 `mapstructure:"alert-script" toml:"alert-script" json:"alertScript"`
+	ConfigFile                                string                 `mapstructure:"config" toml:"-" json:"-"`
+	MonitorScheduler                          bool                   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
+	SchedulerReceiverPorts                    string                 `mapstructure:"scheduler-db-servers-receiver-ports" toml:"scheduler-db-servers-receiver-ports" json:"schedulerDbServersReceiverPorts"`
+	SchedulerSenderPorts                      string                 `mapstructure:"scheduler-db-servers-sender-ports" toml:"scheduler-db-servers-sender-ports" json:"schedulerDbServersSenderPorts"`
+	SchedulerReceiverUseSSL                   bool                   `mapstructure:"scheduler-db-servers-receiver-use-ssl" toml:"scheduler-db-servers-receiver-use-ssl" json:"schedulerDbServersReceiverUseSSL"`
+	SchedulerBackupLogical                    bool                   `mapstructure:"scheduler-db-servers-logical-backup" toml:"scheduler-db-servers-logical-backup" json:"schedulerDbServersLogicalBackup"`
+	SchedulerBackupPhysical                   bool                   `mapstructure:"scheduler-db-servers-physical-backup" toml:"scheduler-db-servers-physical-backup" json:"schedulerDbServersPhysicalBackup"`
+	SchedulerDatabaseLogs                     bool                   `mapstructure:"scheduler-db-servers-logs" toml:"scheduler-db-servers-logs" json:"schedulerDbServersLogs"`
+	SchedulerDatabaseOptimize                 bool                   `mapstructure:"scheduler-db-servers-optimize" toml:"scheduler-db-servers-optimize" json:"schedulerDbServersOptimize"`
+	BackupLogicalCron                         string                 `mapstructure:"scheduler-db-servers-logical-backup-cron" toml:"scheduler-db-servers-logical-backup-cron" json:"schedulerDbServersLogicalBackupCron"`
+	BackupPhysicalCron                        string                 `mapstructure:"scheduler-db-servers-physical-backup-cron" toml:"scheduler-db-servers-physical-backup-cron" json:"schedulerDbServersPhysicalBackupCron"`
+	BackupDatabaseLogCron                     string                 `mapstructure:"scheduler-db-servers-logs-cron" toml:"scheduler-db-servers-logs-cron" json:"schedulerDbServersLogsCron"`
+	BackupDatabaseOptimizeCron                string                 `mapstructure:"scheduler-db-servers-optimize-cron" toml:"scheduler-db-servers-optimize-cron" json:"schedulerDbServersOptimizeCron"`
+	BackupSaveScript                          string                 `mapstructure:"backup-save-script" toml:"backup-save-script" json:"backupSaveScript"`
+	BackupLoadScript                          string                 `mapstructure:"backup-load-script" toml:"backup-load-script" json:"backupLoadScript"`
+	SchedulerDatabaseLogsTableRotate          bool                   `mapstructure:"scheduler-db-servers-logs-table-rotate" toml:"scheduler-db-servers-logs-table-rotate" json:"schedulerDbServersLogsTableRotate"`
+	SchedulerDatabaseLogsTableRotateCron      string                 `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDbServersLogsTableRotateCron"`
+	SchedulerMaintenanceDatabaseLogsTableKeep int                    `mapstructure:"scheduler-db-servers-logs-table-keep" toml:"scheduler-db-servers-logs-table-keep" json:"schedulerDatabaseLogsTableKeep"`
+	SchedulerSLARotateCron                    string                 `mapstructure:"scheduler-sla-rotate-cron" toml:"scheduler-sla-rotate-cron" json:"schedulerSlaRotateCron"`
+	SchedulerRollingRestart                   bool                   `mapstructure:"scheduler-rolling-restart" toml:"scheduler-rolling-restart" json:"schedulerRollingRestart"`
+	SchedulerRollingRestartCron               string                 `mapstructure:"scheduler-rolling-restart-cron" toml:"scheduler-rolling-restart-cron" json:"schedulerRollingRestartCron"`
+	SchedulerRollingReprov                    bool                   `mapstructure:"scheduler-rolling-reprov" toml:"scheduler-rolling-reprov" json:"schedulerRollingReprov"`
+	SchedulerRollingReprovCron                string                 `mapstructure:"scheduler-rolling-reprov-cron" toml:"scheduler-rolling-reprov-cron" json:"schedulerRollingReprovCron"`
+	SchedulerJobsSSH                          bool                   `mapstructure:"scheduler-jobs-ssh" toml:"scheduler-jobs-ssh" json:"schedulerJobsSsh"`
+	SchedulerJobsSSHCron                      string                 `mapstructure:"scheduler-jobs-ssh-cron" toml:"scheduler-jobs-ssh-cron" json:"schedulerJobsSshCron"`
+	Backup                                    bool                   `mapstructure:"backup" toml:"backup" json:"backup"`
+	BackupLogicalType                         string                 `mapstructure:"backup-logical-type" toml:"backup-logical-type" json:"backupLogicalType"`
+	BackupLogicalLoadThreads                  int                    `mapstructure:"backup-logical-load-threads" toml:"backup-logical-load-threads" json:"backupLogicalLoadThreads"`
+	BackupLogicalDumpThreads                  int                    `mapstructure:"backup-logical-dump-threads" toml:"backup-logical-dump-threads" json:"backupLogicalDumpThreads"`
+	BackupLogicalDumpSystemTables             bool                   `mapstructure:"backup-logical-dump-system-tables" toml:"backup-logical-dump-system-tables" json:"backupLogicalDumpSystemTables"`
+	BackupPhysicalType                        string                 `mapstructure:"backup-physical-type" toml:"backup-physical-type" json:"backupPhysicalType"`
+	BackupKeepHourly                          int                    `mapstructure:"backup-keep-hourly" toml:"backup-keep-hourly" json:"backupKeepHourly"`
+	BackupKeepDaily                           int                    `mapstructure:"backup-keep-daily" toml:"backup-keep-daily" json:"backupKeepDaily"`
+	BackupKeepWeekly                          int                    `mapstructure:"backup-keep-weekly" toml:"backup-keep-weekly" json:"backupKeepWeekly"`
+	BackupKeepMonthly                         int                    `mapstructure:"backup-keep-monthly" toml:"backup-keep-monthly" json:"backupKeepMonthly"`
+	BackupKeepYearly                          int                    `mapstructure:"backup-keep-yearly" toml:"backup-keep-yearly" json:"backupKeepYearly"`
+	BackupRestic                              bool                   `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
+	BackupResticBinaryPath                    string                 `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
+	BackupResticAwsAccessKeyId                string                 `mapstructure:"backup-restic-aws-access-key-id" toml:"backup-restic-aws-access-key-id" json:"-"`
+	BackupResticAwsAccessSecret               string                 `mapstructure:"backup-restic-aws-access-secret"  toml:"backup-restic-aws-access-secret" json:"-"`
+	BackupResticRepository                    string                 `mapstructure:"backup-restic-repository" toml:"backup-restic-repository" json:"backupResticRepository"`
+	BackupResticPassword                      string                 `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
+	BackupResticAws                           bool                   `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
+	BackupStreaming                           bool                   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`
+	BackupStreamingDebug                      bool                   `mapstructure:"backup-streaming-debug" toml:"backup-streaming-debug" json:"backupStreamingDebug"`
+	BackupStreamingAwsAccessKeyId             string                 `mapstructure:"backup-streaming-aws-access-key-id" toml:"backup-streaming-aws-access-key-id" json:"-"`
+	BackupStreamingAwsAccessSecret            string                 `mapstructure:"backup-streaming-aws-access-secret"  toml:"backup-streaming-aws-access-secret" json:"-"`
+	BackupStreamingEndpoint                   string                 `mapstructure:"backup-streaming-endpoint" toml:"backup-streaming-endpoint" json:"backupStreamingEndpoint"`
+	BackupStreamingRegion                     string                 `mapstructure:"backup-streaming-region" toml:"backup-streaming-region" json:"backupStreamingRegion"`
+	BackupStreamingBucket                     string                 `mapstructure:"backup-streaming-bucket" toml:"backup-streaming-bucket" json:"backupStreamingBucket"`
+	BackupMysqldumpPath                       string                 `mapstructure:"backup-mysqldump-path" toml:"backup-mysqldump-path" json:"backupMysqldumpPath"`
+	BackupMysqldumpOptions                    string                 `mapstructure:"backup-mysqldump-options" toml:"backup-mysqldump-options" json:"backupMysqldumpOptions"`
+	BackupMyDumperPath                        string                 `mapstructure:"backup-mydumper-path" toml:"backup-mydumper-path" json:"backupMydumperPath"`
+	BackupMyLoaderPath                        string                 `mapstructure:"backup-myloader-path" toml:"backup-myloader-path" json:"backupMyloaderPath"`
+	BackupMyLoaderOptions                     string                 `mapstructure:"backup-myloader-options" toml:"backup-myloader-options" json:"backupMyloaderOptions"`
+	BackupMyDumperOptions                     string                 `mapstructure:"backup-mydumper-options" toml:"backup-mydumper-options" json:"backupMyDumperOptions"`
+	BackupMysqlbinlogPath                     string                 `mapstructure:"backup-mysqlbinlog-path" toml:"backup-mysqlbinlog-path" json:"backupMysqlbinlogPath"`
+	BackupMysqlclientPath                     string                 `mapstructure:"backup-mysqlclient-path" toml:"backup-mysqlclient-path" json:"backupMysqlclientgPath"`
+	BackupBinlogs                             bool                   `mapstructure:"backup-binlogs" toml:"backup-binlogs" json:"backupBinlogs"`
+	BackupBinlogsKeep                         int                    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
+	BackupLockDDL                             bool                   `mapstructure:"backup-lockddl" toml:"backup-lockddl" json:"backupLockDDL"`
+	ClusterConfigPath                         string                 `mapstructure:"cluster-config-file" toml:"-" json:"-"`
+	VaultServerAddr                           string                 `mapstructure:"vault-server-addr" toml:"vault-server-addr" json:"vaultServerAddr"`
+	VaultRoleId                               string                 `mapstructure:"vault-role-id" toml:"vault-role-id" json:"vaultRoleId"`
+	VaultSecretId                             string                 `mapstructure:"vault-secret-id" toml:"vault-secret-id" json:"vaultSecretId"`
+	VaultMode                                 string                 `mapstructure:"vault-mode" toml:"vault-mode" json:"vaultMode"`
+	VaultMount                                string                 `mapstructure:"vault-mount" toml:"vault-mount" json:"vaultMount"`
+	VaultAuth                                 string                 `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
+	GitUrl                                    string                 `mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
+	GitAccesToken                             string                 `mapstructure:"git-acces-token" toml:"git-acces-token" json:"gitAccesToken"`
+	Cloud18SubDomain                          string                 `mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
+	Cloud18                                   bool                   `mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
+	Cloud18Portal                             string                 `mapstructure:"cloud18-portal" toml:"cloud18-portal" json:"cloud18Portal"`
+	Cloud18Credentials                        string                 `mapstructure:"cloud18-credentials" toml:"cloud18-credentials" json:"cloud18Credentials"`
+	Secrets                                   map[string]Secret      `json:"-"`
+	SecretKey                                 []byte                 `json:"-"`
+	ImmuableFlagMap                           map[string]interface{} `json:"-"`
+	DynamicFlagMap                            map[string]interface{} `json:"-"`
+	DefaultFlagMap                            map[string]interface{} `json:"-"`
 	//	BackupResticStoragePolicy                 string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
 
@@ -562,6 +571,11 @@ type ConfigVariableType struct {
 	Name      string `json:"name"`
 	Available bool   `json:"available"`
 	Label     string `json:"label"`
+}
+
+type Secret struct {
+	OldValue string
+	Value    string
 }
 
 // Compliance created in OpenSVC collector and exported as JSON
@@ -758,6 +772,183 @@ const (
 	ConstBackupPhysicalTypeXtrabackup  string = "xtrabackup"
 	ConstBackupPhysicalTypeMariaBackup string = "mariabackup"
 )
+
+func (conf *Config) GetSecrets() map[string]Secret {
+	// to store the flags to encrypt in the git (in Save() function)
+	return conf.Secrets
+}
+
+func (conf *Config) DecryptSecretsFromConfig() {
+	conf.Secrets = map[string]Secret{
+		"api-credentials":                       {"", ""},
+		"api-credentials-external":              {"", ""},
+		"db-servers-credential":                 {"", ""},
+		"monitoring-write-heartbeat-credential": {"", ""},
+		"onpremise-ssh-credential":              {"", ""},
+		"replication-credential":                {"", ""},
+		"shardproxy-credential":                 {"", ""},
+		"haproxy-password":                      {"", ""},
+		"maxscale-pass":                         {"", ""},
+		"myproxy-password":                      {"", ""},
+		"proxysql-password":                     {"", ""},
+		"janitorproxy-password":                 {"", ""},
+		"vault-secret-id":                       {"", ""},
+		"opensvc-p12-secret":                    {"", ""},
+		"backup-restic-aws-access-secret":       {"", ""},
+		"backup-streaming-aws-access-secret":    {"", ""},
+		"backup-restic-password":                {"", ""},
+		"arbitration-external-secret":           {"", ""},
+		"alert-pushover-user-token":             {"", ""},
+		"alert-pushover-app-token":              {"", ""},
+		"git-acces-token":                       {"", ""},
+		"mail-smtp-password":                    {"", ""}}
+
+	for k := range conf.Secrets {
+
+		origin_value, ok := conf.DynamicFlagMap[k]
+		if !ok {
+			origin_value, ok = conf.ImmuableFlagMap[k]
+			if !ok {
+				origin_value = conf.DefaultFlagMap[k]
+			}
+
+		}
+		var secret Secret
+		secret.Value = fmt.Sprintf("%v", origin_value)
+
+		lst_cred := strings.Split(secret.Value, ",")
+		var tab_cred []string
+		for _, cred := range lst_cred {
+			if strings.Contains(cred, ":") {
+				user, pass := misc.SplitPair(cred)
+				tab_cred = append(tab_cred, user+":"+conf.GetDecryptedPassword(k, pass))
+			} else {
+				tab_cred = append(tab_cred, conf.GetDecryptedPassword(k, cred))
+			}
+		}
+		secret.Value = strings.Join(tab_cred, ",")
+		log.Printf("Decrypting secret variable %s=%s", k, secret.Value)
+		conf.Secrets[k] = secret
+	}
+}
+
+func (conf *Config) GetDecryptedPassword(key string, value string) string {
+	if conf.SecretKey != nil && strings.HasPrefix(value, "hash_") {
+		value = strings.TrimLeft(value, "hash_")
+		p := crypto.Password{Key: conf.SecretKey}
+		p.CipherText = value
+		err := p.Decrypt()
+		if err != nil {
+			return value
+		} else {
+			return p.PlainText
+		}
+	}
+	return value
+}
+
+func (conf *Config) IsPath(str string) bool {
+	return strings.Contains(str, "/")
+}
+
+func (conf *Config) IsVaultUsed() bool {
+	if conf.VaultServerAddr == "" {
+		return false
+	}
+	return true
+}
+
+func (conf *Config) LoadEncrytionKey() ([]byte, error) {
+	sec, err := crypto.ReadKey(conf.MonitoringKeyPath)
+	if err != nil {
+		conf.SecretKey = nil
+	}
+	conf.SecretKey = sec
+	return conf.SecretKey, err
+}
+
+func (conf *Config) GetEncryptedString(str string) string {
+	p := crypto.Password{PlainText: str}
+	var err error
+	if conf.SecretKey != nil {
+		p.Key, err = crypto.ReadKey(fmt.Sprintf("%v", conf.MonitoringKeyPath))
+		if err != nil {
+			return str
+		}
+		p.Encrypt()
+		return "hash_" + p.CipherText
+	}
+	return str
+}
+
+func (conf *Config) GetDecryptedValue(key string) string {
+	return conf.Secrets[key].Value
+}
+
+func (conf *Config) CloneConfigFromGit(url string, tok string, dir string) {
+
+	auth := &git_https.BasicAuth{
+		Username: "stephane@signal18.io", // yes, this can be anything except an empty string
+		Password: tok,
+	}
+	log.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
+
+	//fmt.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
+	if _, err := os.Stat(dir + "/.gitignore"); os.IsNotExist(err) {
+		file, err := os.Create(dir + "/.gitignore")
+		if err != nil {
+			if os.IsPermission(err) {
+				log.Errorf("File permission denied: %s, %s", dir+".gitignore", err)
+			}
+		}
+		defer file.Close()
+		file.WriteString("/*\n!/*/*.toml\n")
+		file.Sync()
+	}
+
+	path := dir
+	if _, err := os.Stat(path + "/.git"); err == nil {
+
+		// We instantiate a new repository targeting the given path (the .git folder)
+		r, err := git.PlainOpen(path)
+		if err != nil {
+			log.Errorf("Git error : cannot PlainOpen : %s", err)
+			return
+		}
+
+		// Get the working directory for the repository
+		w, err := r.Worktree()
+		if err != nil {
+			log.Errorf("Git error : cannot Worktree : %s", err)
+			return
+		}
+
+		// Pull the latest changes from the origin remote and merge into the current branch
+		//git_ex.Info("git pull origin")
+		err = w.Pull(&git.PullOptions{
+			RemoteName: "origin",
+			Auth:       auth,
+			RemoteURL:  url,
+		})
+		if err != nil && fmt.Sprintf("%v", err) != "already up-to-date" {
+			log.Errorf("Git error : cannot Pull : %s", err)
+		}
+
+	} else {
+		// Clone the given repository to the given directory
+		//git_ex.Info("git clone %s %s --recursive", url, path)
+
+		_, err := git.PlainClone(path, false, &git.CloneOptions{
+			URL:               url,
+			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+			Auth:              auth,
+		})
+
+		if err != nil {
+			log.Errorf("Git error : cannot Clone %s repository : %s", url, err)
+		}
+	}
+}
 
 func (conf *Config) GetBackupPhysicalType() map[string]bool {
 	return map[string]bool{
@@ -1042,7 +1233,7 @@ func (conf *Config) GetTarballs(is_not_embed bool) ([]Tarball, error) {
 	if is_not_embed {
 
 		file := conf.ShareDir + "/repo/tarballs.json"
-		fmt.Printf("GetTarballs1 file value : ", file)
+		fmt.Printf("GetTarballs1 file value : %s ", file)
 		jsonFile, err := os.Open(file)
 		if err != nil {
 			return tarballs.Tarballs, err
@@ -1088,10 +1279,10 @@ func (conf Config) PrintConf() {
 			fmt.Printf("%s : %s (string)\n", types.Field(i).Name, values.Field(i).String())
 		}
 		if types.Field(i).Type.String() == "bool" {
-			fmt.Printf("%s : %t (bool)\n", types.Field(i).Name, values.Field(i))
+			fmt.Printf("%s : %s (bool)\n", types.Field(i).Name, values.Field(i).String())
 		}
 		if types.Field(i).Type.String() == "int" || types.Field(i).Type.String() == "uint64" || types.Field(i).Type.String() == "int64" {
-			fmt.Printf("%s : %d (int)\n", types.Field(i).Name, values.Field(i))
+			fmt.Printf("%s : %s (int)\n", types.Field(i).Name, values.Field(i).String())
 		}
 
 	}

@@ -24,7 +24,6 @@ import (
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/cron"
-	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -273,56 +272,52 @@ func (cluster *Cluster) GetTestMode() bool {
 }
 
 func (cluster *Cluster) GetDbUser() string {
-	user, _ := misc.SplitPair(cluster.encryptedFlags["db-servers-credential"].Value)
+	user, _ := misc.SplitPair(cluster.Conf.Secrets["db-servers-credential"].Value)
 	return user
 }
 
 func (cluster *Cluster) GetDbPass() string {
-	_, pass := misc.SplitPair(cluster.encryptedFlags["db-servers-credential"].Value)
+	_, pass := misc.SplitPair(cluster.Conf.Secrets["db-servers-credential"].Value)
 	return pass
 }
 
 func (cluster *Cluster) GetRplUser() string {
-	user, _ := misc.SplitPair(cluster.encryptedFlags["replication-credential"].Value)
+	user, _ := misc.SplitPair(cluster.Conf.Secrets["replication-credential"].Value)
 	return user
 }
 
 func (cluster *Cluster) GetRplPass() string {
-	_, pass := misc.SplitPair(cluster.encryptedFlags["replication-credential"].Value)
+	_, pass := misc.SplitPair(cluster.Conf.Secrets["replication-credential"].Value)
 	return pass
 }
 
 func (cluster *Cluster) GetShardUser() string {
-	user, _ := misc.SplitPair(cluster.encryptedFlags["shardproxy-credential"].Value)
+	user, _ := misc.SplitPair(cluster.Conf.Secrets["shardproxy-credential"].Value)
 	return user
 }
 
 func (cluster *Cluster) GetShardPass() string {
-	_, pass := misc.SplitPair(cluster.encryptedFlags["shardproxy-credential"].Value)
+	_, pass := misc.SplitPair(cluster.Conf.Secrets["shardproxy-credential"].Value)
 	return pass
 }
 func (cluster *Cluster) GetMonitorWriteHearbeatUser() string {
-	user, _ := misc.SplitPair(cluster.encryptedFlags["monitoring-write-heartbeat-credential"].Value)
+	user, _ := misc.SplitPair(cluster.Conf.Secrets["monitoring-write-heartbeat-credential"].Value)
 	return user
 }
 
 func (cluster *Cluster) GetMonitorWriteHeartbeatPass() string {
-	_, pass := misc.SplitPair(cluster.encryptedFlags["monitoring-write-heartbeat-credential"].Value)
+	_, pass := misc.SplitPair(cluster.Conf.Secrets["monitoring-write-heartbeat-credential"].Value)
 	return pass
 }
 
 func (cluster *Cluster) GetOnPremiseSSHUser() string {
-	user, _ := misc.SplitPair(cluster.encryptedFlags["onpremise-ssh-credential"].Value)
+	user, _ := misc.SplitPair(cluster.Conf.Secrets["onpremise-ssh-credential"].Value)
 	return user
 }
 
 func (cluster *Cluster) GetOnPremiseSSHPass() string {
-	_, pass := misc.SplitPair(cluster.encryptedFlags["onpremise-ssh-credential"].Value)
+	_, pass := misc.SplitPair(cluster.Conf.Secrets["onpremise-ssh-credential"].Value)
 	return pass
-}
-
-func (cluster *Cluster) GetDecryptedValue(key string) string {
-	return cluster.encryptedFlags[key].Value
 }
 
 func (cluster *Cluster) GetStatus() bool {
@@ -819,7 +814,7 @@ func (cluster *Cluster) GetClientCertificates() (map[string]string, error) {
 }
 
 func (cluster *Cluster) GetVaultCredentials(client *vault.Client, path string, key string) (string, error) {
-	if cluster.IsVaultUsed() && IsPath(path) {
+	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(path) {
 		if cluster.Conf.VaultMode == VaultConfigStoreV2 {
 			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), path)
 
@@ -911,7 +906,7 @@ func (cluster *Cluster) GetVaultReplicationCredentials(client *vault.Client) (st
 }
 
 func (cluster *Cluster) GetVaultConnection() (*vault.Client, error) {
-	if cluster.IsVaultUsed() {
+	if cluster.Conf.IsVaultUsed() {
 
 		cluster.LogPrintf(LvlDbg, "Vault AppRole Authentification")
 		config := vault.DefaultConfig()
@@ -963,32 +958,6 @@ func (cluster *Cluster) GetVaultConnection() (*vault.Client, error) {
 		return client, err
 	}
 	return nil, errors.New("Not using Vault")
-}
-
-func (cluster *Cluster) GetPasswordKey(MonitoringKeyPath string) ([]byte, error) {
-	k, err := crypto.ReadKey(MonitoringKeyPath)
-	if err != nil {
-		k = nil
-	}
-	return k, err
-
-}
-
-func (cluster *Cluster) GetDecryptedPassword(key string, value string) string {
-	if cluster.key != nil && strings.HasPrefix(value, "hash_") {
-		value = strings.TrimLeft(value, "hash_")
-		p := crypto.Password{Key: cluster.key}
-		p.CipherText = value
-		err := p.Decrypt()
-		if err != nil {
-			cluster.LogPrintf(LvlWarn, "Password decryption error on %s: %s", key, err)
-			return value
-		} else {
-			return p.PlainText
-		}
-
-	}
-	return value
 }
 
 func (cluster *Cluster) GetCloudSubDomain() string {

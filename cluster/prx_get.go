@@ -58,7 +58,7 @@ func (prx *Proxy) GetClusterConnection() (*sqlx.DB, error) {
 	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
 	dsn := cluster.GetDbUser() + ":" + cluster.GetDbPass() + "@"
 	if cluster.Conf.MonitorWriteHeartbeatCredential != "" {
-		dsn = cluster.GetDecryptedValue("monitoring-write-heartbeat-credential") + "@"
+		dsn = cluster.Conf.GetDecryptedValue("monitoring-write-heartbeat-credential") + "@"
 	}
 
 	if prx.Host != "" {

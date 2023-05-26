@@ -738,15 +738,15 @@ func (cluster *Cluster) CheckCredentialRotation() {
 	if cluster.HasMonitoringCredentialsRotation() {
 		//cluster.LogPrintf(LvlInfo, "TEST checkCredentialsRotation")
 		cluster.SetClusterMonitorCredentialsFromConfig()
-		cluster.SetDbServersMonitoringCredential(cluster.encryptedFlags["db-servers-credential"].Value)
+		cluster.SetDbServersMonitoringCredential(cluster.Conf.Secrets["db-servers-credential"].Value)
 	}
 	if cluster.HasProxyCredentialsRotation() {
 		cluster.SetClusterProxyCredentialsFromConfig()
 		if cluster.Conf.ProxysqlOn {
-			cluster.SetProxyServersCredential(cluster.encryptedFlags["proxysql-user"].Value+":"+cluster.encryptedFlags["proxysql-password"].Value, config.ConstProxySqlproxy)
+			cluster.SetProxyServersCredential(cluster.Conf.Secrets["proxysql-user"].Value+":"+cluster.Conf.Secrets["proxysql-password"].Value, config.ConstProxySqlproxy)
 		}
 		if cluster.Conf.MdbsProxyOn {
-			cluster.SetProxyServersCredential(cluster.encryptedFlags["shardproxy-credential"].Value, config.ConstProxySpider)
+			cluster.SetProxyServersCredential(cluster.Conf.Secrets["shardproxy-credential"].Value, config.ConstProxySpider)
 		}
 
 	}
@@ -754,8 +754,7 @@ func (cluster *Cluster) CheckCredentialRotation() {
 }
 
 func (cluster *Cluster) CheckCanSaveDynamicConfig() {
-	_, err := cluster.GetPasswordKey(cluster.Conf.MonitoringKeyPath)
-	if err != nil && cluster.GetConf().ConfRewrite {
+	if cluster.Conf.SecretKey != nil && cluster.GetConf().ConfRewrite {
 		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00090"]), ErrFrom: "CLUSTER"})
 	}
 }

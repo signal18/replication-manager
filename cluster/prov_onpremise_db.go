@@ -38,7 +38,7 @@ func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Clie
 	if !cluster.Conf.OnPremiseSSH {
 		return nil, errors.New("onpremise-ssh disable ")
 	}
-	user, password := misc.SplitPair(cluster.GetDecryptedValue("onpremise-ssh-credential"))
+	user, password := misc.SplitPair(cluster.Conf.GetDecryptedValue("onpremise-ssh-credential"))
 
 	key := cluster.OnPremiseGetSSHKey(user)
 	if password != "" {

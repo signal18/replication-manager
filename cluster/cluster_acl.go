@@ -92,7 +92,7 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		var newapiuser APIUser
 
 		newapiuser.User, newapiuser.Password = misc.SplitPair(credential)
-		newapiuser.Password = cluster.GetDecryptedPassword("api-credentials", newapiuser.Password)
+		newapiuser.Password = cluster.Conf.GetDecryptedPassword("api-credentials", newapiuser.Password)
 		usersAllowACL := strings.Split(cluster.Conf.APIUsersACLAllow, ",")
 		newapiuser.Grants = make(map[string]bool)
 		for _, userACL := range usersAllowACL {

@@ -10,6 +10,7 @@ import (
 	"context"
 
 	vault "github.com/hashicorp/vault/api"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -23,7 +24,7 @@ func (cluster *Cluster) RotatePasswords() error {
 		cluster.LogPrintf(LvlErr, "No password rotation because databases are down (or one of them).")
 		return nil
 	}
-	if cluster.IsVaultUsed() {
+	if cluster.Conf.IsVaultUsed() {
 
 		cluster.LogPrintf(LvlInfo, "Start password rotation using Vault.")
 		config := vault.DefaultConfig()
@@ -99,7 +100,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				new_password_rpl = cluster.GetRplPass()
 			}
 
-			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && IsPath(cluster.Conf.ProxysqlPassword) {
+			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) {
 
 				secretData_proxysql := map[string]interface{}{
 					"proxysql-password": new_password_proxysql,
@@ -107,12 +108,12 @@ func (cluster *Cluster) RotatePasswords() error {
 				_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.Conf.ProxysqlPassword, secretData_proxysql)
 				if err != nil {
 					cluster.LogPrintf(LvlErr, "ProxySQL Password rotation cancel, unable to write secret: %v", err)
-					new_password_proxysql = cluster.encryptedFlags["proxysql-password"].Value
+					new_password_proxysql = cluster.Conf.Secrets["proxysql-password"].Value
 				}
 				cluster.SetClusterProxyCredentialsFromConfig()
 			}
 
-			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && IsPath(cluster.Conf.MdbsProxyCredential) {
+			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && cluster.Conf.IsPath(cluster.Conf.MdbsProxyCredential) {
 
 				secretData_shardproxy := map[string]interface{}{
 					"shardproxy-credential": cluster.GetShardUser() + ":" + new_password_shard,
@@ -156,7 +157,7 @@ func (cluster *Cluster) RotatePasswords() error {
 
 			}
 
-			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && IsPath(cluster.Conf.ProxysqlPassword) {
+			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) {
 				for _, pri := range cluster.Proxies {
 					if prx, ok := pri.(*ProxySQLProxy); ok {
 						prx.RotateMonitoringPasswords(new_password_db)
@@ -166,7 +167,7 @@ func (cluster *Cluster) RotatePasswords() error {
 
 				}
 			}
-			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && IsPath(cluster.Conf.MdbsProxyCredential) {
+			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && cluster.Conf.IsPath(cluster.Conf.MdbsProxyCredential) {
 				for _, pri := range cluster.Proxies {
 					if prx, ok := pri.(*MariadbShardProxy); ok {
 						prx.RotateProxyPasswords(new_password_shard)
@@ -209,8 +210,7 @@ func (cluster *Cluster) RotatePasswords() error {
 
 		}
 	} else {
-		_, err := cluster.GetPasswordKey(cluster.Conf.MonitoringKeyPath)
-		if err == nil && cluster.GetConf().ConfRewrite {
+		if cluster.Conf.SecretKey != nil && cluster.GetConf().ConfRewrite {
 			cluster.LogPrintf(LvlInfo, "Start Password rotation")
 			if len(cluster.slaves) > 0 {
 				if !cluster.slaves.HasAllSlavesRunning() {
@@ -228,26 +228,26 @@ func (cluster *Cluster) RotatePasswords() error {
 				new_password_rpl = new_password_db
 			}
 
-			var new_Secret Secret
-			new_Secret.OldValue = cluster.encryptedFlags["db-servers-credential"].Value
+			var new_Secret config.Secret
+			new_Secret.OldValue = cluster.Conf.Secrets["db-servers-credential"].Value
 			new_Secret.Value = cluster.GetDbUser() + ":" + new_password_db
-			cluster.encryptedFlags["db-servers-credential"] = new_Secret
+			cluster.Conf.Secrets["db-servers-credential"] = new_Secret
 
-			new_Secret.OldValue = cluster.encryptedFlags["replication-credential"].Value
+			new_Secret.OldValue = cluster.Conf.Secrets["replication-credential"].Value
 			new_Secret.Value = cluster.GetRplUser() + ":" + new_password_rpl
-			cluster.encryptedFlags["replication-credential"] = new_Secret
+			cluster.Conf.Secrets["replication-credential"] = new_Secret
 
 			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() {
-				new_Secret.OldValue = cluster.encryptedFlags["proxysql-password"].Value
+				new_Secret.OldValue = cluster.Conf.Secrets["proxysql-password"].Value
 				new_Secret.Value = new_password_proxysql
-				cluster.encryptedFlags["proxysql-password"] = new_Secret
+				cluster.Conf.Secrets["proxysql-password"] = new_Secret
 			}
 
 			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() {
-				var new_Secret Secret
-				new_Secret.OldValue = cluster.encryptedFlags["shardproxy-credential"].Value
+				var new_Secret config.Secret
+				new_Secret.OldValue = cluster.Conf.Secrets["shardproxy-credential"].Value
 				new_Secret.Value = cluster.GetShardUser() + ":" + new_password_proxysql
-				cluster.encryptedFlags["shardproxy-credential"] = new_Secret
+				cluster.Conf.Secrets["shardproxy-credential"] = new_Secret
 			}
 
 			for _, srv := range cluster.Servers {

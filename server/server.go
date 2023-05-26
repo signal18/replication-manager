@@ -42,7 +42,6 @@ import (
 	"github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 var RepMan *ReplicationManager
@@ -387,10 +386,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			conf.WorkingDir = fistRead.GetString("default.monitoring-datadir")
 		}
 
-		if fistRead.GetString("default.git-url") != "" && fistRead.GetString("default.git-acces-token") != "" {
-			cluster.CloneConfigFromGit(fistRead.GetString("default.git-url"), fistRead.GetString("default.git-acces-token"), conf.WorkingDir)
-		}
-
 		dynRead := viper.GetViper()
 		dynRead.SetConfigType("toml")
 
@@ -403,7 +398,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//read and set config from all files in the working dir
 		for _, f := range files {
 			if f.IsDir() && f.Name() != "graphite" {
-				//load config file from git hub
 
 				fistRead.SetConfigName(f.Name())
 				dynRead.SetConfigName("overwrite-" + f.Name())
@@ -479,7 +473,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//	fmt.Printf("%+v\n", conf)
 		//os.Exit(3)
 		//conf.PrintConf()
+		conf.LoadEncrytionKey()
 		repman.Conf = conf
+
 	}
 	//	backupvipersave := viper.GetViper()
 
@@ -488,6 +484,16 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//set cluster list
 		repman.ClusterList = strings.Split(strClusters, ",")
 		repman.ImmuableFlagMaps["default"] = ImmuableMap
+		conf.ImmuableFlagMap = ImmuableMap
+		//load config file from git hub
+		conf.DecryptSecretsFromConfig()
+		if conf.GitUrl != "" && conf.GitAccesToken != "" {
+			conf.CloneConfigFromGit(conf.GitUrl, conf.GetDecryptedValue("git-acces-token"), conf.WorkingDir)
+		}
+
+		/*if fistRead.GetString("default.git-url") != "" && fistRead.GetString("default.git-acces-token") != "" {
+			cluster.CloneConfigFromGit(fistRead.GetString("default.git-url"), fistRead.GetString("default.git-acces-token"), conf.WorkingDir)
+		}*/
 		//add config from cluster to the config map
 		for _, cluster := range repman.ClusterList {
 			//vipersave := backupvipersave
@@ -889,10 +895,7 @@ func (repman *ReplicationManager) Run() error {
 func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Cluster, error) {
 
 	repman.currentCluster = new(cluster.Cluster)
-	k, err := repman.currentCluster.GetPasswordKey(repman.Conf.MonitoringKeyPath)
-	if err != nil {
-		k = nil
-	}
+
 	myClusterConf := repman.Confs[clusterName]
 	if myClusterConf.MonitorAddress == "localhost" {
 		myClusterConf.MonitorAddress = repman.resolveHostIp()
@@ -907,13 +910,13 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 		myClusterConf.WorkingDir = myClusterConf.BaseDir + "/data"
 	}
 
-	repman.VersionConfs[clusterName].ConfInit = myClusterConf
-	repman.currentCluster.Init(repman.VersionConfs[clusterName], repman.ImmuableFlagMaps[clusterName], repman.DynamicFlagMaps[clusterName], repman.DefaultFlagMap, clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname, k)
-	if k == nil {
-		repman.currentCluster.LogPrintf(cluster.LvlInfo, "No existing password encryption key")
-		repman.currentCluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(repman.currentCluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
+	myClusterConf.ImmuableFlagMap = repman.ImmuableFlagMaps[clusterName]
+	myClusterConf.DynamicFlagMap = repman.DynamicFlagMaps[clusterName]
+	myClusterConf.DefaultFlagMap = repman.DefaultFlagMap
 
-	}
+	repman.VersionConfs[clusterName].ConfInit = myClusterConf
+
+	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 	go repman.currentCluster.Run()

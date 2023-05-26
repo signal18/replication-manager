@@ -24,7 +24,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
 	svc.UseAPI = cluster.Conf.ProvOpensvcUseCollectorAPI
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-		svc.CertsDERSecret = cluster.Conf.ProvOpensvcP12Secret
+		svc.CertsDERSecret = cluster.Conf.GetDecryptedValue("opensvc-p12-secret")
 		err := svc.LoadCert(cluster.Conf.ProvOpensvcP12Certificate)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)

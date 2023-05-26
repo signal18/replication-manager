@@ -377,7 +377,7 @@ func (server *ServerMonitor) SetBackupLogicalCookie() error {
 
 func (server *ServerMonitor) SetReplicationCredentialsRotation(ss *dbhelper.SlaveStatus) {
 
-	if server.GetCluster().IsVaultUsed() {
+	if server.GetCluster().Conf.IsVaultUsed() {
 		server.GetCluster().SetClusterReplicationCredentialsFromConfig()
 		server.GetCluster().LogPrintf(LvlInfo, "Vault replication user password rotation")
 		err := server.rejoinSlaveChangePassword(ss)

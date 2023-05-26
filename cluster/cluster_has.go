@@ -354,15 +354,8 @@ func (cluster *Cluster) IsMultiMaster() bool {
 	return false
 }
 
-func (cluster *Cluster) IsVaultUsed() bool {
-	if cluster.GetConf().VaultServerAddr == "" {
-		return false
-	}
-	return true
-}
-
 func (cluster *Cluster) HasReplicationCredentialsRotation() bool {
-	if cluster.IsVaultUsed() && IsPath(cluster.Conf.RplUser) {
+	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(cluster.Conf.RplUser) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
 			//cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)
@@ -370,11 +363,11 @@ func (cluster *Cluster) HasReplicationCredentialsRotation() bool {
 		}
 		_, newpass, err := cluster.GetVaultReplicationCredentials(client)
 		if newpass != cluster.GetRplPass() && err == nil {
-			var new_Secret Secret
+			var new_Secret config.Secret
 
-			new_Secret.OldValue = cluster.encryptedFlags["replication-credential"].Value
+			new_Secret.OldValue = cluster.Conf.Secrets["replication-credential"].Value
 			new_Secret.Value = cluster.GetRplUser() + ":" + newpass
-			cluster.encryptedFlags["replication-credential"] = new_Secret
+			cluster.Conf.Secrets["replication-credential"] = new_Secret
 
 			return true
 		}
@@ -384,7 +377,7 @@ func (cluster *Cluster) HasReplicationCredentialsRotation() bool {
 }
 
 func (cluster *Cluster) HasMonitoringCredentialsRotation() bool {
-	if cluster.IsVaultUsed() && IsPath(cluster.Conf.User) {
+	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(cluster.Conf.User) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
 			//cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)
@@ -403,15 +396,15 @@ func (cluster *Cluster) HasMonitoringCredentialsRotation() bool {
 }
 
 func (cluster *Cluster) HasProxyCredentialsRotation() bool {
-	if cluster.IsVaultUsed() {
+	if cluster.Conf.IsVaultUsed() {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)
 			return false
 		}
-		if cluster.Conf.ProxysqlOn && IsPath(cluster.Conf.ProxysqlPassword) {
+		if cluster.Conf.ProxysqlOn && cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) {
 			newuser, newpass, err := cluster.GetVaultProxySQLCredentials(client)
-			if (newpass != cluster.encryptedFlags["proxysql-password"].Value || newuser != cluster.encryptedFlags["proxysql-user"].Value) && err == nil {
+			if (newpass != cluster.Conf.Secrets["proxysql-password"].Value || newuser != cluster.Conf.Secrets["proxysql-user"].Value) && err == nil {
 				//cluster.SetClusterProxyCredentialsFromConfig()
 				//cluster.oldDbUser = cluster.GetDbUser()
 				//cluster.oldDbPass = cluster.GetDbPass()
@@ -419,7 +412,7 @@ func (cluster *Cluster) HasProxyCredentialsRotation() bool {
 			}
 		}
 
-		if cluster.Conf.MdbsProxyOn && IsPath(cluster.Conf.MdbsProxyCredential) {
+		if cluster.Conf.MdbsProxyOn && cluster.Conf.IsPath(cluster.Conf.MdbsProxyCredential) {
 			newuser, newpass, err := cluster.GetVaultShardProxyCredentials(client)
 			if (newpass != cluster.GetShardPass() || newuser != cluster.GetShardUser()) && err == nil {
 				//cluster.SetClusterProxyCredentialsFromConfig()
@@ -457,7 +450,7 @@ func (cluster *Cluster) IsVariableDiffFromRepmanDefault(v string) bool {
 }
 
 func (cluster *Cluster) IsVariableImmutable(v string) bool {
-	_, ok := cluster.ImmuableFlagMap[v]
+	_, ok := cluster.Conf.ImmuableFlagMap[v]
 	return ok
 
 }

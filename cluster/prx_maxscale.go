@@ -36,7 +36,7 @@ func NewMaxscaleProxy(placement int, cluster *Cluster, proxyHost string) *Maxsca
 	prx.Port = conf.MxsPort
 	prx.User = conf.MxsUser
 	prx.Pass = conf.MxsPass
-	prx.Pass = cluster.GetDecryptedValue("maxscale-pass")
+	prx.Pass = cluster.Conf.GetDecryptedValue("maxscale-pass")
 	prx.ReadPort = conf.MxsReadPort
 	prx.WritePort = conf.MxsWritePort
 	prx.ReadWritePort = conf.MxsReadWritePort

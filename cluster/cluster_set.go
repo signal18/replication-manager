@@ -18,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	vault "github.com/hashicorp/vault/api"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -487,90 +486,38 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 }
 
 func (cluster *Cluster) SetClusterCredentialsFromConfig() {
-	cluster.DecryptSecretsFromConfig()
-
+	cluster.Conf.DecryptSecretsFromConfig()
+	cluster.DecryptSecretsFromVault()
 	cluster.SetClusterMonitorCredentialsFromConfig()
 	cluster.SetClusterReplicationCredentialsFromConfig()
 	cluster.SetClusterProxyCredentialsFromConfig()
-	cluster.LogPrintf(LvlErr, "TEST %v", cluster.encryptedFlags)
-}
-
-func (cluster *Cluster) DecryptSecretsFromConfig() {
-	for k := range cluster.encryptedFlags {
-		origin_value, ok := cluster.DynamicFlagMap[k]
-		if !ok {
-			origin_value, ok = cluster.ImmuableFlagMap[k]
-			if !ok {
-				origin_value = cluster.DefaultFlagMap[k]
-			}
-
-		}
-		var secret Secret
-		secret.Value = fmt.Sprintf("%v", origin_value)
-		if cluster.IsVaultUsed() && IsPath(secret.Value) {
-			cluster.LogPrintf(LvlInfo, "Decrypting all the secret variables on Vault")
-			config := vault.DefaultConfig()
-
-			config.Address = cluster.Conf.VaultServerAddr
-
-			client, err := cluster.GetVaultConnection()
-
-			if err == nil {
-
-				if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-					vault_value, err := cluster.GetVaultCredentials(client, secret.Value, k)
-					if err != nil {
-						cluster.LogPrintf(LvlWarn, "Unable to get %s Vault secret: %v", k, err)
-					} else if vault_value != "" {
-						secret.Value = vault_value
-					}
-				}
-			} else {
-				cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
-			}
-		} else {
-			cluster.LogPrintf(LvlInfo, "Decrypting secret variable %s", k)
-
-			lst_cred := strings.Split(secret.Value, ",")
-			var tab_cred []string
-			for _, cred := range lst_cred {
-				if strings.Contains(cred, ":") {
-					user, pass := misc.SplitPair(cred)
-					tab_cred = append(tab_cred, user+":"+cluster.GetDecryptedPassword(k, pass))
-				} else {
-					tab_cred = append(tab_cred, cluster.GetDecryptedPassword(k, cred))
-				}
-			}
-			secret.Value = strings.Join(tab_cred, ",")
-		}
-		cluster.encryptedFlags[k] = secret
-	}
+	cluster.LogPrintf(LvlDbg, "Reveal Secrets %v", cluster.Conf.Secrets)
 }
 
 func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
 
-	if cluster.IsVaultUsed() {
+	if cluster.Conf.IsVaultUsed() {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
-		if cluster.Conf.ProxysqlOn && IsPath(cluster.Conf.ProxysqlPassword) {
+		if cluster.Conf.ProxysqlOn && cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) {
 			user, pass, _ := cluster.GetVaultProxySQLCredentials(client)
-			var newSecret Secret
-			newSecret.OldValue = cluster.encryptedFlags["proxysql-user"].Value
+			var newSecret config.Secret
+			newSecret.OldValue = cluster.Conf.Secrets["proxysql-user"].Value
 			newSecret.Value = user
-			cluster.encryptedFlags["proxysql-user"] = newSecret
-			newSecret.OldValue = cluster.encryptedFlags["proxysql-password"].Value
+			cluster.Conf.Secrets["proxysql-user"] = newSecret
+			newSecret.OldValue = cluster.Conf.Secrets["proxysql-password"].Value
 			newSecret.Value = pass
-			cluster.encryptedFlags["proxysql-password"] = newSecret
+			cluster.Conf.Secrets["proxysql-password"] = newSecret
 		}
-		if cluster.Conf.MdbsProxyOn && IsPath(cluster.Conf.MdbsProxyCredential) {
+		if cluster.Conf.MdbsProxyOn && cluster.Conf.IsPath(cluster.Conf.MdbsProxyCredential) {
 			user, pass, _ := cluster.GetVaultShardProxyCredentials(client)
-			var newSecret Secret
-			newSecret.OldValue = cluster.encryptedFlags["shardproxy-credential"].Value
+			var newSecret config.Secret
+			newSecret.OldValue = cluster.Conf.Secrets["shardproxy-credential"].Value
 			newSecret.Value = user + ":" + pass
-			cluster.encryptedFlags["shardproxy-credential"] = newSecret
+			cluster.Conf.Secrets["shardproxy-credential"] = newSecret
 		}
 
 	}
@@ -598,17 +545,17 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 		cluster.LogPrintf(LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
 
-	if cluster.IsVaultUsed() && IsPath(cluster.Conf.User) {
+	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(cluster.Conf.User) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
 		user, pass, _ := cluster.GetVaultReplicationCredentials(client)
-		var newSecret Secret
-		newSecret.OldValue = cluster.encryptedFlags["db-servers-credential"].Value
+		var newSecret config.Secret
+		newSecret.OldValue = cluster.Conf.Secrets["db-servers-credential"].Value
 		newSecret.Value = user + ":" + pass
-		cluster.encryptedFlags["db-servers-credential"] = newSecret
+		cluster.Conf.Secrets["db-servers-credential"] = newSecret
 
 	}
 
@@ -643,17 +590,17 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 		cluster.HaveDBTLSOldCert = true
 		cluster.LogPrintf(LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
-	if cluster.IsVaultUsed() && IsPath(cluster.Conf.RplUser) {
+	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(cluster.Conf.RplUser) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
 		user, pass, _ := cluster.GetVaultReplicationCredentials(client)
-		var newSecret Secret
-		newSecret.OldValue = cluster.encryptedFlags["replication-credential"].Value
+		var newSecret config.Secret
+		newSecret.OldValue = cluster.Conf.Secrets["replication-credential"].Value
 		newSecret.Value = user + ":" + pass
-		cluster.encryptedFlags["replication-credential"] = newSecret
+		cluster.Conf.Secrets["replication-credential"] = newSecret
 
 	}
 }
@@ -736,7 +683,7 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 		}
 		cluster.LogPrintf("ALERT", "Monitoring password rotation")
 		if !found_user {
-			oldDbUser, _ := misc.SplitPair(cluster.encryptedFlags["db-servers-credential"].OldValue)
+			oldDbUser, _ := misc.SplitPair(cluster.Conf.Secrets["db-servers-credential"].OldValue)
 			if oldDbUser != "root" {
 
 				for _, u := range cluster.master.Users {
@@ -772,10 +719,10 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 	switch proxytype {
 	case config.ConstProxySpider:
 		//cluster.Conf.MdbsProxyCredential = credential
-		var newSecret Secret
-		newSecret.OldValue = cluster.encryptedFlags["shardproxy-credential"].Value
+		var newSecret config.Secret
+		newSecret.OldValue = cluster.Conf.Secrets["shardproxy-credential"].Value
 		newSecret.Value = credential
-		cluster.encryptedFlags["shardproxy-credential"] = newSecret
+		cluster.Conf.Secrets["shardproxy-credential"] = newSecret
 
 		for _, pri := range cluster.Proxies {
 			_, pass := misc.SplitPair(credential)
@@ -797,13 +744,13 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 	case config.ConstProxySqlproxy:
 		//cluster.Conf.ProxysqlUser, cluster.Conf.ProxysqlPassword
 		user, pass := misc.SplitPair(credential)
-		var newSecret Secret
-		newSecret.OldValue = cluster.encryptedFlags["proxysql-password"].Value
+		var newSecret config.Secret
+		newSecret.OldValue = cluster.Conf.Secrets["proxysql-password"].Value
 		newSecret.Value = pass
-		cluster.encryptedFlags["proxysql-password"] = newSecret
-		newSecret.OldValue = cluster.encryptedFlags["proxysql-user"].Value
+		cluster.Conf.Secrets["proxysql-password"] = newSecret
+		newSecret.OldValue = cluster.Conf.Secrets["proxysql-user"].Value
 		newSecret.Value = user
-		cluster.encryptedFlags["proxysql-user"] = newSecret
+		cluster.Conf.Secrets["proxysql-user"] = newSecret
 		for _, pri := range cluster.Proxies {
 			_, pass := misc.SplitPair(credential)
 			if prx, ok := pri.(*ProxySQLProxy); ok {
@@ -1039,7 +986,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 						cluster.LogPrintf(LvlErr, "Fail adding shard proxy monitor on 3306 %s", err)
 					}
 					//cluster.Conf.ProxysqlUser = "external"
-					err = cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, "external", cluster.encryptedFlags["proxysql-password"].Value)
+					err = cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, "external", cluster.Conf.Secrets["proxysql-password"].Value)
 					if err != nil {
 						cluster.LogPrintf(LvlErr, "Fail adding proxysql monitor on %s %s", cluster.Conf.ProxysqlPort, err)
 					}

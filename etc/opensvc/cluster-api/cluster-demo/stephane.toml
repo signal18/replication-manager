@@ -3,12 +3,13 @@
 opensvc-use-collector-api = false
 opensvc-p12-certificate = "etc/opensvc/cluster-api/cluster-demo/signal18.p12"
 opensvc-host = "10.8.0.15:1215"
-opensvc-p12-secret = "36vf2cczf8rms8hh"
-api-credential = "admin:new_pass"
-
+opensvc-p12-secret = "hash_2e7c615c761028b57da0cf97effe9fb5befe81618b634f5466259c334ab810d2"
+cloud18-credentials="stephane@signal18.io:hash_186f9f042f487338ab7e49c3de77eaaf4ff2589630cc55e7de2891ea3e4dd45c6244a0530056c9410cd5"
+git-url="https://gitlab.signal18.io/signal18/signal18-ovh-fr-1"
+git-acces-token="hash_186f9f042f487338ab7e49c3de77eaaf4ff2589630cc55e7de2891ea3e4dd45c6244a0530056c9410cd5"
 include ="etc/opensvc/cluster-api/cluster-demo/stephane.d"
 # log-heartbeat = true
-
+monitoring-save-config=true
 log-file="/var/log/replication-manager.log"
 http-bind-address = "0.0.0.0"
 
@@ -37,8 +38,8 @@ prov-proxy-volume-data = "tank"
 test=true
 
 
-alert-pushover-app-token="ad5t1i6m4491ioauubaitqtg1kewtu"
-alert-pushover-user-token="uixs8gufi8859u8k8zqeojx7i948fi"
+alert-pushover-app-token="hash_046d7d15e81ebbfe4e6e55ac1a3bb3312612c2a52a32cf3fde26b49260b32d043f113904e8e124f9e01ea12e8fd0"
+alert-pushover-user-token="hash_d86ad53bf75115156e75cf9fb86f25659d62a2407972635e4a04ea630bdaf9366f7c9905433f343e2f8809ea5cb2"
 
 #monitoring-ssl-cert="/Users/apple/.ssh/id_rsa"
 #monitoring-ssl-key="/Users/apple/.ssh/id_rsa.pub"
@@ -47,3 +48,12 @@ alert-pushover-user-token="uixs8gufi8859u8k8zqeojx7i948fi"
 #arbitration-external-hosts="10.8.0.50:8080"
 #arbitration-peer-hosts="10.8.0.72:10001"
 #arbitration-external-secret="tnstest"
+
+backup-restic-aws-access-secret = "hash_7522e94c4ceb43505c950e856742345a473a3d2e1a9d6450679bede9"
+backup-restic-password = "hash_7522e94c4ceb43505c950e856742345a473a3d2e1a9d6450679bede9"
+#backup-streaming = true
+backup-streaming-aws-access-key-id = "admin"
+backup-streaming-aws-access-secret = "hash_7522e94c4ceb43505c950e856742345a473a3d2e1a9d6450679bede9"
+backup-streaming-endpoint= "https://s3.signal18.io/"
+backup-streaming-region= "fr-1"
+backup-streaming-bucket= "repman"

@@ -26,7 +26,7 @@ func NewProxyJanitor(placement int, cluster *Cluster, proxyHost string) *ProxyJa
 	prx.Port = conf.ProxyJanitorAdminPort
 	prx.ReadWritePort, _ = strconv.Atoi(conf.ProxyJanitorPort)
 	prx.User = cluster.Conf.ProxyJanitorUser
-	prx.Pass = cluster.GetDecryptedValue("proxyjanitor-password")
+	prx.Pass = cluster.Conf.GetDecryptedValue("proxyjanitor-password")
 	prx.WritePort, _ = strconv.Atoi(conf.ProxyJanitorPort)
 	prx.ReadPort, _ = strconv.Atoi(conf.ProxyJanitorPort)
 
@@ -40,7 +40,7 @@ func NewProxyJanitor(placement int, cluster *Cluster, proxyHost string) *ProxyJa
 		}
 	}
 
-	prx.Pass = cluster.GetDecryptedPassword("proxysql-password", prx.Pass)
+	prx.Pass = cluster.Conf.GetDecryptedPassword("proxysql-password", prx.Pass)
 
 	return prx
 }

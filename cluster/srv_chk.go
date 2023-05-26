@@ -348,7 +348,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 
 func (server *ServerMonitor) CheckMonitoringCredentialsRotation() {
 	cluster := server.GetCluster()
-	if server.GetCluster().IsVaultUsed() {
+	if server.GetCluster().Conf.IsVaultUsed() {
 		client, err := server.GetCluster().GetVaultConnection()
 		if err != nil {
 			//server.GetCluster().LogPrintf(LvlErr, "Fail Vault connection: %v", err)

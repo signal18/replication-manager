@@ -43,7 +43,7 @@ func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *Haproxy
 		prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
 	}
 	prx.User = conf.HaproxyUser
-	prx.Pass = cluster.GetDecryptedValue("haproxy-password")
+	prx.Pass = cluster.Conf.GetDecryptedValue("haproxy-password")
 
 	return prx
 }

@@ -46,7 +46,7 @@ func NewConsulProxy(placement int, cluster *Cluster, proxyHost string) *ConsulPr
 		}
 	}
 
-	prx.Pass = cluster.GetDecryptedPassword("registry-consul-credential", prx.Pass)
+	prx.Pass = cluster.Conf.GetDecryptedPassword("registry-consul-credential", prx.Pass)
 
 	return prx
 }
