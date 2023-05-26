@@ -57,6 +57,8 @@ function (
 
   $scope.user = undefined ;
 
+  $scope.wait = undefined;
+
   $scope.monitors = [
     { id: 'mariadb', name: 'MariaDB' },
     { id: 'mysql', name: 'MySQL' },

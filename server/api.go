@@ -280,14 +280,26 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	//log.Printf("COUCOU test sign in: %v\n", user)
-	//log.Printf("COUCOU test sign in: %v\n", auth_try)
+	log.Printf("COUCOU test sign in: %v\n", user)
+	log.Printf("COUCOU test sign in: %v\n", auth_try)
+	if auth_try.User != user.Username {
+		auth_try.Try = 0
+		auth_try.User = user.Username
+	} else if auth_try.Try == 3 {
+		auth_try.Try = 4
+		fmt.Println("3 authentication errors for the user" + user.Username + ", please try again in 3 minutes")
+		fmt.Fprint(w, "Invalid credentials")
+		time.Sleep(time.Minute * time.Duration(3))
+		auth_try.Try = 0
+		return
+	} else if auth_try.Try == 4 {
+		return
+	}
 
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
 
 		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path) {
-			auth_try.Try = 0
 			signer := jwt.New(jwt.SigningMethodRS256)
 			claims := signer.Claims.(jwt.MapClaims)
 			//set claims
@@ -311,9 +323,10 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				fmt.Fprintln(w, "Error while signing the token")
 				log.Printf("Error signing token: %v\n", err)
 				auth_try.Try += 1
-				if auth_try.Try == 3 {
+				/*if auth_try.Try == 3 {
 					time.Sleep(time.Minute * time.Duration(3))
-				}
+					auth_try.Try = 0
+				}*/
 			}
 
 			//create a token instance using the token string

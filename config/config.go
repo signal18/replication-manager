@@ -10,6 +10,7 @@
 package config
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -24,10 +25,13 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
+	vault "github.com/hashicorp/vault/api"
+	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/misc"
 	log "github.com/sirupsen/logrus"
+
 	"github.com/spf13/viper"
 )
 
@@ -674,6 +678,11 @@ type DockerRepos struct {
 	Repos []DockerRepo `json:"repos"`
 }
 
+const (
+	VaultConfigStoreV2 string = "config_store_v2"
+	VaultDbEngine      string = "database_engine"
+)
+
 /* replaced by v3.Tag
 type Tag struct {
 	Id       uint   `json:"id"`
@@ -833,6 +842,96 @@ func (conf *Config) DecryptSecretsFromConfig() {
 	}
 }
 
+func (conf *Config) GetVaultCredentials(client *vault.Client, path string, key string) (string, error) {
+	if conf.IsVaultUsed() && conf.IsPath(path) {
+		if conf.VaultMode == VaultConfigStoreV2 {
+			secret, err := client.KVv2(conf.VaultMount).Get(context.Background(), path)
+
+			if err != nil {
+				return "", err
+			}
+			return secret.Data[key].(string), nil
+		} else {
+			secret, err := client.KVv1("").Get(context.Background(), path)
+			if err != nil {
+				return "", err
+			}
+			return secret.Data["username"].(string) + ":" + secret.Data["password"].(string), nil
+		}
+	}
+	return "", errors.New("Failed to get vault credentials")
+}
+
+func (conf *Config) DecryptSecretsFromVault() {
+	for k, v := range conf.Secrets {
+		origin_value := v.Value
+		var secret Secret
+		secret.Value = fmt.Sprintf("%v", origin_value)
+		if conf.IsVaultUsed() && conf.IsPath(secret.Value) {
+			//	cluster.LogPrintf(LvlInfo, "Decrypting all the secret variables on Vault")
+			vault_config := vault.DefaultConfig()
+			vault_config.Address = conf.VaultServerAddr
+			client, err := conf.GetVaultConnection()
+			if err == nil {
+				if conf.VaultMode == VaultConfigStoreV2 {
+					vault_value, err := conf.GetVaultCredentials(client, secret.Value, k)
+					if err != nil {
+						log.Printf("Unable to get %s Vault secret: %v", k, err)
+					} else if vault_value != "" {
+						secret.Value = vault_value
+					}
+				}
+			} else {
+				log.Printf("Unable to initialize AppRole auth method: %v", err)
+			}
+			conf.Secrets[k] = secret
+		}
+	}
+}
+
+func (conf *Config) GetVaultConnection() (*vault.Client, error) {
+	if conf.IsVaultUsed() {
+		log.Printf("Vault AppRole Authentification")
+		config := vault.DefaultConfig()
+
+		config.Address = conf.VaultServerAddr
+
+		client, err := vault.NewClient(config)
+		if err != nil {
+			log.Printf("Unable to initialize AppRole auth method: %v", err)
+			return nil, err
+		}
+
+		roleID := conf.VaultRoleId
+		secretID := &auth.SecretID{FromString: conf.VaultSecretId}
+		if roleID == "" || secretID == nil {
+			log.Printf("Unable to initialize AppRole auth method: %v", err)
+			return nil, err
+		}
+
+		appRoleAuth, err := auth.NewAppRoleAuth(
+			roleID,
+			secretID,
+		)
+		if err != nil {
+			log.Printf("Unable to initialize AppRole auth method: %v", err)
+			return nil, err
+		}
+
+		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
+		if err != nil {
+			log.Printf("Unable to initialize AppRole auth method: %v", err)
+			return nil, err
+		}
+		if authInfo == nil {
+			log.Printf("Unable to initialize AppRole auth method: %v", err)
+			return nil, err
+		}
+		return client, err
+	}
+	return nil, errors.New("Not using Vault")
+}
+
 func (conf *Config) GetDecryptedPassword(key string, value string) string {
 	if conf.SecretKey != nil && strings.HasPrefix(value, "hash_") {
 		value = strings.TrimLeft(value, "hash_")
@@ -849,6 +948,10 @@ func (conf *Config) GetDecryptedPassword(key string, value string) string {
 }
 
 func (conf *Config) IsPath(str string) bool {
+
+	if strings.Contains(str, "=") || strings.Contains(str, "+") {
+		return false
+	}
 	return strings.Contains(str, "/")
 }
 
@@ -892,7 +995,7 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 		Username: user, // yes, this can be anything except an empty string
 		Password: tok,
 	}
-	log.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
+	//log.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
 
 	//fmt.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
 	if _, err := os.Stat(dir + "/.gitignore"); os.IsNotExist(err) {

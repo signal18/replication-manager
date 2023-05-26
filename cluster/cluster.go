@@ -768,7 +768,7 @@ func (cluster *Cluster) Save() error {
 	if cluster.Conf.ConfRewrite {
 		//clone git repository in case its the first time
 		if cluster.Conf.GitUrl != "" {
-			cluster.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.GetConf().WorkingDir)
+			cluster.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.GetConf().WorkingDir)
 		}
 
 		//fmt.Printf("SAVE CLUSTER \n")
@@ -800,13 +800,8 @@ func (cluster *Cluster) Save() error {
 					s.Delete(key)
 				} else if !ok {
 					s.Delete(key)
-				} else if _, ok = cluster.Conf.Secrets[key]; ok && cluster.Conf.Secrets[key].Value != v {
-					v := cluster.GetEncryptedValueFromMemory(key)
-					if v != "" {
-						s.Set(key, v)
-					} else {
-						s.Delete(key)
-					}
+				} else if _, ok = cluster.Conf.Secrets[key]; ok {
+					s.Delete(key)
 				}
 			}
 		}
@@ -883,7 +878,7 @@ func (cluster *Cluster) CloneConfigFromGit(url string, user string, tok string, 
 		Username: user, // yes, this can be anything except an empty string
 		Password: tok,
 	}
-	//fmt.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
+	//fmt.Printf("Clone from git : url %s, tok %s, dir %s, user : %s\n", url, tok, dir, user)
 	if _, err := os.Stat(dir + "/.gitignore"); os.IsNotExist(err) {
 		file, err := os.Create(dir + "/.gitignore")
 		if err != nil {
@@ -1514,10 +1509,10 @@ func (cluster *Cluster) DecryptSecretsFromVault() {
 			//	cluster.LogPrintf(LvlInfo, "Decrypting all the secret variables on Vault")
 			vault_config := vault.DefaultConfig()
 			vault_config.Address = cluster.Conf.VaultServerAddr
-			client, err := cluster.GetVaultConnection()
+			client, err := cluster.Conf.GetVaultConnection()
 			if err == nil {
 				if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-					vault_value, err := cluster.GetVaultCredentials(client, secret.Value, k)
+					vault_value, err := cluster.Conf.GetVaultCredentials(client, secret.Value, k)
 					if err != nil {
 						cluster.LogPrintf(LvlWarn, "Unable to get %s Vault secret: %v", k, err)
 					} else if vault_value != "" {

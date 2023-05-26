@@ -487,8 +487,30 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		conf.ImmuableFlagMap = ImmuableMap
 		//load config file from git hub
 		conf.DecryptSecretsFromConfig()
+
 		if conf.GitUrl != "" && conf.GitAccesToken != "" {
-			conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, conf.GetDecryptedValue("git-acces-token"), conf.WorkingDir)
+			var tok string
+
+			if conf.IsVaultUsed() && conf.IsPath(conf.GitAccesToken) {
+				conn, err := conf.GetVaultConnection()
+				if err != nil {
+					log.Printf("Error vault connection %v", err)
+				}
+				tok, err = conf.GetVaultCredentials(conn, conf.GitAccesToken, "git-acces-token")
+				if err != nil {
+					log.Printf("Error get vault git-acces-token value %v", err)
+					tok = conf.GetDecryptedValue("git-acces-token")
+				} else {
+					var Secrets config.Secret
+					Secrets.Value = tok
+					conf.Secrets["git-acces-token"] = Secrets
+				}
+
+			} else {
+				tok = conf.GetDecryptedValue("git-acces-token")
+			}
+
+			conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, tok, conf.WorkingDir)
 		}
 
 		/*if fistRead.GetString("default.git-url") != "" && fistRead.GetString("default.git-acces-token") != "" {
