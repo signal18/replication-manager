@@ -551,6 +551,7 @@ type Config struct {
 	VaultMount                                string                 `mapstructure:"vault-mount" toml:"vault-mount" json:"vaultMount"`
 	VaultAuth                                 string                 `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
 	GitUrl                                    string                 `mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
+	GitUsername                               string                 `mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
 	GitAccesToken                             string                 `mapstructure:"git-acces-token" toml:"git-acces-token" json:"gitAccesToken"`
 	Cloud18SubDomain                          string                 `mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
 	Cloud18                                   bool                   `mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
@@ -885,10 +886,10 @@ func (conf *Config) GetDecryptedValue(key string) string {
 	return conf.Secrets[key].Value
 }
 
-func (conf *Config) CloneConfigFromGit(url string, tok string, dir string) {
+func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir string) {
 
 	auth := &git_https.BasicAuth{
-		Username: "stephane@signal18.io", // yes, this can be anything except an empty string
+		Username: user, // yes, this can be anything except an empty string
 		Password: tok,
 	}
 	log.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)

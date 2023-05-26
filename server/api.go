@@ -34,11 +34,17 @@ import (
 	"github.com/signal18/replication-manager/share"
 )
 
+type authTry struct {
+	User string `json:"username"`
+	Try  int    `json:"try"`
+}
+
 //RSA KEYS AND INITIALISATION
 
 var signingKey, verificationKey []byte
 var apiPass string
 var apiUser string
+var auth_try authTry
 
 func (repman *ReplicationManager) initKeys() {
 	var (
@@ -274,11 +280,14 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	log.Printf("COUCOU test sign in: %v\n", user)
+	log.Printf("COUCOU test sign in: %v\n", auth_try)
+
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
 
 		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path) {
-
+			auth_try.Try = 0
 			signer := jwt.New(jwt.SigningMethodRS256)
 			claims := signer.Claims.(jwt.MapClaims)
 			//set claims
@@ -301,6 +310,10 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				w.WriteHeader(http.StatusInternalServerError)
 				fmt.Fprintln(w, "Error while signing the token")
 				log.Printf("Error signing token: %v\n", err)
+				auth_try.Try += 1
+				if auth_try.Try == 3 {
+					time.Sleep(time.Minute * time.Duration(3))
+				}
 			}
 
 			//create a token instance using the token string
@@ -320,6 +333,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusForbidden)
 	fmt.Println("Error logging in")
 	fmt.Fprint(w, "Invalid credentials")
+	auth_try.Try += 1
 	return
 
 	//create a rsa 256 signer

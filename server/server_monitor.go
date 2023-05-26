@@ -221,6 +221,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius")
 
 	monitorCmd.Flags().StringVar(&conf.GitUrl, "git-url", "", "GitHub URL repository to store config file")
+	monitorCmd.Flags().StringVar(&conf.GitUsername, "git-username", "", "GitHub username")
 	monitorCmd.Flags().StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
 
 	//monitorCmd.Flags().BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")

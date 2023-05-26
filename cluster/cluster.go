@@ -768,7 +768,7 @@ func (cluster *Cluster) Save() error {
 	if cluster.Conf.ConfRewrite {
 		//clone git repository in case its the first time
 		if cluster.Conf.GitUrl != "" {
-			cluster.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.GetConf().WorkingDir)
+			cluster.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.GetConf().WorkingDir)
 		}
 
 		//fmt.Printf("SAVE CLUSTER \n")
@@ -811,18 +811,6 @@ func (cluster *Cluster) Save() error {
 			}
 		}
 		//to encrypt credentials before writting in the config file
-		/*for _, key := range keys {
-			_, ok := cluster.Conf.ImmuableFlagMap[key]
-			if !ok {
-				value, ok := cluster.Conf.Secrets[key]
-				if ok && value.Value != cluster.DefaultFlagMap[key] {
-					v := cluster.GetEncryptedValueFromMemory(key)
-					if v != "" {
-						s.Set(key, v)
-					}
-				}
-			}
-		}*/
 		file.WriteString("[saved-" + cluster.Name + "]\ntitle = \"" + cluster.Name + "\" \n")
 		s.WriteTo(file)
 		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
@@ -830,7 +818,7 @@ func (cluster *Cluster) Save() error {
 
 		//to load the new generated config file in github
 		if cluster.Conf.GitUrl != "" {
-			cluster.PushConfigToGit(cluster.Conf.GitAccesToken, cluster.GetConf().WorkingDir, cluster.Name)
+			cluster.PushConfigToGit(cluster.Conf.GitAccesToken, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
 		}
 
 		err = cluster.Overwrite()
@@ -842,10 +830,10 @@ func (cluster *Cluster) Save() error {
 	return nil
 }
 
-func (cluster *Cluster) PushConfigToGit(tok string, dir string, name string) {
-	//fmt.Printf("Push from git : tok %s, dir %s, name %s\n", tok, dir, name)
+func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, name string) {
+	fmt.Printf("Push from git : tok %s, dir %s, name %s\n", tok, dir, name)
 	auth := &git_https.BasicAuth{
-		Username: "replication-manager", // yes, this can be anything except an empty string
+		Username: user, // yes, this can be anything except an empty string
 		Password: tok,
 	}
 	path := dir
@@ -890,9 +878,9 @@ func (cluster *Cluster) PushConfigToGit(tok string, dir string, name string) {
 	}
 }
 
-func (cluster *Cluster) CloneConfigFromGit(url string, tok string, dir string) {
+func (cluster *Cluster) CloneConfigFromGit(url string, user string, tok string, dir string) {
 	auth := &git_https.BasicAuth{
-		Username: "replication-manager", // yes, this can be anything except an empty string
+		Username: user, // yes, this can be anything except an empty string
 		Password: tok,
 	}
 	//fmt.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
@@ -994,25 +982,6 @@ func (cluster *Cluster) Overwrite() error {
 			}
 
 		}
-		//to encode credentials flag
-		/*if !cluster.Conf.IsVaultUsed() {
-			for _, key := range keys {
-				_, ok := cluster.Conf.ImmuableFlagMap[key]
-				if ok {
-					_, ok = cluster.Conf.Secrets[key]
-					if ok && cluster.Conf.Secrets[key].Value != cluster.Conf.ImmuableFlagMap[key] {
-
-						v := cluster.GetEncryptedValueFromMemory(key)
-						//cluster.LogPrintf(LvlErr, "TEST Encrypt val from mem : key %s, value %s", key, v)
-						if v != "" {
-							s.Set(key, v)
-						}
-					}
-				}
-			}
-		}*/
-		//cluster.LogPrintf(LvlErr, "TEST ImmuableMap : %v", cluster.Conf.ImmuableFlagMap)
-		//cluster.LogPrintf(LvlErr, "TEST decryptedFlag : %v", cluster.encryptedFlags)
 
 		file.WriteString("[overwrite-" + cluster.Name + "]\n")
 		s.WriteTo(file)

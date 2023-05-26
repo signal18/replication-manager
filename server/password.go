@@ -60,6 +60,6 @@ var passwordCmd = &cobra.Command{
 		}
 		p.PlainText = strings.Join(args, " ")
 		p.Encrypt()
-		fmt.Println("Encrypted password hash:", p.CipherText)
+		fmt.Println("Encrypted password hash:", "hash_"+p.CipherText)
 	},
 }

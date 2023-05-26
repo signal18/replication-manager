@@ -488,7 +488,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//load config file from git hub
 		conf.DecryptSecretsFromConfig()
 		if conf.GitUrl != "" && conf.GitAccesToken != "" {
-			conf.CloneConfigFromGit(conf.GitUrl, conf.GetDecryptedValue("git-acces-token"), conf.WorkingDir)
+			conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, conf.GetDecryptedValue("git-acces-token"), conf.WorkingDir)
 		}
 
 		/*if fistRead.GetString("default.git-url") != "" && fistRead.GetString("default.git-acces-token") != "" {
