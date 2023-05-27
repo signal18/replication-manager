@@ -6,7 +6,9 @@ opensvc-host = "10.8.0.15:1215"
 opensvc-p12-secret = "hash_2e7c615c761028b57da0cf97effe9fb5befe81618b634f5466259c334ab810d2"
 cloud18-credentials="stephane@signal18.io:hash_186f9f042f487338ab7e49c3de77eaaf4ff2589630cc55e7de2891ea3e4dd45c6244a0530056c9410cd5"
 git-url="https://gitlab.signal18.io/signal18/signal18-ovh-fr-1"
+git-username ="svaroqui"
 git-acces-token="hash_39d6c7a2aded0a01a954c5de3de1405866b9c9273e4515afa4a26fa6a302e9f37446a1093b1cbf04e6c4"
+
 include ="etc/opensvc/cluster-api/cluster-demo/stephane.d"
 # log-heartbeat = true
 monitoring-save-config=true

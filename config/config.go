@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	masker "github.com/ggwhite/go-masker"
 	"github.com/go-git/go-git/v5"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	vault "github.com/hashicorp/vault/api"
@@ -837,7 +838,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 			}
 		}
 		secret.Value = strings.Join(tab_cred, ",")
-		log.Printf("Decrypting secret variable %s=%s", k, secret.Value)
+		//log.Printf("Decrypting secret variable %s=%s", k, secret.Value)
 		conf.Secrets[k] = secret
 	}
 }
@@ -989,13 +990,21 @@ func (conf *Config) GetDecryptedValue(key string) string {
 	return conf.Secrets[key].Value
 }
 
+func (conf *Config) PrintSecret(value string) string {
+	return masker.String(masker.MAddress, value)
+}
+
 func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir string) {
 
 	auth := &git_https.BasicAuth{
 		Username: user, // yes, this can be anything except an empty string
 		Password: tok,
 	}
+<<<<<<< HEAD
 	//log.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
+=======
+	log.Printf("Clone from git : url %s, tok %s, dir %s\n", url, conf.PrintSecret(tok), dir)
+>>>>>>> Fixing git push to gitlab
 
 	//fmt.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
 	if _, err := os.Stat(dir + "/.gitignore"); os.IsNotExist(err) {

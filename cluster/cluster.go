@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -737,7 +738,10 @@ func (cluster *Cluster) Stop() {
 }
 
 func (cluster *Cluster) Save() error {
-
+	_, file, no, ok := runtime.Caller(1)
+	if ok {
+		cluster.LogPrintf(LvlInfo, "Saved called from %s#%d\n", file, no)
+	}
 	type Save struct {
 		Servers    string      `json:"servers"`
 		Crashes    crashList   `json:"crashes"`
@@ -768,7 +772,7 @@ func (cluster *Cluster) Save() error {
 	if cluster.Conf.ConfRewrite {
 		//clone git repository in case its the first time
 		if cluster.Conf.GitUrl != "" {
-			cluster.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.GetConf().WorkingDir)
+			cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.GetConf().WorkingDir)
 		}
 
 		//fmt.Printf("SAVE CLUSTER \n")
@@ -813,7 +817,7 @@ func (cluster *Cluster) Save() error {
 
 		//to load the new generated config file in github
 		if cluster.Conf.GitUrl != "" {
-			cluster.PushConfigToGit(cluster.Conf.GitAccesToken, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
+			cluster.PushConfigToGit(cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
 		}
 
 		err = cluster.Overwrite()
@@ -826,7 +830,7 @@ func (cluster *Cluster) Save() error {
 }
 
 func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, name string) {
-	//fmt.Printf("Push from git : tok %s, dir %s, name %s\n", tok, dir, name)
+	cluster.LogPrintf(LvlDbg, "Push to git : tok %s, dir %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, name)
 	auth := &git_https.BasicAuth{
 		Username: user, // yes, this can be anything except an empty string
 		Password: tok,
@@ -870,69 +874,6 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	if err != nil {
 		cluster.LogPrintf(LvlInfo, "Git error : cannot Push : %s", err)
 
-	}
-}
-
-func (cluster *Cluster) CloneConfigFromGit(url string, user string, tok string, dir string) {
-	auth := &git_https.BasicAuth{
-		Username: user, // yes, this can be anything except an empty string
-		Password: tok,
-	}
-	//fmt.Printf("Clone from git : url %s, tok %s, dir %s, user : %s\n", url, tok, dir, user)
-	if _, err := os.Stat(dir + "/.gitignore"); os.IsNotExist(err) {
-		file, err := os.Create(dir + "/.gitignore")
-		if err != nil {
-			if os.IsPermission(err) {
-				cluster.LogPrintf(LvlErr, "File permission denied: %s, %s", dir+".gitignore", err)
-			}
-		}
-		defer file.Close()
-		file.WriteString("/*\n!/*/*.toml\n")
-		file.Sync()
-	}
-
-	path := dir
-	if _, err := os.Stat(path + "/.git"); err == nil {
-
-		// We instantiate a new repository targeting the given path (the .git folder)
-		r, err := git.PlainOpen(path)
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Git error : cannot PlainOpen : %s", err)
-			return
-		}
-
-		// Get the working directory for the repository
-		w, err := r.Worktree()
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Git error : cannot Worktree : %s", err)
-			return
-		}
-
-		// Pull the latest changes from the origin remote and merge into the current branch
-		//git_ex.Info("git pull origin")
-		err = w.Pull(&git.PullOptions{
-			RemoteName: "origin",
-			Auth:       auth,
-			RemoteURL:  url,
-		})
-
-		if err != nil && fmt.Sprintf("%v", err) != "already up-to-date" {
-			cluster.LogPrintf(LvlErr, "Git error : cannot Pull : %s", err)
-		}
-
-	} else {
-		// Clone the given repository to the given directory
-		//git_ex.Info("git clone %s %s --recursive", url, path)
-
-		_, err := git.PlainClone(path, false, &git.CloneOptions{
-			URL:               url,
-			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
-			Auth:              auth,
-		})
-
-		if err != nil {
-			cluster.LogPrintf(LvlErr, "Git error : cannot Clone %s repository : %s", url, err)
-		}
 	}
 }
 

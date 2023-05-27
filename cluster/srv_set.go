@@ -60,7 +60,7 @@ func (server *ServerMonitor) SetState(state string) {
 		server.ClusterGroup.LogPrintf(LvlInfo, "Server %s state transition from %s changed to: %s", server.URL, server.PrevState, state)
 		_, file, no, ok := runtime.Caller(1)
 		if ok {
-			server.ClusterGroup.LogPrintf(LvlInfo, "Called from %s#%d\n", file, no)
+			server.ClusterGroup.LogPrintf(LvlInfo, "Set state called from %s#%d\n", file, no)
 		}
 	}
 	server.State = state
