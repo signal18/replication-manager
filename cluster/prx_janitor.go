@@ -32,15 +32,15 @@ func NewProxyJanitor(placement int, cluster *Cluster, proxyHost string) *ProxyJa
 
 	//	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSProxyJanitorPartitions, conf.ProxyJanitorHostsIPV6)
 
-	if conf.ProvNetCNI {
+	/*	if conf.ProvNetCNI {
 		if conf.ClusterHead == "" {
 			prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
 		} else {
 			prx.Host = prx.Host + "." + conf.ClusterHead + ".svc." + conf.ProvOrchestratorCluster
 		}
-	}
+	}*/
 
-	prx.Pass = cluster.Conf.GetDecryptedPassword("proxysql-password", prx.Pass)
+	prx.Pass = cluster.Conf.GetDecryptedPassword("proxyjanitor-password", prx.Pass)
 
 	return prx
 }

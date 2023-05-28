@@ -1,50 +1,55 @@
 [Default]
-
-opensvc-use-collector-api = false
-opensvc-p12-certificate = "etc/opensvc/cluster-api/cluster-demo/signal18.p12"
-opensvc-host = "10.8.0.15:1215"
-opensvc-p12-secret = "hash_2e7c615c761028b57da0cf97effe9fb5befe81618b634f5466259c334ab810d2"
-cloud18-credentials="stephane@signal18.io:hash_186f9f042f487338ab7e49c3de77eaaf4ff2589630cc55e7de2891ea3e4dd45c6244a0530056c9410cd5"
-git-url="https://gitlab.signal18.io/signal18/signal18-ovh-fr-1"
-git-username ="svaroqui"
-git-acces-token="hash_39d6c7a2aded0a01a954c5de3de1405866b9c9273e4515afa4a26fa6a302e9f37446a1093b1cbf04e6c4"
-
-include ="etc/opensvc/cluster-api/cluster-demo/stephane.d"
 # log-heartbeat = true
-monitoring-save-config=true
+include ="etc/opensvc/cluster-api/cluster-demo/stephane.d"
 log-file="/var/log/replication-manager.log"
 http-bind-address = "0.0.0.0"
 
 #VPN Address
 monitoring-address = "10.8.0.50"
+#monitoring-ssl-cert="/Users/apple/.ssh/id_rsa"
+#monitoring-ssl-key="/Users/apple/.ssh/id_rsa.pub"
 
+opensvc-use-collector-api = false
+opensvc-p12-certificate = "etc/opensvc/cluster-api/cluster-demo/signal18.p12"
+opensvc-host = "10.8.0.15:1215"
+opensvc-p12-secret = "hash_2e7c615c761028b57da0cf97effe9fb5befe81618b634f5466259c334ab810d2"
 
 prov-orchestrator = "opensvc"
 prov-orchestrator-cluster = "cloud18"
-
 prov-net-cni = true
 prov-net-cni-cluster = "repman"
-
 prov-docker-daemon-private=false
-
 prov-db-agents = "s18-fr-1,s18-fr-2"
-
 prov-db-service-type = "docker"
 prov-db-disk-type = "volume"
 prov-db-volume-data = "db"
-
 prov-proxy-agents = "s18-fr-1,s18-fr-2"
 prov-proxy-service-type = "docker"
 prov-proxy-disk-type = "volume"
 prov-proxy-volume-data = "tank"
 test=true
 
+cloud18-credentials="stephane@signal18.io:hash_186f9f042f487338ab7e49c3de77eaaf4ff2589630cc55e7de2891ea3e4dd45c6244a0530056c9410cd5"
+cloud18-domain = "signal18"
+cloud18-sub-domain = "signal18-ovh"
+cloud18-sub-domain-zone = "fr-1"
 
+proxyjanitor-servers = "51.68.2.60"
+proxyjanitor-password = "hash_c3fbd75e68b9f08db04620b592d48b9ac154bd97901e9064ea8dd2938f4a6a8e"
+
+monitoring-save-config=true
+git-url="https://gitlab.signal18.io/signal18/signal18-ovh-fr-1"
+git-username ="svaroqui"
+git-acces-token="hash_39d6c7a2aded0a01a954c5de3de1405866b9c9273e4515afa4a26fa6a302e9f37446a1093b1cbf04e6c4"
+
+mail-from = "stephane@signal18.io"
+mail-to = "stephane@signal18.io"
+mail-smtp-addr = "in-v3.mailjet.com:25"
+mail-smtp-user = "53b0c2c80298023abf083a106261c789"
+mail-smtp-password = "hash_497b7124700d1a7ffaacbc88d672f92714a4bfda2f0ae3747a8647c8bf75db2809513f4f54463d081ab2813ac8c45e8d"
 alert-pushover-app-token="hash_046d7d15e81ebbfe4e6e55ac1a3bb3312612c2a52a32cf3fde26b49260b32d043f113904e8e124f9e01ea12e8fd0"
 alert-pushover-user-token="hash_d86ad53bf75115156e75cf9fb86f25659d62a2407972635e4a04ea630bdaf9366f7c9905433f343e2f8809ea5cb2"
 
-#monitoring-ssl-cert="/Users/apple/.ssh/id_rsa"
-#monitoring-ssl-key="/Users/apple/.ssh/id_rsa.pub"
 
 #arbitration-external= true
 #arbitration-external-hosts="10.8.0.50:8080"
