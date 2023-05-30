@@ -853,7 +853,7 @@ func (cluster *Cluster) GetVaultMonitorCredentials(client *vault.Client) (string
 }
 func (cluster *Cluster) GetVaultShardProxyCredentials(client *vault.Client) (string, string, error) {
 	if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-		secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.GetConf().MdbsProxyCredential)
+		secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.MdbsProxyCredential)
 
 		if err != nil {
 			return "", "", err
@@ -871,16 +871,28 @@ func (cluster *Cluster) GetVaultShardProxyCredentials(client *vault.Client) (str
 
 func (cluster *Cluster) GetVaultProxySQLCredentials(client *vault.Client) (string, string, error) {
 	if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-		secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.GetConf().MdbsProxyCredential)
+		user := cluster.Conf.Secrets["proxysql-user"].Value
+		pass := cluster.Conf.Secrets["proxysql-password"].Value
+		if savedConf.IsPath(cluster.Conf.ProxysqlUser) {
+			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.ProxysqlUser)
 
-		if err != nil {
-			return "", "", err
+			if err != nil {
+				return "", "", err
+			}
+			user = secret.Data["proxysql-user"].(string)
 		}
-		user := secret.Data["proxysql-user"].(string)
-		pass := secret.Data["proxysql-password"].(string)
+
+		if savedConf.IsPath(cluster.Conf.ProxysqlPassword) {
+			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.GetConf().ProxysqlPassword)
+			if err != nil {
+				return "", "", err
+			}
+			pass = secret.Data["proxysql-password"].(string)
+		}
+
 		return user, pass, nil
 	} else {
-		secret, err := client.KVv1("").Get(context.Background(), cluster.GetConf().MdbsProxyCredential)
+		secret, err := client.KVv1("").Get(context.Background(), cluster.GetConf().ProxysqlPassword)
 		if err != nil {
 			return "", "", err
 		}

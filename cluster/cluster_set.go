@@ -739,7 +739,6 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 
 				prx.RotateProxyPasswords(pass)
 				prx.SetCredential(credential)
-				cluster.LogPrintf(LvlErr, "COUCOU change password for proxy %s", pass)
 				prx.ShardProxy.SetCredential(prx.ShardProxy.URL, prx.User, pass)
 				for _, u := range prx.ShardProxy.Users {
 					if u.User == prx.User {

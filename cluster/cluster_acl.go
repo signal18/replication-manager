@@ -86,7 +86,7 @@ func (cluster *Cluster) SetGrant(user string, grant string, enable bool) {
 }
 
 func (cluster *Cluster) LoadAPIUsers() error {
-	credentials := strings.Split(cluster.Conf.APIUsers+","+cluster.Conf.APIUsersExternal, ",")
+	credentials := strings.Split(cluster.Conf.Secrets["api-credentials"].Value+","+cluster.Conf.Secrets["api-credentials-external"].Value, ",")
 	meUsers := make(map[string]APIUser)
 	for _, credential := range credentials {
 		var newapiuser APIUser

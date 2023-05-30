@@ -345,9 +345,12 @@ func (cluster *Cluster) InitFromConf() {
 	for _, p := range lstPort {
 		cluster.SstAvailablePorts[p] = p
 	}
+
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.StateMachine = new(state.StateMachine)
 	cluster.StateMachine.Init()
+
+	cluster.SetClusterCredentialsFromConfig()
 
 	if cluster.Conf.Interactive {
 		cluster.LogPrintf(LvlInfo, "Failover in interactive mode")

@@ -280,8 +280,6 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	log.Printf("COUCOU test sign in: %v\n", user)
-	log.Printf("COUCOU test sign in: %v\n", auth_try)
 	if auth_try.User != user.Username {
 		auth_try.Try = 0
 		auth_try.User = user.Username
@@ -298,7 +296,6 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
-
 		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path) {
 			signer := jwt.New(jwt.SigningMethodRS256)
 			claims := signer.Claims.(jwt.MapClaims)

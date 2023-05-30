@@ -172,7 +172,6 @@ func (cluster *Cluster) RotatePasswords() error {
 					if prx, ok := pri.(*MariadbShardProxy); ok {
 						prx.RotateProxyPasswords(new_password_shard)
 						prx.SetCredential(prx.User + ":" + new_password_shard)
-						cluster.LogPrintf(LvlErr, "COUCOU change password for proxy %s", new_password_shard)
 						prx.ShardProxy.SetCredential(prx.ShardProxy.URL, prx.User, new_password_shard)
 						for _, u := range prx.ShardProxy.Users {
 							if u.User == prx.User {
@@ -288,7 +287,6 @@ func (cluster *Cluster) RotatePasswords() error {
 					if prx, ok := pri.(*MariadbShardProxy); ok {
 						prx.RotateProxyPasswords(new_password_shard)
 						prx.SetCredential(prx.User + ":" + new_password_shard)
-						cluster.LogPrintf(LvlErr, "COUCOU change password for proxy %s", new_password_shard)
 						prx.ShardProxy.SetCredential(prx.ShardProxy.URL, prx.User, new_password_shard)
 						for _, u := range prx.ShardProxy.Users {
 							if u.User == prx.User {
