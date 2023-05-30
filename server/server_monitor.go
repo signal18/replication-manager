@@ -283,6 +283,9 @@ func init() {
 		maxscaleprx.AddFlags(monitorCmd.Flags(), &conf)
 	}
 
+	proxyjanitorprx := new(cluster.ProxyJanitor)
+	proxyjanitorprx.AddFlags(monitorCmd.Flags(), &conf)
+
 	// TODO: this seems dead code / unimplemented
 	// start
 	if WithMySQLRouter == "ON" {

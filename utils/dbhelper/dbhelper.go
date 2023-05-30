@@ -2740,3 +2740,28 @@ func RenameUserPassword(db *sqlx.DB, myver *MySQLVersion, user_host string, old_
 	}
 	return query, nil
 }
+
+func DuplicateUserPassword(db *sqlx.DB, myver *MySQLVersion, old_user_name string, user_host string, new_user_name string) (string, error) {
+
+	query := "SHOW GRANTS FOR '" + old_user_name + "'@'" + user_host + "'"
+	rows, err := db.Queryx(query)
+	if err != nil {
+		return query, errors.New("Could not get grant for user ")
+	}
+	defer rows.Close()
+	var grant string
+
+	for rows.Next() {
+		err = rows.Scan(&grant)
+		if err != nil {
+			return query, err
+		}
+		querygrant := strings.Replace(grant, old_user_name, new_user_name, 1)
+		query += querygrant
+		_, err = db.Queryx(querygrant)
+		if err != nil {
+			return query, err
+		}
+	}
+	return query, nil
+}

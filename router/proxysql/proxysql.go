@@ -3,6 +3,7 @@ package proxysql
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -135,6 +136,29 @@ func (psql *ProxySQL) ExistAsWriterOrOffline(host string, port string) bool {
 		return true
 	}
 	return false
+}
+
+func (psql *ProxySQL) GetHostgroupFromJanitorDomain(domain string) int {
+	var wg int
+	var wgmax int
+	sql := "SELECT max(default_hostgroup) FROM mysql_users WHERE username = 'dbass@?'"
+	row := psql.Connection.QueryRow(sql, domain)
+	err := row.Scan(&wg)
+	if err == nil {
+		sql := fmt.Sprintf("SELECT max(default_hostgroup)+1 FROM mysql_users")
+		row2 := psql.Connection.QueryRow(sql)
+		err2 := row2.Scan(&wgmax)
+		if err2 == nil {
+			psql.WriterHG = "0"
+			psql.AddUser("dbass@"+domain, psql.Password)
+			return 0
+		}
+		psql.WriterHG = strconv.Itoa(wgmax)
+		psql.AddUser("dbass@"+domain, psql.Password)
+		return wgmax
+	}
+	psql.WriterHG = strconv.Itoa(wg)
+	return wg
 }
 
 func (psql *ProxySQL) SetOnline(host string, port string) error {

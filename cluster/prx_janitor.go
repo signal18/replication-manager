@@ -47,14 +47,14 @@ func NewProxyJanitor(placement int, cluster *Cluster, proxyHost string) *ProxyJa
 
 func (proxy *ProxyJanitor) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 
-	flags.BoolVar(&conf.ProxyJanitorDebug, "proxysql-debug", false, "Extra info on monitoring backend")
-	flags.StringVar(&conf.ProxyJanitorHosts, "proxysql-servers", "", "ProxyJanitor hosts")
-	flags.StringVar(&conf.ProxyJanitorHostsIPV6, "proxysql-servers-ipv6", "", "ProxyJanitor extra IPV6 bind for interfaces")
-	flags.StringVar(&conf.ProxyJanitorPort, "proxysql-port", "3306", "ProxyJanitor read/write proxy port")
-	flags.StringVar(&conf.ProxyJanitorAdminPort, "proxysql-admin-port", "6032", "ProxyJanitor admin interface port")
-	flags.StringVar(&conf.ProxyJanitorUser, "proxysql-user", "admin", "ProxyJanitor admin user")
-	flags.StringVar(&conf.ProxyJanitorPassword, "proxysql-password", "admin", "ProxyJanitor admin password")
-	flags.StringVar(&conf.ProxyJanitorBinaryPath, "proxysql-binary-path", "/usr/sbin/proxysql", "proxysql binary location")
+	flags.BoolVar(&conf.ProxyJanitorDebug, "proxyjanitor-debug", false, "Extra info on monitoring backend")
+	flags.StringVar(&conf.ProxyJanitorHosts, "proxyjanitor-servers", "", "ProxyJanitor hosts")
+	flags.StringVar(&conf.ProxyJanitorHostsIPV6, "proxyjanitor-servers-ipv6", "", "ProxyJanitor extra IPV6 bind for interfaces")
+	flags.StringVar(&conf.ProxyJanitorPort, "proxyjanitor-port", "3306", "ProxyJanitor read/write proxy port")
+	flags.StringVar(&conf.ProxyJanitorAdminPort, "proxyjanitor-admin-port", "6032", "ProxyJanitor admin interface port")
+	flags.StringVar(&conf.ProxyJanitorUser, "proxyjanitor-user", "external", "ProxyJanitor admin user")
+	flags.StringVar(&conf.ProxyJanitorPassword, "proxyjanitor-password", "admin", "ProxyJanitor admin password")
+	flags.StringVar(&conf.ProxyJanitorBinaryPath, "proxyjanitor-binary-path", "/usr/sbin/proxysql", "proxysql binary location")
 }
 
 func (proxy *ProxyJanitor) Connect() (proxysql.ProxySQL, error) {
@@ -63,7 +63,7 @@ func (proxy *ProxyJanitor) Connect() (proxysql.ProxySQL, error) {
 		Password: proxy.Pass,
 		Host:     proxy.Host,
 		Port:     proxy.Port,
-		WriterHG: fmt.Sprintf("%d", proxy.GetCluster().GetUniqueId()),
+		WriterHG: "0",
 	}
 
 	var err error
@@ -71,6 +71,7 @@ func (proxy *ProxyJanitor) Connect() (proxysql.ProxySQL, error) {
 	if err != nil {
 		return psql, err
 	}
+	psql.GetHostgroupFromJanitorDomain(proxy.GetJanitorDomain())
 	return psql, nil
 }
 
@@ -120,9 +121,9 @@ func (proxy *ProxyJanitor) Init() {
 	}
 	defer psql.Connection.Close()
 
-	if cluster.Conf.ProxysqlBootstrapHG {
+	/*	if cluster.Conf.ProxysqlBootstrapHG {
 		psql.AddHostgroups(cluster.Name)
-	}
+	} */
 	//	proxy.Refresh()
 	//	return
 	for _, s := range cluster.Proxies {
@@ -172,14 +173,16 @@ func (proxy *ProxyJanitor) Failover() {
 
 }
 
+func (proxy *ProxyJanitor) GetJanitorDomain() string {
+	cluster := proxy.ClusterGroup
+	return cluster.Conf.Cloud18Domain + "." + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone + "." + cluster.Name
+}
+
 func (proxy *ProxyJanitor) Refresh() error {
 
 	cluster := proxy.ClusterGroup
 	if cluster.Conf.LogLevel > 9 {
 		cluster.LogPrintf(LvlDbg, "ProxyJanitor port : %s, user %s, pass %s\n", proxy.Port, proxy.User, proxy.Pass)
-	}
-	if cluster.Conf.ProxysqlOn == false {
-		return nil
 	}
 
 	psql, err := proxy.Connect()
@@ -196,51 +199,54 @@ func (proxy *ProxyJanitor) Refresh() error {
 	proxy.BackendsRead = nil
 
 	for _, s := range cluster.Proxies {
-		isFoundBackendWrite := true
-		proxysqlHostgroup, proxysqlServerStatus, proxysqlServerConnections, proxysqlByteOut, proxysqlByteIn, proxysqlLatency, err := psql.GetStatsForHostWrite(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()))
-		var bke = Backend{
-			Host:           s.GetHost(),
-			Port:           strconv.Itoa(s.GetWritePort()),
-			Status:         s.GetState(),
-			PrxName:        s.GetURL(),
-			PrxStatus:      proxysqlServerStatus,
-			PrxConnections: strconv.Itoa(proxysqlServerConnections),
-			PrxByteIn:      strconv.Itoa(proxysqlByteOut),
-			PrxByteOut:     strconv.Itoa(proxysqlByteIn),
-			PrxLatency:     strconv.Itoa(proxysqlLatency),
-			PrxHostgroup:   proxysqlHostgroup,
-		}
-
-		if err != nil {
-			isFoundBackendWrite = false
-		} else {
-			proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
-		}
-
-		// nothing should be done if no bootstrap
-		if cluster.Conf.ProxysqlBootstrap && cluster.IsDiscovered() {
-			// if ProxyJanitor and replication-manager states differ, resolve the conflict
-
-			// if proxy writer set offline in ProxyJanitor
-
-			if s.GetPrevState() == stateUnconn || s.GetPrevState() == stateFailed || (len(proxy.BackendsWrite) == 0 || !isFoundBackendWrite) {
-				// if the proxy comes back from a previously failed or standalone state, reintroduce it in
-				// the appropriate HostGroup
-
-				cluster.StateMachine.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], err, s.GetURL()), ErrFrom: "PRX", ServerUrl: proxy.Name})
-				if psql.ExistAsWriterOrOffline(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort())) {
-					err = psql.SetOnline(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()))
-					if err != nil {
-						cluster.LogPrintf(LvlErr, "Monitor ProxyJanitor setting online failed proxy %s", s.GetURL())
-					}
-				} else {
-					//scenario restart with failed leader
-					err = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
-				}
-				updated = true
-
+		if s.GetType() != config.ConstProxyJanitor {
+			isFoundBackendWrite := true
+			proxysqlHostgroup, proxysqlServerStatus, proxysqlServerConnections, proxysqlByteOut, proxysqlByteIn, proxysqlLatency, err := psql.GetStatsForHostWrite(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()))
+			var bke = Backend{
+				Host:           s.GetHost(),
+				Port:           strconv.Itoa(s.GetWritePort()),
+				Status:         s.GetState(),
+				PrxName:        s.GetURL(),
+				PrxStatus:      proxysqlServerStatus,
+				PrxConnections: strconv.Itoa(proxysqlServerConnections),
+				PrxByteIn:      strconv.Itoa(proxysqlByteOut),
+				PrxByteOut:     strconv.Itoa(proxysqlByteIn),
+				PrxLatency:     strconv.Itoa(proxysqlLatency),
+				PrxHostgroup:   proxysqlHostgroup,
 			}
-		} //if bootstrap
+
+			if err != nil {
+				isFoundBackendWrite = false
+			} else {
+				proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
+			}
+
+			// nothing should be done if no bootstrap
+			if cluster.IsDiscovered() {
+				// if ProxyJanitor and replication-manager states differ, resolve the conflict
+
+				// if proxy writer set offline in ProxyJanitor
+
+				if s.GetPrevState() == stateUnconn || s.GetPrevState() == stateFailed || (len(proxy.BackendsWrite) == 0 || !isFoundBackendWrite) {
+					// if the proxy comes back from a previously failed or standalone state, reintroduce it in
+					// the appropriate HostGroup
+
+					cluster.StateMachine.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], err, s.GetURL()), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					if psql.ExistAsWriterOrOffline(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort())) {
+						err = psql.SetOnline(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()))
+						if err != nil {
+							cluster.LogPrintf(LvlErr, "Monitor ProxyJanitor setting online failed proxy %s", s.GetURL())
+						}
+					} else {
+						//scenario restart with failed leader
+						err = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
+					}
+					updated = true
+
+				}
+			} //if bootstrap
+		}
+
 	} //end for each proxy
 	// load the grants
 	s := proxy.GetCluster().GetMaster()
@@ -253,17 +259,26 @@ func (proxy *ProxyJanitor) Refresh() error {
 		dupUsers := make(map[string]string)
 
 		for _, u := range s.Users {
-			user, ok := uniUsers[u.User+":"+u.Password]
-			if ok {
-				dupUsers[user.User] = user.User
-				cluster.StateMachine.AddState("ERR00057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00057"], user.User), ErrFrom: "MON", ServerUrl: proxy.Name})
-			} else {
-				if u.Password != "" && u.Password != "invalid" {
-					if u.User != cluster.GetDbUser() {
-						uniUsers[u.User+":"+u.Password] = u
-					} else if cluster.Conf.MonitorWriteHeartbeatCredential == "" {
-						//  load the repman DB user in proxy beacause we don't have an extra user to query master
-						uniUsers[u.User+":"+u.Password] = u
+			if !strings.Contains(u.User, proxy.GetJanitorDomain()) {
+				user, ok := s.Users[u.User+"@"+proxy.GetJanitorDomain()+":"+u.Password]
+				if !ok {
+					// create domain user in master
+					logs, err := dbhelper.DuplicateUserPassword(s.Conn, s.DBVersion, u.User, u.Host, u.User+"@"+proxy.GetJanitorDomain())
+					cluster.LogSQL(logs, err, cluster.master.URL, "Add Janitor user to leader", LvlDbg, "Refresh ProxyJanitor")
+
+				}
+				user, ok = uniUsers[u.User+":"+u.Password]
+				if ok {
+					dupUsers[user.User] = user.User
+					cluster.StateMachine.AddState("ERR00057", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00057"], user.User), ErrFrom: "MON", ServerUrl: proxy.Name})
+				} else {
+					if u.Password != "" && u.Password != "invalid" {
+						if u.User != cluster.GetDbUser() {
+							uniUsers[u.User+":"+u.Password] = u
+						} else if cluster.Conf.MonitorWriteHeartbeatCredential == "" {
+							//  load the repman DB user in proxy beacause we don't have an extra user to query master
+							uniUsers[u.User+":"+u.Password] = u
+						}
 					}
 				}
 			}
@@ -272,8 +287,9 @@ func (proxy *ProxyJanitor) Refresh() error {
 		for _, user := range uniUsers {
 			if _, ok := myprxusermap[user.User+"_"+strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10)+":"+user.Password]; !ok {
 				cluster.LogPrintf(LvlInfo, "Add ProxyJanitor user %s ", user.User+"_"+strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10))
-				err := psql.AddUser(user.User+"_"+strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10), user.Password)
-				psql.AddFastRouting(user.User+"_"+strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10), "replication_manager_schema", strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10))
+				err := psql.AddUser(user.User+"@"+proxy.GetJanitorDomain(), user.Password)
+				psql.AddFastRouting(user.User+"@"+proxy.GetJanitorDomain(), "replication_manager_schema", strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10))
+
 				if err != nil {
 					cluster.StateMachine.AddState("ERR00054", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00054"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
 				} else {

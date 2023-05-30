@@ -303,7 +303,7 @@ type Config struct {
 	ProxyJanitorPort                    string `mapstructure:"proxyjanitor-port" toml:"proxyjanitor-port" json:"proxyjanitorPort"`
 	ProxyJanitorAdminPort               string `mapstructure:"proxyjanitor-admin-port" toml:"proxyjanitor-admin-port" json:"proxyjanitorAdminPort"`
 	ProxyJanitorUser                    string `mapstructure:"proxyjanitor-user" toml:"proxyjanitor-user" json:"proxyjanitorUser"`
-	ProxyJanitorPassword                string `mapstructure:"proxyjanitor-password" toml:"proxyjanitor-password" json:"proxyjanitorlPassword"`
+	ProxyJanitorPassword                string `mapstructure:"proxyjanitor-password" toml:"proxyjanitor-password" json:"proxyjanitorPassword"`
 	ProxyJanitorBinaryPath              string `mapstructure:"proxyjanitor-binary-path" toml:"proxyjanitor-binary-path" json:"proxyjanitorBinaryPath"`
 
 	MysqlRouterOn                             bool                   `mapstructure:"mysqlrouter" toml:"mysqlrouter" json:"mysqlrouter"`
@@ -804,7 +804,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		"maxscale-pass":                         {"", ""},
 		"myproxy-password":                      {"", ""},
 		"proxysql-password":                     {"", ""},
-		"janitorproxy-password":                 {"", ""},
+		"proxyjanitor-password":                 {"", ""},
 		"vault-secret-id":                       {"", ""},
 		"opensvc-p12-secret":                    {"", ""},
 		"backup-restic-aws-access-secret":       {"", ""},
