@@ -179,6 +179,7 @@ func (proxy *ProxyJanitor) GetJanitorDomain() string {
 }
 
 func (proxy *ProxyJanitor) Refresh() error {
+	//return nil
 	cluster := proxy.ClusterGroup
 	if cluster.Conf.ProxyJanitorHosts == "" {
 		return errors.New("No proxy janitor hosts defined")
@@ -263,9 +264,10 @@ func (proxy *ProxyJanitor) Refresh() error {
 
 		for _, u := range s.Users {
 			if !strings.Contains(u.User, proxy.GetJanitorDomain()) {
-				//	cluster.LogPrintf(LvlErr, "%v", s.Users)
-				user, ok := s.Users[u.User+"@"+proxy.GetJanitorDomain()]
+
+				user, ok := s.Users["'"+u.User+"@"+proxy.GetJanitorDomain()+"'@'"+u.Host+"'"]
 				if !ok {
+					//		cluster.LogPrintf(LvlErr, "lookup %s %s%v", u.User, proxy.GetJanitorDomain(), s.Users)
 					// create domain user in master
 					logs, err := dbhelper.DuplicateUserPassword(s.Conn, s.DBVersion, u.User, u.Host, u.User+"@"+proxy.GetJanitorDomain())
 					cluster.LogSQL(logs, err, cluster.master.URL, "Add Janitor user to leader", LvlDbg, "Refresh ProxyJanitor")
@@ -289,8 +291,8 @@ func (proxy *ProxyJanitor) Refresh() error {
 		}
 		changedUser := false
 		for _, user := range uniUsers {
-			if _, ok := myprxusermap[user.User+"_"+strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10)+":"+user.Password]; !ok {
-				cluster.LogPrintf(LvlInfo, "Add ProxyJanitor user %s ", user.User+"_"+strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10))
+			if _, ok := myprxusermap[user.User+"@"+proxy.GetJanitorDomain()+":"+user.Password]; !ok {
+				cluster.LogPrintf(LvlInfo, "Add ProxyJanitor user %s ", user.User+"@"+proxy.GetJanitorDomain())
 				err := psql.AddUser(user.User+"@"+proxy.GetJanitorDomain(), user.Password)
 				psql.AddFastRouting(user.User+"@"+proxy.GetJanitorDomain(), "replication_manager_schema", strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10))
 
@@ -352,7 +354,7 @@ func (proxy *ProxyJanitor) HasLeaderInReader() bool {
 }
 
 func (proxy *ProxyJanitor) BackendsStateChange() {
-	proxy.Refresh()
+	//proxy.Refresh()
 }
 
 func (proxy *ProxyJanitor) SetMaintenance(s *ServerMonitor) {

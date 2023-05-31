@@ -141,10 +141,10 @@ func (psql *ProxySQL) ExistAsWriterOrOffline(host string, port string) bool {
 func (psql *ProxySQL) GetHostgroupFromJanitorDomain(domain string) int {
 	var wg sql.NullInt32
 	var wgmax sql.NullInt32
-	sql := "BEGIN IMMEDIATE"
-	psql.Connection.QueryRow(sql)
+	//	sql := "BEGIN IMMEDIATE"
+	//	psql.Connection.QueryRow(sql)
 
-	sql = "SELECT max(default_hostgroup) FROM mysql_users WHERE username = 'dbass@" + domain + "'"
+	sql := "SELECT max(default_hostgroup) FROM mysql_users WHERE username = 'dbass@" + domain + "'"
 	row := psql.Connection.QueryRow(sql)
 	err := row.Scan(&wg)
 	if err == nil && !wg.Valid {
@@ -156,21 +156,21 @@ func (psql *ProxySQL) GetHostgroupFromJanitorDomain(domain string) int {
 			if !wgmax.Valid {
 				psql.WriterHG = "0"
 				psql.AddUser("dbass@"+domain, psql.Password)
-				sql = "COMMIT"
-				psql.Connection.QueryRow(sql)
+				//		sql = "COMMIT"
+				//	psql.Connection.QueryRow(sql)
 				return 0
 			} else {
 				psql.WriterHG = strconv.Itoa(int(wgmax.Int32))
 				psql.AddUser("dbass@"+domain, psql.Password)
-				sql = "COMMIT"
-				psql.Connection.QueryRow(sql)
+				//		sql = "COMMIT"
+				//		psql.Connection.QueryRow(sql)
 				return int(wgmax.Int32)
 			}
 		}
 	}
 	psql.WriterHG = strconv.Itoa(int(wg.Int32))
-	sql = "COMMIT"
-	psql.Connection.QueryRow(sql)
+	//	sql = "COMMIT"
+	//	psql.Connection.QueryRow(sql)
 
 	return int(wg.Int32)
 }
