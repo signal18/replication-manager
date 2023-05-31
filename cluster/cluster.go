@@ -389,16 +389,7 @@ func (cluster *Cluster) InitFromConf() {
 		msg := "Replication manager started with version: " + cluster.Conf.Version
 		subj := "Replication-Manager started"
 		alert := alert.Alert{}
-		alert.From = cluster.Conf.MailFrom
-		alert.To = cluster.Conf.MailTo
-		alert.Destination = cluster.Conf.MailSMTPAddr
-		alert.User = cluster.Conf.MailSMTPUser
-		alert.Password = cluster.Conf.Secrets["mail-smtp-password"].Value
-		alert.TlsVerify = cluster.Conf.MailSMTPTLSSkipVerify
-		err := alert.EmailMessage(msg, subj)
-		if err != nil {
-			cluster.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
-		}
+		go alert.EmailMessage(msg, subj, cluster.Conf)
 	}
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{

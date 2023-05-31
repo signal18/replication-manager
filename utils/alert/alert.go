@@ -14,10 +14,12 @@ package alert
 import (
 	"crypto/tls"
 	"fmt"
+	"log"
 	"net/smtp"
 	"strings"
 
 	"github.com/jordan-wright/email"
+	"github.com/signal18/replication-manager/config"
 )
 
 type Alert struct {
@@ -59,7 +61,42 @@ New server state change from %s is %s.`, a.Origin, a.PrevState, a.State)
 	return err
 }
 
-func (a *Alert) EmailMessage(msg string, subj string) error {
+func (a *Alert) EmailMessage(msg string, subj string, Conf config.Config) error {
+	a.From = Conf.MailFrom
+	a.To = Conf.MailTo
+	a.Destination = Conf.MailSMTPAddr
+	a.User = Conf.MailSMTPUser
+	a.Password = Conf.Secrets["mail-smtp-password"].Value
+	a.TlsVerify = Conf.MailSMTPTLSSkipVerify
+	if msg == "" {
+		e := email.NewEmail()
+		e.From = a.From
+		e.To = strings.Split(a.To, ",")
+		subj := fmt.Sprintf("Replication-Manager alert - State change detected on host %s", a.Origin)
+		e.Subject = subj
+		text := fmt.Sprintf(`Replication Manager has detected a change of state for host %s.
+New server state change from %s is %s.`, a.Origin, a.PrevState, a.State)
+		e.Text = []byte(text)
+		var err error
+		if a.User == "" {
+			if a.TlsVerify {
+				err = e.SendWithTLS(a.Destination, nil, &tls.Config{InsecureSkipVerify: true})
+			} else {
+				err = e.Send(a.Destination, nil)
+			}
+		} else {
+			if a.TlsVerify {
+				err = e.SendWithTLS(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]), &tls.Config{InsecureSkipVerify: true})
+			} else {
+				err = e.Send(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]))
+			}
+		}
+		if err != nil {
+			log.Println("ERROR", "Could not send mail alert: %s ", err)
+		}
+		return err
+	}
+
 	e := email.NewEmail()
 	e.From = a.From
 	e.To = strings.Split(a.To, ",")
@@ -79,6 +116,8 @@ func (a *Alert) EmailMessage(msg string, subj string) error {
 			err = e.Send(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]))
 		}
 	}
-
+	if err != nil {
+		log.Println("ERROR", "Could not send mail alert: %s ", err)
+	}
 	return err
 }

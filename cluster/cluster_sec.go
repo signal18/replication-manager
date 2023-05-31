@@ -128,7 +128,7 @@ func (cluster *Cluster) RotatePasswords() error {
 			}
 
 			//cluster.LogPrintf(LvlErr, "TEST password Rotation new mdp : %s, %s, decrypt val %s", new_password_db, new_password_proxysql, cluster.GetDecryptedValue("proxysql-password"))
-			cluster.LogPrintf(LvlInfo, "Secret written successfully. New password generated: db-servers-credential %s, replication-credential %s", new_password_db, new_password_rpl)
+			cluster.LogPrintf(LvlInfo, "Secret written successfully. New password generated: db-servers-credential %s, replication-credential %s", cluster.Conf.PrintSecret(new_password_db), cluster.Conf.PrintSecret(new_password_rpl))
 
 			cluster.SetClusterMonitorCredentialsFromConfig()
 
@@ -195,16 +195,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster.  Check the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
 				subj := "Password Rotation Replication-Manager"
 				alert := alert.Alert{}
-				alert.From = cluster.Conf.MailFrom
-				alert.To = cluster.Conf.MailTo
-				alert.Destination = cluster.Conf.MailSMTPAddr
-				alert.User = cluster.Conf.MailSMTPUser
-				alert.Password = cluster.Conf.Secrets["mail-smtp-password"].Value
-				alert.TlsVerify = cluster.Conf.MailSMTPTLSSkipVerify
-				err := alert.EmailMessage(msg, subj)
-				if err != nil {
-					cluster.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
-				}
+				go alert.EmailMessage(msg, subj, cluster.Conf)
 			}
 
 		}
@@ -312,16 +303,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster. The new passwords value are encrypted in the overwrite config file"
 				subj := "Password Rotation Replication-Manager"
 				alert := alert.Alert{}
-				alert.From = cluster.Conf.MailFrom
-				alert.To = cluster.Conf.MailTo
-				alert.Destination = cluster.Conf.MailSMTPAddr
-				alert.User = cluster.Conf.MailSMTPUser
-				alert.Password = cluster.Conf.Secrets["mail-smtp-password"].Value
-				alert.TlsVerify = cluster.Conf.MailSMTPTLSSkipVerify
-				err := alert.EmailMessage(msg, subj)
-				if err != nil {
-					cluster.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
-				}
+				go alert.EmailMessage(msg, subj, cluster.Conf)
 			}
 			cluster.LogPrintf(LvlInfo, "Password rotation is done.")
 		}

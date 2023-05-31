@@ -489,21 +489,13 @@ func (cluster *Cluster) CheckAlert(state state.State) {
 		if err != nil {
 			cluster.LogPrintf("ERROR", "Could not send alert: %s ", err)
 		}
+
 	}
 }
 
 func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 	if cluster.Conf.MailTo != "" {
-		alert.From = cluster.Conf.MailFrom
-		alert.To = cluster.Conf.MailTo
-		alert.Destination = cluster.Conf.MailSMTPAddr
-		alert.User = cluster.Conf.MailSMTPUser
-		alert.Password = cluster.Conf.Secrets["mail-smtp-password"].Value
-		alert.TlsVerify = cluster.Conf.MailSMTPTLSSkipVerify
-		err := alert.Email()
-		if err != nil {
-			cluster.LogPrintf("ERROR", "Could not send mail alert: %s ", err)
-		}
+		go alert.EmailMessage("", "", cluster.Conf)
 	}
 	if cluster.Conf.AlertScript != "" {
 		cluster.LogPrintf("INFO", "Calling alert script")
