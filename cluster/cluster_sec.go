@@ -306,6 +306,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				go alert.EmailMessage(msg, subj, cluster.Conf)
 			}
 			cluster.LogPrintf(LvlInfo, "Password rotation is done.")
+			cluster.Save()
 		}
 		return nil
 		//cas sans vault

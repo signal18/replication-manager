@@ -898,7 +898,7 @@ func (cluster *Cluster) Overwrite() error {
 				s.Delete(key)
 			} else {
 
-				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
+				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) && (cluster.Conf.Secrets[key].Value == cluster.Conf.Secrets[key].OldValue || cluster.Conf.Secrets[key].OldValue == "") {
 					s.Delete(key)
 				} else if _, ok = cluster.Conf.Secrets[key]; ok && cluster.Conf.Secrets[key].Value != v {
 					v := cluster.GetEncryptedValueFromMemory(key)
@@ -1403,7 +1403,7 @@ func (cluster *Cluster) ResetStates() {
 	//cluster.Proxies = nil
 	//
 	cluster.ServerIdList = nil
-	cluster.hostList = nil
+	//cluster.hostList = nil
 	cluster.clusterList = nil
 	cluster.proxyList = nil
 	cluster.ProxyIdList = nil

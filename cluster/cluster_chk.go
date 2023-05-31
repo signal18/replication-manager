@@ -746,7 +746,7 @@ func (cluster *Cluster) CheckCredentialRotation() {
 }
 
 func (cluster *Cluster) CheckCanSaveDynamicConfig() {
-	if cluster.Conf.SecretKey != nil && cluster.GetConf().ConfRewrite {
+	if cluster.Conf.SecretKey == nil && cluster.GetConf().ConfRewrite {
 		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00090"]), ErrFrom: "CLUSTER"})
 	}
 }

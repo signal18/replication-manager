@@ -10,8 +10,11 @@
 package dbhelper
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
+
+	version "github.com/mcuadros/go-version"
 )
 
 type MySQLVersion struct {
@@ -49,6 +52,24 @@ func NewMySQLVersion(version string, versionComment string) *MySQLVersion {
 		}
 	}
 	return mv
+}
+
+func (mv *MySQLVersion) Between(Min MySQLVersion, Max MySQLVersion) bool {
+	ver := "1" + fmt.Sprintf("%03d", mv.Major) + fmt.Sprintf("%03d", mv.Minor) + fmt.Sprintf("%03d", mv.Release)
+	ver_min := "1" + fmt.Sprintf("%03d", Min.Major) + fmt.Sprintf("%03d", Min.Minor) + fmt.Sprintf("%03d", Min.Release)
+	ver_max := "1" + fmt.Sprintf("%03d", Max.Major) + fmt.Sprintf("%03d", Max.Minor) + fmt.Sprintf("%03d", Max.Release)
+	sup := version.Compare(ver, ver_min, ">")
+	inf := version.Compare(ver_max, ver, ">")
+	if sup && inf {
+		return true
+	}
+	return false
+}
+
+func (mv *MySQLVersion) Greater(Min MySQLVersion) bool {
+	ver := "1" + fmt.Sprintf("%03d", mv.Major) + fmt.Sprintf("%03d", mv.Minor) + fmt.Sprintf("%03d", mv.Release)
+	ver_min := "1" + fmt.Sprintf("%03d", Min.Major) + fmt.Sprintf("%03d", Min.Minor) + fmt.Sprintf("%03d", Min.Release)
+	return version.Compare(ver, ver_min, ">")
 }
 
 func (mv *MySQLVersion) IsMySQL() bool {

@@ -131,6 +131,7 @@ require (
 	github.com/juju/testing v0.0.0-20220203020004-a0ff61f03494 // indirect
 	github.com/lestrrat/go-envload v0.0.0-20180220120943-6ed08b54a570 // indirect
 	github.com/mattn/go-runewidth v0.0.13 // indirect
+	github.com/mcuadros/go-version v0.0.0-20190830083331-035f6764e8d2 // indirect
 	github.com/miekg/dns v1.1.43 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pkg/xattr v0.4.6
