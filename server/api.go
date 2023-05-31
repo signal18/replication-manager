@@ -34,17 +34,11 @@ import (
 	"github.com/signal18/replication-manager/share"
 )
 
-type authTry struct {
-	User string `json:"username"`
-	Try  int    `json:"try"`
-}
-
 //RSA KEYS AND INITIALISATION
 
 var signingKey, verificationKey []byte
 var apiPass string
 var apiUser string
-var auth_try authTry
 
 func (repman *ReplicationManager) initKeys() {
 	var (
@@ -279,19 +273,28 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		fmt.Fprintf(w, "Error in request")
 		return
 	}
-
-	if auth_try.User != user.Username {
-		auth_try.Try = 0
+	if auth_try, ok := repman.UserAuthTry[user.Username]; ok {
+		if auth_try.Try == 3 {
+			if time.Now().Before(auth_try.Time.Add(3 * time.Minute)) {
+				//fmt.Println("Time until last auth try : " + time.Until(auth_try.Time).String())
+				fmt.Println("3 authentication errors for the user " + user.Username + ", please try again in 3 minutes")
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			} else {
+				auth_try.Try = 1
+				auth_try.Time = time.Now()
+				repman.UserAuthTry[user.Username] = auth_try
+			}
+		} else {
+			auth_try.Try += 1
+			repman.UserAuthTry[user.Username] = auth_try
+		}
+	} else {
+		var auth_try authTry
 		auth_try.User = user.Username
-	} else if auth_try.Try == 3 {
-		auth_try.Try = 4
-		fmt.Println("3 authentication errors for the user" + user.Username + ", please try again in 3 minutes")
-		fmt.Fprint(w, "Invalid credentials")
-		time.Sleep(time.Minute * time.Duration(3))
-		auth_try.Try = 0
-		return
-	} else if auth_try.Try == 4 {
-		return
+		auth_try.Try = 1
+		auth_try.Time = time.Now()
+		repman.UserAuthTry[user.Username] = auth_try
 	}
 
 	for _, cluster := range repman.Clusters {
@@ -319,11 +322,6 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				w.WriteHeader(http.StatusInternalServerError)
 				fmt.Fprintln(w, "Error while signing the token")
 				log.Printf("Error signing token: %v\n", err)
-				auth_try.Try += 1
-				/*if auth_try.Try == 3 {
-					time.Sleep(time.Minute * time.Duration(3))
-					auth_try.Try = 0
-				}*/
 			}
 
 			//create a token instance using the token string
@@ -343,7 +341,6 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusForbidden)
 	fmt.Println("Error logging in")
 	fmt.Fprint(w, "Invalid credentials")
-	auth_try.Try += 1
 	return
 
 	//create a rsa 256 signer

@@ -15,11 +15,12 @@ app.factory('BearerAuthInterceptor', ['$q', '$location', '$localStorage', functi
         },
         responseError: function (response) {
             console.log(response);
-            if (response.status === 401 || response.status === 404 || response.status === 503) {
+            if (response.status === 401 || response.status === 404 || response.status === 503 || response.status === 429) {
                 $localStorage.currentUser = '';
                 $location.path('login');
             }
             return response || $q.when(response);
+
         }
     };
 }]);

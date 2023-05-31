@@ -853,12 +853,17 @@ func (cluster *Cluster) GetVaultMonitorCredentials(client *vault.Client) (string
 }
 func (cluster *Cluster) GetVaultShardProxyCredentials(client *vault.Client) (string, string, error) {
 	if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-		secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.MdbsProxyCredential)
+		user, pass := misc.SplitPair(cluster.Conf.Secrets["shardproxy-credential"].Value)
+		if savedConf.IsPath(cluster.Conf.MdbsProxyCredential) {
 
-		if err != nil {
-			return "", "", err
+			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.MdbsProxyCredential)
+
+			if err != nil {
+				return "", "", err
+			}
+			user, pass = misc.SplitPair(secret.Data["shardproxy-credential"].(string))
 		}
-		user, pass := misc.SplitPair(secret.Data["shardproxy-credential"].(string))
+
 		return user, pass, nil
 	} else {
 		secret, err := client.KVv1("").Get(context.Background(), cluster.GetConf().MdbsProxyCredential)

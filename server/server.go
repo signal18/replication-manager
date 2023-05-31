@@ -82,6 +82,7 @@ type ReplicationManager struct {
 	BackupLogicalList                                map[string]bool                   `json:"backupLogicalList"`
 	BackupPhysicalList                               map[string]bool                   `json:"backupPhysicalList"`
 	currentCluster                                   *cluster.Cluster                  `json:"-"`
+	UserAuthTry                                      map[string]authTry                `json:"-"`
 	tlog                                             s18log.TermLog
 	termlength                                       int
 	exitMsg                                          string
@@ -102,6 +103,12 @@ const (
 	ConstMonitorActif   string = "A"
 	ConstMonitorStandby string = "S"
 )
+
+type authTry struct {
+	User string    `json:"username"`
+	Try  int       `json:"try"`
+	Time time.Time `json:"time"`
+}
 
 // Unused in server still used in client cmd line
 type Settings struct {
@@ -249,6 +256,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	repman.DynamicFlagMaps = make(map[string]map[string]interface{})
 	ImmuableMap := make(map[string]interface{})
 	DynamicMap := make(map[string]interface{})
+	repman.UserAuthTry = make(map[string]authTry)
 	// call after init if configuration file is provide
 
 	//if repman is embed, create folders and load missing embedded files

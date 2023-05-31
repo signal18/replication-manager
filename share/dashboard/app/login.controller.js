@@ -8,7 +8,9 @@ app.controller('LoginController', ['$scope', '$http', '$localStorage', '$locatio
                     if (data.token) {
                         AppService.setAuthenticated(user.username, data.token);
                         $location.path('dashboard');
-                    } else {
+                    } else if (success.status === 429) {
+                        $scope.message = "3 authentication errors for the user " + user.username + ", please try again in 3 minutes";
+                    } else{
                         $scope.message = "Invalid username or password.";
                     }
             });
