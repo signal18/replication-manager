@@ -199,7 +199,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				alert.To = cluster.Conf.MailTo
 				alert.Destination = cluster.Conf.MailSMTPAddr
 				alert.User = cluster.Conf.MailSMTPUser
-				alert.Password = cluster.Conf.MailSMTPPassword
+				alert.Password = cluster.Conf.Secrets["mail-smtp-password"].Value
 				alert.TlsVerify = cluster.Conf.MailSMTPTLSSkipVerify
 				err := alert.EmailMessage(msg, subj)
 				if err != nil {
@@ -316,7 +316,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				alert.To = cluster.Conf.MailTo
 				alert.Destination = cluster.Conf.MailSMTPAddr
 				alert.User = cluster.Conf.MailSMTPUser
-				alert.Password = cluster.Conf.MailSMTPPassword
+				alert.Password = cluster.Conf.Secrets["mail-smtp-password"].Value
 				alert.TlsVerify = cluster.Conf.MailSMTPTLSSkipVerify
 				err := alert.EmailMessage(msg, subj)
 				if err != nil {

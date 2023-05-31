@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -65,13 +66,13 @@ func (proxy *ProxyJanitor) Connect() (proxysql.ProxySQL, error) {
 		Port:     proxy.Port,
 		WriterHG: "0",
 	}
-
 	var err error
 	err = psql.Connect()
 	if err != nil {
 		return psql, err
 	}
 	psql.GetHostgroupFromJanitorDomain(proxy.GetJanitorDomain())
+
 	return psql, nil
 }
 
@@ -110,7 +111,7 @@ func (proxy *ProxyJanitor) AddQueryRulesProxysql(rules []proxysql.QueryRule) err
 
 func (proxy *ProxyJanitor) Init() {
 	cluster := proxy.ClusterGroup
-	if !cluster.Conf.ProxysqlBootstrap || !cluster.Conf.ProxysqlOn {
+	if cluster.Conf.ProxyJanitorHosts == "" {
 		return
 	}
 
@@ -127,30 +128,29 @@ func (proxy *ProxyJanitor) Init() {
 	//	proxy.Refresh()
 	//	return
 	for _, s := range cluster.Proxies {
+		if s.GetType() != config.ConstProxyJanitor {
+			if s.GetState() == stateUnconn || s.IsIgnored() {
+				cluster.LogPrintf(LvlErr, "ProxyJanitor add backend %s as offline (%s)", s.GetURL(), err)
+				err = psql.AddOfflineServer(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
+				if err != nil {
+					cluster.LogPrintf(LvlErr, "ProxyJanitor could not add backend %s as offline (%s)", s.GetURL(), err)
+				}
+			} else {
+				//weight string, max_replication_lag string, max_connections string, compression string
+				err = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
 
-		if s.GetType() != config.ConstProxyJanitor && (s.GetState() == stateUnconn || s.IsIgnored()) {
-			cluster.LogPrintf(LvlErr, "ProxyJanitor add backend %s as offline (%s)", s.GetURL(), err)
-			err = psql.AddOfflineServer(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
-			if err != nil {
-				cluster.LogPrintf(LvlErr, "ProxyJanitor could not add backend %s as offline (%s)", s.GetURL(), err)
+				if cluster.Conf.LogLevel > 2 || cluster.Conf.ProxysqlDebug {
+					cluster.LogPrintf(LvlWarn, "ProxyJanitor init backend  %s with state %s ", s.GetURL(), s.GetState())
+				}
 			}
-		} else {
-			//weight string, max_replication_lag string, max_connections string, compression string
-			err = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
-
-			if cluster.Conf.LogLevel > 2 || cluster.Conf.ProxysqlDebug {
-				cluster.LogPrintf(LvlWarn, "ProxyJanitor init backend  %s with state %s ", s.GetURL(), s.GetState())
-			}
-
 		}
 	}
 	err = psql.LoadServersToRuntime()
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "ProxyJanitor could not load servers to runtime (%s)", err)
 	}
-	if proxy.ClusterGroup.Conf.ProxysqlSaveToDisk {
-		psql.SaveServersToDisk()
-	}
+	psql.SaveServersToDisk()
+
 }
 
 func (proxy *ProxyJanitor) CertificatesReload() error {
@@ -175,12 +175,15 @@ func (proxy *ProxyJanitor) Failover() {
 
 func (proxy *ProxyJanitor) GetJanitorDomain() string {
 	cluster := proxy.ClusterGroup
-	return cluster.Conf.Cloud18Domain + "." + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone + "." + cluster.Name
+	return cluster.Name + "." + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone + "." + cluster.Conf.Cloud18Domain
 }
 
 func (proxy *ProxyJanitor) Refresh() error {
-
 	cluster := proxy.ClusterGroup
+	if cluster.Conf.ProxyJanitorHosts == "" {
+		return errors.New("No proxy janitor hosts defined")
+	}
+
 	if cluster.Conf.LogLevel > 9 {
 		cluster.LogPrintf(LvlDbg, "ProxyJanitor port : %s, user %s, pass %s\n", proxy.Port, proxy.User, proxy.Pass)
 	}
@@ -260,7 +263,8 @@ func (proxy *ProxyJanitor) Refresh() error {
 
 		for _, u := range s.Users {
 			if !strings.Contains(u.User, proxy.GetJanitorDomain()) {
-				user, ok := s.Users[u.User+"@"+proxy.GetJanitorDomain()+":"+u.Password]
+				//	cluster.LogPrintf(LvlErr, "%v", s.Users)
+				user, ok := s.Users[u.User+"@"+proxy.GetJanitorDomain()]
 				if !ok {
 					// create domain user in master
 					logs, err := dbhelper.DuplicateUserPassword(s.Conn, s.DBVersion, u.User, u.Host, u.User+"@"+proxy.GetJanitorDomain())
@@ -322,9 +326,8 @@ func (proxy *ProxyJanitor) Refresh() error {
 	if proxy.Variables["MYSQL-MULTIPLEXING"] == "TRUE" {
 		psql.SetMySQLVariable("MYSQL-MULTIPLEXING", "FALSE")
 		psql.LoadMySQLVariablesToRuntime()
-		if proxy.ClusterGroup.Conf.ProxysqlSaveToDisk {
-			psql.SaveMySQLVariablesToDisk()
-		}
+		psql.SaveMySQLVariablesToDisk()
+
 	}
 
 	return nil

@@ -139,26 +139,40 @@ func (psql *ProxySQL) ExistAsWriterOrOffline(host string, port string) bool {
 }
 
 func (psql *ProxySQL) GetHostgroupFromJanitorDomain(domain string) int {
-	var wg int
-	var wgmax int
-	sql := "SELECT max(default_hostgroup) FROM mysql_users WHERE username = 'dbass@?'"
-	row := psql.Connection.QueryRow(sql, domain)
+	var wg sql.NullInt32
+	var wgmax sql.NullInt32
+	sql := "BEGIN IMMEDIATE"
+	psql.Connection.QueryRow(sql)
+
+	sql = "SELECT max(default_hostgroup) FROM mysql_users WHERE username = 'dbass@" + domain + "'"
+	row := psql.Connection.QueryRow(sql)
 	err := row.Scan(&wg)
-	if err == nil {
+	if err == nil && !wg.Valid {
+
 		sql := fmt.Sprintf("SELECT max(default_hostgroup)+1 FROM mysql_users")
 		row2 := psql.Connection.QueryRow(sql)
 		err2 := row2.Scan(&wgmax)
 		if err2 == nil {
-			psql.WriterHG = "0"
-			psql.AddUser("dbass@"+domain, psql.Password)
-			return 0
+			if !wgmax.Valid {
+				psql.WriterHG = "0"
+				psql.AddUser("dbass@"+domain, psql.Password)
+				sql = "COMMIT"
+				psql.Connection.QueryRow(sql)
+				return 0
+			} else {
+				psql.WriterHG = strconv.Itoa(int(wgmax.Int32))
+				psql.AddUser("dbass@"+domain, psql.Password)
+				sql = "COMMIT"
+				psql.Connection.QueryRow(sql)
+				return int(wgmax.Int32)
+			}
 		}
-		psql.WriterHG = strconv.Itoa(wgmax)
-		psql.AddUser("dbass@"+domain, psql.Password)
-		return wgmax
 	}
-	psql.WriterHG = strconv.Itoa(wg)
-	return wg
+	psql.WriterHG = strconv.Itoa(int(wg.Int32))
+	sql = "COMMIT"
+	psql.Connection.QueryRow(sql)
+
+	return int(wg.Int32)
 }
 
 func (psql *ProxySQL) SetOnline(host string, port string) error {
