@@ -1,7 +1,9 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <svaroqui@gmail.com>
+//
+//	Stephane Varoqui  <svaroqui@gmail.com>
+//
 // This source code is licensed under the GNU General Public License, version 3.
 package opensvc
 
@@ -124,7 +126,10 @@ func (collector *Collector) CreateConfigKeyValueV2(namespace string, service str
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
 	jsondata := `{"path": "` + namespace + `/cfg/` + service + `", "key":"` + key + ` ", "data": "` + value + `"}`
-	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
+	if collector.Verbose > 2 {
+		log.Println("API Request: ", urlpost, " Payload: ", jsondata)
+	}
+
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)
@@ -150,7 +155,10 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
 	jsondata := `{"path": "` + namespace + `/sec/` + service + `", "key":"` + key + ` ", "data": "` + value + `"}`
-	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
+	if collector.Verbose > 2 {
+		log.Println("API Request: ", urlpost, " Payload: ", jsondata)
+	}
+
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)
@@ -178,7 +186,10 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 
 	// just create or replace
 	jsondata := `{"data": {"` + namespace + `/sec/` + service + `": {}}}`
-	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
+	if collector.Verbose > 2 {
+		log.Println("API Request: ", urlpost, " Payload: ", jsondata)
+	}
+
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)
@@ -208,7 +219,10 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
 	jsondata := `{"data": {"` + namespace + `/cfg/` + service + `": {}}}`
-	log.Println("API Request: ", urlpost, " Payload: ", jsondata)
+	if collector.Verbose > 2 {
+		log.Println("API Request: ", urlpost, " Payload: ", jsondata)
+	}
+
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)
@@ -241,8 +255,10 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
 	jsondata := `{"namespace": "` + cluster + `", "provision": true, "sync": true, "data": {"` + srv + `": ` + template + `}}`
 	//jsondata := `{"namespace": "` + cluster + `", "sync": true, "data": {"` + srv + `": ` + template + `}}`
+	if collector.Verbose > 2 {
+		log.Println("API Request: ", urlpost, " Payload: ", jsondata)
+	}
 
-	log.Println("OpenSVC API Request: ", urlpost, " Payload: ", jsondata)
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)

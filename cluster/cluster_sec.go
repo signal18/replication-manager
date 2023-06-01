@@ -231,14 +231,20 @@ func (cluster *Cluster) RotatePasswords() error {
 				new_Secret.OldValue = cluster.Conf.Secrets["proxysql-password"].Value
 				new_Secret.Value = new_password_proxysql
 				cluster.Conf.Secrets["proxysql-password"] = new_Secret
+				cluster.SetClusterProxyCredentialsFromConfig()
 			}
 
 			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() {
 				var new_Secret config.Secret
 				new_Secret.OldValue = cluster.Conf.Secrets["shardproxy-credential"].Value
-				new_Secret.Value = cluster.GetShardUser() + ":" + new_password_proxysql
+				new_Secret.Value = cluster.GetShardUser() + ":" + new_password_shard
 				cluster.Conf.Secrets["shardproxy-credential"] = new_Secret
+				cluster.SetClusterProxyCredentialsFromConfig()
 			}
+
+			cluster.SetClusterMonitorCredentialsFromConfig()
+
+			cluster.SetClusterReplicationCredentialsFromConfig()
 
 			for _, srv := range cluster.Servers {
 				srv.SetCredential(srv.URL, cluster.GetDbUser(), cluster.GetDbPass())
@@ -251,7 +257,6 @@ func (cluster *Cluster) RotatePasswords() error {
 				if u.User == cluster.GetRplUser() {
 					dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_rpl)
 				}
-
 			}
 			for _, s := range cluster.slaves {
 
@@ -263,6 +268,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				}
 
 			}
+
 			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() {
 				for _, pri := range cluster.Proxies {
 					if prx, ok := pri.(*ProxySQLProxy); ok {
@@ -285,7 +291,6 @@ func (cluster *Cluster) RotatePasswords() error {
 							}
 
 						}
-
 					}
 				}
 			}
@@ -295,16 +300,16 @@ func (cluster *Cluster) RotatePasswords() error {
 			}
 
 			if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {
-				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster. The new passwords value are encrypted in the overwrite config file"
+				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster. Check the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
 				cluster.LogPrintf("ALERT", msg)
-
 			}
 			if cluster.Conf.MailTo != "" {
-				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster. The new passwords value are encrypted in the overwrite config file"
+				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster.  Check the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
 				subj := "Password Rotation Replication-Manager"
 				alert := alert.Alert{}
 				go alert.EmailMessage(msg, subj, cluster.Conf)
 			}
+
 			cluster.LogPrintf(LvlInfo, "Password rotation is done.")
 			cluster.Save()
 		}
