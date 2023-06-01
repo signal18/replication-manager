@@ -1811,7 +1811,7 @@ func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, string, error
 	vars := make(map[string]Grant)
 	// password was remover from system table in mysql 8.0
 
-	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user"
+	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user where host<>'localhost' "
 	if myver.IsPPostgreSQL() {
 		query = "SELECT usename as user , '%' as host , 'unknow'  as password, 0 FROM pg_catalog.pg_user"
 	} else if (myver.IsMySQL() || myver.IsPercona()) && (myver.Major > 7 || (myver.Major == 5 && myver.Minor >= 7)) {
@@ -2761,7 +2761,7 @@ func DuplicateUserPassword(db *sqlx.DB, myver *MySQLVersion, old_user_name strin
 			return query, err
 		}
 		querygrant := strings.Replace(grant, old_user_name, new_user_name, 1)
-		query += querygrant
+		query += ";" + querygrant
 		_, err = db.Queryx(querygrant)
 		if err != nil {
 			return query, err
