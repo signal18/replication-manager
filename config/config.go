@@ -98,6 +98,7 @@ type Config struct {
 	LogHeartbeat                        bool   `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
 	LogSQLInMonitoring                  bool   `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
 	LogFailedElection                   bool   `mapstructure:"log-failed-election"  toml:"log-failed-election" json:"logFailedElection"`
+	LogGit                              bool   `mapstructure:"log-git" toml:"log-git" json:"logGit"`
 	User                                string `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                               string `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	HostsDelayed                        string `mapstructure:"replication-delayed-hosts" toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
@@ -1002,14 +1003,15 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 		Username: user, // yes, this can be anything except an empty string
 		Password: tok,
 	}
-
-	log.Printf("Clone from git : url %s, tok %s, dir %s\n", url, conf.PrintSecret(tok), dir)
+	if conf.LogGit {
+		log.Printf("Clone from git : url %s, tok %s, dir %s\n", url, conf.PrintSecret(tok), dir)
+	}
 
 	//fmt.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
 	if _, err := os.Stat(dir + "/.gitignore"); os.IsNotExist(err) {
 		file, err := os.Create(dir + "/.gitignore")
 		if err != nil {
-			if os.IsPermission(err) {
+			if os.IsPermission(err) && conf.LogGit {
 				log.Errorf("File permission denied: %s, %s", dir+".gitignore", err)
 			}
 		}
@@ -1023,14 +1025,14 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 
 		// We instantiate a new repository targeting the given path (the .git folder)
 		r, err := git.PlainOpen(path)
-		if err != nil {
+		if err != nil && conf.LogGit {
 			log.Errorf("Git error : cannot PlainOpen : %s", err)
 			return
 		}
 
 		// Get the working directory for the repository
 		w, err := r.Worktree()
-		if err != nil {
+		if err != nil && conf.LogGit {
 			log.Errorf("Git error : cannot Worktree : %s", err)
 			return
 		}
@@ -1042,7 +1044,7 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 			Auth:       auth,
 			RemoteURL:  url,
 		})
-		if err != nil && fmt.Sprintf("%v", err) != "already up-to-date" {
+		if err != nil && fmt.Sprintf("%v", err) != "already up-to-date" && conf.LogGit {
 			log.Errorf("Git error : cannot Pull : %s", err)
 		}
 
@@ -1056,7 +1058,7 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 			Auth:              auth,
 		})
 
-		if err != nil {
+		if err != nil && conf.LogGit {
 			log.Errorf("Git error : cannot Clone %s repository : %s", url, err)
 		}
 	}

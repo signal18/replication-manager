@@ -824,19 +824,21 @@ func (cluster *Cluster) Save() error {
 }
 
 func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, name string) {
-	cluster.LogPrintf(LvlDbg, "Push to git : tok %s, dir %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, name)
+	if cluster.Conf.LogGit {
+		cluster.LogPrintf(LvlInfo, "Push to git : tok %s, dir %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, name)
+	}
 	auth := &git_https.BasicAuth{
 		Username: user, // yes, this can be anything except an empty string
 		Password: tok,
 	}
 	path := dir
 	r, err := git.PlainOpen(path)
-	if err != nil {
+	if err != nil && cluster.Conf.LogGit {
 		cluster.LogPrintf(LvlInfo, "Git error : cannot PlainOpen : %s", err)
 	}
 
 	w, err := r.Worktree()
-	if err != nil {
+	if err != nil && cluster.Conf.LogGit {
 		cluster.LogPrintf(LvlInfo, "Git error : cannot Worktree : %s", err)
 	}
 
@@ -844,11 +846,11 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 
 	// Adds the new file to the staging area.
 	_, err = w.Add(name)
-	if err != nil {
+	if err != nil && cluster.Conf.LogGit {
 		log.Errorf("Git error : cannot Add %s : %s", name+".toml", err)
 	}
 	_, err = w.Add(name + "/" + name + ".toml")
-	if err != nil {
+	if err != nil && cluster.Conf.LogGit {
 		cluster.LogPrintf(LvlInfo, "Git error : cannot Add %s : %s", name+"/"+name+".toml", err)
 	}
 
@@ -859,13 +861,13 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 		},
 	})
 
-	if err != nil {
+	if err != nil && cluster.Conf.LogGit {
 		log.Errorf("Git error : cannot Commit : %s", err)
 	}
 
 	// push using default options
 	err = r.Push(&git.PushOptions{Auth: auth})
-	if err != nil {
+	if err != nil && cluster.Conf.LogGit {
 		cluster.LogPrintf(LvlInfo, "Git error : cannot Push : %s", err)
 
 	}
