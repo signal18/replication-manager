@@ -32,7 +32,7 @@ func NewMaxscaleProxy(placement int, cluster *Cluster, proxyHost string) *Maxsca
 	conf := cluster.Conf
 	prx := new(MaxscaleProxy)
 	prx.Type = config.ConstProxyMaxscale
-	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSMaxscalePartitions, conf.MxsHostsIPV6)
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSMaxscalePartitions, conf.MxsHostsIPV6, conf.MxsJanitorWeights)
 	prx.Port = conf.MxsPort
 	prx.User = conf.MxsUser
 	prx.Pass = conf.MxsPass
@@ -58,6 +58,7 @@ func (proxy *MaxscaleProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 	flags.BoolVar(&conf.MxsDisableMonitor, "maxscale-disable-monitor", false, "Disable maxscale monitoring and fully drive server state")
 	flags.StringVar(&conf.MxsGetInfoMethod, "maxscale-get-info-method", "maxadmin", "How to get infos from Maxscale maxinfo|maxadmin")
 	flags.StringVar(&conf.MxsHost, "maxscale-servers", "", "MaxScale hosts ")
+	flags.StringVar(&conf.MxsJanitorWeights, "maxscale-janitor-weights", "100", "Weight of each MariaDB maxscale inside janitor proxy")
 	flags.StringVar(&conf.MxsPort, "maxscale-port", "6603", "MaxScale admin port")
 	flags.StringVar(&conf.MxsUser, "maxscale-user", "admin", "MaxScale admin user")
 	flags.StringVar(&conf.MxsPass, "maxscale-pass", "mariadb", "MaxScale admin password")

@@ -35,7 +35,7 @@ type MariadbShardProxy struct {
 func NewMariadbShardProxy(placement int, cluster *Cluster, proxyHost string) *MariadbShardProxy {
 	conf := cluster.Conf
 	prx := new(MariadbShardProxy)
-	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSShardProxyPartitions, conf.MdbsHostsIPV6)
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSShardProxyPartitions, conf.MdbsHostsIPV6, conf.MdbsJanitorWeights)
 	prx.Type = config.ConstProxySpider
 	prx.Host, prx.Port = misc.SplitHostPort(proxyHost)
 	prx.User, prx.Pass = misc.SplitPair(cluster.Conf.GetDecryptedValue("shardproxy-credential"))
@@ -70,6 +70,7 @@ func NewMariadbShardProxy(placement int, cluster *Cluster, proxyHost string) *Ma
 func (proxy *MariadbShardProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.MdbsProxyOn, "shardproxy", false, "MariaDB Spider proxy")
 	flags.StringVar(&conf.MdbsProxyHosts, "shardproxy-servers", "127.0.0.1:3307", "MariaDB spider proxy hosts IP:Port,IP:Port")
+	flags.StringVar(&conf.MdbsJanitorWeights, "shardproxy-janitor-weights", "100", "Weight of each MariaDB spider host inside janitor proxy")
 	flags.StringVar(&conf.MdbsProxyCredential, "shardproxy-credential", "root:mariadb", "MariaDB spider proxy credential")
 	flags.BoolVar(&conf.MdbsProxyCopyGrants, "shardproxy-copy-grants", true, "Copy grants from shards master")
 	flags.BoolVar(&conf.MdbsProxyLoadSystem, "shardproxy-load-system", true, "Load Spider system tables")
