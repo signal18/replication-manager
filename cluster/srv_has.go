@@ -222,6 +222,10 @@ func (server *ServerMonitor) HasLogGeneral() bool {
 	return server.Variables["GENERAL_LOG"] == "ON"
 }
 
+func (server *ServerMonitor) HasUserStats() bool {
+	return server.Variables["USERSTAT"] == "ON"
+}
+
 func (server *ServerMonitor) HasMySQLGTID() bool {
 
 	if !(server.DBVersion.IsMySQL() || server.DBVersion.IsPercona()) {

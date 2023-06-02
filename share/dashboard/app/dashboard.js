@@ -1842,7 +1842,7 @@ function (
         $scope.openedAt = "";
       });
       $scope.getTablePct  = function (table,index) {
-        return ((table+index) /($scope.selectedCluster.dbTableSize + $scope.selectedCluster.dbTableSize + 1)*100).toFixed(2);
+        return ((table+index) /($scope.selectedCluster.workLoad.dbTableSize + $scope.selectedCluster.workLoad.dbTableSize + 1)*100).toFixed(2);
       };
 
 

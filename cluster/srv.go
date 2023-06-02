@@ -174,6 +174,7 @@ type ServerMonitor struct {
 	Agent                       string                       `json:"agent"`         //used to provision service in orchestrator
 	BinaryLogFiles              map[string]uint              `json:"binaryLogFiles"`
 	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
+	WorkLoad                    map[string]WorkLoad          `json:"workLoad"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 }
@@ -293,6 +294,12 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
 	server.ReloadSaveInfosVariables()
+
+	server.WorkLoad = make(map[string]WorkLoad)
+	server.CurrentWorkLoad()
+	server.WorkLoad["max"] = server.WorkLoad["current"]
+	server.WorkLoad["average"] = server.WorkLoad["current"]
+
 	/*if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
 		server.Conn, err = sqlx.Open("postgres", server.DSN)
 	} else {
@@ -577,9 +584,27 @@ func (server *ServerMonitor) ProcessFailedSlave() {
 	}
 }
 
+var first_time bool
+
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
 	var err error
+	/*
+		//to get busy_time to compute cpu_usage
+		var cpu_usage_dt int64
+		cpu_usage_dt = 10
+		var tmp_busy_time float64
+		tmp_busy_time = 0
+
+		if server.HasUserStats() && server.ClusterGroup.StateMachine.GetHeartbeats()%cpu_usage_dt != 0 {
+			//cpu_usage_variable, _, _ := dbhelper.GetCPUUsageFromUserStats(server.Conn)
+			//server.ClusterGroup.LogPrintf(LvlInfo, "COUCOU %s", cpu_usage_variable)
+			tmp_busy_time, _ = strconv.ParseFloat(server.WorkLoad["current"].BusyTime, 8)
+			//server.ClusterGroup.LogPrintf(LvlInfo, "COUCOU %f", tmp_busy_time)
+			first_time = true
+		}
+		//////
+	*/
 
 	if server.Conn == nil {
 		return errors.New("Connection is nil, server unreachable")
@@ -693,6 +718,9 @@ func (server *ServerMonitor) Refresh() error {
 				if server.GetCluster().GetTopology() != topoActivePassive && server.GetCluster().GetTopology() != topoMultiMasterWsrep {
 					server.CheckPrivileges()
 				}
+				server.CurrentWorkLoad()
+				server.AvgWorkLoad()
+				server.MaxWorkLoad()
 
 			} else {
 				server.ClusterGroup.StateMachine.PreserveState("ERR00007")
@@ -707,6 +735,10 @@ func (server *ServerMonitor) Refresh() error {
 				logs, err := server.SetEventScheduler(true)
 				server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Could not enable event scheduler on the  master")
 			}
+			/*
+				if server.ClusterGroup.StateMachine.GetHeartbeats()%cpu_usage_dt == 0 && server.HasUserStats() {
+					tmp_busy_time = server.CpuFromStatWorkLoad(tmp_busy_time, cpu_usage_dt)
+				}*/
 
 		} // end not postgress
 
@@ -1552,4 +1584,73 @@ func (server *ServerMonitor) StartGroupReplication() error {
 		return err
 	}
 	return nil
+}
+
+func (server *ServerMonitor) CurrentWorkLoad() {
+	new_current_WorkLoad := server.WorkLoad["current"]
+	new_current_WorkLoad.Connections = server.GetServerConnections()
+	new_current_WorkLoad.CpuTime = server.GetCPUUsageFromThreadsPool()
+	new_current_WorkLoad.QPS = server.QPS
+	server.WorkLoad["current"] = new_current_WorkLoad
+
+}
+
+func (server *ServerMonitor) AvgWorkLoad() {
+	new_avg_WorkLoad := server.WorkLoad["average"]
+	if server.WorkLoad["average"].Connections > 0 {
+		new_avg_WorkLoad.Connections = (server.GetServerConnections() + server.WorkLoad["average"].Connections) / 2
+	} else {
+		new_avg_WorkLoad.Connections = server.GetServerConnections()
+	}
+
+	if server.WorkLoad["average"].CpuTime > 0 {
+		new_avg_WorkLoad.CpuTime = (server.GetCPUUsageFromThreadsPool() + server.WorkLoad["average"].CpuTime) / 2
+	} else {
+		new_avg_WorkLoad.CpuTime = server.GetCPUUsageFromThreadsPool()
+	}
+
+	if server.WorkLoad["average"].QPS > 0 {
+		new_avg_WorkLoad.QPS = (server.QPS + server.WorkLoad["average"].QPS) / 2
+	} else {
+		new_avg_WorkLoad.QPS = server.WorkLoad["average"].QPS
+	}
+
+	server.WorkLoad["average"] = new_avg_WorkLoad
+}
+
+func (server *ServerMonitor) MaxWorkLoad() {
+	max_workLoad := server.WorkLoad["max"]
+	if server.GetServerConnections() > server.WorkLoad["max"].Connections {
+		max_workLoad.Connections = server.GetServerConnections()
+	}
+
+	if server.QPS > server.WorkLoad["max"].QPS {
+		max_workLoad.QPS = server.QPS
+	}
+
+	if server.GetCPUUsageFromThreadsPool() > server.WorkLoad["max"].CpuTime {
+		max_workLoad.CpuTime = server.GetCPUUsageFromThreadsPool()
+	}
+
+	server.WorkLoad["max"] = max_workLoad
+}
+
+func (server *ServerMonitor) CpuFromStatWorkLoad(tmp_busy_time float64, dt int64) float64 {
+	old_cpu_time := server.WorkLoad["current"].CpuTimeUserStats
+	current_workLoad := server.WorkLoad["current"]
+	current_workLoad.CpuTimeUserStats, tmp_busy_time, _ = server.GetCPUUsageFromStats(tmp_busy_time, dt)
+	server.WorkLoad["current"] = current_workLoad
+
+	if old_cpu_time != 0 {
+		avg_workLoad := server.WorkLoad["average"]
+		avg_workLoad.CpuTimeUserStats = (current_workLoad.CpuTimeUserStats + old_cpu_time) / 2
+		server.WorkLoad["average"] = avg_workLoad
+	}
+	if current_workLoad.CpuTimeUserStats > server.WorkLoad["max"].CpuTimeUserStats {
+		max_workLoad := server.WorkLoad["max"]
+		max_workLoad.CpuTimeUserStats = current_workLoad.CpuTimeUserStats
+		server.WorkLoad["max"] = max_workLoad
+
+	}
+	return tmp_busy_time
 }

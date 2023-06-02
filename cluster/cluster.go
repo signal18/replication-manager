@@ -101,10 +101,7 @@ type Cluster struct {
 	UptimeFailable                string                `json:"uptimeFailable"`
 	UptimeSemiSync                string                `json:"uptimeSemisync"`
 	MonitorSpin                   string                `json:"monitorSpin"`
-	DBTableSize                   int64                 `json:"dbTableSize"`
-	DBIndexSize                   int64                 `json:"dbIndexSize"`
-	Connections                   int                   `json:"connections"`
-	QPS                           int64                 `json:"qps"`
+	WorkLoad                      WorkLoad              `json:"workLoad"`
 	LogPushover                   *log.Logger           `json:"-"`
 	Log                           s18log.HttpLog        `json:"log"`
 	LogSlack                      *log.Logger           `json:"-"`
@@ -223,6 +220,16 @@ type Agent struct {
 	OsName       string `json:"osName"`
 	Status       string `json:"status"`
 	Version      string `json:"version"`
+}
+
+type WorkLoad struct {
+	DBTableSize      int64   `json:"dbTableSize"`
+	DBIndexSize      int64   `json:"dbIndexSize"`
+	Connections      int     `json:"connections"`
+	QPS              int64   `json:"qps"`
+	CpuTime          float64 `json:"cpuTime"`
+	CpuTimeUserStats float64 `json:"cpuTime"`
+	BusyTime         string
 }
 
 type Alerts struct {
@@ -1289,8 +1296,9 @@ func (cluster *Cluster) MonitorSchema() {
 			}
 		}
 	}
-	cluster.DBIndexSize = totindexsize
-	cluster.DBTableSize = tottablesize
+
+	cluster.WorkLoad.DBIndexSize = totindexsize
+	cluster.WorkLoad.DBTableSize = tottablesize
 	cluster.GetMaster().DictTables = tables
 	cluster.StateMachine.RemoveMonitorSchemaState()
 }
@@ -1414,7 +1422,7 @@ func (cluster *Cluster) ResetStates() {
 	cluster.SetFailoverCtr(0)
 	//cluster.FailoverTs = 0
 	cluster.SetFailTime(0)
-	cluster.Connections = 0
+	cluster.WorkLoad.Connections = 0
 	cluster.SLAHistory = nil
 	//
 	cluster.Crashes = nil

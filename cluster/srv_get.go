@@ -359,6 +359,11 @@ func (server *ServerMonitor) GetStatus() []dbhelper.Variable {
 	return status
 }
 
+func (server *ServerMonitor) GetServerConnections() int {
+	res, _ := strconv.Atoi(server.Status["THREADS_RUNNING"])
+	return res
+}
+
 func (server *ServerMonitor) GetStatusDelta() []dbhelper.Variable {
 	var delta []dbhelper.Variable
 	for k, v := range server.Status {
@@ -679,4 +684,38 @@ func (server *ServerMonitor) GetGroupReplicationLocalAddress() string {
 func (server *ServerMonitor) GetWsrepNodeAddress() string {
 	/*	strPort := "4567"*/
 	return server.Host /*+ ":" + strPort*/
+}
+
+func (server *ServerMonitor) GetCPUUsageFromStats(last_busy_time float64, dt int64) (float64, float64, error) {
+	if server.DBVersion.IsMariaDB() {
+
+		//if db using user_statistics, then we get cpu_usage from the user_statistics
+		if server.HasUserStats() {
+			res, _, err := dbhelper.GetCPUUsageFromUserStats(server.Conn)
+			if err == nil {
+				busy_time, _ := strconv.ParseFloat(res, 8)
+				if last_busy_time == 0 {
+					//fmt.Printf("COUCOU TEST %f", busy_time)
+					return busy_time, busy_time, nil
+				}
+				core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 8)
+				dt := float64(dt)
+				//return (busy_time - last_busy_time) / (core * 180), busy_time, nil
+				return (busy_time - last_busy_time) / (core * dt), busy_time, nil
+			}
+		}
+		return -1, last_busy_time, nil
+	}
+	return -1, last_busy_time, errors.New("Not mariaDB version, cannot compute cpu usage")
+}
+
+func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
+	if server.DBVersion.IsMariaDB() {
+		//we compute it from status
+		thread_idle, _ := strconv.ParseFloat(server.Status["THREADPOOL_IDLE_THREADS"], 8)
+		thread, _ := strconv.ParseFloat(server.Status["THREADPOOL_THREADS"], 8)
+		core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 8)
+		return (thread - thread_idle) / core
+	}
+	return -1
 }

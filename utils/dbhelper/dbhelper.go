@@ -679,6 +679,15 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 	return cm, nil
 }
 
+func GetCPUUsageFromUserStats(db *sqlx.DB) (string, string, error) {
+	db.MapperFunc(strings.Title)
+	var value string
+	value = ""
+	query := "select SUM(BUSY_TIME) FROM INFORMATION_SCHEMA.USER_STATISTICS"
+	err := db.QueryRowx(query).Scan(&value)
+	return value, query, err
+}
+
 func MariaDBVersion(server string) int {
 	if server == "" {
 		return 0

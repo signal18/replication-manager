@@ -49,8 +49,8 @@ func (cluster *Cluster) SetStatus() {
 	cluster.WaitingFailover = cluster.failoverCond.Len()
 	cluster.WaitingSwitchover = cluster.switchoverCond.Len()
 	if len(cluster.Servers) > 0 {
-		cluster.QPS = cluster.GetQps()
-		cluster.Connections = cluster.GetConnections()
+		cluster.WorkLoad.QPS = cluster.GetQps()
+		cluster.WorkLoad.Connections = cluster.GetConnections()
 	}
 }
 
