@@ -65,6 +65,7 @@ func (proxy *ProxyJanitor) Connect() (proxysql.ProxySQL, error) {
 		Host:     proxy.Host,
 		Port:     proxy.Port,
 		WriterHG: "0",
+		Weight:   "1",
 	}
 	var err error
 	err = psql.Connect()
@@ -137,6 +138,7 @@ func (proxy *ProxyJanitor) Init() {
 				}
 			} else {
 				//weight string, max_replication_lag string, max_connections string, compression string
+				psql.Weight = s.GetJanitorWeight()
 				err = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
 
 				if cluster.Conf.LogLevel > 2 || cluster.Conf.ProxysqlDebug {
@@ -220,6 +222,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 			}
 
 			if err != nil {
+				//	cluster.LogPrintf(LvlErr, "Backend %s:%s not found error:%s ", misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), err)
 				isFoundBackendWrite = false
 			} else {
 				proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
@@ -243,6 +246,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 						}
 					} else {
 						//scenario restart with failed leader
+						psql.Weight = s.GetJanitorWeight()
 						err = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
 					}
 					updated = true

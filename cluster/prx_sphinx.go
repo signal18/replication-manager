@@ -28,7 +28,7 @@ type SphinxProxy struct {
 func NewSphinxProxy(placement int, cluster *Cluster, proxyHost string) *SphinxProxy {
 	conf := cluster.Conf
 	prx := new(SphinxProxy)
-	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSSphinxPartitions, conf.SphinxHostsIPV6)
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSSphinxPartitions, conf.SphinxHostsIPV6, conf.SphinxJanitorWeights)
 	prx.Type = config.ConstProxySphinx
 
 	prx.Port = conf.SphinxQLPort
@@ -49,6 +49,7 @@ func NewSphinxProxy(placement int, cluster *Cluster, proxyHost string) *SphinxPr
 func (proxy *SphinxProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.SphinxOn, "sphinx", false, "Turn on SphinxSearch detection")
 	flags.StringVar(&conf.SphinxHosts, "sphinx-servers", "127.0.0.1", "SphinxSearch hosts")
+	flags.StringVar(&conf.SphinxJanitorWeights, "sphinx-janitor-weights", "100", "Weight of each Sphinx host inside janitor proxy")
 	flags.StringVar(&conf.SphinxPort, "sphinx-port", "9312", "SphinxSearch API port")
 	flags.StringVar(&conf.SphinxQLPort, "sphinx-sql-port", "9306", "SphinxSearch SQL port")
 	if runtime.GOOS == "linux" {

@@ -20,6 +20,7 @@ type ProxySQL struct {
 	WriterHG   string
 	ReaderHG   string
 	Queries    []StatsQueryDigest
+	Weight     string
 }
 
 type MapDigestHG struct {
@@ -86,7 +87,7 @@ func GetStatsQueryDigest(db *sqlx.DB) ([]StatsQueryDigest, string, error) {
 }
 
 func (psql *ProxySQL) AddHostgroups(clustername string) error {
-	sql := fmt.Sprintf("REPLACE INTO mysql_replication_hostgroups(writer_hostgroup, reader_hostgroup, comment) VALUES (%s,%s,'%s')", psql.WriterHG, psql.ReaderHG, clustername)
+	sql := "REPLACE INTO mysql_replication_hostgroups(writer_hostgroup, reader_hostgroup, comment) VALUES ('" + psql.WriterHG + "','" + psql.ReaderHG + "','" + clustername + "')"
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
@@ -98,7 +99,7 @@ func (psql *ProxySQL) AddServerAsReader(host string, port string, weight string,
 }
 
 func (psql *ProxySQL) AddServerAsWriter(host string, port string, use_ssl string) error {
-	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id,hostname, port,use_ssl) VALUES('%s','%s','%s','%s')", psql.WriterHG, host, port, use_ssl)
+	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id,hostname, port,use_ssl,weight) VALUES('%s','%s','%s','%s','%s')", psql.WriterHG, host, port, use_ssl, psql.Weight)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
@@ -155,12 +156,19 @@ func (psql *ProxySQL) GetHostgroupFromJanitorDomain(domain string) int {
 		if err2 == nil {
 			if !wgmax.Valid {
 				psql.WriterHG = "0"
+				psql.ReaderHG = "2000000000"
+				err := psql.AddHostgroups(domain)
+				fmt.Printf("%s", err)
 				psql.AddUser("dbass@"+domain, psql.Password)
+
 				//		sql = "COMMIT"
 				//	psql.Connection.QueryRow(sql)
 				return 0
 			} else {
 				psql.WriterHG = strconv.Itoa(int(wgmax.Int32))
+				psql.ReaderHG = strconv.Itoa(int(wgmax.Int32) + 2000000000)
+				err := psql.AddHostgroups(domain)
+				fmt.Printf("%s", err)
 				psql.AddUser("dbass@"+domain, psql.Password)
 				//		sql = "COMMIT"
 				//		psql.Connection.QueryRow(sql)
@@ -169,6 +177,7 @@ func (psql *ProxySQL) GetHostgroupFromJanitorDomain(domain string) int {
 		}
 	}
 	psql.WriterHG = strconv.Itoa(int(wg.Int32))
+	psql.ReaderHG = strconv.Itoa(int(wg.Int32) + 2000000000)
 	//	sql = "COMMIT"
 	//	psql.Connection.QueryRow(sql)
 

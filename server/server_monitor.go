@@ -193,11 +193,6 @@ func init() {
 
 	monitorCmd.Flags().StringVar(&conf.TeamsUrl, "alert-teams-url", "", "Teams url channel for alerts")
 
-	monitorCmd.Flags().BoolVar(&conf.RegistryConsul, "registry-consul", false, "Register write and read SRV DNS to consul")
-	monitorCmd.Flags().StringVar(&conf.RegistryConsulCredential, "registry-consul-credential", ":", "Consul credential user:password")
-	monitorCmd.Flags().StringVar(&conf.RegistryConsulToken, "registry-consul-token", "", "Consul Token")
-	monitorCmd.Flags().StringVar(&conf.RegistryHosts, "registry-servers", "127.0.0.1", "Comma-separated list of registry addresses")
-
 	conf.CheckType = "tcp"
 	monitorCmd.Flags().BoolVar(&conf.CheckReplFilter, "check-replication-filters", true, "Check that possible master have equal replication filters")
 	monitorCmd.Flags().BoolVar(&conf.CheckBinFilter, "check-binlog-filters", true, "Check that possible master have equal binlog filters")
@@ -320,6 +315,9 @@ func init() {
 
 	myproxyprx := new(cluster.MyProxyProxy)
 	myproxyprx.AddFlags(monitorCmd.Flags(), &conf)
+
+	consulprx := new(cluster.ConsulProxy)
+	consulprx.AddFlags(monitorCmd.Flags(), &conf)
 
 	if WithSpider == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")

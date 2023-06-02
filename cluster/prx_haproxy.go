@@ -31,7 +31,7 @@ type HaproxyProxy struct {
 func NewHaproxyProxy(placement int, cluster *Cluster, proxyHost string) *HaproxyProxy {
 	conf := cluster.Conf
 	prx := new(HaproxyProxy)
-	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSHaProxyPartitions, conf.HaproxyHostsIPV6)
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSHaProxyPartitions, conf.HaproxyHostsIPV6, conf.HaproxyJanitorWeights)
 	prx.Type = config.ConstProxyHaproxy
 	prx.Port = strconv.Itoa(conf.HaproxyAPIPort)
 	prx.ReadPort = conf.HaproxyReadPort
@@ -55,6 +55,7 @@ func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.StringVar(&conf.HaproxyUser, "haproxy-user", "admin", "Haproxy API user")
 	flags.StringVar(&conf.HaproxyPassword, "haproxy-password", "admin", "Haproxy API password")
 	flags.StringVar(&conf.HaproxyHosts, "haproxy-servers", "127.0.0.1", "HaProxy hosts")
+	flags.StringVar(&conf.HaproxyJanitorWeights, "haproxy-janitor-weights", "100", "Weight of each HaProxy host inside janitor proxy")
 	flags.IntVar(&conf.HaproxyAPIPort, "haproxy-api-port", 1999, "HaProxy runtime api port")
 	flags.IntVar(&conf.HaproxyWritePort, "haproxy-write-port", 3306, "HaProxy read-write port to leader")
 	flags.IntVar(&conf.HaproxyReadPort, "haproxy-read-port", 3307, "HaProxy load balance read port to all nodes")

@@ -31,16 +31,21 @@ func (proxy *Proxy) SetServiceName(namespace string) {
 	proxy.ServiceName = namespace + "/svc/" + proxy.Name
 }
 
-func (proxy *Proxy) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string, ProxysqlHostsIPV6 string) {
+func (proxy *Proxy) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string, ProxysqlHostsIPV6 string, Weights string) {
 	slapospartitions := strings.Split(SlapOSDBPartitions, ",")
 	agents := strings.Split(ProvAgents, ",")
 	ipv6hosts := strings.Split(ProxysqlHostsIPV6, ",")
+	weights := strings.Split(Weights, ",")
 	if k < len(slapospartitions) {
 		proxy.SlapOSDatadir = slapospartitions[k]
 	}
 	if ProvAgents != "" {
 		proxy.Agent = agents[k%len(agents)]
 	}
+	if Weights != "" {
+		proxy.Weight = weights[k%len(weights)]
+	}
+
 	if k < len(ipv6hosts) {
 		proxy.HostIPV6 = ipv6hosts[k]
 	}

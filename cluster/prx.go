@@ -64,6 +64,7 @@ type Proxy struct {
 	Variables       map[string]string    `json:"-"`
 	ServiceName     string               `json:"serviceName"`
 	Agent           string               `json:"agent"`
+	Weight          string               `json:"weight"`
 }
 
 type DatabaseProxy interface {
@@ -110,6 +111,7 @@ type DatabaseProxy interface {
 	IsFilterInTags(filter string) bool
 	IsDown() bool
 	GetProxyConfig() string
+	GetJanitorWeight() string
 	// GetInitContainer(collector opensvc.Collector) string
 	GetBindAddress() string
 	GetBindAddressExtraIPV6() string

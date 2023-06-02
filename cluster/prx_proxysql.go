@@ -33,7 +33,7 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
 	prx.ReadPort, _ = strconv.Atoi(conf.ProxysqlPort)
 
-	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSProxySQLPartitions, conf.ProxysqlHostsIPV6)
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSProxySQLPartitions, conf.ProxysqlHostsIPV6, conf.ProxysqlJanitorWeights)
 
 	if conf.ProvNetCNI {
 		if conf.ClusterHead == "" {
@@ -54,6 +54,7 @@ func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 	flags.BoolVar(&conf.ProxysqlSaveToDisk, "proxysql-save-to-disk", false, "Save proxysql change to sqllight")
 	flags.StringVar(&conf.ProxysqlHosts, "proxysql-servers", "", "ProxySQL hosts")
 	flags.StringVar(&conf.ProxysqlHostsIPV6, "proxysql-servers-ipv6", "", "ProxySQL extra IPV6 bind for interfaces")
+	flags.StringVar(&conf.ProxysqlJanitorWeights, "proxysql-janitor-weights", "100", "Weight of each proxysql host inside janitor proxy")
 	flags.StringVar(&conf.ProxysqlPort, "proxysql-port", "3306", "ProxySQL read/write proxy port")
 	flags.StringVar(&conf.ProxysqlAdminPort, "proxysql-admin-port", "6032", "ProxySQL admin interface port")
 	flags.StringVar(&conf.ProxysqlReaderHostgroup, "proxysql-reader-hostgroup", "1", "ProxySQL reader hostgroup")
@@ -77,6 +78,7 @@ func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 		Port:     proxy.Port,
 		WriterHG: fmt.Sprintf("%d", proxy.WriterHostgroup),
 		ReaderHG: fmt.Sprintf("%d", proxy.ReaderHostgroup),
+		Weight:   proxy.Weight,
 	}
 
 	var err error

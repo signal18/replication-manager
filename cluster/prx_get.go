@@ -72,6 +72,10 @@ func (prx *Proxy) GetClusterConnection() (*sqlx.DB, error) {
 
 }
 
+func (proxy *Proxy) GetJanitorWeight() string {
+	return proxy.Weight
+}
+
 func (proxy *Proxy) GetProxyConfig() string {
 	proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
 	err := proxy.ClusterGroup.Configurator.GenerateProxyConfig(proxy.Datadir, proxy.ClusterGroup.Conf.WorkingDir+"/"+proxy.ClusterGroup.Name, proxy.GetEnv())

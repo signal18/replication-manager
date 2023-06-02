@@ -16,10 +16,19 @@ import (
 	"github.com/micro/go-micro/registry"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/spf13/pflag"
 )
 
 type ConsulProxy struct {
 	Proxy
+}
+
+func (proxy *ConsulProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
+	flags.BoolVar(&conf.RegistryConsul, "registry-consul", false, "Register write and read SRV DNS to consul")
+	flags.StringVar(&conf.RegistryConsulCredential, "registry-consul-credential", ":", "Consul credential user:password")
+	flags.StringVar(&conf.RegistryConsulToken, "registry-consul-token", "", "Consul Token")
+	flags.StringVar(&conf.RegistryConsulHosts, "registry-servers", "127.0.0.1", "Comma-separated list of registry addresses")
+	flags.StringVar(&conf.RegistryConsulJanitorWeights, "registry-consul-weights", "100", "Weight of each proxysql host inside janitor proxy")
 }
 
 func NewConsulProxy(placement int, cluster *Cluster, proxyHost string) *ConsulProxy {
@@ -36,7 +45,7 @@ func NewConsulProxy(placement int, cluster *Cluster, proxyHost string) *ConsulPr
 	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
 	prx.ReadPort, _ = strconv.Atoi(conf.ProxysqlPort)
 
-	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSProxySQLPartitions, conf.ProxysqlHostsIPV6)
+	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSProxySQLPartitions, conf.ProxysqlHostsIPV6, conf.RegistryConsulJanitorWeights)
 
 	if conf.ProvNetCNI {
 		if conf.ClusterHead == "" {
@@ -58,7 +67,7 @@ func (proxy *ConsulProxy) Init() {
 	if cluster.Conf.RegistryConsul == false || cluster.IsActive() == false {
 		return
 	}
-	opt.Addrs = strings.Split(cluster.Conf.RegistryHosts, ",")
+	opt.Addrs = strings.Split(cluster.Conf.RegistryConsulHosts, ",")
 	//DefaultRegistry()
 	//opt := registry.DefaultRegistry
 	reg := registry.NewRegistry()
