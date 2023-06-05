@@ -591,7 +591,7 @@ func (server *ServerMonitor) Refresh() error {
 	var err error
 
 	var cpu_usage_dt int64
-	cpu_usage_dt = 30
+	cpu_usage_dt = 15
 
 	if server.Conn == nil {
 		return errors.New("Connection is nil, server unreachable")
@@ -725,7 +725,6 @@ func (server *ServerMonitor) Refresh() error {
 
 			if server.ClusterGroup.StateMachine.GetHeartbeats()%cpu_usage_dt == 0 && server.HasUserStats() {
 				start_time = server.CpuFromStatWorkLoad(start_time)
-				//server.ClusterGroup.LogPrintf(LvlInfo, "COUCOU :%s, %f, %v", server.WorkLoad["current"].BusyTime, server.WorkLoad["current"].CpuTimeUserStats, start_time)
 			}
 
 		} // end not postgress
@@ -1577,7 +1576,7 @@ func (server *ServerMonitor) StartGroupReplication() error {
 func (server *ServerMonitor) CurrentWorkLoad() {
 	new_current_WorkLoad := server.WorkLoad["current"]
 	new_current_WorkLoad.Connections = server.GetServerConnections()
-	new_current_WorkLoad.CpuTime = server.GetCPUUsageFromThreadsPool()
+	new_current_WorkLoad.CpuThreadPool = server.GetCPUUsageFromThreadsPool()
 	new_current_WorkLoad.QPS = server.QPS
 	server.WorkLoad["current"] = new_current_WorkLoad
 
@@ -1591,10 +1590,10 @@ func (server *ServerMonitor) AvgWorkLoad() {
 		new_avg_WorkLoad.Connections = server.GetServerConnections()
 	}
 
-	if server.WorkLoad["average"].CpuTime > 0 {
-		new_avg_WorkLoad.CpuTime = (server.GetCPUUsageFromThreadsPool() + server.WorkLoad["average"].CpuTime) / 2
+	if server.WorkLoad["average"].CpuThreadPool > 0 {
+		new_avg_WorkLoad.CpuThreadPool = (server.GetCPUUsageFromThreadsPool() + server.WorkLoad["average"].CpuThreadPool) / 2
 	} else {
-		new_avg_WorkLoad.CpuTime = server.GetCPUUsageFromThreadsPool()
+		new_avg_WorkLoad.CpuThreadPool = server.GetCPUUsageFromThreadsPool()
 	}
 
 	if server.WorkLoad["average"].QPS > 0 {
@@ -1616,8 +1615,8 @@ func (server *ServerMonitor) MaxWorkLoad() {
 		max_workLoad.QPS = server.QPS
 	}
 
-	if server.GetCPUUsageFromThreadsPool() > server.WorkLoad["max"].CpuTime {
-		max_workLoad.CpuTime = server.GetCPUUsageFromThreadsPool()
+	if server.GetCPUUsageFromThreadsPool() > server.WorkLoad["max"].CpuThreadPool {
+		max_workLoad.CpuThreadPool = server.GetCPUUsageFromThreadsPool()
 	}
 
 	server.WorkLoad["max"] = max_workLoad
@@ -1626,21 +1625,21 @@ func (server *ServerMonitor) MaxWorkLoad() {
 func (server *ServerMonitor) CpuFromStatWorkLoad(start_time time.Time) time.Time {
 	if server.WorkLoad["current"].BusyTime != "" {
 
-		old_cpu_time := server.WorkLoad["current"].CpuTimeUserStats
+		old_cpu_time := server.WorkLoad["current"].CpuUserStats
 		current_workLoad := server.WorkLoad["current"]
 		new_cpu_usage, _ := server.GetCPUUsageFromStats(start_time)
 		current_workLoad.BusyTime, _ = server.GetBusyTimeFromStats()
-		current_workLoad.CpuTimeUserStats = new_cpu_usage
+		current_workLoad.CpuUserStats = new_cpu_usage
 		server.WorkLoad["current"] = current_workLoad
 
 		if old_cpu_time != 0 {
 			avg_workLoad := server.WorkLoad["average"]
-			avg_workLoad.CpuTimeUserStats = (current_workLoad.CpuTimeUserStats + old_cpu_time) / 2
+			avg_workLoad.CpuUserStats = (current_workLoad.CpuUserStats + old_cpu_time) / 2
 			server.WorkLoad["average"] = avg_workLoad
 		}
-		if current_workLoad.CpuTimeUserStats > server.WorkLoad["max"].CpuTimeUserStats {
+		if current_workLoad.CpuUserStats > server.WorkLoad["max"].CpuUserStats {
 			max_workLoad := server.WorkLoad["max"]
-			max_workLoad.CpuTimeUserStats = current_workLoad.CpuTimeUserStats
+			max_workLoad.CpuUserStats = current_workLoad.CpuUserStats
 			server.WorkLoad["max"] = max_workLoad
 
 		}

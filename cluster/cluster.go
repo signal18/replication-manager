@@ -223,13 +223,13 @@ type Agent struct {
 }
 
 type WorkLoad struct {
-	DBTableSize      int64   `json:"dbTableSize"`
-	DBIndexSize      int64   `json:"dbIndexSize"`
-	Connections      int     `json:"connections"`
-	QPS              int64   `json:"qps"`
-	CpuTime          float64 `json:"cpuTime"`
-	CpuTimeUserStats float64 `json:"cpuTime"`
-	BusyTime         string
+	DBTableSize   int64   `json:"dbTableSize"`
+	DBIndexSize   int64   `json:"dbIndexSize"`
+	Connections   int     `json:"connections"`
+	QPS           int64   `json:"qps"`
+	CpuThreadPool float64 `json:"cpuThreadPool"`
+	CpuUserStats  float64 `json:"cpuUserStats"`
+	BusyTime      string
 }
 
 type Alerts struct {
@@ -1423,6 +1423,8 @@ func (cluster *Cluster) ResetStates() {
 	//cluster.FailoverTs = 0
 	cluster.SetFailTime(0)
 	cluster.WorkLoad.Connections = 0
+	cluster.WorkLoad.CpuThreadPool = 0.0
+	cluster.WorkLoad.CpuUserStats = 0.0
 	cluster.SLAHistory = nil
 	//
 	cluster.Crashes = nil

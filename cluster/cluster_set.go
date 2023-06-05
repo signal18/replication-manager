@@ -51,6 +51,8 @@ func (cluster *Cluster) SetStatus() {
 	if len(cluster.Servers) > 0 {
 		cluster.WorkLoad.QPS = cluster.GetQps()
 		cluster.WorkLoad.Connections = cluster.GetConnections()
+		cluster.WorkLoad.CpuThreadPool = cluster.GetCpuTime()
+		cluster.WorkLoad.CpuUserStats = cluster.GetCpuTimeFromStat()
 	}
 }
 

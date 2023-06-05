@@ -690,7 +690,6 @@ func (server *ServerMonitor) GetCPUUsageFromStats(t time.Time) (float64, error) 
 	last_busy_time, _ := strconv.ParseFloat(server.WorkLoad["current"].BusyTime, 8)
 	t_now := time.Now()
 	elapsed := t_now.Sub(t).Seconds()
-	//server.ClusterGroup.LogPrintf(LvlErr, "COUCOU test cpuformstats time : %v, %v, %v", elapsed, t, t_now)
 	if server.DBVersion.IsMariaDB() && last_busy_time != 0 {
 
 		//if db using user_statistics, then we get cpu_usage from the user_statistics
