@@ -1,4 +1,4 @@
-FROM golang:1.16-buster as builder
+FROM golang:1.20-bullseye as builder
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
