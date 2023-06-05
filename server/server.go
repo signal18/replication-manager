@@ -7,6 +7,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/spf13/viper"
+	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 
 	log "github.com/sirupsen/logrus"
@@ -42,6 +44,8 @@ import (
 	"github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
+
+	"github.com/coreos/go-oidc/v3/oidc"
 )
 
 var RepMan *ReplicationManager
@@ -94,6 +98,9 @@ type ReplicationManager struct {
 	grpcWrapped                                      *grpcweb.WrappedGrpcServer `json:"-"`
 	V3Up                                             chan bool                  `json:"-"`
 	v3Config                                         Repmanv3Config             `json:"-"`
+	OAuthConfig                                      oauth2.Config              `json:"-"`
+	OAuthProvider                                    oidc.Provider              `json:"-"`
+	OAuthContext                                     context.Context            `json:"-"`
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -786,6 +793,20 @@ func (repman *ReplicationManager) Run() error {
 			log.WithError(err).Error("Can't init log file")
 		}
 		log.AddHook(hook)
+	}
+
+	repman.OAuthContext = context.Background()
+	Provider, err := oidc.NewProvider(repman.OAuthContext, "https://gitlab.signal18.io")
+	if err != nil {
+		log.Fatal(err)
+	}
+	repman.OAuthProvider = *Provider
+	repman.OAuthConfig = oauth2.Config{
+		ClientID:     "5f3f1b3455357db6d3bc5dc7fc6c268b117ed1145e50a779f48eb86c278e10fd",
+		ClientSecret: "8bd642567bbeeb08c837e672dc704eeb3f21cf1b3202ea8ec98e93a2e5463b1e",
+		Endpoint:     repman.OAuthProvider.Endpoint(),
+		RedirectURL:  "https://127.0.0.1:10005/api/auth/callback",
+		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 	}
 
 	if !repman.Conf.Daemon {

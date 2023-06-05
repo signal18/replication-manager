@@ -8,9 +8,11 @@ package server
 
 import (
 	"bytes"
+	"crypto/rand"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -23,8 +25,10 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/oauth2"
 
 	"github.com/codegangsta/negroni"
+	"github.com/coreos/go-oidc/v3/oidc"
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gorilla/mux"
@@ -147,6 +151,9 @@ func (repman *ReplicationManager) apiserver() {
 
 	router.HandleFunc("/api/login", repman.loginHandler)
 	//router.Handle("/api", v3.NewHandler("My API", "/swagger.json", "/api"))
+	router.HandleFunc("/api/auth", repman.handlerMuxAuth)
+
+	router.HandleFunc("/api/auth/callback", repman.handlerMuxAuthCallback)
 
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
@@ -172,6 +179,7 @@ func (repman *ReplicationManager) apiserver() {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
 	))
+
 	router.Handle("/api/monitor/actions/adduser/{userName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddUser)),
@@ -345,6 +353,81 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	//create a rsa 256 signer
 
+}
+
+func (repman *ReplicationManager) handlerMuxAuth(w http.ResponseWriter, r *http.Request) {
+
+	b := make([]byte, 16)
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	state := base64.RawURLEncoding.EncodeToString(b)
+
+	c := &http.Cookie{
+		Name:     "state",
+		Value:    state,
+		MaxAge:   int(time.Hour.Seconds()),
+		Secure:   r.TLS != nil,
+		HttpOnly: true,
+	}
+	http.SetCookie(w, c)
+
+	http.Redirect(w, r, repman.OAuthConfig.AuthCodeURL(state), http.StatusFound)
+	log.Printf("Cookie state is generated")
+}
+
+func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, r *http.Request) {
+	/*state, err := r.Cookie("state")
+	if err != nil {
+		http.Error(w, "state not found", http.StatusBadRequest)
+		return
+	}
+	if r.URL.Query().Get("state") != state.Value {
+		http.Error(w, "state did not match", http.StatusBadRequest)
+		return
+	}*/
+
+	oauth2Token, err := repman.OAuthConfig.Exchange(repman.OAuthContext, r.URL.Query().Get("code"))
+	if err != nil {
+		http.Error(w, "Failed to exchange token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	userInfo, err := repman.OAuthProvider.UserInfo(repman.OAuthContext, oauth2.StaticTokenSource(oauth2Token))
+	if err != nil {
+		http.Error(w, "Failed to get userinfo: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := struct {
+		OAuth2Token *oauth2.Token
+		UserInfo    *oidc.UserInfo
+	}{oauth2Token, userInfo}
+
+	r.Header.Get("Accept")
+
+	repman.jsonResponse(resp, w)
+	return
+
+	/*data, err := json.MarshalIndent(resp, "", "    ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	//w.Write(data)
+
+	resp := token{data}
+	if strings.Contains(specs, "text/html") {
+		w.Write([]byte(tokenString))
+		return
+	}
+
+	repman.jsonResponse(resp, w)
+	return
+
+	http.Error(w, "COUCOU auth succes", http.StatusBadRequest)*/
 }
 
 //AUTH TOKEN VALIDATION
