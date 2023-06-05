@@ -584,27 +584,14 @@ func (server *ServerMonitor) ProcessFailedSlave() {
 	}
 }
 
-var first_time bool
+var start_time time.Time
 
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
 	var err error
-	/*
-		//to get busy_time to compute cpu_usage
-		var cpu_usage_dt int64
-		cpu_usage_dt = 10
-		var tmp_busy_time float64
-		tmp_busy_time = 0
 
-		if server.HasUserStats() && server.ClusterGroup.StateMachine.GetHeartbeats()%cpu_usage_dt != 0 {
-			//cpu_usage_variable, _, _ := dbhelper.GetCPUUsageFromUserStats(server.Conn)
-			//server.ClusterGroup.LogPrintf(LvlInfo, "COUCOU %s", cpu_usage_variable)
-			tmp_busy_time, _ = strconv.ParseFloat(server.WorkLoad["current"].BusyTime, 8)
-			//server.ClusterGroup.LogPrintf(LvlInfo, "COUCOU %f", tmp_busy_time)
-			first_time = true
-		}
-		//////
-	*/
+	var cpu_usage_dt int64
+	cpu_usage_dt = 30
 
 	if server.Conn == nil {
 		return errors.New("Connection is nil, server unreachable")
@@ -735,10 +722,11 @@ func (server *ServerMonitor) Refresh() error {
 				logs, err := server.SetEventScheduler(true)
 				server.ClusterGroup.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Could not enable event scheduler on the  master")
 			}
-			/*
-				if server.ClusterGroup.StateMachine.GetHeartbeats()%cpu_usage_dt == 0 && server.HasUserStats() {
-					tmp_busy_time = server.CpuFromStatWorkLoad(tmp_busy_time, cpu_usage_dt)
-				}*/
+
+			if server.ClusterGroup.StateMachine.GetHeartbeats()%cpu_usage_dt == 0 && server.HasUserStats() {
+				start_time = server.CpuFromStatWorkLoad(start_time)
+				//server.ClusterGroup.LogPrintf(LvlInfo, "COUCOU :%s, %f, %v", server.WorkLoad["current"].BusyTime, server.WorkLoad["current"].CpuTimeUserStats, start_time)
+			}
 
 		} // end not postgress
 
@@ -1635,22 +1623,33 @@ func (server *ServerMonitor) MaxWorkLoad() {
 	server.WorkLoad["max"] = max_workLoad
 }
 
-func (server *ServerMonitor) CpuFromStatWorkLoad(tmp_busy_time float64, dt int64) float64 {
-	old_cpu_time := server.WorkLoad["current"].CpuTimeUserStats
-	current_workLoad := server.WorkLoad["current"]
-	current_workLoad.CpuTimeUserStats, tmp_busy_time, _ = server.GetCPUUsageFromStats(tmp_busy_time, dt)
-	server.WorkLoad["current"] = current_workLoad
+func (server *ServerMonitor) CpuFromStatWorkLoad(start_time time.Time) time.Time {
+	if server.WorkLoad["current"].BusyTime != "" {
 
-	if old_cpu_time != 0 {
-		avg_workLoad := server.WorkLoad["average"]
-		avg_workLoad.CpuTimeUserStats = (current_workLoad.CpuTimeUserStats + old_cpu_time) / 2
-		server.WorkLoad["average"] = avg_workLoad
-	}
-	if current_workLoad.CpuTimeUserStats > server.WorkLoad["max"].CpuTimeUserStats {
-		max_workLoad := server.WorkLoad["max"]
-		max_workLoad.CpuTimeUserStats = current_workLoad.CpuTimeUserStats
-		server.WorkLoad["max"] = max_workLoad
+		old_cpu_time := server.WorkLoad["current"].CpuTimeUserStats
+		current_workLoad := server.WorkLoad["current"]
+		new_cpu_usage, _ := server.GetCPUUsageFromStats(start_time)
+		current_workLoad.BusyTime, _ = server.GetBusyTimeFromStats()
+		current_workLoad.CpuTimeUserStats = new_cpu_usage
+		server.WorkLoad["current"] = current_workLoad
 
+		if old_cpu_time != 0 {
+			avg_workLoad := server.WorkLoad["average"]
+			avg_workLoad.CpuTimeUserStats = (current_workLoad.CpuTimeUserStats + old_cpu_time) / 2
+			server.WorkLoad["average"] = avg_workLoad
+		}
+		if current_workLoad.CpuTimeUserStats > server.WorkLoad["max"].CpuTimeUserStats {
+			max_workLoad := server.WorkLoad["max"]
+			max_workLoad.CpuTimeUserStats = current_workLoad.CpuTimeUserStats
+			server.WorkLoad["max"] = max_workLoad
+
+		}
+		return time.Now()
+
+	} else {
+		current_workLoad := server.WorkLoad["current"]
+		current_workLoad.BusyTime, _ = server.GetBusyTimeFromStats()
+		server.WorkLoad["current"] = current_workLoad
+		return time.Now()
 	}
-	return tmp_busy_time
 }

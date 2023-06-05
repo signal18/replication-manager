@@ -686,27 +686,41 @@ func (server *ServerMonitor) GetWsrepNodeAddress() string {
 	return server.Host /*+ ":" + strPort*/
 }
 
-func (server *ServerMonitor) GetCPUUsageFromStats(last_busy_time float64, dt int64) (float64, float64, error) {
-	if server.DBVersion.IsMariaDB() {
+func (server *ServerMonitor) GetCPUUsageFromStats(t time.Time) (float64, error) {
+	last_busy_time, _ := strconv.ParseFloat(server.WorkLoad["current"].BusyTime, 8)
+	t_now := time.Now()
+	elapsed := t_now.Sub(t).Seconds()
+	//server.ClusterGroup.LogPrintf(LvlErr, "COUCOU test cpuformstats time : %v, %v, %v", elapsed, t, t_now)
+	if server.DBVersion.IsMariaDB() && last_busy_time != 0 {
 
 		//if db using user_statistics, then we get cpu_usage from the user_statistics
 		if server.HasUserStats() {
 			res, _, err := dbhelper.GetCPUUsageFromUserStats(server.Conn)
 			if err == nil {
 				busy_time, _ := strconv.ParseFloat(res, 8)
-				if last_busy_time == 0 {
-					//fmt.Printf("COUCOU TEST %f", busy_time)
-					return busy_time, busy_time, nil
-				}
 				core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 8)
-				dt := float64(dt)
-				//return (busy_time - last_busy_time) / (core * 180), busy_time, nil
-				return (busy_time - last_busy_time) / (core * dt), busy_time, nil
+				return (busy_time - last_busy_time) / (core * elapsed), nil
 			}
 		}
-		return -1, last_busy_time, nil
+		return 0, nil
 	}
-	return -1, last_busy_time, errors.New("Not mariaDB version, cannot compute cpu usage")
+	return 0, errors.New("Not mariaDB version, cannot compute cpu usage")
+}
+
+func (server *ServerMonitor) GetBusyTimeFromStats() (string, error) {
+	if server.DBVersion.IsMariaDB() {
+
+		//if db using user_statistics, then we get cpu_usage from the user_statistics
+		if server.HasUserStats() {
+			res, _, err := dbhelper.GetCPUUsageFromUserStats(server.Conn)
+			if err == nil {
+
+				return res, nil
+			}
+		}
+		return "", nil
+	}
+	return "", errors.New("Not mariaDB version, cannot compute cpu usage")
 }
 
 func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
