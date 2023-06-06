@@ -28,7 +28,6 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/codegangsta/negroni"
-	"github.com/coreos/go-oidc/v3/oidc"
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/dgrijalva/jwt-go/request"
 	"github.com/gorilla/mux"
@@ -265,7 +264,13 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 		mycutinfo := userinfo.(map[string]interface{})
 		meuser := mycutinfo["Name"].(string)
 		mepwd := mycutinfo["Password"].(string)
-		return cluster.IsValidACL(meuser, mepwd, r.URL.Path)
+
+		if strings.Contains(mycutinfo["profile"].(string), "https://gitlab.signal18.io") /*&& strings.Contains(mycutinfo["email_verified"]*/ {
+			meuser = mycutinfo["email"].(string)
+			return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc")
+		}
+
+		return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "password")
 	}
 	return false
 }
@@ -307,13 +312,13 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
-		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path) {
+		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path, "oidc") {
 			signer := jwt.New(jwt.SigningMethodRS256)
 			claims := signer.Claims.(jwt.MapClaims)
 			//set claims
 			claims["iss"] = "https://api.replication-manager.signal18.io"
 			claims["iat"] = time.Now().Unix()
-			claims["exp"] = time.Now().Add(time.Minute * 120).Unix()
+			claims["exp"] = time.Now().Add(time.Hour * 48).Unix()
 			claims["jti"] = "1" // should be user ID(?)
 			claims["CustomUserInfo"] = struct {
 				Name     string
@@ -401,34 +406,85 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 		return
 	}
 
-	resp := struct {
-		OAuth2Token *oauth2.Token
-		UserInfo    *oidc.UserInfo
-	}{oauth2Token, userInfo}
-
+	/*	resp := struct {
+			OAuth2Token *oauth2.Token
+			UserInfo    *oidc.UserInfo
+		}{oauth2Token, userInfo}
+	*/
+	//	repman.jsonResponse(resp, w)
 	r.Header.Get("Accept")
 
-	repman.jsonResponse(resp, w)
-	return
+	//w.Write([]byte(resp.OAuth2Token))
+	//	resp := token{resp.OAuth2Token}
+	//w.Write(resp)
+	//return
 
-	/*data, err := json.MarshalIndent(resp, "", "    ")
+	for _, cluster := range repman.Clusters {
+		//validate user credentials
+		if cluster.IsValidACL(userInfo.Email, cluster.APIUsers[userInfo.Email].Password, r.URL.Path, "oidc") {
+			signer := jwt.New(jwt.SigningMethodRS256)
+			claims := signer.Claims.(jwt.MapClaims)
+			//set claims
+			claims["iss"] = "https://api.replication-manager.signal18.io"
+			claims["iat"] = time.Now().Unix()
+			claims["exp"] = time.Now().Add(time.Hour * 48).Unix()
+			claims["jti"] = "1" // should be user ID(?)
+			claims["CustomUserInfo"] = struct {
+				Name     string
+				Role     string
+				Password string
+			}{userInfo.Email, "Member", cluster.APIUsers[userInfo.Email].Password}
+			signer.Claims = claims
+			sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+			//sk, _ := jwt.ParseRSAPublicKeyFromPEM(signingKey)
+
+			tokenString, err := signer.SignedString(sk)
+
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintln(w, "Error while signing the token")
+				log.Printf("Error signing token: %v\n", err)
+			}
+
+			//create a token instance using the token string
+
+			specs := r.Header.Get("Accept")
+			resp := token{tokenString}
+			if strings.Contains(specs, "text/html") {
+				w.Write([]byte(tokenString))
+				return
+			}
+
+			repman.jsonResponse(resp, w)
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusForbidden)
+	fmt.Println("Error logging in")
+	fmt.Fprint(w, "Invalid credentials")
+	return
+}
+
+/*
+	data, err := json.MarshalIndent(resp, "", "    ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	//w.Write(data)
+	w.Write(data)
 
-	resp := token{data}
+		resp := token{data}
 	if strings.Contains(specs, "text/html") {
 		w.Write([]byte(tokenString))
 		return
 	}
 
-	repman.jsonResponse(resp, w)
+	//repman.jsonResponse(resp, w)
 	return
 
-	http.Error(w, "COUCOU auth succes", http.StatusBadRequest)*/
-}
+	http.Error(w, "COUCOU auth succes", http.StatusBadRequest)
+}*/
 
 //AUTH TOKEN VALIDATION
 
