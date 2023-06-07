@@ -289,11 +289,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.Confs = confs
 
 	cluster.Conf = confs.ConfInit
-	k, _ := cluster.Conf.LoadEncrytionKey()
-	if k == nil {
-		cluster.LogPrintf(LvlInfo, "No existing password encryption key")
-		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
-	}
+
 	cluster.tlog = tlog
 	cluster.htlog = loghttp
 	cluster.termlength = termlength
@@ -302,7 +298,11 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.runUUID = runUUID
 	cluster.repmgrHostname = repmgrHostname
 	cluster.repmgrVersion = repmgrVersion
-
+	k, _ := cluster.Conf.LoadEncrytionKey()
+	if k == nil {
+		cluster.LogPrintf(LvlInfo, "No existing password encryption key")
+		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
+	}
 	cluster.InitFromConf()
 
 	return nil
