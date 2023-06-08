@@ -144,6 +144,7 @@ type Cluster struct {
 	exitMsg                   string                      `json:"-"`
 	exit                      bool                        `json:"-"`
 	canFlashBack              bool                        `json:"-"`
+	canResticFetchRepo        bool                        `json:"-"`
 	failoverCond              *nbc.NonBlockingChan        `json:"-"`
 	switchoverCond            *nbc.NonBlockingChan        `json:"-"`
 	rejoinCond                *nbc.NonBlockingChan        `json:"-"`
@@ -319,6 +320,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.altertableCond = nbc.New()
 	cluster.canFlashBack = true
 	cluster.CanInitNodes = true
+	cluster.canResticFetchRepo = true
 	cluster.CanConnectVault = true
 	cluster.runOnceAfterTopology = true
 	cluster.testStopCluster = true
@@ -585,7 +587,7 @@ func (cluster *Cluster) Run() {
 						go cluster.initOrchetratorNodes()
 						cluster.MonitorQueryRules()
 						cluster.MonitorVariablesDiff()
-						cluster.ResticFetchRepo()
+						go cluster.ResticFetchRepo()
 						cluster.IsValidBackup = cluster.HasValidBackup()
 						go cluster.CheckCredentialRotation()
 						cluster.CheckCanSaveDynamicConfig()

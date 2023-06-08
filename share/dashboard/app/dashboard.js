@@ -55,6 +55,8 @@ function (
   $scope.missingProxyTags = undefined;
   $scope.promise = undefined;
 
+  $scope.showTable = false
+
   $scope.user = undefined ;
 
   $scope.wait = undefined;
@@ -850,6 +852,10 @@ function (
             $scope.startPromise();
           }, $scope.refreshInterval);
       }
+    };
+
+    $scope.toogleTable = function()  {
+      $scope.showTable = !$scope.showTable;
     };
 
 
@@ -1828,6 +1834,9 @@ function (
       }
       $scope.toogleTabular = function()  {
         $scope.serverListTabular = !$scope.serverListTabular;
+      };
+      $scope.toogleTable = function()  {
+        $scope.table = !$scope.table;
       };
 
       $scope.$on('$mdMenuOpen', function (event, menu) {

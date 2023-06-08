@@ -591,7 +591,7 @@ func (server *ServerMonitor) Refresh() error {
 	var err error
 
 	var cpu_usage_dt int64
-	cpu_usage_dt = 15
+	cpu_usage_dt = 5
 
 	if server.Conn == nil {
 		return errors.New("Connection is nil, server unreachable")
@@ -705,9 +705,6 @@ func (server *ServerMonitor) Refresh() error {
 				if server.GetCluster().GetTopology() != topoActivePassive && server.GetCluster().GetTopology() != topoMultiMasterWsrep {
 					server.CheckPrivileges()
 				}
-				server.CurrentWorkLoad()
-				server.AvgWorkLoad()
-				server.MaxWorkLoad()
 
 			} else {
 				server.ClusterGroup.StateMachine.PreserveState("ERR00007")
@@ -726,6 +723,9 @@ func (server *ServerMonitor) Refresh() error {
 			if server.ClusterGroup.StateMachine.GetHeartbeats()%cpu_usage_dt == 0 && server.HasUserStats() {
 				start_time = server.CpuFromStatWorkLoad(start_time)
 			}
+			server.CurrentWorkLoad()
+			server.AvgWorkLoad()
+			server.MaxWorkLoad()
 
 		} // end not postgress
 

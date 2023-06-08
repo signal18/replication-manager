@@ -132,7 +132,10 @@ func (cluster *Cluster) ResticInitRepo() error {
 }
 
 func (cluster *Cluster) ResticFetchRepo() error {
-	if cluster.Conf.BackupRestic {
+
+	defer func() { cluster.canResticFetchRepo = true }()
+	if cluster.Conf.BackupRestic && cluster.canResticFetchRepo {
+		cluster.canResticFetchRepo = false
 		//		var stdout, stderr []byte
 		var stdoutBuf, stderrBuf bytes.Buffer
 		var errStdout, errStderr error
