@@ -264,10 +264,13 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 		mycutinfo := userinfo.(map[string]interface{})
 		meuser := mycutinfo["Name"].(string)
 		mepwd := mycutinfo["Password"].(string)
+		_, ok := mycutinfo["profile"]
 
-		if strings.Contains(mycutinfo["profile"].(string), "https://gitlab.signal18.io") /*&& strings.Contains(mycutinfo["email_verified"]*/ {
-			meuser = mycutinfo["email"].(string)
-			return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc")
+		if ok {
+			if strings.Contains(mycutinfo["profile"].(string), "https://gitlab.signal18.io") /*&& strings.Contains(mycutinfo["email_verified"]*/ {
+				meuser = mycutinfo["email"].(string)
+				return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc")
+			}
 		}
 
 		return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "password")

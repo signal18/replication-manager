@@ -1,8 +1,20 @@
-app.controller('LoginController', ['$scope', '$http', '$localStorage', '$location', 'AppService',
-    function($scope, $http, $localStorage, $location, AppService) {
+app.controller('LoginController', ['$scope', '$http', '$localStorage', '$location', 'AppService', '$window', '$http',
+    function($scope, $http, $localStorage, $location, AppService, $http) {
 
         $scope.login = function(user){
-            $http.post(AppService.getApiDomain() + '/login', {"username": user.username, "password": user.password })
+            var $http = angular.injector(['ng']).get('$http');
+            var requestData = {
+                // Add your request data here
+                username: user.username,
+                password: user.password
+              };
+        
+              $http({
+                method: 'POST',
+                url: AppService.getApiDomain() + '/login',
+                data: requestData
+              })
+            //$http.post(, {"username": user.username, "password": user.password })
                 .then(function(success) {
                     var data = success.data;
                     if (data.token) {
@@ -15,4 +27,21 @@ app.controller('LoginController', ['$scope', '$http', '$localStorage', '$locatio
                     }
             });
         };
-}]);
+        /*$scope.gitLogin = function() {
+  
+            var $http = angular.injector(['ng']).get('$http');
+            $http({
+                method: 'GET',
+                url: '/api/auth'
+              }).then(function(response) {
+                // Redirect the user to the GitLab authorization page
+
+                console.log(response);
+                $window.location.href = response.data.authorizationUrl;
+              })
+              .catch(function(error) {
+                console.error('Failed to authenticate with GitLab:', error);
+              });
+          };*/
+    }
+]);

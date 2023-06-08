@@ -698,7 +698,7 @@ func (server *ServerMonitor) GetCPUUsageFromStats(t time.Time) (float64, error) 
 			if err == nil {
 				busy_time, _ := strconv.ParseFloat(res, 8)
 				core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 8)
-				return (busy_time - last_busy_time) / (core * elapsed), nil
+				return ((busy_time - last_busy_time) / (core * elapsed)) * 100, nil
 			}
 		}
 		return 0, nil
@@ -728,7 +728,7 @@ func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
 		thread_idle, _ := strconv.ParseFloat(server.Status["THREADPOOL_IDLE_THREADS"], 8)
 		thread, _ := strconv.ParseFloat(server.Status["THREADPOOL_THREADS"], 8)
 		core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 8)
-		return (thread - thread_idle) / core
+		return ((thread - thread_idle) / core) * 100
 	}
 	return -1
 }

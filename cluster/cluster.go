@@ -566,7 +566,7 @@ func (cluster *Cluster) Run() {
 						cluster.initProxies()
 					}
 					go cluster.initOrchetratorNodes()
-					cluster.ResticFetchRepo()
+					go cluster.ResticFetchRepo()
 					cluster.runOnceAfterTopology = false
 				} else {
 
@@ -816,11 +816,6 @@ func (cluster *Cluster) Save() error {
 		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
 		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.DynamicFlagMap)
 
-		//to load the new generated config file in github
-		if cluster.Conf.GitUrl != "" {
-			cluster.PushConfigToGit(cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
-		}
-
 		err = cluster.Overwrite()
 		if err != nil {
 			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
@@ -924,6 +919,11 @@ func (cluster *Cluster) Overwrite() error {
 
 		file.WriteString("[overwrite-" + cluster.Name + "]\n")
 		s.WriteTo(file)
+
+	}
+	//to load the new generated config file in github
+	if cluster.Conf.GitUrl != "" {
+		go cluster.PushConfigToGit(cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
 	}
 
 	return nil

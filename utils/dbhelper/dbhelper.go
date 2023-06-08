@@ -683,7 +683,7 @@ func GetCPUUsageFromUserStats(db *sqlx.DB) (string, string, error) {
 	db.MapperFunc(strings.Title)
 	var value string
 	value = ""
-	query := "select SUM(BUSY_TIME+CPU_TIME) FROM INFORMATION_SCHEMA.USER_STATISTICS"
+	query := "select SUM(CPU_TIME) FROM INFORMATION_SCHEMA.USER_STATISTICS"
 	err := db.QueryRowx(query).Scan(&value)
 	return value, query, err
 }
