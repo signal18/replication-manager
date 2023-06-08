@@ -14,12 +14,23 @@
                                ng-repeat="element in settings.tests" value="{{element}}">{{element}}</md-option>
                 </md-select>
           </td> <td>
+
               <md-button type="button" class="btn btn-primary" ng-click="test()">Run Tests</md-button>
           </td>
         </tr>
         <tr>
-          <td colspan=3>
-              <md-button type="button" class="btn btn-primary" ng-click="sysbench()">Sysbench</md-button>
+          <td >
+            <md-select name="selectedThreads" id="selectedThreads" ng-model="selectedThreads" >
+                <md-option> 1 </md-option>
+                  <md-option> 4 </md-option>
+                  <md-option> 8 </md-option>
+                    <md-option> 16 </md-option>
+                      <md-option> 32 </md-option>
+                          <md-option> 64 </md-option>
+                          <md-option> 128 </md-option>
+            </md-select>
+            </td><td colspan=2>
+              <md-button type="button" class="btn btn-primary" ng-click="sysbench(selectedThreads)">Sysbench</md-button>
           </td>
         </tr>
         <tr>

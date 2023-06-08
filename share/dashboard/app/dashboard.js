@@ -1150,8 +1150,8 @@ function (
       };
 
 
-      $scope.sysbench = function () {
-        if (confirm("Confirm sysbench run !")) httpGetWithoutResponse(getClusterUrl() + '/actions/sysbench');
+      $scope.sysbench = function (threads) {
+        if (confirm("Confirm sysbench run !")) httpGetWithoutResponse(getClusterUrl() + '/actions/sysbench?threads='+threads);
       };
 
       $scope.runonetest = function (test) {
@@ -1532,7 +1532,7 @@ function (
       };
 
 
-      
+
 
       $scope.openCluster = function (clusterName) {
         $timeout.cancel( $scope.promise);
@@ -1621,11 +1621,11 @@ function (
           //  $scope.callServices();
           //  $scope.setClusterCredentialDialog();
           }
-        
+
           $mdSidenav('right').close();
           $scope.menuOpened = false;
-        
-        
+
+
       };
       $scope.deleteClusterDialog = function () {
         $scope.menuOpened = true;
@@ -1638,7 +1638,7 @@ function (
            //    escapeToClose: false,
          });
        };
-      
+
       $scope.cancelNewClusterDialog = function () {
         $mdDialog.hide({contentElement: '#myNewClusterDialog',});
         $mdSidenav('right').close();
@@ -1699,7 +1699,7 @@ function (
           escapeToClose: false,
         });
       };
-      
+
       $scope.closeClusterCredentialDialog = function (user,pass) {
         $mdDialog.hide({contentElement: '#myClusterCredentialDialog',});
         if (confirm("Confirm set user/password")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/db-servers-credential/' + user + ':' + pass);

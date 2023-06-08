@@ -1638,6 +1638,10 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+		vars := mux.Vars(r)
+		if _, ok := vars["theads"]; ok {
+			mycluster.SetSysbenchThreads(vars["theads"])
+		}
 		go mycluster.RunSysbench()
 	}
 	return
