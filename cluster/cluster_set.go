@@ -911,6 +911,8 @@ func (cluster *Cluster) SetSysbenchThreads(Threads string) {
 	i, err := strconv.Atoi(Threads)
 	if err == nil {
 		cluster.Conf.SysbenchThreads = i
+	} else {
+		cluster.LogPrintf(LvlErr, "Error converting threads to int %s", err)
 	}
 }
 

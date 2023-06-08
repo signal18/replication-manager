@@ -21,13 +21,13 @@
         <tr>
           <td >
             <md-select name="selectedThreads" id="selectedThreads" ng-model="selectedThreads" >
-                <md-option> 1 </md-option>
-                  <md-option> 4 </md-option>
-                  <md-option> 8 </md-option>
-                    <md-option> 16 </md-option>
-                      <md-option> 32 </md-option>
-                          <md-option> 64 </md-option>
-                          <md-option> 128 </md-option>
+                <md-option ng-value="1" ng-selected="{{element == selectedCluster.config.sysbenchThreads}}" > 1 </md-option>
+                  <md-option ng-value="4" ng-selected="{{element == selectedCluster.config.sysbenchThreads}}"> 4 </md-option>
+                  <md-option ng-value="8" ng-selected="{{element == selectedCluster.config.sysbenchThreads}}" > 8 </md-option>
+                    <md-option ng-value="16" ng-selected="{{element == selectedCluster.config.sysbenchThreads}}"> 16 </md-option>
+                      <md-option ng-value="32" ng-selected="{{element == selectedCluster.config.sysbenchThreads}}"> 32 </md-option>
+                          <md-option ng-value="64" ng-selected="{{element == selectedCluster.config.sysbenchThreads}}"> 64 </md-option>
+                          <md-option ng-value="128" ng-selected="{{element == selectedCluster.config.sysbenchThreads}}"> 128 </md-option>
             </md-select>
             </td><td colspan=2>
               <md-button type="button" class="btn btn-primary" ng-click="sysbench(selectedThreads)">Sysbench</md-button>

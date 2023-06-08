@@ -1151,7 +1151,7 @@ function (
 
 
       $scope.sysbench = function (threads) {
-        if (confirm("Confirm sysbench run !")) httpGetWithoutResponse(getClusterUrl() + '/actions/sysbench?threads='+threads);
+        if (confirm("Confirm sysbench run !"+ threads)) httpGetWithoutResponse(getClusterUrl() + '/actions/sysbench?threads='+threads);
       };
 
       $scope.runonetest = function (test) {
