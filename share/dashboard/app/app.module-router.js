@@ -14,6 +14,10 @@ var routeProvider, app = angular.module('dashboard', ['ngResource', 'ngMaterial'
                 templateUrl: 'app/login.html',
                 controller: 'DashboardController'
             })
+            .when('/callback', {
+                controller: 'CallbackController',
+                template: '<div>Processing authentication...</div>'
+            })
             .otherwise({
                 templateUrl: 'app/dashboard.html',
                 controller: 'DashboardController'

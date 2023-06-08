@@ -27,7 +27,7 @@ app.controller('LoginController', ['$scope', '$http', '$localStorage', '$locatio
                     }
             });
         };
-        /*$scope.gitLogin = function() {
+        $scope.gitLogin = function() {
   
             var $http = angular.injector(['ng']).get('$http');
             $http({
@@ -42,6 +42,6 @@ app.controller('LoginController', ['$scope', '$http', '$localStorage', '$locatio
               .catch(function(error) {
                 console.error('Failed to authenticate with GitLab:', error);
               });
-          };*/
+          };
     }
 ]);

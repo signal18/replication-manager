@@ -805,7 +805,7 @@ func (repman *ReplicationManager) Run() error {
 		ClientID:     "5f3f1b3455357db6d3bc5dc7fc6c268b117ed1145e50a779f48eb86c278e10fd",
 		ClientSecret: "8bd642567bbeeb08c837e672dc704eeb3f21cf1b3202ea8ec98e93a2e5463b1e",
 		Endpoint:     repman.OAuthProvider.Endpoint(),
-		RedirectURL:  "https://127.0.0.1:10005/api/auth/callback",
+		RedirectURL:  "https://127.0.0.1:10005/callback",
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 	}
 
