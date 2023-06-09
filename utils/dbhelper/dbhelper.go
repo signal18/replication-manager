@@ -649,7 +649,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 			cm += ", " + masterOrSource + "_USE_GTID=SLAVE_POS"
 		case "CURRENT_POS":
 			if myver.Greater(*NewMySQLVersion("10.10.0", "")) && myver.IsMariaDB() {
-				cm += ", " + masterOrSource + "_USE_GTID=SLAVE_POS MASTER_DEMOTE_TO_SLAVE=1"
+				cm += ", " + masterOrSource + "_USE_GTID=SLAVE_POS, MASTER_DEMOTE_TO_SLAVE=1"
 			} else {
 				cm += ", " + masterOrSource + "_USE_GTID=CURRENT_POS"
 			}
