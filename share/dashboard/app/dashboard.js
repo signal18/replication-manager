@@ -60,6 +60,16 @@ function (
   $scope.user = undefined ;
 
   $scope.wait = undefined;
+  $scope.settingsMenu = {
+      general: true,
+      monitoring: false,
+      replication: false,
+      rejoin: false,
+      backups: false,
+      proxies: false,
+      schedulers: false,
+  };
+
 
   $scope.monitors = [
     { id: 'mariadb', name: 'MariaDB' },
@@ -1779,6 +1789,44 @@ function (
         $scope.selectedServer=id;
         $scope.onTabSelected('Processlist');
       };
+
+      $scope.setSettingsMenu = function (menu) {
+        $scope.settingsMenu = {
+            general: false,
+            monitoring: false,
+            replication: false,
+            rejoin: false,
+            backups: false,
+            proxies: false,
+            schedulers: false,
+        };
+        switch (menu) {
+          case 'general':
+            $scope.settingsMenu.general=true;
+            break;
+          case 'monitoring':
+            $scope.settingsMenu.monitoring=true;
+            break;
+          case 'replication':
+            $scope.settingsMenu.replication=true;
+            break;
+          case 'rejoin':
+            $scope.settingsMenu.rejoin=true;
+            break;
+          case 'backups':
+            $scope.settingsMenu.backups=true;
+            break;
+          case 'proxies':
+            $scope.settingsMenu.proxies=true;
+            break;
+          case 'schedulers':
+            $scope.settingsMenu.schedulers=true;
+            break;
+          default:
+            console.log(`Sorry, we are out of ${expr}.`);
+        }
+      };
+
 
       $scope.longQueryTime =  "0";
 

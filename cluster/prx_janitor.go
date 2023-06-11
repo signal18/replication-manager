@@ -267,7 +267,9 @@ func (proxy *ProxyJanitor) Refresh() error {
 		dupUsers := make(map[string]string)
 
 		for _, u := range s.Users {
-			if !strings.Contains(u.User, proxy.GetJanitorDomain()) {
+
+			//		cluster.LogPrintf(LvlInfo, " %s,  %s", u.User, cluster.Name+".")
+			if !(strings.Contains(u.User, cluster.Name+".") || strings.Contains(u.User, "mysql.") || strings.Contains(u.Host, "localhost")) {
 
 				user, ok := s.Users["'"+u.User+"@"+proxy.GetJanitorDomain()+"'@'"+u.Host+"'"]
 				if !ok {

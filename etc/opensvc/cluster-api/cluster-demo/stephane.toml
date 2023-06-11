@@ -31,7 +31,7 @@ test=true
 
 cloud18-credentials="stephane@signal18.io:hash_186f9f042f487338ab7e49c3de77eaaf4ff2589630cc55e7de2891ea3e4dd45c6244a0530056c9410cd5"
 cloud18-domain = "signal18"
-cloud18-sub-domain = "signal18-ovh"
+cloud18-sub-domain = "ovh"
 cloud18-sub-domain-zone = "fr-1"
 
 proxyjanitor-servers = "51.68.2.60"
