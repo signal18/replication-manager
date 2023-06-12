@@ -776,8 +776,6 @@ func (cluster *Cluster) Save() error {
 			cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.GetConf().WorkingDir)
 		}
 
-		//fmt.Printf("SAVE CLUSTER \n")
-		//cluster.Conf.PrintConf()
 		var myconf = make(map[string]config.Config)
 
 		myconf["saved-"+cluster.Name] = cluster.Conf
@@ -815,6 +813,19 @@ func (cluster *Cluster) Save() error {
 		s.WriteTo(file)
 		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
 		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.DynamicFlagMap)
+
+		file2, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml")
+			}
+			return err
+		}
+		defer file2.Close()
+
+		for key := range cluster.Conf.ImmuableFlagMap {
+			file2.WriteString(key + "\n")
+		}
 
 		err = cluster.Overwrite()
 		if err != nil {

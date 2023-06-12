@@ -8,11 +8,10 @@ package server
 
 import (
 	"bytes"
-	"crypto/rand"
+	"context"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -24,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 
@@ -150,7 +150,6 @@ func (repman *ReplicationManager) apiserver() {
 
 	router.HandleFunc("/api/login", repman.loginHandler)
 	//router.Handle("/api", v3.NewHandler("My API", "/swagger.json", "/api"))
-	router.HandleFunc("/api/auth", repman.handlerMuxAuth)
 
 	router.HandleFunc("/api/auth/callback", repman.handlerMuxAuthCallback)
 
@@ -267,7 +266,7 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 		_, ok := mycutinfo["profile"]
 
 		if ok {
-			if strings.Contains(mycutinfo["profile"].(string), "https://gitlab.signal18.io") /*&& strings.Contains(mycutinfo["email_verified"]*/ {
+			if strings.Contains(mycutinfo["profile"].(string), repman.Conf.OAuthProvider) /*&& strings.Contains(mycutinfo["email_verified"]*/ {
 				meuser = mycutinfo["email"].(string)
 				return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc")
 			}
@@ -363,64 +362,34 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 }
 
-func (repman *ReplicationManager) handlerMuxAuth(w http.ResponseWriter, r *http.Request) {
-
-	b := make([]byte, 16)
-	if _, err := io.ReadFull(rand.Reader, b); err != nil {
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-
-	state := base64.RawURLEncoding.EncodeToString(b)
-
-	c := &http.Cookie{
-		Name:     "state",
-		Value:    state,
-		MaxAge:   int(time.Hour.Seconds()),
-		Secure:   r.TLS != nil,
-		HttpOnly: true,
-	}
-	http.SetCookie(w, c)
-
-	http.Redirect(w, r, repman.OAuthConfig.AuthCodeURL(state), http.StatusFound)
-	log.Printf("Cookie state is generated")
-}
-
 func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, r *http.Request) {
-	/*state, err := r.Cookie("state")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	OAuthContext := context.Background()
+	Provider, err := oidc.NewProvider(OAuthContext, repman.Conf.OAuthProvider)
 	if err != nil {
-		http.Error(w, "state not found", http.StatusBadRequest)
-		return
+		log.Fatal(err)
 	}
-	if r.URL.Query().Get("state") != state.Value {
-		http.Error(w, "state did not match", http.StatusBadRequest)
-		return
-	}*/
+	OAuthConfig := oauth2.Config{
+		ClientID:     repman.Conf.OAuthClientID,
+		ClientSecret: repman.Conf.OAuthClientSecret,
+		Endpoint:     Provider.Endpoint(),
+		RedirectURL:  "https://" + r.Host + "/api/auth/callback",
+		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
+	}
 
-	oauth2Token, err := repman.OAuthConfig.Exchange(repman.OAuthContext, r.URL.Query().Get("code"))
+	oauth2Token, err := OAuthConfig.Exchange(OAuthContext, r.URL.Query().Get("code"))
 	if err != nil {
 		http.Error(w, "Failed to exchange token: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	userInfo, err := repman.OAuthProvider.UserInfo(repman.OAuthContext, oauth2.StaticTokenSource(oauth2Token))
+	userInfo, err := Provider.UserInfo(OAuthContext, oauth2.StaticTokenSource(oauth2Token))
 	if err != nil {
 		http.Error(w, "Failed to get userinfo: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	/*	resp := struct {
-			OAuth2Token *oauth2.Token
-			UserInfo    *oidc.UserInfo
-		}{oauth2Token, userInfo}
-	*/
-	//	repman.jsonResponse(resp, w)
 	r.Header.Get("Accept")
-
-	//w.Write([]byte(resp.OAuth2Token))
-	//	resp := token{resp.OAuth2Token}
-	//w.Write(resp)
-	//return
 
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
@@ -437,9 +406,9 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 				Role     string
 				Password string
 			}{userInfo.Email, "Member", cluster.APIUsers[userInfo.Email].Password}
+			password := cluster.APIUsers[userInfo.Email].Password
 			signer.Claims = claims
 			sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
-			//sk, _ := jwt.ParseRSAPublicKeyFromPEM(signingKey)
 
 			tokenString, err := signer.SignedString(sk)
 
@@ -450,14 +419,12 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 			}
 
 			//create a token instance using the token string
-
 			specs := r.Header.Get("Accept")
 			resp := token{tokenString}
 			if strings.Contains(specs, "text/html") {
-				w.Write([]byte(tokenString))
+				http.Redirect(w, r, "https://"+r.Host+"/#!/dashboard?token="+tokenString+"&user="+userInfo.Email+"&pass="+password, http.StatusTemporaryRedirect)
 				return
 			}
-
 			repman.jsonResponse(resp, w)
 			return
 		}
@@ -468,26 +435,6 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 	fmt.Fprint(w, "Invalid credentials")
 	return
 }
-
-/*
-	data, err := json.MarshalIndent(resp, "", "    ")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Write(data)
-
-		resp := token{data}
-	if strings.Contains(specs, "text/html") {
-		w.Write([]byte(tokenString))
-		return
-	}
-
-	//repman.jsonResponse(resp, w)
-	return
-
-	http.Error(w, "COUCOU auth succes", http.StatusBadRequest)
-}*/
 
 //AUTH TOKEN VALIDATION
 
