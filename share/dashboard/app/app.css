@@ -37,6 +37,9 @@ td {
     padding-top: 20px;
     padding-bottom: 20px;
 }
+.collapsed {
+    display: none;
+  }
 
 .login-box {
     width: 25em;

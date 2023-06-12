@@ -55,9 +55,21 @@ function (
   $scope.missingProxyTags = undefined;
   $scope.promise = undefined;
 
+  $scope.showTable = false
+
   $scope.user = undefined ;
 
   $scope.wait = undefined;
+  $scope.settingsMenu = {
+      general: true,
+      monitoring: false,
+      replication: false,
+      rejoin: false,
+      backups: false,
+      proxies: false,
+      schedulers: false,
+  };
+
 
   $scope.monitors = [
     { id: 'mariadb', name: 'MariaDB' },
@@ -870,6 +882,10 @@ function (
       }
     };
 
+    $scope.toogleTable = function()  {
+      $scope.showTable = !$scope.showTable;
+    };
+
 
 
     $scope.start = function() {
@@ -1162,8 +1178,8 @@ function (
       };
 
 
-      $scope.sysbench = function () {
-        if (confirm("Confirm sysbench run !")) httpGetWithoutResponse(getClusterUrl() + '/actions/sysbench');
+      $scope.sysbench = function (threads) {
+        if (confirm("Confirm sysbench run !"+ threads)) httpGetWithoutResponse(getClusterUrl() + '/actions/sysbench?threads='+threads);
       };
 
       $scope.runonetest = function (test) {
@@ -1544,7 +1560,7 @@ function (
       };
 
 
-      
+
 
       $scope.openCluster = function (clusterName) {
         $timeout.cancel( $scope.promise);
@@ -1633,11 +1649,11 @@ function (
           //  $scope.callServices();
           //  $scope.setClusterCredentialDialog();
           }
-        
+
           $mdSidenav('right').close();
           $scope.menuOpened = false;
-        
-        
+
+
       };
       $scope.deleteClusterDialog = function () {
         $scope.menuOpened = true;
@@ -1650,7 +1666,7 @@ function (
            //    escapeToClose: false,
          });
        };
-      
+
       $scope.cancelNewClusterDialog = function () {
         $mdDialog.hide({contentElement: '#myNewClusterDialog',});
         $mdSidenav('right').close();
@@ -1711,7 +1727,7 @@ function (
           escapeToClose: false,
         });
       };
-      
+
       $scope.closeClusterCredentialDialog = function (user,pass) {
         $mdDialog.hide({contentElement: '#myClusterCredentialDialog',});
         if (confirm("Confirm set user/password")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/db-servers-credential/' + user + ':' + pass);
@@ -1792,6 +1808,44 @@ function (
         $scope.onTabSelected('Processlist');
       };
 
+      $scope.setSettingsMenu = function (menu) {
+        $scope.settingsMenu = {
+            general: false,
+            monitoring: false,
+            replication: false,
+            rejoin: false,
+            backups: false,
+            proxies: false,
+            schedulers: false,
+        };
+        switch (menu) {
+          case 'general':
+            $scope.settingsMenu.general=true;
+            break;
+          case 'monitoring':
+            $scope.settingsMenu.monitoring=true;
+            break;
+          case 'replication':
+            $scope.settingsMenu.replication=true;
+            break;
+          case 'rejoin':
+            $scope.settingsMenu.rejoin=true;
+            break;
+          case 'backups':
+            $scope.settingsMenu.backups=true;
+            break;
+          case 'proxies':
+            $scope.settingsMenu.proxies=true;
+            break;
+          case 'schedulers':
+            $scope.settingsMenu.schedulers=true;
+            break;
+          default:
+            console.log(`Sorry, we are out of ${expr}.`);
+        }
+      };
+
+
       $scope.longQueryTime =  "0";
 
 
@@ -1846,6 +1900,9 @@ function (
       }
       $scope.toogleTabular = function()  {
         $scope.serverListTabular = !$scope.serverListTabular;
+      };
+      $scope.toogleTable = function()  {
+        $scope.table = !$scope.table;
       };
 
       $scope.$on('$mdMenuOpen', function (event, menu) {

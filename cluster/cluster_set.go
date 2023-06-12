@@ -907,6 +907,15 @@ func (cluster *Cluster) SetClusterHead(ClusterName string) {
 	cluster.Conf.ClusterHead = ClusterName
 }
 
+func (cluster *Cluster) SetSysbenchThreads(Threads string) {
+	i, err := strconv.Atoi(Threads)
+	if err == nil {
+		cluster.Conf.SysbenchThreads = i
+	} else {
+		cluster.LogPrintf(LvlErr, "Error converting threads to int %s", err)
+	}
+}
+
 func (cluster *Cluster) SetServicePlan(theplan string) error {
 	plans := cluster.GetServicePlans()
 	for _, plan := range plans {
