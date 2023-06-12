@@ -8,6 +8,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -22,7 +23,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/oauth2"
 
 	"github.com/codegangsta/negroni"
 	jwt "github.com/dgrijalva/jwt-go"
@@ -148,6 +151,8 @@ func (repman *ReplicationManager) apiserver() {
 	router.HandleFunc("/api/login", repman.loginHandler)
 	//router.Handle("/api", v3.NewHandler("My API", "/swagger.json", "/api"))
 
+	router.HandleFunc("/api/auth/callback", repman.handlerMuxAuthCallback)
+
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
 	))
@@ -172,6 +177,7 @@ func (repman *ReplicationManager) apiserver() {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
 	))
+
 	router.Handle("/api/monitor/actions/adduser/{userName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddUser)),
@@ -257,7 +263,16 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 		mycutinfo := userinfo.(map[string]interface{})
 		meuser := mycutinfo["Name"].(string)
 		mepwd := mycutinfo["Password"].(string)
-		return cluster.IsValidACL(meuser, mepwd, r.URL.Path)
+		_, ok := mycutinfo["profile"]
+
+		if ok {
+			if strings.Contains(mycutinfo["profile"].(string), repman.Conf.OAuthProvider) /*&& strings.Contains(mycutinfo["email_verified"]*/ {
+				meuser = mycutinfo["email"].(string)
+				return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc")
+			}
+		}
+
+		return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "password")
 	}
 	return false
 }
@@ -299,13 +314,13 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
-		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path) {
+		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path, "oidc") {
 			signer := jwt.New(jwt.SigningMethodRS256)
 			claims := signer.Claims.(jwt.MapClaims)
 			//set claims
 			claims["iss"] = "https://api.replication-manager.signal18.io"
 			claims["iat"] = time.Now().Unix()
-			claims["exp"] = time.Now().Add(time.Minute * 120).Unix()
+			claims["exp"] = time.Now().Add(time.Hour * 48).Unix()
 			claims["jti"] = "1" // should be user ID(?)
 			claims["CustomUserInfo"] = struct {
 				Name     string
@@ -345,6 +360,80 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	//create a rsa 256 signer
 
+}
+
+func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	OAuthContext := context.Background()
+	Provider, err := oidc.NewProvider(OAuthContext, repman.Conf.OAuthProvider)
+	if err != nil {
+		log.Fatal(err)
+	}
+	OAuthConfig := oauth2.Config{
+		ClientID:     repman.Conf.OAuthClientID,
+		ClientSecret: repman.Conf.OAuthClientSecret,
+		Endpoint:     Provider.Endpoint(),
+		RedirectURL:  "https://" + r.Host + "/api/auth/callback",
+		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
+	}
+
+	oauth2Token, err := OAuthConfig.Exchange(OAuthContext, r.URL.Query().Get("code"))
+	if err != nil {
+		http.Error(w, "Failed to exchange token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	userInfo, err := Provider.UserInfo(OAuthContext, oauth2.StaticTokenSource(oauth2Token))
+	if err != nil {
+		http.Error(w, "Failed to get userinfo: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	r.Header.Get("Accept")
+
+	for _, cluster := range repman.Clusters {
+		//validate user credentials
+		if cluster.IsValidACL(userInfo.Email, cluster.APIUsers[userInfo.Email].Password, r.URL.Path, "oidc") {
+			signer := jwt.New(jwt.SigningMethodRS256)
+			claims := signer.Claims.(jwt.MapClaims)
+			//set claims
+			claims["iss"] = "https://api.replication-manager.signal18.io"
+			claims["iat"] = time.Now().Unix()
+			claims["exp"] = time.Now().Add(time.Hour * 48).Unix()
+			claims["jti"] = "1" // should be user ID(?)
+			claims["CustomUserInfo"] = struct {
+				Name     string
+				Role     string
+				Password string
+			}{userInfo.Email, "Member", cluster.APIUsers[userInfo.Email].Password}
+			password := cluster.APIUsers[userInfo.Email].Password
+			signer.Claims = claims
+			sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+
+			tokenString, err := signer.SignedString(sk)
+
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintln(w, "Error while signing the token")
+				log.Printf("Error signing token: %v\n", err)
+			}
+
+			//create a token instance using the token string
+			specs := r.Header.Get("Accept")
+			resp := token{tokenString}
+			if strings.Contains(specs, "text/html") {
+				http.Redirect(w, r, "https://"+r.Host+"/#!/dashboard?token="+tokenString+"&user="+userInfo.Email+"&pass="+password, http.StatusTemporaryRedirect)
+				return
+			}
+			repman.jsonResponse(resp, w)
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusForbidden)
+	fmt.Println("Error logging in")
+	fmt.Fprint(w, "Invalid credentials")
+	return
 }
 
 //AUTH TOKEN VALIDATION

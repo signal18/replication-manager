@@ -1,5 +1,5 @@
-app.controller('LoginController', ['$scope', '$http', '$localStorage', '$location', 'AppService',
-    function($scope, $http, $localStorage, $location, AppService) {
+app.controller('LoginController', ['$scope', '$http', '$localStorage', '$location', 'AppService', '$window','Monitor',
+    function($scope, $http, $localStorage, $location, AppService, Monitor) {
 
         $scope.login = function(user){
             $http.post(AppService.getApiDomain() + '/login', {"username": user.username, "password": user.password })
@@ -15,4 +15,27 @@ app.controller('LoginController', ['$scope', '$http', '$localStorage', '$locatio
                     }
             });
         };
-}]);
+        $scope.gitLogin = function() {
+          //to get data for OAuth 
+          $http.post('/api/monitor', {}).then(function(success) {
+            var data = success.data
+            if (data){
+              $scope.settings = data;
+              $scope.apiOAuthClientID =	$scope.settings.config.apiOAuthClientID;
+              $scope.apiOAuthProvider = $scope.settings.config.apiOAuthProvider
+            }
+          }).then(function(){
+          var authURL = $scope.apiOAuthProvider+'/oauth/authorize?' + $.param({
+            authority: $scope.apiOAuthProvider,
+            client_id: $scope.apiOAuthClientID,
+            redirect_uri: 'https://'+$location.host()+':'+$location.port()+'/api/auth/callback',
+            response_type: 'code',
+            scope: 'openid profile email'
+          });
+          // Redirect the user to the oAuth URL
+          window.location.href = authURL;
+
+        })};
+    }
+]);
+

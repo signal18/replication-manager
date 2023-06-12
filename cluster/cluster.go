@@ -568,7 +568,7 @@ func (cluster *Cluster) Run() {
 						cluster.initProxies()
 					}
 					go cluster.initOrchetratorNodes()
-					cluster.ResticFetchRepo()
+					go cluster.ResticFetchRepo()
 					cluster.runOnceAfterTopology = false
 				} else {
 
@@ -778,8 +778,6 @@ func (cluster *Cluster) Save() error {
 			cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.GetConf().WorkingDir)
 		}
 
-		//fmt.Printf("SAVE CLUSTER \n")
-		//cluster.Conf.PrintConf()
 		var myconf = make(map[string]config.Config)
 
 		myconf["saved-"+cluster.Name] = cluster.Conf
@@ -818,9 +816,17 @@ func (cluster *Cluster) Save() error {
 		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
 		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.DynamicFlagMap)
 
-		//to load the new generated config file in github
-		if cluster.Conf.GitUrl != "" {
-			cluster.PushConfigToGit(cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
+		file2, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml")
+			}
+			return err
+		}
+		defer file2.Close()
+
+		for key := range cluster.Conf.ImmuableFlagMap {
+			file2.WriteString(key + "\n")
 		}
 
 		err = cluster.Overwrite()
@@ -926,6 +932,11 @@ func (cluster *Cluster) Overwrite() error {
 
 		file.WriteString("[overwrite-" + cluster.Name + "]\n")
 		s.WriteTo(file)
+
+	}
+	//to load the new generated config file in github
+	if cluster.Conf.GitUrl != "" {
+		go cluster.PushConfigToGit(cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
 	}
 
 	return nil

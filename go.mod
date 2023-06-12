@@ -82,11 +82,11 @@ require (
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
 	github.com/yoheimuta/protolint v0.32.0
 	golang.org/x/crypto v0.6.0
-	golang.org/x/net v0.7.0
+	golang.org/x/net v0.8.0
 	google.golang.org/genproto v0.0.0-20210617175327-b9e0b3197ced
 	google.golang.org/grpc v1.38.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0
-	google.golang.org/protobuf v1.26.0
+	google.golang.org/protobuf v1.28.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/ini.v1 v1.55.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
@@ -101,6 +101,7 @@ require (
 	github.com/StackExchange/wmi v0.0.0-20210224194228-fe8f1750fd46 // indirect
 	github.com/aclements/go-moremath v0.0.0-20170210193428-033754ab1fee // indirect
 	github.com/bluele/slack v0.0.0-20180528010058-b4b4d354a079 // indirect
+	github.com/coreos/go-oidc/v3 v3.6.0 // indirect
 	github.com/dasrick/go-teams-notify/v2 v2.1.0 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
 	github.com/facebookgo/atomicfile v0.0.0-20151019160806-2de1f203e7d5 // indirect
@@ -138,6 +139,7 @@ require (
 	github.com/rs/cors v1.7.0 // indirect
 	github.com/siddontang/go-log v0.0.0-20190221022429-1e957dd83bed // indirect
 	github.com/smartystreets/goconvey v1.7.2 // indirect
+	golang.org/x/oauth2 v0.6.0 // indirect
 	google.golang.org/grpc/examples v0.0.0-20220316190256-c4cabf78f4a2 // indirect
 	gopkg.in/src-d/go-git.v4 v4.13.1 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect

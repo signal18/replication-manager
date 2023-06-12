@@ -24,6 +24,9 @@
                 </div>
 
             </form>
+            <form name="login_form" ng-submit="gitLogin()">
+                <button type="submit" class="btn btn-primary float-right" >Sign in to Gitlab</button>
+            </form>
         </div>
         <div ng-if="message" class="alert alert-danger">
             {{message}}

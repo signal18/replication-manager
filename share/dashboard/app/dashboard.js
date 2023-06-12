@@ -244,6 +244,23 @@ function (
       return AppService.getClusterUrl($scope.selectedClusterName);
     };
 
+    var git_user={username:"", password:""};
+    var token;
+    var git_data = $location.search();
+    
+    var timeFrame = $routeParams.timeFrame;
+  
+    
+
+    if (git_data["user"] && git_data["token"] && !AppService.hasAuthHeaders()) {
+      git_user.username = git_data["user"];
+      token = git_data["token"];
+      git_user.password = git_data["pass"]
+      AppService.setAuthenticated(git_user.username, token);
+      timeFrame = "";
+      $location.url($location.path());
+    }
+
     $scope.isLoggedIn = AppService.hasAuthHeaders();
     if (!$scope.isLoggedIn) {
       $location.path('login');
@@ -258,9 +275,10 @@ function (
       $location.path('login');
     };
 
-    var timeFrame = $routeParams.timeFrame;
+    
     if (timeFrame == "") {
       timeFrame = "10m";
+      console.log('timeframe:', timeFrame);
     }
 
     $scope.toogleRefresh = function()  {

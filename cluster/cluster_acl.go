@@ -33,10 +33,9 @@ func (u *APIUser) Granted(grant string) error {
 	return v3.NewErrorResource(codes.PermissionDenied, v3.ErrGrantNotFound, "grant not found", "").Err()
 }
 
-func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string) bool {
+func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string, AuthMethod string) bool {
 	if user, ok := cluster.APIUsers[strUser]; ok {
-		if user.Password == strPassword {
-
+		if user.Password == strPassword || AuthMethod == "oidc" {
 			return cluster.IsURLPassACL(strUser, URL)
 		}
 		return false
@@ -389,6 +388,8 @@ func (cluster *Cluster) IsURLPassProxiesACL(strUser string, URL string) bool {
 func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 	switch URL {
 	case "/api/login":
+		return true
+	case "/api/auth/callback":
 		return true
 	case "/api/clusters":
 		return true

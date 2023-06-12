@@ -424,21 +424,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 						log.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
 					}
 				}
-				/*
-					if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/overwrite.toml"); os.IsNotExist(err) {
-						log.Warning("No monitoring saved config found " + conf.WorkingDir + "/" + f.Name() + "/overwrite.toml")
-					} else {
-						log.Infof("Parsing saved config from working directory %s ", conf.WorkingDir+"/"+f.Name()+"/"+f.Name()+".toml")
-						if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml"); !os.IsNotExist(err) {
-							dynRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/overwrite.toml")
-						}
-
-						err = dynRead.MergeInConfig()
-						if err != nil {
-							log.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/overwrite.toml" + ":" + err.Error())
-						}
-					}*/
-
 			}
 		}
 		//fmt.Printf("%+v\n", dynRead.AllSettings())
@@ -462,8 +447,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	cfgGroupIndex = 0
 	//extract the default section of the config files
 	cf1 := fistRead.Sub("Default")
-	//init viper to save the config
-	//vipersave := viper.GetViper()
 
 	//cf1.Debug()
 	if cf1 == nil {
@@ -474,13 +457,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		cf1.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 		cf1.SetEnvPrefix("DEFAULT")
 		repman.initAlias(cf1)
-		//vipersave.MergeConfigMap(cf1.AllSettings())
-		//fmt.Printf("%+v\n", cf1.AllSettings())
-		//vipersave.Unmarshal(&conf)
 		cf1.Unmarshal(&conf)
-		//	fmt.Printf("%+v\n", conf)
-		//os.Exit(3)
-		//conf.PrintConf()
 		conf.LoadEncrytionKey()
 		repman.Conf = conf
 
@@ -521,9 +498,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, tok, conf.WorkingDir)
 		}
 
-		/*if fistRead.GetString("default.git-url") != "" && fistRead.GetString("default.git-acces-token") != "" {
-			cluster.CloneConfigFromGit(fistRead.GetString("default.git-url"), fistRead.GetString("default.git-acces-token"), conf.WorkingDir)
-		}*/
 		//add config from cluster to the config map
 		for _, cluster := range repman.ClusterList {
 			//vipersave := backupvipersave

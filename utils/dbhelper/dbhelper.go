@@ -683,7 +683,9 @@ func GetCPUUsageFromUserStats(db *sqlx.DB) (string, string, error) {
 	db.MapperFunc(strings.Title)
 	var value string
 	value = ""
+
 	query := "select SUM(BUSY_TIME) FROM INFORMATION_SCHEMA.USER_STATISTICS"
+
 	err := db.QueryRowx(query).Scan(&value)
 	return value, query, err
 }
@@ -835,7 +837,7 @@ func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string,
 			var pass, upass string
 			err = rows.Scan(&pass, &upass)
 			if err != nil {
-				return false, stmt, err
+ 				return false, stmt, err
 			}
 			if pass != upass {
 				return false, stmt, nil
