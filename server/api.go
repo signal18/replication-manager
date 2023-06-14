@@ -374,7 +374,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 		ClientSecret: repman.Conf.OAuthClientSecret,
 		Endpoint:     Provider.Endpoint(),
 		RedirectURL:  "https://" + r.Host + "/api/auth/callback",
-		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
+		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "read_api", "api"},
 	}
 
 	oauth2Token, err := OAuthConfig.Exchange(OAuthContext, r.URL.Query().Get("code"))
@@ -394,6 +394,34 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
 		if cluster.IsValidACL(userInfo.Email, cluster.APIUsers[userInfo.Email].Password, r.URL.Path, "oidc") {
+			apiuser := cluster.APIUsers[userInfo.Email]
+			apiuser.GitToken = oauth2Token.AccessToken
+			tmp := strings.Split(userInfo.Profile, "/")
+			apiuser.GitUser = tmp[len(tmp)-1]
+			cluster.APIUsers[userInfo.Email] = apiuser
+
+			if cluster.Conf.Cloud18 {
+				new_token := gitlab.handlerGetGitLabTokenOAuth(w, r, oauth2Token.AccessToken)
+				if err == nil {
+
+					if err == nil {
+						cluster.Conf.GitUrl = repman.Conf.OAuthProvider + "/" + cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone + ".git"
+						cluster.Conf.GitUsername = tmp[len(tmp)-1]
+						newSecret := cluster.Conf.Secrets["git-acces-token"]
+						newSecret.OldValue = newSecret.Value
+						newSecret.Value = new_token
+						cluster.Conf.Secrets["git-acces-token"] = newSecret
+						//cluster.Conf.GitAccesToken = tokenInfo.token
+						cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.WorkingDir)
+					} else {
+						log.Printf("Failed to get token from gitlab: %v\n", err)
+					}
+				} else {
+					log.Printf("Error cannot extract answer from gitlab: %v\n", err)
+				}
+
+			}
+
 			signer := jwt.New(jwt.SigningMethodRS256)
 			claims := signer.Claims.(jwt.MapClaims)
 			//set claims
@@ -417,7 +445,6 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 				fmt.Fprintln(w, "Error while signing the token")
 				log.Printf("Error signing token: %v\n", err)
 			}
-
 			//create a token instance using the token string
 			specs := r.Header.Get("Accept")
 			resp := token{tokenString}
@@ -428,6 +455,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 			repman.jsonResponse(resp, w)
 			return
 		}
+
 	}
 
 	w.WriteHeader(http.StatusForbidden)

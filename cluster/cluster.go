@@ -838,7 +838,7 @@ func (cluster *Cluster) Save() error {
 
 func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, name string) {
 	if cluster.Conf.LogGit {
-		cluster.LogPrintf(LvlInfo, "Push to git : tok %s, dir %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, name)
+		cluster.LogPrintf(LvlInfo, "Push to git : tok %s, dir %s, user %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, user, name)
 	}
 	auth := &git_https.BasicAuth{
 		Username: user, // yes, this can be anything except an empty string
