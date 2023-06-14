@@ -1,29 +1,43 @@
 <md-content class="md-padding">
     <div layout="column" layout-gt-xs="row">
-        <div flex-gt-xs="33" class="col-lg-33">
-            <div  ng-include src="'static/card-setting-failovermode.html'"></div>
-            <BR>
-            <div  ng-include src="'static/card-setting-replication.html'"></div>
-            <BR>
-            <div  ng-include src="'static/card-setting-rejoin.html'"></div>
+        <div flex-gt-xs="40" class="col-lg-40">
+                  <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;color: rgba(44, 65, 164, 0.96);transition: 0.3s;" ng-click="setSettingsMenu('general')" class="md-primary" >
+                    General
+                  </md-button>
+                  <BR>
+                  <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;color: rgba(44, 65, 164, 0.96);transition: 0.3s;" ng-click="setSettingsMenu('monitoring')" class="md-primary" >
+                    Monitoring
+                  </md-button>
+                  <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;color: rgba(44, 65, 164, 0.96);transition: 0.3s;" ng-click="setSettingsMenu('replication')" class="md-primary" >
+                    Replication
+                  </md-button>
+                  <BR>
+                  <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;color: rgba(44, 65, 164, 0.96);transition: 0.3s;" ng-click="setSettingsMenu('rejoin')" class="md-primary" >
+                    Rejoin
+                  </md-button>
+                  <BR>
+                  <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;color: rgba(44, 65, 164, 0.96);transition: 0.3s;" ng-click="setSettingsMenu('backups')" class="md-primary" >
+                    Backups
+                  </md-button>
+                  <BR>
+                  <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;color: rgba(44, 65, 164, 0.96);transition: 0.3s;" ng-click="setSettingsMenu('schedulers')" class="md-primary" >
+                    Schedulers
+                  </md-button>
+                  <BR>
+                  <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;color: rgba(44, 65, 164, 0.96);transition: 0.3s;" ng-click="setSettingsMenu('proxies')" class="md-primary" >
+                    Proxies
+                  </md-button>
         </div>
-
-        <div flex-gt-xs="33" class="col-lg-33">
-          <div  ng-include src="'static/card-setting-backup.html'"></div>
-          <BR>
-          <div  ng-include src="'static/card-setting-proxysql.html'"></div>
-          <BR>
-          <div  ng-include src="'static/card-setting-proxy.html'"></div>
-          <BR>
-          <div  ng-include src="'static/card-setting-capture.html'"></div>
-          <BR>
-          <div  ng-include src="'static/card-setting-testmode.html'"></div>
-        </div>
-
-
-        <div flex-gt-xs="33" class="col-lg-33">
-          <div  ng-include src="'static/card-setting-scheduler.html'"></div>
-          <BR>
+        <div flex-gt-xs="60" class="col-lg-60">
+          <div ng-if="settingsMenu.general" ng-include src="'static/card-setting-failovermode.html'"></div>
+          <div ng-if="settingsMenu.replication" ng-include src="'static/card-setting-replication.html'"></div>
+          <div ng-if="settingsMenu.rejoin" ng-include src="'static/card-setting-rejoin.html'"></div>
+          <div ng-if="settingsMenu.backups"  ng-include src="'static/card-setting-backup.html'"></div>
+          <div ng-if="settingsMenu.proxies" ng-include src="'static/card-setting-proxysql.html'"></div>
+          <div ng-if="settingsMenu.monitoring" ng-include src="'static/card-setting-capture.html'"></div>
+          <div ng-if="settingsMenu.schedulers" ng-include src="'static/card-setting-scheduler.html'"></div>
+          <div ng-if="settingsMenu.general" ng-include src="'static/card-setting-testmode.html'"></div>
+          <div ng-if="settingsMenu.proxies" ng-include src="'static/card-setting-proxy.html'"></div>
         </div>
     </div>
 

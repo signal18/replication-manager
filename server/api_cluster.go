@@ -1638,6 +1638,10 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+		if r.URL.Query().Get("threads") != "" {
+			mycluster.LogPrintf(cluster.LvlInfo, "Setting Sysbench threads to %s", r.URL.Query().Get("threads"))
+			mycluster.SetSysbenchThreads(r.URL.Query().Get("threads"))
+		}
 		go mycluster.RunSysbench()
 	}
 	return

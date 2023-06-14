@@ -144,6 +144,7 @@ type Cluster struct {
 	exitMsg                   string                      `json:"-"`
 	exit                      bool                        `json:"-"`
 	canFlashBack              bool                        `json:"-"`
+	canResticFetchRepo        bool                        `json:"-"`
 	failoverCond              *nbc.NonBlockingChan        `json:"-"`
 	switchoverCond            *nbc.NonBlockingChan        `json:"-"`
 	rejoinCond                *nbc.NonBlockingChan        `json:"-"`
@@ -289,11 +290,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.Confs = confs
 
 	cluster.Conf = confs.ConfInit
-	k, _ := cluster.Conf.LoadEncrytionKey()
-	if k == nil {
-		cluster.LogPrintf(LvlInfo, "No existing password encryption key")
-		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
-	}
+
 	cluster.tlog = tlog
 	cluster.htlog = loghttp
 	cluster.termlength = termlength
@@ -323,6 +320,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.altertableCond = nbc.New()
 	cluster.canFlashBack = true
 	cluster.CanInitNodes = true
+	cluster.canResticFetchRepo = true
 	cluster.CanConnectVault = true
 	cluster.runOnceAfterTopology = true
 	cluster.testStopCluster = true
@@ -356,7 +354,11 @@ func (cluster *Cluster) InitFromConf() {
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.StateMachine = new(state.StateMachine)
 	cluster.StateMachine.Init()
-
+	k, _ := cluster.Conf.LoadEncrytionKey()
+	if k == nil {
+		cluster.LogPrintf(LvlInfo, "No existing password encryption key")
+		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
+	}
 	cluster.SetClusterCredentialsFromConfig()
 
 	if cluster.Conf.Interactive {
@@ -585,7 +587,7 @@ func (cluster *Cluster) Run() {
 						go cluster.initOrchetratorNodes()
 						cluster.MonitorQueryRules()
 						cluster.MonitorVariablesDiff()
-						cluster.ResticFetchRepo()
+						go cluster.ResticFetchRepo()
 						cluster.IsValidBackup = cluster.HasValidBackup()
 						go cluster.CheckCredentialRotation()
 						cluster.CheckCanSaveDynamicConfig()

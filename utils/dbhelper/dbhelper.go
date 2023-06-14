@@ -649,7 +649,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 			cm += ", " + masterOrSource + "_USE_GTID=SLAVE_POS"
 		case "CURRENT_POS":
 			if myver.Greater(*NewMySQLVersion("10.10.0", "")) && myver.IsMariaDB() {
-				cm += ", " + masterOrSource + "_USE_GTID=SLAVE_POS MASTER_DEMOTE_TO_SLAVE=1"
+				cm += ", " + masterOrSource + "_USE_GTID=SLAVE_POS, MASTER_DEMOTE_TO_SLAVE=1"
 			} else {
 				cm += ", " + masterOrSource + "_USE_GTID=CURRENT_POS"
 			}
@@ -683,7 +683,9 @@ func GetCPUUsageFromUserStats(db *sqlx.DB) (string, string, error) {
 	db.MapperFunc(strings.Title)
 	var value string
 	value = ""
-	query := "select SUM(CPU_TIME) FROM INFORMATION_SCHEMA.USER_STATISTICS"
+
+	query := "select SUM(BUSY_TIME) FROM INFORMATION_SCHEMA.USER_STATISTICS"
+
 	err := db.QueryRowx(query).Scan(&value)
 	return value, query, err
 }
@@ -835,7 +837,7 @@ func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string,
 			var pass, upass string
 			err = rows.Scan(&pass, &upass)
 			if err != nil {
-				return false, stmt, err
+ 				return false, stmt, err
 			}
 			if pass != upass {
 				return false, stmt, nil
@@ -2755,7 +2757,28 @@ func RenameUserPassword(db *sqlx.DB, myver *MySQLVersion, user_host string, old_
 }
 
 func DuplicateUserPassword(db *sqlx.DB, myver *MySQLVersion, old_user_name string, user_host string, new_user_name string) (string, error) {
+	if myver.IsMySQLOrPercona() && myver.Major >= 8 {
+		query := "SHOW CREATE USER  `" + old_user_name + "`@`" + user_host + "`"
+		rows, err := db.Queryx(query)
+		if err != nil {
+			return query, errors.New("Could not get grant for user ")
+		}
+		defer rows.Close()
+		var grant string
 
+		for rows.Next() {
+			err = rows.Scan(&grant)
+			if err != nil {
+				return query, err
+			}
+			querygrant := strings.Replace(grant, old_user_name, new_user_name, 1)
+			query += ";" + querygrant
+			_, err = db.Queryx(querygrant)
+			if err != nil {
+				return query, err
+			}
+		}
+	}
 	query := "SHOW GRANTS FOR '" + old_user_name + "'@'" + user_host + "'"
 	rows, err := db.Queryx(query)
 	if err != nil {
