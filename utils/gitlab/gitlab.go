@@ -1,4 +1,4 @@
-package git
+package gitlab
 
 import (
 	"encoding/json"
@@ -21,13 +21,14 @@ func handlerGetGitLabTokenOAuth(w http.ResponseWriter, r *http.Request, acces_to
 
 	req, err := http.NewRequest("GET", "https://gitlab.signal18.io/api/v4/personal_access_tokens?revoked=false", nil)
 	if err != nil {
-		// handle err
+		log.Println("Gitlab API Error: ", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+acces_token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		// handle err
+		log.Println("Gitlab API Error: ", err)
+		return ""
 	}
 	defer resp.Body.Close()
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -47,13 +48,15 @@ func handlerGetGitLabTokenOAuth(w http.ResponseWriter, r *http.Request, acces_to
 
 	req, err = http.NewRequest("POST", "https://gitlab.signal18.io/api/v4/personal_access_tokens/"+id+"/rotate", nil)
 	if err != nil {
-		// handle err
+		log.Println("Gitlab API Error: ", err)
+		return ""
 	}
 	req.Header.Set("Authorization", "Bearer "+acces_token)
 
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
-		// handle err
+		log.Println("Gitlab API Error: ", err)
+		return ""
 	}
 	defer resp.Body.Close()
 	body, _ = ioutil.ReadAll(resp.Body)

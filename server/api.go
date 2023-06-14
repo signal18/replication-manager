@@ -402,22 +402,18 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 
 			if cluster.Conf.Cloud18 {
 				new_token := gitlab.handlerGetGitLabTokenOAuth(w, r, oauth2Token.AccessToken)
-				if err == nil {
 
-					if err == nil {
-						cluster.Conf.GitUrl = repman.Conf.OAuthProvider + "/" + cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone + ".git"
-						cluster.Conf.GitUsername = tmp[len(tmp)-1]
-						newSecret := cluster.Conf.Secrets["git-acces-token"]
-						newSecret.OldValue = newSecret.Value
-						newSecret.Value = new_token
-						cluster.Conf.Secrets["git-acces-token"] = newSecret
-						//cluster.Conf.GitAccesToken = tokenInfo.token
-						cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.WorkingDir)
-					} else {
-						log.Printf("Failed to get token from gitlab: %v\n", err)
-					}
+				if new_token != "" {
+					cluster.Conf.GitUrl = repman.Conf.OAuthProvider + "/" + cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone + ".git"
+					cluster.Conf.GitUsername = tmp[len(tmp)-1]
+					newSecret := cluster.Conf.Secrets["git-acces-token"]
+					newSecret.OldValue = newSecret.Value
+					newSecret.Value = new_token
+					cluster.Conf.Secrets["git-acces-token"] = newSecret
+					//cluster.Conf.GitAccesToken = tokenInfo.token
+					cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.WorkingDir)
 				} else {
-					log.Printf("Error cannot extract answer from gitlab: %v\n", err)
+					log.Printf("Failed to get token from gitlab: %v\n", err)
 				}
 
 			}
