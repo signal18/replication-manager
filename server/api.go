@@ -402,13 +402,13 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 			cluster.APIUsers[userInfo.Email] = apiuser
 
 			if cluster.Conf.Cloud18 {
-				new_token, user_id := githelper.GetGitLabTokenOAuth(oauth2Token.AccessToken)
+				new_token, user_id := githelper.GetGitLabTokenOAuth(oauth2Token.AccessToken, cluster.Conf.LogGit)
 
 				if new_token != "" {
 					//to create project for user if not exist
 					path := cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone
 					name := cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone
-					githelper.GitLabCreateProject(new_token, name, path, cluster.Conf.Cloud18Domain, user_id)
+					githelper.GitLabCreateProject(new_token, name, path, cluster.Conf.Cloud18Domain, user_id, cluster.Conf.LogGit)
 					//to store new gitlab token
 					cluster.Conf.GitUrl = repman.Conf.OAuthProvider + "/" + cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone + ".git"
 					cluster.Conf.GitUsername = tmp[len(tmp)-1]
