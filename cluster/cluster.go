@@ -487,6 +487,20 @@ func (cluster *Cluster) initOrchetratorNodes() {
 	default:
 		log.Fatalln("prov-orchestrator not supported", cluster.Conf.ProvOrchestrator)
 	}
+	if len(cluster.Agents) != 0 {
+		min_cpu := cluster.Agents[0].CpuCores
+		min_mem := cluster.Agents[0].MemBytes
+		for _, a := range cluster.Agents {
+			if a.CpuCores < min_cpu {
+				min_cpu = a.CpuCores
+			}
+			if a.MemBytes < min_mem {
+				min_mem = a.MemBytes
+			}
+		}
+		cluster.Conf.ImmuableFlagMap["agent-cpu-core"] = min_cpu
+		cluster.Conf.ImmuableFlagMap["agent-cpu-mem"] = min_mem
+	}
 
 }
 
@@ -825,8 +839,20 @@ func (cluster *Cluster) Save() error {
 		}
 		defer file2.Close()
 
-		for key := range cluster.Conf.ImmuableFlagMap {
-			file2.WriteString(key + "\n")
+		for key, val := range cluster.Conf.ImmuableFlagMap {
+			_, ok := cluster.Conf.Secrets[key]
+			if ok {
+				encrypt_val := cluster.GetEncryptedValueFromMemory(key)
+				file2.WriteString(key + " = \"" + encrypt_val + "\"\n")
+			} else {
+				if fmt.Sprintf("%T", val) == "string" {
+					file2.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
+				} else {
+					file2.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
+				}
+
+			}
+
 		}
 
 		file3, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/cache.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
