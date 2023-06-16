@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -95,6 +96,75 @@ func (cluster *Cluster) OnPremiseStopDatabaseService(server *ServerMonitor) erro
 	//s.JobServerStop() need an agent or ssh to trigger this
 	server.Shutdown()
 	return nil
+}
+
+func (cluster *Cluster) OnPremiseGetNodes() ([]Agent, error) {
+	//cat proc/cpuinfo | grep "cpu cores" | wc -l
+	//nb de cpu
+
+	var Agents []Agent
+	for id, server := range cluster.Servers {
+		var agent Agent
+		client, err := cluster.OnPremiseConnect(server)
+		if err != nil {
+			cluster.errorChan <- err
+		}
+		defer client.Close()
+
+		agent.Id = strconv.Itoa(id)
+
+		if cluster.Configurator.HaveDBTag("linux") {
+			agent.OsName = "linux"
+			//get cpu core
+			cmd := "cd ../../; cat proc/cpuinfo | grep 'cpu cores' | wc -l"
+			out, err := client.Cmd(cmd).SmartOutput()
+			if err != nil {
+				cluster.errorChan <- err
+			}
+			re := regexp.MustCompile("[0-9]+")
+			i, _ := strconv.ParseInt(re.FindAllString(string(out), -1)[0], 10, 64)
+			agent.CpuCores = i
+
+			//uname -m
+			//get arch
+			cmd = "uname -r"
+			out, err = client.Cmd(cmd).SmartOutput()
+			if err != nil {
+				cluster.errorChan <- err
+			}
+			agent.OsKernel = string(out)
+
+			//cat proc/cpuinfo | grep "cache size" | head -n 1
+			//get mem
+			cmd = "cd ../../; cat proc/cpuinfo | grep 'cache size' | head -n 1"
+			out, err = client.Cmd(cmd).SmartOutput()
+			if err != nil {
+				cluster.errorChan <- err
+			}
+
+			re = regexp.MustCompile("[0-9]+")
+			i, _ = strconv.ParseInt(re.FindAllString(string(out), -1)[0], 10, 64)
+
+			agent.MemBytes = i * 100
+
+			//cat proc/cpuinfo | grep 'cpu MHz'
+			//get cpu freq
+			cmd = "cd ../../; cat proc/cpuinfo | grep 'cpu MHz' | head -n 1"
+			out, err = client.Cmd(cmd).SmartOutput()
+			if err != nil {
+				cluster.errorChan <- err
+			}
+			re = regexp.MustCompile("[0-9]+")
+			i, _ = strconv.ParseInt(re.FindAllString(string(out), -1)[0], 10, 64)
+			agent.CpuFreq = int64(i)
+		}
+
+		agent.HostName = server.Name
+		Agents = append(Agents, agent)
+
+	}
+
+	return Agents, nil
 }
 
 func (cluster *Cluster) OnPremiseSetEnv(client *sshclient.Client, server *ServerMonitor) error {

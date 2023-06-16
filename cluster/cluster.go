@@ -484,23 +484,12 @@ func (cluster *Cluster) initOrchetratorNodes() {
 	case config.ConstOrchestratorLocalhost:
 		cluster.Agents, cluster.errorInitNodes = cluster.LocalhostGetNodes()
 	case config.ConstOrchestratorOnPremise:
+		cluster.Agents, cluster.errorInitNodes = cluster.OnPremiseGetNodes()
 	default:
 		log.Fatalln("prov-orchestrator not supported", cluster.Conf.ProvOrchestrator)
 	}
-	if len(cluster.Agents) != 0 {
-		min_cpu := cluster.Agents[0].CpuCores
-		min_mem := cluster.Agents[0].MemBytes
-		for _, a := range cluster.Agents {
-			if a.CpuCores < min_cpu {
-				min_cpu = a.CpuCores
-			}
-			if a.MemBytes < min_mem {
-				min_mem = a.MemBytes
-			}
-		}
-		cluster.Conf.ImmuableFlagMap["agent-cpu-core"] = min_cpu
-		cluster.Conf.ImmuableFlagMap["agent-cpu-mem"] = min_mem
-	}
+
+	cluster.SetAgentsCpuCoreMem()
 
 }
 

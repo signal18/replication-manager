@@ -616,6 +616,23 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 	}
 }
 
+func (cluster *Cluster) SetAgentsCpuCoreMem() {
+	if len(cluster.Agents) != 0 {
+		min_cpu := cluster.Agents[0].CpuCores
+		min_mem := cluster.Agents[0].MemBytes
+		for _, a := range cluster.Agents {
+			if a.CpuCores < min_cpu {
+				min_cpu = a.CpuCores
+			}
+			if a.MemBytes < min_mem {
+				min_mem = a.MemBytes
+			}
+		}
+		cluster.Conf.ImmuableFlagMap["agent-cpu-core"] = min_cpu
+		cluster.Conf.ImmuableFlagMap["agent-cpu-mem"] = min_mem
+	}
+}
+
 func (cluster *Cluster) SetBackupKeepYearly(keep string) error {
 	numkeep, err := strconv.Atoi(keep)
 	if err != nil {
