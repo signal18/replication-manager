@@ -86,6 +86,7 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.MonitorLongQueryLogLength, "monitoring-long-query-log-length", 200, "Number of slow queries to keep in monitor")
 	monitorCmd.Flags().IntVar(&conf.MonitorErrorLogLength, "monitoring-erreur-log-length", 20, "Number of error log line to keep in monitor")
 	monitorCmd.Flags().BoolVar(&conf.MonitorScheduler, "monitoring-scheduler", false, "Enable internal scheduler")
+	monitorCmd.Flags().BoolVar(&conf.MonitorCheckGrants, "monitoring-check-grants", true, "Check grants for replication and monitoring users, it use DNS Lookup")
 	monitorCmd.Flags().BoolVar(&conf.MonitorPause, "monitoring-pause", false, "Disable monitoring")
 	monitorCmd.Flags().BoolVar(&conf.MonitorProcessList, "monitoring-processlist", true, "Enable capture 50 longuest process via processlist")
 	monitorCmd.Flags().StringVar(&conf.MonitorAddress, "monitoring-address", "localhost", "How to contact this monitoring")

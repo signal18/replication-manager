@@ -301,6 +301,9 @@ func (server *ServerMonitor) CheckSlaveSameMasterGrants() bool {
 
 // CheckPrivileges replication manager user privileges on live servers
 func (server *ServerMonitor) CheckPrivileges() {
+	if !server.ClusterGroup.Conf.MonitorCheckGrants {
+		return
+	}
 	if server.ClusterGroup.Conf.LogLevel > 2 {
 		server.ClusterGroup.LogPrintf(LvlDbg, "Privilege check on %s", server.URL)
 	}
