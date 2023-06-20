@@ -403,6 +403,9 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 
 			if cluster.Conf.Cloud18 {
 				new_token, user_id := githelper.GetGitLabTokenOAuth(oauth2Token.AccessToken, cluster.Conf.LogGit)
+				//vault_aut_url := vaulthelper.GetVaultOIDCAuth()
+				//vaulthelper.GetVaultOIDCAuth()
+				//http.Redirect(w, r, vault_aut_url, http.StatusSeeOther)
 
 				if new_token != "" {
 					//to create project for user if not exist
