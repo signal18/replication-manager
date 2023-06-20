@@ -152,8 +152,13 @@ func cliInit(needcluster bool) {
 		fmt.Println("Cluster not found")
 		os.Exit(10)
 	}
+	if len(allCLusters) == 0 {
+		fmt.Println("Cluster not found")
+		os.Exit(10)
+	}
 	cliServers, err = cliGetServers()
-	if err != nil {
+	if err != nil || len(cliServers) == 0 {
+		fmt.Println("Servers not found")
 		log.WithError(err).Fatal()
 		return
 	}
@@ -414,6 +419,7 @@ func cliGetAllClusters() ([]string, error) {
 		return res, err
 	}
 	req.Header.Set("Authorization", bearer)
+
 	resp, err := cliConn.Do(req)
 	if err != nil {
 		log.Println("ERROR", err)
