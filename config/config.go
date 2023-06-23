@@ -1028,6 +1028,7 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 		}
 		defer file.Close()
 		file.WriteString("/*\n!/*/*.toml\n")
+		file.WriteString("/*\n!/*/*.json\n")
 		file.Sync()
 	}
 

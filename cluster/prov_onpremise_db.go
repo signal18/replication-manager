@@ -116,7 +116,7 @@ func (cluster *Cluster) OnPremiseGetNodes() ([]Agent, error) {
 		if cluster.Configurator.HaveDBTag("linux") {
 			agent.OsName = "linux"
 			//get cpu core
-			cmd := "cd ../../; cat proc/cpuinfo | grep 'cpu cores' | wc -l"
+			cmd := "cat /proc/cpuinfo | grep 'cpu cores' | wc -l | awk '{print $1}'"
 			out, err := client.Cmd(cmd).SmartOutput()
 			if err != nil {
 				cluster.errorChan <- err
@@ -136,7 +136,7 @@ func (cluster *Cluster) OnPremiseGetNodes() ([]Agent, error) {
 
 			//cat proc/cpuinfo | grep "cache size" | head -n 1
 			//get mem
-			cmd = "cd ../../; cat proc/cpuinfo | grep 'cache size' | head -n 1"
+			cmd = "cat /proc/meminfo | grep -i  MemTotal | awk '{print $2}'"
 			out, err = client.Cmd(cmd).SmartOutput()
 			if err != nil {
 				cluster.errorChan <- err
@@ -145,11 +145,11 @@ func (cluster *Cluster) OnPremiseGetNodes() ([]Agent, error) {
 			re = regexp.MustCompile("[0-9]+")
 			i, _ = strconv.ParseInt(re.FindAllString(string(out), -1)[0], 10, 64)
 
-			agent.MemBytes = i * 100
+			agent.MemBytes = i / 1024
 
 			//cat proc/cpuinfo | grep 'cpu MHz'
 			//get cpu freq
-			cmd = "cd ../../; cat proc/cpuinfo | grep 'cpu MHz' | head -n 1"
+			cmd = "cat /proc/cpuinfo | grep 'cpu MHz' | head -n 1 | awk '{print $4}'"
 			out, err = client.Cmd(cmd).SmartOutput()
 			if err != nil {
 				cluster.errorChan <- err

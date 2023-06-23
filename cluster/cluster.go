@@ -775,6 +775,12 @@ func (cluster *Cluster) Save() error {
 		return err
 	}
 
+	saveAgents, _ := json.MarshalIndent(cluster.Agents, "", "\t")
+	err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/agents.json", saveAgents, 0644)
+	if err != nil {
+		return err
+	}
+
 	if cluster.Conf.ConfRewrite {
 		//clone git repository in case its the first time
 		if cluster.Conf.GitUrl != "" {
