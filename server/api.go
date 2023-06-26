@@ -406,7 +406,6 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 				//vault_aut_url := vaulthelper.GetVaultOIDCAuth()
 				//vaulthelper.GetVaultOIDCAuth()
 				//http.Redirect(w, r, vault_aut_url, http.StatusSeeOther)
-
 				if new_token != "" {
 					//to create project for user if not exist
 					path := cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone

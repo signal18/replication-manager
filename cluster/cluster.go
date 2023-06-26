@@ -857,7 +857,7 @@ func (cluster *Cluster) Save() error {
 			}
 			return err
 		}
-		defer file2.Close()
+		defer file3.Close()
 
 		for key := range cluster.Conf.ImmuableFlagMap {
 			_, ok := cluster.Conf.Secrets[key]
