@@ -824,9 +824,33 @@ func (cluster *Cluster) Save() error {
 			return err
 		}
 		defer file2.Close()
-
+		for key, val := range cluster.Conf.ImmuableFlagMap {
+			_, ok := cluster.Conf.Secrets[key]
+			if ok {
+				encrypt_val := cluster.GetEncryptedValueFromMemory(key)
+				file2.WriteString(key + " = \"" + encrypt_val + "\"\n")
+			} else {
+				if fmt.Sprintf("%T", val) == "string" {
+					file2.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
+				} else {
+					file2.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
+				}
+			}
+		}
+		file3, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/cache.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				cluster.LogPrintf(LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/cache.toml")
+			}
+			return err
+		}
+		defer file3.Close()
 		for key := range cluster.Conf.ImmuableFlagMap {
-			file2.WriteString(key + "\n")
+			_, ok := cluster.Conf.Secrets[key]
+			if ok {
+				encrypt_val := cluster.GetEncryptedValueFromMemory(key)
+				file3.WriteString(key + " = \"" + encrypt_val + "\"\n")
+			}
 		}
 
 		err = cluster.Overwrite()
