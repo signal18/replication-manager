@@ -826,7 +826,7 @@ func (cluster *Cluster) Save() error {
 		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.DynamicFlagMap)
 		new_h := md5.New()
 		if _, err := io.Copy(new_h, file); err != nil {
-			log.Fatal(err)
+			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
 		}
 
 		h, ok := cluster.CheckSumConfig["saved"]
@@ -863,7 +863,7 @@ func (cluster *Cluster) Save() error {
 
 		new_h = md5.New()
 		if _, err := io.Copy(new_h, file); err != nil {
-			log.Fatal(err)
+			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
 		}
 
 		h, ok = cluster.CheckSumConfig["immutable"]
@@ -998,7 +998,7 @@ func (cluster *Cluster) Overwrite(has_changed bool) error {
 
 		new_h := md5.New()
 		if _, err := io.Copy(new_h, file); err != nil {
-			log.Fatal(err)
+			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
 		}
 
 		h, ok := cluster.CheckSumConfig["overwrite"]
