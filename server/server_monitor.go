@@ -208,6 +208,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
 	monitorCmd.Flags().BoolVar(&conf.APIHttpsBind, "api-https-bind", false, "Bind API call to https Web UI will error with http")
 	monitorCmd.Flags().BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", false, "Need JWT token to download config tar.gz")
+	monitorCmd.Flags().StringVar(&conf.APIPublicURL, "api-public-url", "https://127.0.0.1:10005", "Public address of monitoring API Used for cloud18 OAuth callback")
 	monitorCmd.Flags().StringVar(&conf.OAuthProvider, "api-oauth-provider-url", "https://gitlab.signal18.io", "API OAuth Provider URL")
 	monitorCmd.Flags().StringVar(&conf.OAuthClientID, "api-oauth-client-id", "5f3f1b3455357db6d3bc5dc7fc6c268b117ed1145e50a779f48eb86c278e10fd", "API OAuth Client ID")
 	monitorCmd.Flags().StringVar(&conf.OAuthClientSecret, "api-oauth-client-secret", "8bd642567bbeeb08c837e672dc704eeb3f21cf1b3202ea8ec98e93a2e5463b1e", "API OAuth Client Secret")

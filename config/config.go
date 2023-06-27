@@ -493,6 +493,7 @@ type Config struct {
 	APISecureConfig                           bool                   `mapstructure:"api-credentials-secure-config" toml:"api-credentials-secure-config" json:"apiCredentialsSecureConfig"`
 	APIPort                                   string                 `mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                                   string                 `mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
+	APIPublicURL                              string                 `mapstructure:"api-public-url" toml:"api-public-url" json:"apiPublicUrl"`
 	APIHttpsBind                              bool                   `mapstructure:"api-https-bind" toml:"api-secure" json:"apiHttpsBind"`
 	AlertScript                               string                 `mapstructure:"alert-script" toml:"alert-script" json:"alertScript"`
 	ConfigFile                                string                 `mapstructure:"config" toml:"-" json:"-"`
