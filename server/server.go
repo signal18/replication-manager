@@ -26,6 +26,7 @@ import (
 
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/spf13/viper"
+	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 
 	log "github.com/sirupsen/logrus"
@@ -40,6 +41,7 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 )
@@ -83,6 +85,7 @@ type ReplicationManager struct {
 	BackupPhysicalList                               map[string]bool                   `json:"backupPhysicalList"`
 	currentCluster                                   *cluster.Cluster                  `json:"-"`
 	UserAuthTry                                      map[string]authTry                `json:"-"`
+	OAuthAccessToken                                 *oauth2.Token                     `json:"-"`
 	tlog                                             s18log.TermLog
 	termlength                                       int
 	exitMsg                                          string
@@ -854,6 +857,36 @@ func (repman *ReplicationManager) Run() error {
 	if repman.Conf.HttpServ {
 		go repman.httpserver()
 	}
+
+	//this ticker generate a new app access token, using app refresh token
+	//then it generate a new PAT gitlab to preserved a valid PAT in order to clone/push/pull on the distant gitlab
+	ticker_PAT := time.NewTicker(86400 * time.Second)
+	quit := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-ticker_PAT.C:
+				//to do it only when auth to gitlab
+				if repman.Conf.GitUrl != "" && repman.OAuthAccessToken != nil && repman.Conf.Cloud18 {
+					//to obtain new app access token
+					repman.OAuthAccessToken.AccessToken, repman.OAuthAccessToken.RefreshToken, err = githelper.RefreshAccessToken(repman.OAuthAccessToken.RefreshToken, repman.Conf.OAuthClientID, repman.Conf.OAuthClientSecret, repman.Conf.LogGit)
+					//to obtain a new PAT
+					new_tok, _ := githelper.GetGitLabTokenOAuth(repman.OAuthAccessToken.AccessToken, repman.Conf.LogGit)
+
+					//save the new PAT
+					newSecret := repman.Conf.Secrets["git-acces-token"]
+					newSecret.OldValue = newSecret.Value
+					newSecret.Value = new_tok
+					for _, cluster := range repman.Clusters {
+						cluster.Conf.Secrets["git-acces-token"] = newSecret
+					}
+				}
+			case <-quit:
+				ticker_PAT.Stop()
+				return
+			}
+		}
+	}()
 
 	//	ticker := time.NewTicker(interval * time.Duration(repman.Conf.MonitoringTicker))
 	repman.isStarted = true

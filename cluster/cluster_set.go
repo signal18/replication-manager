@@ -628,8 +628,8 @@ func (cluster *Cluster) SetAgentsCpuCoreMem() {
 				min_mem = a.MemBytes
 			}
 		}
-		cluster.Conf.ImmuableFlagMap["agent-cpu-core"] = min_cpu
-		cluster.Conf.ImmuableFlagMap["agent-cpu-mem"] = min_mem
+		cluster.Conf.ImmuableFlagMap["agent-cpu-cores"] = min_cpu
+		cluster.Conf.ImmuableFlagMap["agent-memory"] = min_mem
 	}
 }
 

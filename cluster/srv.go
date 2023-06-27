@@ -594,7 +594,6 @@ func (server *ServerMonitor) Refresh() error {
 
 	cpu_usage_dt = 1
 
-
 	if server.Conn == nil {
 		return errors.New("Connection is nil, server unreachable")
 	}

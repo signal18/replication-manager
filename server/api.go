@@ -384,6 +384,8 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 		return
 	}
 
+	repman.OAuthAccessToken = oauth2Token
+
 	userInfo, err := Provider.UserInfo(OAuthContext, oauth2.StaticTokenSource(oauth2Token))
 	if err != nil {
 		http.Error(w, "Failed to get userinfo: "+err.Error(), http.StatusInternalServerError)
