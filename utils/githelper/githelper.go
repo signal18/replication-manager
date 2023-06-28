@@ -9,6 +9,7 @@ package githelper
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -217,4 +218,42 @@ func RefreshAccessToken(refresh_tok string, client_id string, secret_id string, 
 	}
 
 	return accessToken.AccessToken, accessToken.RefreshToken, nil
+}
+
+func GetGitLabTokenBasicAuth(user string, password string) string {
+	url := "https://gitlab.signal18.io/oauth/token"
+	data := "grant_type=password&username=" + user + "&password=" + password
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", url, strings.NewReader(data))
+	if err != nil {
+		fmt.Println("Erreur lors de la création de la requête : ", err)
+		return ""
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Erreur lors de l'envoi de la requête : ", err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Erreur lors de la lecture de la réponse : ", err)
+		return ""
+	}
+
+	var accessToken AccessToken
+
+	err = json.Unmarshal(body, &accessToken)
+	if err != nil {
+		log.Println("Gitlab API Error: ", err)
+		return ""
+	}
+
+	fmt.Println("Réponse :", string(body))
+
+	return accessToken.AccessToken
+
 }

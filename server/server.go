@@ -500,7 +500,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		}
 
 		if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
-			githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.Cloud18GitPassword)
+			acces_token := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.Cloud18GitPassword)
+			log.Infof("New gitlab access token successfully generated %s ", conf.PrintSecret(acces_token))
 		}
 
 		//add config from cluster to the config map
