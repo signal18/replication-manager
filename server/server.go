@@ -500,8 +500,22 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		}
 
 		if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
-			acces_token := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.Cloud18GitPassword)
-			log.Infof("New gitlab access token successfully generated %s ", conf.PrintSecret(acces_token))
+			acces_tok := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.Cloud18GitPassword)
+			personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, conf.LogGit)
+			if personal_access_token != "" {
+				var Secrets config.Secret
+				Secrets.Value = personal_access_token
+				conf.Secrets["git-acces-token"] = Secrets
+				conf.GitUrl = repman.Conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + ".git"
+				conf.GitUsername = conf.Cloud18GitUser
+				conf.GitAccesToken = personal_access_token
+				conf.ImmuableFlagMap["git-acces-token"] = personal_access_token
+				conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, conf.GitAccesToken, conf.WorkingDir)
+
+			} else if conf.LogGit {
+				log.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof("Could not get personal access token from gitlab")
+			}
+
 		}
 
 		//add config from cluster to the config map
