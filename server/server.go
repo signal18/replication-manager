@@ -501,6 +501,19 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, tok, conf.WorkingDir)
 		}
 
+		if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
+			acces_tok := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.Cloud18GitPassword)
+			personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, conf.LogGit)
+			if personal_access_token != "" {
+				var Secrets config.Secret
+				Secrets.Value = personal_access_token
+				conf.Secrets["git-acces-token"] = Secrets
+			} else if conf.LogGit {
+				log.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof("Could not get personal access token from gitlab")
+			}
+
+		}
+
 		//add config from cluster to the config map
 		for _, cluster := range repman.ClusterList {
 			//vipersave := backupvipersave

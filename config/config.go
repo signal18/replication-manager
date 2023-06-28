@@ -572,6 +572,8 @@ type Config struct {
 	Cloud18SubDomain                          string                 `mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
 	Cloud18SubDomainZone                      string                 `mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone"`
 	Cloud18Shared                             bool                   `mapstructure:"cloud18-shared"  toml:"cloud18-shared" json:"cloud18Shared"`
+	Cloud18GitUser                            string                 `mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
+	Cloud18GitPassword                        string                 `mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"cloud18GitPassword"`
 	Secrets                                   map[string]Secret      `json:"-"`
 	SecretKey                                 []byte                 `json:"-"`
 	ImmuableFlagMap                           map[string]interface{} `json:"-"`
