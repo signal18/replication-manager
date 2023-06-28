@@ -474,7 +474,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//load config file from git hub
 		conf.DecryptSecretsFromConfig()
 
-		if conf.GitUrl != "" && conf.GitAccesToken != "" {
+		if conf.GitUrl != "" && conf.GitAccesToken != "" && !conf.Cloud18 {
 			var tok string
 
 			if conf.IsVaultUsed() && conf.IsPath(conf.GitAccesToken) {
@@ -523,6 +523,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			//vipersave := backupvipersave
 
 			confs[cluster] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cluster, conf)
+			//log.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof("COUCOU TEST dyn %v, imm %v", DynamicMap, ImmuableMap)
 			cfgGroupIndex++
 
 		}
@@ -627,6 +628,7 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 				}
 				repman.initAlias(cf3)
 				cf3.Unmarshal(&clusterconf)
+				//fmt.Printf("COUCOU test saved conf : %+v\n", cf3.AllSettings())
 				//to add flag in cluster dynamic map only if not defined yet or if the flag value read is diff from immuable flag value
 				for _, f := range cf3.AllKeys() {
 					v := cf3.Get(f)

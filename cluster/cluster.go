@@ -784,7 +784,7 @@ func (cluster *Cluster) Save() error {
 
 		//clone git repository in case its the first time
 		if cluster.Conf.GitUrl != "" {
-			cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.GetConf().WorkingDir)
+			cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.GetConf().WorkingDir)
 		}
 
 		var myconf = make(map[string]config.Config)
