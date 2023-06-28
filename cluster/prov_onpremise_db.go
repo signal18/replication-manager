@@ -128,9 +128,10 @@ func (cluster *Cluster) OnPremiseSetEnv(client *sshclient.Client, server *Server
 func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) error {
 
 	server.SetWaitStartCookie()
+	cluster.LogPrintf(LvlInfo, "OnPremise start database via ssh script")
 	client, err := cluster.OnPremiseConnect(server)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database : %s", err)
+		cluster.LogPrintf(LvlErr, "OnPremise start database via ssh failed : %s", err)
 		return err
 	}
 	defer client.Close()
@@ -139,7 +140,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 
 	filerc, err := os.Open(cmd)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "JobRunViaSSH %s", err)
+		cluster.LogPrintf(LvlErr, "OnPremise start database via ssh script %%s failed : %s ", cmd, err)
 		return errors.New("can't open script")
 	}
 
@@ -155,7 +156,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 		stderr bytes.Buffer
 	)
 	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
-		server.ClusterGroup.LogPrintf(LvlWarn, "OnPremise start database via ssh %s", stderr.String())
+		server.ClusterGroup.LogPrintf(LvlWarn, "OnPremise start database via ssh script %s", stderr.String())
 	}
 	out := stdout.String()
 
