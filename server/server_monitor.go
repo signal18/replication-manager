@@ -216,7 +216,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.VaultRoleId, "vault-role-id", "", "Vault role id")
 	monitorCmd.Flags().StringVar(&conf.VaultSecretId, "vault-secret-id", "", "Vault secret id")
 	monitorCmd.Flags().StringVar(&conf.VaultMode, "vault-mode", cluster.VaultConfigStoreV2, "Vault mode : config_store_v2|database_engine")
-	monitorCmd.Flags().StringVar(&conf.VaultMount, "vault-mount", "secret", "Vault mount for the secret")
+	monitorCmd.Flags().StringVar(&conf.VaultMount, "vault-mount", "kv", "Vault mount for the secret")
 	monitorCmd.Flags().StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius")
 
 	monitorCmd.Flags().StringVar(&conf.GitUrl, "git-url", "", "GitHub URL repository to store config file")
