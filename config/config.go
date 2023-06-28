@@ -566,8 +566,6 @@ type Config struct {
 	GitUsername                               string                 `mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
 	GitAccesToken                             string                 `mapstructure:"git-acces-token" toml:"git-acces-token" json:"gitAccesToken"`
 	Cloud18                                   bool                   `mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
-	Cloud18Portal                             string                 `mapstructure:"cloud18-portal" toml:"cloud18-portal" json:"cloud18Portal"`
-	Cloud18Credentials                        string                 `mapstructure:"cloud18-credentials" toml:"cloud18-credentials" json:"cloud18Credentials"`
 	Cloud18Domain                             string                 `mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain"`
 	Cloud18SubDomain                          string                 `mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
 	Cloud18SubDomainZone                      string                 `mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone"`

@@ -476,7 +476,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//load config file from git hub
 		conf.DecryptSecretsFromConfig()
 
-		if conf.GitUrl != "" && conf.GitAccesToken != "" {
+		if conf.GitUrl != "" && conf.GitAccesToken != "" && !conf.Cloud18 {
 			var tok string
 
 			if conf.IsVaultUsed() && conf.IsPath(conf.GitAccesToken) {
@@ -508,6 +508,12 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 				var Secrets config.Secret
 				Secrets.Value = personal_access_token
 				conf.Secrets["git-acces-token"] = Secrets
+				conf.GitUrl = repman.Conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + ".git"
+				conf.GitUsername = conf.Cloud18GitUser
+				conf.GitAccesToken = personal_access_token
+				conf.ImmuableFlagMap["git-acces-token"] = personal_access_token
+				conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, conf.GitAccesToken, conf.WorkingDir)
+
 			} else if conf.LogGit {
 				log.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof("Could not get personal access token from gitlab")
 			}

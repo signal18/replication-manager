@@ -784,7 +784,7 @@ func (cluster *Cluster) Save() error {
 	if cluster.Conf.ConfRewrite {
 		//clone git repository in case its the first time
 		if cluster.Conf.GitUrl != "" {
-			cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.GetConf().WorkingDir)
+			cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.GetConf().WorkingDir)
 		}
 
 		var myconf = make(map[string]config.Config)
@@ -975,7 +975,7 @@ func (cluster *Cluster) Overwrite() error {
 	}
 	//to load the new generated config file in github
 	if cluster.Conf.GitUrl != "" {
-		go cluster.PushConfigToGit(cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
+		go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
 	}
 
 	return nil

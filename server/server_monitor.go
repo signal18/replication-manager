@@ -546,8 +546,6 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.Cloud18Domain, "cloud18-domain", "signal18", "DNS sub domain per organisation")
 		monitorCmd.Flags().StringVar(&conf.Cloud18SubDomain, "cloud18-sub-domain", "ovh-1", "DNS sub domain per replication-manger instance")
 		monitorCmd.Flags().StringVar(&conf.Cloud18SubDomainZone, "cloud18-sub-domain-zone", "fr", "DNS sub domain per replication-manger instance")
-		monitorCmd.Flags().StringVar(&conf.Cloud18Portal, "cloud18-portal", "portal.signal18.io", "Cloud 18 Portal")
-		monitorCmd.Flags().StringVar(&conf.Cloud18Credentials, "cloud18-credentials", "stephane@signal18.io:token", "email:token")
 		monitorCmd.Flags().BoolVar(&conf.Cloud18Shared, "cloud18-shared", false, "Enable cluster sharing for Cloud 18 DBAAS")
 		monitorCmd.Flags().StringVar(&conf.Cloud18GitUser, "cloud18-gitlab-user", "", "Cloud 18 GitLab user")
 		monitorCmd.Flags().StringVar(&conf.Cloud18GitPassword, "cloud18-gitlab-password", "", "Cloud 18 GitLab password")
