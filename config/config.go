@@ -1021,18 +1021,6 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 	}
 
 	//fmt.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
-	if _, err := os.Stat(dir + "/.gitignore"); os.IsNotExist(err) {
-		file, err := os.Create(dir + "/.gitignore")
-		if err != nil {
-			if os.IsPermission(err) && conf.LogGit {
-				log.Errorf("File permission denied: %s, %s", dir+".gitignore", err)
-			}
-		}
-		defer file.Close()
-		file.WriteString("/*\n!/*/*.toml\n")
-		file.WriteString("/*\n!/*/*.json\n")
-		file.Sync()
-	}
 
 	path := dir
 	if _, err := os.Stat(path + "/.git"); err == nil {

@@ -802,10 +802,14 @@ func (cluster *Cluster) CheckInjectConfig() {
 			}
 			//then we can erase data from inject.toml file
 			file, _ := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/inject.toml", os.O_WRONLY|os.O_TRUNC, 0644)
-			defer file.Close()
 			err = file.Truncate(0)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Cannot truncate config file after extraction %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/inject.toml", err)
+			}
+			file.Close()
+			if cluster.Conf.GitUrl != "" {
+				cluster.LogPrintf(LvlErr, "COUCOU test")
+				go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
 			}
 		}
 	}

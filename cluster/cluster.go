@@ -810,7 +810,7 @@ func (cluster *Cluster) Save() error {
 			return err
 		}
 		defer file.Close()
-
+		file.WriteString("[saved-" + cluster.Name + "]\ntitle = \"" + cluster.Name + "\" \n")
 		readconf, _ := toml.Marshal(cluster.Conf)
 		t, _ := toml.LoadBytes(readconf)
 		s := t
@@ -827,22 +827,26 @@ func (cluster *Cluster) Save() error {
 					s.Delete(key)
 				} else if _, ok = cluster.Conf.Secrets[key]; ok {
 					s.Delete(key)
+					encrypt_val := cluster.GetEncryptedValueFromMemory(key)
+					file.WriteString(key + " = \"" + encrypt_val + "\"\n")
+
 				}
 			}
 		}
 
 		//to encrypt credentials before writting in the config file
-		file.WriteString("[saved-" + cluster.Name + "]\ntitle = \"" + cluster.Name + "\" \n")
-		for key, val := range cluster.Conf.DynamicFlagMap {
-			_, ok := cluster.Conf.Secrets[key]
-			if ok {
-				encrypt_val := cluster.GetEncryptedValueFromMemory(key)
-				file.WriteString(key + " = \"" + encrypt_val + "\"\n")
-			} else {
-				file.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
-			}
 
-		}
+		/*
+			for key, val := range cluster.Conf.DynamicFlagMap {
+				_, ok := cluster.Conf.Secrets[key]
+				if ok {
+					encrypt_val := cluster.GetEncryptedValueFromMemory(key)
+					file.WriteString(key + " = \"" + encrypt_val + "\"\n")
+				} else {
+					file.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
+				}
+
+			}*/
 		s.WriteTo(file)
 		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
 		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.Conf.DynamicFlagMap)
@@ -898,7 +902,6 @@ func (cluster *Cluster) Save() error {
 
 		cluster.CheckSumConfig["immutable"] = new_h
 
-
 		file3, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/cache.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
@@ -927,6 +930,20 @@ func (cluster *Cluster) Save() error {
 }
 
 func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, name string) {
+
+	if _, err := os.Stat(dir + "/.gitignore"); os.IsNotExist(err) {
+		file, err := os.Create(dir + "/.gitignore")
+		if err != nil {
+			if os.IsPermission(err) && cluster.Conf.LogGit {
+				log.Errorf("File permission denied: %s, %s", dir+".gitignore", err)
+			}
+		}
+		defer file.Close()
+		file.WriteString("/*\n!/*.toml\n")
+		file.WriteString("/*\n!/*/*.json\n")
+		file.Sync()
+	}
+
 	if cluster.Conf.LogGit {
 		cluster.LogPrintf(LvlInfo, "Push to git : tok %s, dir %s, user %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, user, name)
 	}
@@ -952,7 +969,10 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	if err != nil && cluster.Conf.LogGit {
 		log.Errorf("Git error : cannot Add %s : %s", name+".toml", err)
 	}
+	//COUCOU
+	//dans le add ajouter tous les files (pour l'instant ya que clusterstate.json et emma.toml)
 	_, err = w.Add(name + "/" + name + ".toml")
+	//_, err = w.Add(name + "/*")
 	if err != nil && cluster.Conf.LogGit {
 		cluster.LogPrintf(LvlInfo, "Git error : cannot Add %s : %s", name+"/"+name+".toml", err)
 	}
