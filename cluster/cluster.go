@@ -7,11 +7,15 @@
 package cluster
 
 import (
+	"bytes"
+	"crypto/md5"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"hash/crc64"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -125,6 +129,7 @@ type Cluster struct {
 	oldMaster                     *ServerMonitor        `json:"oldmaster"`
 	vmaster                       *ServerMonitor        `json:"vmaster"`
 	mxs                           *maxscale.MaxScale    `json:"-"`
+	CheckSumConfig                map[string]hash.Hash  `json:"-"`
 	//dbUser                        string                      `json:"-"`
 	//oldDbUser string `json:"-"`
 	//dbPass                        string                      `json:"-"`
@@ -346,6 +351,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.Schedule = make(map[string]cron.Entry)
 	cluster.JobResults = make(map[string]*JobResult)
 	cluster.SstAvailablePorts = make(map[string]string)
+	cluster.CheckSumConfig = make(map[string]hash.Hash)
 	lstPort := strings.Split(cluster.Conf.SchedulerSenderPorts, ",")
 	for _, p := range lstPort {
 		cluster.SstAvailablePorts[p] = p
@@ -769,6 +775,8 @@ func (cluster *Cluster) Save() error {
 		return err
 	}
 
+	has_changed := false
+
 	saveQeueryRules, _ := json.MarshalIndent(cluster.QueryRules, "", "\t")
 	err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/queryrules.json", saveQeueryRules, 0644)
 	if err != nil {
@@ -782,10 +790,13 @@ func (cluster *Cluster) Save() error {
 	}
 
 	if cluster.Conf.ConfRewrite {
+
 		//clone git repository in case its the first time
 		if cluster.Conf.GitUrl != "" {
 			cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.GetConf().WorkingDir)
 		}
+
+		cluster.CheckInjectConfig()
 
 		var myconf = make(map[string]config.Config)
 
@@ -819,11 +830,36 @@ func (cluster *Cluster) Save() error {
 				}
 			}
 		}
+
 		//to encrypt credentials before writting in the config file
 		file.WriteString("[saved-" + cluster.Name + "]\ntitle = \"" + cluster.Name + "\" \n")
+		for key, val := range cluster.Conf.DynamicFlagMap {
+			_, ok := cluster.Conf.Secrets[key]
+			if ok {
+				encrypt_val := cluster.GetEncryptedValueFromMemory(key)
+				file.WriteString(key + " = \"" + encrypt_val + "\"\n")
+			} else {
+				file.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
+			}
+
+		}
 		s.WriteTo(file)
 		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
-		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.DynamicFlagMap)
+		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.Conf.DynamicFlagMap)
+		new_h := md5.New()
+		if _, err := io.Copy(new_h, file); err != nil {
+			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
+		}
+
+		h, ok := cluster.CheckSumConfig["saved"]
+		if !ok {
+			has_changed = true
+		}
+		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
+			has_changed = true
+		}
+
+		cluster.CheckSumConfig["saved"] = new_h
 
 		file2, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
@@ -833,7 +869,6 @@ func (cluster *Cluster) Save() error {
 			return err
 		}
 		defer file2.Close()
-
 		for key, val := range cluster.Conf.ImmuableFlagMap {
 			_, ok := cluster.Conf.Secrets[key]
 			if ok {
@@ -845,10 +880,24 @@ func (cluster *Cluster) Save() error {
 				} else {
 					file2.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
 				}
-
 			}
-
 		}
+
+		new_h = md5.New()
+		if _, err := io.Copy(new_h, file); err != nil {
+			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
+		}
+
+		h, ok = cluster.CheckSumConfig["immutable"]
+		if !ok {
+			has_changed = true
+		}
+		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
+			has_changed = true
+		}
+
+		cluster.CheckSumConfig["immutable"] = new_h
+
 
 		file3, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/cache.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
@@ -868,7 +917,7 @@ func (cluster *Cluster) Save() error {
 
 		}
 
-		err = cluster.Overwrite()
+		err = cluster.Overwrite(has_changed)
 		if err != nil {
 			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
 		}
@@ -927,7 +976,7 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	}
 }
 
-func (cluster *Cluster) Overwrite() error {
+func (cluster *Cluster) Overwrite(has_changed bool) error {
 
 	if cluster.Conf.ConfRewrite {
 		var myconf = make(map[string]config.Config)
@@ -972,9 +1021,24 @@ func (cluster *Cluster) Overwrite() error {
 		file.WriteString("[overwrite-" + cluster.Name + "]\n")
 		s.WriteTo(file)
 
+		new_h := md5.New()
+		if _, err := io.Copy(new_h, file); err != nil {
+			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
+		}
+
+		h, ok := cluster.CheckSumConfig["overwrite"]
+		if !ok {
+			has_changed = true
+		}
+		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
+			has_changed = true
+		}
+
+		cluster.CheckSumConfig["overwrite"] = new_h
+
 	}
 	//to load the new generated config file in github
-	if cluster.Conf.GitUrl != "" {
+	if cluster.Conf.GitUrl != "" && has_changed {
 		go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
 	}
 

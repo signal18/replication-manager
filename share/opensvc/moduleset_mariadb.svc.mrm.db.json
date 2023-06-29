@@ -1,41 +1,4 @@
 {
-    "modulesets": [
-        {
-            "modules": [],
-            "rulesets": [],
-            "modset_name": "mariadb.svc.mrm.db",
-            "modulesets": [
-                "mariadb.svc.mrm.db.cnf"
-            ],
-            "publications": [
-                "replication-manager"
-            ],
-            "id": 350,
-            "responsibles": [
-                "replication-manager"
-            ]
-        },
-        {
-            "modules": [
-                {
-                    "autofix": false,
-                    "modset_mod_name": "mariadb.svc.mrm.db.cnf"
-                }
-            ],
-            "rulesets": [
-                "mariadb.svc.mrm.db.cnf"
-            ],
-            "modset_name": "mariadb.svc.mrm.db.cnf",
-            "modulesets": [],
-            "publications": [
-                "replication-manager"
-            ],
-            "id": 351,
-            "responsibles": [
-                "replication-manager"
-            ]
-        }
-    ],
     "filtersets": [
         {
             "fset_stats": false,
@@ -2671,7 +2634,7 @@
                     "var_author": "admin Manager",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/engine_spider.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'ha_spider';SET GLOBAL innodb_large_prefix = 1;SET GLOBAL spider_same_server_link=1;SET GLOBAL spider_auto_increment_mode=1;SET GLOBAL spider_semi_table_lock  = 0;SET GLOBAL spider_support_xa=0;SET GLOBAL spider_direct_dup_insert = 1;SET GLOBAL spider_remote_sql_log_off=1;SET GLOBAL spider_casual_read=0;SET GLOBAL spider_bka_mode = 0;SET GLOBAL spider_quick_mode=3 ;SET GLOBAL spider_quick_page_size=1000;SET GLOBAL spider_sync_trx_isolation=1;SET GLOBAL spider_sync_autocommit=1;SET GLOBAL spider_sts_sync=1;SET GLOBAL spider_sts_bg_mode=0;SET GLOBAL spider_sts_mode=1 ;SET GLOBAL spider_sts_interval=10;SET GLOBAL spider_store_last_sts=1;SET GLOBAL spider_reset_sql_alloc=1;SET GLOBAL spider_bgs_mode=0;SET GLOBAL spider_use_pushdown_udf=0;SET GLOBAL spider_crd_mode=1;SET GLOBAL spider_crd_sync=1;SET GLOBAL spider_crd_bg_mode=0;SET GLOBAL spider_crd_interval=10;SET GLOBAL spider_store_last_crd=1;SET GLOBAL spider_connect_mutex = 0;SET GLOBAL spider_conn_recycle_mode=0;SET GLOBAL spider_conn_recycle_strict = 0;SET GLOBAL spider_local_lock_table=0;SET GLOBAL spider_connect_retry_count = 10;SET GLOBAL spider_connect_retry_interval = 1000 ;SET GLOBAL spider_partition_skip_pk_sort_for_non_clustered_pk_table=1;\\n\\n[mariadb]\\n# plugin_load_add=ha_spider.so\\n\\n[mariadb 10.4]\\ninnodb_large_prefix = 1\\n[mysqld]\\nloose_spider_same_server_link=1\\nloose_spider_auto_increment_mode=1\\nloose_spider_semi_table_lock  = 0\\nloose_spider_support_xa=0\\nloose_spider_direct_dup_insert = 1\\nloose_spider_remote_sql_log_off=1\\nloose_spider_casual_read=0\\nloose_spider_bka_mode = 0\\nloose_spider_quick_mode=3 \\nloose_spider_quick_page_size=1000\\nloose_spider_sync_trx_isolation=1\\nloose_spider_sync_autocommit=1\\n\\nloose_spider_sts_sync=1\\nloose_spider_sts_bg_mode=0\\nloose_spider_sts_mode=1 \\nloose_spider_sts_interval=10\\nloose_spider_store_last_sts=1\\n#show table  \\n\\n\\nloose_spider_reset_sql_alloc=1\\nloose_spider_bgs_mode=0\\nloose_spider_use_pushdown_udf=0\\n\\nloose_spider_crd_mode=1\\nloose_spider_crd_sync=1\\nloose_spider_crd_bg_mode=0\\nloose_spider_crd_interval=10\\nloose_spider_store_last_crd=1\\nloose_spider_connect_mutex = 0\\nloose_spider_conn_recycle_mode=0\\nloose_spider_conn_recycle_strict = 0\\nloose_spider_local_lock_table=0\\nloose_spider_connect_retry_count = 10   \\nloose_spider_connect_retry_interval = 1000 \\n[mariadb 10.3]\\nloose_spider_partition_skip_pk_sort_for_non_clustered_pk_table=1\"}",
-                    "var_updated": "2022-01-14 18:42:54",
+                    "var_updated": "2023-06-19 19:00:44",
                     "var_name": "db_cnf_engine_spider",
                     "id": 5909
                 },
