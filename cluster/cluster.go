@@ -835,8 +835,8 @@ func (cluster *Cluster) Save() error {
 
 		}
 		s.WriteTo(file)
-		fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
-		fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.Conf.DynamicFlagMap)
+		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
+		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.Conf.DynamicFlagMap)
 		new_h := md5.New()
 		if _, err := io.Copy(new_h, file); err != nil {
 			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
