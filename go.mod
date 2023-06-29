@@ -139,7 +139,7 @@ require (
 	github.com/rs/cors v1.7.0 // indirect
 	github.com/siddontang/go-log v0.0.0-20190221022429-1e957dd83bed // indirect
 	github.com/smartystreets/goconvey v1.7.2 // indirect
-	github.com/xanzy/go-gitlab v0.86.0 // indirect
+	github.com/xanzy/go-gitlab v0.85.0 // indirect
 	golang.org/x/oauth2 v0.6.0 // indirect
 	google.golang.org/grpc/examples v0.0.0-20220316190256-c4cabf78f4a2 // indirect
 	gopkg.in/src-d/go-git.v4 v4.13.1 // indirect

@@ -490,9 +490,12 @@ func (cluster *Cluster) initOrchetratorNodes() {
 	case config.ConstOrchestratorLocalhost:
 		cluster.Agents, cluster.errorInitNodes = cluster.LocalhostGetNodes()
 	case config.ConstOrchestratorOnPremise:
+		cluster.Agents, cluster.errorInitNodes = cluster.OnPremiseGetNodes()
 	default:
 		log.Fatalln("prov-orchestrator not supported", cluster.Conf.ProvOrchestrator)
 	}
+
+	cluster.SetAgentsCpuCoreMem()
 
 }
 
@@ -780,6 +783,12 @@ func (cluster *Cluster) Save() error {
 		return err
 	}
 
+	saveAgents, _ := json.MarshalIndent(cluster.Agents, "", "\t")
+	err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/agents.json", saveAgents, 0644)
+	if err != nil {
+		return err
+	}
+
 	if cluster.Conf.ConfRewrite {
 
 		//clone git repository in case its the first time
@@ -889,6 +898,7 @@ func (cluster *Cluster) Save() error {
 
 		cluster.CheckSumConfig["immutable"] = new_h
 
+
 		file3, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/cache.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
@@ -897,12 +907,14 @@ func (cluster *Cluster) Save() error {
 			return err
 		}
 		defer file3.Close()
+
 		for key := range cluster.Conf.ImmuableFlagMap {
 			_, ok := cluster.Conf.Secrets[key]
 			if ok {
 				encrypt_val := cluster.GetEncryptedValueFromMemory(key)
 				file3.WriteString(key + " = \"" + encrypt_val + "\"\n")
 			}
+
 		}
 
 		err = cluster.Overwrite(has_changed)
@@ -916,7 +928,7 @@ func (cluster *Cluster) Save() error {
 
 func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, name string) {
 	if cluster.Conf.LogGit {
-		cluster.LogPrintf(LvlInfo, "Push to git : tok %s, dir %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, name)
+		cluster.LogPrintf(LvlInfo, "Push to git : tok %s, dir %s, user %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, user, name)
 	}
 	auth := &git_https.BasicAuth{
 		Username: user, // yes, this can be anything except an empty string
@@ -1027,7 +1039,7 @@ func (cluster *Cluster) Overwrite(has_changed bool) error {
 	}
 	//to load the new generated config file in github
 	if cluster.Conf.GitUrl != "" && has_changed {
-		go cluster.PushConfigToGit(cluster.Conf.GetDecryptedValue("git-acces-token"), cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
+		go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
 	}
 
 	return nil

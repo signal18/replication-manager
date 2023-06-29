@@ -19,6 +19,8 @@ import (
 type APIUser struct {
 	User     string          `json:"user"`
 	Password string          `json:"-"`
+	GitToken string          `json:"-"`
+	GitUser  string          `json:"-"`
 	Grants   map[string]bool `json:"grants"`
 }
 
@@ -119,6 +121,11 @@ func (cluster *Cluster) LoadAPIUsers() error {
 					newapiuser.Grants[acl] = false
 				}
 			}
+		}
+		if cluster.Conf.GitAccesToken != "" {
+			newapiuser.GitToken = cluster.Conf.GetDecryptedPassword("api-credentials", cluster.Conf.GitAccesToken)
+			newapiuser.GitUser = cluster.Conf.GitUsername
+
 		}
 		meUsers[newapiuser.User] = newapiuser
 	}

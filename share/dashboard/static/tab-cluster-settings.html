@@ -27,6 +27,10 @@
                   <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;;transition: 0.3s;" ng-click="setSettingsMenu('proxies')" class="md-primary" >
                     Proxies
                   </md-button>
+                  <BR>
+                    <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;color: rgba(44, 65, 164, 0.96);transition: 0.3s;" ng-click="setSettingsMenu('cloud18')" class="md-primary" >
+                      Cloud18
+                    </md-button>
         </div>
         <div flex-gt-xs="60" class="col-lg-60">
           <div ng-if="settingsMenu.general" ng-include src="'static/card-setting-failovermode.html'"></div>
@@ -38,6 +42,7 @@
           <div ng-if="settingsMenu.schedulers" ng-include src="'static/card-setting-scheduler.html'"></div>
           <div ng-if="settingsMenu.general" ng-include src="'static/card-setting-testmode.html'"></div>
           <div ng-if="settingsMenu.proxies" ng-include src="'static/card-setting-proxy.html'"></div>
+          <div ng-if="settingsMenu.cloud18" ng-include src="'static/card-setting-cloud18.html'"></div>
         </div>
     </div>
 
