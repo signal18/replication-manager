@@ -834,27 +834,6 @@ func (cluster *Cluster) GetClientCertificates() (map[string]string, error) {
 	return certs, nil
 }
 
-/*
-func (cluster *Cluster) GetVaultCredentials(client *vault.Client, path string, key string) (string, error) {
-	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(path) {
-		if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), path)
-
-			if err != nil {
-				return "", err
-			}
-			return secret.Data[key].(string), nil
-		} else {
-			secret, err := client.KVv1("").Get(context.Background(), path)
-			if err != nil {
-				return "", err
-			}
-			return secret.Data["username"].(string) + ":" + secret.Data["password"].(string), nil
-		}
-	}
-	return "", errors.New("Failed to get vault credentials")
-}*/
-
 func (cluster *Cluster) GetVaultMonitorCredentials(client *vault.Client) (string, string, error) {
 	if cluster.Conf.VaultMode == VaultConfigStoreV2 {
 		secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.GetConf().User)

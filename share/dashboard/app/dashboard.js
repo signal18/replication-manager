@@ -1817,6 +1817,7 @@ function (
             backups: false,
             proxies: false,
             schedulers: false,
+            cloud18: false,
         };
         switch (menu) {
           case 'general':
@@ -1840,6 +1841,9 @@ function (
           case 'schedulers':
             $scope.settingsMenu.schedulers=true;
             break;
+          case 'cloud18':
+            $scope.settingsMenu.cloud18=true;
+          break;
           default:
             console.log(`Sorry, we are out of ${expr}.`);
         }

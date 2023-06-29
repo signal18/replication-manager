@@ -22,15 +22,17 @@ app.controller('LoginController', ['$scope', '$http', '$localStorage', '$locatio
             if (data){
               $scope.settings = data;
               $scope.apiOAuthClientID =	$scope.settings.config.apiOAuthClientID;
-              $scope.apiOAuthProvider = $scope.settings.config.apiOAuthProvider
+              $scope.apiOAuthProvider = $scope.settings.config.apiOAuthProvider;
+              $scope.apiOAuthSecretID = $scope.settings.config.apiOAuthSecretID;
             }
           }).then(function(){
           var authURL = $scope.apiOAuthProvider+'/oauth/authorize?' + $.param({
             authority: $scope.apiOAuthProvider,
             client_id: $scope.apiOAuthClientID,
+            secret_id: $scope.apiOAuthSecretID,
             redirect_uri: 'https://'+$location.host()+':'+$location.port()+'/api/auth/callback',
             response_type: 'code',
-            scope: 'openid profile email'
+            scope: 'openid profile email api'
           });
           // Redirect the user to the oAuth URL
           window.location.href = authURL;

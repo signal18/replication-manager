@@ -218,7 +218,7 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.VaultRoleId, "vault-role-id", "", "Vault role id")
 	monitorCmd.Flags().StringVar(&conf.VaultSecretId, "vault-secret-id", "", "Vault secret id")
 	monitorCmd.Flags().StringVar(&conf.VaultMode, "vault-mode", cluster.VaultConfigStoreV2, "Vault mode : config_store_v2|database_engine")
-	monitorCmd.Flags().StringVar(&conf.VaultMount, "vault-mount", "secret", "Vault mount for the secret")
+	monitorCmd.Flags().StringVar(&conf.VaultMount, "vault-mount", "kv", "Vault mount for the secret")
 	monitorCmd.Flags().StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius")
 
 	monitorCmd.Flags().StringVar(&conf.GitUrl, "git-url", "", "GitHub URL repository to store config file")
@@ -548,8 +548,7 @@ func init() {
 		monitorCmd.Flags().StringVar(&conf.Cloud18Domain, "cloud18-domain", "signal18", "DNS sub domain per organisation")
 		monitorCmd.Flags().StringVar(&conf.Cloud18SubDomain, "cloud18-sub-domain", "ovh-1", "DNS sub domain per replication-manger instance")
 		monitorCmd.Flags().StringVar(&conf.Cloud18SubDomainZone, "cloud18-sub-domain-zone", "fr", "DNS sub domain per replication-manger instance")
-		monitorCmd.Flags().StringVar(&conf.Cloud18Portal, "cloud18-portal", "portal.signal18.io", "Cloud 18 Portal")
-		monitorCmd.Flags().StringVar(&conf.Cloud18Credentials, "cloud18-credentials", "stephane@signal18.io:token", "email:token")
+		monitorCmd.Flags().BoolVar(&conf.Cloud18Shared, "cloud18-shared", false, "Enable cluster sharing for Cloud 18 DBAAS")
 		monitorCmd.Flags().StringVar(&conf.Cloud18GitUser, "cloud18-gitlab-user", "", "Cloud 18 GitLab user")
 		monitorCmd.Flags().StringVar(&conf.Cloud18GitPassword, "cloud18-gitlab-password", "", "Cloud 18 GitLab password")
 

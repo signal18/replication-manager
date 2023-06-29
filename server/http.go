@@ -11,21 +11,21 @@
 //
 // Replication Manager Monitoring and CLI for MariaDB and MySQL
 //
-//     Schemes: https
-//     Host: localhost
-//     BasePath: /
-//     Version: 0.0.1
-//     License: GPL http://opensource.org/licenses/GPL
-//     Contact: Stephane Varoqui  <svaroqui@gmail.com>
+//	Schemes: https
+//	Host: localhost
+//	BasePath: /
+//	Version: 0.0.1
+//	License: GPL http://opensource.org/licenses/GPL
+//	Contact: Stephane Varoqui  <svaroqui@gmail.com>
 //
-//     Consumes:
-//     - application/json
+//	Consumes:
+//	- application/json
 //
-//     Produces:
-//     - application/json
+//	Produces:
+//	- application/json
 //
-//     Security:
-//       api_key:
+//	Security:
+//	  api_key:
 //
 // swagger:meta
 package server
@@ -63,15 +63,13 @@ func (repman *ReplicationManager) testFile(fn string) error {
 
 func (repman *ReplicationManager) httpserver() {
 
-
-
 	repman.initKeys()
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 	//router.HandleFunc("/", repman.handlerApp)
 	// page to view which does not need authorization
-	if repman.Conf.Test{
+	if repman.Conf.Test {
 		// before starting the http server, check that the dashboard is present
 		if err := repman.testFile("app.html"); err != nil {
 			log.Printf("ERROR: Dashboard app.html file missing - will not start http server %s\n", err)
@@ -80,9 +78,9 @@ func (repman *ReplicationManager) httpserver() {
 		router.HandleFunc("/", repman.handlerApp)
 		router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
-	}else{
+	} else {
 		router.HandleFunc("/", repman.rootHandler)
-		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler() )
+		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
 	}
 
@@ -179,7 +177,7 @@ func (repman *ReplicationManager) httpserver() {
 func (repman *ReplicationManager) handlerApp(w http.ResponseWriter, r *http.Request) {
 
 	http.ServeFile(w, r, repman.Conf.HttpRoot+"/app.html")
-	
+
 }
 
 func (repman *ReplicationManager) handlerRepoComp(w http.ResponseWriter, r *http.Request) {

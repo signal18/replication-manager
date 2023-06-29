@@ -568,11 +568,10 @@ type Config struct {
 	GitUsername                               string                 `mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
 	GitAccesToken                             string                 `mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
 	Cloud18                                   bool                   `mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
-	Cloud18Portal                             string                 `mapstructure:"cloud18-portal" toml:"cloud18-portal" json:"cloud18Portal"`
-	Cloud18Credentials                        string                 `mapstructure:"cloud18-credentials" toml:"cloud18-credentials" json:"cloud18Credentials"`
 	Cloud18Domain                             string                 `mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain"`
 	Cloud18SubDomain                          string                 `mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
 	Cloud18SubDomainZone                      string                 `mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone"`
+	Cloud18Shared                             bool                   `mapstructure:"cloud18-shared"  toml:"cloud18-shared" json:"cloud18Shared"`
 	Cloud18GitUser                            string                 `mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword                        string                 `mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
 	Secrets                                   map[string]Secret      `json:"-"`
@@ -1031,6 +1030,7 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 		}
 		defer file.Close()
 		file.WriteString("/*\n!/*/*.toml\n")
+		file.WriteString("/*\n!/*/*.json\n")
 		file.Sync()
 	}
 

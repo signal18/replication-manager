@@ -269,6 +269,16 @@ func (cluster *Cluster) SwitchMonitoringProcesslist() {
 	cluster.Conf.MonitorProcessList = !cluster.Conf.MonitorProcessList
 }
 
+func (cluster *Cluster) SwitchCloud18Shared() {
+	if cluster.Conf.Cloud18 {
+		cluster.Conf.Cloud18Shared = !cluster.Conf.Cloud18Shared
+	}
+
+}
+func (cluster *Cluster) SwitchCloud18() {
+	cluster.Conf.Cloud18 = !cluster.Conf.Cloud18
+}
+
 func (cluster *Cluster) SwitchMonitoringScheduler() {
 	cluster.Conf.MonitorScheduler = !cluster.Conf.MonitorScheduler
 	if !cluster.Conf.MonitorScheduler {
