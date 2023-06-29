@@ -1310,5 +1310,4 @@ func (cluster *Cluster) SetInjectVariables() {
 			cluster.Conf.OAuthClientSecret = fmt.Sprintf("%v", val)
 		}
 	}
-	cluster.LogPrintf(LvlInfo, "COUCOU test %s", cluster.Conf.VaultRoleId)
 }
