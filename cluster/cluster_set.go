@@ -1279,3 +1279,19 @@ func (cluster *Cluster) SetProvProxyServiceType(value string) error {
 func (cluster *Cluster) Exit() {
 	cluster.exit = true
 }
+
+func (cluster *Cluster) SetInjectVariables() {
+	for key, val := range cluster.Conf.DynamicFlagMap {
+		switch key {
+		case "vault-role-id":
+			cluster.Conf.VaultRoleId = fmt.Sprintf("%v", val)
+		case "vault-secret-id":
+			cluster.Conf.VaultSecretId = fmt.Sprintf("%v", val)
+		case "api-oauth-client-id":
+			cluster.Conf.OAuthClientID = fmt.Sprintf("%v", val)
+		case "api-oauth-client-secret":
+			cluster.Conf.OAuthClientSecret = fmt.Sprintf("%v", val)
+		}
+	}
+	cluster.LogPrintf(LvlInfo, "COUCOU test %s", cluster.Conf.VaultRoleId)
+}

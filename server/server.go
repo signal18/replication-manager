@@ -388,6 +388,36 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		log.Warning("No include directory in default section")
 	}
 
+	tmp_read := fistRead.Sub("Default")
+	if tmp_read != nil {
+		tmp_read.Unmarshal(&conf)
+	}
+
+	//fistRead.Unmarshal(&conf)
+	//conf.PrintConf()
+	/*
+		var personal_access_token string
+
+		if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
+			acces_tok := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.Cloud18GitPassword)
+			personal_access_token, _ = githelper.GetGitLabTokenOAuth(acces_tok, conf.LogGit)
+			if personal_access_token != "" {
+				//var Secrets config.Secret
+				//Secrets.Value = personal_access_token
+				//conf.Secrets["git-acces-token"] = Secrets
+				conf.GitUrl = conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + ".git"
+				conf.GitUsername = conf.Cloud18GitUser
+				conf.GitAccesToken = personal_access_token
+				//conf.ImmuableFlagMap["git-acces-token"] = personal_access_token
+				conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, conf.GitAccesToken, conf.WorkingDir)
+				time.Sleep(2 * time.Second)
+
+			} else if conf.LogGit {
+				log.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof("Could not get personal access token from gitlab")
+			}
+
+		}*/
+
 	// Proceed dynamic config
 	if fistRead.GetBool("default.monitoring-save-config") {
 		//read working dir from config
@@ -419,7 +449,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 					log.Infof("Parsing saved config from working directory %s ", conf.WorkingDir+"/"+f.Name()+"/"+f.Name()+".toml")
 					fistRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
-
 					err := fistRead.MergeInConfig()
 					if err != nil {
 						log.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
@@ -506,7 +535,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 				var Secrets config.Secret
 				Secrets.Value = personal_access_token
 				conf.Secrets["git-acces-token"] = Secrets
-				conf.GitUrl = repman.Conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + ".git"
+				conf.GitUrl = conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + ".git"
 				conf.GitUsername = conf.Cloud18GitUser
 				conf.GitAccesToken = personal_access_token
 				conf.ImmuableFlagMap["git-acces-token"] = personal_access_token
@@ -521,9 +550,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//add config from cluster to the config map
 		for _, cluster := range repman.ClusterList {
 			//vipersave := backupvipersave
-
 			confs[cluster] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cluster, conf)
-			//log.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof("COUCOU TEST dyn %v, imm %v", DynamicMap, ImmuableMap)
 			cfgGroupIndex++
 
 		}
@@ -628,7 +655,6 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 				}
 				repman.initAlias(cf3)
 				cf3.Unmarshal(&clusterconf)
-				//fmt.Printf("COUCOU test saved conf : %+v\n", cf3.AllSettings())
 				//to add flag in cluster dynamic map only if not defined yet or if the flag value read is diff from immuable flag value
 				for _, f := range cf3.AllKeys() {
 					v := cf3.Get(f)

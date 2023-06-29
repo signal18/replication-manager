@@ -787,6 +787,8 @@ func (cluster *Cluster) Save() error {
 			cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.GetConf().WorkingDir)
 		}
 
+		cluster.CheckInjectConfig()
+
 		var myconf = make(map[string]config.Config)
 
 		myconf["saved-"+cluster.Name] = cluster.Conf
@@ -819,11 +821,22 @@ func (cluster *Cluster) Save() error {
 				}
 			}
 		}
+
 		//to encrypt credentials before writting in the config file
 		file.WriteString("[saved-" + cluster.Name + "]\ntitle = \"" + cluster.Name + "\" \n")
+		for key, val := range cluster.Conf.DynamicFlagMap {
+			_, ok := cluster.Conf.Secrets[key]
+			if ok {
+				encrypt_val := cluster.GetEncryptedValueFromMemory(key)
+				file.WriteString(key + " = \"" + encrypt_val + "\"\n")
+			} else {
+				file.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
+			}
+
+		}
 		s.WriteTo(file)
-		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
-		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.DynamicFlagMap)
+		fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
+		fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.Conf.DynamicFlagMap)
 		new_h := md5.New()
 		if _, err := io.Copy(new_h, file); err != nil {
 			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)

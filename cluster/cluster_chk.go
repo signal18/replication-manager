@@ -776,3 +776,38 @@ func (cluster *Cluster) CheckIsOverwrite() {
 		}
 	}
 }
+
+func (cluster *Cluster) CheckInjectConfig() {
+	if fileInfo, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/inject.toml"); !os.IsNotExist(err) {
+		//if empty, nothing to extract
+		if fileInfo.Size() == 0 {
+			return
+		} else {
+			data, err := os.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/inject.toml")
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Cannot read config file %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/inject.toml", err)
+				return
+			}
+			//extract all the data of inject.toml file
+			lines := strings.Split(string(data), "\n")
+			for _, line := range lines {
+				parts := strings.Split(line, "=")
+				if len(parts) == 2 {
+					key := strings.TrimSpace(parts[0])
+					value := strings.TrimSpace(parts[1])
+					cluster.Conf.DynamicFlagMap[key] = strings.ReplaceAll(value, `"`, "")
+					//set data of the inject.toml
+					cluster.SetInjectVariables()
+				}
+			}
+			//then we can erase data from inject.toml file
+			file, _ := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/inject.toml", os.O_WRONLY|os.O_TRUNC, 0644)
+			defer file.Close()
+			err = file.Truncate(0)
+			if err != nil {
+				cluster.LogPrintf(LvlErr, "Cannot truncate config file after extraction %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/inject.toml", err)
+			}
+		}
+	}
+
+}
