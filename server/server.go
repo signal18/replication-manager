@@ -506,7 +506,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 				var Secrets config.Secret
 				Secrets.Value = personal_access_token
 				conf.Secrets["git-acces-token"] = Secrets
-				conf.GitUrl = repman.Conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + ".git"
+				conf.GitUrl = conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + ".git"
 				conf.GitUsername = conf.Cloud18GitUser
 				conf.GitAccesToken = personal_access_token
 				conf.ImmuableFlagMap["git-acces-token"] = personal_access_token
