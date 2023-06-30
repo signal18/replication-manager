@@ -6,7 +6,5 @@ copyright.*
 *.tar.gz
 build*
 maxscale*.rpm
-data/*
 .idea
-data
 googleapis/
