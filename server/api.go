@@ -374,7 +374,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 		ClientID:     repman.Conf.OAuthClientID,
 		ClientSecret: repman.Conf.OAuthClientSecret,
 		Endpoint:     Provider.Endpoint(),
-		RedirectURL:  "https://" + r.Host + "/api/auth/callback",
+		RedirectURL:  repman.Conf.APIPublicURL + "/api/auth/callback",
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "read_api", "api"},
 	}
 

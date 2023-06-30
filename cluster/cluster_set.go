@@ -1304,14 +1304,47 @@ func (cluster *Cluster) SetInjectVariables() {
 			cluster.Conf.VaultRoleId = fmt.Sprintf("%v", val)
 		case "vault-secret-id":
 			cluster.Conf.VaultSecretId = fmt.Sprintf("%v", val)
+			var secret config.Secret
+			secret.Value = fmt.Sprintf("%v", val)
+			cluster.Conf.Secrets["vault-secret-id"] = secret
+			cluster.SetSecretsToVault()
+			cluster.GetVaultToken()
 		case "api-oauth-client-id":
 			cluster.Conf.OAuthClientID = fmt.Sprintf("%v", val)
 		case "api-oauth-client-secret":
 			cluster.Conf.OAuthClientSecret = fmt.Sprintf("%v", val)
+			var secret config.Secret
+			secret.Value = fmt.Sprintf("%v", val)
+			cluster.Conf.Secrets["api-oauth-client-secret"] = secret
 		case "api-credentials-external":
 			cluster.Conf.APIUsersExternal = fmt.Sprintf("%v", val)
 		case "api-credentials-acl-allow":
 			cluster.Conf.APIUsersACLAllow = fmt.Sprintf("%v", val)
+		}
+	}
+}
+
+func (cluster *Cluster) SetSecretsToVault() {
+	if cluster.Conf.VaultRoleId != "" && cluster.Conf.VaultSecretId != "" {
+		cluster.Conf.VaultServerAddr = "http://vault.infra.svc.cloud18:8200"
+		client, err := cluster.GetVaultConnection()
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			return
+		}
+		secrets_map := make(map[string]interface{})
+		for key, val := range cluster.Conf.Secrets {
+			if val.Value != "" {
+				secrets_map[key] = val.Value
+			}
+
+		}
+		secret_path := cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone + "/" + cluster.Name
+		_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), secret_path, secrets_map)
+		if err != nil {
+			cluster.LogPrintf(LvlErr, "Failed to write secrets to Vault: %v", err)
+		} else {
+			cluster.LogPrintf(LvlInfo, "Success of writing secrets to Vault: %v", err)
 		}
 	}
 }

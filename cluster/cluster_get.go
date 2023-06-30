@@ -940,7 +940,9 @@ func (cluster *Cluster) GetVaultConnection() (*vault.Client, error) {
 		}
 
 		roleID := cluster.Conf.VaultRoleId
-		secretID := &auth.SecretID{FromString: cluster.Conf.VaultSecretId}
+		secretid := cluster.Conf.GetDecryptedPassword("vault-secret-id", cluster.Conf.VaultSecretId)
+		//cluster.LogPrintf(LvlErr, "COUCOU test CLUSTER %s", cluster.Conf.VaultSecretId)
+		secretID := &auth.SecretID{FromString: secretid}
 		if roleID == "" || secretID == nil {
 			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
 			cluster.CanConnectVault = false
@@ -986,4 +988,33 @@ func (cluster *Cluster) GetUniqueId() uint64 {
 	var sid uint64
 	sid, _ = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(cluster.Name+cluster.GetCloudSubDomain()), cluster.GetCrcTable()), 10), 10, 64)
 	return sid
+}
+
+func (cluster *Cluster) GetVaultToken() {
+	if cluster.Conf.IsVaultUsed() {
+
+		cluster.LogPrintf(LvlDbg, "Vault AppRole Authentification")
+		config := vault.DefaultConfig()
+
+		config.Address = cluster.Conf.VaultServerAddr
+
+		client, err := vault.NewClient(config)
+		if err != nil {
+			return
+		}
+
+		roleID := cluster.Conf.VaultRoleId
+		secretID := &auth.SecretID{FromString: cluster.Conf.VaultSecretId}
+
+		appRoleAuth, err := auth.NewAppRoleAuth(
+			roleID,
+			secretID,
+		)
+		if err != nil {
+			return
+		}
+
+		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
+		cluster.LogPrintf(LvlInfo, "COUCOU test %s", cluster.Conf.PrintSecret(authInfo.Auth.ClientToken))
+	}
 }

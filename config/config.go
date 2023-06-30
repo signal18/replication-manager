@@ -922,7 +922,7 @@ func (conf *Config) GetVaultConnection() (*vault.Client, error) {
 		}
 
 		roleID := conf.VaultRoleId
-		secretID := &auth.SecretID{FromString: conf.VaultSecretId}
+		secretID := &auth.SecretID{FromString: conf.GetDecryptedPassword("vault-secret-id", conf.VaultSecretId)}
 		if roleID == "" || secretID == nil {
 			log.Printf("Unable to initialize AppRole auth method: %v", err)
 			return nil, err
@@ -961,7 +961,8 @@ func (conf *Config) GetDecryptedPassword(key string, value string) string {
 			if err != nil {
 				return value
 			} else {
-				return p.PlainText
+				value = p.PlainText
+				return value
 			}
 		}
 	}
