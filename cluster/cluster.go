@@ -1139,15 +1139,16 @@ func (cluster *Cluster) InitAgent(conf config.Config) {
 
 func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Conf = conf
-	cluster.Configurator.SetConfig(conf)
-	cluster.InitFromConf()
+
 	cluster.StateMachine.SetFailoverState()
 	cluster.ResetStates()
+	cluster.InitFromConf()
 
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
 	go cluster.TopologyDiscover(wg)
 	wg.Wait()
+	cluster.StateMachine.RemoveFailoverState()
 
 }
 
@@ -1530,12 +1531,12 @@ func (cluster *Cluster) ResetStates() {
 	cluster.master = nil
 	cluster.oldMaster = nil
 	cluster.vmaster = nil
-	//cluster.Servers = nil
-	//cluster.Proxies = nil
+	cluster.Servers = nil
+	cluster.Proxies = nil
 	//
-	//cluster.ServerIdList = nil
+	cluster.ServerIdList = nil
 	//cluster.hostList = nil
-	cluster.clusterList = nil
+	//cluster.clusterList = nil
 	cluster.proxyList = nil
 	cluster.ProxyIdList = nil
 	//cluster.FailoverCtr = 0
@@ -1562,11 +1563,7 @@ func (cluster *Cluster) ResetStates() {
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 
-	cluster.LoadAPIUsers()
-	cluster.newServerList()
-	cluster.newProxyList()
-	cluster.StateMachine.RemoveFailoverState()
-	cluster.initProxies()
+	//cluster.StateMachine.RemoveFailoverState()
 }
 
 func (cluster *Cluster) DecryptSecretsFromVault() {

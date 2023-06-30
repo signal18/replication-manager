@@ -499,7 +499,6 @@ func (server *ServerMonitor) GetSlowLog() []dbhelper.PFSQuery {
 }
 
 func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
-	//server.ClusterGroup.LogPrintf(LvlErr, "COUCOU %s", server.DSN)
 	// get topology is call to late
 	if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
 		return sqlx.Connect("postgres", server.DSN)
