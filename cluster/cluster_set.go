@@ -575,7 +575,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 		cluster.dbUser, cluster.dbPass = misc.SplitPair(splitmonitoringuser)
 
 		cluster.dbPass = cluster.GetDecryptedPassword("db-servers-credential", cluster.dbPass)*/
-
+	cluster.LoadAPIUsers()
 	cluster.Save()
 }
 

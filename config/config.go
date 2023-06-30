@@ -828,7 +828,8 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		"alert-pushover-user-token":             {"", ""},
 		"alert-pushover-app-token":              {"", ""},
 		"git-acces-token":                       {"", ""},
-		"mail-smtp-password":                    {"", ""}}
+		"mail-smtp-password":                    {"", ""},
+		"cloud18-gitlab-password":               {"", ""}}
 
 	for k := range conf.Secrets {
 
@@ -953,12 +954,14 @@ func (conf *Config) GetDecryptedPassword(key string, value string) string {
 	if conf.SecretKey != nil && strings.HasPrefix(value, "hash_") {
 		value = strings.TrimLeft(value, "hash_")
 		p := crypto.Password{Key: conf.SecretKey}
-		p.CipherText = value
-		err := p.Decrypt()
-		if err != nil {
-			return value
-		} else {
-			return p.PlainText
+		if value != "" {
+			p.CipherText = value
+			err := p.Decrypt()
+			if err != nil {
+				return value
+			} else {
+				return p.PlainText
+			}
 		}
 	}
 	return value

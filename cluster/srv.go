@@ -352,7 +352,6 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.ClusterGroup.SetState("ERR00004", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00004"], server.URL, err.Error()), ErrFrom: "SRV"})
 				//if vault and credential change, then repare
 				server.CheckMonitoringCredentialsRotation()
-
 				return
 			} else {
 				server.ClusterGroup.LogPrintf(LvlErr, "Driver Error %s %d ", server.URL, driverErr.Number)

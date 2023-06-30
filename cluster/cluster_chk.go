@@ -808,7 +808,6 @@ func (cluster *Cluster) CheckInjectConfig() {
 			}
 			file.Close()
 			if cluster.Conf.GitUrl != "" {
-				cluster.LogPrintf(LvlErr, "COUCOU test")
 				go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
 			}
 		}

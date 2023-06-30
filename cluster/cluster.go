@@ -1071,7 +1071,6 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 			APIuser := cluster.APIUsers[user_pass[0]]
 			tab_ApiUser = append(tab_ApiUser, APIuser.User+":"+cluster.Conf.GetEncryptedString(APIuser.Password))
 		}
-
 		return strings.Join(tab_ApiUser, ",")
 	case "db-servers-credential":
 		if cluster.Conf.IsPath(cluster.Conf.User) && cluster.Conf.IsVaultUsed() {
@@ -1534,7 +1533,7 @@ func (cluster *Cluster) ResetStates() {
 	//cluster.Servers = nil
 	//cluster.Proxies = nil
 	//
-	cluster.ServerIdList = nil
+	//cluster.ServerIdList = nil
 	//cluster.hostList = nil
 	cluster.clusterList = nil
 	cluster.proxyList = nil
@@ -1563,6 +1562,7 @@ func (cluster *Cluster) ResetStates() {
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 
+	cluster.LoadAPIUsers()
 	cluster.newServerList()
 	cluster.newProxyList()
 	cluster.StateMachine.RemoveFailoverState()

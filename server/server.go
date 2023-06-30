@@ -395,31 +395,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		tmp_read.Unmarshal(&conf)
 	}
 
-	//fistRead.Unmarshal(&conf)
-	//conf.PrintConf()
-	/*
-		var personal_access_token string
-
-		if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
-			acces_tok := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.Cloud18GitPassword)
-			personal_access_token, _ = githelper.GetGitLabTokenOAuth(acces_tok, conf.LogGit)
-			if personal_access_token != "" {
-				//var Secrets config.Secret
-				//Secrets.Value = personal_access_token
-				//conf.Secrets["git-acces-token"] = Secrets
-				conf.GitUrl = conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + ".git"
-				conf.GitUsername = conf.Cloud18GitUser
-				conf.GitAccesToken = personal_access_token
-				//conf.ImmuableFlagMap["git-acces-token"] = personal_access_token
-				conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, conf.GitAccesToken, conf.WorkingDir)
-				time.Sleep(2 * time.Second)
-
-			} else if conf.LogGit {
-				log.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof("Could not get personal access token from gitlab")
-			}
-
-		}*/
-
 	// Proceed dynamic config
 	if fistRead.GetBool("default.monitoring-save-config") {
 		//read working dir from config
@@ -439,7 +414,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//read and set config from all files in the working dir
 		for _, f := range files {
 			if f.IsDir() && f.Name() != "graphite" {
-
 				fistRead.SetConfigName(f.Name())
 				dynRead.SetConfigName("overwrite-" + f.Name())
 				if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml"); os.IsNotExist(err) || f.Name() == "overwrite" {
