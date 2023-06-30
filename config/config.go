@@ -829,7 +829,8 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		"alert-pushover-app-token":              {"", ""},
 		"git-acces-token":                       {"", ""},
 		"mail-smtp-password":                    {"", ""},
-		"cloud18-gitlab-password":               {"", ""}}
+		"cloud18-gitlab-password":               {"", ""},
+		"api-oauth-client-secret":               {"", ""}}
 
 	for k := range conf.Secrets {
 

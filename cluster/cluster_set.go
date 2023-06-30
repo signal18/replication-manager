@@ -1308,6 +1308,10 @@ func (cluster *Cluster) SetInjectVariables() {
 			cluster.Conf.OAuthClientID = fmt.Sprintf("%v", val)
 		case "api-oauth-client-secret":
 			cluster.Conf.OAuthClientSecret = fmt.Sprintf("%v", val)
+		case "api-credentials-external":
+			cluster.Conf.APIUsersExternal = fmt.Sprintf("%v", val)
+		case "api-credentials-acl-allow":
+			cluster.Conf.APIUsersACLAllow = fmt.Sprintf("%v", val)
 		}
 	}
 }

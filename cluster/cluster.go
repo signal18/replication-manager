@@ -1119,6 +1119,12 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("alert-pushover-user-token"))
 	case "mail-smtp-password":
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("mail-smtp-password"))
+	case "api-oauth-client-secret":
+		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("api-oauth-client-secret"))
+	case "cloud18-gitlab-password":
+		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("cloud18-gitlab-password"))
+	case "git-acces-token":
+		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("git-acces-token"))
 	default:
 		return ""
 	}
