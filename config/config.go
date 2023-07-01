@@ -855,7 +855,11 @@ func (conf *Config) DecryptSecretsFromConfig() {
 				user, pass := misc.SplitPair(cred)
 				tab_cred = append(tab_cred, user+":"+conf.GetDecryptedPassword(k, pass))
 			} else {
-				tab_cred = append(tab_cred, conf.GetDecryptedPassword(k, cred))
+				if len(cred) > 1 {
+					tab_cred = append(tab_cred, conf.GetDecryptedPassword(k, cred))
+				} else {
+					log.WithField("cluster", "config").Errorf("Empty credential do not decrypt key: %s", k)
+				}
 			}
 		}
 		secret.Value = strings.Join(tab_cred, ",")
