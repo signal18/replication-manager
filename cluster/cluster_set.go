@@ -1307,8 +1307,8 @@ func (cluster *Cluster) SetInjectVariables() {
 			var secret config.Secret
 			secret.Value = fmt.Sprintf("%v", val)
 			cluster.Conf.Secrets["vault-secret-id"] = secret
-			//		cluster.SetSecretsToVault()
-			//		cluster.GetVaultToken()
+			cluster.SetSecretsToVault()
+			cluster.GetVaultToken()
 		case "api-oauth-client-id":
 			cluster.Conf.OAuthClientID = fmt.Sprintf("%v", val)
 		case "api-oauth-client-secret":
