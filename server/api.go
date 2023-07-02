@@ -374,8 +374,8 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 		ClientID:     repman.Conf.OAuthClientID,
 		ClientSecret: repman.Conf.GetDecryptedPassword("api-oauth-client-secret", repman.Conf.OAuthClientSecret),
 		Endpoint:     Provider.Endpoint(),
-		RedirectURL:/*repman.Conf.APIPublicURL*/ r.Host + "/api/auth/callback",
-		Scopes: []string{oidc.ScopeOpenID, "profile", "email", "read_api", "api"},
+		RedirectURL:  repman.Conf.APIPublicURL + "/api/auth/callback",
+		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "read_api", "api"},
 	}
 
 	oauth2Token, err := OAuthConfig.Exchange(OAuthContext, r.URL.Query().Get("code"))
@@ -455,7 +455,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 			specs := r.Header.Get("Accept")
 			resp := token{tokenString}
 			if strings.Contains(specs, "text/html") {
-				http.Redirect(w, r, "https://"+r.Host+"/#!/dashboard?token="+tokenString+"&user="+userInfo.Email+"&pass="+password, http.StatusTemporaryRedirect)
+				http.Redirect(w, r, "https://"+repman.Conf.APIPublicURL+"/#!/dashboard?token="+tokenString+"&user="+userInfo.Email+"&pass="+password, http.StatusTemporaryRedirect)
 				return
 			}
 			repman.jsonResponse(resp, w)
