@@ -377,7 +377,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 		RedirectURL:  repman.Conf.APIPublicURL + "/api/auth/callback",
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "read_api", "api"},
 	}
-
+	log.Printf("Auth callback Failed to get token from gitlab: %v\n", OAuthConfig)
 	oauth2Token, err := OAuthConfig.Exchange(OAuthContext, r.URL.Query().Get("code"))
 	if err != nil {
 		http.Error(w, "Failed to exchange token: "+err.Error(), http.StatusInternalServerError)
@@ -455,7 +455,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 			specs := r.Header.Get("Accept")
 			resp := token{tokenString}
 			if strings.Contains(specs, "text/html") {
-				http.Redirect(w, r, "https://"+repman.Conf.APIPublicURL+"/#!/dashboard?token="+tokenString+"&user="+userInfo.Email+"&pass="+password, http.StatusTemporaryRedirect)
+				http.Redirect(w, r, repman.Conf.APIPublicURL+"/#!/dashboard?token="+tokenString+"&user="+userInfo.Email+"&pass="+password, http.StatusTemporaryRedirect)
 				return
 			}
 			repman.jsonResponse(resp, w)
