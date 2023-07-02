@@ -961,11 +961,12 @@ func (conf *Config) GetVaultConnection() (*vault.Client, error) {
 func (conf *Config) GetDecryptedPassword(key string, value string) string {
 
 	if conf.SecretKey != nil && strings.HasPrefix(value, "hash_") {
-		if conf.LogConfigLoad {
-			log.WithField("cluster", "config").Infof("GetDecryptedPassword: key(%s) value(%s)", key, value)
-		}
-		value = strings.TrimLeft(value, "hash_")
+		value = strings.TrimPrefix(value, "hash_")
 		p := crypto.Password{Key: conf.SecretKey}
+		if conf.LogConfigLoad {
+			log.WithField("cluster", "config").Infof("GetDecryptedPassword: key(%s) value(%s) %s", key, value, conf.SecretKey)
+		}
+
 		if value != "" {
 			p.CipherText = value
 			err := p.Decrypt()

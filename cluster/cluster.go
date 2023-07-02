@@ -374,7 +374,6 @@ func (cluster *Cluster) InitFromConf() {
 	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {
 		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
 	}
-
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()
 	cluster.GetPersitentState()
