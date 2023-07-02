@@ -152,8 +152,9 @@ func (repman *ReplicationManager) apiserver() {
 	router.HandleFunc("/api/login", repman.loginHandler)
 	//router.Handle("/api", v3.NewHandler("My API", "/swagger.json", "/api"))
 
-	router.HandleFunc("/api/auth/callback", repman.handlerMuxAuthCallback)
-
+	router.Handle("/api/auth/callback", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAuthCallback)),
+	))
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
 	))
@@ -368,7 +369,8 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 	OAuthContext := context.Background()
 	Provider, err := oidc.NewProvider(OAuthContext, repman.Conf.OAuthProvider)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("OAuth callback Failed to init oidc from gitlab:%s %v\n", repman.Conf.OAuthProvider, err)
+		return
 	}
 	OAuthConfig := oauth2.Config{
 		ClientID:     repman.Conf.OAuthClientID,
@@ -377,7 +379,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 		RedirectURL:  repman.Conf.APIPublicURL + "/api/auth/callback",
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "read_api", "api"},
 	}
-	log.Printf("Auth callback Failed to get token from gitlab: %v\n", OAuthConfig)
+	log.Printf("OAuth oidc to gitlab: %v\n", OAuthConfig)
 	oauth2Token, err := OAuthConfig.Exchange(OAuthContext, r.URL.Query().Get("code"))
 	if err != nil {
 		http.Error(w, "Failed to exchange token: "+err.Error(), http.StatusInternalServerError)
