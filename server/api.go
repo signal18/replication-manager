@@ -374,8 +374,8 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 		ClientID:     repman.Conf.OAuthClientID,
 		ClientSecret: repman.Conf.GetDecryptedPassword("api-oauth-client-secret", repman.Conf.OAuthClientSecret),
 		Endpoint:     Provider.Endpoint(),
-		RedirectURL:  repman.Conf.APIPublicURL + "/api/auth/callback",
-		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "read_api", "api"},
+		RedirectURL:/*repman.Conf.APIPublicURL*/ r.Host + "/api/auth/callback",
+		Scopes: []string{oidc.ScopeOpenID, "profile", "email", "read_api", "api"},
 	}
 
 	oauth2Token, err := OAuthConfig.Exchange(OAuthContext, r.URL.Query().Get("code"))
