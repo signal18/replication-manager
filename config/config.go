@@ -1426,6 +1426,8 @@ func (conf Config) MergeConfig(path string, name string, ImmMap map[string]inter
 	viper.SetConfigName("overwrite")
 	dynRead.SetConfigType("toml")
 
+	dynMap := make(map[string]interface{})
+
 	if _, err := os.Stat(path + "/" + name + "/overwrite.toml"); os.IsNotExist(err) {
 		fmt.Printf("No monitoring saved config found " + path + "/" + name + "/overwrite.toml")
 		return err
@@ -1439,7 +1441,19 @@ func (conf Config) MergeConfig(path string, name string, ImmMap map[string]inter
 		}
 		dynRead = dynRead.Sub("overwrite-" + name)
 		//fmt.Printf("%v\n", dynRead.AllSettings())
-
+		for _, f := range dynRead.AllKeys() {
+			v := dynRead.Get(f)
+			_, ok := ImmMap[f]
+			if ok && v != nil && v != ImmMap[f] {
+				_, ok := DefMap[f]
+				if ok && v != DefMap[f] {
+					dynMap[f] = dynRead.Get(f)
+				}
+				if !ok {
+					dynMap[f] = dynRead.Get(f)
+				}
+			}
+		}
 	}
 	//fmt.Printf("%v\n", DefMap)
 	//fmt.Printf("%v\n", dynMap)
@@ -1483,10 +1497,9 @@ func (conf Config) WriteMergeConfig(confPath string, dynMap map[string]interface
 	return nil
 }
 
-func (conf Config) ReadCloud18Config() {
-	dynRead := viper.GetViper()
-	viper.SetConfigName("cloud18")
-	dynRead.SetConfigType("toml")
+func (conf *Config) ReadCloud18Config(viper *viper.Viper) {
+	viper = viper.Sub("default")
+	viper.SetConfigType("toml")
 
 	if _, err := os.Stat(conf.WorkingDir + "/cloud18.toml"); os.IsNotExist(err) {
 		fmt.Printf("No monitoring saved config found " + conf.WorkingDir + "/cloud18.toml")
@@ -1494,14 +1507,15 @@ func (conf Config) ReadCloud18Config() {
 	}
 	fmt.Printf("Parsing saved config from working directory %s ", conf.WorkingDir+"/cloud18.toml")
 
-	dynRead.AddConfigPath(conf.WorkingDir)
-	err := dynRead.ReadInConfig()
+	viper.SetConfigFile(conf.WorkingDir + "/cloud18.toml")
+	err := viper.MergeInConfig()
 	if err != nil {
-		fmt.Printf("Could not read in config : " + conf.WorkingDir + "/cloud18.toml")
+		log.Error("Config error in " + conf.WorkingDir + "/cloud18.toml:" + err.Error())
 	}
-	fmt.Printf("COUCOU readCloud18Config: %v\n", dynRead.AllSettings())
 
-	input, err := ioutil.ReadFile(conf.WorkingDir + "/cloud18.toml")
+	viper.Unmarshal(&conf)
+
+	/*input, err := ioutil.ReadFile(conf.WorkingDir + "/cloud18.toml")
 	if err != nil {
 		fmt.Printf("Cannot read config file %s : %s", conf.WorkingDir+"/cloud18.toml", err)
 		return
@@ -1519,6 +1533,6 @@ func (conf Config) ReadCloud18Config() {
 
 	}
 
-	fmt.Printf("COUCOU readCloud18Config immMap: %v\n", conf.ImmuableFlagMap)
+	fmt.Printf("COUCOU readCloud18Config immMap: %v\n", conf.ImmuableFlagMap)*/
 
 }

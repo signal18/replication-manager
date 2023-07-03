@@ -90,6 +90,7 @@ type ReplicationManager struct {
 	currentCluster                                   *cluster.Cluster                  `json:"-"`
 	UserAuthTry                                      map[string]authTry                `json:"-"`
 	OAuthAccessToken                                 *oauth2.Token                     `json:"-"`
+	ViperConfig                                      *viper.Viper                      `json:"-"`
 	tlog                                             s18log.TermLog
 	termlength                                       int
 	exitMsg                                          string
@@ -438,6 +439,18 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 				}
 			}
 		}
+
+		//to read and set cloud18.toml config file if exist
+		if _, err := os.Stat(conf.WorkingDir + "/cloud18.toml"); os.IsNotExist(err) {
+			fmt.Printf("No monitoring saved config found " + conf.WorkingDir + "/cloud18.toml")
+		} else {
+			tmp_read.SetConfigFile(conf.WorkingDir + "/cloud18.toml")
+			err := tmp_read.MergeInConfig()
+			if err != nil {
+				log.Error("Config error in " + conf.WorkingDir + "/cloud18.toml:" + err.Error())
+			}
+		}
+
 		//fmt.Printf("%+v\n", dynRead.AllSettings())
 		//fmt.Printf("%s\n", dynRead.AllKeys())
 
@@ -552,6 +565,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	//fmt.Printf("%+v\n", fistRead.AllSettings())
 	repman.Confs = confs
 	repman.Conf = conf
+	repman.ViperConfig = fistRead
 }
 
 func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, ImmuableMap map[string]interface{}, DynamicMap map[string]interface{}, cluster string, conf config.Config) config.Config {
@@ -902,8 +916,8 @@ func (repman *ReplicationManager) Run() error {
 
 					if repman.cloud18CheckSum == nil {
 						new_h := md5.New()
-						repman.Conf.ReadCloud18Config()
-						file, err := os.OpenFile(repman.Conf.WorkingDir+"/cloud18.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+						repman.Conf.ReadCloud18Config(repman.ViperConfig)
+						file, err := os.Open(repman.Conf.WorkingDir + "/cloud18.toml")
 						if err != nil {
 							if os.IsPermission(err) {
 								log.Infof("File permission denied: %s", repman.Conf.WorkingDir+"/cloud18.toml")
@@ -915,9 +929,10 @@ func (repman *ReplicationManager) Run() error {
 								repman.cloud18CheckSum = new_h
 							}
 						}
+						defer file.Close()
 
 					} else {
-						file, err := os.OpenFile(repman.Conf.WorkingDir+"/cloud18.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+						file, err := os.Open(repman.Conf.WorkingDir + "/cloud18.toml")
 						if err != nil {
 							if os.IsPermission(err) {
 								log.Infof("File permission denied: %s", repman.Conf.WorkingDir+"/cloud18.toml")
@@ -927,7 +942,7 @@ func (repman *ReplicationManager) Run() error {
 							if _, err := io.Copy(new_h, file); err != nil {
 								log.Infof("Error during computing cloud18.toml hash: %s", err)
 							} else if !bytes.Equal(repman.cloud18CheckSum.Sum(nil), new_h.Sum(nil)) {
-								repman.Conf.ReadCloud18Config()
+								repman.Conf.ReadCloud18Config(repman.ViperConfig)
 								repman.cloud18CheckSum = new_h
 							}
 						}

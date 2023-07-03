@@ -1015,6 +1015,6 @@ func (cluster *Cluster) GetVaultToken() {
 		}
 
 		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
-		cluster.LogPrintf(LvlInfo, "COUCOU test %s", cluster.Conf.PrintSecret(authInfo.Auth.ClientToken))
+		//cluster.LogPrintf(LvlInfo, "COUCOU test %s", cluster.Conf.PrintSecret(authInfo.Auth.ClientToken))
 	}
 }
