@@ -575,6 +575,7 @@ type Config struct {
 	Cloud18Shared                             bool                   `mapstructure:"cloud18-shared"  toml:"cloud18-shared" json:"cloud18Shared"`
 	Cloud18GitUser                            string                 `mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword                        string                 `mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
+	Cloud18PlatformDescription                string                 `mapstructure:"cloud18-platform-description"  toml:"cloud18-platform-description" json:"cloud18PlatformDescription"`
 	Secrets                                   map[string]Secret      `json:"-"`
 	SecretKey                                 []byte                 `json:"-"`
 	ImmuableFlagMap                           map[string]interface{} `json:"-"`
@@ -1502,7 +1503,7 @@ func (conf *Config) ReadCloud18Config(viper *viper.Viper) {
 	viper.SetConfigType("toml")
 
 	if _, err := os.Stat(conf.WorkingDir + "/cloud18.toml"); os.IsNotExist(err) {
-		fmt.Printf("No monitoring saved config found " + conf.WorkingDir + "/cloud18.toml")
+		//fmt.Printf("No monitoring saved config found " + conf.WorkingDir + "/cloud18.toml")
 		return
 	}
 	fmt.Printf("Parsing saved config from working directory %s ", conf.WorkingDir+"/cloud18.toml")

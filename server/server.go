@@ -899,8 +899,12 @@ func (repman *ReplicationManager) Run() error {
 		go repman.httpserver()
 	}
 
+	if _, err := os.Stat(conf.WorkingDir + "/cloud18.toml"); os.IsNotExist(err) {
+		repman.Conf.ReadCloud18Config(repman.ViperConfig)
+	}
+
 	//this ticker make pull to github
-	ticker_GitPull := time.NewTicker(30 * time.Second)
+	ticker_GitPull := time.NewTicker(120 * time.Second)
 	quit_GitPull := make(chan struct{})
 	go func() {
 		for {
@@ -914,7 +918,7 @@ func (repman *ReplicationManager) Run() error {
 						cluster.IsGitPull = true
 					}
 
-					if repman.cloud18CheckSum == nil {
+					if repman.cloud18CheckSum == nil && repman.Conf.Cloud18 {
 						new_h := md5.New()
 						repman.Conf.ReadCloud18Config(repman.ViperConfig)
 						file, err := os.Open(repman.Conf.WorkingDir + "/cloud18.toml")
@@ -931,7 +935,7 @@ func (repman *ReplicationManager) Run() error {
 						}
 						defer file.Close()
 
-					} else {
+					} else if repman.Conf.Cloud18 {
 						file, err := os.Open(repman.Conf.WorkingDir + "/cloud18.toml")
 						if err != nil {
 							if os.IsPermission(err) {

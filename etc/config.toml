@@ -6,6 +6,7 @@ onpremise-ssh = true
 onpremise-ssh-credential = "emma:"
 scheduler-jobs-ssh = true
 monitoring-address = "127.0.0.1"
+
 #monitoring-scheduler = true
 #scheduler-db-servers-logs = true
 #scheduler-db-servers-logs-cron = "0 * * * * *"
