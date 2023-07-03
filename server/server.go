@@ -7,8 +7,12 @@
 package server
 
 import (
+	"bytes"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"hash"
+	"io"
 	"io/ioutil"
 	"log/syslog"
 	"net"
@@ -97,6 +101,7 @@ type ReplicationManager struct {
 	grpcWrapped                                      *grpcweb.WrappedGrpcServer `json:"-"`
 	V3Up                                             chan bool                  `json:"-"`
 	v3Config                                         Repmanv3Config             `json:"-"`
+	cloud18CheckSum                                  hash.Hash                  `json:"-"`
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -260,6 +265,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	ImmuableMap := make(map[string]interface{})
 	DynamicMap := make(map[string]interface{})
 	repman.UserAuthTry = make(map[string]authTry)
+	repman.cloud18CheckSum = nil
 	// call after init if configuration file is provide
 
 	//if repman is embed, create folders and load missing embedded files
@@ -545,7 +551,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 	//fmt.Printf("%+v\n", fistRead.AllSettings())
 	repman.Confs = confs
-	//repman.Conf = conf
+	repman.Conf = conf
 }
 
 func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, ImmuableMap map[string]interface{}, DynamicMap map[string]interface{}, cluster string, conf config.Config) config.Config {
@@ -879,10 +885,67 @@ func (repman *ReplicationManager) Run() error {
 		go repman.httpserver()
 	}
 
+	//this ticker make pull to github
+	ticker_GitPull := time.NewTicker(30 * time.Second)
+	quit_GitPull := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-ticker_GitPull.C:
+				//to do it only when using github
+				if repman.Conf.GitUrl != "" {
+					repman.Conf.CloneConfigFromGit(repman.currentCluster.Conf.GitUrl, repman.currentCluster.Conf.GitUsername, repman.currentCluster.Conf.Secrets["git-acces-token"].Value, repman.currentCluster.Conf.WorkingDir)
+
+					for _, cluster := range repman.Clusters {
+						cluster.IsGitPull = true
+					}
+
+					if repman.cloud18CheckSum == nil {
+						new_h := md5.New()
+						repman.Conf.ReadCloud18Config()
+						file, err := os.OpenFile(repman.Conf.WorkingDir+"/cloud18.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+						if err != nil {
+							if os.IsPermission(err) {
+								log.Infof("File permission denied: %s", repman.Conf.WorkingDir+"/cloud18.toml")
+							}
+						} else {
+							if _, err := io.Copy(new_h, file); err != nil {
+								log.Infof("Error during computing cloud18.toml hash: %s", err)
+							} else {
+								repman.cloud18CheckSum = new_h
+							}
+						}
+
+					} else {
+						file, err := os.OpenFile(repman.Conf.WorkingDir+"/cloud18.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+						if err != nil {
+							if os.IsPermission(err) {
+								log.Infof("File permission denied: %s", repman.Conf.WorkingDir+"/cloud18.toml")
+							}
+						} else {
+							new_h := md5.New()
+							if _, err := io.Copy(new_h, file); err != nil {
+								log.Infof("Error during computing cloud18.toml hash: %s", err)
+							} else if !bytes.Equal(repman.cloud18CheckSum.Sum(nil), new_h.Sum(nil)) {
+								repman.Conf.ReadCloud18Config()
+								repman.cloud18CheckSum = new_h
+							}
+						}
+						defer file.Close()
+
+					}
+				}
+			case <-quit_GitPull:
+				ticker_GitPull.Stop()
+				return
+			}
+		}
+	}()
+
 	//this ticker generate a new app access token, using app refresh token
 	//then it generate a new PAT gitlab to preserved a valid PAT in order to clone/push/pull on the distant gitlab
 	ticker_PAT := time.NewTicker(86400 * time.Second)
-	quit := make(chan struct{})
+	quit_PAT := make(chan struct{})
 	go func() {
 		for {
 			select {
@@ -902,7 +965,7 @@ func (repman *ReplicationManager) Run() error {
 						cluster.Conf.Secrets["git-acces-token"] = newSecret
 					}
 				}
-			case <-quit:
+			case <-quit_PAT:
 				ticker_PAT.Stop()
 				return
 			}

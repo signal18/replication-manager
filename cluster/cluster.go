@@ -97,6 +97,7 @@ type Cluster struct {
 	IsValidBackup                 bool                  `json:"isValidBackup"`
 	IsNotMonitoring               bool                  `json:"isNotMonitoring"`
 	IsCapturing                   bool                  `json:"isCapturing"`
+	IsGitPull                     bool                  `json:"isGitPull"`
 	Conf                          config.Config         `json:"config"`
 	Confs                         *config.ConfVersion   `json:"-"`
 	CleanAll                      bool                  `json:"cleanReplication"` //used in testing
@@ -792,9 +793,9 @@ func (cluster *Cluster) Save() error {
 	if cluster.Conf.ConfRewrite {
 
 		//clone git repository in case its the first time
-		if cluster.Conf.GitUrl != "" {
+		/*if cluster.Conf.GitUrl != "" {
 			cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.GetConf().WorkingDir)
-		}
+		}*/
 
 		cluster.CheckInjectConfig()
 
@@ -836,17 +837,6 @@ func (cluster *Cluster) Save() error {
 
 		//to encrypt credentials before writting in the config file
 
-		/*
-			for key, val := range cluster.Conf.DynamicFlagMap {
-				_, ok := cluster.Conf.Secrets[key]
-				if ok {
-					encrypt_val := cluster.GetEncryptedValueFromMemory(key)
-					file.WriteString(key + " = \"" + encrypt_val + "\"\n")
-				} else {
-					file.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
-				}
-
-			}*/
 		s.WriteTo(file)
 		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", cluster.Conf.ImmuableFlagMap)
 		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.Conf.DynamicFlagMap)
@@ -1043,8 +1033,9 @@ func (cluster *Cluster) Overwrite(has_changed bool) error {
 
 	}
 	//to load the new generated config file in github
-	if cluster.Conf.GitUrl != "" && has_changed {
+	if cluster.Conf.GitUrl != "" && has_changed && cluster.IsGitPull {
 		go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
+		cluster.IsGitPull = false
 	}
 
 	return nil
