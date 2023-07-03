@@ -75,10 +75,10 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 }
 
 func (cluster *Cluster) ResticGetEnv() []string {
-	newEnv := append(os.Environ(), "RESTIC_PASSWORD="+cluster.Conf.BackupResticPassword)
+	newEnv := append(os.Environ(), "RESTIC_PASSWORD="+cluster.Conf.GetDecryptedValue("backup-restic-password"))
 	if cluster.Conf.BackupResticAws {
 		newEnv = append(newEnv, "AWS_ACCESS_KEY_ID="+cluster.Conf.BackupResticAwsAccessKeyId)
-		newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+cluster.Conf.BackupResticAwsAccessSecret)
+		newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
 		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.Conf.BackupResticRepository)
 	} else {
 		resticdir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive"

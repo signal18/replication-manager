@@ -59,7 +59,7 @@ func (cluster *Cluster) GetAPIUser(strUser string, strPassword string) (APIUser,
 }
 
 func (cluster *Cluster) SaveAcls() {
-	credentials := strings.Split(cluster.Conf.APIUsers+","+cluster.Conf.APIUsersExternal, ",")
+	credentials := strings.Split(cluster.Conf.GetDecryptedValue("api-credentials")+","+cluster.Conf.GetDecryptedValue("api-credentials-external"), ",")
 	var aUserAcls []string
 	for _, credential := range credentials {
 		user, _ := misc.SplitPair(credential)

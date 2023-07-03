@@ -1096,6 +1096,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 			return ""
 		}
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("proxysql-password"))
+	case "proxyjanitor-password":
+		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("proxyjanitor-password"))
 	case "vault-secret-id":
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("vault-secret-id"))
 	case "opensvc-p12-secret":
@@ -1108,6 +1110,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("arbitration-external-secret"))
 	case "alert-pushover-user-token":
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("alert-pushover-user-token"))
+	case "alert-pushover-app-token":
+		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("alert-pushover-app-token"))
 	case "mail-smtp-password":
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("mail-smtp-password"))
 	case "api-oauth-client-secret":

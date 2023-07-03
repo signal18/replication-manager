@@ -524,7 +524,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		}
 
 		if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
-			acces_tok := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.Cloud18GitPassword)
+			acces_tok := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"))
 			personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, conf.LogGit)
 			if personal_access_token != "" {
 				var Secrets config.Secret
@@ -735,9 +735,9 @@ func (repman *ReplicationManager) initAlias(v *viper.Viper) {
 
 func (repman *ReplicationManager) InitRestic() error {
 	os.Setenv("AWS_ACCESS_KEY_ID", repman.Conf.BackupResticAwsAccessKeyId)
-	os.Setenv("AWS_SECRET_ACCESS_KEY", repman.Conf.BackupResticAwsAccessSecret)
+	os.Setenv("AWS_SECRET_ACCESS_KEY", repman.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
 	os.Setenv("RESTIC_REPOSITORY", repman.Conf.BackupResticRepository)
-	os.Setenv("RESTIC_PASSWORD", repman.Conf.BackupResticPassword)
+	os.Setenv("RESTIC_PASSWORD", repman.Conf.GetDecryptedValue("backup-restic-password"))
 	//os.Setenv("RESTIC_FORGET_ARGS", repman.Conf.BackupResticStoragePolicy)
 	return nil
 }
@@ -846,7 +846,7 @@ func (repman *ReplicationManager) Run() error {
 		repman.OpenSVC.RplMgrCodeApp = repman.Conf.ProvCodeApp
 		if !repman.Conf.ProvOpensvcUseCollectorAPI {
 			repman.OpenSVC.UseAPI = repman.Conf.ProvOpensvcUseCollectorAPI
-			repman.OpenSVC.CertsDERSecret = repman.Conf.ProvOpensvcP12Secret
+			repman.OpenSVC.CertsDERSecret = repman.Conf.GetDecryptedValue("opensvc-p12-secret")
 			err := repman.OpenSVC.LoadCert(repman.Conf.ProvOpensvcP12Certificate)
 			if err != nil {
 				log.Fatalf("Cannot load OpenSVC cluster certificate %s ", err)

@@ -132,11 +132,16 @@ func (cluster *Cluster) AddUser(user string) error {
 	if _, ok := cluster.APIUsers[user]; ok {
 		cluster.LogPrintf(LvlErr, "User %s already exist ", user)
 	} else {
-		if cluster.Conf.APIUsersExternal == "" {
+		if cluster.Conf.GetDecryptedValue("api-credentials-external") == "" {
 			cluster.Conf.APIUsersExternal = user + ":" + pass
+
 		} else {
-			cluster.Conf.APIUsersExternal = cluster.Conf.APIUsersExternal + "," + user + ":" + pass
+			cluster.Conf.APIUsersExternal = cluster.Conf.GetDecryptedValue("api-credentials-external") + "," + user + ":" + pass
 		}
+		var new_secret config.Secret
+		new_secret.Value = cluster.Conf.APIUsersExternal
+		new_secret.OldValue = cluster.Conf.GetDecryptedValue("api-credentials-external")
+		cluster.Conf.Secrets["api-credentials-external"] = new_secret
 		cluster.LoadAPIUsers()
 		cluster.Save()
 	}
