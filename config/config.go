@@ -100,6 +100,7 @@ type Config struct {
 	LogSQLInMonitoring                        bool                   `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
 	LogFailedElection                         bool                   `mapstructure:"log-failed-election"  toml:"log-failed-election" json:"logFailedElection"`
 	LogGit                                    bool                   `mapstructure:"log-git" toml:"log-git" json:"logGit"`
+	LogConfigLoad                             bool                   `mapstructure:"log-config-load" toml:"log-config-load" json:"logConfigLoad"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	HostsDelayed                              string                 `mapstructure:"replication-delayed-hosts" toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
@@ -844,7 +845,9 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		}
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
-
+		if conf.LogConfigLoad {
+			log.WithField("cluster", "config").Infof("DecryptSecretsFromConfig: %s", secret.Value)
+		}
 		lst_cred := strings.Split(secret.Value, ",")
 		var tab_cred []string
 		for _, cred := range lst_cred {
@@ -852,7 +855,11 @@ func (conf *Config) DecryptSecretsFromConfig() {
 				user, pass := misc.SplitPair(cred)
 				tab_cred = append(tab_cred, user+":"+conf.GetDecryptedPassword(k, pass))
 			} else {
-				tab_cred = append(tab_cred, conf.GetDecryptedPassword(k, cred))
+				if len(cred) > 1 {
+					tab_cred = append(tab_cred, conf.GetDecryptedPassword(k, cred))
+				} else {
+					log.WithField("cluster", "config").Errorf("Empty credential do not decrypt key: %s", k)
+				}
 			}
 		}
 		secret.Value = strings.Join(tab_cred, ",")
@@ -952,9 +959,14 @@ func (conf *Config) GetVaultConnection() (*vault.Client, error) {
 }
 
 func (conf *Config) GetDecryptedPassword(key string, value string) string {
+
 	if conf.SecretKey != nil && strings.HasPrefix(value, "hash_") {
-		value = strings.TrimLeft(value, "hash_")
+		value = strings.TrimPrefix(value, "hash_")
 		p := crypto.Password{Key: conf.SecretKey}
+		if conf.LogConfigLoad {
+			log.WithField("cluster", "config").Infof("GetDecryptedPassword: key(%s) value(%s) %s", key, value, conf.SecretKey)
+		}
+
 		if value != "" {
 			p.CipherText = value
 			err := p.Decrypt()

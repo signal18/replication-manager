@@ -29,18 +29,19 @@ prov-proxy-disk-type = "volume"
 prov-proxy-volume-data = "tank"
 test=true
 
-cloud18-credentials="stephane@signal18.io:hash_186f9f042f487338ab7e49c3de77eaaf4ff2589630cc55e7de2891ea3e4dd45c6244a0530056c9410cd5"
+cloud18-user="stephane@signal18.io"
+cloud18-password="hash_0472ff4acf82eb1afc0edd44c9087c9a95f4874adc38e3b2aa68496a"
 cloud18-domain = "signal18"
-cloud18-sub-domain = "ovh"
+cloud18-sub-domain = "ovh-dev"
 cloud18-sub-domain-zone = "fr-1"
 
 proxyjanitor-servers = "51.68.2.60"
 proxyjanitor-password = "hash_c3fbd75e68b9f08db04620b592d48b9ac154bd97901e9064ea8dd2938f4a6a8e"
 
 monitoring-save-config=true
-git-url="https://gitlab.signal18.io/signal18/ovh-fr-1"
-git-username ="svaroqui"
-git-acces-token="hash_39d6c7a2aded0a01a954c5de3de1405866b9c9273e4515afa4a26fa6a302e9f37446a1093b1cbf04e6c4"
+#git-url="https://gitlab.signal18.io/signal18/ovh-fr-1"
+#git-username ="svaroqui"
+#git-acces-token="hash_39d6c7a2aded0a01a954c5de3de1405866b9c9273e4515afa4a26fa6a302e9f37446a1093b1cbf04e6c4"
 
 mail-from = "support@signal18.io"
 mail-to = "stephane@signal18.io"

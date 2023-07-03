@@ -366,7 +366,6 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogPrintf(LvlInfo, "No existing password encryption key")
 		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
 	}
-	cluster.SetClusterCredentialsFromConfig()
 
 	if cluster.Conf.Interactive {
 		cluster.LogPrintf(LvlInfo, "Failover in interactive mode")
@@ -376,6 +375,10 @@ func (cluster *Cluster) InitFromConf() {
 	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {
 		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
 	}
+	cluster.SetClusterCredentialsFromConfig()
+	cluster.LoadAPIUsers()
+	cluster.GetPersitentState()
+
 	cluster.LogPushover = log.New()
 	cluster.LogPushover.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 
@@ -441,9 +444,6 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.SqlGeneralLog.WithError(err).Error("Can't init general sql log file")
 	}
 	cluster.SqlGeneralLog.AddHook(hookgen)
-	cluster.LoadAPIUsers()
-
-	cluster.GetPersitentState()
 
 	err = cluster.newServerList()
 	if err != nil {
