@@ -798,12 +798,6 @@ func (cluster *Cluster) Save() error {
 
 	if cluster.Conf.ConfRewrite {
 
-		//clone git repository in case its the first time
-		/*
-			if cluster.Conf.GitUrl != "" {
-				cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.GetConf().WorkingDir)
-			}*/
-
 		cluster.CheckInjectConfig()
 
 		var myconf = make(map[string]config.Config)
@@ -1045,12 +1039,6 @@ func (cluster *Cluster) Overwrite(has_changed bool) error {
 		cluster.CheckSumConfig["overwrite"] = new_h
 
 	}
-	/*
-		//to load the new generated config file in github
-		if cluster.Conf.GitUrl != "" && has_changed && cluster.IsGitPull {
-			go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
-			cluster.IsGitPull = false
-		}*/
 
 	return nil
 }

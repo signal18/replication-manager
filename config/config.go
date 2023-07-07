@@ -1042,8 +1042,6 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 		log.Printf("Clone from git : url %s, tok %s, dir %s\n", url, conf.PrintSecret(tok), dir)
 	}
 
-	//fmt.Printf("Clone from git : url %s, tok %s, dir %s\n", url, tok, dir)
-
 	path := dir
 	if _, err := os.Stat(path + "/.git"); err == nil {
 
@@ -1088,41 +1086,6 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 		}
 	}
 }
-
-/*
-func (conf *Config) CommitConfigToGit(url string, user string, tok string, dir string) {
-	if conf.LogGit {
-		log.Infof("Commit to git : tok %s, dir %s, user %s\n", conf.PrintSecret(tok), dir, user)
-	}
-	path := dir
-	if _, err := os.Stat(path + "/.git"); err == nil {
-		r, err := git.PlainOpen(path)
-		if err != nil && conf.LogGit {
-			log.Errorf("Git error : cannot PlainOpen : %s", err)
-			return
-		}
-
-		w, err := r.Worktree()
-		if err != nil && conf.LogGit {
-			log.Errorf("Git error : cannot Worktree : %s", err)
-			return
-		}
-
-		msg := "Update file"
-
-		_, err = w.Commit(msg, &git.CommitOptions{
-			All: true,
-			Author: &git_obj.Signature{
-				Name: "Replication-manager",
-				When: time.Now(),
-			},
-		})
-
-		if err != nil && conf.LogGit {
-			log.Errorf("Git error : cannot Commit : %s", err)
-		}
-	}
-}*/
 
 func (conf *Config) PushConfigToGit(url string, tok string, user string, dir string, clusterList []string) {
 
