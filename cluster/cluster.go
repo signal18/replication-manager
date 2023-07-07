@@ -746,11 +746,17 @@ func (cluster *Cluster) StateProcessing() {
 func (cluster *Cluster) Stop() {
 	//	cluster.scheduler.Stop()
 	cluster.Save()
+	if cluster.Conf.GitUrl != "" {
+		go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
+	}
 	cluster.exit = true
 
 }
 
 func (cluster *Cluster) Save() error {
+	if !cluster.IsGitPull && cluster.Conf.Cloud18 {
+		return nil
+	}
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
 		cluster.LogPrintf(LvlInfo, "Saved called from %s#%d\n", file, no)
@@ -793,9 +799,10 @@ func (cluster *Cluster) Save() error {
 	if cluster.Conf.ConfRewrite {
 
 		//clone git repository in case its the first time
-		/*if cluster.Conf.GitUrl != "" {
-			cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.GetConf().WorkingDir)
-		}*/
+		/*
+			if cluster.Conf.GitUrl != "" {
+				cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.GetConf().WorkingDir)
+			}*/
 
 		cluster.CheckInjectConfig()
 
@@ -878,7 +885,7 @@ func (cluster *Cluster) Save() error {
 		}
 
 		new_h = md5.New()
-		if _, err := io.Copy(new_h, file); err != nil {
+		if _, err := io.Copy(new_h, file2); err != nil {
 			cluster.LogPrintf(LvlInfo, "Error during Overwriting: %s", err)
 		}
 
@@ -931,12 +938,14 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	path := dir
 	r, err := git.PlainOpen(path)
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogPrintf(LvlInfo, "Git error : cannot PlainOpen : %s", err)
+		cluster.LogPrintf(LvlErr, "Git error : cannot PlainOpen : %s", err)
+		return
 	}
 
 	w, err := r.Worktree()
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogPrintf(LvlInfo, "Git error : cannot Worktree : %s", err)
+		cluster.LogPrintf(LvlErr, "Git error : cannot Worktree : %s", err)
+		return
 	}
 
 	msg := "Update " + name + ".toml file"
@@ -944,12 +953,16 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	// Adds the new file to the staging area.
 	err = w.AddGlob(name + "/*.toml")
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogPrintf(LvlInfo, "Git error : cannot Add %s : %s", name+"/*.toml", err)
+		cluster.LogPrintf(LvlErr, "Git error : cannot Add %s : %s", name+"/*.toml", err)
 	}
 
-	err = w.AddGlob(name + "/*.json")
+	_, err = w.Add(name + "/agents.json")
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogPrintf(LvlInfo, "Git error : cannot Add %s : %s", name+"/*.json", err)
+		cluster.LogPrintf(LvlErr, "Git error : cannot Add %s : %s", name+"/*.json", err)
+	}
+	_, err = w.Add(name + "/queryrules.json")
+	if err != nil && cluster.Conf.LogGit {
+		cluster.LogPrintf(LvlErr, "Git error : cannot Add %s : %s", name+"/*.json", err)
 	}
 
 	_, err = w.Commit(msg, &git.CommitOptions{
@@ -960,13 +973,13 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	})
 
 	if err != nil && cluster.Conf.LogGit {
-		log.Errorf("Git error : cannot Commit : %s", err)
+		cluster.LogPrintf(LvlErr, "Git error : cannot Commit : %s", err)
 	}
 
 	// push using default options
 	err = r.Push(&git.PushOptions{Auth: auth})
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogPrintf(LvlInfo, "Git error : cannot Push : %s", err)
+		cluster.LogPrintf(LvlErr, "Git error : cannot Push : %s", err)
 
 	}
 }
@@ -1032,11 +1045,12 @@ func (cluster *Cluster) Overwrite(has_changed bool) error {
 		cluster.CheckSumConfig["overwrite"] = new_h
 
 	}
-	//to load the new generated config file in github
-	if cluster.Conf.GitUrl != "" && has_changed && cluster.IsGitPull {
-		go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
-		cluster.IsGitPull = false
-	}
+	/*
+		//to load the new generated config file in github
+		if cluster.Conf.GitUrl != "" && has_changed && cluster.IsGitPull {
+			go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
+			cluster.IsGitPull = false
+		}*/
 
 	return nil
 }
@@ -1120,6 +1134,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("cloud18-gitlab-password"))
 	case "git-acces-token":
 		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("git-acces-token"))
+	case "vault-token":
+		return cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedValue("vault-token"))
 	default:
 		return ""
 	}

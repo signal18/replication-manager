@@ -258,8 +258,10 @@ func (cluster *Cluster) GetConnections() int {
 
 func (cluster *Cluster) GetCpuTime() float64 {
 	max_cpu_usage := 0.0
+
 	for _, s := range cluster.Servers {
-		if s.WorkLoad["current"].CpuThreadPool > max_cpu_usage {
+		v, ok := s.WorkLoad["current"]
+		if ok && v.CpuThreadPool > max_cpu_usage {
 			max_cpu_usage = s.WorkLoad["current"].CpuThreadPool
 		}
 	}
@@ -941,7 +943,6 @@ func (cluster *Cluster) GetVaultConnection() (*vault.Client, error) {
 
 		roleID := cluster.Conf.VaultRoleId
 		secretid := cluster.Conf.GetDecryptedPassword("vault-secret-id", cluster.Conf.VaultSecretId)
-		//cluster.LogPrintf(LvlErr, "COUCOU test CLUSTER %s", cluster.Conf.VaultSecretId)
 		secretID := &auth.SecretID{FromString: secretid}
 		if roleID == "" || secretID == nil {
 			cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], err), ErrFrom: "TOPO"})
@@ -1015,6 +1016,11 @@ func (cluster *Cluster) GetVaultToken() {
 		}
 
 		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
-		cluster.LogPrintf(LvlInfo, "COUCOU test %s", cluster.Conf.PrintSecret(authInfo.Auth.ClientToken))
+		if err != nil {
+			return
+		}
+		cluster.Conf.VaultToken = authInfo.Auth.ClientToken
+		cluster.Conf.DynamicFlagMap["vault-token"] = authInfo.Auth.ClientToken
+		//cluster.LogPrintf(LvlInfo, "COUCOU test %s", authInfo.Auth.ClientToken)
 	}
 }

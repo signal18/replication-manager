@@ -25,6 +25,7 @@ import (
 
 	masker "github.com/ggwhite/go-masker"
 	"github.com/go-git/go-git/v5"
+	git_obj "github.com/go-git/go-git/v5/plumbing/object"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	vault "github.com/hashicorp/vault/api"
 	auth "github.com/hashicorp/vault/api/auth/approle"
@@ -565,9 +566,11 @@ type Config struct {
 	VaultMode                                 string                 `mapstructure:"vault-mode" toml:"vault-mode" json:"vaultMode"`
 	VaultMount                                string                 `mapstructure:"vault-mount" toml:"vault-mount" json:"vaultMount"`
 	VaultAuth                                 string                 `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
+	VaultToken                                string                 `mapstructure:"vault-token" toml:"vault-token" json:"vaultToken"`
 	GitUrl                                    string                 `mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
 	GitUsername                               string                 `mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
 	GitAccesToken                             string                 `mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
+	GitMonitoringTicker                       int                    `mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
 	Cloud18                                   bool                   `mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
 	Cloud18Domain                             string                 `mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain"`
 	Cloud18SubDomain                          string                 `mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
@@ -832,6 +835,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		"git-acces-token":                       {"", ""},
 		"mail-smtp-password":                    {"", ""},
 		"cloud18-gitlab-password":               {"", ""},
+		"vault-token":                           {"", ""},
 		"api-oauth-client-secret":               {"", ""}}
 
 	for k := range conf.Secrets {
@@ -1056,13 +1060,14 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 			log.Errorf("Git error : cannot Worktree : %s", err)
 			return
 		}
-
 		// Pull the latest changes from the origin remote and merge into the current branch
 		//git_ex.Info("git pull origin")
 		err = w.Pull(&git.PullOptions{
-			RemoteName: "origin",
-			Auth:       auth,
-			RemoteURL:  url,
+			RemoteName:   "origin",
+			Auth:         auth,
+			SingleBranch: true,
+			//RemoteURL:    url,
+			Force: true,
 		})
 		if err != nil && fmt.Sprintf("%v", err) != "already up-to-date" && conf.LogGit {
 			log.Errorf("Git error : cannot Pull : %s", err)
@@ -1083,6 +1088,165 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 		}
 	}
 }
+
+/*
+func (conf *Config) CommitConfigToGit(url string, user string, tok string, dir string) {
+	if conf.LogGit {
+		log.Infof("Commit to git : tok %s, dir %s, user %s\n", conf.PrintSecret(tok), dir, user)
+	}
+	path := dir
+	if _, err := os.Stat(path + "/.git"); err == nil {
+		r, err := git.PlainOpen(path)
+		if err != nil && conf.LogGit {
+			log.Errorf("Git error : cannot PlainOpen : %s", err)
+			return
+		}
+
+		w, err := r.Worktree()
+		if err != nil && conf.LogGit {
+			log.Errorf("Git error : cannot Worktree : %s", err)
+			return
+		}
+
+		msg := "Update file"
+
+		_, err = w.Commit(msg, &git.CommitOptions{
+			All: true,
+			Author: &git_obj.Signature{
+				Name: "Replication-manager",
+				When: time.Now(),
+			},
+		})
+
+		if err != nil && conf.LogGit {
+			log.Errorf("Git error : cannot Commit : %s", err)
+		}
+	}
+}*/
+
+func (conf *Config) PushConfigToGit(url string, tok string, user string, dir string, clusterList []string) {
+
+	if conf.LogGit {
+		log.Infof("Push to git : tok %s, dir %s, user %s, clustersList : %v\n", conf.PrintSecret(tok), dir, user, clusterList)
+	}
+	auth := &git_https.BasicAuth{
+		Username: user, // yes, this can be anything except an empty string
+		Password: tok,
+	}
+	path := dir
+	r, err := git.PlainOpen(path)
+	if err != nil && conf.LogGit {
+		log.Errorf("Git error : cannot PlainOpen : %s", err)
+		return
+	}
+
+	w, err := r.Worktree()
+	if err != nil && conf.LogGit {
+		log.Errorf("Git error : cannot Worktree : %s", err)
+		return
+	}
+
+	if len(clusterList) != 0 {
+		for _, name := range clusterList {
+			// Adds the new file to the staging area.
+			err = w.AddGlob(name + "/*.toml")
+			if err != nil && conf.LogGit {
+				log.Errorf("Git error : cannot Add %s : %s", name+"/*.toml", err)
+			}
+
+			if _, err := os.Stat(conf.WorkingDir + "/" + name + "/agents.json"); !os.IsNotExist(err) {
+				_, err = w.Add(name + "/agents.json")
+				if err != nil && conf.LogGit {
+					log.Errorf("Git error : cannot Add %s : %s", name+"/agents.json", err)
+				}
+				_, err = w.Add(name + "/queryrules.json")
+				if err != nil && conf.LogGit {
+					log.Errorf("Git error : cannot Add %s : %s", name+"/queryrules.json", err)
+				}
+			}
+		}
+	}
+
+	if _, err := os.Stat(conf.WorkingDir + "/cloud18.toml"); !os.IsNotExist(err) {
+		_, err = w.Add("cloud18.toml")
+		if err != nil && conf.LogGit {
+			log.Errorf("Git error : cannot Add cloud18.toml : %s", err)
+		}
+	}
+
+	msg := "Update file"
+
+	_, err = w.Commit(msg, &git.CommitOptions{
+		Author: &git_obj.Signature{
+			Name: "Replication-manager",
+			When: time.Now(),
+		},
+		All: true,
+	})
+
+	if err != nil && conf.LogGit {
+		log.Errorf("Git error : cannot Commit : %s", err)
+		return
+	}
+
+	err = w.Pull(&git.PullOptions{
+		RemoteName: "origin",
+		Auth:       auth,
+		RemoteURL:  url,
+		Force:      true,
+	})
+
+	if err != nil && fmt.Sprintf("%v", err) != "already up-to-date" && conf.LogGit {
+
+		if err != nil && conf.LogGit {
+			log.Errorf("Git error : cannot Pull %s repository : %s", url, err)
+			//conf.PullByGitCli()
+			//return
+		}
+
+	}
+
+	// push using default options
+	err = r.Push(&git.PushOptions{Auth: auth})
+	if err != nil && conf.LogGit {
+		log.Errorf("Git error : cannot Push : %s", err)
+
+	}
+}
+
+/*
+func (conf *Config) PullByGitCli() {
+	// Store the initial directory path
+	initialDir, err := os.Getwd()
+	if err != nil {
+		fmt.Println("Failed to get current directory:", err)
+		return
+	}
+	// Change to the desired Git repository directory
+	repoDir := conf.WorkingDir
+	if err := os.Chdir(repoDir); err != nil {
+		log.Errorf("Failed to change directory:", err)
+		return
+	}
+
+	// Execute "git pull" command
+	cmd := exec.Command("git", "pull", "-f")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Errorf("Failed to execute 'git pull' command:", err)
+		return
+	}
+
+	log.Infof("Git pull output:", string(output))
+
+	log.Infof("Merge accepted successfully. %s", output)
+
+	// Change back to the initial directory
+	if err := os.Chdir(initialDir); err != nil {
+		fmt.Println("Failed to change back to initial directory:", err)
+		return
+	}
+}*/
 
 func (conf *Config) GetBackupPhysicalType() map[string]bool {
 	return map[string]bool{
@@ -1515,25 +1679,5 @@ func (conf *Config) ReadCloud18Config(viper *viper.Viper) {
 	}
 
 	viper.Unmarshal(&conf)
-
-	/*input, err := ioutil.ReadFile(conf.WorkingDir + "/cloud18.toml")
-	if err != nil {
-		fmt.Printf("Cannot read config file %s : %s", conf.WorkingDir+"/cloud18.toml", err)
-		return
-	}
-
-	lines := strings.Split(string(input), "\n")
-
-	for _, line := range lines {
-		tmp := strings.Split(line, "=")
-		if len(tmp) == 2 {
-			tmp[0] = strings.ReplaceAll(tmp[0], " ", "")
-			tmp[1] = strings.ReplaceAll(tmp[1], " ", "")
-			conf.ImmuableFlagMap[tmp[0]] = tmp[1]
-		}
-
-	}
-
-	fmt.Printf("COUCOU readCloud18Config immMap: %v\n", conf.ImmuableFlagMap)*/
 
 }

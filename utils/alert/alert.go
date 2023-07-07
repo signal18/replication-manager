@@ -62,58 +62,32 @@ New server state change from %s is %s.`, a.Origin, a.PrevState, a.State)
 }
 
 func (a *Alert) EmailMessage(msg string, subj string, Conf config.Config) error {
-	a.From = Conf.MailFrom
-	a.To = Conf.MailTo
-	a.Destination = Conf.MailSMTPAddr
-	a.User = Conf.MailSMTPUser
-	a.Password = Conf.Secrets["mail-smtp-password"].Value
-	a.TlsVerify = Conf.MailSMTPTLSSkipVerify
-	if msg == "" {
-		e := email.NewEmail()
-		e.From = a.From
-		e.To = strings.Split(a.To, ",")
-		subj := fmt.Sprintf("Replication-Manager alert - State change detected on host %s", a.Origin)
-		e.Subject = subj
-		text := fmt.Sprintf(`Replication Manager has detected a change of state for host %s.
-New server state change from %s is %s.`, a.Origin, a.PrevState, a.State)
-		e.Text = []byte(text)
-		var err error
-		if a.User == "" {
-			if a.TlsVerify {
-				err = e.SendWithTLS(a.Destination, nil, &tls.Config{InsecureSkipVerify: true})
-			} else {
-				err = e.Send(a.Destination, nil)
-			}
-		} else {
-			if a.TlsVerify {
-				err = e.SendWithTLS(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]), &tls.Config{InsecureSkipVerify: true})
-			} else {
-				err = e.Send(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]))
-			}
-		}
-		if err != nil {
-			log.Println("ERROR", "Could not send mail alert: %s ", err)
-		}
-		return err
-	}
 
 	e := email.NewEmail()
-	e.From = a.From
-	e.To = strings.Split(a.To, ",")
-	e.Subject = subj
-	e.Text = []byte(msg)
+	e.From = Conf.MailFrom
+	e.To = strings.Split(Conf.MailTo, ",")
+
+	if msg == "" {
+		e.Subject = fmt.Sprintf("Replication-Manager alert - State change detected on host %s", a.Origin)
+		text := fmt.Sprintf(`Replication Manager has detected a change of state for host %s. New server state change from %s is %s.`, a.Origin, a.PrevState, a.State)
+		e.Text = []byte(text)
+	} else {
+		e.Subject = subj
+		e.Text = []byte(msg)
+	}
+
 	var err error
-	if a.User == "" {
-		if a.TlsVerify {
-			err = e.SendWithTLS(a.Destination, nil, &tls.Config{InsecureSkipVerify: true})
+	if Conf.MailSMTPUser == "" {
+		if Conf.MailSMTPTLSSkipVerify {
+			err = e.SendWithTLS(Conf.MailSMTPAddr, nil, &tls.Config{InsecureSkipVerify: true})
 		} else {
-			err = e.Send(a.Destination, nil)
+			err = e.Send(Conf.MailSMTPAddr, nil)
 		}
 	} else {
-		if a.TlsVerify {
-			err = e.SendWithTLS(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]), &tls.Config{InsecureSkipVerify: true})
+		if Conf.MailSMTPTLSSkipVerify {
+			err = e.SendWithTLS(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets["mail-smtp-password"].Value, strings.Split(Conf.MailSMTPAddr, ":")[0]), &tls.Config{InsecureSkipVerify: true})
 		} else {
-			err = e.Send(a.Destination, smtp.PlainAuth("", a.User, a.Password, strings.Split(a.Destination, ":")[0]))
+			err = e.Send(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets["mail-smtp-password"].Value, strings.Split(Conf.MailSMTPAddr, ":")[0]))
 		}
 	}
 	if err != nil {

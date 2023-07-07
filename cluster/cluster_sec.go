@@ -8,13 +8,18 @@ package cluster
 
 import (
 	"context"
+	"crypto/tls"
+	"net/smtp"
+	"strings"
 
 	vault "github.com/hashicorp/vault/api"
+	"github.com/jordan-wright/email"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 var logger = logrus.New()
@@ -320,4 +325,46 @@ func (cluster *Cluster) RotatePasswords() error {
 	}
 
 	return nil
+}
+
+func (cluster *Cluster) SendVaultTokenByMail(Conf config.Config) error {
+	subj := "Replication-Manager Vault Token"
+	msg := "Here's your vault token: " + Conf.Secrets["vault-token"].Value + ". This token allows you to view your passwords at the following address in complete security.\n" + Conf.VaultServerAddr
+
+	e := email.NewEmail()
+	e.From = Conf.MailFrom
+	e.To = strings.Split(Conf.MailTo, ",")
+	e.Subject = subj
+	e.Text = []byte(msg)
+
+	for ind, mail := range e.To {
+		if strings.Contains(Conf.APIUsersExternal, mail) {
+			e.To = append(e.To[:ind], e.To[(ind+1):]...)
+		}
+	}
+
+	if len(e.To) == 0 {
+		log.Println("ERROR", "Could not send mail alert because there is no valid email")
+		return nil
+	}
+
+	var err error
+	if Conf.MailSMTPUser == "" {
+		if Conf.MailSMTPTLSSkipVerify {
+			err = e.SendWithTLS(Conf.MailSMTPAddr, nil, &tls.Config{InsecureSkipVerify: true})
+		} else {
+			err = e.Send(Conf.MailSMTPAddr, nil)
+		}
+	} else {
+		if Conf.MailSMTPTLSSkipVerify {
+			err = e.SendWithTLS(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets["mail-smtp-password"].Value, strings.Split(Conf.MailSMTPAddr, ":")[0]), &tls.Config{InsecureSkipVerify: true})
+		} else {
+			err = e.Send(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets["mail-smtp-password"].Value, strings.Split(Conf.MailSMTPAddr, ":")[0]))
+		}
+	}
+	if err != nil {
+		log.Println("ERROR", "Could not send mail alert: %s ", err)
+	}
+	return err
+
 }
