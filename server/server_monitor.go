@@ -408,6 +408,7 @@ func init() {
 
 	monitorCmd.Flags().StringVar(&conf.BackupSaveScript, "backup-save-script", "", "Customized backup save script")
 	monitorCmd.Flags().StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")
+	monitorCmd.Flags().BoolVar(&conf.CompressBackups, "compress-backups", false, "To compress backups")
 
 	monitorCmd.Flags().StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "/usr/bin/mydumper", "Path to mydumper binary")
 	monitorCmd.Flags().StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "/usr/bin/myloader", "Path to myloader binary")

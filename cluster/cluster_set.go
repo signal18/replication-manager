@@ -256,7 +256,15 @@ func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 		if err == nil {
 			cluster.Schedule["dbjobsssh"] = cluster.scheduler.Entry(cluster.idSchedulerDbsjobsSsh)
 		}
+		if cluster.Conf.CompressBackups {
+			cluster.CompressBackups()
+		}
+
 	}
+}
+
+func (cluster *Cluster) CompressBackups() {
+	//cluster.LogPrintf(LvlInfo, "COUCOU compress backups")
 }
 
 func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {

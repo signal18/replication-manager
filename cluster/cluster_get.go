@@ -260,9 +260,11 @@ func (cluster *Cluster) GetCpuTime() float64 {
 	max_cpu_usage := 0.0
 
 	for _, s := range cluster.Servers {
-		v, ok := s.WorkLoad["current"]
-		if ok && v.CpuThreadPool > max_cpu_usage {
-			max_cpu_usage = s.WorkLoad["current"].CpuThreadPool
+		if s != nil {
+			v, ok := s.WorkLoad["current"]
+			if ok && v.CpuThreadPool > max_cpu_usage {
+				max_cpu_usage = s.WorkLoad["current"].CpuThreadPool
+			}
 		}
 	}
 	return max_cpu_usage
@@ -271,8 +273,10 @@ func (cluster *Cluster) GetCpuTime() float64 {
 func (cluster *Cluster) GetCpuTimeFromStat() float64 {
 	max_cpu_usage := 0.0
 	for _, s := range cluster.Servers {
-		if s.WorkLoad["current"].CpuUserStats > max_cpu_usage {
-			max_cpu_usage = s.WorkLoad["current"].CpuUserStats
+		if s != nil {
+			if s.WorkLoad["current"].CpuUserStats > max_cpu_usage {
+				max_cpu_usage = s.WorkLoad["current"].CpuUserStats
+			}
 		}
 	}
 	return max_cpu_usage
