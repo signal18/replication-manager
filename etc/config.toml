@@ -1,7 +1,7 @@
 [Default]
 
 include = "./etc/local/masterslave/proxysql"
-prov-orchestrator = "onpremise"
+prov-orchestrator = "local"
 onpremise-ssh = true
 onpremise-ssh-credential = "emma:"
 scheduler-jobs-ssh = true
@@ -15,7 +15,7 @@ backup-physical-type = "mariabackup"
 scheduler-db-servers-optimize = false
 scheduler-db-servers-logical-backup = false
 scheduler-db-servers-logs-table-rotate = false
-#compress-backups = true
+compress-backups = true
 
 
 #mariadb
@@ -64,6 +64,7 @@ http-refresh-interval = 4000
 #########
 
 api-credentials = "admin:repman"
+api-credentials-acl-allow = "admin:cluster db prov"
 api-port = "10005"
 
 

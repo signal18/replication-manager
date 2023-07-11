@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -151,8 +152,6 @@ func (cluster *Cluster) SSTRunReceiverToFile(filename string, openfile string) (
 }
 
 func (cluster *Cluster) SSTRunReceiverToGZip(filename string, openfile string) (string, error) {
-	// filename : cluster.master.GetMyBackupDirectory() + "/mariadbbackup.gz" for call
-	// check cluster.Conf.CompressBackups before call
 	sst := new(SST)
 	sst.cluster = cluster
 	var writers []io.Writer
@@ -357,6 +356,10 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 	defer client.Close()
 	file, err := os.Open(backupfile)
 	cluster.LogPrintf(LvlInfo, "SST sending file: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
+	if os.IsNotExist(err) && cluster.Conf.CompressBackups {
+		backupfile = strings.Replace(backupfile, "xbtream", "gz", 1)
+		file, err = os.Open(backupfile)
+	}
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
 		return
@@ -366,10 +369,20 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 	//fmt.Println("Start sending file!")
 	var total uint64
 	for {
-		_, err = file.Read(sendBuffer)
-		if err == io.EOF {
-			break
+		if strings.Contains(backupfile, "gz") {
+			fz, err := gzip.NewReader(file)
+			if err != nil {
+				return
+			}
+			defer fz.Close()
+			fz.Read(sendBuffer)
+		} else {
+			_, err = file.Read(sendBuffer)
+			if err == io.EOF {
+				break
+			}
 		}
+
 		bts, err := client.Write(sendBuffer)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "SST failed to write chunk %s at position %d", err, total)
@@ -377,6 +390,8 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 		total = total + uint64(bts)
 	}
 	cluster.LogPrintf(LvlInfo, "Backup has been sent, closing connection!")
+
+	defer file.Close()
 
 }
 

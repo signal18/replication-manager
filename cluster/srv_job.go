@@ -12,7 +12,7 @@ package cluster
 import (
 	"bufio"
 	"bytes"
-	"compress/gzip"
+
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	gzip "github.com/klauspost/pgzip"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -111,7 +112,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	var port string
 	var err error
 	if server.ClusterGroup.Conf.CompressBackups {
-		port, err = server.ClusterGroup.SSTRunReceiverToGZip(server.GetMyBackupDirectory()+"/mariadbbackup.gz", ConstJobCreateFile)
+		port, err = server.ClusterGroup.SSTRunReceiverToGZip(server.GetMyBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+".gz", ConstJobCreateFile)
 		if err != nil {
 			return 0, nil
 		}
