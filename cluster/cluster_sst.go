@@ -7,6 +7,8 @@
 package cluster
 
 import (
+	"bufio"
+	"compress/gzip"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -120,11 +122,60 @@ func (cluster *Cluster) SSTRunReceiverToFile(filename string, openfile string) (
 	} else {
 		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 	}
+
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Open file failed for job %s %s", filename, err)
 		return "", err
 	}
 	writers = append(writers, sst.file)
+
+	sst.outfilewriter = io.MultiWriter(writers...)
+
+	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":"+cluster.SSTGetSenderPort())
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Exiting SST on socket listen %s", err)
+		return "", err
+	}
+	sst.tcplistener = sst.listener.(*net.TCPListener)
+	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 3600))
+	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
+	if sst.cluster.Conf.LogSST {
+		cluster.LogPrintf(LvlInfo, "Listening for SST on port to file %d", destinationPort)
+	}
+	SSTs.Lock()
+	SSTs.SSTconnections[destinationPort] = sst
+	SSTs.Unlock()
+	go sst.tcp_con_handle_to_file()
+
+	return strconv.Itoa(destinationPort), nil
+}
+
+func (cluster *Cluster) SSTRunReceiverToGZip(filename string, openfile string) (string, error) {
+	// filename : cluster.master.GetMyBackupDirectory() + "/mariadbbackup.gz" for call
+	// check cluster.Conf.CompressBackups before call
+	sst := new(SST)
+	sst.cluster = cluster
+	var writers []io.Writer
+
+	cluster.LogPrintf(LvlInfo, "Compressing mariadb backup")
+
+	var err error
+	if openfile == ConstJobCreateFile {
+		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	} else {
+		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
+	}
+
+	wf := bufio.NewWriter(sst.file)
+	//writers = append(writers, wf)
+	gw := gzip.NewWriter(wf)
+	writers = append(writers, gw)
+
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Open file failed for job %s %s", filename, err)
+		return "", err
+	}
+	//writers = append(writers, sst.file)
 
 	sst.outfilewriter = io.MultiWriter(writers...)
 

@@ -108,10 +108,18 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 			return jobid, err
 		} else {
 	*/
-
-	port, err := server.ClusterGroup.SSTRunReceiverToFile(server.GetMyBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream", ConstJobCreateFile)
-	if err != nil {
-		return 0, nil
+	var port string
+	var err error
+	if server.ClusterGroup.Conf.CompressBackups {
+		port, err = server.ClusterGroup.SSTRunReceiverToGZip(server.GetMyBackupDirectory()+"/mariadbbackup.gz", ConstJobCreateFile)
+		if err != nil {
+			return 0, nil
+		}
+	} else {
+		port, err = server.ClusterGroup.SSTRunReceiverToFile(server.GetMyBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream", ConstJobCreateFile)
+		if err != nil {
+			return 0, nil
+		}
 	}
 
 	jobid, err := server.JobInsertTaks(server.ClusterGroup.Conf.BackupPhysicalType, port, server.ClusterGroup.Conf.MonitorAddress)

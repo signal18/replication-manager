@@ -1259,8 +1259,11 @@ func (cluster *Cluster) BackupLogs() {
 		return
 	}
 	for _, s := range cluster.Servers {
-		s.JobBackupErrorLog()
-		s.JobBackupSlowQueryLog()
+		if s != nil {
+			s.JobBackupErrorLog()
+			s.JobBackupSlowQueryLog()
+		}
+
 	}
 }
 func (cluster *Cluster) RotateLogs() {
