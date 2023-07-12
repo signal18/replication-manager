@@ -365,7 +365,7 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 		return
 	}
 
-	sendBuffer := make([]byte, 16384)
+	sendBuffer := make([]byte, cluster.Conf.SSTSendBuffer)
 	//fmt.Println("Start sending file!")
 	var total uint64
 	for {
