@@ -3,7 +3,7 @@
 include ="etc/opensvc/cluster-api/cluster-demo/stephane.d"
 log-file="/var/log/replication-manager.log"
 http-bind-address = "0.0.0.0"
-api-credentials="stephane@signal18.io:repman"
+api-credentials="admin:repman"
 #VPN Address
 monitoring-address = "10.8.0.50"
 #monitoring-ssl-cert="/Users/apple/.ssh/id_rsa"
@@ -34,6 +34,7 @@ cloud18-password="hash_0472ff4acf82eb1afc0edd44c9087c9a95f4874adc38e3b2aa68496a"
 cloud18-domain = "signal18"
 cloud18-sub-domain = "ovh-dev"
 cloud18-sub-domain-zone = "fr-1"
+
 
 proxyjanitor-servers = "51.68.2.60"
 proxyjanitor-password = "hash_c3fbd75e68b9f08db04620b592d48b9ac154bd97901e9064ea8dd2938f4a6a8e"
