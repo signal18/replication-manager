@@ -1539,8 +1539,8 @@ func (cluster *Cluster) ResetStates() {
 	cluster.master = nil
 	cluster.oldMaster = nil
 	cluster.vmaster = nil
-	cluster.Servers = nil
-	cluster.Proxies = nil
+	//cluster.Servers = nil
+	//cluster.Proxies = nil
 	//
 	cluster.ServerIdList = nil
 	//cluster.hostList = nil
