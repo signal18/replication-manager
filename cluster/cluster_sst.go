@@ -271,7 +271,10 @@ func (sst *SST) tcp_con_handle_to_restic() {
 
 // Performs copy operation between streams: os and tcp streams
 func (sst *SST) stream_copy_to_file() <-chan int {
-	buf := make([]byte, 1024)
+	//coucou
+	//buf := make([]byte, 1024)
+	buf := make([]byte, 8192)
+
 	sync_channel := make(chan int)
 	go func() {
 		defer func() {
