@@ -112,7 +112,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	var port string
 	var err error
 	if server.ClusterGroup.Conf.CompressBackups {
-		port, err = server.ClusterGroup.SSTRunReceiverToGZip(server.GetMyBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+".gz", ConstJobCreateFile)
+		port, err = server.ClusterGroup.SSTRunReceiverToGZip(server.GetMyBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream.gz", ConstJobCreateFile)
 		if err != nil {
 			return 0, nil
 		}
