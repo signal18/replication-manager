@@ -66,3 +66,4 @@ backup-streaming-aws-access-secret = "hash_7522e94c4ceb43505c950e856742345a473a3
 backup-streaming-endpoint= "https://s3.signal18.io/"
 backup-streaming-region= "fr-1"
 backup-streaming-bucket= "repman"
+backup-mysqldump-path = "/usr/local/bin/mysqldump"
