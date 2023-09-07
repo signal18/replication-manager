@@ -116,7 +116,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterShardingAdd)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/actions/switchover/{serverName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchover)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/switchover", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchover)),
@@ -787,7 +790,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 		if !repman.IsValidClusterACL(r, mycluster) {
 			http.Error(w, "No valid ACL", 403)
 			return
-		}
+		} 
 		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive switchover request")
 		savedPrefMaster := mycluster.GetConf().PrefMaster
 		w.Header().Set("Access-Control-Allow-Origin", "*")

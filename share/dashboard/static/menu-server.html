@@ -9,6 +9,12 @@
          Maintenance Mode
       </md-button>
    </md-menu-item>
+   <md-menu-item ng-click="dbpromote(server.id)">
+      <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-promote']==false">
+         <md-icon md-menu-align-target class="fas fa-star"></md-icon>
+         Promote Slave
+      </md-button>
+   </md-menu-item>
 
    <md-menu-item>
       <md-menu>

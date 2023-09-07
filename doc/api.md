@@ -63,6 +63,7 @@ OUPUT:
 /api/clusters/{clusterName}/status
 
 # API protected endpoints
+/api/clusters/{clusterName}/actions/switchover/{serverName}
 
 /api/clusters/{clusterName}/actions/switchover
 
