@@ -104,7 +104,8 @@ func (server *ServerMonitor) SendAlert() error {
 	a := alert.Alert{
 		State:     server.State,
 		PrevState: server.PrevState,
-		Origin:    server.URL,
+		Host:      server.URL,
+		Cluster:   server.GetCluster().Name,
 	}
 
 	return server.ClusterGroup.SendAlert(a)
