@@ -247,10 +247,10 @@ function (
     var git_user={username:"", password:""};
     var token;
     var git_data = $location.search();
-    
+
     var timeFrame = $routeParams.timeFrame;
-  
-    
+
+
 
     if (git_data["user"] && git_data["token"] && !AppService.hasAuthHeaders()) {
       git_user.username = git_data["user"];
@@ -275,7 +275,7 @@ function (
       $location.path('login');
     };
 
-    
+
     if (timeFrame == "") {
       timeFrame = "10m";
       console.log('timeframe:', timeFrame);
@@ -1271,6 +1271,30 @@ function (
       if (selectedDbServersPhysicalBackupWeekTo)   value += '-' + selectedDbServersPhysicalBackupWeekTo;
 
       if (confirm("Confirm save Physical backup scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-physical-backups-cron/'+value);
+    };
+
+    $scope.saveAlertDisableCron = function (selectedDbServersAlertDisableHour,selectedDbServersAlertDisableMin,selectedDbServersAlertDisableSec,selectedDbServersAlertDisableDay,selectedDbServersAlertDisableMonth,selectedDbServersAlertDisableWeek,selectedDbServersAlertDisableHourTo,selectedDbServersAlertDisableMinTo,selectedDbServersAlertDisableSecTo,selectedDbServersAlertDisableDayTo,selectedDbServersAlertDisableMonthTo,selectedDbServersAlertDisableWeekTo,selectedDbServersAlertDisableHourPer,selectedDbServersAlertDisableMinPer,selectedDbServersAlertDisableSecPer) {
+      value= selectedDbServersAlertDisableSec;
+      if (selectedDbServersAlertDisableSecTo)   value += '-' + selectedDbServersAlertDisableSecTo;
+      if (selectedDbServersAlertDisableSecPer)   value += '/' + selectedDbServersAlertDisableSecPer;
+
+      value += ' ' + selectedDbServersAlertDisableMin;
+      if (selectedDbServersAlertDisableMinTo)   value += '-' + selectedDbServersAlertDisableMinTo;
+      if (selectedDbServersAlertDisableMinPer)   value += '/' + selectedDbServersAlertDisableMinPer;
+
+      value += ' ' + selectedDbServersAlertDisableHour;
+      if (selectedDbServersAlertDisableHourTo)   value += '-' + selectedDbServersAlertDisableHourTo;
+      if (selectedDbServersAlertDisableHourPer)   value += '-' + selectedDbServersAlertDisableHourPer;
+
+      value += ' ' + selectedDbServersAlertDisableDay;
+      if (selectedDbServersAlertDisableDayTo)   value += '-' + selectedDbServersAlertDisableDayTo;
+      value += ' ' + selectedDbServersAlertDisableMonth;
+      if (selectedDbServersAlertDisableMonthTo)   value += '-' + selectedDbServersAlertDisableMonthTo;
+
+      value += ' ' + selectedDbServersAlertDisableWeek;
+      if (selectedDbServersAlertDisableWeekTo)   value += '-' + selectedDbServersAlertDisableWeekTo;
+
+      if (confirm("Confirm save alert disable scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-alert-disable-cron/'+value);
     };
 
     $scope.saveOptimizeCron = function (selectedDbServersOptimizeHour,selectedDbServersOptimizeMin,selectedDbServersOptimizeSec,selectedDbServersOptimizeDay,selectedDbServersOptimizeMonth,selectedDbServersOptimizeWeek,selectedDbServersOptimizeHourTo,selectedDbServersOptimizeMinTo,selectedDbServersOptimizeSecTo,selectedDbServersOptimizeDayTo,selectedDbServersOptimizeMonthTo,selectedDbServersOptimizeWeekTo,selectedDbServersOptimizeHourPer,selectedDbServersOptimizeMinPer,selectedDbServersOptimizeSecPer) {

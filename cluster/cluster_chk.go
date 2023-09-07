@@ -481,8 +481,8 @@ func (cluster *Cluster) CheckAlert(state state.State) {
 
 	if strings.Contains(cluster.Conf.MonitoringAlertTrigger, state.ErrKey) {
 		a := alert.Alert{
-			State:  state.ErrKey,
-			Origin: cluster.Name,
+			State:   state.ErrKey,
+			Cluster: cluster.Name,
 		}
 
 		err := cluster.SendAlert(a)
@@ -494,13 +494,18 @@ func (cluster *Cluster) CheckAlert(state state.State) {
 }
 
 func (cluster *Cluster) SendAlert(alert alert.Alert) error {
+	if cluster.IsAlertDisable {
+		cluster.LogPrintf(LvlInfo, "Cancel alert caused by alert disabled from scheduler")
+		return nil
+	}
 	if cluster.Conf.MailTo != "" {
 		go alert.EmailMessage("", "", cluster.Conf)
 	}
+
 	if cluster.Conf.AlertScript != "" {
 		cluster.LogPrintf("INFO", "Calling alert script")
 		var out []byte
-		out, err := exec.Command(cluster.Conf.AlertScript, alert.Origin, alert.PrevState, alert.State).CombinedOutput()
+		out, err := exec.Command(cluster.Conf.AlertScript, alert.Cluster, alert.Host, alert.PrevState, alert.State).CombinedOutput()
 		if err != nil {
 			cluster.LogPrintf("ERROR", "%s", err)
 		}

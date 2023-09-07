@@ -174,6 +174,11 @@ func (cluster *Cluster) SwitchSchedulerRollingReprov() {
 	cluster.SetSchedulerRollingReprov()
 }
 
+func (cluster *Cluster) SwitchSchedulerAlertDisable() {
+	cluster.Conf.SchedulerAlertDisable = !cluster.Conf.SchedulerAlertDisable
+
+}
+
 func (cluster *Cluster) SwitchGraphiteEmbedded() {
 	cluster.Conf.GraphiteEmbedded = !cluster.Conf.GraphiteEmbedded
 }
