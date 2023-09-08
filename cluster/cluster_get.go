@@ -359,6 +359,16 @@ func (cluster *Cluster) GetGroupReplicationWhiteList() string {
 	return strings.Join(gcomms, ",")
 }
 
+func (cluster *Cluster) GetPreferedMasterList() string {
+	var prefmaster []string
+	for _, server := range cluster.Servers {
+		if server.Prefered {
+			prefmaster = append(prefmaster, server.URL)
+		}
+	}
+	return strings.Join(prefmaster, ",")
+}
+
 func (cluster *Cluster) GetGComm() string {
 	var gcomms []string
 	for _, server := range cluster.Servers {

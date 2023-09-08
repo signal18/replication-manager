@@ -994,6 +994,8 @@ function (
         }
       };
 
+
+
       $scope.rolling = function (fail) {
           if (confirm("Confirm rolling restart")) httpGetWithoutResponse(getClusterUrl() + '/actions/rolling');
       };
@@ -1015,6 +1017,9 @@ function (
 
       $scope.dbmaintenance = function (server) {
         if (confirm("Confirm maintenance for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/maintenance');
+      };
+      $scope.dbpromote = function (server) {
+       if (confirm("Confirm promotion for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/switchover');
       };
       $scope.dbjobs = function (server) {
         if (confirm("Confirm running remote jobs for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/run-jobs');

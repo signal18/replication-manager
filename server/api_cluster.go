@@ -789,7 +789,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 			return
 		}
 		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive switchover request")
-		savedPrefMaster := mycluster.GetConf().PrefMaster
+		savedPrefMaster := mycluster.GetPreferedMasterList()
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if mycluster.IsMasterFailed() {
 			mycluster.LogPrintf(cluster.LvlErr, "Master failed, cannot initiate switchover")
