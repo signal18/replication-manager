@@ -995,7 +995,16 @@ function (
       };
       $scope.dbpromote = function (server) {
         if (confirm("Confirm promotion for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/switchover');
-       };
+      };
+      $scope.dbsetprefered = function (server) {
+        if (confirm("Confirm set as prefered for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/set-prefered');
+      };
+      $scope.dbsetunrated = function (server) {
+        if (confirm("Confirm set as unrated for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/set-unrated');
+      };
+      $scope.dbsetignored = function (server) {
+        if (confirm("Confirm set as ignored for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/set-ignored');
+      };
       $scope.rolling = function (fail) {
           if (confirm("Confirm rolling restart")) httpGetWithoutResponse(getClusterUrl() + '/actions/rolling');
       };

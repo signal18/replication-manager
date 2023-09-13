@@ -394,6 +394,19 @@ func (cluster *Cluster) SetPrefMaster(PrefMasterURL string) {
 	}
 }
 
+
+// SetIgnoredHost
+func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
+	cluster.Conf.IgnoreSrv = IgnoredHostURL
+	for _, srv := range cluster.Servers {
+		if strings.Contains(IgnoredHostURL, srv.URL) {
+			srv.SetIgnored(true)
+		} else {
+			srv.SetIgnored(false)
+		}
+	}
+}
+
 func (cluster *Cluster) SetFailoverCtr(failoverCtr int) {
 	cluster.FailoverCtr = failoverCtr
 }
