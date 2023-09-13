@@ -994,8 +994,8 @@ function (
         }
       };
       $scope.dbpromote = function (server) {
-        if (confirm("Confirm promotion for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/actions/switchover/' + server + '');
-      };
+        if (confirm("Confirm promotion for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/switchover');
+       };
       $scope.rolling = function (fail) {
           if (confirm("Confirm rolling restart")) httpGetWithoutResponse(getClusterUrl() + '/actions/rolling');
       };

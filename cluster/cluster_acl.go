@@ -162,6 +162,11 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterSwitchover] {
+		if strings.Contains(URL, "/actions/switchover") {
+			return true
+		}
+	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBKill] {
 		if strings.Contains(URL, "/actions/kill") {
 			return true
