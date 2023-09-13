@@ -263,6 +263,26 @@ func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 	}
 }
 
+func (cluster *Cluster) SetSchedulerAlertDisable() {
+	if cluster.HasSchedulerEntry("alertdisable") {
+		cluster.LogPrintf(LvlInfo, "Stopping scheduler to disable alert")
+		cluster.scheduler.Remove(cluster.idSchedulerAlertDisable)
+		delete(cluster.Schedule, "alertdisable")
+	}
+	if cluster.Conf.SchedulerAlertDisable {
+		var err error
+		cluster.LogPrintf(LvlInfo, "Schedule disable alert at: %s", cluster.Conf.SchedulerAlertDisableCron)
+		cluster.idSchedulerAlertDisable, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerAlertDisableCron, func() {
+			cluster.LogPrintf(LvlInfo, "Alerting is disabled from scheduler")
+			cluster.IsAlertDisable = true
+			go cluster.WaitAlertDisable()
+		})
+		if err == nil {
+			cluster.Schedule["alertdisable"] = cluster.scheduler.Entry(cluster.idSchedulerAlertDisable)
+		}
+	}
+}
+
 func (cluster *Cluster) CompressBackups() {
 	//cluster.LogPrintf(LvlInfo, "COUCOU compress backups")
 }
@@ -363,10 +383,10 @@ func (cluster *Cluster) SetBenchMethod(m string) {
 }
 
 // SetPrefMaster is used by regtest test_switchover_semisync_switchback_prefmaster_norplcheck and API to force a server
-func (cluster *Cluster) SetPrefMaster(PrefMaster string) {
-	cluster.Conf.PrefMaster = PrefMaster
+func (cluster *Cluster) SetPrefMaster(PrefMasterURL string) {
+	cluster.Conf.PrefMaster = PrefMasterURL
 	for _, srv := range cluster.Servers {
-		if strings.Contains(PrefMaster, srv.URL) {
+		if strings.Contains(PrefMasterURL, srv.URL) {
 			srv.SetPrefered(true)
 		} else {
 			srv.SetPrefered(false)
@@ -1188,6 +1208,12 @@ func (cluster *Cluster) SetSchedulerRollingReprovCron(value string) error {
 func (cluster *Cluster) SetSchedulerJobsSshCron(value string) error {
 	cluster.Conf.SchedulerJobsSSHCron = value
 	cluster.SetSchedulerDbJobsSsh()
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerAlertDisableCron(value string) error {
+	cluster.Conf.SchedulerAlertDisableCron = value
+	cluster.SetSchedulerAlertDisable()
 	return nil
 }
 

@@ -792,7 +792,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 			return
 		} 
 		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive switchover request")
-		savedPrefMaster := mycluster.GetConf().PrefMaster
+		savedPrefMaster := mycluster.GetPreferedMasterList()
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if mycluster.IsMasterFailed() {
 			mycluster.LogPrintf(cluster.LvlErr, "Master failed, cannot initiate switchover")
@@ -1042,6 +1042,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchSchedulerRollingReprov()
 	case "scheduler-db-servers-optimize":
 		mycluster.SwitchSchedulerDatabaseOptimize()
+	case "scheduler-alert-disable":
+		mycluster.SwitchSchedulerAlertDisable()
 	case "graphite-metrics":
 		mycluster.SwitchGraphiteMetrics()
 	case "graphite-embedded":
@@ -1260,6 +1262,8 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetSchedulerSlaRotateCron(value)
 	case "scheduler-jobs-ssh-cron":
 		mycluster.SetSchedulerJobsSshCron(value)
+	case "scheduler-alert-disable-cron":
+		mycluster.SetSchedulerAlertDisableCron(value)
 	case "backup-binlogs-keep":
 		mycluster.SetBackupBinlogsKeep(value)
 	}
