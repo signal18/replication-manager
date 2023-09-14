@@ -711,7 +711,7 @@ func (repman *ReplicationManager) handlerMuxServerSetUnrated(w http.ResponseWrit
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive unset node as prefered request")
+			mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive set node as unrated request")
 			if mycluster.IsInPreferedHosts(node){
 				savedPrefMaster := mycluster.GetPreferedMasterList()
 				if savedPrefMaster == node.URL {
