@@ -384,14 +384,32 @@ func (cluster *Cluster) SetBenchMethod(m string) {
 
 // SetPrefMaster is used by regtest test_switchover_semisync_switchback_prefmaster_norplcheck and API to force a server
 func (cluster *Cluster) SetPrefMaster(PrefMasterURL string) {
-	cluster.Conf.PrefMaster = PrefMasterURL
+	var prefmasterlist []string
 	for _, srv := range cluster.Servers {
 		if strings.Contains(PrefMasterURL, srv.URL) {
 			srv.SetPrefered(true)
+			prefmasterlist = append(prefmasterlist, strings.Replace(srv.URL, srv.Domain + ":3306","", -1))
 		} else {
 			srv.SetPrefered(false)
 		}
 	}
+	cluster.Conf.PrefMaster = strings.Join(prefmasterlist, ",")
+	// fmt.Printf("Update config prefered Master: " + cluster.Conf.PrefMaster + "\n")
+}
+
+// SetIgnoredHost
+func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
+	var ignoresrvlist []string
+	for _, srv := range cluster.Servers {
+		if strings.Contains(IgnoredHostURL, srv.URL) {
+			srv.SetIgnored(true)
+			ignoresrvlist = append(ignoresrvlist, strings.Replace(srv.URL, srv.Domain + ":3306","", -1))
+		} else {
+			srv.SetIgnored(false)
+		}
+	}
+	cluster.Conf.IgnoreSrv = strings.Join(ignoresrvlist, ",")
+	// fmt.Printf("Update config ignored server: " + cluster.Conf.IgnoreSrv + "\n")
 }
 
 func (cluster *Cluster) SetFailoverCtr(failoverCtr int) {

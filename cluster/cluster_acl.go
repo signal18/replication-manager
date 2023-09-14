@@ -167,6 +167,17 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterFailover] {
+		if strings.Contains(URL, "/actions/set-prefered") {
+			return true
+		}
+		if strings.Contains(URL, "/actions/set-unrated") {
+			return true
+		}
+		if strings.Contains(URL, "/actions/set-ignored") {
+			return true
+		}
+	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBKill] {
 		if strings.Contains(URL, "/actions/kill") {
 			return true
