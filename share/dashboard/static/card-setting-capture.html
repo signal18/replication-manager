@@ -8,8 +8,8 @@
               Monitoring Save Config
               <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.monitoringSaveConfig"
                          ng-click="switchsettings('monitoring-save-config')" aria-label="Monitoring save config">
-                  <span ng-if="selectedCluster.config.monitoringSaveConfig" class="label label-primary">On</span><span
-                      ng-if="!selectedCluster.config.monitoringSaveConfig" class="label label-warning">Off</span>
+                  <span ng-if="selectedCluster.config.monitoringSaveConfig" class="label label-primary">On</span>
+                  <span ng-if="!selectedCluster.config.monitoringSaveConfig" class="label label-warning">Off</span>
 
           </md-switch>
           </td>
@@ -93,7 +93,7 @@
                                    ng-click="switchsettings('monitoring-processlist')" aria-label="Monitoring innodb status">
                             <span ng-if="selectedCluster.config.monitoringProcesslist" class="label label-primary">On</span><span
                                 ng-if="!selectedCluster.config.monitoringProcesslist" class="label label-warning">Off</span>
-              
+
                     </md-switch>
                     </td>
               </tr>

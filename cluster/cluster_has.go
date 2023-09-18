@@ -348,7 +348,7 @@ func (cluster *Cluster) IsDiscovered() bool {
 }
 
 func (cluster *Cluster) IsMultiMaster() bool {
-	if cluster.GetTopology() != topoMultiMasterWsrep || cluster.GetTopology() != topoMultiMaster || cluster.GetTopology() != topoMultiMasterRing {
+	if cluster.GetTopology() == topoMultiMasterWsrep || cluster.GetTopology() == topoMultiMaster || cluster.GetTopology() == topoMultiMasterRing {
 		return true
 	}
 	return false

@@ -168,7 +168,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	if server.ClusterGroup.Conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" && !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.ClusterGroup.IsMultiMaster() {
 		// In non-multimaster mode, enforce read-only flag if the option is set
 		sl.SetReadOnly()
-		server.ClusterGroup.LogPrintf("INFO", "Enforce read only on slave %s", sl.URL)
+		server.ClusterGroup.LogPrintf("INFO", "Enforce read only on slave %s, ReadOnly:%s, InIgnored:%t MultiMaster:%t", sl.URL, sl.ReadOnly, server.ClusterGroup.IsInIgnoredReadonly(server), server.ClusterGroup.IsMultiMaster())
 	}
 	if server.ClusterGroup.Conf.ForceSlaveHeartbeat && sl.GetReplicationHearbeatPeriod() > 1 {
 		dbhelper.SetSlaveHeartbeat(sl.Conn, "1", server.ClusterGroup.Conf.MasterConn, server.DBVersion)

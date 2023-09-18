@@ -786,7 +786,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 		if !repman.IsValidClusterACL(r, mycluster) {
 			http.Error(w, "No valid ACL", 403)
 			return
-		} 
+		}
 		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive switchover request")
 		savedPrefMaster := mycluster.GetPreferedMasterList()
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1103,6 +1103,24 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchCloud18()
 	case "cloud18-shared":
 		mycluster.SwitchCloud18Shared()
+	case "force-slave-readonly":
+		mycluster.SwitchForceSlaveReadOnly()
+	case "force-binlog-row":
+		mycluster.SwitchForceBinlogRow()
+	case "force-slave-semisync":
+		mycluster.SwitchForceSlaveSemisync()
+	case "force-slave-Heartbeat":
+		mycluster.SwitchForceSlaveHeartbeat()
+	case "force-slave-gtid":
+		mycluster.SwitchForceSlaveGtid()
+	case "force-slave-gtid-mode-strict":
+		mycluster.SwitchForceSlaveGtidStrict()
+	case "force-binlog-compress":
+		mycluster.SwitchForceBinlogCompress()
+	case "force-binlog-annotate":
+		mycluster.SwitchForceBinlogAnnotate()
+	case "force-binlog-slow-queries":
+		mycluster.SwitchForceBinlogSlowqueries()
 	}
 
 }
