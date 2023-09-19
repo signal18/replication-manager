@@ -14,19 +14,23 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	gzip "github.com/klauspost/pgzip"
 )
 
 type SST struct {
-	in              io.Reader
-	file            *os.File
-	listener        net.Listener
-	tcplistener     *net.TCPListener
-	outfilewriter   io.Writer
-	outresticreader io.WriteCloser
-	cluster         *Cluster
-	port            int
+	in                io.Reader
+	file              *os.File
+	listener          net.Listener
+	tcplistener       *net.TCPListener
+	outfilewriter     io.Writer
+	outresticreader   io.WriteCloser
+	outfilegzipwriter *gzip.Writer
+	cluster           *Cluster
+	port              int
 }
 
 type ProtectedSSTconnections struct {
@@ -120,6 +124,7 @@ func (cluster *Cluster) SSTRunReceiverToFile(filename string, openfile string) (
 	} else {
 		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 	}
+
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "Open file failed for job %s %s", filename, err)
 		return "", err
@@ -145,6 +150,84 @@ func (cluster *Cluster) SSTRunReceiverToFile(filename string, openfile string) (
 	go sst.tcp_con_handle_to_file()
 
 	return strconv.Itoa(destinationPort), nil
+}
+
+func (cluster *Cluster) SSTRunReceiverToGZip(filename string, openfile string) (string, error) {
+	sst := new(SST)
+	sst.cluster = cluster
+
+	cluster.LogPrintf(LvlInfo, "Compressing mariadb backup")
+
+	var err error
+	if openfile == ConstJobCreateFile {
+		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	} else {
+		sst.file, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
+	}
+
+	gw := gzip.NewWriter(sst.file)
+
+	sst.outfilegzipwriter = gw
+
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Open file failed for job %s %s", filename, err)
+		return "", err
+	}
+
+	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":"+cluster.SSTGetSenderPort())
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Exiting SST on socket listen %s", err)
+		return "", err
+	}
+	sst.tcplistener = sst.listener.(*net.TCPListener)
+	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 3600))
+	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
+	if sst.cluster.Conf.LogSST {
+		cluster.LogPrintf(LvlInfo, "Listening for SST on port to file %d", destinationPort)
+	}
+	SSTs.Lock()
+	SSTs.SSTconnections[destinationPort] = sst
+	SSTs.Unlock()
+	go sst.tcp_con_handle_to_gzip()
+
+	return strconv.Itoa(destinationPort), nil
+}
+
+func (sst *SST) tcp_con_handle_to_gzip() {
+
+	var err error
+
+	defer func() {
+		if sst.cluster.Conf.LogSST {
+			sst.cluster.LogPrintf(LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
+		}
+		port := sst.listener.Addr().(*net.TCPAddr).Port
+		sst.tcplistener.Close()
+		sst.outfilegzipwriter.Close()
+		sst.file.Close()
+		sst.listener.Close()
+		SSTs.Lock()
+		delete(SSTs.SSTconnections, port)
+		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
+		SSTs.Unlock()
+	}()
+
+	sst.in, err = sst.listener.Accept()
+
+	if err != nil {
+
+		return
+	}
+
+	chan_to_stdout := sst.stream_copy_to_gzip()
+
+	select {
+
+	case <-chan_to_stdout:
+		if sst.cluster.Conf.LogSST {
+			sst.cluster.LogPrintf(LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
+		}
+	}
 }
 
 func (sst *SST) tcp_con_handle_to_file() {
@@ -221,7 +304,10 @@ func (sst *SST) tcp_con_handle_to_restic() {
 
 // Performs copy operation between streams: os and tcp streams
 func (sst *SST) stream_copy_to_file() <-chan int {
-	buf := make([]byte, 1024)
+	//coucou
+	//buf := make([]byte, 1024)
+	buf := make([]byte, 8192)
+
 	sync_channel := make(chan int)
 	go func() {
 		defer func() {
@@ -252,6 +338,48 @@ func (sst *SST) stream_copy_to_file() <-chan int {
 			}
 		}
 	}()
+	return sync_channel
+}
+
+func (sst *SST) stream_copy_to_gzip() <-chan int {
+	//coucou
+	//buf := make([]byte, 1024)
+	buf := make([]byte, 8192)
+
+	sync_channel := make(chan int)
+	go func() {
+		defer func() {
+			if con, ok := sst.in.(net.Conn); ok {
+
+				if sst.cluster.Conf.LogSST {
+					sst.cluster.LogPrintf(LvlInfo, "SST closing connection from stream_copy %v ", con.RemoteAddr())
+				}
+				sst.in.(net.Conn).Close()
+			}
+			sync_channel <- 0 // Notify that processing is finished
+
+		}()
+		for {
+			var nBytes int
+			var err error
+
+			nBytes, err = sst.in.Read(buf)
+
+			if err != nil {
+				if err != io.EOF {
+					sst.cluster.LogPrintf(LvlErr, "Read error: %s", err)
+				}
+				break
+			}
+
+			_, err = sst.outfilegzipwriter.Write(buf[0:nBytes])
+			if err != nil {
+				sst.cluster.LogPrintf(LvlErr, "Write error: %s", err)
+			}
+		}
+
+	}()
+
 	return sync_channel
 }
 
@@ -306,19 +434,33 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 	defer client.Close()
 	file, err := os.Open(backupfile)
 	cluster.LogPrintf(LvlInfo, "SST sending file: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
+	if os.IsNotExist(err) && cluster.Conf.CompressBackups {
+		backupfile = strings.Replace(backupfile, "xbtream", "gz", 1)
+		file, err = os.Open(backupfile)
+	}
 	if err != nil {
 		cluster.LogPrintf(LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
 		return
 	}
 
-	sendBuffer := make([]byte, 16384)
+	sendBuffer := make([]byte, cluster.Conf.SSTSendBuffer)
 	//fmt.Println("Start sending file!")
 	var total uint64
 	for {
-		_, err = file.Read(sendBuffer)
-		if err == io.EOF {
-			break
+		if strings.Contains(backupfile, "gz") {
+			fz, err := gzip.NewReader(file)
+			if err != nil {
+				return
+			}
+			defer fz.Close()
+			fz.Read(sendBuffer)
+		} else {
+			_, err = file.Read(sendBuffer)
+			if err == io.EOF {
+				break
+			}
 		}
+
 		bts, err := client.Write(sendBuffer)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "SST failed to write chunk %s at position %d", err, total)
@@ -326,6 +468,8 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 		total = total + uint64(bts)
 	}
 	cluster.LogPrintf(LvlInfo, "Backup has been sent, closing connection!")
+
+	defer file.Close()
 
 }
 

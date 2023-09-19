@@ -220,7 +220,7 @@ func RefreshAccessToken(refresh_tok string, client_id string, secret_id string, 
 	return accessToken.AccessToken, accessToken.RefreshToken, nil
 }
 
-func GetGitLabTokenBasicAuth(user string, password string) string {
+func GetGitLabTokenBasicAuth(user string, password string, log_git bool) string {
 	url := "https://gitlab.signal18.io/oauth/token"
 	data := "grant_type=password&username=" + user + "&password=" + password
 
@@ -252,7 +252,9 @@ func GetGitLabTokenBasicAuth(user string, password string) string {
 		return ""
 	}
 
-	fmt.Println("Réponse :", string(body))
+	if log_git {
+		fmt.Println("Réponse :", string(body))
+	}
 
 	return accessToken.AccessToken
 

@@ -524,7 +524,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		}
 
 		if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
-			acces_tok := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"))
+			acces_tok := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.LogGit)
 			personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, conf.LogGit)
 			if personal_access_token != "" {
 				var Secrets config.Secret

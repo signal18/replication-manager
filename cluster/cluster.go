@@ -1264,8 +1264,11 @@ func (cluster *Cluster) BackupLogs() {
 		return
 	}
 	for _, s := range cluster.Servers {
-		s.JobBackupErrorLog()
-		s.JobBackupSlowQueryLog()
+		if s != nil {
+			s.JobBackupErrorLog()
+			s.JobBackupSlowQueryLog()
+		}
+
 	}
 }
 func (cluster *Cluster) RotateLogs() {
@@ -1541,8 +1544,8 @@ func (cluster *Cluster) ResetStates() {
 	cluster.master = nil
 	cluster.oldMaster = nil
 	cluster.vmaster = nil
-	cluster.Servers = nil
-	cluster.Proxies = nil
+	//cluster.Servers = nil
+	//cluster.Proxies = nil
 	//
 	cluster.ServerIdList = nil
 	//cluster.hostList = nil

@@ -250,18 +250,18 @@ func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 		cluster.LogPrintf(LvlInfo, "Schedule SshDbJob rotate at: %s", cluster.Conf.SchedulerJobsSSHCron)
 		cluster.idSchedulerDbsjobsSsh, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerJobsSSHCron, func() {
 			for _, s := range cluster.Servers {
-				s.JobRunViaSSH()
+				if s != nil {
+					s.JobRunViaSSH()
+				}
+
 			}
 		})
 		if err == nil {
 			cluster.Schedule["dbjobsssh"] = cluster.scheduler.Entry(cluster.idSchedulerDbsjobsSsh)
 		}
-		if cluster.Conf.CompressBackups {
-			cluster.CompressBackups()
-		}
-
 	}
 }
+
 
 func (cluster *Cluster) SetSchedulerAlertDisable() {
 	if cluster.HasSchedulerEntry("alertdisable") {

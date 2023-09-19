@@ -97,6 +97,7 @@ type Config struct {
 	LogRotateMaxBackup                        int                    `mapstructure:"log-rotate-max-backup" toml:"log-rotate-max-backup" json:"logRotateMaxBackup"`
 	LogRotateMaxAge                           int                    `mapstructure:"log-rotate-max-age" toml:"log-rotate-max-age" json:"logRotateMaxAge"`
 	LogSST                                    bool                   `mapstructure:"log-sst" toml:"log-sst" json:"logSst"` // internal replication-manager sst
+	SSTSendBuffer                             int                    `mapstructure:"sst-send-buffer" toml:"sst-send-buffer" json:"sstSendBuffer"`
 	LogHeartbeat                              bool                   `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
 	LogSQLInMonitoring                        bool                   `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
 	LogFailedElection                         bool                   `mapstructure:"log-failed-election"  toml:"log-failed-election" json:"logFailedElection"`
