@@ -262,6 +262,31 @@ func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 	}
 }
 
+
+func (cluster *Cluster) SetSchedulerAlertDisable() {
+	if cluster.HasSchedulerEntry("alertdisable") {
+		cluster.LogPrintf(LvlInfo, "Stopping scheduler to disable alert")
+		cluster.scheduler.Remove(cluster.idSchedulerAlertDisable)
+		delete(cluster.Schedule, "alertdisable")
+	}
+	if cluster.Conf.SchedulerAlertDisable {
+		var err error
+		cluster.LogPrintf(LvlInfo, "Schedule disable alert at: %s", cluster.Conf.SchedulerAlertDisableCron)
+		cluster.idSchedulerAlertDisable, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerAlertDisableCron, func() {
+			cluster.LogPrintf(LvlInfo, "Alerting is disabled from scheduler")
+			cluster.IsAlertDisable = true
+			go cluster.WaitAlertDisable()
+		})
+		if err == nil {
+			cluster.Schedule["alertdisable"] = cluster.scheduler.Entry(cluster.idSchedulerAlertDisable)
+		}
+	}
+}
+
+func (cluster *Cluster) CompressBackups() {
+	//cluster.LogPrintf(LvlInfo, "COUCOU compress backups")
+}
+
 func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
 	cluster.cfgGroupDisplay = cfgGroup
 }
@@ -358,15 +383,33 @@ func (cluster *Cluster) SetBenchMethod(m string) {
 }
 
 // SetPrefMaster is used by regtest test_switchover_semisync_switchback_prefmaster_norplcheck and API to force a server
-func (cluster *Cluster) SetPrefMaster(PrefMaster string) {
-	cluster.Conf.PrefMaster = PrefMaster
+func (cluster *Cluster) SetPrefMaster(PrefMasterURL string) {
+	var prefmasterlist []string
 	for _, srv := range cluster.Servers {
-		if strings.Contains(PrefMaster, srv.URL) {
+		if strings.Contains(PrefMasterURL, srv.URL) {
 			srv.SetPrefered(true)
+			prefmasterlist = append(prefmasterlist, strings.Replace(srv.URL, srv.Domain + ":3306","", -1))
 		} else {
 			srv.SetPrefered(false)
 		}
 	}
+	cluster.Conf.PrefMaster = strings.Join(prefmasterlist, ",")
+	// fmt.Printf("Update config prefered Master: " + cluster.Conf.PrefMaster + "\n")
+}
+
+// SetIgnoredHost
+func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
+	var ignoresrvlist []string
+	for _, srv := range cluster.Servers {
+		if strings.Contains(IgnoredHostURL, srv.URL) {
+			srv.SetIgnored(true)
+			ignoresrvlist = append(ignoresrvlist, strings.Replace(srv.URL, srv.Domain + ":3306","", -1))
+		} else {
+			srv.SetIgnored(false)
+		}
+	}
+	cluster.Conf.IgnoreSrv = strings.Join(ignoresrvlist, ",")
+	// fmt.Printf("Update config ignored server: " + cluster.Conf.IgnoreSrv + "\n")
 }
 
 func (cluster *Cluster) SetFailoverCtr(failoverCtr int) {
@@ -1183,6 +1226,12 @@ func (cluster *Cluster) SetSchedulerRollingReprovCron(value string) error {
 func (cluster *Cluster) SetSchedulerJobsSshCron(value string) error {
 	cluster.Conf.SchedulerJobsSSHCron = value
 	cluster.SetSchedulerDbJobsSsh()
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerAlertDisableCron(value string) error {
+	cluster.Conf.SchedulerAlertDisableCron = value
+	cluster.SetSchedulerAlertDisable()
 	return nil
 }
 

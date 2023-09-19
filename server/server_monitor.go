@@ -377,7 +377,9 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.SchedulerRollingReprovCron, "scheduler-rolling-reprov-cron", "0 30 10 * * 5", "Rolling reprov cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerJobsSSH, "scheduler-jobs-ssh", false, "Schedule remote execution of dbjobs via ssh ")
 	monitorCmd.Flags().StringVar(&conf.SchedulerJobsSSHCron, "scheduler-jobs-ssh-cron", "0 * * * * *", "Remote execution of dbjobs via ssh ")
-
+	monitorCmd.Flags().BoolVar(&conf.SchedulerAlertDisable, "scheduler-alert-disable", false, "Schedule to disable alerting")
+	monitorCmd.Flags().StringVar(&conf.SchedulerAlertDisableCron, "scheduler-alert-disable-cron", "0 0 0 * * 0-4", "Disabling alert cron expression represents a set of times, using 6 space-separated fields.")
+	monitorCmd.Flags().IntVar(&conf.SchedulerAlertDisableTime, "scheduler-alert-disable-time", 3600, "Time in seconds to disable alerting")
 	monitorCmd.Flags().BoolVar(&conf.Backup, "backup", false, "Turn on Backup")
 	monitorCmd.Flags().BoolVar(&conf.BackupLockDDL, "backup-lockddl", true, "Use mariadb backup stage")
 	monitorCmd.Flags().IntVar(&conf.BackupLogicalLoadThreads, "backup-logical-load-threads", 2, "Number of threads to load database")

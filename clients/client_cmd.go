@@ -276,11 +276,15 @@ func init() {
 	rootClientCmd.AddCommand(switchoverCmd)
 	initSwitchoverFlags(switchoverCmd)
 	initClusterFlags(switchoverCmd)
+
 	rootClientCmd.AddCommand(failoverCmd)
 	initFailoverFlags(failoverCmd)
 	initClusterFlags(failoverCmd)
+
 	rootClientCmd.AddCommand(topologyCmd)
 	initClusterFlags(topologyCmd)
+	initServerApiFlags(topologyCmd)
+
 	rootClientCmd.AddCommand(apiCmd)
 	initApiFlags(apiCmd)
 	initClusterFlags(apiCmd)

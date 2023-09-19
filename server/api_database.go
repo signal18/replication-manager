@@ -9,11 +9,13 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"io/ioutil"
 	"net/http"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
+	"github.com/signal18/replication-manager/cluster"
 )
 
 func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Router) {
@@ -150,6 +152,22 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/maintenance", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerMaintenance)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/switchover", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSwitchover)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/set-prefered", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSetPrefered)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/set-unrated", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSetUnrated)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/set-ignored", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSetIgnored)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/unprovision", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -609,6 +627,143 @@ func (repman *ReplicationManager) handlerMuxServerMaintenance(w http.ResponseWri
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			mycluster.SwitchServerMaintenance(node.ServerID)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerSwitchover(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive switchover request")
+			savedPrefMaster := mycluster.GetPreferedMasterList()
+			if mycluster.IsMasterFailed() {
+				mycluster.LogPrintf(cluster.LvlErr, "Master failed, cannot initiate switchover")
+				http.Error(w, "Leader is failed can not promote", http.StatusBadRequest)
+				return
+			}
+			mycluster.LogPrintf(cluster.LvlInfo, "API force for prefered leader: %s", node.URL)
+			mycluster.SetPrefMaster(node.URL)
+			mycluster.MasterFailover(false)
+			mycluster.SetPrefMaster(savedPrefMaster)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+
+func (repman *ReplicationManager) handlerMuxServerSetPrefered(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive set node as prefered request")
+			if !mycluster.IsInPreferedHosts(node){
+				savedPrefMaster := mycluster.GetPreferedMasterList()
+				if savedPrefMaster == "" {
+					mycluster.SetPrefMaster(node.URL)
+				} else {
+					mycluster.SetPrefMaster(savedPrefMaster + "," + node.URL)
+				}
+			}
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerSetUnrated(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive set node as unrated request")
+			if mycluster.IsInPreferedHosts(node){
+				savedPrefMaster := mycluster.GetPreferedMasterList()
+				if savedPrefMaster == node.URL {
+					mycluster.SetPrefMaster("")
+				} else {
+					//Remove the prefered from list
+					newPrefMaster := strings.Replace(savedPrefMaster, node.URL+",", "", -1)
+					newPrefMaster = strings.Replace(newPrefMaster, ","+node.URL, "", -1)
+					mycluster.SetPrefMaster(newPrefMaster)
+				}
+			}
+			if mycluster.IsInIgnoredHosts(node){
+				savedIgnoredHost := mycluster.GetIgnoredHostList()
+				if savedIgnoredHost == node.URL {
+					mycluster.SetIgnoreSrv("")
+				} else {
+					//Remove the prefered from list
+					newIgnoredHost := strings.Replace(savedIgnoredHost, node.URL+",", "", -1)
+					newIgnoredHost = strings.Replace(newIgnoredHost, ","+node.URL, "", -1)
+					mycluster.SetIgnoreSrv(newIgnoredHost)
+				}
+			}
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerSetIgnored(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive set node as prefered request")
+			if !mycluster.IsInIgnoredHosts(node){
+				savedIgnoredHost := mycluster.GetIgnoredHostList()
+				if savedIgnoredHost == "" {
+					mycluster.SetIgnoreSrv(node.URL)
+				} else {
+					mycluster.SetIgnoreSrv(savedIgnoredHost + "," + node.URL)
+				}
+			}
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

@@ -326,3 +326,9 @@ func (cluster *Cluster) WaitDatabaseCanConn() error {
 	}
 	return nil
 }
+
+func (cluster *Cluster) WaitAlertDisable() {
+	time.Sleep(time.Duration(cluster.Conf.SchedulerAlertDisableTime) * time.Second)
+	cluster.LogPrintf(LvlErr, "Alerting is enabled from scheduler")
+	cluster.IsAlertDisable = false
+}

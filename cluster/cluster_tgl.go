@@ -24,6 +24,42 @@ func (cluster *Cluster) SwitchDBApplyDynamicConfig() {
 	cluster.Conf.ProvDBApplyDynamicConfig = !cluster.Conf.ProvDBApplyDynamicConfig
 }
 
+func (cluster *Cluster) SwitchForceSlaveReadOnly() {
+	cluster.Conf.ForceSlaveReadOnly = !cluster.Conf.ForceSlaveReadOnly
+}
+
+func (cluster *Cluster) SwitchForceBinlogRow() {
+	cluster.Conf.ForceBinlogRow = !cluster.Conf.ForceBinlogRow
+}
+
+func (cluster *Cluster) SwitchForceSlaveSemisync() {
+	cluster.Conf.ForceSlaveSemisync = !cluster.Conf.ForceSlaveSemisync
+}
+
+func (cluster *Cluster) SwitchForceSlaveHeartbeat() {
+	cluster.Conf.ForceSlaveHeartbeat = !cluster.Conf.ForceSlaveHeartbeat
+}
+
+func (cluster *Cluster) SwitchForceSlaveGtid() {
+	cluster.Conf.ForceSlaveGtid = !cluster.Conf.ForceSlaveGtid
+}
+
+func (cluster *Cluster) SwitchForceSlaveGtidStrict() {
+	cluster.Conf.ForceSlaveGtidStrict = !cluster.Conf.ForceSlaveGtidStrict
+}
+
+func (cluster *Cluster) SwitchForceBinlogCompress() {
+	cluster.Conf.ForceBinlogCompress = !cluster.Conf.ForceBinlogCompress
+}
+
+func (cluster *Cluster) SwitchForceBinlogAnnotate() {
+	cluster.Conf.ForceBinlogAnnotate = !cluster.Conf.ForceBinlogAnnotate
+}
+
+func (cluster *Cluster) SwitchForceBinlogSlowqueries() {
+	cluster.Conf.ForceBinlogSlowqueries = !cluster.Conf.ForceBinlogSlowqueries
+}
+
 func (cluster *Cluster) SwitchServerMaintenance(serverid uint64) {
 	server := cluster.GetServerFromId(serverid)
 	server.SwitchMaintenance()
@@ -172,6 +208,11 @@ func (cluster *Cluster) SwitchSchedulerRollingRestart() {
 func (cluster *Cluster) SwitchSchedulerRollingReprov() {
 	cluster.Conf.SchedulerRollingReprov = !cluster.Conf.SchedulerRollingReprov
 	cluster.SetSchedulerRollingReprov()
+}
+
+func (cluster *Cluster) SwitchSchedulerAlertDisable() {
+	cluster.Conf.SchedulerAlertDisable = !cluster.Conf.SchedulerAlertDisable
+
 }
 
 func (cluster *Cluster) SwitchGraphiteEmbedded() {

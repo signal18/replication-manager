@@ -293,7 +293,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	if auth_try, ok := repman.UserAuthTry[user.Username]; ok {
 		if auth_try.Try == 3 {
 			if time.Now().Before(auth_try.Time.Add(3 * time.Minute)) {
-				//fmt.Println("Time until last auth try : " + time.Until(auth_try.Time).String())
+				fmt.Println("Time until last auth try : " + time.Until(auth_try.Time).String())
 				fmt.Println("3 authentication errors for the user " + user.Username + ", please try again in 3 minutes")
 				w.WriteHeader(http.StatusTooManyRequests)
 				return
@@ -303,6 +303,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				repman.UserAuthTry[user.Username] = auth_try
 			}
 		} else {
+
 			auth_try.Try += 1
 			repman.UserAuthTry[user.Username] = auth_try
 		}
@@ -317,6 +318,11 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
 		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path, "oidc") {
+			var auth_try authTry
+			auth_try.Try = 1
+			auth_try.Time = time.Now()
+			repman.UserAuthTry[user.Username] = auth_try
+
 			signer := jwt.New(jwt.SigningMethodRS256)
 			claims := signer.Claims.(jwt.MapClaims)
 			//set claims

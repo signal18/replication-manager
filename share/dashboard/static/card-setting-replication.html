@@ -117,4 +117,110 @@
             </td>
         </tr>
     </table>
+    <BR>
+      <table ng-if="settings" class="table">
+          <tr>
+              <th>Enforce Replication</th>
+          </tr>
+          <tr>
+              <td>
+                  Enforce read only on replicas
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveReadonly"
+                             ng-click="switchsettings('force-slave-readonly')"
+                             aria-label="Enforce read only on replicas">
+                             <span ng-if="selectedCluster.config.forceSlaveReadonly" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceSlaveReadonly" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce binlog format in row
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceBinlogRow"
+                             ng-click="switchsettings('force-binlog-row')"
+                             aria-label="Enforce binlog format in row">
+                             <span ng-if="selectedCluster.config.forceBinlogRow" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceBinlogRow" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce binlog row log with original statement
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceBinlogAnnotate"
+                             ng-click="switchsettings('force-binlog-annotate')"
+                             aria-label="Enforce binlog row with original statement">
+                             <span ng-if="selectedCluster.config.forceBinlogAnnotate" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceBinlogAnnotate" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce binlog compression
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceBinlogCompress"
+                             ng-click="switchsettings('force-binlog-compress')"
+                             aria-label="Enforce binlog compression">
+                             <span ng-if="selectedCluster.config.forceBinlogCompress" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceBinlogCompress" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce replication queries in slow queries log
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceBinlogSlowqueries"
+                             ng-click="switchsettings('force-binlog-compress')"
+                             aria-label="Enforce replication queries in slow queries">
+                             <span ng-if="selectedCluster.config.forceBinlogSlowqueries" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceBinlogSlowqueries" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce GTID replication
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveGtidMode"
+                             ng-click="switchsettings('force-slave-gtid')"
+                             aria-label="Enforce GTID replication ">
+                             <span ng-if="selectedCluster.config.forceSlaveGtidMode" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceSlaveGtidMode" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce replication stop when write on replicas
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveGtidModeStrict"
+                             ng-click="switchsettings('force-slave-gtid-mode-strict')"
+                             aria-label="Enforce replication stop when write on replicas">
+                             <span ng-if="selectedCluster.config.forceSlaveGtidModeStrict" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceSlaveGtidModeStrict" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce replication semi-synchronus
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveSemisync"
+                             ng-click="switchsettings('force-slave-semisync')"
+                             aria-label="Enforce replication semi-synchronus ">
+                             <span ng-if="selectedCluster.config.forceSlaveSemisync" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceSlaveSemisync" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce replication heartbeat needed if no writes during 8 hours
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveHeartbeat"
+                             ng-click="switchsettings('force-slave-heartbeat')"
+                             aria-label="Enforce replication heartbeat needed if no writes during 8 hours">
+                             <span ng-if="selectedCluster.config.forceSlaveHeartbeat" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceSlaveHeartbeat" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          </table>
+
 </md-card>

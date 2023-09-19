@@ -120,7 +120,6 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterShardingAdd)),
 	))
-
 	router.Handle("/api/clusters/{clusterName}/actions/switchover", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchover)),
@@ -793,7 +792,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 			return
 		}
 		mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive switchover request")
-		savedPrefMaster := mycluster.GetConf().PrefMaster
+		savedPrefMaster := mycluster.GetPreferedMasterList()
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if mycluster.IsMasterFailed() {
 			mycluster.LogPrintf(cluster.LvlErr, "Master failed, cannot initiate switchover")
@@ -1043,6 +1042,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchSchedulerRollingReprov()
 	case "scheduler-db-servers-optimize":
 		mycluster.SwitchSchedulerDatabaseOptimize()
+	case "scheduler-alert-disable":
+		mycluster.SwitchSchedulerAlertDisable()
 	case "graphite-metrics":
 		mycluster.SwitchGraphiteMetrics()
 	case "graphite-embedded":
@@ -1106,6 +1107,24 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchCloud18()
 	case "cloud18-shared":
 		mycluster.SwitchCloud18Shared()
+	case "force-slave-readonly":
+		mycluster.SwitchForceSlaveReadOnly()
+	case "force-binlog-row":
+		mycluster.SwitchForceBinlogRow()
+	case "force-slave-semisync":
+		mycluster.SwitchForceSlaveSemisync()
+	case "force-slave-Heartbeat":
+		mycluster.SwitchForceSlaveHeartbeat()
+	case "force-slave-gtid":
+		mycluster.SwitchForceSlaveGtid()
+	case "force-slave-gtid-mode-strict":
+		mycluster.SwitchForceSlaveGtidStrict()
+	case "force-binlog-compress":
+		mycluster.SwitchForceBinlogCompress()
+	case "force-binlog-annotate":
+		mycluster.SwitchForceBinlogAnnotate()
+	case "force-binlog-slow-queries":
+		mycluster.SwitchForceBinlogSlowqueries()
 	}
 
 }
@@ -1261,6 +1280,8 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetSchedulerSlaRotateCron(value)
 	case "scheduler-jobs-ssh-cron":
 		mycluster.SetSchedulerJobsSshCron(value)
+	case "scheduler-alert-disable-cron":
+		mycluster.SetSchedulerAlertDisableCron(value)
 	case "backup-binlogs-keep":
 		mycluster.SetBackupBinlogsKeep(value)
 	}

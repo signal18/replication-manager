@@ -98,6 +98,7 @@ type Cluster struct {
 	IsNotMonitoring               bool                  `json:"isNotMonitoring"`
 	IsCapturing                   bool                  `json:"isCapturing"`
 	IsGitPull                     bool                  `json:"isGitPull"`
+	IsAlertDisable                bool                  `json:"isAlertDisable"`
 	Conf                          config.Config         `json:"config"`
 	Confs                         *config.ConfVersion   `json:"-"`
 	CleanAll                      bool                  `json:"cleanReplication"` //used in testing
@@ -184,6 +185,7 @@ type Cluster struct {
 	idSchedulerRollingRestart cron.EntryID                `json:"-"`
 	idSchedulerDbsjobsSsh     cron.EntryID                `json:"-"`
 	idSchedulerRollingReprov  cron.EntryID                `json:"-"`
+	idSchedulerAlertDisable   cron.EntryID                `json:"-"`
 	WaitingRejoin             int                         `json:"waitingRejoin"`
 	WaitingSwitchover         int                         `json:"waitingSwitchover"`
 	WaitingFailover           int                         `json:"waitingFailover"`
@@ -405,9 +407,10 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.LogPrintf("START", "Replication manager started with version: %s", cluster.Conf.Version)
 
 	if cluster.Conf.MailTo != "" {
-		msg := "Replication manager started with version: " + cluster.Conf.Version
+		msg := "Replication-Manager started\nVersion: " + cluster.Conf.Version
 		subj := "Replication-Manager started"
 		alert := alert.Alert{}
+		alert.Cluster = cluster.Name
 		go alert.EmailMessage(msg, subj, cluster.Conf)
 	}
 
@@ -517,6 +520,7 @@ func (cluster *Cluster) initScheduler() {
 		cluster.SetSchedulerSlaRotate()
 		cluster.SetSchedulerRollingRestart()
 		cluster.SetSchedulerDbJobsSsh()
+		cluster.SetSchedulerAlertDisable()
 		cluster.scheduler.Start()
 	}
 
@@ -754,11 +758,12 @@ func (cluster *Cluster) Stop() {
 }
 
 func (cluster *Cluster) Save() error {
+	//Needed to preserve diretory before Pull
 	if !cluster.IsGitPull && cluster.Conf.Cloud18 {
 		return nil
 	}
 	_, file, no, ok := runtime.Caller(1)
-	if ok {
+	if ok && cluster.GetLogLevel() > 3 {
 		cluster.LogPrintf(LvlInfo, "Saved called from %s#%d\n", file, no)
 	}
 	type Save struct {

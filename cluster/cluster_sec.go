@@ -197,9 +197,10 @@ func (cluster *Cluster) RotatePasswords() error {
 				cluster.LogPrintf("ALERT", msg)
 			}
 			if cluster.Conf.MailTo != "" {
-				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster.  Check the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
+				msg := "A password rotation has been made\nCheck the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
 				subj := "Password Rotation Replication-Manager"
 				alert := alert.Alert{}
+				alert.Cluster=cluster.Name
 				go alert.EmailMessage(msg, subj, cluster.Conf)
 			}
 
@@ -309,9 +310,10 @@ func (cluster *Cluster) RotatePasswords() error {
 				cluster.LogPrintf("ALERT", msg)
 			}
 			if cluster.Conf.MailTo != "" {
-				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster.  Check the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
+				msg := "A password rotation has been made\nCheck the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
 				subj := "Password Rotation Replication-Manager"
 				alert := alert.Alert{}
+				alert.Cluster=cluster.Name
 				go alert.EmailMessage(msg, subj, cluster.Conf)
 			}
 
