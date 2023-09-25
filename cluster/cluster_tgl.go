@@ -6,7 +6,10 @@
 
 package cluster
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 func (cluster *Cluster) SwitchForceSlaveNoGtid() {
 	cluster.Conf.ForceSlaveNoGtid = !cluster.Conf.ForceSlaveNoGtid
@@ -46,6 +49,60 @@ func (cluster *Cluster) SwitchForceSlaveGtid() {
 
 func (cluster *Cluster) SwitchForceSlaveGtidStrict() {
 	cluster.Conf.ForceSlaveGtidStrict = !cluster.Conf.ForceSlaveGtidStrict
+}
+
+func (cluster *Cluster) SwitchForceSlaveModeStrict() {
+	cluster.Conf.ForceSlaveStrict = !cluster.Conf.ForceSlaveStrict
+	if cluster.Conf.ForceSlaveStrict == true {
+		cluster.Conf.ForceSlaveIdempotent = !cluster.Conf.ForceSlaveStrict
+	}
+}
+
+func (cluster *Cluster) SwitchForceSlaveModeIdempotent() {
+	cluster.Conf.ForceSlaveIdempotent = !cluster.Conf.ForceSlaveIdempotent
+	if cluster.Conf.ForceSlaveIdempotent == true {
+		cluster.Conf.ForceSlaveStrict = !cluster.Conf.ForceSlaveIdempotent
+	}
+}
+
+func (cluster *Cluster) SwitchForceSlaveParallelModeSerialized() {
+	if strings.ToUpper(cluster.Conf.ForceSlaveParallelMode) != "SERIALIZED" {
+		cluster.Conf.ForceSlaveParallelMode = "SERIALIZED"
+	} else {
+		cluster.Conf.ForceSlaveParallelMode = ""
+	}
+}
+
+func (cluster *Cluster) SwitchForceSlaveParallelModeMinimal() {
+	if strings.ToUpper(cluster.Conf.ForceSlaveParallelMode) != "MINIMAL" {
+		cluster.Conf.ForceSlaveParallelMode = "MINIMAL"
+	} else {
+		cluster.Conf.ForceSlaveParallelMode = ""
+	}
+}
+
+func (cluster *Cluster) SwitchForceSlaveParallelModeConservative() {
+	if strings.ToUpper(cluster.Conf.ForceSlaveParallelMode) != "CONSERVATIVE" {
+		cluster.Conf.ForceSlaveParallelMode = "CONSERVATIVE"
+	} else {
+		cluster.Conf.ForceSlaveParallelMode = ""
+	}
+}
+
+func (cluster *Cluster) SwitchForceSlaveParallelModeOptimistic() {
+	if strings.ToUpper(cluster.Conf.ForceSlaveParallelMode) != "OPTIMISTIC" {
+		cluster.Conf.ForceSlaveParallelMode = "OPTIMISTIC"
+	} else {
+		cluster.Conf.ForceSlaveParallelMode = ""
+	}
+}
+
+func (cluster *Cluster) SwitchForceSlaveParallelModeAggressive() {
+	if strings.ToUpper(cluster.Conf.ForceSlaveParallelMode) != "AGGRESSIVE" {
+		cluster.Conf.ForceSlaveParallelMode = "AGGRESSIVE"
+	} else {
+		cluster.Conf.ForceSlaveParallelMode = ""
+	}
 }
 
 func (cluster *Cluster) SwitchForceBinlogCompress() {

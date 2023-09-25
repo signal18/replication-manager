@@ -1119,6 +1119,20 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchForceSlaveGtid()
 	case "force-slave-gtid-mode-strict":
 		mycluster.SwitchForceSlaveGtidStrict()
+	case "force-slave-idempotent":
+		mycluster.SwitchForceSlaveModeIdempotent()
+	case "force-slave-strict":
+		mycluster.SwitchForceSlaveModeStrict()
+	case "force-slave-serialized":
+		mycluster.SwitchForceSlaveParallelModeSerialized()
+	case "force-slave-minimal":
+		mycluster.SwitchForceSlaveParallelModeMinimal()
+	case "force-slave-conservative":
+		mycluster.SwitchForceSlaveParallelModeConservative()
+	case "force-slave-optimistic":
+		mycluster.SwitchForceSlaveParallelModeOptimistic()
+	case "force-slave-aggressive":
+		mycluster.SwitchForceSlaveParallelModeAggressive()
 	case "force-binlog-compress":
 		mycluster.SwitchForceBinlogCompress()
 	case "force-binlog-annotate":

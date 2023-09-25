@@ -159,4 +159,6 @@ var clusterError = map[string]string{
 	"WARN0100": "No space left on device pn %s",
 	"WARN0101": "Cluster does not have backup",
 	"WARN0102": "The config file must be merge because an immutable parameter has been changed. Use the config-merge command to save your changes.",
+	"WARN0103": "Enforce replication mode idempotent but  strict on server %s",
+	"WARN0104": "Enforce replication mode strict but idempotent on server %s",
 }

@@ -13,6 +13,7 @@ package cluster
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -182,13 +183,45 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	} else if sl.IsIgnored() == false && sl.GetReplicationUsingGtid() == "No" && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
 		server.ClusterGroup.StateMachine.AddState("WARN0051", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if server.ClusterGroup.Conf.ForceSlaveGtidStrict && sl.IsReplicationUsingGtidStrict() == false && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
+	if server.ClusterGroup.Conf.ForceSlaveGtidStrict && !sl.IsReplicationUsingGtidStrict() && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
 		dbhelper.SetSlaveGTIDModeStrict(sl.Conn, server.DBVersion)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce GTID strict mode on slave %s", sl.URL)
-	} else if sl.IsIgnored() == false && sl.IsReplicationUsingGtidStrict() == false && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
+	} else if !sl.IsIgnored() && !sl.IsReplicationUsingGtidStrict() && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
 		server.ClusterGroup.StateMachine.AddState("WARN0058", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0058"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
+	if server.ClusterGroup.Conf.ForceSlaveIdempotent && !sl.HaveSlaveIdempotent && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
+		dbhelper.SetSlaveExecMode(sl.Conn, "IDEMPOTENT", server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+		server.ClusterGroup.LogPrintf("INFO", "Enforce replication mode idempotent on slave %s", sl.URL)
+	} /* else if !sl.IsIgnored() && server.ClusterGroup.Conf.ForceSlaveIdempotent && sl.HaveSlaveIdempotent && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
+		server.ClusterGroup.StateMachine.AddState("WARN0103", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0103"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+	}*/
+	if server.ClusterGroup.Conf.ForceSlaveStrict && sl.HaveSlaveIdempotent && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
+		dbhelper.SetSlaveExecMode(sl.Conn, "STRICT", server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+		server.ClusterGroup.LogPrintf("INFO", "Enforce replication mode strict on slave %s", sl.URL)
+	} /*else if !sl.IsIgnored() && server.ClusterGroup.Conf.ForceSlaveStrict &&  && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
+		server.ClusterGroup.StateMachine.AddState("WARN0104", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0103"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+	} */
+	if strings.ToUpper(server.ClusterGroup.Conf.ForceSlaveParallelMode) == "OPTIMISTIC" && !sl.HaveSlaveOptimistic && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
+		dbhelper.SetSlaveParallelMode(sl.Conn, "OPTIMISTIC", server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+		server.ClusterGroup.LogPrintf("INFO", "Enforce replication parallel mode optimistic on slave %s", sl.URL)
+	}
+	if strings.ToUpper(server.ClusterGroup.Conf.ForceSlaveParallelMode) == "SERIALIZED" && !sl.HaveSlaveSerialized && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
+		dbhelper.SetSlaveParallelMode(sl.Conn, "NONE", server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+		server.ClusterGroup.LogPrintf("INFO", "Enforce replication parallel mode serialized on slave %s", sl.URL)
+	}
+	if strings.ToUpper(server.ClusterGroup.Conf.ForceSlaveParallelMode) == "AGGRESSIVE" && !sl.HaveSlaveAggressive && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
+		dbhelper.SetSlaveParallelMode(sl.Conn, "AGGRESSIVE", server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+		server.ClusterGroup.LogPrintf("INFO", "Enforce replication parallel mode aggressive on slave %s", sl.URL)
+	}
+	if strings.ToUpper(server.ClusterGroup.Conf.ForceSlaveParallelMode) == "MINIMAL" && !sl.HaveSlaveMinimal && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
+		dbhelper.SetSlaveParallelMode(sl.Conn, "MINIMAL", server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+		server.ClusterGroup.LogPrintf("INFO", "Enforce replication parallel mode minimal on slave %s", sl.URL)
+	}
+	if strings.ToUpper(server.ClusterGroup.Conf.ForceSlaveParallelMode) == "CONSERVATIVE" && !sl.HaveSlaveConservative && server.ClusterGroup.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
+		dbhelper.SetSlaveParallelMode(sl.Conn, "CONSERVATIVE", server.ClusterGroup.Conf.MasterConn, server.DBVersion)
+		server.ClusterGroup.LogPrintf("INFO", "Enforce replication parallel mode conservative on slave %s", sl.URL)
+	}
 	if server.ClusterGroup.Conf.ForceSyncInnoDB && sl.HaveInnodbTrxCommit == false {
 		dbhelper.SetSyncInnodb(sl.Conn)
 		server.ClusterGroup.LogPrintf("INFO", "Enforce InnoDB durability on slave %s", sl.URL)

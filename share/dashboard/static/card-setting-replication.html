@@ -91,7 +91,7 @@
             </td>
         </tr>
         <tr>
-            <th>Replication Max Delay</th>
+            <th>Switchover Replication Max Delay</th>
         </tr>
         <tr>
             <td>
@@ -212,7 +212,84 @@
           </tr>
           <tr>
               <td>
-                  Enforce replication heartbeat needed if no writes during 8 hours
+                  Enforce replication mode strict, sql thread error when dataset diverge
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveStrict"
+                             ng-click="switchsettings('force-slave-strict')"
+                             aria-label="Enforce replication mode strict ">
+                             <span ng-if="selectedCluster.config.forceSlaveStrict" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceSlaveStrict" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce replication mode idempotent, sql thread repair based on binlog row image when dataset diverge
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveIdempotent"
+                             ng-click="switchsettings('force-slave-idempotent')"
+                             aria-label="Enforce replication idempotent ">
+                             <span ng-if="selectedCluster.config.forceSlaveIdempotent" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceSlaveIdempotent" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce replication parallel mode serialized
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='SERIALIZED'"
+                             ng-click="switchsettings('force-slave-serialized')"
+                             aria-label="Enforce replication serialized ">
+                             <span ng-if="selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='SERIALIZED'" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='SERIALIZED'" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce replication parallel mode minimal
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='MINIMAL'"
+                             ng-click="switchsettings('force-slave-minimal')"
+                             aria-label="Enforce replication minimal ">
+                             <span ng-if="selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='MINIMAL'" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='MINIMAL'" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce replication parallel mode conservative
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='CONSERVATIVE'"
+                             ng-click="switchsettings('force-slave-conservative')"
+                             aria-label="Enforce replication conservative ">
+                             <span ng-if="selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='CONSERVATIVE'" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='CONSERVATIVE'" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce replication parallel mode optimistic
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='OPTIMISTIC'"
+                             ng-click="switchsettings('force-slave-optimistic')"
+                             aria-label="Enforce replication optimistic ">
+                             <span ng-if="selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='OPTIMISTIC'" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='OPTIMISTIC'" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce replication parallel mode aggressive
+                  <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='AGGRESSIVE'"
+                             ng-click="switchsettings('force-slave-aggressive')"
+                             aria-label="Enforce replication agressive ">
+                             <span ng-if="selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='AGGRESSIVE'" class="label label-primary">On</span>
+                             <span ng-if="!selectedCluster.config.forceSlaveParallelMode.toUpperCase()=='AGGRESSIVE'" class="label label-warning">Off</span>
+                  </md-switch>
+              </td>
+          </tr>
+          <tr>
+              <td>
+                  Enforce replication heartbeat avoid SQL thread disconnect when no writes during full TCP socket timelife
                   <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceSlaveHeartbeat"
                              ng-click="switchsettings('force-slave-heartbeat')"
                              aria-label="Enforce replication heartbeat needed if no writes during 8 hours">

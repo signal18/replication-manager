@@ -202,6 +202,9 @@ type Config struct {
 	ForceSlaveGtid                            bool                   `mapstructure:"force-slave-gtid-mode" toml:"force-slave-gtid-mode" json:"forceSlaveGtidMode"`
 	ForceSlaveGtidStrict                      bool                   `mapstructure:"force-slave-gtid-mode-strict" toml:"force-slave-gtid-mode-strict" json:"forceSlaveGtidModeStrict"`
 	ForceSlaveNoGtid                          bool                   `mapstructure:"force-slave-no-gtid-mode" toml:"force-slave-no-gtid-mode" json:"forceSlaveNoGtidMode"`
+	ForceSlaveIdempotent                      bool                   `mapstructure:"force-slave-idempotent" toml:"force-slave-idempotent" json:"forceSlaveIdempotent"`
+	ForceSlaveStrict                          bool                   `mapstructure:"force-slave-strict" toml:"force-slave-strict" json:"forceSlaveStrict"`
+	ForceSlaveParallelMode                    string                 `mapstructure:"force-slave-parallel-mode" toml:"force-slave-parallel-mode" json:"forceSlaveParallelMode"`
 	ForceSlaveSemisync                        bool                   `mapstructure:"force-slave-semisync" toml:"force-slave-semisync" json:"forceSlaveSemisync"`
 	ForceSlaveReadOnly                        bool                   `mapstructure:"force-slave-readonly" toml:"force-slave-readonly" json:"forceSlaveReadonly"`
 	ForceBinlogRow                            bool                   `mapstructure:"force-binlog-row" toml:"force-binlog-row" json:"forceBinlogRow"`

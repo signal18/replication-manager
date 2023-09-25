@@ -176,6 +176,30 @@ func (server *ServerMonitor) HasBinlogRowAnnotate() bool {
 	return server.Variables["BINLOG_ANNOTATE_ROW_EVENTS"] == "ON"
 }
 
+func (server *ServerMonitor) HasSlaveIndempotent() bool {
+	return server.Variables["SLAVE_EXEC_MODE"] == "IDEMPOTENT"
+}
+
+func (server *ServerMonitor) HasSlaveParallelOptimistic() bool {
+	return server.Variables["SLAVE_PARALLEL_MODE"] == "OPTIMISTIC"
+}
+
+func (server *ServerMonitor) HasSlaveParallelConservative() bool {
+	return server.Variables["SLAVE_PARALLEL_MODE"] == "CONSERVATIVE"
+}
+
+func (server *ServerMonitor) HasSlaveParallelSerialized() bool {
+	return server.Variables["SLAVE_PARALLEL_MODE"] == "NONE"
+}
+
+func (server *ServerMonitor) HasSlaveParallelAggressive() bool {
+	return server.Variables["SLAVE_PARALLEL_MODE"] == "AGGRESSIVE"
+}
+
+func (server *ServerMonitor) HasSlaveParallelMinimal() bool {
+	return server.Variables["SLAVE_PARALLEL_MODE"] == "MINIMAL"
+}
+
 func (server *ServerMonitor) HasBinlogSlowSlaveQueries() bool {
 	return server.Variables["LOG_SLOW_SLAVE_STATEMENTS"] == "ON"
 }

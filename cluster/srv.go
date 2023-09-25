@@ -106,6 +106,12 @@ type ServerMonitor struct {
 	HaveWsrep                   bool                         `json:"haveWsrep"`
 	HaveReadOnly                bool                         `json:"haveReadOnly"`
 	HaveNoMasterOnStart         bool                         `json:"haveNoMasterOnStart"`
+	HaveSlaveIdempotent         bool                         `json:"haveSlaveIdempotent"`
+	HaveSlaveOptimistic         bool                         `json:"haveSlaveOptimistic "`
+	HaveSlaveSerialized         bool                         `json:"haveSlaveSerialized"`
+	HaveSlaveAggressive         bool                         `json:"haveSlaveAggressive"`
+	HaveSlaveMinimal            bool                         `json:"haveSlaveMinimal"`
+	HaveSlaveConservative       bool                         `json:"haveSlaveConservative"`
 	IsWsrepSync                 bool                         `json:"isWsrepSync"`
 	IsWsrepDonor                bool                         `json:"isWsrepDonor"`
 	IsWsrepPrimary              bool                         `json:"isWsrepPrimary"`
@@ -648,6 +654,12 @@ func (server *ServerMonitor) Refresh() error {
 			server.LogOutput = server.Variables["LOG_OUTPUT"]
 			server.SlowQueryLog = server.Variables["SLOW_QUERY_LOG"]
 			server.HaveReadOnly = server.HasReadOnly()
+			server.HaveSlaveIdempotent = server.HasSlaveIndempotent()
+			server.HaveSlaveOptimistic = server.HasSlaveParallelOptimistic()
+			server.HaveSlaveSerialized = server.HasSlaveParallelSerialized()
+			server.HaveSlaveAggressive = server.HasSlaveParallelAggressive()
+			server.HaveSlaveMinimal = server.HasSlaveParallelMinimal()
+			server.HaveSlaveConservative = server.HasSlaveParallelConservative()
 			server.HaveBinlog = server.HasBinlog()
 			server.HaveBinlogRow = server.HasBinlogRow()
 			server.HaveBinlogAnnotate = server.HasBinlogRowAnnotate()
@@ -1053,6 +1065,9 @@ func (server *ServerMonitor) writeState() error {
 	f, err := os.Create("/tmp/repmgr.state")
 	if err != nil {
 		return err
+	}
+	if server.GTIDBinlogPos == nil {
+		return errors.New("No GTID Binlog Position")
 	}
 	_, err = f.WriteString(server.GTIDBinlogPos.Sprint())
 	if err != nil {

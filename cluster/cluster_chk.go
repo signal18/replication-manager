@@ -481,7 +481,7 @@ func (cluster *Cluster) CheckAlert(state state.State) {
 
 	if strings.Contains(cluster.Conf.MonitoringAlertTrigger, state.ErrKey) {
 		a := alert.Alert{
-			State:   state.ErrKey,
+			State:   state.ErrDesc,
 			Cluster: cluster.Name,
 		}
 

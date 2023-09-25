@@ -837,7 +837,7 @@ func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string,
 			var pass, upass string
 			err = rows.Scan(&pass, &upass)
 			if err != nil {
- 				return false, stmt, err
+				return false, stmt, err
 			}
 			if pass != upass {
 				return false, stmt, nil
@@ -2028,6 +2028,59 @@ func SetSlaveGTIDMode(db *sqlx.DB, mode string, Channel string, myver *MySQLVers
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return logs, err
+	}
+	log, err = StartSlave(db, Channel, myver)
+	logs += "\n" + stmt
+	if err != nil {
+		return logs, err
+	}
+	return logs, err
+}
+
+func SetSlaveExecMode(db *sqlx.DB, mode string, Channel string, myver *MySQLVersion) (string, error) {
+	var err error
+	logs := ""
+	log := ""
+	logs, err = StopSlave(db, Channel, myver)
+	logs += log
+	if err != nil {
+		return logs, err
+	}
+	stmt := "set global slave_exec_mode='" + mode + "'"
+	logs += "\n" + stmt
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return logs, err
+	}
+	log, err = StartSlave(db, Channel, myver)
+	logs += "\n" + stmt
+	if err != nil {
+		return logs, err
+	}
+	return logs, err
+}
+
+func SetSlaveParallelMode(db *sqlx.DB, mode string, Channel string, myver *MySQLVersion) (string, error) {
+	var err error
+	logs := ""
+	log := ""
+	logs, err = StopSlave(db, Channel, myver)
+	logs += log
+	if err != nil {
+		return logs, err
+	}
+	stmt := "set global slave_parallel_mode='" + mode + "'"
+	logs += "\n" + stmt
+	_, err = db.Exec(stmt)
+	if err != nil {
+		return logs, err
+	}
+	if Channel != "" {
+		stmt := "set global " + Channel + ".slave_parallel_mode='" + mode + "'"
+		_, err = db.Exec(stmt)
+		if err != nil {
+			return logs, err
+		}
 	}
 	log, err = StartSlave(db, Channel, myver)
 	logs += "\n" + stmt

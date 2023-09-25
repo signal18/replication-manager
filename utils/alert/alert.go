@@ -47,7 +47,10 @@ func (a *Alert) EmailMessage(msg string, subj string, Conf config.Config) error 
 	}
 	if msg == "" {
 		e.Subject = fmt.Sprintf("Replication-Manager@%s Alert - Cluster %s state change detected", Conf.MonitorAddress, a.Cluster)
-		text := fmt.Sprintf(`Alert: State changed from %s to %s\nMonitor: %s\nCluster: %s\n%s`, a.PrevState, a.State, Conf.MonitorAddress, a.Cluster, host)
+		text := fmt.Sprintf("Alert: State changed from %s to %s\nMonitor: %s\nCluster: %s\n%s", a.PrevState, a.State, Conf.MonitorAddress, a.Cluster, host)
+		if a.PrevState == "" {
+			text = fmt.Sprintf("Alert: %s\nMonitor: %s\nCluster: %s\n%s", a.State, Conf.MonitorAddress, a.Cluster, host)
+		}
 		e.Text = []byte(text)
 	} else {
 		e.Subject = subj
