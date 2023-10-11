@@ -365,10 +365,12 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.SchedulerBackupPhysical, "scheduler-db-servers-physical-backup", false, "Schedule logical backup")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerDatabaseLogs, "scheduler-db-servers-logs", false, "Schedule database logs fetching")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerDatabaseOptimize, "scheduler-db-servers-optimize", true, "Schedule database optimize")
+	monitorCmd.Flags().BoolVar(&conf.SchedulerDatabaseAnalyze, "scheduler-db-servers-analyze", true, "Schedule database analyze")
 
 	monitorCmd.Flags().StringVar(&conf.BackupLogicalCron, "scheduler-db-servers-logical-backup-cron", "0 0 1 * * 6", "Logical backup cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().StringVar(&conf.BackupPhysicalCron, "scheduler-db-servers-physical-backup-cron", "0 0 0 * * 0-4", "Physical backup cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().StringVar(&conf.BackupDatabaseOptimizeCron, "scheduler-db-servers-optimize-cron", "0 0 3 1 * 5", "Optimize cron expression represents a set of times, using 6 space-separated fields.")
+	monitorCmd.Flags().StringVar(&conf.BackupDatabaseAnalyzeCron, "scheduler-db-servers-analyze-cron", "0 0 4 2 * *", "Analyze cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().StringVar(&conf.BackupDatabaseLogCron, "scheduler-db-servers-logs-cron", "0 0/10 * * * *", "Logs backup cron expression represents a set of times, using 6 space-separated fields.")
 	monitorCmd.Flags().BoolVar(&conf.SchedulerDatabaseLogsTableRotate, "scheduler-db-servers-logs-table-rotate", true, "Schedule rotate database system table logs")
 	monitorCmd.Flags().StringVar(&conf.SchedulerDatabaseLogsTableRotateCron, "scheduler-db-servers-logs-table-rotate-cron", "0 0 0/6 * * *", "Logs table rotate cron expression represents a set of times, using 6 space-separated fields.")
@@ -428,6 +430,9 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.BackupBinlogsKeep, "backup-binlogs-keep", 10, "Number of master binlog to keep")
 	monitorCmd.Flags().BoolVar(&conf.ProvBinaryInTarball, "prov-db-binary-in-tarball", false, "Add prov-db-binary-tarball-name binaries to init tarball")
 	monitorCmd.Flags().StringVar(&conf.ProvBinaryTarballName, "prov-db-binary-tarball-name", "mysql-8.0.17-macos10.14-x86_64.tar.gz", "Name of binary tarball to put in tarball")
+
+	monitorCmd.Flags().BoolVar(&conf.OptimizeUseSQL, "optimize-use-sql", true, "Orchetrate optimize table via SQL not via database job using mysqlcheck")
+	monitorCmd.Flags().BoolVar(&conf.AnalyzeUseSQL, "analyze-use-sql", true, "Orchetrate analyze table via SQL not via database job using mysqlcheck")
 
 	monitorCmd.Flags().StringVar(&conf.ProvIops, "prov-db-disk-iops", "300", "Rnd IO/s in for micro service VM")
 	monitorCmd.Flags().StringVar(&conf.ProvIopsLatency, "prov-db-disk-iops-latency", "0.002", "IO latency in s")

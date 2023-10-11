@@ -1306,6 +1306,30 @@ function (
       if (confirm("Confirm save alert disable scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-alert-disable-cron/'+value);
     };
 
+    $scope.saveAnalyzeCron = function (selectedDbServersAnalyzeHour,selectedDbServersAnalyzeMin,selectedDbServersAnalyzeSec,selectedDbServersAnalyzeDay,selectedDbServersAnalyzeMonth,selectedDbServersAnalyzeWeek,selectedDbServersAnalyzeHourTo,selectedDbServersAnalyzeMinTo,selectedDbServersAnalyzeSecTo,selectedDbServersAnalyzeDayTo,selectedDbServersAnalyzeMonthTo,selectedDbServersAnalyzeWeekTo,selectedDbServersAnalyzeHourPer,selectedDbServersAnalyzeMinPer,selectedDbServersAnalyzeSecPer) {
+      value= selectedDbServersAnalyzeSec;
+      if (selectedDbServersAnalyzeSecTo)   value += '-' + selectedDbServersAnalyzeSecTo;
+      if (selectedDbServersAnalyzeSecPer)   value += '/' + selectedDbServersAnalyzeSecPer;
+
+      value += ' ' + selectedDbServersAnalyzeMin;
+      if (selectedDbServersAnalyzeMinTo)   value += '-' + selectedDbServersAnalyzeMinTo;
+      if (selectedDbServersAnalyzeMinPer)   value += '/' + selectedDbServersAnalyzeMinPer;
+
+      value += ' ' + selectedDbServersAnalyzeHour;
+      if (selectedDbServersAnalyzeHourTo)   value += '-' + selectedDbServersAnalyzeHourTo;
+      if (selectedDbServersAnalyzeHourPer)   value += '-' + selectedDbServersAnalyzeHourPer;
+
+      value += ' ' + selectedDbServersAnalyzeDay;
+      if (selectedDbServersAnalyzeDayTo)   value += '-' + selectedDbServersAnalyzeDayTo;
+      value += ' ' + selectedDbServersAnalyzeMonth;
+      if (selectedDbServersAnalyzeMonthTo)   value += '-' + selectedDbServersAnalyzeMonthTo;
+
+      value += ' ' + selectedDbServersAnalyzeWeek;
+      if (selectedDbServersAnalyzeWeekTo)   value += '-' + selectedDbServersAnalyzeWeekTo;
+
+      if (confirm("Confirm save Analyze backup scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-analyze-cron/'+value);
+    };
+
     $scope.saveOptimizeCron = function (selectedDbServersOptimizeHour,selectedDbServersOptimizeMin,selectedDbServersOptimizeSec,selectedDbServersOptimizeDay,selectedDbServersOptimizeMonth,selectedDbServersOptimizeWeek,selectedDbServersOptimizeHourTo,selectedDbServersOptimizeMinTo,selectedDbServersOptimizeSecTo,selectedDbServersOptimizeDayTo,selectedDbServersOptimizeMonthTo,selectedDbServersOptimizeWeekTo,selectedDbServersOptimizeHourPer,selectedDbServersOptimizeMinPer,selectedDbServersOptimizeSecPer) {
       value= selectedDbServersOptimizeSec;
       if (selectedDbServersOptimizeSecTo)   value += '-' + selectedDbServersOptimizeSecTo;

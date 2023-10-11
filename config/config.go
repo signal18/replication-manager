@@ -511,13 +511,17 @@ type Config struct {
 	SchedulerBackupPhysical                   bool                   `mapstructure:"scheduler-db-servers-physical-backup" toml:"scheduler-db-servers-physical-backup" json:"schedulerDbServersPhysicalBackup"`
 	SchedulerDatabaseLogs                     bool                   `mapstructure:"scheduler-db-servers-logs" toml:"scheduler-db-servers-logs" json:"schedulerDbServersLogs"`
 	SchedulerDatabaseOptimize                 bool                   `mapstructure:"scheduler-db-servers-optimize" toml:"scheduler-db-servers-optimize" json:"schedulerDbServersOptimize"`
+	SchedulerDatabaseAnalyze                  bool                   `mapstructure:"scheduler-db-servers-analyze" toml:"scheduler-db-servers-analyze" json:"schedulerDbServersAnalyze"`
 	SchedulerAlertDisable                     bool                   `mapstructure:"scheduler-alert-disable" toml:"scheduler-alert-disable" json:"schedulerAlertDisable"`
 	SchedulerAlertDisableCron                 string                 `mapstructure:"scheduler-alert-disable-cron" toml:"scheduler-alert-disable-cron" json:"schedulerAlertDisableCron"`
 	SchedulerAlertDisableTime                 int                    `mapstructure:"scheduler-alert-disable-time" toml:"scheduler-alert-disable-time" json:"schedulerAlertDisableTime"`
+	OptimizeUseSQL                            bool                   `mapstructure:"optimize-use-sql" toml:"optimize-use-sql" json:"optimizeUseSql"`
+	AnalyzeUseSQL                             bool                   `mapstructure:"analyze-use-sql" toml:"analyze-use-sql" json:"analyzeUseSql"`
 	BackupLogicalCron                         string                 `mapstructure:"scheduler-db-servers-logical-backup-cron" toml:"scheduler-db-servers-logical-backup-cron" json:"schedulerDbServersLogicalBackupCron"`
 	BackupPhysicalCron                        string                 `mapstructure:"scheduler-db-servers-physical-backup-cron" toml:"scheduler-db-servers-physical-backup-cron" json:"schedulerDbServersPhysicalBackupCron"`
 	BackupDatabaseLogCron                     string                 `mapstructure:"scheduler-db-servers-logs-cron" toml:"scheduler-db-servers-logs-cron" json:"schedulerDbServersLogsCron"`
 	BackupDatabaseOptimizeCron                string                 `mapstructure:"scheduler-db-servers-optimize-cron" toml:"scheduler-db-servers-optimize-cron" json:"schedulerDbServersOptimizeCron"`
+	BackupDatabaseAnalyzeCron                 string                 `mapstructure:"scheduler-db-servers-analyze-cron" toml:"scheduler-db-servers-analyze-cron" json:"schedulerDbServersAnalyzeCron"`
 	BackupSaveScript                          string                 `mapstructure:"backup-save-script" toml:"backup-save-script" json:"backupSaveScript"`
 	BackupLoadScript                          string                 `mapstructure:"backup-load-script" toml:"backup-load-script" json:"backupLoadScript"`
 	CompressBackups                           bool                   `mapstructure:"compress-backups" toml:"compress-backups" json:"compressBackups"`

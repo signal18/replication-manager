@@ -2660,6 +2660,20 @@ func BenchCleanup(db *sqlx.DB) error {
 	return nil
 }
 
+func AnalyzeTable(db *sqlx.DB, myver *MySQLVersion, table string) (string, error) {
+	query := "ANALYZE TABLE " + table
+	var v *MySQLVersion
+	v = NewMySQLVersion("10.4.0", "")
+	if myver.Greater(*v) && myver.IsMariaDB() {
+		query += " PERSISTENT FOR ALL"
+	}
+	_, err := db.Exec(query)
+	if err != nil {
+		log.Println("ERROR: Could not analyze table", err)
+	}
+	return query, err
+}
+
 func ChecksumTable(db *sqlx.DB, table string) (string, error) {
 	var tableres string
 	var checkres string

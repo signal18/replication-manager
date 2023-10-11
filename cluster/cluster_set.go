@@ -91,7 +91,10 @@ func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 }
 
 func (cluster *Cluster) SetSchedulerBackupLogical() {
-
+	if cluster.scheduler == nil {
+		cluster.LogPrintf(LvlInfo, "Scheduler is disable cancel")
+		return
+	}
 	if cluster.HasSchedulerEntry("backuplogical") {
 		cluster.scheduler.Remove(cluster.idSchedulerLogicalBackup)
 		cluster.LogPrintf(LvlInfo, "Disable database logical backup ")
@@ -115,6 +118,10 @@ func (cluster *Cluster) SetSchedulerBackupLogical() {
 }
 
 func (cluster *Cluster) SetSchedulerBackupPhysical() {
+	if cluster.scheduler == nil {
+		cluster.LogPrintf(LvlInfo, "Scheduler is disable cancel")
+		return
+	}
 	if cluster.HasSchedulerEntry("backupphysical") {
 		cluster.LogPrintf(LvlInfo, "Disable database physical backup")
 		cluster.scheduler.Remove(cluster.idSchedulerPhysicalBackup)
@@ -133,6 +140,10 @@ func (cluster *Cluster) SetSchedulerBackupPhysical() {
 }
 
 func (cluster *Cluster) SetSchedulerLogsTableRotate() {
+	if cluster.scheduler == nil {
+		cluster.LogPrintf(LvlInfo, "Scheduler is disable cancel")
+		return
+	}
 	if cluster.HasSchedulerEntry("logstablerotate") {
 		cluster.LogPrintf(LvlInfo, "Disable database logs table rotate")
 		cluster.scheduler.Remove(cluster.idSchedulerLogRotateTable)
@@ -151,6 +162,10 @@ func (cluster *Cluster) SetSchedulerLogsTableRotate() {
 }
 
 func (cluster *Cluster) SetSchedulerBackupLogs() {
+	if cluster.scheduler == nil {
+		cluster.LogPrintf(LvlInfo, "Scheduler is disable cancel")
+		return
+	}
 	if cluster.HasSchedulerEntry("errorlogs") {
 		cluster.LogPrintf(LvlInfo, "Disable database logs error fetching")
 		cluster.scheduler.Remove(cluster.idSchedulerErrorLogs)
@@ -169,6 +184,10 @@ func (cluster *Cluster) SetSchedulerBackupLogs() {
 }
 
 func (cluster *Cluster) SetSchedulerOptimize() {
+	if cluster.scheduler == nil {
+		cluster.LogPrintf(LvlInfo, "Scheduler is disable cancel")
+		return
+	}
 	if cluster.HasSchedulerEntry("optimize") {
 		cluster.LogPrintf(LvlInfo, "Disable database optimize")
 		cluster.scheduler.Remove(cluster.idSchedulerOptimize)
@@ -186,7 +205,33 @@ func (cluster *Cluster) SetSchedulerOptimize() {
 	}
 }
 
+func (cluster *Cluster) SetSchedulerAnalyze() {
+	if cluster.scheduler == nil {
+		cluster.LogPrintf(LvlInfo, "Scheduler is disable cancel")
+		return
+	}
+	if cluster.HasSchedulerEntry("analyze") {
+		cluster.LogPrintf(LvlInfo, "Disable database analyze")
+		cluster.scheduler.Remove(cluster.idSchedulerAnalyze)
+		delete(cluster.Schedule, "analyze")
+	}
+	if cluster.Conf.SchedulerDatabaseAnalyze {
+		var err error
+		cluster.LogPrintf(LvlInfo, "Schedule database analyze at: %s", cluster.Conf.BackupDatabaseAnalyzeCron)
+		cluster.idSchedulerAnalyze, err = cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseAnalyzeCron, func() {
+			cluster.JobAnalyzeSQL()
+		})
+		if err == nil {
+			cluster.Schedule["analyze"] = cluster.scheduler.Entry(cluster.idSchedulerAnalyze)
+		}
+	}
+}
+
 func (cluster *Cluster) SetSchedulerRollingRestart() {
+	if cluster.scheduler == nil {
+		cluster.LogPrintf(LvlInfo, "Scheduler is disable cancel")
+		return
+	}
 	if cluster.HasSchedulerEntry("rollingrestart") {
 		cluster.LogPrintf(LvlInfo, "Disable rolling restart")
 		cluster.scheduler.Remove(cluster.idSchedulerRollingRestart)
@@ -205,6 +250,10 @@ func (cluster *Cluster) SetSchedulerRollingRestart() {
 }
 
 func (cluster *Cluster) SetSchedulerRollingReprov() {
+	if cluster.scheduler == nil {
+		cluster.LogPrintf(LvlInfo, "Scheduler is disable cancel")
+		return
+	}
 	if cluster.HasSchedulerEntry("rollingreprov") {
 		cluster.LogPrintf(LvlInfo, "Disable rolling reprov")
 		cluster.scheduler.Remove(cluster.idSchedulerRollingReprov)
@@ -223,6 +272,10 @@ func (cluster *Cluster) SetSchedulerRollingReprov() {
 }
 
 func (cluster *Cluster) SetSchedulerSlaRotate() {
+	if cluster.scheduler == nil {
+		cluster.LogPrintf(LvlInfo, "Scheduler is disable cancel")
+		return
+	}
 	if cluster.HasSchedulerEntry("slarotate") {
 		cluster.LogPrintf(LvlInfo, "Disable rotate Sla ")
 		cluster.scheduler.Remove(cluster.idSchedulerSLARotate)
@@ -240,6 +293,10 @@ func (cluster *Cluster) SetSchedulerSlaRotate() {
 }
 
 func (cluster *Cluster) SetSchedulerDbJobsSsh() {
+	if cluster.scheduler == nil {
+		cluster.LogPrintf(LvlInfo, "Scheduler is disable cancel")
+		return
+	}
 	if cluster.HasSchedulerEntry("dbjobsssh") {
 		cluster.LogPrintf(LvlInfo, "Disable Db Jobs SSH Execution ")
 		cluster.scheduler.Remove(cluster.idSchedulerDbsjobsSsh)
@@ -262,8 +319,11 @@ func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 	}
 }
 
-
 func (cluster *Cluster) SetSchedulerAlertDisable() {
+	if cluster.scheduler == nil {
+		cluster.LogPrintf(LvlInfo, "Scheduler is disable cancel")
+		return
+	}
 	if cluster.HasSchedulerEntry("alertdisable") {
 		cluster.LogPrintf(LvlInfo, "Stopping scheduler to disable alert")
 		cluster.scheduler.Remove(cluster.idSchedulerAlertDisable)
@@ -388,7 +448,7 @@ func (cluster *Cluster) SetPrefMaster(PrefMasterURL string) {
 	for _, srv := range cluster.Servers {
 		if strings.Contains(PrefMasterURL, srv.URL) {
 			srv.SetPrefered(true)
-			prefmasterlist = append(prefmasterlist, strings.Replace(srv.URL, srv.Domain + ":3306","", -1))
+			prefmasterlist = append(prefmasterlist, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
 		} else {
 			srv.SetPrefered(false)
 		}
@@ -403,7 +463,7 @@ func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
 	for _, srv := range cluster.Servers {
 		if strings.Contains(IgnoredHostURL, srv.URL) {
 			srv.SetIgnored(true)
-			ignoresrvlist = append(ignoresrvlist, strings.Replace(srv.URL, srv.Domain + ":3306","", -1))
+			ignoresrvlist = append(ignoresrvlist, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
 		} else {
 			srv.SetIgnored(false)
 		}
@@ -1154,6 +1214,12 @@ func (cluster *Cluster) SetSchedulerDbServersPhysicalBackupCron(value string) er
 func (cluster *Cluster) SetSchedulerDbServersOptimizeCron(value string) error {
 	cluster.Conf.BackupDatabaseOptimizeCron = value
 	cluster.SetSchedulerOptimize()
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerDbServersAnalyzeCron(value string) error {
+	cluster.Conf.BackupDatabaseAnalyzeCron = value
+	cluster.SetSchedulerAnalyze()
 	return nil
 }
 

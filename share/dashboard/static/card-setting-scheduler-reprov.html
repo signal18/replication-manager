@@ -1,0 +1,156 @@
+<table width="100%">
+<tr>
+    <th>Schedule Rolling Reprov</th>
+</tr>
+<tr>
+    <td>
+        <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.schedulerRollingReprov"
+                   ng-click="switchsettings('scheduler-rolling-reprov')" aria-label="Physical Backup">
+            <span ng-if="selectedCluster.config.schedulerRollingReprov" class="label label-primary">On</span><span
+                ng-if="!selectedCluster.config.schedulerRollingReprov" class="label label-warning">Off</span>
+    </md-switch>
+    </td>
+</tr>
+<tr><td>
+    <Table width="100%" ng-if="settings" class="cron" ><tr>
+    <th>
+        <span  style="display:inline-block;;margin: 2px;" ng-click="saveRollingReprovCron(selectedRollingReprovHour.id,selectedRollingReprovMin.id,selectedRollingReprovSec.id,selectedRollingReprovDay.id,selectedRollingReprovMonth.id,selectedRollingReprovWeek.id,selectedRollingReprovHourTo.id,selectedRollingReprovMinTo.id,selectedRollingReprovSecTo.id,selectedRollingReprovDayTo.id,selectedRollingReprovMonthTo.id,selectedRollingReprovWeekTo.id,selectedRollingReprovHourPer.id,selectedRollingReprovMinPer.id,selectedRollingReprovSecPer.id)"><i   style="display:inline-block;;margin: 2px;"  class="fa fa-save"/></span>
+    </th>
+    <th>
+      Hour
+    </th>
+    <th>
+      Min
+    </th>
+    <th>
+      Sec
+    </th>
+    <th>
+      Day
+    </th>
+    <th>
+      Mon
+    </th>
+    <th>
+      Week
+    </th>
+    </tr><tr>
+        <th>At:</th>
+      <td>
+    <md-select  name="selectedRollingReprovHour" ng-model="selectedRollingReprovHour">
+        <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[2].split('-')[0].split('/')[0]}}"
+                   ng-repeat="key in schedulerhours" ng-value="key">
+                        {{key.name}}</md-option>
+     </md-select>
+     </td>
+     <td>
+   <md-select  name="selectedRollingReprovMin" ng-model="selectedRollingReprovMin">
+       <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[1].split('-')[0].split('/')[0]}}"
+                  ng-repeat="key in schedulerminutes" ng-value="key">
+                       {{key.name}}</md-option>
+    </md-select>
+    </td>
+      <td>
+    <md-select  name="selectedRollingReprovSec" ng-model="selectedRollingReprovSec">
+        <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[0].split('-')[0].split('/')[0]}}"
+                   ng-repeat="key in schedulersecondes" ng-value="key">
+                        {{key.name}}</md-option>
+     </md-select>
+     </td>
+     <td>
+   <md-select  name="selectedRollingReprovDay" ng-model="selectedRollingReprovDay">
+       <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[3].split('-')[0].split('/')[0]}}"
+                  ng-repeat="key in schedulerdays" ng-value="key">
+                       {{key.name}}</md-option>
+    </md-select>
+    </td>
+    <td>
+  <md-select  name="selectedRollingReprovMonth" ng-model="selectedRollingReprovMonth">
+      <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[4].split('-')[0].split('/')[0]}}"
+                 ng-repeat="key in schedulermonths" ng-value="key">
+                      {{key.name}}</md-option>
+   </md-select>
+   </td>
+   <td>
+ <md-select  name="selectedRollingReprovWeek" ng-model="selectedRollingReprovWeek">
+     <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[5].split('-')[0].split('/')[0]}}"
+                ng-repeat="key in schedulerweeks" ng-value="key">
+                     {{key.name}}</md-option>
+  </md-select>
+  </td>
+     </tr>
+     <tr>
+         <th>To:</th>
+     <td>
+     <md-select  name="selectedRollingReprovHourTo" ng-model="selectedRollingReprovHourTo">
+         <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[2].split('-')[1]}}"
+                    ng-repeat="key in schedulerhours" ng-value="key">
+                         {{key.name}}</md-option>
+      </md-select>
+      </td>
+      <td>
+    <md-select  name="selectedRollingReprovMinTo" ng-model="selectedRollingReprovMinTo">
+        <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[1].split('-')[1]}}"
+                   ng-repeat="key in schedulerminutes" ng-value="key">
+                        {{key.name}}</md-option>
+     </md-select>
+     </td>
+       <td>
+     <md-select  name="selectedRollingReprovSecTo" ng-model="selectedRollingReprovSecTo">
+         <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[0].split('-')[1]}}"
+                    ng-repeat="key in schedulersecondes" ng-value="key">
+                         {{key.name}}</md-option>
+      </md-select>
+      </td>
+      <td>
+    <md-select  name="selectedRollingReprovDayTo" ng-model="selectedRollingReprovDayTo">
+        <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[3].split('-')[1]}}"
+                   ng-repeat="key in schedulerdays" ng-value="key">
+                        {{key.name}}</md-option>
+     </md-select>
+     </td>
+     <td>
+   <md-select  name="selectedRollingReprovMonthTo" ng-model="selectedRollingReprovMonthTo">
+       <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[4].split('-')[1]}}"
+                  ng-repeat="key in schedulermonths" ng-value="key">
+                       {{key.name}}</md-option>
+    </md-select>
+    </td>
+    <td>
+   <md-select  name="selectedRollingReprovWeekTo" ng-model="selectedRollingReprovWeekTo">
+      <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[5].split('-')[1]}}"
+                 ng-repeat="key in schedulerweeks" ng-value="key">
+                      {{key.name}}</md-option>
+   </md-select>
+   </td>
+      </tr>
+      <tr>
+          <th>Per:</th>
+      <td>
+      <md-select  name="selectedRollingReprovHourPer" ng-model="selectedRollingReprovHourPer">
+          <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[2].split('/')[1]}}"
+                     ng-repeat="key in schedulerhours" ng-value="key">
+                          {{key.name}}</md-option>
+       </md-select>
+       </td>
+       <td>
+     <md-select  name="selectedRollingReprovMinPer" ng-model="selectedRollingReprovMinPer">
+         <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[1].split('/')[1]}}"
+                    ng-repeat="key in schedulerminutes" ng-value="key">
+                         {{key.name}}</md-option>
+      </md-select>
+      </td>
+        <td>
+      <md-select  name="selectedRollingReprovSecPer" ng-model="selectedRollingReprovSecPer">
+          <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerRollingReprovCron.split(' ')[0].split('/')[1]}}"
+                     ng-repeat="key in schedulersecondes" ng-value="key">
+                          {{key.name}}</md-option>
+       </md-select>
+       </td>
+       <td colspan=3></td>
+       </tr>
+   </table>
+  </td>
+
+</tr>
+</table>

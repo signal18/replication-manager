@@ -1,0 +1,149 @@
+<table width="100%">
+
+  <tr>
+      <th>Schedule rotate SLA</th>
+  </tr>
+
+  <tr><td>
+      <Table width="100%" ng-if="settings" class="cron" ><tr>
+      <th>
+          <span  style="display:inline-block;;margin: 2px;" ng-click="saveSlaRotateCron(selectedSlaRotateHour.id,selectedSlaRotateMin.id,selectedSlaRotateSec.id,selectedSlaRotateDay.id,selectedSlaRotateMonth.id,selectedSlaRotateWeek.id,selectedSlaRotateHourTo.id,selectedSlaRotateMinTo.id,selectedSlaRotateSecTo.id,selectedSlaRotateDayTo.id,selectedSlaRotateMonthTo.id,selectedSlaRotateWeekTo.id,selectedSlaRotateHourPer.id,selectedSlaRotateMinPer.id,selectedSlaRotateSecPer.id)"><i   style="display:inline-block;;margin: 2px;"  class="fa fa-save"/></span>
+      </th>
+      <th>
+        Hour
+      </th>
+      <th>
+        Min
+      </th>
+      <th>
+        Sec
+      </th>
+      <th>
+        Day
+      </th>
+      <th>
+        Mon
+      </th>
+      <th>
+        Week
+      </th>
+      </tr><tr>
+          <th>At:</th>
+        <td>
+      <md-select  name="selectedSlaRotateHour" ng-model="selectedSlaRotateHour">
+          <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[2].split('-')[0].split('/')[0]}}"
+                     ng-repeat="key in schedulerhours" ng-value="key">
+                          {{key.name}}</md-option>
+       </md-select>
+       </td>
+       <td>
+     <md-select  name="selectedSlaRotateMin" ng-model="selectedSlaRotateMin">
+         <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[1].split('-')[0].split('/')[0]}}"
+                    ng-repeat="key in schedulerminutes" ng-value="key">
+                         {{key.name}}</md-option>
+      </md-select>
+      </td>
+        <td>
+      <md-select  name="selectedSlaRotateSec" ng-model="selectedSlaRotateSec">
+          <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[0].split('-')[0].split('/')[0]}}"
+                     ng-repeat="key in schedulersecondes" ng-value="key">
+                          {{key.name}}</md-option>
+       </md-select>
+       </td>
+       <td>
+     <md-select  name="selectedSlaRotateDay" ng-model="selectedSlaRotateDay">
+         <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[3].split('-')[0].split('/')[0]}}"
+                    ng-repeat="key in schedulerdays" ng-value="key">
+                         {{key.name}}</md-option>
+      </md-select>
+      </td>
+      <td>
+    <md-select  name="selectedSlaRotateMonth" ng-model="selectedSlaRotateMonth">
+        <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[4].split('-')[0].split('/')[0]}}"
+                   ng-repeat="key in schedulermonths" ng-value="key">
+                        {{key.name}}</md-option>
+     </md-select>
+     </td>
+     <td>
+   <md-select  name="selectedSlaRotateWeek" ng-model="selectedSlaRotateWeek">
+       <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[5].split('-')[0].split('/')[0]}}"
+                  ng-repeat="key in schedulerweeks" ng-value="key">
+                       {{key.name}}</md-option>
+    </md-select>
+    </td>
+       </tr>
+       <tr>
+           <th>To:</th>
+       <td>
+       <md-select  name="selectedSlaRotateHourTo" ng-model="selectedSlaRotateHourTo">
+           <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[2].split('-')[1]}}"
+                      ng-repeat="key in schedulerhours" ng-value="key">
+                           {{key.name}}</md-option>
+        </md-select>
+        </td>
+        <td>
+      <md-select  name="selectedSlaRotateMinTo" ng-model="selectedSlaRotateMinTo">
+          <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[1].split('-')[1]}}"
+                     ng-repeat="key in schedulerminutes" ng-value="key">
+                          {{key.name}}</md-option>
+       </md-select>
+       </td>
+         <td>
+       <md-select  name="selectedSlaRotateSecTo" ng-model="selectedSlaRotateSecTo">
+           <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[0].split('-')[1]}}"
+                      ng-repeat="key in schedulersecondes" ng-value="key">
+                           {{key.name}}</md-option>
+        </md-select>
+        </td>
+        <td>
+      <md-select  name="selectedSlaRotateDayTo" ng-model="selectedSlaRotateDayTo">
+          <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[3].split('-')[1]}}"
+                     ng-repeat="key in schedulerdays" ng-value="key">
+                          {{key.name}}</md-option>
+       </md-select>
+       </td>
+       <td>
+     <md-select  name="selectedSlaRotateMonthTo" ng-model="selectedSlaRotateMonthTo">
+         <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[4].split('-')[1]}}"
+                    ng-repeat="key in schedulermonths" ng-value="key">
+                         {{key.name}}</md-option>
+      </md-select>
+      </td>
+      <td>
+     <md-select  name="selectedSlaRotateWeekTo" ng-model="selectedSlaRotateWeekTo">
+        <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[5].split('-')[1]}}"
+                   ng-repeat="key in schedulerweeks" ng-value="key">
+                        {{key.name}}</md-option>
+     </md-select>
+     </td>
+        </tr>
+        <tr>
+            <th>Per:</th>
+        <td>
+        <md-select  name="selectedSlaRotateHourPer" ng-model="selectedSlaRotateHourPer">
+            <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[2].split('/')[1]}}"
+                       ng-repeat="key in schedulerhours" ng-value="key">
+                            {{key.name}}</md-option>
+         </md-select>
+         </td>
+         <td>
+       <md-select  name="selectedSlaRotateMinPer" ng-model="selectedSlaRotateMinPer">
+           <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[1].split('/')[1]}}"
+                      ng-repeat="key in schedulerminutes" ng-value="key">
+                           {{key.name}}</md-option>
+        </md-select>
+        </td>
+          <td>
+        <md-select  name="selectedSlaRotateSecPer" ng-model="selectedSlaRotateSecPer">
+            <md-option ng-selected="{{key.id ==  selectedCluster.config.schedulerSlaRotateCron.split(' ')[0].split('/')[1]}}"
+                       ng-repeat="key in schedulersecondes" ng-value="key">
+                            {{key.name}}</md-option>
+         </md-select>
+         </td>
+         <td colspan=3></td>
+         </tr>
+     </table>
+    </td>
+
+</tr>
+</table>

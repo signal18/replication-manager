@@ -1,0 +1,58 @@
+<md-card>
+    <table ng-if="settings" class="table" >
+​
+        <tr>
+            <th>Cloud18</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false"  ng-model="selectedCluster.config.cloud18"
+                           ng-click="switchsettings('cloud18')" aria-label="Cloud18">
+                    <span ng-if="selectedCluster.config.cloud18" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.cloud18" class="label label-warning">Off</span>
+            </td>
+            </md-switch>
+            </td>
+        </tr>
+​
+​
+        <tr>
+            <th>Share the cluster on the Cloud18</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.cloud18Shared"
+                           ng-click="switchsettings('cloud18-shared')" aria-label="Share the cluster to the Cloud18">
+                    <span ng-if="selectedCluster.config.cloud18Shared" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.cloud18Shared" class="label label-warning">Off</span>
+            </td>
+            </md-switch>
+            </td>
+        </tr>
+​
+        <tr md-row>
+              <th>Vault Token</th>
+          </tr>
+          <form name="vault_token" ng-submit="sendVaultToken()" ng-controller="VaultController">
+            <button type="submit" class="btn btn-primary float-right" >Send Vault token by mail</button>
+        </form>
+          <tr>
+            <td>
+                <table width="100%"><tr><td>{{selectedCluster.config.vaultToken}}</td></table>
+            </td>
+        </tr>
+​
+
+​
+    </table>
+</md-card>
+​
+<script>
+    app.controller('VaultController', function ($scope) {
+        $scope.sendVaultToken = function () {
+          alert('Button clicked!');
+          $http.get(AppService.getApiDomain() + '/clusters/'+$scope.selectedClusterName+'/send-vault-token')
+          // Add your custom logic here
+        };
+      });
+</script>

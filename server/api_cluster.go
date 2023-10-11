@@ -1042,6 +1042,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchSchedulerRollingReprov()
 	case "scheduler-db-servers-optimize":
 		mycluster.SwitchSchedulerDatabaseOptimize()
+	case "scheduler-db-servers-analyze":
+		mycluster.SwitchSchedulerDatabaseAnalyze()
 	case "scheduler-alert-disable":
 		mycluster.SwitchSchedulerAlertDisable()
 	case "graphite-metrics":
@@ -1284,6 +1286,8 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetSchedulerDbServersLogsTableRotateCron(value)
 	case "scheduler-db-servers-optimize-cron":
 		mycluster.SetSchedulerDbServersOptimizeCron(value)
+	case "scheduler-db-servers-analyze-cron":
+		mycluster.SetSchedulerDbServersAnalyzeCron(value)
 	case "scheduler-db-servers-physical-backup-cron":
 		mycluster.SetSchedulerDbServersPhysicalBackupCron(value)
 	case "scheduler-rolling-reprov-cron":

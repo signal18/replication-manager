@@ -179,6 +179,7 @@ type Cluster struct {
 	idSchedulerPhysicalBackup cron.EntryID                `json:"-"`
 	idSchedulerLogicalBackup  cron.EntryID                `json:"-"`
 	idSchedulerOptimize       cron.EntryID                `json:"-"`
+	idSchedulerAnalyze        cron.EntryID                `json:"-"`
 	idSchedulerErrorLogs      cron.EntryID                `json:"-"`
 	idSchedulerLogRotateTable cron.EntryID                `json:"-"`
 	idSchedulerSLARotate      cron.EntryID                `json:"-"`
@@ -192,9 +193,11 @@ type Cluster struct {
 	Configurator              configurator.Configurator   `json:"configurator"`
 	DiffVariables             []VariableDiff              `json:"diffVariables"`
 	inInitNodes               bool                        `json:"-"`
+	inOptimizeTables          bool                        `json:"inOptimizeTables"`
+	inAnalyzeTables           bool                        `json:"inAnalyzeTables"`
+	inConnectVault            bool                        `json:"-"`
 	CanInitNodes              bool                        `json:"canInitNodes"`
 	errorInitNodes            error                       `json:"-"`
-	inConnectVault            bool                        `json:"-"`
 	CanConnectVault           bool                        `json:"canConnectVault"`
 	errorConnectVault         error                       `json:"-"`
 	SqlErrorLog               *logsql.Logger              `json:"-"`
@@ -515,6 +518,7 @@ func (cluster *Cluster) initScheduler() {
 		cluster.SetSchedulerBackupPhysical()
 		cluster.SetSchedulerBackupLogs()
 		cluster.SetSchedulerOptimize()
+		cluster.SetSchedulerAnalyze()
 		cluster.SetSchedulerRollingRestart()
 		cluster.SetSchedulerRollingReprov()
 		cluster.SetSchedulerSlaRotate()

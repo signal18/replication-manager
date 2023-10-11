@@ -257,6 +257,11 @@ func (cluster *Cluster) SwitchSchedulerDatabaseOptimize() {
 	cluster.SetSchedulerOptimize()
 }
 
+func (cluster *Cluster) SwitchSchedulerDatabaseAnalyze() {
+	cluster.Conf.SchedulerDatabaseAnalyze = !cluster.Conf.SchedulerDatabaseAnalyze
+	cluster.SetSchedulerAnalyze()
+}
+
 func (cluster *Cluster) SwitchSchedulerRollingRestart() {
 	cluster.Conf.SchedulerRollingRestart = !cluster.Conf.SchedulerRollingRestart
 	cluster.SetSchedulerRollingRestart()
