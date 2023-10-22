@@ -809,7 +809,7 @@ func (cluster *Cluster) ShardProxyBootstrap(proxy *MariadbShardProxy) error {
 
 func (cluster *Cluster) ShardProxyCreateSystemTable(proxy *MariadbShardProxy) error {
 
-	params := fmt.Sprintf("?timeout=60s")
+	params := "?timeout=60s"
 
 	dsn := proxy.User + ":" + proxy.Pass + "@"
 	dsn += "tcp(" + proxy.Host + ":" + proxy.Port + ")/" + params
