@@ -637,6 +637,9 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 			changemasteropt.Channel = rep.ConnectionName.String
 			changemasteropt.IsDelayed = false
 			changemasteropt.Delay = "0"
+			changemasteropt.DoDomainIds = rep.DoDomainIds.String
+			changemasteropt.IgnoreDomainIds = rep.IgnoreDomainIds.String
+			changemasteropt.IgnoreServerIds = rep.IgnoreServerIds.String
 			changemasteropt.PostgressDB = NewMaster.PostgressDB
 			if strings.ToUpper(rep.UsingGtid.String) == "NO" {
 				changemasteropt.Mode = "POSITIONAL"

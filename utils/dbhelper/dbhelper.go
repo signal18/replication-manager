@@ -206,6 +206,9 @@ type SlaveStatus struct {
 	RetrievedGtidSet     sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
 	SlaveSQLRunningState sql.NullString `db:"Slave_SQL_Running_State" json:"slaveSQLRunningState"`
 	PGExternalID         sql.NullString `db:"external_id" json:"postgresExternalId"`
+	DoDomainIds          sql.NullString `db:"Replicate_Do_Domain_Ids" json:"eeplicateDoDomainIds"`
+	IgnoreDomainIds      sql.NullString `db:"Replicate_Ignore_Domain_Ids" json:"replicateIgnoreDomainIds"`
+	IgnoreServerIds      sql.NullString `db:"Replicate_Ignore_Server_Ids" json:"eeplicateIgnoreServerIds"`
 }
 
 type Privileges struct {
@@ -555,10 +558,13 @@ type ChangeMasterOpt struct {
 	Logpos    string
 	Mode      string
 
-	Channel     string
-	PostgressDB string
-	IsDelayed   bool
-	Delay       string
+	Channel         string
+	PostgressDB     string
+	IsDelayed       bool
+	Delay           string
+	DoDomainIds     string
+	IgnoreDomainIds string
+	IgnoreServerIds string
 	//	SSLCa     string
 	//	SSLCert   string
 	//	SSLKey    string
@@ -643,6 +649,20 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 		}
 		if opt.IsDelayed {
 			cm += " ," + masterOrSource + "_delay=" + opt.Delay
+		}
+		if myver.IsMariaDB() {
+			if opt.DoDomainIds != "" {
+				cm += " ,DO_DOMAIN_IDS=" + opt.DoDomainIds
+			}
+			if opt.IgnoreDomainIds != "" {
+				cm += " ,IGNORE_DOMAIN_IDS=" + opt.IgnoreDomainIds
+			}
+			if opt.IgnoreDomainIds != "" {
+				cm += " ,IGNORE_DOMAIN_IDS=" + opt.IgnoreDomainIds
+			}
+			if opt.IgnoreServerIds != "" {
+				cm += " ,IGNORE_SERVER_IDS=" + opt.IgnoreServerIds
+			}
 		}
 		switch opt.Mode {
 		case "SLAVE_POS":
