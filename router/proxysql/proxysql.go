@@ -150,7 +150,7 @@ func (psql *ProxySQL) GetHostgroupFromJanitorDomain(domain string) int {
 	err := row.Scan(&wg)
 	if err == nil && !wg.Valid {
 
-		sql := fmt.Sprintf("SELECT max(default_hostgroup)+1 FROM mysql_users")
+		sql := "SELECT max(default_hostgroup)+1 FROM mysql_users"
 		row2 := psql.Connection.QueryRow(sql)
 		err2 := row2.Scan(&wgmax)
 		if err2 == nil {
