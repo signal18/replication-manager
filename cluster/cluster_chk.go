@@ -69,7 +69,13 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 	hasBinLogs, err := cluster.IsEqualBinlogFilters(cluster.master, sl)
 	if err != nil {
 		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Could not check binlog filters")
+			cluster.LogPrintf(LvlWarn, "Could not check binlog filters on %s", sl.URL)
+		}
+		return false
+	}
+	if (!cluster.Conf.SwitchLowerRelease) && (sl.DBVersion.Major < cluster.master.DBVersion.Major || (sl.DBVersion.Major == cluster.master.DBVersion.Major && sl.DBVersion.Minor < cluster.master.DBVersion.Minor)) {
+		if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogPrintf(LvlWarn, "Could not elect a minor version as leader without enabing switchover-lower-release %s", sl.URL)
 		}
 		return false
 	}

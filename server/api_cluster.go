@@ -995,6 +995,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchFailSync()
 	case "force-slave-no-gtid-mode":
 		mycluster.SwitchForceSlaveNoGtid()
+	case "switchover-lower-release":
+		mycluster.SwitchFailoverLowerRelease()
 	case "failover-event-status":
 		mycluster.SwitchFailoverEventStatus()
 	case "failover-event-scheduler":

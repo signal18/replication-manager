@@ -262,6 +262,10 @@ func (cluster *Cluster) SwitchSchedulerDatabaseAnalyze() {
 	cluster.SetSchedulerAnalyze()
 }
 
+func (cluster *Cluster) SwitchSwitchLowerRelease() {
+	cluster.Conf.SwitchLowerRelease = !cluster.Conf.SwitchLowerRelease
+}
+
 func (cluster *Cluster) SwitchSchedulerRollingRestart() {
 	cluster.Conf.SchedulerRollingRestart = !cluster.Conf.SchedulerRollingRestart
 	cluster.SetSchedulerRollingRestart()
@@ -274,7 +278,6 @@ func (cluster *Cluster) SwitchSchedulerRollingReprov() {
 
 func (cluster *Cluster) SwitchSchedulerAlertDisable() {
 	cluster.Conf.SchedulerAlertDisable = !cluster.Conf.SchedulerAlertDisable
-
 }
 
 func (cluster *Cluster) SwitchGraphiteEmbedded() {
@@ -283,6 +286,10 @@ func (cluster *Cluster) SwitchGraphiteEmbedded() {
 
 func (cluster *Cluster) SwitchGraphiteMetrics() {
 	cluster.Conf.GraphiteMetrics = !cluster.Conf.GraphiteMetrics
+}
+
+func (cluster *Cluster) SwitchFailoverLowerRelease() {
+	cluster.Conf.SwitchLowerRelease = !cluster.Conf.SwitchLowerRelease
 }
 
 func (cluster *Cluster) SwitchFailoverEventStatus() {

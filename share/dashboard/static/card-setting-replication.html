@@ -1,7 +1,7 @@
 <md-card>
     <table ng-if="settings" class="table">
         <tr>
-            <th>Checks All Replication Constraint</th>
+            <th>Checks failover & switchover constraints</th>
         </tr>
         <tr>
             <td>
@@ -15,8 +15,13 @@
                 </md-switch>
             </td>
         </tr>
+      </table>
+      </md-card>
+      <BR>
+      <md-card>
+      <table ng-if="settings" class="table">
         <tr>
-            <th>Failover Only On Semi-sync State Sync</th>
+            <th>Failover only on semi-sync state is in sync</th>
         </tr>
         <tr>
             <td>
@@ -43,7 +48,7 @@
             </td>
         </tr>
         <tr>
-            <th>Failover Using Positional Replication</th>
+            <th>Failover using positional replication</th>
         </tr>
         <tr>
             <td>
@@ -59,7 +64,7 @@
             </td>
         </tr>
         <tr>
-            <th>Failover Using Pseudo GTID</th>
+            <th>Failover using pseudo GTID</th>
         </tr>
         <tr>
             <td>
@@ -74,8 +79,14 @@
             </md-switch>
             </td>
         </tr>
+        </table>
+      </md-card>
+      <BR>
+      <md-card>
+
+        <table ng-if="settings" class="table">
         <tr>
-            <th>Switchover Only On Semi-sync State Sync</th>
+            <th>Switchover only on semi-sync state in sync</th>
         </tr>
         <tr>
             <td>
@@ -91,7 +102,7 @@
             </td>
         </tr>
         <tr>
-            <th>Switchover Replication Max Delay</th>
+            <th>Switchover replication maximum delay</th>
         </tr>
         <tr>
             <td>
@@ -116,11 +127,28 @@
 
             </td>
         </tr>
+        <tr>
+            <th>Switchover allow on minor release</th>
+        </tr>
+        <tr>
+            <td>
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.switchoverLowerRelease"
+                         ng-click="switchsettings('switchover-lower-release')"
+                         aria-label="Enforce read only on replicas">
+                         <span ng-if="selectedCluster.config.switchoverLowerRelease" class="label label-primary">On</span>
+                         <span ng-if="!selectedCluster.config.switchoverLowerRelease" class="label label-warning">Off</span>
+              </md-switch>
+
+            </td>
+        </tr>
     </table>
-    <BR>
+  </md-card>
+  <BR>
+  <md-card>
+
       <table ng-if="settings" class="table">
           <tr>
-              <th>Enforce Replication</th>
+              <th>Enforce replication options</th>
           </tr>
           <tr>
               <td>

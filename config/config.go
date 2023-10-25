@@ -149,6 +149,7 @@ type Config struct {
 	SwitchWaitTrx                             int64                  `mapstructure:"switchover-wait-trx" toml:"switchover-wait-trx" json:"switchoverWaitTrx"`
 	SwitchWaitWrite                           int                    `mapstructure:"switchover-wait-write-query" toml:"switchover-wait-write-query" json:"switchoverWaitWriteQuery"`
 	SwitchGtidCheck                           bool                   `mapstructure:"switchover-at-equal-gtid" toml:"switchover-at-equal-gtid" json:"switchoverAtEqualGtid"`
+	SwitchLowerRelease                        bool                   `mapstructure:"switchover-lower-release" toml:"switchover-lower-release" json:"switchoverLowerRelease"`
 	SwitchSync                                bool                   `mapstructure:"switchover-at-sync" toml:"switchover-at-sync" json:"switchoverAtSync"`
 	SwitchMaxDelay                            int64                  `mapstructure:"switchover-max-slave-delay" toml:"switchover-max-slave-delay" json:"switchoverMaxSlaveDelay"`
 	SwitchSlaveWaitCatch                      bool                   `mapstructure:"switchover-slave-wait-catch" toml:"switchover-slave-wait-catch" json:"switchoverSlaveWaitCatch"`
