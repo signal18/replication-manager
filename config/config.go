@@ -241,6 +241,7 @@ type Config struct {
 	PushoverAppToken                          string                 `mapstructure:"alert-pushover-app-token" toml:"alert-pushover-app-token" json:"alertPushoverAppToken"`
 	PushoverUserToken                         string                 `mapstructure:"alert-pushover-user-token" toml:"alert-pushover-user-token" json:"alertPushoverUserToken"`
 	TeamsUrl                                  string                 `mapstructure:"alert-teams-url" toml:"alert-teams-url" json:"alertTeamsUrl"`
+	TeamsProxyUrl                             string                 `mapstructure:"alert-teams-proxy-url" toml:"alert-teams-proxy-url" json:"alertTeamsProxyUrl"`
 	Heartbeat                                 bool                   `mapstructure:"heartbeat-table" toml:"heartbeat-table" json:"heartbeatTable"`
 	ExtProxyOn                                bool                   `mapstructure:"extproxy" toml:"extproxy" json:"extproxy"`
 	ExtProxyVIP                               string                 `mapstructure:"extproxy-address" toml:"extproxy-address" json:"extproxyAddress"`
