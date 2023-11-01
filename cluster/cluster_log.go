@@ -13,9 +13,14 @@ package cluster
 import (
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
-	teams "github.com/dasrick/go-teams-notify/v2"
+	teams "github.com/atc0005/go-teams-notify/v2"
+	"github.com/atc0005/go-teams-notify/v2/messagecard"
+
 	"github.com/nsf/termbox-go"
 	"github.com/signal18/replication-manager/utils/s18log"
 	log "github.com/sirupsen/logrus"
@@ -188,7 +193,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack"}).Warnf(cliformat, args...)
 			}
 			if cluster.Conf.TeamsUrl != "" {
-				go cluster.sendMsTeams(level, format, args)
+				go cluster.sendMsTeams(level, format, args...)
 			}
 		case "TEST":
 			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "test", "channel": "StdOut"}).Infof(cliformat, args...)
@@ -203,7 +208,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 				cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Pushover"}).Errorf(cliformat, args...)
 			}
 			if cluster.Conf.TeamsUrl != "" {
-				go cluster.sendMsTeams(level, format, args)
+				go cluster.sendMsTeams(level, format, args...)
 			}
 		case "START":
 			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut"}).Warnf(cliformat, args...)
@@ -214,7 +219,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 				cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "start", "channel": "Pushover"}).Warnf(cliformat, args...)
 			}
 			if cluster.Conf.TeamsUrl != "" {
-				go cluster.sendMsTeams(level, format, args)
+				go cluster.sendMsTeams(level, format, args...)
 			}
 		case "STATE":
 			status := cliformat[0:6]
@@ -225,6 +230,17 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 			} else {
 				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": status, "code": code, "channel": "StdOut"}).Warnf(err, args...)
 			}
+
+			if cluster.Conf.TeamsUrl != "" && cluster.Conf.TeamsAlertState != "" {
+				stateList := strings.Split(cluster.Conf.TeamsAlertState, ",")
+				for _, alertcode := range stateList {
+					if strings.Contains(code, alertcode) {
+						go cluster.sendMsTeams(level, format, args...)
+						break
+					}
+				}
+			}
+
 		default:
 			log.Printf(cliformat, args...)
 		}
@@ -236,14 +252,34 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 
 func (cluster *Cluster) sendMsTeams(level string, format string, args ...interface{}) error {
 	// init the client
-	mstClient := teams.NewClient()
+	mstClient := teams.NewTeamsClient()
 
 	// setup webhook url
 	webhookUrl := cluster.Conf.TeamsUrl
+	webhookProxyUrl := cluster.Conf.TeamsProxyUrl
+
+	proxyUrl, err := url.Parse(cluster.Conf.TeamsProxyUrl)
+
+	// Create a copy of the default mstClient.HTTPClient
+	httpClient := mstClient.HTTPClient()
+
+	if webhookProxyUrl != "" {
+		if err == nil {
+			httpClient.Transport = &http.Transport{Proxy: http.ProxyURL(proxyUrl)}
+		} else {
+			log.Printf(
+				"Failed to parse proxy URL %q: %v. Using the default HTTP client without a proxy.",
+				webhookProxyUrl,
+				err,
+			)
+		}
+	} else {
+		log.Printf("Proxy URL is empty. Using the default HTTP client without a proxy.")
+	}
 
 	// setup message card
-	msgCard := teams.NewMessageCard()
-	msgCard.Title = "Replication-Manager alert"
+	msgCard := messagecard.NewMessageCard()
+	msgCard.Title = "Replication-Manager alert. Monitor: " + cluster.Conf.MonitorAddress
 	switch level {
 	case "ERROR":
 		msgCard.ThemeColor = "#4169e1"
@@ -255,9 +291,11 @@ func (cluster *Cluster) sendMsTeams(level string, format string, args ...interfa
 
 	msgCard.Text = fmt.Sprintf(format, args...)
 	// send
-	err := mstClient.Send(webhookUrl, msgCard)
-	if err != nil {
-		log.Printf("sendMSTeams error send alert : %s", err)
+	if err := mstClient.Send(webhookUrl, msgCard); err != nil {
+		log.Printf(
+			"failed to send MSTeams alert message: %s",
+			err,
+		)
 	}
 	return nil
 }
