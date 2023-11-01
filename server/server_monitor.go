@@ -196,6 +196,7 @@ func init() {
 
 	monitorCmd.Flags().StringVar(&conf.TeamsUrl, "alert-teams-url", "", "Teams url channel for alerts")
 	monitorCmd.Flags().StringVar(&conf.TeamsProxyUrl, "alert-teams-proxy-url", "", "Proxy url for Teams Webhook")
+	monitorCmd.Flags().StringVar(&conf.TeamsAlertState, "alert-teams-state", "", "State Code for Teams Alert : ERR|WARN|INFO")
 
 	conf.CheckType = "tcp"
 	monitorCmd.Flags().BoolVar(&conf.CheckReplFilter, "check-replication-filters", true, "Check that possible master have equal replication filters")

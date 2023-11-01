@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	teams "github.com/atc0005/go-teams-notify/v2"
@@ -192,7 +193,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack"}).Warnf(cliformat, args...)
 			}
 			if cluster.Conf.TeamsUrl != "" {
-				go cluster.sendMsTeams(level, format, args)
+				go cluster.sendMsTeams(level, format, args...)
 			}
 		case "TEST":
 			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "test", "channel": "StdOut"}).Infof(cliformat, args...)
@@ -207,7 +208,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 				cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Pushover"}).Errorf(cliformat, args...)
 			}
 			if cluster.Conf.TeamsUrl != "" {
-				go cluster.sendMsTeams(level, format, args)
+				go cluster.sendMsTeams(level, format, args...)
 			}
 		case "START":
 			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut"}).Warnf(cliformat, args...)
@@ -218,7 +219,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 				cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "start", "channel": "Pushover"}).Warnf(cliformat, args...)
 			}
 			if cluster.Conf.TeamsUrl != "" {
-				go cluster.sendMsTeams(level, format, args)
+				go cluster.sendMsTeams(level, format, args...)
 			}
 		case "STATE":
 			status := cliformat[0:6]
@@ -229,6 +230,17 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 			} else {
 				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": status, "code": code, "channel": "StdOut"}).Warnf(err, args...)
 			}
+
+			if cluster.Conf.TeamsUrl != "" && cluster.Conf.TeamsAlertState != "" {
+				stateList := strings.Split(cluster.Conf.TeamsAlertState, ",")
+				for _, alertcode := range stateList {
+					if strings.Contains(code, alertcode) {
+						go cluster.sendMsTeams(level, format, args...)
+						break
+					}
+				}
+			}
+
 		default:
 			log.Printf(cliformat, args...)
 		}
