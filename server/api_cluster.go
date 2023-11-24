@@ -1089,6 +1089,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchBackupRestic()
 	case "backup-binlogs":
 		mycluster.SwitchBackupBinlogs()
+	case "compress-backups":
+		mycluster.SwitchCompressBackups()
 	case "monitoring-pause":
 		mycluster.SwitchMonitoringPause()
 	case "monitoring-save-config":
