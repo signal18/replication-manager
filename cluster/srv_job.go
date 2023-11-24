@@ -111,13 +111,15 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	*/
 	var port string
 	var err error
+	var backupext string = ".xbtream"
 	if server.ClusterGroup.Conf.CompressBackups {
-		port, err = server.ClusterGroup.SSTRunReceiverToGZip(server.GetMyBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream.gz", ConstJobCreateFile)
+		backupext = backupext + ".gz"
+		port, err = server.ClusterGroup.SSTRunReceiverToGZip(server.GetMyBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+backupext, ConstJobCreateFile)
 		if err != nil {
 			return 0, nil
 		}
 	} else {
-		port, err = server.ClusterGroup.SSTRunReceiverToFile(server.GetMyBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+".xbtream", ConstJobCreateFile)
+		port, err = server.ClusterGroup.SSTRunReceiverToFile(server.GetMyBackupDirectory()+server.ClusterGroup.Conf.BackupPhysicalType+backupext, ConstJobCreateFile)
 		if err != nil {
 			return 0, nil
 		}

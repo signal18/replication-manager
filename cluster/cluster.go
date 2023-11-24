@@ -671,10 +671,16 @@ func (cluster *Cluster) StateProcessing() {
 			if s.ErrKey == "WARN0074" {
 				cluster.LogPrintf(LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
 				if master != nil {
+					backupext := ".xbtream"
+
+					if cluster.Conf.CompressBackups {
+						backupext = backupext + ".gz"
+					}
+
 					if mybcksrv != nil {
-						go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed)
+						go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed)
 					} else {
-						go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed)
+						go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed)
 					}
 				} else {
 					cluster.LogPrintf(LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)

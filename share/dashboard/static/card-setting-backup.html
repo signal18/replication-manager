@@ -30,6 +30,22 @@
               </td>
     </tr>
     <tr>
+        <th colspan=4 >Use Compression For Backup</th>
+    </tr>
+    <tr>
+        <td colspan=4>
+            <md-switch  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false"
+                       ng-model="selectedCluster.config.compressBackups"
+                       ng-click="switchsettings('compress-backups')"
+                       aria-label="Use Compression For Backup">
+                <span ng-if="selectedCluster.config.compressBackups"
+                      class="label label-primary">On</span><span
+                    ng-if="!selectedCluster.config.compressBackups" class="label label-warning">Off</span>
+
+        </md-switch>
+        </td>
+    </tr>
+    <tr>
         <th colspan=4 >Backup Binlogs</th>
     </tr>
     <tr>

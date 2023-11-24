@@ -79,7 +79,7 @@
                   Reseed Logical From Master
                </md-button>
             </md-menu-item>
-            <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedxtrabackup(server.id)">
+            <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedphysicalbackup(server.id)">
                <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false">
                   <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
                   Reseed Physical From Backup

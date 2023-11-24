@@ -36,6 +36,11 @@ func (cluster *Cluster) HasValidBackup() bool {
 			return true
 		}
 	}
+
+	if cluster.master.HasBackupLogicalCookie() || cluster.master.HasBackupPhysicalCookie() {
+		return true
+	}
+
 	//	}
 	cluster.SetState("WARN0101", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0101"]), ErrFrom: "TOPO"})
 	return false
