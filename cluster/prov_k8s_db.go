@@ -4,6 +4,8 @@ import (
 	"context"
 	"strconv"
 
+	"io/ioutil"
+
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -95,6 +97,32 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	}
 	cluster.LogPrintf(LvlInfo, "Created Kubernetes physical volume claim %q.\n", pvcresult.GetObjectMeta().GetName())
 
+	s.GetDatabaseConfig()
+	data, err := ioutil.ReadFile(s.Datadir + "/config.tar.gz")
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Provision can not found file %s ", s.Datadir+"/config.tar.gz")
+	}
+
+	configMapName := s.Name + "-config-map"
+	configMap := apiv1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      configMapName,
+			Namespace: cluster.Name,
+		},
+		BinaryData: map[string][]byte{
+			"config.tar.gz": data,
+		},
+	}
+
+	//var cm *apiv1.ConfigMap
+	_, err = client.CoreV1().ConfigMaps(cluster.Name).Create(context.TODO(), &configMap, metav1.CreateOptions{})
+	if err != nil {
+		cluster.LogPrintf(LvlErr, "Can not provision config map  %s ", err)
+	}
 	deploymentsClient := client.AppsV1().Deployments(cluster.Name)
 
 	port, _ := strconv.Atoi(s.Port)
@@ -131,7 +159,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 					InitContainers: []apiv1.Container{
 						{
 							Name:    s.Name + "-init",
-							Image:   "busybox",
+							Image:   "alpine",
 							Command: cmd,
 							VolumeMounts: []apiv1.VolumeMount{
 								{
