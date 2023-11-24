@@ -208,7 +208,7 @@ type SlaveStatus struct {
 	PGExternalID         sql.NullString `db:"external_id" json:"postgresExternalId"`
 	DoDomainIds          sql.NullString `db:"Replicate_Do_Domain_Ids" json:"eeplicateDoDomainIds"`
 	IgnoreDomainIds      sql.NullString `db:"Replicate_Ignore_Domain_Ids" json:"replicateIgnoreDomainIds"`
-	IgnoreServerIds      sql.NullString `db:"Replicate_Ignore_Server_Ids" json:"eeplicateIgnoreServerIds"`
+	IgnoreServerIds      sql.NullString `db:"Replicate_Ignore_Server_Ids" json:"replicateIgnoreServerIds"`
 }
 
 type Privileges struct {

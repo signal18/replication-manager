@@ -75,7 +75,7 @@ require (
 	github.com/spf13/cobra v0.0.6
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.4.0
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.4
 	github.com/tebeka/strftime v0.1.5
 	github.com/urfave/cli v1.22.3
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
@@ -100,6 +100,7 @@ require (
 	github.com/Azure/go-autorest/autorest/validation v0.3.0 // indirect
 	github.com/StackExchange/wmi v0.0.0-20210224194228-fe8f1750fd46 // indirect
 	github.com/aclements/go-moremath v0.0.0-20170210193428-033754ab1fee // indirect
+	github.com/atc0005/go-teams-notify/v2 v2.8.0 // indirect
 	github.com/bluele/slack v0.0.0-20180528010058-b4b4d354a079 // indirect
 	github.com/coreos/go-oidc/v3 v3.6.0 // indirect
 	github.com/dasrick/go-teams-notify/v2 v2.1.0 // indirect
