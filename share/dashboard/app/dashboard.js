@@ -1054,8 +1054,11 @@ function (
       $scope.prxstart= function (id) {
         if (confirm("Confirm start proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/start');
       };
-      $scope.dbreseedxtrabackup = function (server) {
-        if (confirm("Confirm reseed with xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
+      $scope.dbreseedphysicalbackup = function (server) {
+        if (confirm("Confirm reseed with physical backup ("+ $scope.selectedCluster.config.backupPhysicalType +" " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
+      };
+      $scope.dbreseedphysicalmaster = function (server) {
+        if (confirm("Confirm reseed from master ("+ $scope.selectedCluster.config.backupPhysicalType +" " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalmaster');
       };
       $scope.flushlogs  = function (server) {
         if (confirm("Confirm flush logs for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/flush-logs');
@@ -1066,8 +1069,8 @@ function (
       $scope.dbreseedmysqldumpmaster = function (server) {
         if (confirm("Confirm reseed with mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/logicalmaster');
       };
-      $scope.dbxtrabackup = function (server) {
-        if (confirm("Confirm sending xtrabackup for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-physical');
+      $scope.dbphysicalbackup = function (server) {
+        if (confirm("Confirm sending physical backup ("+ $scope.selectedCluster.config.backupPhysicalType +" " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-physical');
       };
       $scope.dbdump = function (server) {
         if (confirm("Confirm sending mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-logical');
@@ -1200,15 +1203,13 @@ function (
         }
       };
 
-
       $scope.optimizeAll = function () {
         httpGetWithoutResponse(getClusterUrl() + '/actions/optimize');
       };
 
       $scope.backupphysical = function (server) {
-        if (confirm("Confirm master physical backup")) httpGetWithoutResponse(getClusterUrl() + '/actions/master-physical-backup');
+        if (confirm("Confirm master physical ("+ $scope.selectedCluster.config.backupPhysicalType +" " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") backup")) httpGetWithoutResponse(getClusterUrl() + '/actions/master-physical-backup');
       };
-
 
       $scope.cladddbtag = function (tag) {
         if (confirm("Confirm add tag "+tag)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/add-db-tag/'+tag);
