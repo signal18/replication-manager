@@ -91,6 +91,7 @@ func (server *ServerMonitor) CheckReplication() string {
 			} else if server.IsRelay {
 				server.SetState(stateRelayErr)
 			}
+			server.UpdateSlaveErrorStat()
 			return fmt.Sprintf("NOT OK, IO Stopped (%s)", ss.LastIOErrno.String)
 		} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "Yes" {
 			if server.IsRelay == false && server.IsMaxscale == false {
@@ -98,6 +99,7 @@ func (server *ServerMonitor) CheckReplication() string {
 			} else if server.IsRelay {
 				server.SetState(stateRelayErr)
 			}
+			server.UpdateSlaveErrorStat()
 			return fmt.Sprintf("NOT OK, SQL Stopped (%s)", ss.LastSQLErrno.String)
 		} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "No" {
 			if server.IsRelay == false && server.IsMaxscale == false {
@@ -105,6 +107,7 @@ func (server *ServerMonitor) CheckReplication() string {
 			} else if server.IsRelay {
 				server.SetState(stateRelayErr)
 			}
+			server.UpdateSlaveErrorStat()
 			return "NOT OK, ALL Stopped"
 		} else if ss.SlaveSQLRunning.String == "Connecting" {
 			if server.IsRelay == false && server.IsMaxscale == false {
@@ -112,6 +115,7 @@ func (server *ServerMonitor) CheckReplication() string {
 			} else if server.IsRelay {
 				server.SetState(stateRelay)
 			}
+			server.UpdateSlaveErrorStat()
 			return "NOT OK, IO Connecting"
 		}
 
@@ -138,6 +142,8 @@ func (server *ServerMonitor) CheckReplication() string {
 				server.SetState(stateRelay)
 			}
 		}
+
+		server.UpdateDelayStat(ss.SecondsBehindMaster.Int64)
 		return "Behind master"
 	}
 	if server.IsRelay == false && server.IsMaxscale == false {
@@ -145,6 +151,8 @@ func (server *ServerMonitor) CheckReplication() string {
 	} else if server.IsRelay {
 		server.SetState(stateRelayLate)
 	}
+
+	server.UpdateDelayStat(ss.SecondsBehindMaster.Int64)
 	return "Running OK"
 }
 

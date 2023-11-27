@@ -414,3 +414,7 @@ func (cluster *Cluster) SwitchTestMode() {
 func (cluster *Cluster) SwitchTraffic() {
 	cluster.SetTraffic(!cluster.GetTraffic())
 }
+
+func (cluster *Cluster) SwitchFailoverCheckDelayStat() {
+	cluster.Conf.FailoverCheckDelayStat = !cluster.Conf.FailoverCheckDelayStat
+}

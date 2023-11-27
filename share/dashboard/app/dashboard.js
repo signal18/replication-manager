@@ -1614,6 +1614,9 @@ function (
       $scope.changeswitchoverwaitroutechange = function (delay) {
           if (confirm("Confirm change wait change route detection "+delay.toString()))   httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/switchover-wait-route-change/' + delay);
       };
+      $scope.changedelaystatrorate = function (rotate) {
+        if (confirm("Confirm change delay stat rotate value to "+rotate.toString()))   httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/delay-stat-rotate/' + rotate);
+      };
 
       $scope.setsettings = function (setting, value) {
         httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
