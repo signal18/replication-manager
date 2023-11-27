@@ -253,6 +253,18 @@ func (repman *ReplicationManager) apiserver() {
 /////////////ENDPOINT HANDLERS////////////
 /////////////////////////////////////////
 
+func (repman *ReplicationManager) isValidRequest(r *http.Request) bool {
+
+	_, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
+		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
+		return vk, nil
+	})
+	if err == nil {
+		return true
+	}
+	return false
+}
+
 func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) bool {
 
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
@@ -273,7 +285,6 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 				return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc")
 			}
 		}
-
 		return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "password")
 	}
 	return false
@@ -524,25 +535,29 @@ func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *ht
 //	  200: clusters
 func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if repman.isValidRequest(r) {
 
-	var clusters []*cluster.Cluster
+		var clusters []*cluster.Cluster
 
-	for _, cluster := range repman.Clusters {
-		if repman.IsValidClusterACL(r, cluster) {
-			clusters = append(clusters, cluster)
+		for _, cluster := range repman.Clusters {
+			if repman.IsValidClusterACL(r, cluster) {
+				clusters = append(clusters, cluster)
+			}
 		}
-	}
 
-	sort.Sort(cluster.ClusterSorter(clusters))
+		sort.Sort(cluster.ClusterSorter(clusters))
 
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(clusters)
-	if err != nil {
-		http.Error(w, "Encoding error", 500)
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(clusters)
+		if err != nil {
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Unauthenticated", 401)
 		return
 	}
-
 }
 
 func (repman *ReplicationManager) validateTokenMiddleware(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
