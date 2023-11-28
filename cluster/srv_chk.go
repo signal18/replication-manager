@@ -65,6 +65,9 @@ func (server *ServerMonitor) CheckReplication() string {
 		return "In Failover"
 	}
 	if (server.IsDown()) && server.IsSlave == false {
+		if server.ClusterGroup.Conf.DelayStatCapture {
+			server.UpdateSlaveErrorStat() //Capture stat as Slave Error due to server down
+		}
 		return "Master OK"
 	}
 
@@ -91,7 +94,10 @@ func (server *ServerMonitor) CheckReplication() string {
 			} else if server.IsRelay {
 				server.SetState(stateRelayErr)
 			}
-			server.UpdateSlaveErrorStat()
+
+			if server.ClusterGroup.Conf.DelayStatCapture {
+				server.UpdateSlaveErrorStat()
+			}
 			return fmt.Sprintf("NOT OK, IO Stopped (%s)", ss.LastIOErrno.String)
 		} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "Yes" {
 			if server.IsRelay == false && server.IsMaxscale == false {
@@ -99,7 +105,10 @@ func (server *ServerMonitor) CheckReplication() string {
 			} else if server.IsRelay {
 				server.SetState(stateRelayErr)
 			}
-			server.UpdateSlaveErrorStat()
+
+			if server.ClusterGroup.Conf.DelayStatCapture {
+				server.UpdateSlaveErrorStat()
+			}
 			return fmt.Sprintf("NOT OK, SQL Stopped (%s)", ss.LastSQLErrno.String)
 		} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "No" {
 			if server.IsRelay == false && server.IsMaxscale == false {
@@ -107,7 +116,10 @@ func (server *ServerMonitor) CheckReplication() string {
 			} else if server.IsRelay {
 				server.SetState(stateRelayErr)
 			}
-			server.UpdateSlaveErrorStat()
+
+			if server.ClusterGroup.Conf.DelayStatCapture {
+				server.UpdateSlaveErrorStat()
+			}
 			return "NOT OK, ALL Stopped"
 		} else if ss.SlaveSQLRunning.String == "Connecting" {
 			if server.IsRelay == false && server.IsMaxscale == false {
@@ -115,7 +127,10 @@ func (server *ServerMonitor) CheckReplication() string {
 			} else if server.IsRelay {
 				server.SetState(stateRelay)
 			}
-			server.UpdateSlaveErrorStat()
+
+			if server.ClusterGroup.Conf.DelayStatCapture {
+				server.UpdateSlaveErrorStat()
+			}
 			return "NOT OK, IO Connecting"
 		}
 
@@ -123,6 +138,10 @@ func (server *ServerMonitor) CheckReplication() string {
 			server.SetState(stateSlave)
 		} else if server.IsRelay {
 			server.SetState(stateRelay)
+		}
+
+		if server.ClusterGroup.Conf.DelayStatCapture {
+			server.UpdateSlaveErrorStat() //Capture stat with value of slave error due to replication still connecting
 		}
 		return "Running OK"
 	}
@@ -143,7 +162,9 @@ func (server *ServerMonitor) CheckReplication() string {
 			}
 		}
 
-		server.UpdateDelayStat(ss.SecondsBehindMaster.Int64)
+		if server.ClusterGroup.Conf.DelayStatCapture {
+			server.UpdateDelayStat(ss.SecondsBehindMaster.Int64) // Capture Delay Stat
+		}
 		return "Behind master"
 	}
 	if server.IsRelay == false && server.IsMaxscale == false {
@@ -152,7 +173,9 @@ func (server *ServerMonitor) CheckReplication() string {
 		server.SetState(stateRelayLate)
 	}
 
-	server.UpdateDelayStat(ss.SecondsBehindMaster.Int64)
+	if server.ClusterGroup.Conf.DelayStatCapture {
+		server.UpdateDelayStat(ss.SecondsBehindMaster.Int64) // Capture Delay Stat with 0 seconds behind master
+	}
 	return "Running OK"
 }
 

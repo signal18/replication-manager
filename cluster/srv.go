@@ -1754,6 +1754,7 @@ func (server *ServerMonitor) PrintDelayStat(key string) {
 			return
 		}
 		server.ClusterGroup.LogPrintf(LvlInfo, "Average delay for slave %s : %s", server.URL, jtext)
+		return
 	case "hourly":
 		jtext, err := json.MarshalIndent(server.DelayHistory, " ", "\t")
 		if err != nil {
@@ -1761,6 +1762,7 @@ func (server *ServerMonitor) PrintDelayStat(key string) {
 			return
 		}
 		server.ClusterGroup.LogPrintf(LvlInfo, "Hourly Delay History for slave %s : %s", server.URL, jtext)
+		return
 	}
 
 }
@@ -1821,6 +1823,8 @@ func (server *ServerMonitor) UpdateSlaveErrorStat() {
 
 	server.CurrentDelayStat.DelayStat.SlaveErrCount = server.CurrentDelayStat.DelayStat.SlaveErrCount + 1
 
+	server.DelayHistory[len(server.DelayHistory)-1] = server.CurrentDelayStat
+
 	if curTime != server.CurrentDelayStat.Datetime {
 		server.UpdateandRotateTotalSlaveErrStat()
 	} else {
@@ -1828,7 +1832,7 @@ func (server *ServerMonitor) UpdateSlaveErrorStat() {
 	}
 
 	if ld, ok := server.LastDelayStatPrint["avg"]; ok {
-		if t.After(ld.Add(2 * time.Minute)) {
+		if t.After(ld.Add(time.Minute)) {
 			server.PrintDelayStat("avg")
 			server.LastDelayStatPrint["avg"] = t
 		}
@@ -1838,7 +1842,7 @@ func (server *ServerMonitor) UpdateSlaveErrorStat() {
 	}
 
 	if ld, ok := server.LastDelayStatPrint["hourly"]; ok {
-		if t.After(ld.Add(4 * time.Minute)) {
+		if t.After(ld.Add(time.Minute)) {
 			server.PrintDelayStat("hourly")
 			server.LastDelayStatPrint["hourly"] = t
 		}

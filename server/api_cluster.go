@@ -1001,6 +1001,9 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchFailoverEventStatus()
 	case "failover-event-scheduler":
 		mycluster.SwitchFailoverEventScheduler()
+	case "delay-stat-capture":
+		mycluster.SwitchDelayStatCapture()
+
 	case "failover-check-delay-stat":
 		mycluster.SwitchFailoverCheckDelayStat()
 	case "autorejoin":
