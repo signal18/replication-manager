@@ -899,6 +899,14 @@ func (server *ServerMonitor) Refresh() error {
 
 	server.ReplicationHealth = server.CheckReplication()
 
+	if server.IsSlave == true {
+		if server.ClusterGroup.Conf.DelayStatCapture {
+			if server.State == stateFailed || server.State == stateSlaveErr {
+				server.UpdateSlaveErrorStat()
+			}
+		}
+	}
+
 	if len(server.PrevStatus) > 0 {
 		qps, _ := strconv.ParseInt(server.Status["QUERIES"], 10, 64)
 		prevqps, _ := strconv.ParseInt(server.PrevStatus["QUERIES"], 10, 64)
@@ -1822,6 +1830,7 @@ func (server *ServerMonitor) UpdateSlaveErrorStat() {
 	}
 
 	server.CurrentDelayStat.DelayStat.SlaveErrCount = server.CurrentDelayStat.DelayStat.SlaveErrCount + 1
+	server.CurrentDelayStat.DelayStat.Counter = server.CurrentDelayStat.DelayStat.Counter + 1
 
 	server.DelayHistory[len(server.DelayHistory)-1] = server.CurrentDelayStat
 
