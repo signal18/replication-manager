@@ -1253,6 +1253,10 @@ func (cluster *Cluster) Close() {
 func (cluster *Cluster) ResetFailoverCtr() {
 	cluster.FailoverCtr = 0
 	cluster.FailoverTs = 0
+
+	for _, server := range cluster.Servers {
+		server.ResetDelayStat()
+	}
 }
 
 func (cluster *Cluster) agentFlagCheck() {
