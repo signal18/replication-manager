@@ -181,6 +181,7 @@ type ServerMonitor struct {
 	BinaryLogFiles              map[string]uint              `json:"binaryLogFiles"`
 	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
 	WorkLoad                    map[string]WorkLoad          `json:"workLoad"`
+	DelayStat                   *ServerDelayStat             `json:"delayStat"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 }
@@ -300,6 +301,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
 	server.ReloadSaveInfosVariables()
+	server.DelayStat = new(ServerDelayStat)
+	server.DelayStat.ResetDelayStat()
 
 	server.WorkLoad = make(map[string]WorkLoad)
 	server.CurrentWorkLoad()
@@ -879,6 +882,14 @@ func (server *ServerMonitor) Refresh() error {
 	server.IsWsrepPrimary = server.HasWsrepPrimary()
 
 	server.ReplicationHealth = server.CheckReplication()
+
+	if server.IsSlave == true {
+		if server.ClusterGroup.Conf.DelayStatCapture {
+			if server.State == stateFailed || server.State == stateSlaveErr {
+				server.DelayStat.UpdateSlaveErrorStat(server.ClusterGroup.Conf.DelayStatRotate)
+			}
+		}
+	}
 
 	if len(server.PrevStatus) > 0 {
 		qps, _ := strconv.ParseInt(server.Status["QUERIES"], 10, 64)

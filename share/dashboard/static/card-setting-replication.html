@@ -79,6 +79,96 @@
             </md-switch>
             </td>
         </tr>
+        <tr>
+            <th>Capture statistic for hourly delay average</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false"
+                           ng-model="selectedCluster.config.delayStatCapture"
+                           ng-click="switchsettings('delay-stat-capture')"
+                           aria-label="capture delay statistics">
+                    <span ng-if="selectedCluster.config.delayStatCapture"
+                          class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.delayStatCapture" class="label label-warning">Off</span>
+
+            </md-switch>
+            </td>
+        </tr>
+        <tr>
+            <th>Failover check delay statistics</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.delayStatCapture" ng-true-value="true" ng-false-value="false"
+                           ng-model="selectedCluster.config.failoverCheckDelayStat"
+                           ng-click="switchsettings('failover-check-delay-stat')"
+                           aria-label="Failover check delay statistics">
+                    <span ng-if="selectedCluster.config.failoverCheckDelayStat"
+                          class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.failoverCheckDelayStat" class="label label-warning">Off</span>
+
+            </md-switch>
+            </td>
+        </tr>
+        <tr>
+            <th>Delay Statistic Rotate Hours</th>
+        </tr>
+        <tr>
+            <td>
+                <md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-value="selectedCluster.config.delayStatRotate" md-discrete flex
+                           ng-model="selectedDelayStatRotate" ng-change="changedelaystatrotate(selectedDelayStatRotate)" step="1" min="0" max="72" aria-label="<!-- WARNING:  -->ait">
+                </md-slider>
+    
+                <span class="label label-primary">{{selectedCluster.config.delayStatRotate}}</span>
+    
+            </td>
+        </tr>
+        <tr>
+            <th>Print delay statistic</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.delayStatCapture" ng-true-value="true" ng-false-value="false"
+                           ng-model="selectedCluster.config.printDelayStat"
+                           ng-click="switchsettings('print-delay-stat')"
+                           aria-label="print delay statistics">
+                    <span ng-if="selectedCluster.config.printDelayStat"
+                          class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.printDelayStat" class="label label-warning">Off</span>
+
+            </md-switch>
+            </td>
+        </tr>
+        <tr>
+            <th>Print delay statistic history</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.delayStatCapture" ng-true-value="true" ng-false-value="false"
+                           ng-model="selectedCluster.config.printDelayStatHistory"
+                           ng-click="switchsettings('print-delay-stat-history')"
+                           aria-label="print delay statistics history">
+                    <span ng-if="selectedCluster.config.printDelayStatHistory"
+                          class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.printDelayStatHistory" class="label label-warning">Off</span>
+
+            </md-switch>
+            </td>
+        </tr>
+        <tr>
+            <th>Delay Statistic Print Interval</th>
+        </tr>
+        <tr>
+            <td>
+                <md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-value="selectedCluster.config.printDelayStatInterval" md-discrete flex
+                           ng-model="selectedPrintDelayStatInterval" ng-change="changeprintdelaystatinterval(selectedPrintDelayStatInterval)" step="1" min="0" max="60" aria-label="<!-- WARNING:  -->ait">
+                </md-slider>
+    
+                <span class="label label-primary">{{selectedCluster.config.printDelayStatInterval}}</span>
+    
+            </td>
+        </tr>
         </table>
       </md-card>
       <BR>

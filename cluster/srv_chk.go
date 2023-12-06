@@ -138,12 +138,20 @@ func (server *ServerMonitor) CheckReplication() string {
 				server.SetState(stateRelay)
 			}
 		}
+
+		if server.ClusterGroup.Conf.DelayStatCapture {
+			server.DelayStat.UpdateDelayStat(ss.SecondsBehindMaster.Int64, server.ClusterGroup.Conf.DelayStatRotate) // Capture Delay Stat
+		}
 		return "Behind master"
 	}
 	if server.IsRelay == false && server.IsMaxscale == false {
 		server.SetState(stateSlave)
 	} else if server.IsRelay {
 		server.SetState(stateRelayLate)
+	}
+
+	if server.ClusterGroup.Conf.DelayStatCapture {
+		server.DelayStat.UpdateDelayStat(ss.SecondsBehindMaster.Int64, server.ClusterGroup.Conf.DelayStatRotate) // Capture Delay Stat with 0 seconds behind master
 	}
 	return "Running OK"
 }

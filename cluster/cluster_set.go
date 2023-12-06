@@ -1466,3 +1466,27 @@ func (cluster *Cluster) SetSecretsToVault() {
 		}
 	}
 }
+
+func (cluster *Cluster) SetDelayStatRotate(keep string) error {
+	numkeep, err := strconv.Atoi(keep)
+	if err != nil {
+		return err
+	}
+	if numkeep > 72 {
+		cluster.LogPrintf(LvlErr, "Cannot set delaystat more than 72 hours (3 days). Adjusting value from %s to 72 hours", keep)
+		numkeep = 72
+	}
+	cluster.LogPrintf(LvlInfo, "Delay Stat Rotate set to %s", strconv.Itoa(numkeep))
+	cluster.Conf.DelayStatRotate = numkeep
+	return nil
+}
+
+func (cluster *Cluster) SetPrintDelayStatInterval(keep string) error {
+	numkeep, err := strconv.Atoi(keep)
+	if err != nil {
+		return err
+	}
+	cluster.LogPrintf(LvlInfo, "Print delay statistic interval set to %s", strconv.Itoa(numkeep))
+	cluster.Conf.PrintDelayStatInterval = numkeep
+	return nil
+}

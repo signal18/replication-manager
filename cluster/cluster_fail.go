@@ -830,6 +830,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		Ignoredmultimaster bool
 		Ignoredreplication bool
 		Weight             uint
+		DelayStat          DelayStat
 	}
 
 	// HaveOneValidReader is used to state that at least one replicat is available for reading via proxies
@@ -844,6 +845,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		trackposList[i].Prefered = sl.IsPrefered()
 		trackposList[i].Ignoredconf = sl.IsIgnored()
 		trackposList[i].Ignoredrelay = sl.IsRelay
+		trackposList[i].DelayStat = sl.DelayStat.Total
 
 		//Need comment//
 		if sl.IsRelay {
@@ -940,10 +942,27 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		cluster.StateMachine.AddState("ERR00085", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00085"]), ErrFrom: "CHECK"})
 	}
 
-	sort.Slice(trackposList[:], func(i, j int) bool {
-		return trackposList[i].Seq > trackposList[j].Seq
-	})
-
+	if !cluster.Conf.FailoverCheckDelayStat {
+		sort.Slice(trackposList[:], func(i, j int) bool {
+			return trackposList[i].Seq > trackposList[j].Seq
+		})
+	} else {
+		sort.Slice(trackposList[:], func(i, j int) bool {
+			if trackposList[i].Seq != trackposList[j].Seq {
+				return trackposList[i].Seq > trackposList[j].Seq
+			}
+			if trackposList[i].DelayStat.SlaveErrCount != trackposList[j].DelayStat.SlaveErrCount {
+				return trackposList[i].DelayStat.SlaveErrCount < trackposList[j].DelayStat.SlaveErrCount
+			}
+			if trackposList[i].DelayStat.DelayCount != trackposList[j].DelayStat.DelayCount {
+				return trackposList[i].DelayStat.DelayCount < trackposList[j].DelayStat.DelayCount
+			}
+			if trackposList[i].DelayStat.DelayAvg != trackposList[j].DelayStat.DelayAvg {
+				return trackposList[i].DelayStat.DelayAvg < trackposList[j].DelayStat.DelayAvg
+			}
+			return trackposList[i].DelayStat.Counter > trackposList[j].DelayStat.Counter
+		})
+	}
 	if forcingLog {
 		data, _ := json.MarshalIndent(trackposList, "", "\t")
 		cluster.LogPrintf(LvlInfo, "Election matrice: %s ", data)
@@ -981,9 +1000,29 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		}
 		return -1
 	}
-	sort.Slice(trackposList[:], func(i, j int) bool {
-		return trackposList[i].Pos > trackposList[j].Pos
-	})
+
+	if !cluster.Conf.FailoverCheckDelayStat {
+		sort.Slice(trackposList[:], func(i, j int) bool {
+			return trackposList[i].Pos > trackposList[j].Pos
+		})
+	} else {
+		sort.Slice(trackposList[:], func(i, j int) bool {
+			if trackposList[i].Pos != trackposList[j].Pos {
+				return trackposList[i].Pos > trackposList[j].Pos
+			}
+			if trackposList[i].DelayStat.SlaveErrCount != trackposList[j].DelayStat.SlaveErrCount {
+				return trackposList[i].DelayStat.SlaveErrCount < trackposList[j].DelayStat.SlaveErrCount
+			}
+			if trackposList[i].DelayStat.DelayCount != trackposList[j].DelayStat.DelayCount {
+				return trackposList[i].DelayStat.DelayCount < trackposList[j].DelayStat.DelayCount
+			}
+			if trackposList[i].DelayStat.DelayAvg != trackposList[j].DelayStat.DelayAvg {
+				return trackposList[i].DelayStat.DelayAvg < trackposList[j].DelayStat.DelayAvg
+			}
+			return trackposList[i].DelayStat.Counter > trackposList[j].DelayStat.Counter
+		})
+	}
+
 	if maxpos > 0 {
 		/* Return key of slave with the highest pos. */
 		for _, p := range trackposList {

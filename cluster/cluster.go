@@ -203,6 +203,7 @@ type Cluster struct {
 	SqlErrorLog               *logsql.Logger              `json:"-"`
 	SqlGeneralLog             *logsql.Logger              `json:"-"`
 	SstAvailablePorts         map[string]string           `json:"sstAvailablePorts"`
+	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable *crc64.Table
 }
@@ -631,6 +632,7 @@ func (cluster *Cluster) Run() {
 					} else {
 						cluster.StateMachine.PreserveState("WARN0094")
 					}
+					cluster.PrintDelayStat()
 				}
 				wg.Wait()
 				// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so elelection win but server is ignored see electFailoverCandidate
@@ -647,7 +649,6 @@ func (cluster *Cluster) Run() {
 				cluster.Topology = cluster.GetTopology()
 				cluster.SetStatus()
 				cluster.StateProcessing()
-
 			}
 		}
 		time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
@@ -1253,6 +1254,10 @@ func (cluster *Cluster) Close() {
 func (cluster *Cluster) ResetFailoverCtr() {
 	cluster.FailoverCtr = 0
 	cluster.FailoverTs = 0
+
+	for _, server := range cluster.Servers {
+		server.DelayStat.ResetDelayStat()
+	}
 }
 
 func (cluster *Cluster) agentFlagCheck() {
