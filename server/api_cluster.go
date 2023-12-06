@@ -1003,7 +1003,10 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchFailoverEventScheduler()
 	case "delay-stat-capture":
 		mycluster.SwitchDelayStatCapture()
-
+	case "print-delay-stat":
+		mycluster.SwitchPrintDelayStat()
+	case "print-delay-stat-history":
+		mycluster.SwitchPrintDelayStatHistory()
 	case "failover-check-delay-stat":
 		mycluster.SwitchFailoverCheckDelayStat()
 	case "autorejoin":
@@ -1313,6 +1316,8 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetBackupBinlogsKeep(value)
 	case "delay-stat-rotate":
 		mycluster.SetDelayStatRotate(value)
+	case "print-delay-stat-interval":
+		mycluster.SetPrintDelayStatInterval(value)
 	}
 }
 

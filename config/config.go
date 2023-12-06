@@ -180,6 +180,9 @@ type Config struct {
 	FailoverLogFileKeep                       int                    `mapstructure:"failover-log-file-keep" toml:"failover-log-file-keep" json:"failoverLogFileKeep"`
 	FailoverSwitchToPrefered                  bool                   `mapstructure:"failover-switch-to-prefered" toml:"failover-switch-to-prefered" json:"failoverSwithToPrefered"`
 	DelayStatCapture                          bool                   `mapstructure:"delay-stat-capture" toml:"delay-stat-capture" json:"delayStatCapture"`
+	PrintDelayStat                            bool                   `mapstructure:"print-delay-stat" toml:"print-delay-stat" json:"printDelayStat"`
+	PrintDelayStatHistory                     bool                   `mapstructure:"print-delay-stat-history" toml:"print-delay-stat-history" json:"printDelayStatHistory"`
+	PrintDelayStatInterval                    int                    `mapstructure:"print-delay-stat-interval" toml:"print-delay-stat-interval" json:"printDelayStatInterval"`
 	DelayStatRotate                           int                    `mapstructure:"delay-stat-rotate" toml:"delay-stat-rotate" json:"delayStatRotate"`
 	FailoverCheckDelayStat                    bool                   `mapstructure:"failover-check-delay-stat" toml:"failover-check-delay-stat" json:"failoverCheckDelayStat"`
 	Autorejoin                                bool                   `mapstructure:"autorejoin" toml:"autorejoin" json:"autorejoin"`

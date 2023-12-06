@@ -417,6 +417,19 @@ func (cluster *Cluster) SwitchTraffic() {
 
 func (cluster *Cluster) SwitchDelayStatCapture() {
 	cluster.Conf.DelayStatCapture = !cluster.Conf.DelayStatCapture
+	if !cluster.Conf.DelayStatCapture {
+		cluster.Conf.FailoverCheckDelayStat = false
+		cluster.Conf.PrintDelayStat = false
+		cluster.Conf.PrintDelayStatHistory = false
+	}
+}
+
+func (cluster *Cluster) SwitchPrintDelayStat() {
+	cluster.Conf.PrintDelayStat = !cluster.Conf.PrintDelayStat
+}
+
+func (cluster *Cluster) SwitchPrintDelayStatHistory() {
+	cluster.Conf.PrintDelayStatHistory = !cluster.Conf.PrintDelayStatHistory
 }
 
 func (cluster *Cluster) SwitchFailoverCheckDelayStat() {

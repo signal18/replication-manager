@@ -120,10 +120,6 @@ func (server *ServerMonitor) CheckReplication() string {
 		} else if server.IsRelay {
 			server.SetState(stateRelay)
 		}
-
-		if server.ClusterGroup.Conf.DelayStatCapture {
-			server.UpdateSlaveErrorStat() //Capture stat with value of slave error due to replication still connecting
-		}
 		return "Running OK"
 	}
 
@@ -144,7 +140,7 @@ func (server *ServerMonitor) CheckReplication() string {
 		}
 
 		if server.ClusterGroup.Conf.DelayStatCapture {
-			server.UpdateDelayStat(ss.SecondsBehindMaster.Int64) // Capture Delay Stat
+			server.DelayStat.UpdateDelayStat(ss.SecondsBehindMaster.Int64, server.ClusterGroup.Conf.DelayStatRotate) // Capture Delay Stat
 		}
 		return "Behind master"
 	}
@@ -155,7 +151,7 @@ func (server *ServerMonitor) CheckReplication() string {
 	}
 
 	if server.ClusterGroup.Conf.DelayStatCapture {
-		server.UpdateDelayStat(ss.SecondsBehindMaster.Int64) // Capture Delay Stat with 0 seconds behind master
+		server.DelayStat.UpdateDelayStat(ss.SecondsBehindMaster.Int64, server.ClusterGroup.Conf.DelayStatRotate) // Capture Delay Stat with 0 seconds behind master
 	}
 	return "Running OK"
 }

@@ -845,7 +845,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		trackposList[i].Prefered = sl.IsPrefered()
 		trackposList[i].Ignoredconf = sl.IsIgnored()
 		trackposList[i].Ignoredrelay = sl.IsRelay
-		trackposList[i].DelayStat = sl.TotalDelayStat
+		trackposList[i].DelayStat = sl.DelayStat.Total
 
 		//Need comment//
 		if sl.IsRelay {

@@ -39,19 +39,6 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-// Logging Replication Delay Stat
-type DelayStat struct {
-	DelayAvg      float64 `json:"delay"`         // Average Seconds of Delay
-	DelayCount    int32   `json:"delayCount"`    // Number of Delay Occurred
-	SlaveErrCount int32   `json:"slaveErrCount"` // Number of Slave Err Occurred
-	Counter       int32   `json:"counter"`       // Increment
-}
-
-type DelayStatHistory struct {
-	DelayStat DelayStat `json:"delayStat"`
-	Datetime  time.Time `json:"delayDT"`
-}
-
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
 	Id                          string                       `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
@@ -194,11 +181,7 @@ type ServerMonitor struct {
 	BinaryLogFiles              map[string]uint              `json:"binaryLogFiles"`
 	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
 	WorkLoad                    map[string]WorkLoad          `json:"workLoad"`
-	TotalDelayStat              DelayStat                    `json:"totalDelayStat"` // Total Delay Average since SRM started
-	PrevDelayStat               DelayStat                    `json:"prevDelayStat"`  // Total Delay Average until previous hour
-	CurrentDelayStat            DelayStatHistory             `json:"currDelayStat"`  // Delay Average for current hour
-	DelayHistory                []DelayStatHistory           `json:"delayHistory"`
-	LastDelayStatPrint          map[string]time.Time         `json:"prevDelayStatPrintTime"`
+	DelayStat                   *ServerDelayStat             `json:"delayStat"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 }
@@ -318,7 +301,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
 	server.ReloadSaveInfosVariables()
-	server.ResetDelayStat()
+	server.DelayStat = new(ServerDelayStat)
+	server.DelayStat.ResetDelayStat()
 
 	server.WorkLoad = make(map[string]WorkLoad)
 	server.CurrentWorkLoad()
@@ -902,7 +886,7 @@ func (server *ServerMonitor) Refresh() error {
 	if server.IsSlave == true {
 		if server.ClusterGroup.Conf.DelayStatCapture {
 			if server.State == stateFailed || server.State == stateSlaveErr {
-				server.UpdateSlaveErrorStat()
+				server.DelayStat.UpdateSlaveErrorStat(server.ClusterGroup.Conf.DelayStatRotate)
 			}
 		}
 	}
@@ -1692,171 +1676,5 @@ func (server *ServerMonitor) CpuFromStatWorkLoad(start_time time.Time) time.Time
 		current_workLoad.BusyTime, _ = server.GetBusyTimeFromStats()
 		server.WorkLoad["current"] = current_workLoad
 		return time.Now()
-	}
-}
-
-// Get Current Datetime in hourly format
-func (server *ServerMonitor) CurrentDelayDatetime(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, t.Location())
-}
-
-func (server *ServerMonitor) ResetCurrentDelayStat() {
-	t := time.Now()
-	server.CurrentDelayStat = DelayStatHistory{DelayStat: DelayStat{DelayAvg: 0, DelayCount: 0, SlaveErrCount: 0, Counter: 0}, Datetime: server.CurrentDelayDatetime(t)}
-}
-
-func (server *ServerMonitor) AppendNewCurrentDelayStat() {
-	server.ResetCurrentDelayStat()
-	server.DelayHistory = append(server.DelayHistory, server.CurrentDelayStat)
-}
-
-func (server *ServerMonitor) ResetDelayStat() {
-	server.ResetCurrentDelayStat()
-	server.TotalDelayStat = server.CurrentDelayStat.DelayStat
-	server.PrevDelayStat = server.CurrentDelayStat.DelayStat
-	server.DelayHistory = []DelayStatHistory{server.CurrentDelayStat}
-	if server.LastDelayStatPrint == nil {
-		server.LastDelayStatPrint = make(map[string]time.Time)
-	}
-}
-
-func (server *ServerMonitor) UpdateTotalDelayStat(s int64) {
-	server.TotalDelayStat.DelayAvg = (server.TotalDelayStat.DelayAvg*float64(server.TotalDelayStat.Counter) + float64(s)) / float64(server.TotalDelayStat.Counter+1)
-	server.TotalDelayStat.Counter = server.TotalDelayStat.Counter + 1
-
-	if s > 0 {
-		server.TotalDelayStat.DelayCount = server.TotalDelayStat.DelayCount + 1
-	}
-}
-
-func (server *ServerMonitor) UpdateTotalSlaveErrStat() {
-	server.TotalDelayStat.SlaveErrCount = server.TotalDelayStat.SlaveErrCount + 1
-	server.TotalDelayStat.Counter = server.TotalDelayStat.Counter + 1
-}
-
-func (server *ServerMonitor) UpdateandRotateTotalDelayStat(s int64) {
-	rotated := server.DelayHistory[0]
-	server.TotalDelayStat.DelayAvg = (server.TotalDelayStat.DelayAvg*float64(server.TotalDelayStat.Counter) - (rotated.DelayStat.DelayAvg * float64(rotated.DelayStat.Counter)) + float64(s)) / float64(server.TotalDelayStat.Counter+1-rotated.DelayStat.Counter)
-	server.TotalDelayStat.Counter = server.TotalDelayStat.Counter + 1 - rotated.DelayStat.Counter
-
-	if s > 0 {
-		server.TotalDelayStat.DelayCount = server.TotalDelayStat.DelayCount + 1 - rotated.DelayStat.DelayCount
-	} else {
-		server.TotalDelayStat.DelayCount = server.TotalDelayStat.DelayCount - rotated.DelayStat.DelayCount
-	}
-
-}
-
-func (server *ServerMonitor) UpdateandRotateTotalSlaveErrStat() {
-	rotated := server.DelayHistory[0]
-	server.TotalDelayStat.Counter = server.TotalDelayStat.Counter + 1 - rotated.DelayStat.Counter
-	server.TotalDelayStat.SlaveErrCount = server.TotalDelayStat.SlaveErrCount + 1 - rotated.DelayStat.SlaveErrCount
-}
-
-func (server *ServerMonitor) PrintDelayStat(key string) {
-	switch key {
-	case "avg":
-		jtext, err := json.MarshalIndent(server.TotalDelayStat, " ", "\t")
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Average delay for slave %s : %s", server.URL, err)
-			return
-		}
-		server.ClusterGroup.LogPrintf(LvlInfo, "Average delay for slave %s : %s", server.URL, jtext)
-		return
-	case "hourly":
-		jtext, err := json.MarshalIndent(server.DelayHistory, " ", "\t")
-		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Hourly Delay History for slave %s : %s", server.URL, err)
-			return
-		}
-		server.ClusterGroup.LogPrintf(LvlInfo, "Hourly Delay History for slave %s : %s", server.URL, jtext)
-		return
-	}
-
-}
-
-func (server *ServerMonitor) UpdateDelayStat(s int64) {
-	t := time.Now()
-	curTime := server.CurrentDelayDatetime(t)
-
-	if curTime != server.CurrentDelayStat.Datetime {
-		server.PrevDelayStat = server.TotalDelayStat
-		server.AppendNewCurrentDelayStat()
-	}
-
-	if s > 0 {
-		server.CurrentDelayStat.DelayStat.DelayCount = server.CurrentDelayStat.DelayStat.DelayCount + 1
-	}
-
-	server.CurrentDelayStat.DelayStat.DelayAvg = ((server.CurrentDelayStat.DelayStat.DelayAvg*float64(server.CurrentDelayStat.DelayStat.Counter) + float64(s)) / (float64(server.CurrentDelayStat.DelayStat.Counter + 1)))
-	server.CurrentDelayStat.DelayStat.Counter = server.CurrentDelayStat.DelayStat.Counter + 1
-
-	server.DelayHistory[len(server.DelayHistory)-1] = server.CurrentDelayStat
-
-	if curTime != server.CurrentDelayStat.Datetime {
-		server.UpdateandRotateTotalDelayStat(s)
-	} else {
-		server.UpdateTotalDelayStat(s)
-	}
-
-	if ld, ok := server.LastDelayStatPrint["avg"]; ok {
-		if t.After(ld.Add(2 * time.Minute)) {
-			server.PrintDelayStat("avg")
-			server.LastDelayStatPrint["avg"] = t
-		}
-	} else {
-		server.PrintDelayStat("avg")
-		server.LastDelayStatPrint["avg"] = t
-	}
-
-	if ld, ok := server.LastDelayStatPrint["hourly"]; ok {
-		if t.After(ld.Add(4 * time.Minute)) {
-			server.PrintDelayStat("hourly")
-			server.LastDelayStatPrint["hourly"] = t
-		}
-	} else {
-		server.PrintDelayStat("hourly")
-		server.LastDelayStatPrint["hourly"] = t
-	}
-}
-
-func (server *ServerMonitor) UpdateSlaveErrorStat() {
-	t := time.Now()
-	curTime := server.CurrentDelayDatetime(t)
-
-	if curTime != server.CurrentDelayStat.Datetime {
-		server.PrevDelayStat = server.TotalDelayStat
-		server.AppendNewCurrentDelayStat()
-	}
-
-	server.CurrentDelayStat.DelayStat.SlaveErrCount = server.CurrentDelayStat.DelayStat.SlaveErrCount + 1
-	server.CurrentDelayStat.DelayStat.Counter = server.CurrentDelayStat.DelayStat.Counter + 1
-
-	server.DelayHistory[len(server.DelayHistory)-1] = server.CurrentDelayStat
-
-	if curTime != server.CurrentDelayStat.Datetime {
-		server.UpdateandRotateTotalSlaveErrStat()
-	} else {
-		server.UpdateTotalSlaveErrStat()
-	}
-
-	if ld, ok := server.LastDelayStatPrint["avg"]; ok {
-		if t.After(ld.Add(time.Minute)) {
-			server.PrintDelayStat("avg")
-			server.LastDelayStatPrint["avg"] = t
-		}
-	} else {
-		server.PrintDelayStat("avg")
-		server.LastDelayStatPrint["avg"] = t
-	}
-
-	if ld, ok := server.LastDelayStatPrint["hourly"]; ok {
-		if t.After(ld.Add(time.Minute)) {
-			server.PrintDelayStat("hourly")
-			server.LastDelayStatPrint["hourly"] = t
-		}
-	} else {
-		server.PrintDelayStat("hourly")
-		server.LastDelayStatPrint["hourly"] = t
 	}
 }

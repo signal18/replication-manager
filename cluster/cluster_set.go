@@ -1480,3 +1480,13 @@ func (cluster *Cluster) SetDelayStatRotate(keep string) error {
 	cluster.Conf.DelayStatRotate = numkeep
 	return nil
 }
+
+func (cluster *Cluster) SetPrintDelayStatInterval(keep string) error {
+	numkeep, err := strconv.Atoi(keep)
+	if err != nil {
+		return err
+	}
+	cluster.LogPrintf(LvlInfo, "Print delay statistic interval set to %s", strconv.Itoa(numkeep))
+	cluster.Conf.PrintDelayStatInterval = numkeep
+	return nil
+}
