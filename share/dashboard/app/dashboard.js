@@ -1148,7 +1148,7 @@ function (
         if (confirm("Confirm database apply config")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/apply-dynamic-config');
       };
       $scope.resetfail = function () {
-        if (confirm("Reset Failover counter?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-failover-counter');
+        if (confirm("Reset Failover counter?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-failover-control'); //Fixing url 404
       };
       $scope.resetsla = function () {
         if (confirm("Reset SLA counters?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-sla');
