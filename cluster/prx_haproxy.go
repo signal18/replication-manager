@@ -248,7 +248,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 
 		// API return space sparator conveting to csv
 		showleaderstate = strings.Replace(showleaderstate, " ", ",", -1)
-		if cluster.Conf.HaproxyDebug {
+		if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
 			cluster.LogPrintf(LvlInfo, "haproxy show servers state response :%s", showleaderstate)
 		}
 		showleaderstatereader := ioutil.NopCloser(bytes.NewReader([]byte(showleaderstate)))
@@ -265,7 +265,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 				return err
 			}
 			if len(line) > 17 {
-				if cluster.Conf.HaproxyDebug {
+				if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
 					cluster.LogPrintf(LvlInfo, "HaProxy adding IP map %s %s", line[4], line[17])
 				}
 				backend_ip_host[line[4]] = line[17]
@@ -280,7 +280,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 		cluster.StateMachine.AddState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
 		return err
 	}
-	if cluster.Conf.HaproxyDebug {
+	if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
 		cluster.LogPrintf(LvlInfo, "Haproxy show stat result: %s", result)
 	}
 	r := ioutil.NopCloser(bytes.NewReader([]byte(result)))
@@ -311,8 +311,8 @@ func (proxy *HaproxyProxy) Refresh() error {
 			}
 
 			srv := cluster.GetServerFromURL(host)
-			if cluster.Conf.HaproxyDebug {
-				cluster.LogPrintf(LvlInfo, "HaProxy stat lookup writer: host %s translated to %s", line[73], host)
+			if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
+				cluster.LogPrintf(LvlInfo, "HaProxy stat lookup writer: host %s translated to %s", line[1], host)
 			}
 			if srv != nil {
 				foundMasterInStat = true
@@ -320,7 +320,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 					Host:           srv.Host,
 					Port:           srv.Port,
 					Status:         srv.State,
-					PrxName:        line[73],
+					PrxName:        line[1],
 					PrxStatus:      line[17],
 					PrxConnections: line[5],
 					PrxByteIn:      line[8],
@@ -330,9 +330,28 @@ func (proxy *HaproxyProxy) Refresh() error {
 				if !srv.IsMaster() {
 					master := cluster.GetMaster()
 					if master != nil {
-						cluster.LogPrintf(LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
-						haRuntime.SetMaster(master.Host, master.Port)
+						ctr, ok := srv.ProxyMapState["WARN0112"]
+						if !ok || ctr <= 5 {
+							if !ok {
+								srv.SetProxyState("WARN0112")
+							}
+							cluster.LogPrintf(LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
+							srv.ProxyStateIncr("WARN0112")
+							if ctr == 5 {
+								cluster.LogPrintf(LvlInfo, "%s is muted for server %s", "WARN0112", srv.URL)
+							}
+						}
+
+						res, err := haRuntime.SetMaster(master.Host, master.Port)
+						if err != nil {
+							cluster.LogPrintf(LvlErr, "Error setting haproxy %s for server %s as master: %s", proxy.Host+":"+proxy.Port, master.URL, err.Error())
+						}
+						if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
+							cluster.LogPrintf(LvlWarn, "Response haproxy %s for server %s as master: %s", proxy.Host+":"+proxy.Port, master.URL, res)
+						}
 					}
+				} else {
+					srv.UnsetProxyState("WARN0112")
 				}
 			}
 		}
@@ -344,8 +363,8 @@ func (proxy *HaproxyProxy) Refresh() error {
 				host = backend_ip_host[host]
 			}
 			srv := cluster.GetServerFromURL(host)
-			if cluster.Conf.HaproxyDebug {
-				cluster.LogPrintf(LvlInfo, "HaProxy stat lookup reader: host %s translated to %s", line[73], host)
+			if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
+				cluster.LogPrintf(LvlInfo, "HaProxy stat lookup reader: host %s translated to %s", line[1], host)
 			}
 			if srv != nil {
 
@@ -353,7 +372,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 					Host:           srv.Host,
 					Port:           srv.Port,
 					Status:         srv.State,
-					PrxName:        line[73],
+					PrxName:        line[1],
 					PrxStatus:      line[17],
 					PrxConnections: line[5],
 					PrxByteIn:      line[8],
@@ -361,31 +380,129 @@ func (proxy *HaproxyProxy) Refresh() error {
 					PrxLatency:     line[61],
 				})
 				if (srv.State == stateSlaveErr || srv.State == stateRelayErr || srv.State == stateSlaveLate || srv.State == stateRelayLate || srv.IsIgnored()) && line[17] == "UP" || srv.State == stateWsrepLate || srv.State == stateWsrepDonor {
-					cluster.LogPrintf(LvlInfo, "HaProxy detecting broken resplication and UP state in haproxy %s drain  server %s", proxy.Host+":"+proxy.Port, srv.URL)
-					haRuntime.SetDrain(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+					ctr, ok := srv.ProxyMapState["WARN0105"]
+					if !ok || ctr <= 5 {
+						if !ok {
+							srv.SetProxyState("WARN0105")
+						}
+						cluster.LogPrintf(LvlInfo, "HaProxy detecting broken replication and UP state in haproxy %s drain  server %s", proxy.Host+":"+proxy.Port, srv.URL+"("+srv.Id+")")
+						srv.ProxyStateIncr("WARN0105")
+						if ctr == 5 {
+							cluster.LogPrintf(LvlInfo, "%s is muted for server %s", "WARN0105", srv.URL)
+						}
+					}
+
+					res, err := haRuntime.SetDrain(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Error setting haproxy %s for server %s as drain: %s", proxy.Host+":"+proxy.Port, srv.URL+"("+srv.Id+")", err.Error())
+					}
+					if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
+						cluster.LogPrintf(LvlDbg, "Response haproxy %s for server %s as drain: %s", proxy.Host+":"+proxy.Port, srv.URL+"("+srv.Id+")", res)
+					}
+				} else {
+					srv.UnsetProxyState("WARN0105")
 				}
 				if (srv.State == stateSlave || srv.State == stateRelay || (srv.State == stateWsrep && !srv.IsLeader())) && line[17] == "DRAIN" && !srv.IsIgnored() {
-					cluster.LogPrintf(LvlInfo, "HaProxy valid resplication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL)
-					haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+					ctr, ok := srv.ProxyMapState["WARN0106"]
+					if !ok || ctr <= 5 {
+						if !ok {
+							srv.SetProxyState("WARN0106")
+						}
+						cluster.LogPrintf(LvlInfo, "HaProxy valid replication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL+"("+srv.Id+")")
+						srv.ProxyStateIncr("WARN0106")
+						if ctr == 5 {
+							cluster.LogPrintf(LvlInfo, "%s is muted for server %s", "WARN0106", srv.URL)
+						}
+					}
+					res, err := haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+					if err != nil {
+						cluster.LogPrintf(LvlErr, "Error setting haproxy %s for server %s as ready: %s", proxy.Host+":"+proxy.Port, srv.URL+"("+srv.Id+")", err.Error())
+					}
+					if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
+						cluster.LogPrintf(LvlDbg, "Response haproxy %s for server %s as ready: %s", proxy.Host+":"+proxy.Port, srv.URL+"("+srv.Id+")", res)
+					}
+				} else {
+					srv.UnsetProxyState("WARN0106")
 				}
 				if srv.IsMaster() {
 					if !cluster.Configurator.HasProxyReadLeader() && line[17] == "UP" {
-						cluster.LogPrintf(LvlInfo, "HaProxy master is not configure as reader but state UP in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL)
-						haRuntime.SetDrain(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+						ctr, ok := srv.ProxyMapState["WARN0107"]
+						if !ok || ctr <= 5 {
+							if !ok {
+								srv.SetProxyState("WARN0107")
+							}
+							cluster.LogPrintf(LvlInfo, "HaProxy master is not configure as reader but state UP in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL+"("+srv.Id+")")
+							srv.ProxyStateIncr("WARN0107")
+
+							if ctr == 5 {
+								cluster.LogPrintf(LvlInfo, "%s is muted for server %s", "WARN0107", srv.URL)
+							}
+						}
+						res, err := haRuntime.SetDrain(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+						if err != nil {
+							cluster.LogPrintf(LvlErr, "Error setting haproxy %s for server %s as drain: %s", proxy.Host+":"+proxy.Port, srv.URL+"("+srv.Id+")", err.Error())
+						}
+						if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
+							cluster.LogPrintf(LvlDbg, "Response haproxy %s for server %s as drain: %s", proxy.Host+":"+proxy.Port, srv.URL+"("+srv.Id+")", res)
+						}
+					} else {
+						srv.UnsetProxyState("WARN0107")
 					}
 					if cluster.Configurator.HasProxyReadLeader() && line[17] == "DRAIN" {
-						cluster.LogPrintf(LvlInfo, "HaProxy master is  configure as reader but state DRAIN in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL)
-						haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+						ctr, ok := srv.ProxyMapState["WARN0108"]
+						if !ok || ctr <= 5 {
+							if !ok {
+								srv.SetProxyState("WARN0108")
+							}
+							cluster.LogPrintf(LvlInfo, "HaProxy master is  configure as reader but state DRAIN in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL+"("+srv.Id+")")
+							srv.ProxyStateIncr("WARN0108")
+							if ctr == 5 {
+								cluster.LogPrintf(LvlInfo, "%s is muted for server %s", "WARN0108", srv.URL)
+							}
+						}
+						res, err := haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+						if err != nil {
+							cluster.LogPrintf(LvlErr, "Error setting haproxy %s for server %s as ready: %s", proxy.Host+":"+proxy.Port, srv.URL+"("+srv.Id+")", err.Error())
+						}
+						if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
+							cluster.LogPrintf(LvlDbg, "Response haproxy %s for server %s as ready: %s", proxy.Host+":"+proxy.Port, srv.URL+"("+srv.Id+")", res)
+						}
+					} else {
+						srv.UnsetProxyState("WARN0108")
 					}
 
 				}
 				if srv.IsMaintenance && line[17] == "UP" {
-					cluster.LogPrintf(LvlInfo, "HaProxy detecting server %s in maintenance but proxy %s report UP  ", srv.URL, proxy.Host+":"+proxy.Port)
+					ctr, ok := srv.ProxyMapState["WARN0109"]
+					if !ok || ctr <= 5 {
+						if !ok {
+							srv.SetProxyState("WARN0109")
+						}
+						cluster.LogPrintf(LvlInfo, "HaProxy detecting server %s in maintenance but proxy %s report UP  ", srv.URL, proxy.Host+":"+proxy.Port)
+						srv.ProxyStateIncr("WARN0109")
+						if ctr == 5 {
+							cluster.LogPrintf(LvlInfo, "%s is muted for server %s", "WARN0109", srv.URL)
+						}
+					}
 					proxy.SetMaintenance(srv)
+				} else {
+					srv.UnsetProxyState("WARN0109")
 				}
 				if !srv.IsMaintenance && line[17] == "MAINT" {
-					cluster.LogPrintf(LvlInfo, "HaProxy detecting server %s up but proxy %s report in maintenance ", srv.URL, proxy.Host+":"+proxy.Port)
+					ctr, ok := srv.ProxyMapState["WARN0110"]
+					if !ok || ctr <= 5 {
+						if !ok {
+							srv.SetProxyState("WARN0110")
+						}
+						cluster.LogPrintf(LvlInfo, "HaProxy detecting server %s up but proxy %s report in maintenance ", srv.URL, proxy.Host+":"+proxy.Port)
+						srv.ProxyStateIncr("WARN0109")
+						if ctr == 5 {
+							cluster.LogPrintf(LvlInfo, "%s is muted for server %s", "WARN0110", srv.URL)
+						}
+					}
 					proxy.SetMaintenance(srv)
+				} else {
+					srv.UnsetProxyState("WARN0110")
 				}
 			}
 		}
@@ -394,10 +511,24 @@ func (proxy *HaproxyProxy) Refresh() error {
 		master := cluster.GetMaster()
 		if master != nil && master.IsLeader() {
 			res, err := haRuntime.SetMaster(master.Host, master.Port)
-			cluster.LogPrintf(LvlInfo, "Haproxy have leader in cluster but not in haproxy %s fixing it to master %s return %s", proxy.Host+":"+proxy.Port, master.URL, res)
+			ctr, ok := master.ProxyMapState["WARN0111"]
+			if !ok || ctr <= 5 {
+				if !ok {
+					master.SetProxyState("WARN0111")
+				}
+				cluster.LogPrintf(LvlInfo, "Haproxy have leader in cluster but not in haproxy %s fixing it to master %s return %s", proxy.Host+":"+proxy.Port, master.URL, res)
+				master.ProxyStateIncr("WARN0108")
+				if ctr == 5 {
+					cluster.LogPrintf(LvlInfo, "%s is muted for server %s", "WARN0111", master.URL)
+				}
+			}
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Haproxy can not add leader %s in cluster but not in haproxy %s : %s", master.URL, proxy.Host+":"+proxy.Port, err)
 			}
+		}
+	} else {
+		for _, srv := range cluster.slaves {
+			srv.UnsetProxyState("WARN0111")
 		}
 	}
 	return nil
@@ -416,7 +547,7 @@ func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
 		proxy.Init()
 		return
 	}
-	//if cluster.Conf.HaproxyDebug {
+	//if cluster.Conf.HasLogLevelPos(10,12,15) || cluster.Conf.Verbose  {
 	cluster.LogPrintf(LvlInfo, "HaProxy set maintenance for server %s ", server.URL)
 	//}
 	haRuntime := haproxy.Runtime{
@@ -427,21 +558,21 @@ func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
 	}
 
 	if server.IsMaintenance {
-		cluster.LogPrintf(LvlInfo, "HaProxy set server %s/%s state maint ", server.Id, cluster.Conf.HaproxyAPIReadBackend)
+		cluster.LogPrintf(LvlInfo, "HaProxy set server %s/%s state maint ", cluster.Conf.HaproxyAPIReadBackend, server.Id)
 		res, err := haRuntime.SetMaintenance(server.Id, cluster.Conf.HaproxyAPIReadBackend)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "HaProxy can not set maintenance %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, err)
 		}
-		if cluster.Conf.HaproxyDebug {
+		if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
 			cluster.LogPrintf(LvlInfo, "HaProxy set maintenance %s backend %s result: %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, res)
 		}
 	} else {
-		cluster.LogPrintf(LvlInfo, "HaProxy set server %s/%s state ready ", server.Id, cluster.Conf.HaproxyAPIReadBackend)
+		cluster.LogPrintf(LvlInfo, "HaProxy set server %s/%s state ready ", cluster.Conf.HaproxyAPIReadBackend, server.Id)
 		res, err := haRuntime.SetReady(server.Id, cluster.Conf.HaproxyAPIReadBackend)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "HaProxy can not set ready %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, err)
 		}
-		if cluster.Conf.HaproxyDebug {
+		if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
 			cluster.LogPrintf(LvlInfo, "HaProxy set ready %s backend %s result: %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, res)
 		}
 
@@ -454,7 +585,7 @@ func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "HaProxy can not set maintenance %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, err)
 			}
-			if cluster.Conf.HaproxyDebug {
+			if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "HaProxy set maintenance result: %s", res)
 			}
 
@@ -465,7 +596,7 @@ func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Haproxy can not set ready %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIWriteBackend, err)
 			}
-			if cluster.Conf.HaproxyDebug {
+			if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "HaProxy set ready %s backend %s result: %s", server.URL, cluster.Conf.HaproxyAPIWriteBackend, res)
 			}
 		}

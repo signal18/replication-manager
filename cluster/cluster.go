@@ -338,6 +338,8 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 
+	cluster.Conf.LoadLogLevelList()
+
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
 	if cluster.Conf.Arbitration {
 		cluster.Status = ConstMonitorStandby

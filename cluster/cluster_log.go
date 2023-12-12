@@ -146,15 +146,15 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 	}
 	cliformat := format
 	format = "[" + cluster.Name + "] " + padright(level, " ", 5) + " - " + format
-	if level == "DEBUG" && cluster.Conf.LogLevel <= 1 {
+	if level == "DEBUG" && !cluster.Conf.HasLogLevelType("log-debug") && !cluster.Conf.Verbose {
 		// Only print debug messages if loglevel > 1
 	} else {
-		if cluster.Conf.LogFile != "" {
-			//			f := fmt.Sprintln(stamp, format)
+		// if cluster.Conf.LogFile != "" {
+		// 	//			f := fmt.Sprintln(stamp, format)
 
-			//	io.WriteString(cluster.logPtr, fmt.Sprintf(f, args...))
-			//	log.WithField("cluster", cluster.Name).Debugf(cliformat, args...)
-		}
+		// 	//	io.WriteString(cluster.logPtr, fmt.Sprintf(f, args...))
+		// 	//	log.WithField("cluster", cluster.Name).Debugf(cliformat, args...)
+		// }
 		if cluster.tlog != nil && cluster.tlog.Len > 0 {
 			cluster.tlog.Add(fmt.Sprintf(format, args...))
 			//		cluster.display()

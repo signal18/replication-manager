@@ -369,7 +369,6 @@ func (cluster *Cluster) GetPreferedMasterList() string {
 	return strings.Join(prefmaster, ",")
 }
 
-
 func (cluster *Cluster) GetIgnoredHostList() string {
 	var prevIgnored []string
 	for _, server := range cluster.Servers {

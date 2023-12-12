@@ -1625,9 +1625,6 @@ function (
         httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
       };
 
-
-
-
       $scope.openCluster = function (clusterName) {
         $timeout.cancel( $scope.promise);
         $scope.selectedTab='Dashboard';
@@ -1878,6 +1875,7 @@ function (
         $scope.settingsMenu = {
             general: false,
             monitoring: false,
+            logs: false,
             replication: false,
             rejoin: false,
             backups: false,
@@ -1891,6 +1889,9 @@ function (
             break;
           case 'monitoring':
             $scope.settingsMenu.monitoring=true;
+            break;
+          case 'logs':
+            $scope.settingsMenu.logs=true;
             break;
           case 'replication':
             $scope.settingsMenu.replication=true;

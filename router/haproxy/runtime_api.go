@@ -1,7 +1,7 @@
 package haproxy
 
 import (
-	"io/ioutil"
+	"io"
 	"net"
 	"time"
 )
@@ -20,7 +20,7 @@ func (r *Runtime) ApiCmd(cmd string) (string, error) {
 		return "", err
 	}
 	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
-	result, err := ioutil.ReadAll(conn)
+	result, err := io.ReadAll(conn)
 	if err != nil {
 		return "", err
 	}
@@ -44,7 +44,7 @@ func (r *Runtime) SetMaster(host string, port string) (string, error) {
 	}
 
 	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
-	result, err := ioutil.ReadAll(conn)
+	result, err := io.ReadAll(conn)
 	if err != nil {
 		return "", err
 	}
@@ -64,7 +64,7 @@ func (r *Runtime) SetMasterFQDN(host string, port string) (string, error) {
 	}
 
 	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
-	result, err := ioutil.ReadAll(conn)
+	result, err := io.ReadAll(conn)
 	if err != nil {
 		return "", err
 	}
@@ -83,7 +83,7 @@ func (r *Runtime) SetReady(name string, pool string) (string, error) {
 		return "", err
 	}
 	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
-	result, err := ioutil.ReadAll(conn)
+	result, err := io.ReadAll(conn)
 	if err != nil {
 		return "", err
 	}
@@ -103,7 +103,7 @@ func (r *Runtime) SetMaintenance(name string, pool string) (string, error) {
 		return "", err
 	}
 	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
-	result, err := ioutil.ReadAll(conn)
+	result, err := io.ReadAll(conn)
 	if err != nil {
 		return "", err
 	}
@@ -123,7 +123,7 @@ func (r *Runtime) SetDrain(name string, pool string) (string, error) {
 		return "", err
 	}
 	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
-	result, err := ioutil.ReadAll(conn)
+	result, err := io.ReadAll(conn)
 	if err != nil {
 		return "", err
 	}

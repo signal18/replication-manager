@@ -1,0 +1,246 @@
+<md-card>
+    <table ng-if="settings" class="table">
+    <tr>
+      <th>Verbose Mode</th>
+    </tr>
+    <tr>
+      <td>
+          <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false"
+                     ng-model="selectedCluster.config.verbose"
+                     ng-click="switchsettings('verbose')"
+                     aria-label="verbosity change">
+              <span ng-if="selectedCluster.config.verbose"
+                    class="label label-primary">On</span><span
+                  ng-if="!selectedCluster.config.verbose" class="label label-warning">Off</span>
+
+      </md-switch>
+      </td>
+  </tr>
+  <tr>
+    <th>Log SQL in Monitoring</th>
+  </tr>
+  <tr>
+    <td>
+        <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false"
+                   ng-model="selectedCluster.config.logSqlInMonitoring"
+                   ng-click="switchsettings('log-sql-in-monitoring')"
+                   aria-label="verbosity change">
+            <span ng-if="selectedCluster.config.logSqlInMonitoring"
+                  class="label label-primary">On</span><span
+                ng-if="!selectedCluster.config.logSqlInMonitoring" class="label label-warning">Off</span>
+
+    </md-switch>
+    </td>
+</tr>
+<tr>
+  <th>Log to SysLog</th>
+</tr>
+<tr>
+  <td>
+      <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false"
+                 ng-model="selectedCluster.config.logSyslog"
+                 ng-click="switchsettings('log-syslog')"
+                 aria-label="verbosity change">
+          <span ng-if="selectedCluster.config.logSyslog"
+                class="label label-primary">On</span><span
+              ng-if="!selectedCluster.config.logSyslog" class="label label-warning">Off</span>
+
+  </md-switch>
+  </td>
+</tr>
+  <tr>
+    <th>Toggle Log Level</th>
+  </tr>
+    <tr>
+      <td>
+              Log Error
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[0]"
+                         ng-click="switchsettings('log-level--0')" aria-label="Log Level Error">
+                  <span ng-if="selectedCluster.config.logLevelList[0]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[0]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+    <tr>
+      <td>
+              Log Info
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[1]"
+                         ng-click="switchsettings('log-level--1')" aria-label="Log Level Info">
+                  <span ng-if="selectedCluster.config.logLevelList[1]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[1]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+    <tr>
+      <td>
+              Log Failed Election
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[2]"
+                         ng-click="switchsettings('log-level--2')" aria-label="Log Level Failed Election">
+                  <span ng-if="selectedCluster.config.logLevelList[2]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[2]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+    <tr>
+      <td>
+              Log SST
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[3]"
+                         ng-click="switchsettings('log-level--3')" aria-label="Log Level SST">
+                  <span ng-if="selectedCluster.config.logLevelList[3]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[3]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+    <tr>
+      <td>
+              Log Heart Beat
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[4]"
+                         ng-click="switchsettings('log-level--4')" aria-label="Log Level Heart Beat">
+                  <span ng-if="selectedCluster.config.logLevelList[4]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[4]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+    <tr>
+      <td>
+              Log Config Load
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[5]"
+                         ng-click="switchsettings('log-level--5')" aria-label="Log Level Config Load">
+                  <span ng-if="selectedCluster.config.logLevelList[5]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[5]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+    <tr>
+      <td>
+              Log GIT
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[6]"
+                         ng-click="switchsettings('log-level--6')" aria-label="Log Level GIT">
+                  <span ng-if="selectedCluster.config.logLevelList[6]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[6]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+    
+    <tr>
+      <td>
+              Backup Streaming Debug
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[7]"
+                         ng-click="switchsettings('log-level--7')" aria-label="Log Level Backup Streaming">
+                  <span ng-if="selectedCluster.config.logLevelList[7]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[7]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+    <tr>
+      <td>
+              Log Orchestrator
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[8]"
+                         ng-click="switchsettings('log-level--8')" aria-label="Log Level Orchestrator">
+                  <span ng-if="selectedCluster.config.logLevelList[8]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[8]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+    <tr>
+      <td>
+              Log Vault
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[9]"
+                         ng-click="switchsettings('log-level--9')" aria-label="Log Level Vault">
+                  <span ng-if="selectedCluster.config.logLevelList[9]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[9]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+    <tr>
+      <td>
+              Log Debug
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[15]"
+                         ng-click="switchsettings('log-level--15')" aria-label="Log Level Debug">
+                  <span ng-if="selectedCluster.config.logLevelList[15]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[15]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+    <tr>
+      <td>
+              Log Topology Detection
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[16]"
+                         ng-click="switchsettings('log-level--16')" aria-label="Log Level Debug">
+                  <span ng-if="selectedCluster.config.logLevelList[16]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[16]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+    <tr>
+      <th>Toggle Proxy Log Level</th>
+    </tr>
+    <tr>
+      <td>
+              Log Proxy (All Proxy)
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[10]"
+                         ng-click="switchsettings('log-level--10')" aria-label="Log Level Proxy (ALL)">
+                  <span ng-if="selectedCluster.config.logLevelList[10]" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.logLevelList[10]" class="label label-warning">Off</span>
+
+          </md-switch>
+          </td>
+    </tr>
+      <tr>
+        <td>
+                Log ProxySQL Debug
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[11]"
+                           ng-click="switchsettings('log-level--11')" aria-label="Log Level Error">
+                    <span ng-if="selectedCluster.config.logLevelList[11]" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.logLevelList[11]" class="label label-warning">Off</span>
+  
+            </md-switch>
+            </td>
+      </tr>
+      <tr>
+        <td>
+                Log HAProxy Debug
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[12]"
+                           ng-click="switchsettings('log-level--12')" aria-label="Log Level Info">
+                    <span ng-if="selectedCluster.config.logLevelList[12]" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.logLevelList[12]" class="label label-warning">Off</span>
+  
+            </md-switch>
+            </td>
+      </tr>
+      <tr>
+        <td>
+                Log Proxy Janitor Debug
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[13]"
+                           ng-click="switchsettings('log-level--13')" aria-label="Log Level Failed Election">
+                    <span ng-if="selectedCluster.config.logLevelList[13]" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.logLevelList[13]" class="label label-warning">Off</span>
+  
+            </md-switch>
+            </td>
+      </tr>
+      <tr>
+        <td>
+                Log MaxScale Debug
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logLevelList[14]"
+                           ng-click="switchsettings('log-level--14')" aria-label="Log Level SST">
+                    <span ng-if="selectedCluster.config.logLevelList[14]" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.logLevelList[14]" class="label label-warning">Off</span>
+  
+            </md-switch>
+            </td>
+      </tr>
+  </table>
+</md-card>

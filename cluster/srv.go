@@ -182,6 +182,7 @@ type ServerMonitor struct {
 	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
 	WorkLoad                    map[string]WorkLoad          `json:"workLoad"`
 	DelayStat                   *ServerDelayStat             `json:"delayStat"`
+	ProxyMapState               map[string]int               `json:"-"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 }
@@ -1677,4 +1678,28 @@ func (server *ServerMonitor) CpuFromStatWorkLoad(start_time time.Time) time.Time
 		server.WorkLoad["current"] = current_workLoad
 		return time.Now()
 	}
+}
+
+func (srv *ServerMonitor) SetProxyState(code string) {
+	if srv.ProxyMapState == nil {
+		srv.ProxyMapState = make(map[string]int)
+	}
+	srv.ProxyMapState[code] = 1
+}
+
+func (srv *ServerMonitor) ProxyStateIncr(code string) {
+	if srv.HasProxyState(code) {
+		srv.ProxyMapState[code] = srv.ProxyMapState[code] + 1
+	}
+}
+
+func (srv *ServerMonitor) UnsetProxyState(code string) {
+	if srv.HasProxyState(code) {
+		delete(srv.ProxyMapState, code)
+	}
+}
+
+func (srv *ServerMonitor) HasProxyState(code string) bool {
+	_, ok := srv.ProxyMapState[code]
+	return ok
 }

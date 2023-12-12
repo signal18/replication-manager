@@ -61,6 +61,13 @@ func (repman *ReplicationManager) testFile(fn string) error {
 	return nil
 }
 
+func CacheControlWrapper(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache") // no cache
+		h.ServeHTTP(w, r)
+	})
+}
+
 func (repman *ReplicationManager) httpserver() {
 
 	repman.initKeys()
@@ -76,11 +83,11 @@ func (repman *ReplicationManager) httpserver() {
 			return
 		}
 		router.HandleFunc("/", repman.handlerApp)
-		router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+		router.PathPrefix("/static/").Handler(CacheControlWrapper(http.FileServer(http.Dir(repman.Conf.HttpRoot))))
 		router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 	} else {
 		router.HandleFunc("/", repman.rootHandler)
-		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler())
+		router.PathPrefix("/static/").Handler(CacheControlWrapper(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
 	}
 

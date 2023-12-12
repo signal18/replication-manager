@@ -608,10 +608,10 @@ type Config struct {
 	OAuthProvider                             string                 `mapstructure:"api-oauth-provider-url" toml:"api-oauth-provider-url" json:"apiOAuthProvider"`
 	OAuthClientID                             string                 `mapstructure:"api-oauth-client-id" toml:"api-oauth-client-id" json:"apiOAuthClientID"`
 	OAuthClientSecret                         string                 `mapstructure:"api-oauth-client-secret" toml:"api-oauth-client-secret" json:"apiOAuthClientSecret"`
+	LogLevelList                              LogLevelJSONList       `mapstructure:"log-level-list" json:"logLevelList"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
-
 }
 
 type ConfigVariableType struct {
@@ -1664,4 +1664,101 @@ func (conf *Config) ReadCloud18Config(viper *viper.Viper) {
 
 	viper.Unmarshal(&conf)
 
+}
+
+// Sets the bit at pos in the integer n.
+func (conf *Config) SetBit(n int, pos uint) int {
+	return n | (1 << pos)
+}
+
+// Clears the bit at pos in n.
+func (conf *Config) ClearBit(n int, pos uint) int {
+	return n &^ (1 << pos)
+}
+
+// Toggle the bit at pos in the integer n.
+func (conf *Config) ToggleBit(n int, pos uint) int {
+	return n ^ (1 << pos)
+}
+
+// Check the bit at pos in n
+func (conf *Config) HasBit(n int, pos uint) bool {
+	val := n & (1 << pos)
+	return !(val == 0)
+}
+
+type LogLevelList []string
+type LogLevelJSONList []bool
+
+func (ll LogLevelList) Pos(logtype string) int {
+	for i := range ll {
+		if logtype == ll[i] {
+			return i
+		}
+	}
+	return -1
+}
+
+func (conf *Config) GetLogLevelList() LogLevelList {
+	return LogLevelList{
+		"log-error",
+		"log-info",
+		"log-failed-election",
+		"log-sst",
+		"log-heartbeat",
+		"log-config-load",
+		"log-git",
+		"backup-streaming-debug",
+		"log-orchestrator",
+		"log-vault",
+		"log-proxy",
+		"proxysql-debug",
+		"haproxy-debug",
+		"proxyjanitor-debug",
+		"maxscale-debug",
+		"log-debug",
+		"log-topology-detection",
+	}
+}
+
+func (conf *Config) HasLogLevelType(args ...string) bool {
+	list := conf.GetLogLevelList()
+	for _, logtype := range args {
+		pos := list.Pos(logtype)
+		if pos >= 0 {
+			if conf.LogLevelList[pos] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (conf *Config) HasLogLevelPos(args ...int) bool {
+	for _, pos := range args {
+		if pos >= 0 {
+			if conf.LogLevelList[pos] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (conf *Config) LoadLogLevelList() {
+	list := conf.GetLogLevelList()
+	conf.LogLevelList = make(LogLevelJSONList, len(list))
+	for i, _ := range list {
+		conf.LogLevelList[i] = conf.HasBit(conf.LogLevel, uint(i))
+	}
+}
+
+func (conf *Config) ToggleLogLevel(level int) {
+	list := conf.GetLogLevelList()
+	if level >= 0 && level < len(list) {
+		conf.LogLevelList[level] = !conf.LogLevelList[level]       //Update for runtime
+		conf.LogLevel = conf.ToggleBit(conf.LogLevel, uint(level)) // Update to conf
+	} else {
+		log.Error("Wrong Log Level for toggle: " + strconv.Itoa(level) + ". Allowed values: [0 - " + strconv.Itoa(len(list)) + "]")
+	}
 }

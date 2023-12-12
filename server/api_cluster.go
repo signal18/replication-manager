@@ -316,7 +316,7 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 
 		err := json.Unmarshal(data, &srvs)
 		if err != nil {
-			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON for servers: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -330,7 +330,7 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 		e.SetIndent("", "\t")
 		err = e.Encode(srvs)
 		if err != nil {
-			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON for servers: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -352,7 +352,7 @@ func (repman *ReplicationManager) handlerMuxSlaves(w http.ResponseWriter, r *htt
 
 		err := json.Unmarshal(data, &srvs)
 		if err != nil {
-			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON for slaves: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -363,7 +363,7 @@ func (repman *ReplicationManager) handlerMuxSlaves(w http.ResponseWriter, r *htt
 		e.SetIndent("", "\t")
 		err = e.Encode(srvs)
 		if err != nil {
-			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON for slaves: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -384,7 +384,7 @@ func (repman *ReplicationManager) handlerMuxProxies(w http.ResponseWriter, r *ht
 		var prxs []*cluster.Proxy
 		err := json.Unmarshal(data, &prxs)
 		if err != nil {
-			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON for proxies: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -392,7 +392,7 @@ func (repman *ReplicationManager) handlerMuxProxies(w http.ResponseWriter, r *ht
 		e.SetIndent("", "\t")
 		err = e.Encode(prxs)
 		if err != nil {
-			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON for proxies: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -415,7 +415,7 @@ func (repman *ReplicationManager) handlerMuxAlerts(w http.ResponseWriter, r *htt
 		e.SetIndent("", "\t")
 		err := e.Encode(a)
 		if err != nil {
-			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON for alerts: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -1062,7 +1062,6 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchGraphiteEmbedded()
 	case "shardproxy-copy-grants":
 		mycluster.SwitchProxysqlCopyGrants()
-
 	case "proxysql-copy-grants":
 		mycluster.SwitchProxysqlCopyGrants()
 	case "proxysql-bootstrap-users":
@@ -1155,6 +1154,20 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchForceBinlogSlowqueries()
 	}
 
+	//Log Level Handling
+	if strings.HasPrefix(setting, "log-level") {
+		params := strings.Split(setting, "--")
+		if len(params) > 1 {
+			pos, err := strconv.Atoi(params[len(params)-1])
+			if err == nil {
+				mycluster.SwitchLogLevel(pos)
+			} else {
+				mycluster.LogPrintf(cluster.LvlErr, "Toggle Log Level: Error while parsing level", err)
+			}
+		} else {
+			mycluster.LogPrintf(cluster.LvlErr, "Toggle Log Level: Log level parameter not found!")
+		}
+	}
 }
 
 func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {
@@ -1465,7 +1478,7 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 		if len(res) > 0 {
 			err := e.Encode(res[0])
 			if err != nil {
-				mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON: ", err)
+				mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON for test: ", err)
 				http.Error(w, "Encoding error", 500)
 				mycluster.SetTestStartCluster(false)
 				mycluster.SetTestStopCluster(false)
@@ -1477,7 +1490,7 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 			test.Name = vars["testName"]
 			err := e.Encode(test)
 			if err != nil {
-				mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON: ", err)
+				mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON for test: ", err)
 				http.Error(w, "Encoding error", 500)
 				mycluster.SetTestStartCluster(false)
 				mycluster.SetTestStopCluster(false)
@@ -1511,7 +1524,7 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 		e.SetIndent("", "\t")
 		err := e.Encode(res)
 		if err != nil {
-			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogPrintf(cluster.LvlErr, "API Error encoding JSON for test: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}

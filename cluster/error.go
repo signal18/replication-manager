@@ -161,4 +161,5 @@ var clusterError = map[string]string{
 	"WARN0102": "The config file must be merge because an immutable parameter has been changed. Use the config-merge command to save your changes.",
 	"WARN0103": "Enforce replication mode idempotent but  strict on server %s",
 	"WARN0104": "Enforce replication mode strict but idempotent on server %s",
+	"WARN0105": "HaProxy detecting broken replication and UP state in haproxy %s : drain server %s",
 }

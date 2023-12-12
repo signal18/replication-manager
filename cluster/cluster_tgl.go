@@ -171,12 +171,7 @@ func (cluster *Cluster) SwitchSwitchoverSync() {
 }
 
 func (cluster *Cluster) SwitchVerbosity() {
-
-	if cluster.GetLogLevel() > 0 {
-		cluster.SetLogLevel(0)
-	} else {
-		cluster.SetLogLevel(4)
-	}
+	cluster.Conf.Verbose = !cluster.Conf.Verbose
 }
 
 func (cluster *Cluster) SwitchRejoin() {
@@ -434,4 +429,8 @@ func (cluster *Cluster) SwitchPrintDelayStatHistory() {
 
 func (cluster *Cluster) SwitchFailoverCheckDelayStat() {
 	cluster.Conf.FailoverCheckDelayStat = !cluster.Conf.FailoverCheckDelayStat
+}
+
+func (cluster *Cluster) SwitchLogLevel(idx int) {
+	cluster.Conf.ToggleLogLevel(idx)
 }
