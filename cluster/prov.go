@@ -374,7 +374,7 @@ func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
-	cluster.LogPrintf(LvlInfo, "Stopping Proxy service %s", cluster.Name+"/svc/"+server.GetName())
+	cluster.LogPrintf(LvlInfo, "Stopping Proxy service %s using %s", cluster.Name+"/svc/"+server.GetName(), cluster.GetOrchestrator())
 	var err error
 
 	switch cluster.GetOrchestrator() {
@@ -394,6 +394,8 @@ func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 	cluster.StopProxyScript(server)
 	if err == nil {
 		server.DelRestartCookie()
+	} else {
+		cluster.LogPrintf(LvlErr, "Error stopping Proxy service: %s", err)
 	}
 	return err
 }

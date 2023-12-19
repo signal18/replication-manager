@@ -29,7 +29,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
 		} else {
-			if cluster.GetLogLevel() > 2 {
+			if cluster.Conf.HasLogLevelPos(5, 8) || cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlInfo, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
 			}
 		}

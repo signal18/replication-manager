@@ -326,7 +326,7 @@ func (cluster *Cluster) backendStateChangeProxies() {
 // Used to monitor proxies call by main monitor loop
 func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 	defer wcg.Done()
-	if cluster.Conf.LogLevel > 2 {
+	if cluster.Conf.HasLogLevelPos(10, 15) || cluster.Conf.Verbose {
 		cluster.LogPrintf(LvlDbg, "Refresh proxy start")
 	}
 	for _, pr := range cluster.Proxies {
@@ -365,7 +365,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 			}
 		}
 	}
-	if cluster.Conf.LogLevel > 2 {
+	if cluster.Conf.HasLogLevelPos(10, 15) || cluster.Conf.Verbose {
 		cluster.LogPrintf(LvlDbg, "Refresh proxy end")
 	}
 }

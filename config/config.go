@@ -299,6 +299,8 @@ type Config struct {
 	HaproxyBinaryPath                         string                 `mapstructure:"haproxy-binary-path" toml:"haproxy-binary-path" json:"haproxyBinaryPath"`
 	HaproxyAPIReadBackend                     string                 `mapstructure:"haproxy-api-read-backend"  toml:"haproxy-api-read-backend" json:"haproxyAPIReadBackend"`
 	HaproxyAPIWriteBackend                    string                 `mapstructure:"haproxy-api-write-backend"  toml:"haproxy-api-write-backend" json:"haproxyAPIWriteBackend"`
+	HaproxyAPIReadServers                     string                 `mapstructure:"haproxy-api-read-backend-list"  toml:"haproxy-api-read-backend-list" json:"haproxyAPIReadBackendList"`
+	HaproxyAPIWriteServer                     string                 `mapstructure:"haproxy-api-write-backend-list"  toml:"haproxy-api-write-backend-list" json:"haproxyAPIWriteBackendList"`
 	ProxysqlOn                                bool                   `mapstructure:"proxysql" toml:"proxysql" json:"proxysql"`
 	ProxysqlDebug                             bool                   `mapstructure:"proxysql-debug" toml:"proxysql-debug" json:"proxysqlDebug"`
 	ProxysqlSaveToDisk                        bool                   `mapstructure:"proxysql-save-to-disk" toml:"proxysql-save-to-disk" json:"proxysqlSaveToDisk"`
@@ -665,7 +667,7 @@ type MyDumperMetaData struct {
 	BinLogFileName string    `json:"log_filename" db:"log_filename"`
 	BinLogFilePos  uint64    `json:"log_pos" db:"log_pos"`
 	BinLogUuid     string    `json:"log_uuid" db:"log_uuid"`
-	EndTimestamp   time.Time `json:"start_timestamp" db:"start_timestamp"`
+	EndTimestamp   time.Time `json:"end_timestamp" db:"end_timestamp"`
 }
 
 type ConfVersion struct {

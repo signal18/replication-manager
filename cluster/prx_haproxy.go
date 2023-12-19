@@ -21,6 +21,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/haproxy"
 	"github.com/signal18/replication-manager/utils/state"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 )
 
@@ -66,6 +67,8 @@ func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.StringVar(&conf.HaproxyAPIReadBackend, "haproxy-api-read-backend", "service_read", "HaProxy API backend name used for read")
 	flags.StringVar(&conf.HaproxyAPIWriteBackend, "haproxy-api-write-backend", "service_write", "HaProxy API backend name used for write")
 	flags.StringVar(&conf.HaproxyHostsIPV6, "haproxy-servers-ipv6", "", "ipv6 bind address ")
+	flags.StringVar(&conf.HaproxyAPIReadServers, "haproxy-api-read-servers", "", "HaProxy API backend srv name used for read")
+	flags.StringVar(&conf.HaproxyAPIWriteServer, "haproxy-api-read-server", "leader", "HaProxy API backend srv name used for write")
 }
 
 func (proxy *HaproxyProxy) Init() {
@@ -127,23 +130,22 @@ func (proxy *HaproxyProxy) Init() {
 	bew := haproxy.Backend{Name: cluster.Conf.HaproxyAPIWriteBackend, Mode: "tcp"}
 	haConfig.AddBackend(&bew)
 
-	if _, err := haConfig.GetServer(cluster.Conf.HaproxyAPIWriteBackend, "leader"); err != nil {
-		// log.Printf("No leader")
-	} else {
-		// log.Printf("Found exiting leader removing")
-	}
+	// if _, err := haConfig.GetServer(cluster.Conf.HaproxyAPIWriteBackend, "leader"); err != nil {
+	// 	// log.Printf("No leader")
+	// } else {
+	// 	// log.Printf("Found exiting leader removing")
+	// }
 
-	if cluster.GetMaster() != nil {
-
-		p, _ := strconv.Atoi(cluster.GetMaster().Port)
-		s := haproxy.ServerDetail{Name: "leader", Host: cluster.GetMaster().Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
-		if err = haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
-			//	log.Printf("Failed to add server to service_write ")
+	if mst := cluster.GetMaster(); mst != nil {
+		p, _ := strconv.Atoi(mst.Port)
+		s := haproxy.ServerDetail{Name: cluster.Conf.HaproxyAPIWriteServer, Host: mst.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
+		if err := haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
+			log.Printf("Failed to add server to service_write ")
 		}
 	} else {
-		s := haproxy.ServerDetail{Name: "leader", Host: "unknown", Port: 3306, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
-		if err = haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
-			//	log.Printf("Failed to add server to service_write ")
+		s := haproxy.ServerDetail{Name: cluster.Conf.HaproxyAPIWriteServer, Host: "unknown", Port: 3306, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
+		if err := haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
+			log.Printf("Failed to add server to service_write ")
 		}
 	}
 	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: cluster.Conf.HaproxyAPIReadBackend, BindPort: cluster.Conf.HaproxyReadPort, BindIp: cluster.Conf.HaproxyReadBindIp}
@@ -164,15 +166,24 @@ func (proxy *HaproxyProxy) Init() {
 		cluster.LogPrintf(LvlErr, "Haproxy failed to add backend for "+cluster.Conf.HaproxyAPIReadBackend)
 	}
 
+	//Split Read Servers
+	readsvrs := strings.Split(cluster.Conf.HaproxyAPIReadServers, ",")
+
 	//var checksum64 string
 	//	crcHost := crc64.MakeTable(crc64.ECMA)
-	for _, server := range cluster.Servers {
-		if server.IsMaintenance == false {
+	for i, server := range cluster.Servers {
+		if !server.IsMaintenance {
 			p, _ := strconv.Atoi(server.Port)
 			//		checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(server.Host+":"+server.Port), crcHost))
-			s := haproxy.ServerDetail{Name: server.Id, Host: server.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
+			srvname := server.Id
+			if cluster.Conf.HaproxyAPIReadServers != "" {
+				srvname = readsvrs[i]
+			}
+			s := haproxy.ServerDetail{Name: srvname, Host: server.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
 			if err := haConfig.AddServer(cluster.Conf.HaproxyAPIReadBackend, &s); err != nil {
 				cluster.LogPrintf(LvlErr, "Failed to add server in Haproxy for "+cluster.Conf.HaproxyAPIReadBackend)
+			} else {
+				server.HaproxySrvName = srvname
 			}
 		}
 	}
@@ -558,8 +569,8 @@ func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
 	}
 
 	if server.IsMaintenance {
-		cluster.LogPrintf(LvlInfo, "HaProxy set server %s/%s state maint ", cluster.Conf.HaproxyAPIReadBackend, server.Id)
-		res, err := haRuntime.SetMaintenance(server.Id, cluster.Conf.HaproxyAPIReadBackend)
+		cluster.LogPrintf(LvlInfo, "HaProxy set server %s/%s state maint ", cluster.Conf.HaproxyAPIReadBackend, server.HaproxySrvName)
+		res, err := haRuntime.SetMaintenance(server.HaproxySrvName, cluster.Conf.HaproxyAPIReadBackend)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "HaProxy can not set maintenance %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, err)
 		}
@@ -568,7 +579,7 @@ func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
 		}
 	} else {
 		cluster.LogPrintf(LvlInfo, "HaProxy set server %s/%s state ready ", cluster.Conf.HaproxyAPIReadBackend, server.Id)
-		res, err := haRuntime.SetReady(server.Id, cluster.Conf.HaproxyAPIReadBackend)
+		res, err := haRuntime.SetReady(server.HaproxySrvName, cluster.Conf.HaproxyAPIReadBackend)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "HaProxy can not set ready %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, err)
 		}
@@ -581,7 +592,7 @@ func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
 		if server.IsMaintenance {
 			cluster.LogPrintf(LvlInfo, "HaProxy set maintenance for server %s ", server.URL)
 
-			res, err := haRuntime.SetMaintenance("leader", cluster.Conf.HaproxyAPIWriteBackend)
+			res, err := haRuntime.SetMaintenance(cluster.Conf.HaproxyAPIWriteServer, cluster.Conf.HaproxyAPIWriteBackend)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "HaProxy can not set maintenance %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIReadBackend, err)
 			}
@@ -592,7 +603,7 @@ func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
 		} else {
 			cluster.LogPrintf(LvlInfo, "HaProxy set ready for server %s ", server.URL)
 
-			res, err := haRuntime.SetReady("leader", cluster.Conf.HaproxyAPIWriteBackend)
+			res, err := haRuntime.SetReady(cluster.Conf.HaproxyAPIWriteServer, cluster.Conf.HaproxyAPIWriteBackend)
 			if err != nil {
 				cluster.LogPrintf(LvlErr, "Haproxy can not set ready %s backend %s : %s", server.URL, cluster.Conf.HaproxyAPIWriteBackend, err)
 			}

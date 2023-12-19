@@ -188,7 +188,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	cluster.CheckSameServerID()
 
 	// Spider shard discover
-	if cluster.Conf.Spider == true {
+	if cluster.Conf.Spider {
 		cluster.SpiderShardsDiscovery()
 	}
 	cluster.slaves = nil
@@ -199,7 +199,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		}
 		// count wsrep node as  slaves
 		if sv.IsSlave || sv.IsWsrepPrimary || sv.IsGroupReplicationSlave {
-			if cluster.Conf.LogLevel > 2 {
+			if cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlDbg, "Server %s is configured as a slave", sv.URL)
 			}
 			cluster.slaves = append(cluster.slaves, sv)
@@ -215,7 +215,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			} else if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
 				//sv.State = stateUnconn
 				//transition to standalone may happen despite server have never connect successfully when default to suspect
-				if cluster.Conf.LogLevel > 2 {
+				if cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 					cluster.LogPrintf(LvlDbg, "Server %s has no slaves ", sv.URL)
 				}
 			} else {
@@ -225,7 +225,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
 					//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping */
 				} else {
-					if cluster.Conf.LogLevel > 2 {
+					if cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 						cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
 					}
 					if len(cluster.Servers) == 1 {
@@ -251,31 +251,31 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// Check that all slave servers have the same master and conformity.
 	if !cluster.Conf.MultiMaster && !cluster.Conf.Spider {
 		for _, sl := range cluster.slaves {
-			if sl.IsMaxscale == false && !sl.IsFailed() {
+			if !sl.IsMaxscale && !sl.IsFailed() {
 				sl.CheckSlaveSettings()
 				sl.CheckSlaveSameMasterGrants()
 				if sl.HasCycling() {
-					if cluster.Conf.MultiMaster == false && len(cluster.Servers) == 2 {
+					if !cluster.Conf.MultiMaster && len(cluster.Servers) == 2 {
 						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO", ServerUrl: sl.URL})
 						cluster.Conf.MultiMaster = true
 					}
-					if cluster.Conf.MultiMasterRing == false && len(cluster.Servers) > 2 {
+					if !cluster.Conf.MultiMasterRing && len(cluster.Servers) > 2 {
 						cluster.Conf.MultiMasterRing = true
 					}
-					if cluster.Conf.MultiMasterRing == true && cluster.GetMaster() == nil {
+					if cluster.Conf.MultiMasterRing && cluster.GetMaster() == nil {
 						cluster.vmaster = sl
 					}
 
 					//broken replication ring
-				} else if cluster.Conf.MultiMasterRing == true {
+				} else if cluster.Conf.MultiMasterRing {
 					//setting a virtual master if none
 					cluster.SetState("ERR00048", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00048"]), ErrFrom: "TOPO"})
 					cluster.master = cluster.GetFailedServer()
 				}
 
 			}
-			if cluster.Conf.MultiMaster == false && sl.IsMaxscale == false {
-				if sl.IsSlave == true && sl.HasSlaves(cluster.slaves) == true {
+			if !cluster.Conf.MultiMaster && !sl.IsMaxscale {
+				if sl.IsSlave && sl.HasSlaves(cluster.slaves) {
 					sl.IsRelay = true
 					sl.SetState(stateRelay)
 				} else if sl.IsRelay {
@@ -284,7 +284,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 		}
 	}
-	if cluster.Conf.MultiMaster == true || cluster.GetTopology() == topoMultiMasterWsrep || cluster.GetTopology() == topoMultiMasterGrouprep {
+	if cluster.Conf.MultiMaster || cluster.GetTopology() == topoMultiMasterWsrep || cluster.GetTopology() == topoMultiMasterGrouprep {
 		srw := 0
 		for _, s := range cluster.Servers {
 			if s.IsReadWrite() {
@@ -335,26 +335,26 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			sid := cluster.slaves[0].GetReplicationServerID()
 
 			for k, s := range cluster.Servers {
-				if cluster.Conf.MultiMaster == false && s.State == stateUnconn {
+				if !cluster.Conf.MultiMaster && s.State == stateUnconn {
 					if s.ServerID == sid {
 						cluster.master = cluster.Servers[k]
 						cluster.master.SetMaster()
 						cluster.master.SetReadWrite()
-						if cluster.Conf.LogLevel > 2 {
+						if cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 							cluster.LogPrintf(LvlDbg, "Server %s was autodetected as a master", s.URL)
 						}
 						break
 					}
 				}
-				if (cluster.Conf.MultiMaster == true || cluster.GetTopology() == topoMultiMasterWsrep || cluster.GetTopology() == topoMultiMasterGrouprep) && !cluster.Servers[k].IsDown() {
+				if (cluster.Conf.MultiMaster || cluster.GetTopology() == topoMultiMasterWsrep || cluster.GetTopology() == topoMultiMasterGrouprep) && !cluster.Servers[k].IsDown() {
 					if s.IsReadWrite() {
 						cluster.master = cluster.Servers[k]
-						if cluster.Conf.MultiMaster == true {
+						if cluster.Conf.MultiMaster {
 							cluster.master.SetMaster()
 						} else {
 							cluster.vmaster = cluster.Servers[k]
 						}
-						if cluster.Conf.LogLevel > 2 {
+						if cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 							cluster.LogPrintf(LvlDbg, "Server %s was autodetected as a master", s.URL)
 						}
 						break
@@ -382,11 +382,11 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			cluster.master.CheckMasterSettings()
 		}
 		// Replication checks
-		if cluster.Conf.MultiMaster == false {
+		if !cluster.Conf.MultiMaster {
 			for _, sl := range cluster.slaves {
 
-				if sl.IsRelay == false {
-					if cluster.Conf.LogLevel > 2 {
+				if !sl.IsRelay {
+					if cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 						cluster.LogPrintf(LvlDbg, "Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
 					}
 					replMaster, _ := cluster.GetMasterFromReplication(sl)
@@ -429,7 +429,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 // AllServersDown track state of unvailable cluster
 func (cluster *Cluster) AllServersFailed() bool {
 	for _, s := range cluster.Servers {
-		if s.IsFailed() == false {
+		if !s.IsFailed() {
 			return false
 		}
 	}
@@ -455,7 +455,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 					cluster.lastmaster = cluster.master
 					cluster.LogPrintf(LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
 
-					if cluster.Conf.FailRestartUnsafe == false {
+					if !cluster.Conf.FailRestartUnsafe {
 						// forget the master if safe mode
 						cluster.LogPrintf(LvlInfo, "Forget the leader as no more slave and failover unsafe is disable: %s ", cluster.master.URL)
 						cluster.master = nil
@@ -529,8 +529,5 @@ func (cluster *Cluster) MultipleSlavesUp(candidate *ServerMonitor) bool {
 			ct++
 		}
 	}
-	if ct > 0 {
-		return true
-	}
-	return false
+	return ct > 0 //Simplify
 }

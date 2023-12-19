@@ -53,14 +53,14 @@ func (cluster *Cluster) SwitchForceSlaveGtidStrict() {
 
 func (cluster *Cluster) SwitchForceSlaveModeStrict() {
 	cluster.Conf.ForceSlaveStrict = !cluster.Conf.ForceSlaveStrict
-	if cluster.Conf.ForceSlaveStrict == true {
+	if cluster.Conf.ForceSlaveStrict {
 		cluster.Conf.ForceSlaveIdempotent = !cluster.Conf.ForceSlaveStrict
 	}
 }
 
 func (cluster *Cluster) SwitchForceSlaveModeIdempotent() {
 	cluster.Conf.ForceSlaveIdempotent = !cluster.Conf.ForceSlaveIdempotent
-	if cluster.Conf.ForceSlaveIdempotent == true {
+	if cluster.Conf.ForceSlaveIdempotent {
 		cluster.Conf.ForceSlaveStrict = !cluster.Conf.ForceSlaveIdempotent
 	}
 }
@@ -140,7 +140,7 @@ func (cluster *Cluster) SwitchCompressBackups() {
 }
 
 func (cluster *Cluster) SwitchInteractive() {
-	if cluster.Conf.Interactive == true {
+	if cluster.Conf.Interactive {
 		cluster.Conf.Interactive = false
 		cluster.LogPrintf(LvlInfo, "Failover monitor switched to automatic mode")
 	} else {

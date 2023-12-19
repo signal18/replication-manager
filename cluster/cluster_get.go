@@ -404,7 +404,7 @@ func (cluster *Cluster) getOnePreferedMaster() *ServerMonitor {
 		return nil
 	}
 	for _, server := range cluster.Servers {
-		if cluster.Conf.LogLevel > 2 {
+		if cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 			cluster.LogPrintf(LvlDbg, "Lookup if server: %s is preferred master: %s", server.URL, cluster.Conf.PrefMaster)
 		}
 		if server.IsPrefered() {
@@ -419,7 +419,7 @@ func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 		return nil
 	}
 	for _, server := range cluster.Servers {
-		if cluster.Conf.LogLevel > 2 {
+		if cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 			cluster.LogPrintf(LvlDbg, "Check for relay server %s: relay: %t", server.URL, server.IsRelay)
 		}
 		if server.IsRelay {
@@ -508,7 +508,7 @@ func (cluster *Cluster) GetMasterFromReplication(slave *ServerMonitor) (*ServerM
 		}
 		if len(slave.Replications) > 0 {
 
-			if cluster.Conf.LogLevel > 2 {
+			if cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlDbg, "GetMasterFromReplication server  %d  lookup if server %s is the one : %d", slave.GetReplicationServerID(), server.URL, server.ServerID)
 			}
 			if slave.IsIOThreadRunning() && slave.IsSQLThreadRunning() {
@@ -516,7 +516,7 @@ func (cluster *Cluster) GetMasterFromReplication(slave *ServerMonitor) (*ServerM
 					return server, nil
 				}
 			} else {
-				if cluster.Conf.LogLevel > 2 {
+				if cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 					cluster.LogPrintf(LvlDbg, "GetMasterFromReplication slave host  %s:%s if  equal server  %s:%s", slave.GetReplicationMasterHost(), slave.GetReplicationMasterPort(), server.Host, server.Port)
 				}
 				if slave.GetReplicationMasterHost() == server.Host && slave.GetReplicationMasterPort() == server.Port {
@@ -617,7 +617,7 @@ func (cluster *Cluster) GetTopology() string {
 		cluster.Conf.Topology = topoActivePassive
 	} else {
 		relay := cluster.GetRelayServer()
-		if relay != nil && cluster.Conf.ReplicationNoRelay == false {
+		if relay != nil && !cluster.Conf.ReplicationNoRelay {
 			cluster.Conf.Topology = topoMultiTierSlave
 		} else if cluster.master != nil {
 			cluster.Conf.Topology = topoMasterSlave

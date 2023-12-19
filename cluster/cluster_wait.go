@@ -121,7 +121,7 @@ func (cluster *Cluster) WaitClusterStop() error {
 			cluster.LogPrintf(LvlInfo, "Waiting for cluster shutdown")
 			exitloop++
 			// All cluster down
-			if cluster.StateMachine.IsInState("ERR00021") == true {
+			if cluster.StateMachine.IsInState("ERR00021") {
 				exitloop = 9999999
 			}
 			if cluster.HasAllDbDown() {
@@ -149,7 +149,7 @@ func (cluster *Cluster) WaitProxyEqualMaster() error {
 			cluster.LogPrintf(LvlInfo, "Waiting for proxy to join master %d", exitloop)
 			exitloop++
 			// All cluster down
-			if cluster.IsProxyEqualMaster() == true {
+			if cluster.IsProxyEqualMaster() {
 				exitloop = 9999999
 			}
 		}

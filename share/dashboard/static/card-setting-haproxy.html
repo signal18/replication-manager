@@ -1,0 +1,19 @@
+<md-card>
+    <table ng-if="settings" class="table">
+      <tr>
+          <th>HAProxy Monitor</th>
+      </tr>
+      <tr>
+          <td>
+              <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.haproxy"
+                         ng-click="switchsettings('haproxy')" aria-label="Monitor Haproxy">
+                  <span ng-if="selectedCluster.config.haproxy" class="label label-primary">On</span><span
+                      ng-if="!selectedCluster.config.haproxy" class="label label-warning">Off</span>
+          </td>
+          </md-switch>
+          </td>
+      </tr>
+    </table>
+    <!-- <table ng-if="settings && selectedCluster.config.haproxy" class="table">
+    </table> -->
+</md-card>

@@ -39,13 +39,14 @@
         </div>
         <div flex-gt-xs="60" class="col-lg-60">
           <div ng-if="settingsMenu.general" ng-include src="'static/card-setting-failovermode.html'"></div>
+          <div ng-if="settingsMenu.general" ng-include src="'static/card-setting-testmode.html'"></div>
           <div ng-if="settingsMenu.replication" ng-include src="'static/card-setting-replication.html'"></div>
           <div ng-if="settingsMenu.rejoin" ng-include src="'static/card-setting-rejoin.html'"></div>
           <div ng-if="settingsMenu.backups"  ng-include src="'static/card-setting-backup.html'"></div>
-          <div ng-if="settingsMenu.proxies" ng-include src="'static/card-setting-proxysql.html'"></div>
           <div ng-if="settingsMenu.monitoring" ng-include src="'static/card-setting-capture.html'"></div>
           <div ng-if="settingsMenu.schedulers" ng-include src="'static/card-setting-scheduler.html'"></div>
-          <div ng-if="settingsMenu.general" ng-include src="'static/card-setting-testmode.html'"></div>
+          <div ng-if="settingsMenu.proxies" ng-include src="'static/card-setting-proxysql.html'"></div>
+          <div ng-if="settingsMenu.proxies" ng-include src="'static/card-setting-haproxy.html'"></div>
           <div ng-if="settingsMenu.proxies" ng-include src="'static/card-setting-proxy.html'"></div>
           <div ng-if="settingsMenu.logs" ng-include src="'static/card-setting-logs.html'"></div>
           <div ng-if="settingsMenu.cloud18" ng-include src="'static/card-setting-cloud18.html'"></div>

@@ -559,7 +559,7 @@ func (cluster *Cluster) Run() {
 				}
 
 			default:
-				if cluster.Conf.LogLevel > 2 {
+				if cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 					cluster.LogPrintf(LvlDbg, "Monitoring server loop")
 					if cluster.Servers[0] != nil {
 						cluster.LogPrintf(LvlDbg, "Servers not nil : %v\n", cluster.Servers)
@@ -776,7 +776,7 @@ func (cluster *Cluster) Save() error {
 		return nil
 	}
 	_, file, no, ok := runtime.Caller(1)
-	if ok && cluster.GetLogLevel() > 3 {
+	if ok && cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 		cluster.LogPrintf(LvlInfo, "Saved called from %s#%d\n", file, no)
 	}
 	type Save struct {
@@ -1207,7 +1207,7 @@ func (cluster *Cluster) FailoverForce() error {
 			for _, s := range cluster.Servers {
 				if s.State == "" {
 					s.SetState(stateFailed)
-					if cluster.Conf.LogLevel > 2 {
+					if cluster.Conf.HasLogLevelPos(15) || cluster.Conf.Verbose {
 						cluster.LogPrintf(LvlDbg, "State failed set by state detection ERR00012")
 					}
 					cluster.master = s

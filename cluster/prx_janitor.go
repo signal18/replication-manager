@@ -141,7 +141,7 @@ func (proxy *ProxyJanitor) Init() {
 				psql.Weight = s.GetJanitorWeight()
 				err = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
 
-				if cluster.Conf.LogLevel > 2 || cluster.Conf.ProxysqlDebug {
+				if cluster.Conf.HasLogLevelPos(10, 15) || cluster.Conf.Verbose {
 					cluster.LogPrintf(LvlWarn, "ProxyJanitor init backend  %s with state %s ", s.GetURL(), s.GetState())
 				}
 			}
@@ -404,7 +404,7 @@ func (proxy *ProxyJanitor) RotateMonitoringPasswords(password string) {
 		cluster.LogPrintf(LvlErr, "ProxyJanitor could not save admin variables to disk (%s)", err)
 	}
 
-	cluster.LogPrintf(LvlInfo, "Password rotation is done for the proxySQL monitor")
+	cluster.LogPrintf(LvlInfo, "Password rotation is done for the ProxyJanitor monitor")
 }
 
 func (proxy *ProxyJanitor) RotateProxyPasswords(password string) {

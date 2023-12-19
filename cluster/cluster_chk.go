@@ -49,9 +49,9 @@ func (cluster *Cluster) CheckFailed() {
 		cluster.isArbitratorAlive() {
 
 		// False Positive
-		if cluster.isExternalOk() == false {
-			if cluster.isOneSlaveHeartbeatIncreasing() == false {
-				if cluster.isMaxscaleSupectRunning() == false {
+		if !cluster.isExternalOk() {
+			if !cluster.isOneSlaveHeartbeatIncreasing() {
+				if !cluster.isMaxscaleSupectRunning() {
 					cluster.MasterFailover(true)
 					cluster.failoverCond.Send <- true
 				}
@@ -68,50 +68,50 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 	}
 	hasBinLogs, err := cluster.IsEqualBinlogFilters(cluster.master, sl)
 	if err != nil {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
+		if cluster.Conf.HasLogLevelPos(2, 15) || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Could not check binlog filters on %s", sl.URL)
 		}
 		return false
 	}
 	if (!cluster.Conf.SwitchLowerRelease) && (sl.DBVersion.Major < cluster.master.DBVersion.Major || (sl.DBVersion.Major == cluster.master.DBVersion.Major && sl.DBVersion.Minor < cluster.master.DBVersion.Minor)) {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
+		if cluster.Conf.HasLogLevelPos(2, 15) || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Could not elect a minor version as leader without enabing switchover-lower-release %s", sl.URL)
 		}
 		return false
 	}
-	if hasBinLogs == false && cluster.Conf.CheckBinFilter == true && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
+	if !hasBinLogs && cluster.Conf.CheckBinFilter && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") {
+		if cluster.Conf.HasLogLevelPos(2, 15) || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Binlog filters differ on master and slave %s. Skipping", sl.URL)
 		}
 		return false
 	}
-	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") && cluster.Conf.CheckReplFilter == true {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
+	if !cluster.IsEqualReplicationFilters(cluster.master, sl) && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") && cluster.Conf.CheckReplFilter {
+		if cluster.Conf.HasLogLevelPos(2, 15) || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Replication filters differ on master and slave %s. Skipping", sl.URL)
 		}
 		return false
 	}
-	if cluster.Conf.SwitchGtidCheck && cluster.IsCurrentGTIDSync(sl, cluster.master) == false && cluster.Conf.RplChecks == true {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
+	if cluster.Conf.SwitchGtidCheck && !cluster.IsCurrentGTIDSync(sl, cluster.master) && cluster.Conf.RplChecks {
+		if cluster.Conf.HasLogLevelPos(2, 15) || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
 		}
 		return false
 	}
-	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.SwitchSync && cluster.Conf.RplChecks {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
+	if sl.HaveSemiSync && !sl.SemiSyncSlaveStatus && cluster.Conf.SwitchSync && cluster.Conf.RplChecks {
+		if cluster.Conf.HasLogLevelPos(2, 15) || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		}
 		return false
 	}
-	if ss.SecondsBehindMaster.Valid == false && cluster.Conf.RplChecks == true {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
+	if !ss.SecondsBehindMaster.Valid && cluster.Conf.RplChecks {
+		if cluster.Conf.HasLogLevelPos(2, 15) || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Slave %s is stopped. Skipping", sl.URL)
 		}
 		return false
 	}
 
 	if sl.IsMaxscale || sl.IsRelay {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
+		if cluster.Conf.HasLogLevelPos(2, 15) || forcingLog {
 			cluster.LogPrintf(LvlWarn, "Slave %s is a relay slave. Skipping", sl.URL)
 		}
 		return false
@@ -120,7 +120,7 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 }
 
 func (cluster *Cluster) isAutomaticFailover() bool {
-	if cluster.Conf.Interactive == false {
+	if !cluster.Conf.Interactive {
 		return true
 	}
 	cluster.StateMachine.AddState("ERR00002", state.State{ErrType: "ERR00002", ErrDesc: fmt.Sprintf(clusterError["ERR00002"]), ErrFrom: "CHECK"})
@@ -133,10 +133,7 @@ func (cluster *Cluster) isMasterFailed() bool {
 	/*if cluster.master == nil {
 		return false
 	}*/
-	if cluster.master.State == stateFailed {
-		return true
-	}
-	return false
+	return cluster.master.State == stateFailed //Simplified return value
 }
 
 // isMaxMasterFailedCountReach test tentative to connect
@@ -146,7 +143,7 @@ func (cluster *Cluster) isMaxMasterFailedCountReached() bool {
 	if cluster.GetMaster().FailCount >= cluster.Conf.MaxFail {
 		cluster.StateMachine.AddState("WARN0023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0023"]), ErrFrom: "CHECK"})
 		return true
-	} else {
+		// } else {
 		//	cluster.StateMachine.AddState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%d", cluster.master.State, cluster.Conf.Interactive, cluster.Conf.MaxFail), ErrFrom: "CONF"})
 	}
 	return false
@@ -180,7 +177,7 @@ func (cluster *Cluster) isBetweenFailoverTimeValid() bool {
 }
 
 func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
-	if cluster.Conf.CheckFalsePositiveHeartbeat == false {
+	if !cluster.Conf.CheckFalsePositiveHeartbeat {
 		return false
 	}
 	//cluster.LogPrintf("CHECK: Failover Slaves heartbeats")
@@ -188,17 +185,17 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 	for _, s := range cluster.slaves {
 		relaycheck, _ := cluster.GetMasterFromReplication(s)
 		if relaycheck != nil {
-			if relaycheck.IsRelay == false {
+			if !relaycheck.IsRelay {
 				status, logs, err := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
 				cluster.LogSQL(logs, err, s.URL, "isOneSlaveHeartbeatIncreasing", LvlDbg, "GetStatusAsInt")
 				saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
-				if cluster.Conf.LogLevel > 1 {
+				if cluster.Conf.HasLogLevelPos(4, 15) || cluster.Conf.Verbose {
 					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
 				}
 				time.Sleep(time.Duration(cluster.Conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
 				status2, logs, err := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
 				cluster.LogSQL(logs, err, s.URL, "isOneSlaveHeartbeatIncreasing", LvlDbg, "GetStatusAsInt")
-				if cluster.Conf.LogLevel > 1 {
+				if cluster.Conf.HasLogLevelPos(4, 15) || cluster.Conf.Verbose {
 					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				}
 				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
@@ -212,10 +209,10 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 }
 
 func (cluster *Cluster) isMaxscaleSupectRunning() bool {
-	if cluster.Conf.MxsOn == false {
+	if !cluster.Conf.MxsOn {
 		return false
 	}
-	if cluster.Conf.CheckFalsePositiveMaxscale == false {
+	if !cluster.Conf.CheckFalsePositiveMaxscale {
 		return false
 	}
 	//cluster.LogPrintf("CHECK: Failover Maxscale Master Satus")
@@ -234,12 +231,16 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 
 	var monitor string
 	if cluster.Conf.MxsGetInfoMethod == "maxinfo" {
-		cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxinfo")
+		if cluster.Conf.HasLogLevelPos(10, 14) || cluster.Conf.Verbose {
+			cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxinfo")
+		}
 		m.GetMaxInfoMonitors("http://" + cluster.Conf.MxsHost + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/monitors")
 		monitor = m.GetMaxInfoStoppedMonitor()
 
 	} else {
-		cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxadmin")
+		if cluster.Conf.HasLogLevelPos(10, 14) || cluster.Conf.Verbose {
+			cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxadmin")
+		}
 		_, err = m.ListMonitors()
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "MaxScale client could not list monitors: %s", err)
@@ -249,14 +250,18 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 	}
 	if monitor != "" {
 		cmd := "Restart monitor \"" + monitor + "\""
-		cluster.LogPrintf("INFO : %s", cmd)
+		if cluster.Conf.HasLogLevelPos(10, 14) || cluster.Conf.Verbose {
+			cluster.LogPrintf("INFO : %s", cmd)
+		}
 		err = m.RestartMonitor(monitor)
 		if err != nil {
 			cluster.LogPrintf(LvlErr, "MaxScale client could not startup monitor: %s", err)
 			return false
 		}
 	} else {
-		cluster.LogPrintf(LvlInfo, "MaxScale Monitor not found")
+		if cluster.Conf.HasLogLevelPos(10, 14) || cluster.Conf.Verbose {
+			cluster.LogPrintf(LvlInfo, "MaxScale Monitor not found")
+		}
 		return false
 	}
 
@@ -288,7 +293,7 @@ func (cluster *Cluster) isFoundCandidateMaster() bool {
 
 func (cluster *Cluster) isActiveArbitration() bool {
 
-	if cluster.Conf.Arbitration == false {
+	if !cluster.Conf.Arbitration {
 		return true
 	}
 	//	cluster.LogPrintf("CHECK: Failover External Arbitration")
@@ -333,7 +338,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 }
 
 func (cluster *Cluster) isExternalOk() bool {
-	if cluster.Conf.CheckFalsePositiveExternal == false {
+	if !cluster.Conf.CheckFalsePositiveExternal {
 		return false
 	}
 	//cluster.LogPrintf("CHECK: Failover External Request")
@@ -365,7 +370,7 @@ func (cluster *Cluster) isArbitratorAlive() bool {
 
 func (cluster *Cluster) isNotFirstSlave() bool {
 	// let the failover doable if interactive or failover on first slave
-	if cluster.Conf.Interactive == true || cluster.Conf.FailRestartUnsafe == true {
+	if cluster.Conf.Interactive || cluster.Conf.FailRestartUnsafe {
 		return true
 	}
 	// do not failover if master info is unknowned:

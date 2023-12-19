@@ -29,7 +29,7 @@ func (cluster *Cluster) OnPremiseUnprovisionHaProxyService(prx *HaproxyProxy) {
 }
 
 func (cluster *Cluster) OnPremiseStopHaproxyService(server DatabaseProxy) error {
-	server.SetWaitStartCookie()
+	server.SetWaitStopCookie()
 	client, err := cluster.OnPremiseConnectProxy(server)
 	if err != nil {
 		return err

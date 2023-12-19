@@ -48,7 +48,7 @@ func (cluster *Cluster) OnPremiseConnectProxy(server DatabaseProxy) (*sshclient.
 	if cluster.IsInFailover() {
 		return nil, errors.New("OnPremise Provisioning cancel during connect")
 	}
-	if cluster.Conf.OnPremiseSSH {
+	if !cluster.Conf.OnPremiseSSH {
 		return nil, errors.New("onpremise-ssh disable ")
 	}
 

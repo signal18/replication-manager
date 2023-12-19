@@ -182,6 +182,7 @@ type ServerMonitor struct {
 	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
 	WorkLoad                    map[string]WorkLoad          `json:"workLoad"`
 	DelayStat                   *ServerDelayStat             `json:"delayStat"`
+	HaproxySrvName              string                       `json:"proxySrvName"`
 	ProxyMapState               map[string]int               `json:"-"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
@@ -1688,15 +1689,15 @@ func (srv *ServerMonitor) SetProxyState(code string) {
 }
 
 func (srv *ServerMonitor) ProxyStateIncr(code string) {
-	if srv.HasProxyState(code) {
+	if srv.ProxyMapState != nil && srv.HasProxyState(code) {
 		srv.ProxyMapState[code] = srv.ProxyMapState[code] + 1
+	} else {
+		srv.SetProxyState(code)
 	}
 }
 
 func (srv *ServerMonitor) UnsetProxyState(code string) {
-	if srv.HasProxyState(code) {
-		delete(srv.ProxyMapState, code)
-	}
+	delete(srv.ProxyMapState, code)
 }
 
 func (srv *ServerMonitor) HasProxyState(code string) bool {

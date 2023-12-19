@@ -176,7 +176,7 @@ func (proxy *ProxySQLProxy) Init() {
 					cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
 				}
 			}
-			if cluster.Conf.LogLevel > 2 || cluster.Conf.ProxysqlDebug {
+			if cluster.Conf.HasLogLevelPos(10, 12, 15) || cluster.Conf.Verbose {
 				cluster.LogPrintf(LvlWarn, "ProxySQL init backend  %s with state %s ", s.URL, s.State)
 			}
 
