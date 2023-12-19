@@ -668,7 +668,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 			cluster.LogPrintf(LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
-		user, pass, _ := cluster.GetVaultReplicationCredentials(client)
+		user, pass, _ := cluster.GetVaultMonitorCredentials(client)
 		var newSecret config.Secret
 		newSecret.OldValue = cluster.Conf.Secrets["db-servers-credential"].Value
 		newSecret.Value = user + ":" + pass
