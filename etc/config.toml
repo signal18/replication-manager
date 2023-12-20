@@ -1,42 +1,24 @@
 [Default]
 
-include = "./etc/local/masterslave/proxysql"
-prov-orchestrator = "local"
-onpremise-ssh = true
-onpremise-ssh-credential = "emma:"
-scheduler-jobs-ssh = true
-monitoring-address = "127.0.0.1"
-
-monitoring-scheduler = true
-scheduler-db-servers-logs = false
-scheduler-db-servers-physical-backup = true
-scheduler-db-servers-physical-backup-cron = "0 * * * * *"
-backup-physical-type = "mariabackup"
-scheduler-db-servers-optimize = false
-scheduler-db-servers-logical-backup = false
-scheduler-db-servers-logs-table-rotate = false
-compress-backups = true
+include = "/etc/replication-manager/cluster.d"
+prov-orchestrator = "onpremise"
 
 
-#mariadb
-prov-db-binary-basedir= "/usr/sbin"
-prov-db-client-basedir= "/usr/bin"
-#backup-mysqlclient-path ="/usr/bin/mysql"
-#backup-mysqlbinlog-path = "/usr/bin/mysqlbinlog"
-#backup-mysqldump-options = "--hex-blob --single-transaction --verbose --all-databases --add-drop-database"
+# To preserve settings changed using clients between restart
+# Default  load config from /etc if any config found in a cluster directory it read only cluster variables not defined in etc
+# Use the merge command line option in sudo to overwrite system config of a cluster proposed by api users
 
-monitoring-save-config = true
-monitoring-key-path = ".replication-manager.key"
+# monitoring-save-config = true
 
-git-url = "https://github.com/emmaloubersac/Test.git"
-git-acces-token = "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"
+# To enable ssh to database and proxy hosts, use ssh-keygen ssh-copy-id for first deployment
+# onpremise-ssh = true
+# onpremise-ssh-credential = "root:"
+# scheduler-jobs-ssh = true
 
-monitoring-sharedir="./share"
-monitoring-datadir="/home/emma/repdata"
-http-root="./share/dashboard"
+#T he network address of this replocation-manager
+#monitoring-address = "127.0.0.1"
 
 ## Timeout in seconds between consecutive monitoring
-
 monitoring-ticker = 2
 
 #########
@@ -56,7 +38,6 @@ http-bind-address = "0.0.0.0"
 http-port = "10001"
 http-auth = false
 http-session-lifetime =   3600
-http-bootstrap-button = false
 http-refresh-interval = 4000
 
 #########
@@ -66,5 +47,3 @@ http-refresh-interval = 4000
 api-credentials = "admin:repman"
 api-credentials-acl-allow = "admin:cluster db prov"
 api-port = "10005"
-
-
