@@ -22,9 +22,9 @@ pipeline {
         failure {
             script {
                 slackSend(
-                    color: "#FF0000",
-                    message: "Build failed! Job: \`${JOB_NAME}\` Build: \`${BUILD_NUMBER}\`",
-                    tokenCredentialId: s18-most
+                    color: '#FF0000',
+                    message: "Build failed! Job: `${JOB_NAME}` Build: `${BUILD_NUMBER}`",
+                    tokenCredentialId: 's18-most'
                 )
             }
         }
