@@ -21,7 +21,11 @@ pipeline {
     post {
         failure {
             script {
-                slackSend color: "#FF0000", message: "Build failed! Job: \`${JOB_NAME}\` Build: \`${BUILD_NUMBER}\`"
+                slackSend(
+                    color: "#FF0000",
+                    message: "Build failed! Job: \`${JOB_NAME}\` Build: \`${BUILD_NUMBER}\`",
+                    tokenCredentialId: s18-most
+                )
             }
         }
     }
