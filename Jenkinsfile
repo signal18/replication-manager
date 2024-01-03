@@ -27,6 +27,16 @@ pipeline {
                 }
             }
         }
+        stage('Build DEV') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
+                        def newApp = docker.build('signal18/replication-manager:2.3-dev', '-f docker/Dockerfile.dev .')
+                        newApp.push()
+                    }
+                }
+            }
+        }
     }
     post {
         failure {
