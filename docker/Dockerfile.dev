@@ -1,5 +1,7 @@
 FROM golang:1.20-bullseye
 
+ARG PROXYSQL_VERSION
+
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
 
@@ -21,6 +23,6 @@ cp build/binaries/replication-manager-pro /usr/bin/replication-manager && \
 cp build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 
 RUN apt-get update && apt-get -y install mydumper ca-certificates restic mariadb-client mariadb-server mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl vim
-RUN curl -LO https://github.com/sysown/proxysql/releases/download/v2.5.5/proxysql_2.5.5-debian11_amd64.deb && dpkg -i proxysql_2.5.2-debian11_amd64.deb
+RUN curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian11_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian11_amd64.deb
 CMD ["while true ; do sleep 1; done"]
 EXPOSE 10001
