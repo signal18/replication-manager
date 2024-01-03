@@ -364,8 +364,11 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			} else if s.IsLeader() && (s.PrevState == stateUnconn || s.PrevState == stateFailed || (len(proxy.BackendsWrite) == 0 || !isFoundBackendWrite)) {
 				// if the master comes back from a previously failed or standalone state, reintroduce it in
 				// the appropriate HostGroup
-
-				cluster.StateMachine.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+				errstr := ""
+				if err != nil {
+					errstr = err.Error()
+				}
+				cluster.StateMachine.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], proxy.Name, s.URL, errstr), ErrFrom: "PRX", ServerUrl: proxy.Name})
 				if psql.ExistAsWriterOrOffline(misc.Unbracket(s.Host), s.Port) {
 					err = psql.SetOnline(misc.Unbracket(s.Host), s.Port)
 					if err != nil {

@@ -80,7 +80,7 @@ var clusterError = map[string]string{
 	"ERR00068": "Arbitration looser",
 	"ERR00069": "ProxySQL could not set %s as reader (%s) different state OFFLINE_HARD",
 	"ERR00070": "ProxySQL could not set %s as reader (%s) different state ONLINE",
-	"ERR00071": "ProxySQL could not set discoverd master %s as writer (%s)",
+	"ERR00071": "ProxySQL %s could not set discoverd master %s as writer (%s)",
 	"ERR00072": "ProxySQL could not set discoverd slave %s as reader (%s)",
 	"ERR00073": "Could not get events on server %s",
 	"ERR00074": "Prefered server %s not found in configured server list",
