@@ -237,8 +237,11 @@ func (proxy *ProxyJanitor) Refresh() error {
 				if s.GetPrevState() == stateUnconn || s.GetPrevState() == stateFailed || (len(proxy.BackendsWrite) == 0 || !isFoundBackendWrite) {
 					// if the proxy comes back from a previously failed or standalone state, reintroduce it in
 					// the appropriate HostGroup
-
-					cluster.StateMachine.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], err, s.GetURL()), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					errstr := ""
+					if err != nil {
+						errstr = err.Error()
+					}
+					cluster.StateMachine.AddState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], proxy.Name, s.GetURL(), errstr), ErrFrom: "PRX", ServerUrl: proxy.Name})
 					if psql.ExistAsWriterOrOffline(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort())) {
 						err = psql.SetOnline(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()))
 						if err != nil {
