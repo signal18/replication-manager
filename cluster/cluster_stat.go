@@ -65,8 +65,8 @@ func (sds *ServerDelayStat) UpdateDelayWithRotate(s int64, limit int) {
 	sds.Rotated = sds.DelayHistory[0].DelayStat
 
 	//Rotate Stat if exceed limit
-	if len(sds.DelayHistory) == limit {
-		sds.DelayHistory = sds.DelayHistory[1:]
+	if len(sds.DelayHistory) >= limit {
+		sds.DelayHistory = sds.DelayHistory[(len(sds.DelayHistory)-limit)+1:]
 	}
 
 	sds.ResetCurrentStat() //Reset Current Stat
@@ -117,8 +117,8 @@ func (sds *ServerDelayStat) UpdateSlaveErrorWithRotate(limit int) {
 	sds.Rotated = sds.DelayHistory[0].DelayStat
 
 	//Rotate Stat if reach limit
-	if len(sds.DelayHistory) == limit {
-		sds.DelayHistory = sds.DelayHistory[1:]
+	if len(sds.DelayHistory) >= limit {
+		sds.DelayHistory = sds.DelayHistory[(len(sds.DelayHistory)-limit)+1:]
 	}
 	sds.ResetCurrentStat() //Reset Current Stat
 
