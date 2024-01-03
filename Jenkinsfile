@@ -41,11 +41,9 @@ pipeline {
     post {
         failure {
             script {
-                slackSend(
+                mattermostSend(
                     color: '#FF0000',
-                    message: "Build failed! Job: `${JOB_NAME}` Build: `${BUILD_NUMBER}`",
-                    tokenCredentialId: 's18-most'
-                )
+                    message: "Build failed! Job: `${JOB_NAME}` Build: `${BUILD_NUMBER}` (<${env.BUILD_URL}|Open>)"                )
             }
         }
     }
