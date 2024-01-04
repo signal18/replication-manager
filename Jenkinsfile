@@ -7,6 +7,7 @@ pipeline {
             }
         }
         stage('Build OSC') {
+            when { buildingTag() }
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
@@ -18,6 +19,7 @@ pipeline {
             }
         }
         stage('Build PRO') {
+            when { buildingTag() }
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
@@ -28,6 +30,7 @@ pipeline {
             }
         }
         stage('Build DEV') {
+            when { buildingTag() }
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
