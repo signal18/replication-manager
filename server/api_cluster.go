@@ -1155,6 +1155,20 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchForceBinlogSlowqueries()
 	}
 
+	if strings.HasPrefix(setting, "log-toggle") {
+		params := strings.Split(setting, "--")
+		if len(params) > 1 {
+			mod, err := strconv.Atoi(params[len(params)-1])
+			if err == nil {
+				mycluster.SwitchLogModule(mod)
+			} else {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "Toggle Log Module: Error while parsing module", err)
+			}
+		} else {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "Toggle Log Module: Log module parameter not found!")
+		}
+	}
+
 }
 
 func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {

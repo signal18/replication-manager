@@ -9,6 +9,8 @@ package cluster
 import (
 	"os"
 	"strings"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 func (cluster *Cluster) SwitchForceSlaveNoGtid() {
@@ -434,4 +436,107 @@ func (cluster *Cluster) SwitchPrintDelayStatHistory() {
 
 func (cluster *Cluster) SwitchFailoverCheckDelayStat() {
 	cluster.Conf.FailoverCheckDelayStat = !cluster.Conf.FailoverCheckDelayStat
+}
+
+func (cluster *Cluster) SwitchLogModule(module int) {
+	switch module {
+	case config.ConstLogModFailedElection:
+		if cluster.Conf.LogFailedElection {
+			cluster.Conf.LogFailedElectionLevel = 0
+		} else {
+			cluster.Conf.LogFailedElectionLevel = 1
+		}
+		cluster.Conf.LogFailedElection = !cluster.Conf.LogFailedElection
+	case config.ConstLogModSST:
+		if cluster.Conf.LogSST {
+			cluster.Conf.LogSSTLevel = 0
+		} else {
+			cluster.Conf.LogSSTLevel = 1
+		}
+		cluster.Conf.LogSST = !cluster.Conf.LogSST
+	case config.ConstLogModHeartBeat:
+		if cluster.Conf.LogHeartbeat {
+			cluster.Conf.LogHeartbeatLevel = 0
+		} else {
+			cluster.Conf.LogHeartbeatLevel = 1
+		}
+		cluster.Conf.LogHeartbeat = !cluster.Conf.LogHeartbeat
+	case config.ConstLogModConfigLoad:
+		if cluster.Conf.LogConfigLoad {
+			cluster.Conf.LogConfigLoadLevel = 0
+		} else {
+			cluster.Conf.LogConfigLoadLevel = 1
+		}
+		cluster.Conf.LogConfigLoad = !cluster.Conf.LogConfigLoad
+	case config.ConstLogModGit:
+		if cluster.Conf.LogGit {
+			cluster.Conf.LogGitLevel = 0
+		} else {
+			cluster.Conf.LogGitLevel = 1
+		}
+		cluster.Conf.LogGit = !cluster.Conf.LogGit
+	case config.ConstLogModBackupStream:
+		if cluster.Conf.LogBackupStream {
+			cluster.Conf.LogBackupStreamLevel = 0
+		} else {
+			cluster.Conf.LogBackupStreamLevel = 1
+		}
+		cluster.Conf.LogBackupStream = !cluster.Conf.LogBackupStream
+	case config.ConstLogModOrchestrator:
+		if cluster.Conf.LogOrchestrator {
+			cluster.Conf.LogOrchestratorLevel = 0
+		} else {
+			cluster.Conf.LogOrchestratorLevel = 1
+		}
+		cluster.Conf.LogOrchestrator = !cluster.Conf.LogOrchestrator
+	case config.ConstLogModVault:
+		if cluster.Conf.LogVault {
+			cluster.Conf.LogVaultLevel = 0
+		} else {
+			cluster.Conf.LogVaultLevel = 1
+		}
+		cluster.Conf.LogVault = !cluster.Conf.LogVault
+	case config.ConstLogModTopology:
+		if cluster.Conf.LogTopology {
+			cluster.Conf.LogTopologyLevel = 0
+		} else {
+			cluster.Conf.LogTopologyLevel = 1
+		}
+		cluster.Conf.LogTopology = !cluster.Conf.LogTopology
+	case config.ConstLogModProxy:
+		if cluster.Conf.LogProxy {
+			cluster.Conf.LogProxyLevel = 0
+		} else {
+			cluster.Conf.LogProxyLevel = 1
+		}
+		cluster.Conf.LogProxy = !cluster.Conf.LogProxy
+	case config.ConstLogModProxySQL:
+		if cluster.Conf.ProxysqlDebug {
+			cluster.Conf.ProxysqlLogLevel = 0
+		} else {
+			cluster.Conf.ProxysqlLogLevel = 1
+		}
+		cluster.Conf.ProxysqlDebug = !cluster.Conf.ProxysqlDebug
+	case config.ConstLogModHAProxy:
+		if cluster.Conf.HaproxyDebug {
+			cluster.Conf.HaproxyLogLevel = 0
+		} else {
+			cluster.Conf.HaproxyLogLevel = 1
+		}
+		cluster.Conf.HaproxyDebug = !cluster.Conf.HaproxyDebug
+	case config.ConstLogModProxyJanitor:
+		if cluster.Conf.ProxyJanitorDebug {
+			cluster.Conf.ProxyJanitorLogLevel = 0
+		} else {
+			cluster.Conf.ProxyJanitorLogLevel = 1
+		}
+		cluster.Conf.ProxyJanitorDebug = !cluster.Conf.ProxyJanitorDebug
+	case config.ConstLogModMaxscale:
+		if cluster.Conf.MxsDebug {
+			cluster.Conf.MxsLogLevel = 0
+		} else {
+			cluster.Conf.MxsLogLevel = 1
+		}
+		cluster.Conf.MxsDebug = !cluster.Conf.MxsDebug
+	}
 }
