@@ -53,6 +53,8 @@ func (proxy *MyProxyProxy) Refresh() error {
 
 func (proxy *MyProxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.MyproxyOn, "myproxy", false, "Use Internal Proxy")
+	flags.BoolVar(&conf.MyproxyDebug, "myproxy-debug", false, "Use Internal Proxy")
+	flags.IntVar(&conf.MyproxyLogLevel, "myproxy-log-level", 1, "Use Internal Proxy")
 	flags.IntVar(&conf.MyproxyPort, "myproxy-port", 4000, "Internal proxy read/write port")
 	flags.StringVar(&conf.MyproxyUser, "myproxy-user", "admin", "Myproxy user")
 	flags.StringVar(&conf.MyproxyPassword, "myproxy-password", "repman", "Myproxy password")
@@ -65,7 +67,7 @@ func (proxy *MyProxyProxy) Init() {
 	cluster := proxy.ClusterGroup
 	db, err := sql.Open("mysql", cluster.master.DSN)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Could not connect to Master for MyProxy %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlErr, "Could not connect to Master for MyProxy %s", err)
 		return
 	}
 	proxy.InternalProxy, _ = myproxy.NewProxyServer("0.0.0.0:"+proxy.GetPort(), proxy.GetUser(), proxy.GetPass(), db)

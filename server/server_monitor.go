@@ -93,10 +93,14 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.MonitorTenant, "monitoring-tenant", "default", "Can be use to store multi tenant identifier")
 	monitorCmd.Flags().Int64Var(&conf.MonitorWaitRetry, "monitoring-wait-retry", 60, "Retry this number of time before giving up state transition <999999")
 	monitorCmd.Flags().BoolVar(&conf.LogSST, "log-sst", false, "Log open and close SST transfert")
+	monitorCmd.Flags().IntVar(&conf.LogSSTLevel, "log-sst-level", 1, "Log SST Level")
 	monitorCmd.Flags().IntVar(&conf.SSTSendBuffer, "sst-send-buffer", 16384, "SST send buffer size")
 	monitorCmd.Flags().BoolVar(&conf.LogConfigLoad, "log-config-load", false, "Log config decryption")
+	monitorCmd.Flags().IntVar(&conf.LogConfigLoadLevel, "log-config-load-level", 1, "Log Config Load Level")
 	monitorCmd.Flags().BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
+	monitorCmd.Flags().IntVar(&conf.LogHeartbeatLevel, "log-heartbeat-level", 1, "Log Hearbeat Level")
 	monitorCmd.Flags().BoolVar(&conf.LogFailedElection, "log-failed-election", false, "Log failed election")
+	monitorCmd.Flags().IntVar(&conf.LogFailedElectionLevel, "log-failed-election-level", 1, "Log failed election Level")
 	monitorCmd.Flags().BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
 	monitorCmd.Flags().BoolVar(&conf.MonitorCapture, "monitoring-capture", true, "Enable capture on error for 5 monitor loops")
 	monitorCmd.Flags().StringVar(&conf.MonitorCaptureTrigger, "monitoring-capture-trigger", "ERR00076,ERR00041", "List of errno triggering capture mode")
@@ -231,12 +235,15 @@ func init() {
 	monitorCmd.Flags().StringVar(&conf.VaultMount, "vault-mount", "kv", "Vault mount for the secret")
 	monitorCmd.Flags().StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius")
 	monitorCmd.Flags().StringVar(&conf.VaultToken, "vault-token", "", "Vault Token")
+	monitorCmd.Flags().BoolVar(&conf.LogVault, "log-vault", false, "Log vault debug")
+	monitorCmd.Flags().IntVar(&conf.LogVaultLevel, "log-vault-level", 1, "Log level for vault")
 
 	monitorCmd.Flags().StringVar(&conf.GitUrl, "git-url", "", "GitHub URL repository to store config file")
 	monitorCmd.Flags().StringVar(&conf.GitUsername, "git-username", "", "GitHub username")
 	monitorCmd.Flags().StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
 	monitorCmd.Flags().IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 60, "Git monitoring interval in seconds")
 	monitorCmd.Flags().BoolVar(&conf.LogGit, "log-git", false, "To log clone/push/pull from git")
+	monitorCmd.Flags().IntVar(&conf.LogGitLevel, "log-git-level", 1, "Log GIT Level")
 
 	//monitorCmd.Flags().BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	conf.Daemon = true
@@ -307,6 +314,8 @@ func init() {
 	// start
 	if WithMySQLRouter == "ON" {
 		monitorCmd.Flags().BoolVar(&conf.MysqlRouterOn, "mysqlrouter", false, "MySQLRouter proxy server is query for backend status")
+		monitorCmd.Flags().BoolVar(&conf.MysqlRouterDebug, "mysqlrouter-debug", false, "MySQLRouter log debug")
+		monitorCmd.Flags().IntVar(&conf.MysqlRouterLogLevel, "mysqlrouter-log-level", 1, "MySQLRouter log debug level")
 		monitorCmd.Flags().StringVar(&conf.MysqlRouterHosts, "mysqlrouter-servers", "127.0.0.1", "MaxScale hosts ")
 		monitorCmd.Flags().StringVar(&conf.MysqlRouterPort, "mysqlrouter-port", "6603", "MySQLRouter admin port")
 		monitorCmd.Flags().StringVar(&conf.MysqlRouterUser, "mysqlrouter-user", "admin", "MySQLRouter admin user")
