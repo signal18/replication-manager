@@ -1490,3 +1490,46 @@ func (cluster *Cluster) SetPrintDelayStatInterval(keep string) error {
 	cluster.Conf.PrintDelayStatInterval = numkeep
 	return nil
 }
+
+func (cluster *Cluster) SetLogFailedElectionLevel(value int) {
+	cluster.Conf.LogFailedElectionLevel = value
+}
+func (cluster *Cluster) SetLogSSTLevel(value int) {
+	cluster.Conf.LogSSTLevel = value
+}
+func (cluster *Cluster) SetLogHeartbeatLevel(value int) {
+	cluster.Conf.LogHeartbeatLevel = value
+}
+func (cluster *Cluster) SetLogConfigLoadLevel(value int) {
+	cluster.Conf.LogConfigLoadLevel = value
+}
+func (cluster *Cluster) SetLogGitLevel(value int) {
+	cluster.Conf.LogGitLevel = value
+}
+func (cluster *Cluster) SetLogBackupStreamLevel(value int) {
+	cluster.Conf.LogBackupStreamLevel = value
+}
+func (cluster *Cluster) SetLogOrchestratorLevel(value int) {
+	cluster.Conf.LogOrchestratorLevel = value
+}
+func (cluster *Cluster) SetLogVaultLevel(value int) {
+	cluster.Conf.LogVaultLevel = value
+}
+func (cluster *Cluster) SetLogTopologyLevel(value int) {
+	cluster.Conf.LogTopologyLevel = value
+}
+func (cluster *Cluster) SetLogProxyLevel(value int) {
+	cluster.Conf.LogProxyLevel = value
+}
+func (cluster *Cluster) SetProxysqlLogLevel(value int) {
+	cluster.Conf.ProxysqlLogLevel = value
+}
+func (cluster *Cluster) SetHaproxyLogLevel(value int) {
+	cluster.Conf.HaproxyLogLevel = value
+}
+func (cluster *Cluster) SetProxyJanitorLogLevel(value int) {
+	cluster.Conf.ProxyJanitorLogLevel = value
+}
+func (cluster *Cluster) SetMxsLogLevel(value int) {
+	cluster.Conf.MxsLogLevel = value
+}

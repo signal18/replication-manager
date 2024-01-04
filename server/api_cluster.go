@@ -1153,22 +1153,35 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchForceBinlogAnnotate()
 	case "force-binlog-slow-queries":
 		mycluster.SwitchForceBinlogSlowqueries()
+	case "log-failedElection":
+		mycluster.SwitchLogFailedElection()
+	case "log-sst":
+		mycluster.SwitchLogSST()
+	case "log-heartbeat":
+		mycluster.SwitchLogHeartbeat()
+	case "log-config-load":
+		mycluster.SwitchLogConfigLoad()
+	case "log-git":
+		mycluster.SwitchLogGit()
+	case "log-backup-stream":
+		mycluster.SwitchLogBackupStream()
+	case "log-orchestrator":
+		mycluster.SwitchLogOrchestrator()
+	case "log-vault":
+		mycluster.SwitchLogVault()
+	case "log-topology":
+		mycluster.SwitchLogTopology()
+	case "log-proxy":
+		mycluster.SwitchLogProxy()
+	case "proxysql-debug":
+		mycluster.SwitchProxysqlDebug()
+	case "haproxy-debug":
+		mycluster.SwitchHaproxyDebug()
+	case "proxyjanitor-debug":
+		mycluster.SwitchProxyJanitorDebug()
+	case "maxscale-debug":
+		mycluster.SwitchMxsDebug()
 	}
-
-	if strings.HasPrefix(setting, "log-toggle") {
-		params := strings.Split(setting, "--")
-		if len(params) > 1 {
-			mod, err := strconv.Atoi(params[len(params)-1])
-			if err == nil {
-				mycluster.SwitchLogModule(mod)
-			} else {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "Toggle Log Module: Error while parsing module", err)
-			}
-		} else {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "Toggle Log Module: Log module parameter not found!")
-		}
-	}
-
 }
 
 func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {
@@ -1332,6 +1345,49 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetDelayStatRotate(value)
 	case "print-delay-stat-interval":
 		mycluster.SetPrintDelayStatInterval(value)
+	case "log-failed-election-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogFailedElectionLevel(val)
+
+	case "log-sst-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogSSTLevel(val)
+	case "log-heartbeat-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogHeartbeatLevel(val)
+	case "log-config-load-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogConfigLoadLevel(val)
+	case "log-git-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogGitLevel(val)
+	case "log-backup-stream-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogBackupStreamLevel(val)
+	case "log-orchestrator-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogOrchestratorLevel(val)
+	case "log-vault-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogVaultLevel(val)
+	case "log-topology-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogTopologyLevel(val)
+	case "log-proxy-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogProxyLevel(val)
+	case "proxysql-log-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetProxysqlLogLevel(val)
+	case "haproxy-log-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetHaproxyLogLevel(val)
+	case "proxyjanitor-log-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetProxyJanitorLogLevel(val)
+	case "maxscale-log-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetMxsLogLevel(val)
 	}
 }
 
