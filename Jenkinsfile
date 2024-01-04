@@ -11,9 +11,9 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
-                        def newApp = docker.build('signal18/replication-manager:2.3', '-f docker/Dockerfile .')
-                        newApp.push()
-                        newApp.push 'latest'
+                        def Image = docker.build('signal18/replication-manager:2.3', '-f docker/Dockerfile .')
+                        Image.push()
+                        Image.push('latest')
                     }
                 }
             }
@@ -23,19 +23,19 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
-                        def newApp = docker.build('signal18/replication-manager:2.3-pro', '-f docker/Dockerfile.pro .')
-                        newApp.push()
+                        def Image = docker.build('signal18/replication-manager:2.3-pro', '-f docker/Dockerfile.pro .')
+                        Image.push()
                     }
                 }
             }
         }
         stage('Build DEV') {
-            when { buildingTag() }
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
-                        def newApp = docker.build('signal18/replication-manager:2.3-dev', '-f docker/Dockerfile.dev .')
-                        newApp.push()
+                        def Image = docker.build('signal18/replication-manager:2.3-dev', '-f docker/Dockerfile.dev .')
+                        Image.push()
+                        Image.push('dev')
                     }
                 }
             }
