@@ -174,9 +174,12 @@ func (cluster *Cluster) SwitchVerbosity() {
 
 	if cluster.GetLogLevel() > 0 {
 		cluster.SetLogLevel(0)
+
 	} else {
 		cluster.SetLogLevel(4)
 	}
+
+	cluster.Conf.Verbose = !cluster.Conf.Verbose
 }
 
 func (cluster *Cluster) SwitchRejoin() {

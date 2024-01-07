@@ -1153,7 +1153,7 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchForceBinlogAnnotate()
 	case "force-binlog-slow-queries":
 		mycluster.SwitchForceBinlogSlowqueries()
-	case "log-failedElection":
+	case "log-failed-election":
 		mycluster.SwitchLogFailedElection()
 	case "log-sst":
 		mycluster.SwitchLogSST()
@@ -1345,10 +1345,12 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetDelayStatRotate(value)
 	case "print-delay-stat-interval":
 		mycluster.SetPrintDelayStatInterval(value)
+	case "log-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogLevel(val)
 	case "log-failed-election-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogFailedElectionLevel(val)
-
 	case "log-sst-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogSSTLevel(val)

@@ -1493,43 +1493,113 @@ func (cluster *Cluster) SetPrintDelayStatInterval(keep string) error {
 
 func (cluster *Cluster) SetLogFailedElectionLevel(value int) {
 	cluster.Conf.LogFailedElectionLevel = value
+	if value > 0 {
+		cluster.Conf.LogFailedElection = true
+	} else {
+		cluster.Conf.LogFailedElection = false
+	}
 }
 func (cluster *Cluster) SetLogSSTLevel(value int) {
 	cluster.Conf.LogSSTLevel = value
+	if value > 0 {
+		cluster.Conf.LogSST = true
+	} else {
+		cluster.Conf.LogSST = false
+	}
 }
 func (cluster *Cluster) SetLogHeartbeatLevel(value int) {
 	cluster.Conf.LogHeartbeatLevel = value
+	if value > 0 {
+		cluster.Conf.LogHeartbeat = true
+	} else {
+		cluster.Conf.LogHeartbeat = false
+	}
 }
 func (cluster *Cluster) SetLogConfigLoadLevel(value int) {
 	cluster.Conf.LogConfigLoadLevel = value
+	if value > 0 {
+		cluster.Conf.LogConfigLoad = true
+	} else {
+		cluster.Conf.LogConfigLoad = false
+	}
 }
 func (cluster *Cluster) SetLogGitLevel(value int) {
 	cluster.Conf.LogGitLevel = value
+	if value > 0 {
+		cluster.Conf.LogGit = true
+	} else {
+		cluster.Conf.LogGit = false
+	}
 }
 func (cluster *Cluster) SetLogBackupStreamLevel(value int) {
 	cluster.Conf.LogBackupStreamLevel = value
+	if value > 0 {
+		cluster.Conf.LogBackupStream = true
+	} else {
+		cluster.Conf.LogBackupStream = false
+	}
 }
 func (cluster *Cluster) SetLogOrchestratorLevel(value int) {
 	cluster.Conf.LogOrchestratorLevel = value
+	if value > 0 {
+		cluster.Conf.LogOrchestrator = true
+	} else {
+		cluster.Conf.LogOrchestrator = false
+	}
 }
 func (cluster *Cluster) SetLogVaultLevel(value int) {
 	cluster.Conf.LogVaultLevel = value
+	if value > 0 {
+		cluster.Conf.LogVault = true
+	} else {
+		cluster.Conf.LogVault = false
+	}
 }
 func (cluster *Cluster) SetLogTopologyLevel(value int) {
 	cluster.Conf.LogTopologyLevel = value
+	if value > 0 {
+		cluster.Conf.LogTopology = true
+	} else {
+		cluster.Conf.LogTopology = false
+	}
 }
 func (cluster *Cluster) SetLogProxyLevel(value int) {
 	cluster.Conf.LogProxyLevel = value
+	if value > 0 {
+		cluster.Conf.LogProxy = true
+	} else {
+		cluster.Conf.LogProxy = false
+	}
 }
 func (cluster *Cluster) SetProxysqlLogLevel(value int) {
 	cluster.Conf.ProxysqlLogLevel = value
+	if value > 0 {
+		cluster.Conf.ProxysqlDebug = true
+	} else {
+		cluster.Conf.ProxysqlDebug = false
+	}
 }
 func (cluster *Cluster) SetHaproxyLogLevel(value int) {
 	cluster.Conf.HaproxyLogLevel = value
+	if value > 0 {
+		cluster.Conf.HaproxyDebug = true
+	} else {
+		cluster.Conf.HaproxyDebug = false
+	}
 }
 func (cluster *Cluster) SetProxyJanitorLogLevel(value int) {
 	cluster.Conf.ProxyJanitorLogLevel = value
+	if value > 0 {
+		cluster.Conf.ProxyJanitorDebug = true
+	} else {
+		cluster.Conf.ProxyJanitorDebug = false
+	}
 }
 func (cluster *Cluster) SetMxsLogLevel(value int) {
 	cluster.Conf.MxsLogLevel = value
+	if value > 0 {
+		cluster.Conf.MxsDebug = true
+	} else {
+		cluster.Conf.MxsDebug = false
+	}
 }
