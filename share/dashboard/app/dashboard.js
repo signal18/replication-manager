@@ -1622,7 +1622,7 @@ function (
       };
 
       $scope.setsettings = function (setting, value) {
-        httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
+        if (confirm("Confirm change "+ setting.toString() +"to "+value.toString()))  httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
       };
 
 
