@@ -47,7 +47,7 @@
     <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
                 ng-model="selectedCluster.config.logLevel"
-                ng-change="setsettings('log-level',selectedCluster.config.logLevel)" step="1" min="0" max="4" round="0"
+                ng-change="setsettings('log-level',selectedCluster.config.logLevel)" step="1" min="1" max="4" round="0"
                 aria-label="log level"></md-slider></td>
     </tr>
     <tr>
@@ -79,10 +79,10 @@
         <td>Log Failed Election Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.logFailedElection" md-discrete flex
                 ng-model="selectedCluster.config.logFailedElectionLevel"
                 ng-change="setsettings('log-failed-election-level',selectedCluster.config.logFailedElectionLevel)"
-                step="1" min="0" max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
+                step="1" min="1" max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
     </tr>
     <tr>
         <td>
@@ -110,9 +110,9 @@
         <td>Log SST Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.logSst" md-discrete flex
                 ng-model="selectedCluster.config.logSstLevel"
-                ng-change="setsettings('log-sst-level',selectedCluster.config.logSstLevel)" step="1" min="0" max="4"
+                ng-change="setsettings('log-sst-level',selectedCluster.config.logSstLevel)" step="1" min="1" max="4"
                 round="0" aria-label="Log Failed Election Level"></md-slider></td>
     </tr>
     <tr>
@@ -141,7 +141,7 @@
         <td>Log HeartBeat Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.logHeartbeat" md-discrete flex
                 ng-model="selectedCluster.config.logHeartbeatLevel"
                 ng-change="setsettings('log-heartbeat-level',selectedCluster.config.logHeartbeatLevel)" step="1" min="0"
                 max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
@@ -172,7 +172,7 @@
         <td>Log Config Load Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.logConfigLoad" md-discrete flex
                 ng-model="selectedCluster.config.logConfigLoadLevel"
                 ng-change="setsettings('log-git-level',selectedCluster.config.logConfigLoadLevel)" step="1" min="0"
                 max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
@@ -203,9 +203,9 @@
         <td>Log GIT Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.logGit" md-discrete flex
                 ng-model="selectedCluster.config.logGitLevel"
-                ng-change="setsettings('log-git-level',selectedCluster.config.logGitLevel)" step="1" min="0" max="4"
+                ng-change="setsettings('log-git-level',selectedCluster.config.logGitLevel)" step="1" min="1" max="4"
                 round="0" aria-label="Log Failed Election Level"></md-slider></td>
     </tr>
     <tr>
@@ -234,15 +234,14 @@
         <td>Log Backup Stream Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.logBackupStream" md-discrete flex
                 ng-model="selectedCluster.config.logBackupStreamLevel"
                 ng-change="setsettings('log-backup-stream-level',selectedCluster.config.logBackupStreamLevel)" step="1"
-                min="0" max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
+                min="1" max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
     </tr>
     <tr>
         <td>
-            <span ng-if="selectedCluster.config.logBackupStreamLevel == 0" class="label label-default"> NO LOGGING
-            </span>
+            <span ng-if="selectedCluster.config.logBackupStreamLevel == 0" class="label label-default"> NO LOGGING </span>
             <span ng-if="selectedCluster.config.logBackupStreamLevel >= 1" class="label label-danger"> ERROR </span> &nbsp; &nbsp;
             <span ng-if="selectedCluster.config.logBackupStreamLevel >= 2" class="label label-warning"> WARNING </span> &nbsp; &nbsp;
             <span ng-if="selectedCluster.config.logBackupStreamLevel >= 3" class="label label-info"> INFO </span> &nbsp; &nbsp;
@@ -266,15 +265,14 @@
         <td>Log Orchestrator Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.logOrchestrator" md-discrete flex
                 ng-model="selectedCluster.config.logOrchestratorLevel"
                 ng-change="setsettings('log-orchestrator-level',selectedCluster.config.logOrchestratorLevel)" step="1"
-                min="0" max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
+                min="1" max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
     </tr>
     <tr>
         <td>
-            <span ng-if="selectedCluster.config.logOrchestratorLevel == 0" class="label label-default"> NO LOGGING
-            </span>
+            <span ng-if="selectedCluster.config.logOrchestratorLevel == 0" class="label label-default"> NO LOGGING </span>
             <span ng-if="selectedCluster.config.logOrchestratorLevel >= 1" class="label label-danger"> ERROR </span> &nbsp; &nbsp;
             <span ng-if="selectedCluster.config.logOrchestratorLevel >= 2" class="label label-warning"> WARNING </span> &nbsp; &nbsp;
             <span ng-if="selectedCluster.config.logOrchestratorLevel >= 3" class="label label-info"> INFO </span> &nbsp; &nbsp;
@@ -298,9 +296,9 @@
         <td>Log Vault Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.logVault" md-discrete flex
                 ng-model="selectedCluster.config.logVaultLevel"
-                ng-change="setsettings('log-vault-level',selectedCluster.config.logVaultLevel)" step="1" min="0" max="4"
+                ng-change="setsettings('log-vault-level',selectedCluster.config.logVaultLevel)" step="1" min="1" max="4"
                 round="0" aria-label="Log Failed Election Level"></md-slider></td>
     </tr>
     <tr>
@@ -329,7 +327,7 @@
         <td>Log Topology Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.logTopology" md-discrete flex
                 ng-model="selectedCluster.config.logTopologyLevel"
                 ng-change="setsettings('log-topology-level',selectedCluster.config.logTopologyLevel)" step="1" min="0"
                 max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
@@ -360,9 +358,9 @@
         <td>Log Proxy Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.logProxy" md-discrete flex
                 ng-model="selectedCluster.config.logProxyLevel"
-                ng-change="setsettings('log-proxy-level',selectedCluster.config.logProxyLevel)" step="1" min="0" max="4"
+                ng-change="setsettings('log-proxy-level',selectedCluster.config.logProxyLevel)" step="1" min="1" max="4"
                 round="0" aria-label="Log Failed Election Level"></md-slider></td>
     </tr>
     <tr>
@@ -391,7 +389,7 @@
         <td>Log HAProxy Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.haproxyDebug" md-discrete flex
                 ng-model="selectedCluster.config.haproxyLogLevel"
                 ng-change="setsettings('haproxy-log-level',selectedCluster.config.haproxyLogLevel)" step="1" min="0"
                 max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
@@ -422,7 +420,7 @@
         <td>Log ProxySQL Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.proxysqlDebug" md-discrete flex
                 ng-model="selectedCluster.config.proxysqlLogLevel"
                 ng-change="setsettings('proxysql-log-level',selectedCluster.config.proxysqlLogLevel)" step="1" min="0"
                 max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
@@ -453,10 +451,10 @@
         <td>Log Proxy Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.proxyjanitorDebug" md-discrete flex
                 ng-model="selectedCluster.config.proxyjanitorLogLevel"
                 ng-change="setsettings('proxyjanitor-log-level',selectedCluster.config.proxyjanitorLogLevel)" step="1"
-                min="0" max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
+                min="1" max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
     </tr>
     <tr>
         <td>
@@ -485,7 +483,7 @@
         <td>Log Maxscale Level</td>
     </tr>
     <tr>
-        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || !selectedCluster.config.maxscaleDebug" md-discrete flex
                 ng-model="selectedCluster.config.maxscaleLogLevel"
                 ng-change="setsettings('maxscale-log-level',selectedCluster.config.maxscaleLogLevel)" step="1" min="0"
                 max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
