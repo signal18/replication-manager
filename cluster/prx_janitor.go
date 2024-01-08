@@ -142,9 +142,9 @@ func (proxy *ProxyJanitor) Init() {
 				psql.Weight = s.GetJanitorWeight()
 				err = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
 
-				if cluster.Conf.LogLevel > 2 || cluster.Conf.ProxysqlDebug {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlWarn, "ProxyJanitor init backend  %s with state %s ", s.GetURL(), s.GetState())
-				}
+				// if cluster.Conf.LogLevel > 2 || cluster.Conf.ProxysqlDebug {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlWarn, "ProxyJanitor init backend  %s with state %s ", s.GetURL(), s.GetState())
+				// }
 			}
 		}
 	}
@@ -188,9 +188,9 @@ func (proxy *ProxyJanitor) Refresh() error {
 		return errors.New("No proxy janitor hosts defined")
 	}
 
-	if cluster.Conf.LogLevel > 9 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlDbg, "ProxyJanitor port : %s, user %s, pass %s\n", proxy.Port, proxy.User, proxy.Pass)
-	}
+	// if cluster.Conf.LogLevel > 9 {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlDbg, "ProxyJanitor port : %s, user %s, pass %s\n", proxy.Port, proxy.User, proxy.Pass)
+	// }
 
 	psql, err := proxy.Connect()
 	if err != nil {

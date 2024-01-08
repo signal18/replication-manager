@@ -47,7 +47,7 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 	}
 	conn, err := sqlx.Open("mysql", dsn)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Can't get a proxy %s connection: %s", dsn, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Can't get a proxy %s connection: %s", dsn, err)
 	}
 	return conn, err
 
@@ -77,10 +77,11 @@ func (proxy *Proxy) GetJanitorWeight() string {
 }
 
 func (proxy *Proxy) GetProxyConfig() string {
-	proxy.ClusterGroup.LogPrintf(LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
-	err := proxy.ClusterGroup.Configurator.GenerateProxyConfig(proxy.Datadir, proxy.ClusterGroup.Conf.WorkingDir+"/"+proxy.ClusterGroup.Name, proxy.GetEnv())
+	cluster := proxy.ClusterGroup
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
+	err := cluster.Configurator.GenerateProxyConfig(proxy.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, proxy.GetEnv())
 	if err != nil {
-		proxy.ClusterGroup.LogPrintf(LvlErr, " "+proxy.Datadir+"/config.tar.gz error: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlErr, " "+proxy.Datadir+"/config.tar.gz error: %s", err)
 	}
 	return ""
 }
