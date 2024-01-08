@@ -52,7 +52,7 @@ func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.HaproxyOn, "haproxy", false, "Wrapper to use HaProxy on same host")
 	flags.StringVar(&conf.HaproxyMode, "haproxy-mode", "runtimeapi", "HaProxy mode [standby|runtimeapi|dataplaneapi]")
 	flags.BoolVar(&conf.HaproxyDebug, "haproxy-debug", false, "Extra info on monitoring backend")
-	flags.IntVar(&conf.HaproxyLogLevel, "haproxy-log-level", 1, "Log level for debug")
+	flags.IntVar(&conf.HaproxyLogLevel, "haproxy-log-level", 0, "Log level for debug")
 	flags.StringVar(&conf.HaproxyUser, "haproxy-user", "admin", "Haproxy API user")
 	flags.StringVar(&conf.HaproxyPassword, "haproxy-password", "admin", "Haproxy API password")
 	flags.StringVar(&conf.HaproxyHosts, "haproxy-servers", "127.0.0.1", "HaProxy hosts")

@@ -49,7 +49,7 @@ func NewSphinxProxy(placement int, cluster *Cluster, proxyHost string) *SphinxPr
 func (proxy *SphinxProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.SphinxOn, "sphinx", false, "Turn on SphinxSearch detection")
 	flags.BoolVar(&conf.SphinxDebug, "sphinx-debug", false, "Turn on SphinxSearch detection Debug")
-	flags.IntVar(&conf.SphinxLogLevel, "sphinx-log-level", 1, "Set Log Level for SphinxSearch")
+	flags.IntVar(&conf.SphinxLogLevel, "sphinx-log-level", 0, "Set Log Level for SphinxSearch")
 	flags.StringVar(&conf.SphinxHosts, "sphinx-servers", "127.0.0.1", "SphinxSearch hosts")
 	flags.StringVar(&conf.SphinxJanitorWeights, "sphinx-janitor-weights", "100", "Weight of each Sphinx host inside janitor proxy")
 	flags.StringVar(&conf.SphinxPort, "sphinx-port", "9312", "SphinxSearch API port")

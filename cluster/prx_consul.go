@@ -26,7 +26,7 @@ type ConsulProxy struct {
 func (proxy *ConsulProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.RegistryConsul, "registry-consul", false, "Register write and read SRV DNS to consul")
 	flags.BoolVar(&conf.RegistryConsulDebug, "registry-consul-debug", false, "Register write and read SRV DNS to consul")
-	flags.IntVar(&conf.RegistryConsulLogLevel, "registry-consul-log-level", 1, "Register write and read SRV DNS to consul")
+	flags.IntVar(&conf.RegistryConsulLogLevel, "registry-consul-log-level", 0, "Register write and read SRV DNS to consul")
 	flags.StringVar(&conf.RegistryConsulCredential, "registry-consul-credential", ":", "Consul credential user:password")
 	flags.StringVar(&conf.RegistryConsulToken, "registry-consul-token", "", "Consul Token")
 	flags.StringVar(&conf.RegistryConsulHosts, "registry-servers", "127.0.0.1", "Comma-separated list of registry addresses")
