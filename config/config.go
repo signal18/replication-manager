@@ -1719,75 +1719,96 @@ const (
 
 func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 	var lvl int
+	lvl = 0
 	switch level {
 	case "ERROR", "ALERT":
 		lvl = 1
+		break
 	case "WARN", "START", "STATE":
 		lvl = 2
+		break
 	case "INFO", "TEST", "BENCH":
 		lvl = 3
+		break
 	case "DEBUG":
 		lvl = 4
+		break
 	}
 
-	switch module {
-	case ConstLogModGeneral:
-		return conf.LogLevel >= lvl
-	case ConstLogModFailedElection:
-		if conf.LogFailedElection {
-			return conf.LogFailedElectionLevel >= lvl
-		}
-	case ConstLogModSST:
-		if conf.LogSST {
-			return conf.LogSSTLevel >= lvl
-		}
-	case ConstLogModHeartBeat:
-		if conf.LogHeartbeat {
-			return conf.LogSSTLevel >= lvl
-		}
-	case ConstLogModConfigLoad:
-		if conf.LogConfigLoad {
-			return conf.LogConfigLoadLevel >= lvl
-		}
-	case ConstLogModGit:
-		if conf.LogGit {
-			return conf.LogGitLevel >= lvl
-		}
-	case ConstLogModBackupStream:
-		if conf.LogBackupStream {
-			return conf.LogBackupStreamLevel >= lvl
-		}
-	case ConstLogModOrchestrator:
-		if conf.LogOrchestrator {
-			return conf.LogOrchestratorLevel >= lvl
-		}
-	case ConstLogModVault:
-		if conf.LogVault {
-			return conf.LogVaultLevel >= lvl
-		}
-	case ConstLogModTopology:
-		if conf.LogTopology {
-			return conf.LogTopologyLevel >= lvl
-		}
-	case ConstLogModProxy:
-		if conf.LogProxy {
-			return conf.LogProxyLevel >= lvl
-		}
-	case ConstLogModProxySQL:
-		if conf.ProxysqlDebug {
-			return conf.ProxysqlLogLevel >= lvl
-		}
-	case ConstLogModHAProxy:
-		if conf.HaproxyDebug {
-			return conf.HaproxyLogLevel >= lvl
-		}
-	case ConstLogModProxyJanitor:
-		if conf.ProxyJanitorDebug {
-			return conf.ProxyJanitorLogLevel >= lvl
-		}
-	case ConstLogModMaxscale:
-		if conf.MxsDebug {
-			return conf.MxsLogLevel >= lvl
+	if lvl > 0 {
+		switch {
+		case module == ConstLogModGeneral:
+			return conf.LogLevel >= lvl
+		case module == ConstLogModFailedElection:
+			if conf.LogFailedElection {
+				return conf.LogFailedElectionLevel >= lvl
+			}
+			break
+		case module == ConstLogModSST:
+			if conf.LogSST {
+				return conf.LogSSTLevel >= lvl
+			}
+			break
+		case module == ConstLogModHeartBeat:
+			if conf.LogHeartbeat {
+				return conf.LogSSTLevel >= lvl
+			}
+			break
+		case module == ConstLogModConfigLoad:
+			if conf.LogConfigLoad {
+				return conf.LogConfigLoadLevel >= lvl
+			}
+			break
+		case module == ConstLogModGit:
+			if conf.LogGit {
+				return conf.LogGitLevel >= lvl
+			}
+			break
+		case module == ConstLogModBackupStream:
+			if conf.LogBackupStream {
+				return conf.LogBackupStreamLevel >= lvl
+			}
+			break
+		case module == ConstLogModOrchestrator:
+			if conf.LogOrchestrator {
+				return conf.LogOrchestratorLevel >= lvl
+			}
+			break
+		case module == ConstLogModVault:
+			if conf.LogVault {
+				return conf.LogVaultLevel >= lvl
+			}
+			break
+		case module == ConstLogModTopology:
+			if conf.LogTopology {
+				return conf.LogTopologyLevel >= lvl
+			}
+			break
+		case module == ConstLogModProxy:
+			if conf.LogProxy {
+				return conf.LogProxyLevel >= lvl
+			}
+			break
+		case module == ConstLogModProxySQL:
+			if conf.ProxysqlDebug {
+				return conf.ProxysqlLogLevel >= lvl
+			}
+			break
+		case module == ConstLogModHAProxy:
+			if conf.HaproxyDebug {
+				return conf.HaproxyLogLevel >= lvl
+			}
+			break
+		case module == ConstLogModProxyJanitor:
+			if conf.ProxyJanitorDebug {
+				return conf.ProxyJanitorLogLevel >= lvl
+			}
+			break
+		case module == ConstLogModMaxscale:
+			if conf.MxsDebug {
+				return conf.MxsLogLevel >= lvl
+			}
+			break
 		}
 	}
 
