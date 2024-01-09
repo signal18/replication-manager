@@ -302,6 +302,7 @@ func (cluster *Cluster) sendMsTeams(level string, format string, args ...interfa
 
 /*
 This function is for printing log based on module log level
+set forcingLog = true if you want to force print
 */
 func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level string, format string, args ...interface{}) int {
 	line := 0

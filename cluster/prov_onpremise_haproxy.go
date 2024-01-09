@@ -1,5 +1,7 @@
 package cluster
 
+import "github.com/signal18/replication-manager/config"
+
 func (cluster *Cluster) OnPremiseProvisionHaProxyService(prx *HaproxyProxy) error {
 	client, err := cluster.OnPremiseConnectProxy(prx)
 	if err != nil {
@@ -17,7 +19,7 @@ func (cluster *Cluster) OnPremiseProvisionHaProxyService(prx *HaproxyProxy) erro
 		cluster.errorChan <- err
 		return err
 	}
-	cluster.LogPrintf(LvlInfo, "OnPremise Provisioning  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise Provisioning  : %s", string(out))
 	cluster.errorChan <- nil
 	return nil
 }
@@ -39,7 +41,7 @@ func (cluster *Cluster) OnPremiseStopHaproxyService(server DatabaseProxy) error 
 	if err != nil {
 		return err
 	}
-	cluster.LogPrintf(LvlInfo, "OnPremise Stop Haproxy  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise Stop Haproxy  : %s", string(out))
 	return nil
 }
 
@@ -60,6 +62,6 @@ func (cluster *Cluster) OnPremiseStartHaProxyService(server DatabaseProxy) error
 	if err != nil {
 		return err
 	}
-	cluster.LogPrintf(LvlInfo, "OnPremise start HaProxy  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise start HaProxy  : %s", string(out))
 	return nil
 }

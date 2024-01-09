@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -43,11 +44,11 @@ func (cluster *Cluster) newServerList() error {
 
 	err = cluster.isValidConfig()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Failed to validate config: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "Failed to validate config: %s", err)
 	}
-	//cluster.LogPrintf(LvlErr, "hello %+v", cluster.Conf.Hosts)
+	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModTopology,LvlErr, "hello %+v", cluster.Conf.Hosts)
 	cluster.Lock()
-	//cluster.LogPrintf(LvlErr, "hello %+v", cluster.Conf.Hosts)
+	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModTopology,LvlErr, "hello %+v", cluster.Conf.Hosts)
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 	// split("")  return len = 1
 
@@ -56,12 +57,12 @@ func (cluster *Cluster) newServerList() error {
 		for k, url := range cluster.hostList {
 			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), false, cluster.GetDomain())
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could not open connection to server %s : %s", cluster.Servers[k].URL, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "Could not open connection to server %s : %s", cluster.Servers[k].URL, err)
 			}
 			cluster.Servers[k].SetPlacement(k, cluster.Conf.ProvAgents, cluster.Conf.SlapOSDBPartitions, cluster.Conf.SchedulerReceiverPorts)
 
 			if cluster.Conf.Verbose {
-				cluster.LogPrintf(LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "New database monitored: %v", cluster.Servers[k].URL)
 			}
 
 		}
@@ -77,15 +78,15 @@ func (cluster *Cluster) AddChildServers() error {
 
 	for _, c := range mychilds {
 		for _, sv := range c.Servers {
-			cluster.LogPrintf(LvlDbg, "AddChildServers checking %s of %s ", sv.URL, c.Name)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "AddChildServers checking %s of %s ", sv.URL, c.Name)
 			if sv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
-				cluster.LogPrintf(LvlDbg, "Inter cluster multi-source check %s IsSlaveOfReplicationSource  %s  ", sv.URL, cluster.Conf.MasterConn)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "Inter cluster multi-source check %s IsSlaveOfReplicationSource  %s  ", sv.URL, cluster.Conf.MasterConn)
 				if !cluster.HasServer(sv) {
-					cluster.LogPrintf(LvlInfo, "Inter cluster multi-source  %s add server not yet discovered  %s  ", sv.URL, cluster.Conf.MasterConn)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Inter cluster multi-source  %s add server not yet discovered  %s  ", sv.URL, cluster.Conf.MasterConn)
 
 					srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.GetDbUser(), sv.ClusterGroup.GetDbPass(), false, c.GetDomain())
 					if err != nil {
-						cluster.LogPrintf(LvlErr, "Inter cluster multi-source %s add server not yet discovered  %s error %s", sv.URL, cluster.Conf.MasterConn, err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "Inter cluster multi-source %s add server not yet discovered  %s error %s", sv.URL, cluster.Conf.MasterConn, err)
 
 						return err
 					}
@@ -97,7 +98,7 @@ func (cluster *Cluster) AddChildServers() error {
 					wg.Add(1)
 					err = cluster.TopologyDiscover(wg)
 					if err != nil {
-						cluster.LogPrintf(LvlWarn, "AddChildServers : Fail to discover a topology %s", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlWarn, "AddChildServers : Fail to discover a topology %s", err)
 					}
 					wg.Wait()
 					return nil
@@ -108,11 +109,11 @@ func (cluster *Cluster) AddChildServers() error {
 	}
 	for _, sv := range cluster.Servers {
 		if sv != nil {
-			cluster.LogPrintf(LvlDbg, "Inter cluster multi-source check drop unlinked server %s source cluster  %s vs this cluster %s  ", sv.URL, sv.GetSourceClusterName(), cluster.Name)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "Inter cluster multi-source check drop unlinked server %s source cluster  %s vs this cluster %s  ", sv.URL, sv.GetSourceClusterName(), cluster.Name)
 			if sv.GetSourceClusterName() != cluster.Name && sv.GetSourceClusterName() != "" {
 
 				if !sv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
-					cluster.LogPrintf(LvlInfo, "Inter cluster multi-source %s drop unlinked server %s  ", sv.URL, cluster.Conf.MasterConn)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Inter cluster multi-source %s drop unlinked server %s  ", sv.URL, cluster.Conf.MasterConn)
 					cluster.RemoveServerFromIndex(cluster.GetServerIndice(sv))
 				}
 			}
@@ -150,13 +151,13 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 	//	cluster.pingServerList()
 	if cluster.StateMachine.IsInFailover() {
-		cluster.LogPrintf(LvlDbg, "In Failover skip topology detection")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "In Failover skip topology detection")
 		return errors.New("In Failover skip topology detection")
 	}
 
 	if cluster.HasAllDbUp() {
 		if len(cluster.Crashes) > 0 && cluster.HasNoDbUnconnected() {
-			cluster.LogPrintf(LvlDbg, "Purging crashes, all databses nodes up")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "Purging crashes, all databses nodes up")
 			cluster.Crashes = nil
 			cluster.Save()
 		}
@@ -199,9 +200,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		}
 		// count wsrep node as  slaves
 		if sv.IsSlave || sv.IsWsrepPrimary || sv.IsGroupReplicationSlave {
-			if cluster.Conf.LogLevel > 2 {
-				cluster.LogPrintf(LvlDbg, "Server %s is configured as a slave", sv.URL)
-			}
+			// if cluster.Conf.LogLevel > 2 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "Server %s is configured as a slave", sv.URL)
+			// }
 			cluster.slaves = append(cluster.slaves, sv)
 		} else { // not slave
 			if sv.IsGroupReplicationMaster {
@@ -210,14 +211,14 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				cluster.master.SetMaster()
 				if cluster.master.IsReadOnly() {
 					cluster.master.SetReadWrite()
-					cluster.LogPrintf(LvlInfo, "Group replication server %s disable read only ", cluster.master.URL)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Group replication server %s disable read only ", cluster.master.URL)
 				}
 			} else if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
 				//sv.State = stateUnconn
 				//transition to standalone may happen despite server have never connect successfully when default to suspect
-				if cluster.Conf.LogLevel > 2 {
-					cluster.LogPrintf(LvlDbg, "Server %s has no slaves ", sv.URL)
-				}
+				// if cluster.Conf.LogLevel > 2 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "Server %s has no slaves ", sv.URL)
+				// }
 			} else {
 
 				if cluster.IsActive() && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
@@ -225,9 +226,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
 					//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping */
 				} else {
-					if cluster.Conf.LogLevel > 2 {
-						cluster.LogPrintf(LvlDbg, "Server %s was set master as last non slave", sv.URL)
-					}
+					// if cluster.Conf.LogLevel > 2 {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "Server %s was set master as last non slave", sv.URL)
+					// }
 					if len(cluster.Servers) == 1 {
 						cluster.Conf.ActivePassive = true
 					}
@@ -235,7 +236,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					cluster.master.SetMaster()
 					if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
 						cluster.master.SetReadWrite()
-						cluster.LogPrintf(LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
 					}
 				}
 			}
@@ -340,9 +341,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						cluster.master = cluster.Servers[k]
 						cluster.master.SetMaster()
 						cluster.master.SetReadWrite()
-						if cluster.Conf.LogLevel > 2 {
-							cluster.LogPrintf(LvlDbg, "Server %s was autodetected as a master", s.URL)
-						}
+						// if cluster.Conf.LogLevel > 2 {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "Server %s was autodetected as a master", s.URL)
+						// }
 						break
 					}
 				}
@@ -354,9 +355,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						} else {
 							cluster.vmaster = cluster.Servers[k]
 						}
-						if cluster.Conf.LogLevel > 2 {
-							cluster.LogPrintf(LvlDbg, "Server %s was autodetected as a master", s.URL)
-						}
+						// if cluster.Conf.LogLevel > 2 {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "Server %s was autodetected as a master", s.URL)
+						// }
 						break
 					}
 				}
@@ -386,9 +387,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			for _, sl := range cluster.slaves {
 
 				if sl.IsRelay == false {
-					if cluster.Conf.LogLevel > 2 {
-						cluster.LogPrintf(LvlDbg, "Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
-					}
+					// if cluster.Conf.LogLevel > 2 {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
+					// }
 					replMaster, _ := cluster.GetMasterFromReplication(sl)
 
 					if replMaster != nil && replMaster.Id != cluster.master.Id {
@@ -453,11 +454,11 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 			if cluster.IsDiscovered() {
 				if cluster.master != nil {
 					cluster.lastmaster = cluster.master
-					cluster.LogPrintf(LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
 
 					if cluster.Conf.FailRestartUnsafe == false {
 						// forget the master if safe mode
-						cluster.LogPrintf(LvlInfo, "Forget the leader as no more slave and failover unsafe is disable: %s ", cluster.master.URL)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Forget the leader as no more slave and failover unsafe is disable: %s ", cluster.master.URL)
 						cluster.master = nil
 					}
 				}
@@ -475,7 +476,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 
 func (cluster *Cluster) PrintTopology() {
 	for k, v := range cluster.Servers {
-		cluster.LogPrintf(LvlInfo, "Server [%d] %s %s %s", k, v.URL, v.State, v.PrevState)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Server [%d] %s %s %s", k, v.URL, v.State, v.PrevState)
 	}
 }
 
@@ -513,7 +514,7 @@ func (cluster *Cluster) FailedMasterDiscovery() {
 				if cluster.Conf.FailRestartUnsafe || cluster.MultipleSlavesUp(s) {
 					cluster.master = cluster.Servers[k]
 					cluster.master.SetPrevState(stateMaster)
-					cluster.LogPrintf(LvlInfo, "Assuming failed server %s was a master", s.URL)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Assuming failed server %s was a master", s.URL)
 				}
 				break
 			}

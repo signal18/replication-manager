@@ -6,26 +6,29 @@
 
 package regtest
 
-import "github.com/signal18/replication-manager/cluster"
+import (
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
+)
 
 func (regtest *RegTest) TestFailoverNoRplChecksNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	cluster.SetRplMaxDelay(0)
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf("ERROR:", "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR:", "%s", err)
 		return false
 	}
 	SaveMasterURL := cluster.GetMaster().URL
 
-	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Master is %s", cluster.GetMaster().URL)
 	cluster.SetInteractive(false)
 	cluster.SetCheckFalsePositiveHeartbeat(false)
 	cluster.SetRplChecks(false)
 	cluster.FailoverAndWait()
-	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf(LvlErr, "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/helloyi/go-sshclient"
 	sshcli "github.com/helloyi/go-sshclient"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -66,7 +67,7 @@ func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor)
 	defer client.Close()
 	err = cluster.OnPremiseSetEnv(client, server)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "OnPremise start database failed in env setup : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "OnPremise start database failed in env setup : %s", err)
 		cluster.errorChan <- err
 	}
 	dbtype := "mariadb"
@@ -82,7 +83,7 @@ func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor)
 	if err != nil {
 		cluster.errorChan <- err
 	}
-	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise Provisioning  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise Provisioning  : %s", string(out))
 	cluster.errorChan <- nil
 }
 
@@ -187,10 +188,10 @@ func (cluster *Cluster) OnPremiseSetEnv(client *sshclient.Client, server *Server
 	)
 	var err error
 	if client.Shell().SetStdio(buf, &stdout, &stderr).Start(); err != nil {
-		server.ClusterGroup.LogPrintf(LvlWarn, "OnPremise start ssh setup env %s", stderr.String())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlWarn, "OnPremise start ssh setup env %s", stderr.String())
 		return err
 	}
-	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start database install secret env: %s", stdout.String())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise start database install secret env: %s", stdout.String())
 
 	return nil
 }
@@ -198,10 +199,10 @@ func (cluster *Cluster) OnPremiseSetEnv(client *sshclient.Client, server *Server
 func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) error {
 
 	server.SetWaitStartCookie()
-	cluster.LogPrintf(LvlInfo, "OnPremise start database via ssh script")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise start database via ssh script")
 	client, err := cluster.OnPremiseConnect(server)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "OnPremise start database via ssh failed : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "OnPremise start database via ssh failed : %s", err)
 		return err
 	}
 	defer client.Close()
@@ -210,7 +211,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 
 	filerc, err := os.Open(cmd)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "OnPremise start database via ssh script %%s failed : %s ", cmd, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "OnPremise start database via ssh script %%s failed : %s ", cmd, err)
 		return errors.New("can't open script")
 	}
 
@@ -226,11 +227,11 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 		stderr bytes.Buffer
 	)
 	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
-		server.ClusterGroup.LogPrintf(LvlWarn, "OnPremise start database via ssh script %s", stderr.String())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlWarn, "OnPremise start database via ssh script %s", stderr.String())
 	}
 	out := stdout.String()
 
-	server.ClusterGroup.LogPrintf(LvlInfo, "OnPremise start script: %s ,out: %s ,err: %s", cmd, out, stderr.String())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise start script: %s ,out: %s ,err: %s", cmd, out, stderr.String())
 
 	return nil
 }

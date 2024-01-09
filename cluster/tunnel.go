@@ -16,11 +16,13 @@ import (
 	"net"
 	"strconv"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 	"golang.org/x/crypto/ssh"
 )
 
 func (server *ServerMonitor) GetTunnelLocalPort() int {
+	cluster := server.ClusterGroup
 	var port int
 	for {
 		addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
@@ -30,7 +32,7 @@ func (server *ServerMonitor) GetTunnelLocalPort() int {
 
 		listen, err := net.ListenTCP("tcp", addr)
 		if err != nil {
-			server.ClusterGroup.LogPrintf(LvlErr, "Can't get tunnel port %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Can't get tunnel port %s", err)
 			continue
 		}
 
@@ -97,12 +99,13 @@ func (server *ServerMonitor) handleTunnelClient(client net.Conn, remote net.Conn
 }
 
 func (server *ServerMonitor) Tunnel() {
+	cluster := server.ClusterGroup
 	// Connection settings
-	sshAddr := server.ClusterGroup.Conf.TunnelHost
+	sshAddr := cluster.Conf.TunnelHost
 	server.TunnelPort = strconv.Itoa(server.GetTunnelLocalPort())
 	localAddr := "127.0.0.1:" + server.TunnelPort
 	remoteAddr := server.Host + ":" + server.Port
-	server.ClusterGroup.LogPrintf(LvlInfo, "Opening tunnel from %s to %s", localAddr, remoteAddr)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Opening tunnel from %s to %s", localAddr, remoteAddr)
 	// Build SSH client configuration
 	user, pwd := misc.SplitPair(server.ClusterGroup.Conf.TunnelCredential)
 	cfg, err := server.makeSshConfig(user, pwd)

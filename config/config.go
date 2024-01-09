@@ -950,7 +950,7 @@ func (conf *Config) DecryptSecretsFromVault() {
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
 		if conf.IsVaultUsed() && conf.IsPath(secret.Value) {
-			//	cluster.LogPrintf(LvlInfo, "Decrypting all the secret variables on Vault")
+			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Decrypting all the secret variables on Vault")
 			vault_config := vault.DefaultConfig()
 			vault_config.Address = conf.VaultServerAddr
 			client, err := conf.GetVaultConnection()

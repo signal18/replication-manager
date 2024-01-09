@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 )
 
 func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
@@ -33,7 +34,7 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster
 	/// give time to start the failover
 
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf("TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 
 		return false
 	}
@@ -45,7 +46,7 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster
 	wg2.Wait()
 	SaveMaster.ReadAllRelayLogs()
 	if cluster.CheckTableConsistency("test.sbtest") != true {
-		cluster.LogPrintf(LvlErr, "Inconsitant slave")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Inconsitant slave")
 
 		return false
 	}

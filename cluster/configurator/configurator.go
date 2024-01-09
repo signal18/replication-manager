@@ -457,7 +457,7 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 					json.Unmarshal([]byte(variable.Value), &f)
 					fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
 					dir := filepath.Dir(fpath)
-					//	proxy.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
+					//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config create %s", fpath)
 					// create directory
 					if _, err := os.Stat(dir); os.IsNotExist(err) {
 						err := os.MkdirAll(dir, os.FileMode(0775))
@@ -465,7 +465,7 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 							return errors.New(fmt.Sprintf("Compliance create directory %q: %s", dir, err))
 						}
 					}
-					//	proxy.ClusterGroup.LogPrintf(LvlInfo, "rule %s filter %s %t", rule.Name, rule.Filter, proxy.IsFilterInTags(rule.Filter))
+					//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "rule %s filter %s %t", rule.Name, rule.Filter, proxy.IsFilterInTags(rule.Filter))
 					if fpath[len(fpath)-1:] != "/" && (configurator.IsFilterInProxyTags(rule.Filter) || rule.Filter == "") {
 						content := misc.ExtractKey(f.Content, TemplateEnv)
 						outFile, err := os.Create(fpath)
@@ -478,7 +478,7 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 								return errors.New(fmt.Sprintf("Compliance writing file failed %q: %s", fpath, err))
 							}
 							outFile.Close()
-							//server.ClusterGroup.LogPrintf(LvlInfo, "Variable name %s", variable.Name)
+							//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Variable name %s", variable.Name)
 
 						}
 
@@ -501,7 +501,7 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 						json.Unmarshal([]byte(variable.Value), &f)
 						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
 						/*	if proxy.ClusterGroup.Conf.LogLevel > 2 {
-											proxy.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+											cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config symlink %s", fpath)
 							  			}
 						*/
 						os.Symlink(f.Target, fpath)
@@ -576,7 +576,7 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 					fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
 					dir := filepath.Dir(fpath)
 					/*		if server.ClusterGroup.Conf.LogLevel > 2 {
-								server.ClusterGroup.LogPrintf(LvlInfo, "Config create %s", fpath)
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config create %s", fpath)
 							}
 					*/
 					// create directory
@@ -620,7 +620,7 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 								return errors.New(fmt.Sprintf("Compliance writing file failed %q: %s", fpath, err))
 							}
 							outFile.Close()
-							//server.ClusterGroup.LogPrintf(LvlInfo, "Variable name %s", variable.Name)
+							//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Variable name %s", variable.Name)
 						}
 
 					}
@@ -642,7 +642,7 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 						json.Unmarshal([]byte(variable.Value), &f)
 						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
 						/*		if configurator.ClusterConfig.LogLevel > 2 {
-								server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s", fpath)
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config symlink %s", fpath)
 							} */
 						os.Symlink(f.Target, fpath)
 						//	keys := strings.Split(variable.Value, " ")
@@ -686,18 +686,18 @@ func (configurator *Configurator) GetDatabaseDynamicConfig(filter string, cmd st
 			for _, variable := range rule.Variables {
 				if variable.Class == "symlink" {
 					if configurator.IsFilterInDBTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
-						//	server.ClusterGroup.LogPrintf(LvlInfo, "content %s %s", filter, rule.Filter)
+						//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "content %s %s", filter, rule.Filter)
 						if filter == "" || strings.Contains(rule.Filter, filter) {
 							var f Link
 							json.Unmarshal([]byte(variable.Value), &f)
 							fpath := Datadir + "/init/etc/mysql/conf.d/"
-							//	server.ClusterGroup.LogPrintf(LvlInfo, "Config symlink %s , %s", fpath, f.Target)
+							//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config symlink %s , %s", fpath, f.Target)
 							file, err := os.Open(fpath + f.Target)
 							if err == nil {
 								r, _ := regexp.Compile(cmd)
 								scanner := bufio.NewScanner(file)
 								for scanner.Scan() {
-									//		server.ClusterGroup.LogPrintf(LvlInfo, "content: %s", scanner.Text())
+									//		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "content: %s", scanner.Text())
 									if r.MatchString(scanner.Text()) {
 										mydynamicconf = mydynamicconf + strings.Split(scanner.Text(), ":")[1]
 									}

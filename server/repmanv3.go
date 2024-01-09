@@ -619,7 +619,7 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	case v3.ClusterAction_STOP_TRAFFIC:
 		mycluster.SetTraffic(false)
 	case v3.ClusterAction_SWITCHOVER:
-		mycluster.LogPrintf("INFO", "API force for prefered master: %s", in.Server.GetURI())
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API force for prefered master: %s", in.Server.GetURI())
 		if mycluster.IsInHostList(in.Server.GetURI()) {
 			mycluster.SetPrefMaster(in.Server.GetURI())
 			mycluster.MasterFailover(false)
@@ -636,7 +636,7 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 	}
 
 	if err != nil {
-		mycluster.LogPrintf("ERROR", "API Error: %s", err)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "API Error: %s", err)
 		return nil, v3.NewError(codes.Unknown, err).Err()
 	}
 

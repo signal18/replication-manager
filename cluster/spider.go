@@ -14,6 +14,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 )
@@ -60,7 +61,7 @@ func (cluster *Cluster) SpiderSetShardsRepl() {
 					host, port := misc.SplitHostPort(url2)
 					err := dbhelper.SetHeartbeatTable(cluster.Servers[k].Conn)
 					if err != nil {
-						cluster.LogPrintf(LvlWarn, "Can not set heartbeat table to %s", url)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHeartBeat, LvlWarn, "Can not set heartbeat table to %s", url)
 						return
 					}
 					_, err = dbhelper.SetMultiSourceRepl(cluster.Servers[k].Conn, host, port, cluster.GetRplUser(), cluster.GetRplPass(), "")
