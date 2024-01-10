@@ -50,8 +50,8 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 
 func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
-	flags.BoolVar(&conf.ProxysqlDebug, "proxysql-debug", false, "Extra info on monitoring backend")
-	flags.IntVar(&conf.ProxysqlLogLevel, "proxysql-log-level", 0, "Extra info on monitoring backend")
+	flags.BoolVar(&conf.ProxysqlDebug, "proxysql-debug", true, "Extra info on monitoring backend")
+	flags.IntVar(&conf.ProxysqlLogLevel, "proxysql-log-level", 1, "Extra info on monitoring backend")
 	flags.BoolVar(&conf.ProxysqlSaveToDisk, "proxysql-save-to-disk", false, "Save proxysql change to sqllight")
 	flags.StringVar(&conf.ProxysqlHosts, "proxysql-servers", "", "ProxySQL hosts")
 	flags.StringVar(&conf.ProxysqlHostsIPV6, "proxysql-servers-ipv6", "", "ProxySQL extra IPV6 bind for interfaces")

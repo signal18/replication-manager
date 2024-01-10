@@ -55,9 +55,9 @@ func (server *ServerMonitor) RejoinMaster() error {
 	if cluster.StateMachine.IsInFailover() {
 		return nil
 	}
-	if cluster.Conf.LogLevel > 2 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoining standalone server %s", server.URL)
-	}
+	// if cluster.Conf.LogLevel > 2 {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoining standalone server %s", server.URL)
+	// }
 	// Strange here add comment for why
 	cluster.canFlashBack = true
 

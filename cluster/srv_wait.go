@@ -30,9 +30,9 @@ func (server *ServerMonitor) WaitSyncToMaster(master *ServerMonitor) {
 		cluster.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Failed MasterPosWait, %s", err)
 	}
 
-	if cluster.Conf.LogLevel > 2 {
-		server.LogReplPostion()
-	}
+	// if cluster.Conf.LogLevel > 2 {
+	server.LogReplPostion()
+	// }
 }
 
 func (server *ServerMonitor) WaitDatabaseStart() error {

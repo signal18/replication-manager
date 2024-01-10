@@ -50,9 +50,9 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	server.ExecQueryNoBinLog("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
 	err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task)) engine=innodb")
 	if err != nil {
-		if cluster.Conf.LogLevel > 2 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Can't create table replication_manager_schema.jobs")
-		}
+		// if cluster.Conf.LogLevel > 2 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Can't create table replication_manager_schema.jobs")
+		// }
 	}
 	return err
 }
@@ -66,17 +66,17 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 	server.JobsCreateTable()
 	conn, err := server.GetNewDBConn()
 	if err != nil {
-		if cluster.Conf.LogLevel > 2 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Job can't connect")
-		}
+		// if cluster.Conf.LogLevel > 2 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Job can't connect")
+		// }
 		return 0, err
 	}
 	defer conn.Close()
 	_, err = conn.Exec("set sql_log_bin=0")
 	if err != nil {
-		if cluster.Conf.LogLevel > 2 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Job can't disable binlog for session")
-		}
+		// if cluster.Conf.LogLevel > 2 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Job can't disable binlog for session")
+		// }
 		return 0, err
 	}
 
@@ -1000,9 +1000,9 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	}
 
 	cluster.JobResults[server.URL] = res
-	if cluster.Conf.LogLevel > 2 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Exec via ssh  : %s", res)
-	}
+	// if cluster.Conf.LogLevel > 2 {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Exec via ssh  : %s", res)
+	// }
 	return nil
 }
 

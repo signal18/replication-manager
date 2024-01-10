@@ -70,8 +70,8 @@ func (proxy *MaxscaleProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 	flags.BoolVar(&conf.MxsServerMatchPort, "maxscale-server-match-port", false, "Match servers running on same host with different port")
 	flags.StringVar(&conf.MxsBinaryPath, "maxscale-binary-path", "/usr/sbin/maxscale", "Maxscale binary location")
 	flags.StringVar(&conf.MxsHostsIPV6, "maxscale-servers-ipv6", "", "ipv6 bind address ")
-	flags.BoolVar(&conf.MxsDebug, "maxscale-debug", false, "Log Maxscale Debug")
-	flags.IntVar(&conf.MxsLogLevel, "maxscale-log-level", 0, "Log Maxscale Debug Level")
+	flags.BoolVar(&conf.MxsDebug, "maxscale-debug", true, "Log Maxscale Debug")
+	flags.IntVar(&conf.MxsLogLevel, "maxscale-log-level", 1, "Log Maxscale Debug Level")
 }
 
 func (proxy *MaxscaleProxy) Refresh() error {

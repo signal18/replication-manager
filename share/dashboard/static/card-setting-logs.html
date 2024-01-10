@@ -66,19 +66,6 @@
         <td>Log Failed Election</td>
     </tr>
     <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logFailedElection"
-                ng-click="switchsettings('log-failed-election')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.logFailedElection" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.logFailedElection" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log Failed Election Level</td>
-    </tr>
-    <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
                 ng-model="selectedCluster.config.logFailedElectionLevel"
                 ng-change="setsettings('log-failed-election-level',selectedCluster.config.logFailedElectionLevel)"
@@ -95,19 +82,6 @@
     </tr>
     <tr>
         <td>Log SST</td>
-    </tr>
-    <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logSst"
-                ng-click="switchsettings('log-sst')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.logSst" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.logSst" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log SST Level</td>
     </tr>
     <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
@@ -128,19 +102,6 @@
         <td>Log HeartBeat</td>
     </tr>
     <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logHeartbeat"
-                ng-click="switchsettings('log-heartbeat')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.logHeartbeat" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.logHeartbeat" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log HeartBeat Level</td>
-    </tr>
-    <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
                 ng-model="selectedCluster.config.logHeartbeatLevel"
                 ng-change="setsettings('log-heartbeat-level',selectedCluster.config.logHeartbeatLevel)" step="1" min="0"
@@ -157,19 +118,6 @@
     </tr>
     <tr>
         <td>Log Config Load</td>
-    </tr>
-    <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logConfigLoad"
-                ng-click="switchsettings('log-config-load')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.logConfigLoad" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.logConfigLoad" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log Config Load Level</td>
     </tr>
     <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
@@ -190,19 +138,6 @@
         <td>Log GIT</td>
     </tr>
     <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logGit"
-                ng-click="switchsettings('log-git')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.logGit" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.logGit" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log GIT Level</td>
-    </tr>
-    <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
                 ng-model="selectedCluster.config.logGitLevel"
                 ng-change="setsettings('log-git-level',selectedCluster.config.logGitLevel)" step="1" min="0" max="4"
@@ -219,19 +154,6 @@
     </tr>
     <tr>
         <td>Log Backup Stream</td>
-    </tr>
-    <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logBackupStream"
-                ng-click="switchsettings('log-backup-stream')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.logBackupStream" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.logBackupStream" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log Backup Stream Level</td>
     </tr>
     <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
@@ -252,19 +174,6 @@
         <td>Log Orchestrator</td>
     </tr>
     <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logOrchestrator"
-                ng-click="switchsettings('log-orchestrator')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.logOrchestrator" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.logOrchestrator" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log Orchestrator Level</td>
-    </tr>
-    <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
                 ng-model="selectedCluster.config.logOrchestratorLevel"
                 ng-change="setsettings('log-orchestrator-level',selectedCluster.config.logOrchestratorLevel)" step="1"
@@ -281,19 +190,6 @@
     </tr>
     <tr>
         <td>Log Vault</td>
-    </tr>
-    <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logVault"
-                ng-click="switchsettings('log-vault')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.logVault" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.logVault" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log Vault Level</td>
     </tr>
     <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
@@ -314,19 +210,6 @@
         <td>Log Topology Detection</td>
     </tr>
     <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logTopology"
-                ng-click="switchsettings('log-topology')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.logTopology" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.logTopology" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log Topology Level</td>
-    </tr>
-    <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
                 ng-model="selectedCluster.config.logTopologyLevel"
                 ng-change="setsettings('log-topology-level',selectedCluster.config.logTopologyLevel)" step="1" min="0"
@@ -343,19 +226,6 @@
     </tr>
     <tr>
         <th>Log Proxy</th>
-    </tr>
-    <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.logProxy"
-                ng-click="switchsettings('log-proxy')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.logProxy" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.logProxy" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log Proxy Level</td>
     </tr>
     <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
@@ -376,19 +246,6 @@
         <td>Log HAProxy</td>
     </tr>
     <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.haproxyDebug"
-                ng-click="switchsettings('haproxy-debug')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.haproxyDebug" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.haproxyDebug" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log HAProxy Level</td>
-    </tr>
-    <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
                 ng-model="selectedCluster.config.haproxyLogLevel"
                 ng-change="setsettings('haproxy-log-level',selectedCluster.config.haproxyLogLevel)" step="1" min="0"
@@ -405,19 +262,6 @@
     </tr>
     <tr>
         <td>Log ProxySQL</td>
-    </tr>
-    <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.proxysqlDebug"
-                ng-click="switchsettings('proxysql-debug')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.proxysqlDebug" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.proxysqlDebug" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log ProxySQL Level</td>
     </tr>
     <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
@@ -438,19 +282,6 @@
         <td>Log Proxy Janitor</td>
     </tr>
     <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.proxyjanitorDebug"
-                ng-click="switchsettings('proxyjanitor-debug')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.proxyjanitorDebug" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.proxyjanitorDebug" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log Proxy Level</td>
-    </tr>
-    <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
                 ng-model="selectedCluster.config.proxyjanitorLogLevel"
                 ng-change="setsettings('proxyjanitor-log-level',selectedCluster.config.proxyjanitorLogLevel)" step="1"
@@ -458,8 +289,7 @@
     </tr>
     <tr>
         <td>
-            <span ng-if="selectedCluster.config.proxyjanitorLogLevel == 0" class="label label-default"> NO LOGGING
-            </span>
+            <span ng-if="selectedCluster.config.proxyjanitorLogLevel == 0" class="label label-default"> NO LOGGING </span>
             <span ng-if="selectedCluster.config.proxyjanitorLogLevel >= 1" class="label label-danger"> ERROR </span> &nbsp; &nbsp;
             <span ng-if="selectedCluster.config.proxyjanitorLogLevel >= 2" class="label label-warning"> WARNING </span> &nbsp; &nbsp;
             <span ng-if="selectedCluster.config.proxyjanitorLogLevel >= 3" class="label label-info"> INFO </span> &nbsp; &nbsp;
@@ -468,19 +298,6 @@
     </tr>
     <tr>
         <td>Log Maxscale</td>
-    </tr>
-    <tr>
-        <td>
-            <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.maxscaleDebug"
-                ng-click="switchsettings('maxscale-debug')" aria-label="Log Failed Election Error">
-                <span ng-if="selectedCluster.config.maxscaleDebug" class="label label-primary">On</span><span
-                    ng-if="!selectedCluster.config.maxscaleDebug" class="label label-warning">Off</span>
-            </md-switch>
-        </td>
-    </tr>
-    <tr>
-        <td>Log Maxscale Level</td>
     </tr>
     <tr>
         <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
