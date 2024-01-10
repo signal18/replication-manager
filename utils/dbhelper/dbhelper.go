@@ -2888,3 +2888,15 @@ func DuplicateUserPassword(db *sqlx.DB, myver *MySQLVersion, old_user_name strin
 	}
 	return query, nil
 }
+
+func SetMaxBinlogTotalSize(db *sqlx.DB, size int) (string, error) {
+	var err error
+	query := "SET GLOBAL max_binlog_total_size = " + strconv.Itoa(size) + ""
+
+	if size >= 0 {
+		_, err = db.Exec(query)
+	} else {
+		return query, errors.New("Invalid size for max_binlog_total_size")
+	}
+	return query, err
+}
