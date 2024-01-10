@@ -321,7 +321,7 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 	eligible := cluster.Conf.IsEligibleForPrinting(module, level)
 	//Write to htlog and tlog
 	if eligible || forcingLog {
-		line = cluster.LogPrintf(level, format, args...)
+		// line = cluster.LogPrintf(level, format, args...)
 		if cluster.tlog != nil && cluster.tlog.Len > 0 {
 			cluster.tlog.Add(fmt.Sprintf(format, args...))
 		}
