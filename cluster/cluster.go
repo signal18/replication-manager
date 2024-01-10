@@ -776,7 +776,7 @@ func (cluster *Cluster) Save() error {
 	_, file, no, ok := runtime.Caller(1)
 	// if ok && cluster.GetLogLevel() > 3 {
 	if ok {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Saved called from %s#%d\n", file, no)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "Saved called from %s#%d\n", file, no)
 	}
 	type Save struct {
 		Servers    string      `json:"servers"`
@@ -824,7 +824,7 @@ func (cluster *Cluster) Save() error {
 		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml")
 			}
 			return err
 		}
@@ -860,7 +860,7 @@ func (cluster *Cluster) Save() error {
 		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.Conf.DynamicFlagMap)
 		new_h := md5.New()
 		if _, err := io.Copy(new_h, file); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Error during Overwriting: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "Error during Overwriting: %s", err)
 		}
 
 		h, ok := cluster.CheckSumConfig["saved"]
@@ -876,7 +876,7 @@ func (cluster *Cluster) Save() error {
 		file2, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml")
 			}
 			return err
 		}
@@ -897,7 +897,7 @@ func (cluster *Cluster) Save() error {
 
 		new_h = md5.New()
 		if _, err := io.Copy(new_h, file2); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Error during Overwriting: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "Error during Overwriting: %s", err)
 		}
 
 		h, ok = cluster.CheckSumConfig["immutable"]
@@ -913,7 +913,7 @@ func (cluster *Cluster) Save() error {
 		file3, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/cache.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/cache.toml")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/cache.toml")
 			}
 			return err
 		}
@@ -930,7 +930,7 @@ func (cluster *Cluster) Save() error {
 
 		err = cluster.Overwrite(has_changed)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Error during Overwriting: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "Error during Overwriting: %s", err)
 		}
 	}
 
@@ -940,7 +940,7 @@ func (cluster *Cluster) Save() error {
 func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, name string) {
 
 	if cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Push to git : tok %s, dir %s, user %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, user, name)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlInfo, "Push to git : tok %s, dir %s, user %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, user, name)
 	}
 	auth := &git_https.BasicAuth{
 		Username: user, // yes, this can be anything except an empty string
@@ -949,13 +949,13 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	path := dir
 	r, err := git.PlainOpen(path)
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Git error : cannot PlainOpen : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot PlainOpen : %s", err)
 		return
 	}
 
 	w, err := r.Worktree()
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Git error : cannot Worktree : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot Worktree : %s", err)
 		return
 	}
 
@@ -964,16 +964,16 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	// Adds the new file to the staging area.
 	err = w.AddGlob(name + "/*.toml")
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Git error : cannot Add %s : %s", name+"/*.toml", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot Add %s : %s", name+"/*.toml", err)
 	}
 
 	_, err = w.Add(name + "/agents.json")
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Git error : cannot Add %s : %s", name+"/*.json", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot Add %s : %s", name+"/*.json", err)
 	}
 	_, err = w.Add(name + "/queryrules.json")
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Git error : cannot Add %s : %s", name+"/*.json", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot Add %s : %s", name+"/*.json", err)
 	}
 
 	_, err = w.Commit(msg, &git.CommitOptions{
@@ -984,13 +984,13 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	})
 
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Git error : cannot Commit : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot Commit : %s", err)
 	}
 
 	// push using default options
 	err = r.Push(&git.PushOptions{Auth: auth})
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Git error : cannot Push : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot Push : %s", err)
 
 	}
 }
@@ -1005,7 +1005,7 @@ func (cluster *Cluster) Overwrite(has_changed bool) error {
 		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml")
 			}
 			return err
 		}
@@ -1042,7 +1042,7 @@ func (cluster *Cluster) Overwrite(has_changed bool) error {
 
 		new_h := md5.New()
 		if _, err := io.Copy(new_h, file); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Error during Overwriting: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "Error during Overwriting: %s", err)
 		}
 
 		h, ok := cluster.CheckSumConfig["overwrite"]
@@ -1601,7 +1601,7 @@ func (cluster *Cluster) DecryptSecretsFromVault() {
 		var secret config.Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
 		if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(secret.Value) {
-			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Decrypting all the secret variables on Vault")
+			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault,LvlInfo, "Decrypting all the secret variables on Vault")
 			vault_config := vault.DefaultConfig()
 			vault_config.Address = cluster.Conf.VaultServerAddr
 			client, err := cluster.Conf.GetVaultConnection()
@@ -1609,13 +1609,13 @@ func (cluster *Cluster) DecryptSecretsFromVault() {
 				if cluster.Conf.VaultMode == VaultConfigStoreV2 {
 					vault_value, err := cluster.Conf.GetVaultCredentials(client, secret.Value, k)
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Unable to get %s Vault secret: %v", k, err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlWarn, "Unable to get %s Vault secret: %v", k, err)
 					} else if vault_value != "" {
 						secret.Value = vault_value
 					}
 				}
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Unable to initialize AppRole auth method: %v", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			}
 			cluster.Conf.Secrets[k] = secret
 		}

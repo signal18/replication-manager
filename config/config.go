@@ -1718,13 +1718,17 @@ const (
 )
 
 func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
+	//Always print state
+	if level == "STATE" {
+		return true
+	}
 	var lvl int
 	lvl = 0
 	switch level {
 	case "ERROR", "ALERT":
 		lvl = 1
 		break
-	case "WARN", "START", "STATE":
+	case "WARN", "START":
 		lvl = 2
 		break
 	case "INFO", "TEST", "BENCH":
