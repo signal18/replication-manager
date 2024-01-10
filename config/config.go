@@ -856,6 +856,27 @@ const (
 	ConstBackupPhysicalTypeMariaBackup string = "mariabackup"
 )
 
+/*
+This is the list of modules to be used in LogModulePrintF
+*/
+const (
+	ConstLogModGeneral        = 0
+	ConstLogModFailedElection = 1
+	ConstLogModSST            = 2
+	ConstLogModHeartBeat      = 3
+	ConstLogModConfigLoad     = 4
+	ConstLogModGit            = 5
+	ConstLogModBackupStream   = 6
+	ConstLogModOrchestrator   = 7
+	ConstLogModVault          = 8
+	ConstLogModTopology       = 9
+	ConstLogModProxy          = 10
+	ConstLogModProxySQL       = 11
+	ConstLogModHAProxy        = 12
+	ConstLogModProxyJanitor   = 13
+	ConstLogModMaxscale       = 14
+)
+
 func (conf *Config) GetSecrets() map[string]Secret {
 	// to store the flags to encrypt in the git (in Save() function)
 	return conf.Secrets
@@ -901,7 +922,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		}
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
-		if conf.LogConfigLoad {
+		if conf.IsEligibleForPrinting(ConstLogModConfigLoad, "INFO") {
 			log.WithField("cluster", "config").Infof("DecryptSecretsFromConfig: %s", secret.Value)
 		}
 		lst_cred := strings.Split(secret.Value, ",")
@@ -1695,27 +1716,6 @@ func (conf *Config) ReadCloud18Config(viper *viper.Viper) {
 	viper.Unmarshal(&conf)
 
 }
-
-/*
-This is the list of modules to be used in LogModulePrintF
-*/
-const (
-	ConstLogModGeneral        = 0
-	ConstLogModFailedElection = 1
-	ConstLogModSST            = 2
-	ConstLogModHeartBeat      = 3
-	ConstLogModConfigLoad     = 4
-	ConstLogModGit            = 5
-	ConstLogModBackupStream   = 6
-	ConstLogModOrchestrator   = 7
-	ConstLogModVault          = 8
-	ConstLogModTopology       = 9
-	ConstLogModProxy          = 10
-	ConstLogModProxySQL       = 11
-	ConstLogModHAProxy        = 12
-	ConstLogModProxyJanitor   = 13
-	ConstLogModMaxscale       = 14
-)
 
 func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 	//Always print state
