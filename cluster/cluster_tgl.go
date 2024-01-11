@@ -435,3 +435,11 @@ func (cluster *Cluster) SwitchPrintDelayStatHistory() {
 func (cluster *Cluster) SwitchFailoverCheckDelayStat() {
 	cluster.Conf.FailoverCheckDelayStat = !cluster.Conf.FailoverCheckDelayStat
 }
+
+func (cluster *Cluster) SwitchForceBinlogPurge() {
+	cluster.Conf.ForceBinlogPurge = !cluster.Conf.ForceBinlogPurge
+}
+
+func (cluster *Cluster) SwitchForcePurgeBinlogOnRestore() {
+	cluster.Conf.ForcePurgeBinlogOnRestore = !cluster.Conf.ForcePurgeBinlogOnRestore
+}

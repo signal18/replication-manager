@@ -608,10 +608,12 @@ type Config struct {
 	OAuthProvider                             string                 `mapstructure:"api-oauth-provider-url" toml:"api-oauth-provider-url" json:"apiOAuthProvider"`
 	OAuthClientID                             string                 `mapstructure:"api-oauth-client-id" toml:"api-oauth-client-id" json:"apiOAuthClientID"`
 	OAuthClientSecret                         string                 `mapstructure:"api-oauth-client-secret" toml:"api-oauth-client-secret" json:"apiOAuthClientSecret"`
+	ForceBinlogPurge                          bool                   `mapstructure:"force-binlog-purge" toml:"force-binlog-purge" json:"forceBinlogPurge"`
+	ForcePurgeBinlogTotalSize                 int                    `mapstructure:"force-purge-binlog-total-size" toml:"force-purge-binlog-total-size" json:"forcePurgeBinlogTotalSize"`
+	ForcePurgeBinlogOnRestore                 bool                   `mapstructure:"force-purge-binlog-on-restore" toml:"force-purge-binlog-on-restore" json:"forcePurgeBinlogOnRestore"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
-
 }
 
 type ConfigVariableType struct {
