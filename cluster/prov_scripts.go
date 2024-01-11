@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -21,7 +22,7 @@ func (cluster *Cluster) UnprovisionDatabaseScript(server *ServerMonitor) error {
 		return nil
 	}
 	scriptCmd := exec.Command(cluster.Conf.ProvDbCleanupScript, misc.Unbracket(server.Host), server.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
-	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -38,7 +39,7 @@ func (cluster *Cluster) UnprovisionDatabaseScript(server *ServerMonitor) error {
 	}()
 	wg.Wait()
 	if err := scriptCmd.Wait(); err != nil {
-		cluster.LogPrintf(LvlErr, " %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s", err)
 		return err
 	}
 	return nil
@@ -49,7 +50,7 @@ func (cluster *Cluster) ProvisionDatabaseScript(server *ServerMonitor) error {
 		return nil
 	}
 	scriptCmd := exec.Command(cluster.Conf.ProvDbBootstrapScript, misc.Unbracket(server.Host), server.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
-	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -66,7 +67,7 @@ func (cluster *Cluster) ProvisionDatabaseScript(server *ServerMonitor) error {
 	}()
 	wg.Wait()
 	if err := scriptCmd.Wait(); err != nil {
-		cluster.LogPrintf(LvlErr, " %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s", err)
 		return err
 	}
 	return nil
@@ -77,7 +78,7 @@ func (cluster *Cluster) StopDatabaseScript(server *ServerMonitor) error {
 		return nil
 	}
 	scriptCmd := exec.Command(cluster.Conf.ProvDbStopScript, misc.Unbracket(server.Host), server.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
-	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -94,7 +95,7 @@ func (cluster *Cluster) StopDatabaseScript(server *ServerMonitor) error {
 	}()
 	wg.Wait()
 	if err := scriptCmd.Wait(); err != nil {
-		cluster.LogPrintf(LvlErr, " %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s", err)
 		return err
 	}
 	return nil
@@ -105,7 +106,7 @@ func (cluster *Cluster) StartDatabaseScript(server *ServerMonitor) error {
 		return nil
 	}
 	scriptCmd := exec.Command(cluster.Conf.ProvDbStartScript, misc.Unbracket(server.Host), server.Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
-	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -122,7 +123,7 @@ func (cluster *Cluster) StartDatabaseScript(server *ServerMonitor) error {
 	}()
 	wg.Wait()
 	if err := scriptCmd.Wait(); err != nil {
-		cluster.LogPrintf(LvlErr, " %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s", err)
 		return err
 	}
 	return nil
@@ -133,7 +134,7 @@ func (cluster *Cluster) UnprovisionProxyScript(server DatabaseProxy) error {
 		return nil
 	}
 	scriptCmd := exec.Command(cluster.Conf.ProvProxyCleanupScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass(), cluster.Name)
-	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -146,7 +147,7 @@ func (cluster *Cluster) UnprovisionProxyScript(server DatabaseProxy) error {
 			if !s.Scan() {
 				break
 			} else {
-				cluster.LogPrintf(LvlInfo, "%s", s.Text())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", s.Text())
 			}
 		}
 	}
@@ -163,7 +164,7 @@ func (cluster *Cluster) UnprovisionProxyScript(server DatabaseProxy) error {
 	}()
 	wg.Wait()
 	if err := scriptCmd.Wait(); err != nil {
-		cluster.LogPrintf(LvlErr, " %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s", err)
 		return err
 	}
 	return nil
@@ -174,7 +175,7 @@ func (cluster *Cluster) ProvisionProxyScript(server DatabaseProxy) error {
 		return nil
 	}
 	scriptCmd := exec.Command(cluster.Conf.ProvProxyBootstrapScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass(), cluster.Name)
-	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -187,7 +188,7 @@ func (cluster *Cluster) ProvisionProxyScript(server DatabaseProxy) error {
 			if !s.Scan() {
 				break
 			} else {
-				cluster.LogPrintf(LvlInfo, "%s", s.Text())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", s.Text())
 			}
 		}
 	}
@@ -202,7 +203,7 @@ func (cluster *Cluster) ProvisionProxyScript(server DatabaseProxy) error {
 	}()
 	wg.Wait()
 	if err := scriptCmd.Wait(); err != nil {
-		cluster.LogPrintf(LvlErr, " %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s", err)
 		return err
 	}
 	return nil
@@ -213,7 +214,7 @@ func (cluster *Cluster) StartProxyScript(server DatabaseProxy) error {
 		return nil
 	}
 	scriptCmd := exec.Command(cluster.Conf.ProvProxyStartScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass(), cluster.Name)
-	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -226,7 +227,7 @@ func (cluster *Cluster) StartProxyScript(server DatabaseProxy) error {
 			if !s.Scan() {
 				break
 			} else {
-				cluster.LogPrintf(LvlInfo, "%s", s.Text())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", s.Text())
 			}
 		}
 	}
@@ -241,7 +242,7 @@ func (cluster *Cluster) StartProxyScript(server DatabaseProxy) error {
 	}()
 	wg.Wait()
 	if err := scriptCmd.Wait(); err != nil {
-		cluster.LogPrintf(LvlErr, " %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s", err)
 		return err
 	}
 	return nil
@@ -252,7 +253,7 @@ func (cluster *Cluster) StopProxyScript(server DatabaseProxy) error {
 		return nil
 	}
 	scriptCmd := exec.Command(cluster.Conf.ProvProxyStopScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass(), cluster.Name)
-	cluster.LogPrintf(LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
 
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
@@ -265,7 +266,7 @@ func (cluster *Cluster) StopProxyScript(server DatabaseProxy) error {
 			if !s.Scan() {
 				break
 			} else {
-				cluster.LogPrintf(LvlInfo, "%s", s.Text())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", s.Text())
 			}
 		}
 	}
@@ -280,7 +281,7 @@ func (cluster *Cluster) StopProxyScript(server DatabaseProxy) error {
 	}()
 	wg.Wait()
 	if err := scriptCmd.Wait(); err != nil {
-		cluster.LogPrintf(LvlErr, " %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s", err)
 		return err
 	}
 	return nil

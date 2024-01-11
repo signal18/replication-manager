@@ -13,6 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 func (cluster *Cluster) LocalhostUnprovisionHaProxyService(prx *HaproxyProxy) error {
@@ -33,11 +35,11 @@ func (cluster *Cluster) LocalhostProvisionHaProxyService(prx *HaproxyProxy) erro
 	cmd.Stdout = out
 	err := cmd.Run()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "%s", err)
 		cluster.errorChan <- err
 		return err
 	}
-	cluster.LogPrintf(LvlInfo, "Remove datadir done: %s", out.Bytes())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Remove datadir done: %s", out.Bytes())
 	prx.GetProxyConfig()
 	os.Symlink(prx.Datadir+"/init/data", path)
 
@@ -53,7 +55,7 @@ func (cluster *Cluster) LocalhostProvisionHaProxyService(prx *HaproxyProxy) erro
 
 func (cluster *Cluster) LocalhostStopHaProxyService(prx *HaproxyProxy) error {
 
-	//	cluster.LogPrintf("TEST", "Killing database %s %d", server.Id, server.Process.Pid)
+	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,"TEST", "Killing database %s %d", server.Id, server.Process.Pid)
 
 	pid, err := ioutil.ReadFile(prx.Datadir + "/var/haproxy.pid")
 	if err != nil {
@@ -69,7 +71,7 @@ func (cluster *Cluster) LocalhostStartHaProxyService(prx *HaproxyProxy) error {
 	//init haproxy do start or reload
 	prx.Init()
 	/*mariadbdCmd := exec.Command(cluster.Conf.HaproxyBinaryPath+"/haproxy", "--config="+prx.Datadir+"/init/etc/haproxy.cnf", "--datadir="+prx.Datadir+"/var")
-	cluster.LogPrintf(LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 
 	var out bytes.Buffer
 	mariadbdCmd.Stdout = &out
@@ -77,7 +79,7 @@ func (cluster *Cluster) LocalhostStartHaProxyService(prx *HaproxyProxy) error {
 	go func() {
 		err := mariadbdCmd.Run()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "%s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlErr, "%s ", err)
 			fmt.Printf("Command finished with error: %v", err)
 		}
 	}()

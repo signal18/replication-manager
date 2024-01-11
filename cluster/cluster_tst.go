@@ -67,21 +67,21 @@ func (cluster *Cluster) PrepareBench() error {
 			}
 		}
 
-		cluster.LogPrintf(LvlInfo, "Command: %s", strings.Replace(cmdprep.String(), cluster.GetDbPass(), "XXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Command: %s", strings.Replace(cmdprep.String(), cluster.GetDbPass(), "XXXX", -1))
 
 		out, err := cmdprep.CombinedOutput()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "%s , %s", string(out), err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s , %s", string(out), err)
 			return err
 		}
-		cluster.LogPrintf("BENCH", "%s", string(out))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", string(out))
 	}
 	if cluster.benchmarkType == "table" {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "%s %s", err.Error(), result)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s %s", err.Error(), result)
 		} else {
-			cluster.LogPrintf("BENCH", "%s", result)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", result)
 		}
 	}
 	return nil
@@ -98,7 +98,7 @@ func (cluster *Cluster) CleanupBench() error {
 			test = cluster.Conf.SysbenchTest
 		}
 		var cleanup = cluster.Conf.SysbenchBinaryPath + test + " --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.GetRplUser() + " --mysql-password=" + cluster.GetRplPass() + " --mysql-host=" + prx.GetHost() + " --mysql-port=" + strconv.Itoa(prx.GetWritePort()) + " cleanup"
-		cluster.LogPrintf("BENCH", "%s", strings.Replace(cleanup, cluster.GetRplPass(), "XXXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", strings.Replace(cleanup, cluster.GetRplPass(), "XXXXX", -1))
 		var cmdcls *exec.Cmd
 		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, test, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetRplUser(), "--mysql-password="+cluster.GetRplPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), "cleanup")
 		var outcls bytes.Buffer
@@ -106,16 +106,16 @@ func (cluster *Cluster) CleanupBench() error {
 
 		cmdclsErr := cmdcls.Run()
 		if cmdclsErr != nil {
-			cluster.LogPrintf(LvlErr, "%s", cmdclsErr)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", cmdclsErr)
 			return cmdclsErr
 		}
-		cluster.LogPrintf("BENCH", "%s", strings.Replace(outcls.String(), cluster.GetRplPass(), "XXXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", strings.Replace(outcls.String(), cluster.GetRplPass(), "XXXXX", -1))
 	}
 	if cluster.benchmarkType == "table" {
 
 		err := dbhelper.BenchCleanup(cluster.GetMaster().Conn)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "%s", err.Error())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err.Error())
 		}
 	}
 	return nil
@@ -124,13 +124,13 @@ func (cluster *Cluster) CleanupBench() error {
 func (cluster *Cluster) ChecksumBench() bool {
 	if cluster.benchmarkType == "table" {
 		if cluster.CheckTableConsistency("replication_manager_schema.bench") != true {
-			cluster.LogPrintf(LvlErr, "Inconsitant slave")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Inconsitant slave")
 			return false
 		}
 	}
 	if cluster.benchmarkType == "sysbench" {
 		if cluster.CheckTableConsistency("test.sbtest") != true {
-			cluster.LogPrintf(LvlErr, "Inconsitant slave")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Inconsitant slave")
 			return false
 		}
 	}
@@ -168,19 +168,19 @@ func (cluster *Cluster) RunBench() error {
 				cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, scale, tables, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, threads, "run")
 			}
 		}
-		cluster.LogPrintf(LvlInfo, "Command: %s", strings.Replace(cmdrun.String(), cluster.GetDbPass(), "XXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Command: %s", strings.Replace(cmdrun.String(), cluster.GetDbPass(), "XXXX", -1))
 
 		out, err := cmdrun.CombinedOutput()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "%s , %s", string(out), err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s , %s", string(out), err)
 			return err
 		}
-		cluster.LogPrintf("BENCH", "%s", string(out))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", string(out))
 	}
 	if cluster.benchmarkType == "table" {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "%s %s", err.Error(), result)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s %s", err.Error(), result)
 		}
 	}
 	return nil
@@ -202,12 +202,12 @@ func (cluster *Cluster) CheckSlavesRunning() bool {
 			return false
 		}
 		if ss.SlaveIORunning.String != "Yes" || ss.SlaveSQLRunning.String != "Yes" {
-			cluster.LogPrintf("TEST", "Slave  %s issue on replication  SQL Thread %s IO Thread %s ", s.URL, ss.SlaveSQLRunning.String, ss.SlaveIORunning.String)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Slave  %s issue on replication  SQL Thread %s IO Thread %s ", s.URL, ss.SlaveSQLRunning.String, ss.SlaveIORunning.String)
 
 			return false
 		}
 		if ss.MasterServerID != cluster.master.ServerID {
-			cluster.LogPrintf("TEST", "Replication is  pointing to wrong master %s ", cluster.master.ServerID)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Replication is  pointing to wrong master %s ", cluster.master.ServerID)
 			return false
 		}
 	}
@@ -218,25 +218,25 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	checksum, err := dbhelper.ChecksumTable(cluster.master.Conn, table)
 
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Failed to take master checksum table ")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Failed to take master checksum table ")
 	} else {
-		cluster.LogPrintf(LvlInfo, "Checksum master table %s =  %s %s", table, checksum, cluster.master.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Checksum master table %s =  %s %s", table, checksum, cluster.master.URL)
 	}
 	var count int
 	err = cluster.master.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Could count record in bench table", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could count record in bench table", err)
 	} else {
-		cluster.LogPrintf(LvlInfo, "Number of rows master table %s = %d %s", table, count, cluster.master.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Number of rows master table %s = %d %s", table, count, cluster.master.URL)
 	}
 	var max int
 	if cluster.benchmarkType == "table" {
 
 		err = cluster.master.Conn.QueryRowx("select max(val) from " + table).Scan(&max)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Could get max val in bench table", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could get max val in bench table", err)
 		} else {
-			cluster.LogPrintf(LvlInfo, "Max Value in bench table %s = %d %s", table, max, cluster.master.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Max Value in bench table %s = %d %s", table, max, cluster.master.URL)
 		}
 	}
 	ctslave := 0
@@ -245,36 +245,36 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 
 		checksumslave, err := dbhelper.ChecksumTable(s.Conn, table)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Failed to take slave checksum table ")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Failed to take slave checksum table ")
 		} else {
-			cluster.LogPrintf(LvlInfo, "Checksum slave table %s = %s on %s ", table, checksumslave, s.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Checksum slave table %s = %s on %s ", table, checksumslave, s.URL)
 		}
 		err = s.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
 		if err != nil {
 			log.Println("ERROR: Could not check long running writes", err)
 		} else {
-			cluster.LogPrintf(LvlInfo, "Number of rows slave table %s =  %d %s", table, count, s.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Number of rows slave table %s =  %d %s", table, count, s.URL)
 		}
 		var maxslave int
 		if cluster.benchmarkType == "table" {
 			err = s.Conn.QueryRowx("select max(val) from " + table).Scan(&maxslave)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could get max val in bench table", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could get max val in bench table", err)
 			} else {
-				cluster.LogPrintf(LvlInfo, "Max Value in bench table %s = %d %s", table, maxslave, s.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Max Value in bench table %s = %d %s", table, maxslave, s.URL)
 			}
 		}
 		if checksumslave != checksum && cluster.benchmarkType == "sysbench" {
-			cluster.LogPrintf(LvlErr, "Checksum on slave is different from master")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Checksum on slave is different from master")
 			return false
 		}
 		if maxslave != max && cluster.benchmarkType == "table" {
-			cluster.LogPrintf(LvlErr, "Max table value on slave is different from master")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Max table value on slave is different from master")
 			return false
 		}
 	}
 	if ctslave == 0 {
-		cluster.LogPrintf(LvlErr, "No slaves while checking consistancy")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No slaves while checking consistancy")
 		return false
 	}
 	return true
@@ -307,29 +307,29 @@ func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) DelayAllSlaves() error {
-	cluster.LogPrintf("BENCH", "Stopping slaves, injecting data & long transaction")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "Stopping slaves, injecting data & long transaction")
 	for _, s := range cluster.slaves {
 		_, err := s.StopSlaveSQLThread()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Stopping slave on %s %s", s.URL, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Stopping slave on %s %s", s.URL, err)
 		}
 	}
 	result, err := dbhelper.WriteConcurrent2(cluster.master.DSN, 1000)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s %s", err.Error(), result)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s %s", err.Error(), result)
 	}
 	err = dbhelper.InjectLongTrx(cluster.master.Conn, 12)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "InjectLongTrx %s", err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "InjectLongTrx %s", err.Error())
 	}
 	result, err = dbhelper.WriteConcurrent2(cluster.master.DSN, 1000)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s %s", err.Error(), result)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s %s", err.Error(), result)
 	}
 	for _, s := range cluster.slaves {
 		_, err := s.StartSlave()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Staring slave on %s %s", s.URL, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Staring slave on %s %s", s.URL, err)
 		}
 	}
 	time.Sleep(5 * time.Second)
@@ -340,7 +340,7 @@ func (cluster *Cluster) InitBenchTable() error {
 
 	result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Insert some events %s %s", err.Error(), result)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Insert some events %s %s", err.Error(), result)
 		return err
 	}
 	return nil
@@ -355,12 +355,12 @@ func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
 	if !cluster.IsProvision {
 		err := cluster.Bootstrap()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Abording test, bootstrap failed, %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Abording test, bootstrap failed, %s", err)
 			cluster.Unprovision()
 			return false
 		}
 	}
-	cluster.LogPrintf(LvlInfo, "Starting Test %s", test.Name)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Starting Test %s", test.Name)
 	return true
 }
 
@@ -421,7 +421,7 @@ func (cluster *Cluster) EnableSemisync() error {
 	return nil
 }
 func (cluster *Cluster) StopSlaves() error {
-	cluster.LogPrintf("BENCH", "Stopping replication")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "Stopping replication")
 	for _, s := range cluster.slaves {
 		_, err := s.StopSlave()
 		if err != nil {
@@ -432,7 +432,7 @@ func (cluster *Cluster) StopSlaves() error {
 }
 
 func (cluster *Cluster) StartSlaves() error {
-	cluster.LogPrintf("BENCH", "Sarting replication")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "Sarting replication")
 	for _, s := range cluster.slaves {
 		_, err := s.StartSlave()
 		if err != nil {

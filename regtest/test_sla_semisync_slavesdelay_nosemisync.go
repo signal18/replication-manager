@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 )
 
 func (regtest *RegTest) TestSlaReplAllSlavesDelayNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
@@ -17,7 +18,7 @@ func (regtest *RegTest) TestSlaReplAllSlavesDelayNoSemiSync(cluster *cluster.Clu
 	cluster.SetRplMaxDelay(2)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
 		return false
 	}
 	cluster.GetStateMachine().ResetUptime()
@@ -27,7 +28,7 @@ func (regtest *RegTest) TestSlaReplAllSlavesDelayNoSemiSync(cluster *cluster.Clu
 	sla2 := cluster.GetStateMachine().GetUptimeFailable()
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
 		return false
 	}
 	if sla2 == sla1 {

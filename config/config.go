@@ -96,13 +96,26 @@ type Config struct {
 	LogRotateMaxSize                          int                    `mapstructure:"log-rotate-max-size" toml:"log-rotate-max-size" json:"logRotateMaxSize"`
 	LogRotateMaxBackup                        int                    `mapstructure:"log-rotate-max-backup" toml:"log-rotate-max-backup" json:"logRotateMaxBackup"`
 	LogRotateMaxAge                           int                    `mapstructure:"log-rotate-max-age" toml:"log-rotate-max-age" json:"logRotateMaxAge"`
-	LogSST                                    bool                   `mapstructure:"log-sst" toml:"log-sst" json:"logSst"` // internal replication-manager sst
+	LogSST                                    bool                   `mapstructure:"log-sst" toml:"log-sst" json:"logSst"`                  // internal replication-manager sst
+	LogSSTLevel                               int                    `mapstructure:"log-sst-level" toml:"log-sst-level" json:"logSstLevel"` // internal replication-manager sst
 	SSTSendBuffer                             int                    `mapstructure:"sst-send-buffer" toml:"sst-send-buffer" json:"sstSendBuffer"`
 	LogHeartbeat                              bool                   `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
+	LogHeartbeatLevel                         int                    `mapstructure:"log-heartbeat-level" toml:"log-heartbeat-level" json:"logHeartbeatLevel"`
 	LogSQLInMonitoring                        bool                   `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
 	LogFailedElection                         bool                   `mapstructure:"log-failed-election"  toml:"log-failed-election" json:"logFailedElection"`
+	LogFailedElectionLevel                    int                    `mapstructure:"log-failed-election-level"  toml:"log-failed-election-level" json:"logFailedElectionLevel"`
 	LogGit                                    bool                   `mapstructure:"log-git" toml:"log-git" json:"logGit"`
+	LogGitLevel                               int                    `mapstructure:"log-git-level" toml:"log-git-level" json:"logGitLevel"`
 	LogConfigLoad                             bool                   `mapstructure:"log-config-load" toml:"log-config-load" json:"logConfigLoad"`
+	LogConfigLoadLevel                        int                    `mapstructure:"log-config-load-level" toml:"log-config-load-level" json:"logConfigLoadLevel"`
+	LogBackupStream                           bool                   `mapstructure:"log-backup-stream" toml:"log-backup-stream" json:"logBackupStream"`
+	LogBackupStreamLevel                      int                    `mapstructure:"log-backup-stream-level" toml:"log-backup-stream-level" json:"logBackupStreamLevel"`
+	LogOrchestrator                           bool                   `mapstructure:"log-orchestrator" toml:"log-orchestrator" json:"logOrchestrator"`
+	LogOrchestratorLevel                      int                    `mapstructure:"log-orchestrator-level" toml:"log-orchestrator-level" json:"logOrchestratorLevel"`
+	LogTopology                               bool                   `mapstructure:"log-topology" toml:"log-topology" json:"logTopology"`
+	LogTopologyLevel                          int                    `mapstructure:"log-topology-level" toml:"log-topology-level" json:"logTopologyLevel"`
+	LogProxy                                  bool                   `mapstructure:"log-proxy" toml:"log-proxy" json:"logProxy"`
+	LogProxyLevel                             int                    `mapstructure:"log-proxy-level" toml:"log-proxy-level" json:"logProxyLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	HostsDelayed                              string                 `mapstructure:"replication-delayed-hosts" toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
@@ -253,6 +266,8 @@ type Config struct {
 	ExtProxyOn                                bool                   `mapstructure:"extproxy" toml:"extproxy" json:"extproxy"`
 	ExtProxyVIP                               string                 `mapstructure:"extproxy-address" toml:"extproxy-address" json:"extproxyAddress"`
 	MdbsProxyOn                               bool                   `mapstructure:"shardproxy" toml:"shardproxy" json:"shardproxy"`
+	MdbsProxyDebug                            bool                   `mapstructure:"shardproxy-debug" toml:"shardproxy-debug" json:"shardproxyDebug"`
+	MdbsProxyLogLevel                         int                    `mapstructure:"shardproxy-log-level" toml:"shardproxy-log-level" json:"shardproxyLogLevel"`
 	MdbsProxyHosts                            string                 `mapstructure:"shardproxy-servers" toml:"shardproxy-servers" json:"shardproxyServers"`
 	MdbsJanitorWeights                        string                 `mapstructure:"shardproxy-janitor-weights" toml:"shardproxy-janitor-weights" json:"shardproxyJanitorWeights"`
 	MdbsProxyCredential                       string                 `mapstructure:"shardproxy-credential" toml:"shardproxy-credential" json:"shardproxyCredential"`
@@ -262,6 +277,8 @@ type Config struct {
 	MdbsUniversalTables                       string                 `mapstructure:"shardproxy-universal-tables" toml:"shardproxy-universal-tables" json:"shardproxyUniversalTables"`
 	MdbsIgnoreTables                          string                 `mapstructure:"shardproxy-ignore-tables" toml:"shardproxy-ignore-tables" json:"shardproxyIgnoreTables"`
 	MxsOn                                     bool                   `mapstructure:"maxscale" toml:"maxscale" json:"maxscale"`
+	MxsDebug                                  bool                   `mapstructure:"maxscale-debug" toml:"maxscale-debug" json:"maxscaleDebug"`
+	MxsLogLevel                               int                    `mapstructure:"maxscale-log-level" toml:"maxscale-log-level" json:"maxscaleLogLevel"`
 	MxsHost                                   string                 `mapstructure:"maxscale-servers" toml:"maxscale-servers" json:"maxscaleServers"`
 	MxsPort                                   string                 `mapstructure:"maxscale-port" toml:"maxscale-port" json:"maxscalePort"`
 	MxsUser                                   string                 `mapstructure:"maxscale-user" toml:"maxscale-user" json:"maxscaleUser"`
@@ -279,11 +296,14 @@ type Config struct {
 	MxsServerMatchPort                        bool                   `mapstructure:"maxscale-server-match-port" toml:"maxscale-server-match-port" json:"maxscaleServerMatchPort"`
 	MxsBinaryPath                             string                 `mapstructure:"maxscale-binary-path" toml:"maxscale-binary-path" json:"maxscalemBinaryPath"`
 	MyproxyOn                                 bool                   `mapstructure:"myproxy" toml:"myproxy" json:"myproxy"`
+	MyproxyDebug                              bool                   `mapstructure:"myproxy-debug" toml:"myproxy-debug" json:"myproxyDebug"`
+	MyproxyLogLevel                           int                    `mapstructure:"myproxy-log-level" toml:"myproxy-log-level" json:"myproxyLogLevel"`
 	MyproxyPort                               int                    `mapstructure:"myproxy-port" toml:"myproxy-port" json:"myproxyPort"`
 	MyproxyUser                               string                 `mapstructure:"myproxy-user" toml:"myproxy-user" json:"myproxyUser"`
 	MyproxyPassword                           string                 `mapstructure:"myproxy-password" toml:"myproxy-password" json:"myproxyPassword"`
 	HaproxyOn                                 bool                   `mapstructure:"haproxy" toml:"haproxy" json:"haproxy"`
 	HaproxyDebug                              bool                   `mapstructure:"haproxy-debug" toml:"haproxy-debug" json:"haproxyDebug"`
+	HaproxyLogLevel                           int                    `mapstructure:"haproxy-log-level" toml:"haproxy-log-level" json:"haproxyLogLevel"`
 	HaproxyUser                               string                 `mapstructure:"haproxy-user" toml:"haproxy-user" json:"haproxylUser"`
 	HaproxyPassword                           string                 `mapstructure:"haproxy-password" toml:"haproxy-password" json:"haproxyPassword"`
 	HaproxyMode                               string                 `mapstructure:"haproxy-mode" toml:"haproxy-mode" json:"haproxyMode"`
@@ -301,6 +321,7 @@ type Config struct {
 	HaproxyAPIWriteBackend                    string                 `mapstructure:"haproxy-api-write-backend"  toml:"haproxy-api-write-backend" json:"haproxyAPIWriteBackend"`
 	ProxysqlOn                                bool                   `mapstructure:"proxysql" toml:"proxysql" json:"proxysql"`
 	ProxysqlDebug                             bool                   `mapstructure:"proxysql-debug" toml:"proxysql-debug" json:"proxysqlDebug"`
+	ProxysqlLogLevel                          int                    `mapstructure:"proxysql-log-level" toml:"proxysql-log-level" json:"proxysqlLogLevel"`
 	ProxysqlSaveToDisk                        bool                   `mapstructure:"proxysql-save-to-disk" toml:"proxysql-save-to-disk" json:"proxysqlSaveToDisk"`
 	ProxysqlHosts                             string                 `mapstructure:"proxysql-servers" toml:"proxysql-servers" json:"proxysqlServers"`
 	ProxysqlHostsIPV6                         string                 `mapstructure:"proxysql-servers-ipv6" toml:"proxysql-servers-ipv6" json:"proxysqlServersIpv6"`
@@ -319,6 +340,7 @@ type Config struct {
 	ProxysqlMultiplexing                      bool                   `mapstructure:"proxysql-multiplexing" toml:"proxysql-multiplexing" json:"proxysqlMultiplexing"`
 	ProxysqlBinaryPath                        string                 `mapstructure:"proxysql-binary-path" toml:"proxysql-binary-path" json:"proxysqlBinaryPath"`
 	ProxyJanitorDebug                         bool                   `mapstructure:"proxyjanitor-debug" toml:"proxyjanitor-debug" json:"proxyjanitorDebug"`
+	ProxyJanitorLogLevel                      int                    `mapstructure:"proxyjanitor-log-level" toml:"proxyjanitor-log-level" json:"proxyjanitorLogLevel"`
 	ProxyJanitorHosts                         string                 `mapstructure:"proxyjanitor-servers" toml:"proxyjanitor-servers" json:"proxyjanitorServers"`
 	ProxyJanitorHostsIPV6                     string                 `mapstructure:"proxyjanitor-servers-ipv6" toml:"proxyjanitor-servers-ipv6" json:"proxyjanitorServers-ipv6"`
 	ProxyJanitorPort                          string                 `mapstructure:"proxyjanitor-port" toml:"proxyjanitor-port" json:"proxyjanitorPort"`
@@ -327,6 +349,8 @@ type Config struct {
 	ProxyJanitorPassword                      string                 `mapstructure:"proxyjanitor-password" toml:"proxyjanitor-password" json:"proxyjanitorPassword"`
 	ProxyJanitorBinaryPath                    string                 `mapstructure:"proxyjanitor-binary-path" toml:"proxyjanitor-binary-path" json:"proxyjanitorBinaryPath"`
 	MysqlRouterOn                             bool                   `mapstructure:"mysqlrouter" toml:"mysqlrouter" json:"mysqlrouter"`
+	MysqlRouterDebug                          bool                   `mapstructure:"mysqlrouter-debug" toml:"mysqlrouter-debug" json:"mysqlrouterDebug"`
+	MysqlRouterLogLevel                       int                    `mapstructure:"mysqlrouter-log-level" toml:"mysqlrouter-log-level" json:"mysqlrouterLogLevel"`
 	MysqlRouterHosts                          string                 `mapstructure:"mysqlrouter-servers" toml:"mysqlrouter-servers" json:"mysqlrouterServers"`
 	MysqlRouterJanitorWeights                 string                 `mapstructure:"mysqlrouter-janitor-weights" toml:"mysqlrouter-janitor-weights" json:"mysqlrouterJanitorWeights"`
 	MysqlRouterPort                           string                 `mapstructure:"mysqlrouter-port" toml:"mysqlrouter-port" json:"mysqlrouterPort"`
@@ -336,6 +360,8 @@ type Config struct {
 	MysqlRouterReadPort                       int                    `mapstructure:"mysqlrouter-read-port" toml:"mysqlrouter-read-port" json:"mysqlrouterReadPort"`
 	MysqlRouterReadWritePort                  int                    `mapstructure:"mysqlrouter-read-write-port" toml:"mysqlrouter-read-write-port" json:"mysqlrouterReadWritePort"`
 	SphinxOn                                  bool                   `mapstructure:"sphinx" toml:"sphinx" json:"sphinx"`
+	SphinxDebug                               bool                   `mapstructure:"sphinx-debug" toml:"sphinx-debug" json:"sphinxDebug"`
+	SphinxLogLevel                            int                    `mapstructure:"sphinx-log-level" toml:"sphinx-log-level" json:"sphinxLogLevel"`
 	SphinxHosts                               string                 `mapstructure:"sphinx-servers" toml:"sphinx-servers" json:"sphinxServers"`
 	SphinxHostsIPV6                           string                 `mapstructure:"sphinx-servers-ipv6" toml:"sphinx-servers-ipv6" json:"sphinxServers-ipv6"`
 	SphinxJanitorWeights                      string                 `mapstructure:"sphinx-janitor-weights" toml:"sphinx-janitor-weights" json:"sphinxJanitorWeights"`
@@ -343,6 +369,8 @@ type Config struct {
 	SphinxQLPort                              string                 `mapstructure:"sphinx-sql-port" toml:"sphinx-sql-port" json:"sphinxSqlPort"`
 	SphinxPort                                string                 `mapstructure:"sphinx-port" toml:"sphinx-port" json:"sphinxPort"`
 	RegistryConsul                            bool                   `mapstructure:"registry-consul" toml:"registry-consul" json:"registryConsul"`
+	RegistryConsulDebug                       bool                   `mapstructure:"registry-consul-debug" toml:"registry-consul-debug" json:"registryConsulDebug"`
+	RegistryConsulLogLevel                    int                    `mapstructure:"registry-consul-log-level" toml:"registry-consul-log-level" json:"registryConsulLogLevel"`
 	RegistryConsulCredential                  string                 `mapstructure:"registry-consul-credential" toml:"registry-consul-credential" json:"registryConsulCredential"`
 	RegistryConsulToken                       string                 `mapstructure:"registry-consul-token" toml:"registry-consul-token" json:"registryConsulToken"`
 	RegistryConsulHosts                       string                 `mapstructure:"registry-servers" toml:"registry-servers" json:"registryServers"`
@@ -588,6 +616,8 @@ type Config struct {
 	VaultMount                                string                 `mapstructure:"vault-mount" toml:"vault-mount" json:"vaultMount"`
 	VaultAuth                                 string                 `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
 	VaultToken                                string                 `mapstructure:"vault-token" toml:"vault-token" json:"vaultToken"`
+	LogVault                                  bool                   `mapstructure:"log-vault" toml:"log-vault" json:"logVault"`
+	LogVaultLevel                             int                    `mapstructure:"log-vault-level" toml:"log-vault-level" json:"logVaultLevel"`
 	GitUrl                                    string                 `mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
 	GitUsername                               string                 `mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
 	GitAccesToken                             string                 `mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
@@ -826,6 +856,27 @@ const (
 	ConstBackupPhysicalTypeMariaBackup string = "mariabackup"
 )
 
+/*
+This is the list of modules to be used in LogModulePrintF
+*/
+const (
+	ConstLogModGeneral        = 0
+	ConstLogModFailedElection = 1
+	ConstLogModSST            = 2
+	ConstLogModHeartBeat      = 3
+	ConstLogModConfigLoad     = 4
+	ConstLogModGit            = 5
+	ConstLogModBackupStream   = 6
+	ConstLogModOrchestrator   = 7
+	ConstLogModVault          = 8
+	ConstLogModTopology       = 9
+	ConstLogModProxy          = 10
+	ConstLogModProxySQL       = 11
+	ConstLogModHAProxy        = 12
+	ConstLogModProxyJanitor   = 13
+	ConstLogModMaxscale       = 14
+)
+
 func (conf *Config) GetSecrets() map[string]Secret {
 	// to store the flags to encrypt in the git (in Save() function)
 	return conf.Secrets
@@ -871,7 +922,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		}
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
-		if conf.LogConfigLoad {
+		if conf.IsEligibleForPrinting(ConstLogModConfigLoad, "INFO") {
 			log.WithField("cluster", "config").Infof("DecryptSecretsFromConfig: %s", secret.Value)
 		}
 		lst_cred := strings.Split(secret.Value, ",")
@@ -920,7 +971,7 @@ func (conf *Config) DecryptSecretsFromVault() {
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
 		if conf.IsVaultUsed() && conf.IsPath(secret.Value) {
-			//	cluster.LogPrintf(LvlInfo, "Decrypting all the secret variables on Vault")
+			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Decrypting all the secret variables on Vault")
 			vault_config := vault.DefaultConfig()
 			vault_config.Address = conf.VaultServerAddr
 			client, err := conf.GetVaultConnection()
@@ -1664,4 +1715,106 @@ func (conf *Config) ReadCloud18Config(viper *viper.Viper) {
 
 	viper.Unmarshal(&conf)
 
+}
+
+func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
+	//Always print state
+	if level == "STATE" {
+		return true
+	}
+	var lvl int
+	lvl = 0
+	switch level {
+	case "ERROR", "ALERT":
+		lvl = 1
+		break
+	case "WARN", "START":
+		lvl = 2
+		break
+	case "INFO", "TEST", "BENCH":
+		lvl = 3
+		break
+	case "DEBUG":
+		lvl = 4
+		break
+	}
+
+	if lvl > 0 {
+		switch {
+		case module == ConstLogModGeneral:
+			return conf.LogLevel >= lvl
+		case module == ConstLogModFailedElection:
+			if conf.LogFailedElection {
+				return conf.LogFailedElectionLevel >= lvl
+			}
+			break
+		case module == ConstLogModSST:
+			if conf.LogSST {
+				return conf.LogSSTLevel >= lvl
+			}
+			break
+		case module == ConstLogModHeartBeat:
+			if conf.LogHeartbeat {
+				return conf.LogSSTLevel >= lvl
+			}
+			break
+		case module == ConstLogModConfigLoad:
+			if conf.LogConfigLoad {
+				return conf.LogConfigLoadLevel >= lvl
+			}
+			break
+		case module == ConstLogModGit:
+			if conf.LogGit {
+				return conf.LogGitLevel >= lvl
+			}
+			break
+		case module == ConstLogModBackupStream:
+			if conf.LogBackupStream {
+				return conf.LogBackupStreamLevel >= lvl
+			}
+			break
+		case module == ConstLogModOrchestrator:
+			if conf.LogOrchestrator {
+				return conf.LogOrchestratorLevel >= lvl
+			}
+			break
+		case module == ConstLogModVault:
+			if conf.LogVault {
+				return conf.LogVaultLevel >= lvl
+			}
+			break
+		case module == ConstLogModTopology:
+			if conf.LogTopology {
+				return conf.LogTopologyLevel >= lvl
+			}
+			break
+		case module == ConstLogModProxy:
+			if conf.LogProxy {
+				return conf.LogProxyLevel >= lvl
+			}
+			break
+		case module == ConstLogModProxySQL:
+			if conf.ProxysqlDebug {
+				return conf.ProxysqlLogLevel >= lvl
+			}
+			break
+		case module == ConstLogModHAProxy:
+			if conf.HaproxyDebug {
+				return conf.HaproxyLogLevel >= lvl
+			}
+			break
+		case module == ConstLogModProxyJanitor:
+			if conf.ProxyJanitorDebug {
+				return conf.ProxyJanitorLogLevel >= lvl
+			}
+			break
+		case module == ConstLogModMaxscale:
+			if conf.MxsDebug {
+				return conf.MxsLogLevel >= lvl
+			}
+			break
+		}
+	}
+
+	return false
 }

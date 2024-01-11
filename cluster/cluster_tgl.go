@@ -9,6 +9,8 @@ package cluster
 import (
 	"os"
 	"strings"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 func (cluster *Cluster) SwitchForceSlaveNoGtid() {
@@ -142,10 +144,10 @@ func (cluster *Cluster) SwitchCompressBackups() {
 func (cluster *Cluster) SwitchInteractive() {
 	if cluster.Conf.Interactive == true {
 		cluster.Conf.Interactive = false
-		cluster.LogPrintf(LvlInfo, "Failover monitor switched to automatic mode")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Failover monitor switched to automatic mode")
 	} else {
 		cluster.Conf.Interactive = true
-		cluster.LogPrintf(LvlInfo, "Failover monitor switched to manual mode")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Failover monitor switched to manual mode")
 	}
 }
 
@@ -172,11 +174,14 @@ func (cluster *Cluster) SwitchSwitchoverSync() {
 
 func (cluster *Cluster) SwitchVerbosity() {
 
-	if cluster.GetLogLevel() > 0 {
-		cluster.SetLogLevel(0)
-	} else {
-		cluster.SetLogLevel(4)
-	}
+	// if cluster.GetLogLevel() > 0 {
+	// 	cluster.SetLogLevel(0)
+
+	// } else {
+	// 	cluster.SetLogLevel(4)
+	// }
+
+	cluster.Conf.Verbose = !cluster.Conf.Verbose
 }
 
 func (cluster *Cluster) SwitchRejoin() {
@@ -395,10 +400,10 @@ func (cluster *Cluster) SwitchCloud18() {
 func (cluster *Cluster) SwitchMonitoringScheduler() {
 	cluster.Conf.MonitorScheduler = !cluster.Conf.MonitorScheduler
 	if !cluster.Conf.MonitorScheduler {
-		cluster.LogPrintf(LvlInfo, "Stopping scheduler")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Stopping scheduler")
 		cluster.scheduler.Stop()
 	} else {
-		cluster.LogPrintf(LvlInfo, "Starting scheduler")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Starting scheduler")
 		cluster.initScheduler()
 	}
 }
@@ -434,4 +439,130 @@ func (cluster *Cluster) SwitchPrintDelayStatHistory() {
 
 func (cluster *Cluster) SwitchFailoverCheckDelayStat() {
 	cluster.Conf.FailoverCheckDelayStat = !cluster.Conf.FailoverCheckDelayStat
+}
+
+func (cluster *Cluster) SwitchLogFailedElection() {
+	if cluster.Conf.LogFailedElection {
+		cluster.Conf.LogFailedElectionLevel = 0
+	} else {
+		cluster.Conf.LogFailedElectionLevel = 1
+	}
+	cluster.Conf.LogFailedElection = !cluster.Conf.LogFailedElection
+}
+
+func (cluster *Cluster) SwitchLogSST() {
+	if cluster.Conf.LogSST {
+		cluster.Conf.LogSSTLevel = 0
+	} else {
+		cluster.Conf.LogSSTLevel = 1
+	}
+	cluster.Conf.LogSST = !cluster.Conf.LogSST
+}
+
+func (cluster *Cluster) SwitchLogHeartbeat() {
+	if cluster.Conf.LogHeartbeat {
+		cluster.Conf.LogHeartbeatLevel = 0
+	} else {
+		cluster.Conf.LogHeartbeatLevel = 1
+	}
+	cluster.Conf.LogHeartbeat = !cluster.Conf.LogHeartbeat
+}
+
+func (cluster *Cluster) SwitchLogConfigLoad() {
+	if cluster.Conf.LogConfigLoad {
+		cluster.Conf.LogConfigLoadLevel = 0
+	} else {
+		cluster.Conf.LogConfigLoadLevel = 1
+	}
+	cluster.Conf.LogConfigLoad = !cluster.Conf.LogConfigLoad
+}
+
+func (cluster *Cluster) SwitchLogGit() {
+	if cluster.Conf.LogGit {
+		cluster.Conf.LogGitLevel = 0
+	} else {
+		cluster.Conf.LogGitLevel = 1
+	}
+	cluster.Conf.LogGit = !cluster.Conf.LogGit
+}
+
+func (cluster *Cluster) SwitchLogBackupStream() {
+	if cluster.Conf.LogBackupStream {
+		cluster.Conf.LogBackupStreamLevel = 0
+	} else {
+		cluster.Conf.LogBackupStreamLevel = 1
+	}
+	cluster.Conf.LogBackupStream = !cluster.Conf.LogBackupStream
+}
+
+func (cluster *Cluster) SwitchLogOrchestrator() {
+	if cluster.Conf.LogOrchestrator {
+		cluster.Conf.LogOrchestratorLevel = 0
+	} else {
+		cluster.Conf.LogOrchestratorLevel = 1
+	}
+	cluster.Conf.LogOrchestrator = !cluster.Conf.LogOrchestrator
+}
+
+func (cluster *Cluster) SwitchLogVault() {
+	if cluster.Conf.LogVault {
+		cluster.Conf.LogVaultLevel = 0
+	} else {
+		cluster.Conf.LogVaultLevel = 1
+	}
+	cluster.Conf.LogVault = !cluster.Conf.LogVault
+}
+
+func (cluster *Cluster) SwitchLogTopology() {
+	if cluster.Conf.LogTopology {
+		cluster.Conf.LogTopologyLevel = 0
+	} else {
+		cluster.Conf.LogTopologyLevel = 1
+	}
+	cluster.Conf.LogTopology = !cluster.Conf.LogTopology
+}
+
+func (cluster *Cluster) SwitchLogProxy() {
+	if cluster.Conf.LogProxy {
+		cluster.Conf.LogProxyLevel = 0
+	} else {
+		cluster.Conf.LogProxyLevel = 1
+	}
+	cluster.Conf.LogProxy = !cluster.Conf.LogProxy
+}
+
+func (cluster *Cluster) SwitchProxysqlDebug() {
+	if cluster.Conf.ProxysqlDebug {
+		cluster.Conf.ProxysqlLogLevel = 0
+	} else {
+		cluster.Conf.ProxysqlLogLevel = 1
+	}
+	cluster.Conf.ProxysqlDebug = !cluster.Conf.ProxysqlDebug
+}
+
+func (cluster *Cluster) SwitchHaproxyDebug() {
+	if cluster.Conf.HaproxyDebug {
+		cluster.Conf.HaproxyLogLevel = 0
+	} else {
+		cluster.Conf.HaproxyLogLevel = 1
+	}
+	cluster.Conf.HaproxyDebug = !cluster.Conf.HaproxyDebug
+}
+
+func (cluster *Cluster) SwitchProxyJanitorDebug() {
+	if cluster.Conf.ProxyJanitorDebug {
+		cluster.Conf.ProxyJanitorLogLevel = 0
+	} else {
+		cluster.Conf.ProxyJanitorLogLevel = 1
+	}
+	cluster.Conf.ProxyJanitorDebug = !cluster.Conf.ProxyJanitorDebug
+}
+
+func (cluster *Cluster) SwitchMxsDebug() {
+	if cluster.Conf.MxsDebug {
+		cluster.Conf.MxsLogLevel = 0
+	} else {
+		cluster.Conf.MxsLogLevel = 1
+	}
+	cluster.Conf.MxsDebug = !cluster.Conf.MxsDebug
 }

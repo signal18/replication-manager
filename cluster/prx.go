@@ -211,7 +211,7 @@ func (cluster *Cluster) newProxyList() error {
 		for k, proxyHost := range strings.Split(cluster.Conf.MdbsProxyHosts, ",") {
 			prx := NewMariadbShardProxy(k, cluster, proxyHost)
 			cluster.AddProxy(prx)
-			cluster.LogPrintf(LvlDbg, "New MdbShardProxy proxy created: %s %s", prx.GetHost(), prx.GetPort())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlDbg, "New MdbShardProxy proxy created: %s %s", prx.GetHost(), prx.GetPort())
 		}
 	}
 	if cluster.Conf.SphinxHosts != "" && cluster.Conf.SphinxOn {
@@ -219,7 +219,7 @@ func (cluster *Cluster) newProxyList() error {
 			prx := NewSphinxProxy(k, cluster, proxyHost)
 
 			cluster.AddProxy(prx)
-			cluster.LogPrintf(LvlDbg, "New SphinxSearch proxy created: %s %s", prx.GetHost(), prx.GetPort())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlDbg, "New SphinxSearch proxy created: %s %s", prx.GetHost(), prx.GetPort())
 		}
 	}
 	if cluster.Conf.MyproxyOn {
@@ -232,7 +232,7 @@ func (cluster *Cluster) newProxyList() error {
 		cluster.AddProxy(prx)
 	}
 
-	cluster.LogPrintf(LvlInfo, "Loaded %d proxies", len(cluster.Proxies))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlInfo, "Loaded %d proxies", len(cluster.Proxies))
 
 	return nil
 }
@@ -274,31 +274,31 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 		for _, pr := range cluster.Proxies {
 			db, err := pr.GetClusterConnection()
 			if err != nil {
-				if cluster.IsVerbose() {
-					cluster.LogPrintf(LvlErr, "Can't get a proxy connection: %s", err)
-				}
+				// if cluster.IsVerbose() {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlErr, "Can't get a proxy connection: %s", err)
+				// }
 				return false
 			}
 			defer db.Close()
 			var sv map[string]string
 			sv, _, err = dbhelper.GetVariables(db, cluster.GetMaster().DBVersion)
 			if err != nil {
-				if cluster.IsVerbose() {
-					cluster.LogPrintf(LvlErr, "Can't get variables: %s", err)
-				}
+				// if cluster.IsVerbose() {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlErr, "Can't get variables: %s", err)
+				// }
 				return false
 			}
 			var sid uint64
 			sid, err = strconv.ParseUint(sv["SERVER_ID"], 10, 64)
 			if err != nil {
-				if cluster.IsVerbose() {
-					cluster.LogPrintf(LvlErr, "Can't form proxy server_id convert: %s", err)
-				}
+				// if cluster.IsVerbose() {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlErr, "Can't form proxy server_id convert: %s", err)
+				// }
 				return false
 			}
-			if cluster.IsVerbose() {
-				cluster.LogPrintf(LvlInfo, "Proxy compare master: %d %d", cluster.GetMaster().ServerID, uint(sid))
-			}
+			// if cluster.IsVerbose() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlInfo, "Proxy compare master: %d %d", cluster.GetMaster().ServerID, uint(sid))
+			// }
 			if cluster.GetMaster().ServerID == uint64(sid) || pr.GetType() == config.ConstProxySpider {
 				return true
 			}
@@ -311,7 +311,7 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint64) {
 	// Found server from ServerId
 	server := cluster.GetServerFromId(serverid)
 	for _, pr := range cluster.Proxies {
-		cluster.LogPrintf(LvlInfo, "Notify server %s in maintenance in Proxy Type: %s Host: %s Port: %s", server.URL, pr.GetType(), pr.GetHost(), pr.GetPort())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlInfo, "Notify server %s in maintenance in Proxy Type: %s Host: %s Port: %s", server.URL, pr.GetType(), pr.GetHost(), pr.GetPort())
 		pr.SetMaintenance(server)
 	}
 }
@@ -326,9 +326,9 @@ func (cluster *Cluster) backendStateChangeProxies() {
 // Used to monitor proxies call by main monitor loop
 func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 	defer wcg.Done()
-	if cluster.Conf.LogLevel > 2 {
-		cluster.LogPrintf(LvlDbg, "Refresh proxy start")
-	}
+	// if cluster.Conf.LogLevel > 2 {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlDbg, "Refresh proxy start")
+	// }
 	for _, pr := range cluster.Proxies {
 		if pr != nil {
 			var err error
@@ -347,7 +347,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 				// cl.Conf.MaxFail
 				if pr.GetFailCount() >= cluster.Conf.MaxFail {
 					if pr.GetFailCount() == cluster.Conf.MaxFail {
-						cluster.LogPrintf("INFO", "Declaring %s proxy as failed %s:%s %s", pr.GetType(), pr.GetHost(), pr.GetPort(), err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, "INFO", "Declaring %s proxy as failed %s:%s %s", pr.GetType(), pr.GetHost(), pr.GetPort(), err)
 					}
 					pr.SetState(stateFailed)
 					pr.DelWaitStopCookie()
@@ -365,14 +365,14 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 			}
 		}
 	}
-	if cluster.Conf.LogLevel > 2 {
-		cluster.LogPrintf(LvlDbg, "Refresh proxy end")
-	}
+	// if cluster.Conf.LogLevel > 2 {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlDbg, "Refresh proxy end")
+	// }
 }
 
 func (cluster *Cluster) failoverProxies() {
 	for _, pr := range cluster.Proxies {
-		cluster.LogPrintf(LvlInfo, "Failover Proxy Type: %s Host: %s Port: %s", pr.GetType(), pr.GetHost(), pr.GetPort())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlInfo, "Failover Proxy Type: %s Host: %s Port: %s", pr.GetType(), pr.GetHost(), pr.GetPort())
 		pr.Failover()
 	}
 
@@ -380,7 +380,7 @@ func (cluster *Cluster) failoverProxies() {
 
 func (cluster *Cluster) initProxies() {
 	for _, pr := range cluster.Proxies {
-		cluster.LogPrintf(LvlInfo, "New proxy monitored: %s %s:%s", pr.GetType(), pr.GetHost(), pr.GetPort())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlInfo, "New proxy monitored: %s %s:%s", pr.GetType(), pr.GetHost(), pr.GetPort())
 		pr.Init()
 	}
 }

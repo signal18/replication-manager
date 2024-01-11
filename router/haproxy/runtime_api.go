@@ -19,7 +19,7 @@ func (r *Runtime) ApiCmd(cmd string) (string, error) {
 
 		return "", err
 	}
-	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
+	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlErr, "haproxy entering  readall stats: ")
 	result, err := ioutil.ReadAll(conn)
 	if err != nil {
 		return "", err
@@ -43,7 +43,7 @@ func (r *Runtime) SetMaster(host string, port string) (string, error) {
 		return "", err
 	}
 
-	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
+	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlErr, "haproxy entering  readall stats: ")
 	result, err := ioutil.ReadAll(conn)
 	if err != nil {
 		return "", err
@@ -63,7 +63,7 @@ func (r *Runtime) SetMasterFQDN(host string, port string) (string, error) {
 		return "", err
 	}
 
-	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
+	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlErr, "haproxy entering  readall stats: ")
 	result, err := ioutil.ReadAll(conn)
 	if err != nil {
 		return "", err
@@ -82,7 +82,7 @@ func (r *Runtime) SetReady(name string, pool string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
+	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlErr, "haproxy entering  readall stats: ")
 	result, err := ioutil.ReadAll(conn)
 	if err != nil {
 		return "", err
@@ -102,7 +102,7 @@ func (r *Runtime) SetMaintenance(name string, pool string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
+	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlErr, "haproxy entering  readall stats: ")
 	result, err := ioutil.ReadAll(conn)
 	if err != nil {
 		return "", err
@@ -122,7 +122,7 @@ func (r *Runtime) SetDrain(name string, pool string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	//	cluster.LogPrintf(LvlErr, "haproxy entering  readall stats: ")
+	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlErr, "haproxy entering  readall stats: ")
 	result, err := ioutil.ReadAll(conn)
 	if err != nil {
 		return "", err

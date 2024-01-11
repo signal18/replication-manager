@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 )
 
 func (regtest *RegTest) TestFailoverAssyncAutoRejoinRelay(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
@@ -35,7 +36,7 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinRelay(cluster *cluster.Clust
 	/// give time to start the failover
 
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf("TEST", " Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", " Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 
 		return false
 	}
@@ -47,20 +48,20 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinRelay(cluster *cluster.Clust
 	wg2.Wait()
 
 	if cluster.CheckTableConsistency("test.sbtest") != true {
-		cluster.LogPrintf(LvlErr, "Inconsitant slave")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Inconsitant slave")
 
 		return false
 	}
 	time.Sleep(8 * time.Second)
 	relay, _ := cluster.GetMasterFromReplication(SaveMaster)
-	cluster.LogPrintf("TEST", "Pointing to relay %s", relay.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Pointing to relay %s", relay.URL)
 	if relay == nil {
-		cluster.LogPrintf("TEST", "Old master is not attach to Relay  ")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Old master is not attach to Relay  ")
 
 		return false
 	}
 	if relay.IsRelay == false {
-		cluster.LogPrintf("TEST", "Old master is not attach to Relay  ")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Old master is not attach to Relay  ")
 
 		return false
 	}

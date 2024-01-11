@@ -6,7 +6,10 @@
 
 package regtest
 
-import "github.com/signal18/replication-manager/cluster"
+import (
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
+)
 
 func (regtest *RegTest) TestFailoverManual(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
@@ -17,7 +20,7 @@ func (regtest *RegTest) TestFailoverManual(cluster *cluster.Cluster, conf string
 	SaveMasterURL := SaveMaster.URL
 	cluster.FailoverNow()
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogPrintf("TEST", " Old master %s !=  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", " Old master %s !=  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
 

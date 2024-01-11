@@ -10,11 +10,12 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 )
 
 func (regtest *RegTest) TestFailoverTimeNotReach(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
-	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Master is %s", cluster.GetMaster().URL)
 	cluster.SetInteractive(false)
 	cluster.SetFailLimit(3)
 	cluster.SetFailTime(60)
@@ -25,7 +26,7 @@ func (regtest *RegTest) TestFailoverTimeNotReach(cluster *cluster.Cluster, conf 
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
 
 		return false
 	}
@@ -34,9 +35,9 @@ func (regtest *RegTest) TestFailoverTimeNotReach(cluster *cluster.Cluster, conf 
 	//Giving time for state dicovery
 	time.Sleep(4 * time.Second)
 	cluster.FailoverAndWait()
-	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogPrintf(LvlErr, "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
 

@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -65,9 +66,10 @@ func (proxy *Proxy) SetDataDir() {
 
 func (proxy *Proxy) createCookie(key string) error {
 	newFile, err := os.Create(proxy.Datadir + "/@" + key)
+	cluster := proxy.ClusterGroup
 	defer newFile.Close()
 	if err != nil {
-		proxy.ClusterGroup.LogPrintf(LvlDbg, "Create cookie (%s) %s", key, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlDbg, "Create cookie (%s) %s", key, err)
 	}
 	return err
 }
