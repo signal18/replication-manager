@@ -744,7 +744,7 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 		if cluster.IsInPreferedHosts(sl) {
 			// if (cluster.Conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
 			if cluster.IsInFailover() {
-				cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlDbg, "Election rig: %s elected as preferred master", sl.URL)
+				cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, LvlDbg, "Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
 		}
@@ -990,7 +990,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		for _, p := range trackposList {
 			if p.Seq == maxseq && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == true {
 				if forcingLog {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Ignored server is the most up to date ")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, LvlInfo, "Ignored server is the most up to date ")
 				}
 				return p.Indice
 			}
@@ -999,7 +999,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 
 		if cluster.Conf.LogFailedElection {
 			data, _ := json.MarshalIndent(trackposList, "", "\t")
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Election matrice maxseq >0: %s ", data)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, LvlInfo, "Election matrice maxseq >0: %s ", data)
 		}
 		return -1
 	}
@@ -1043,20 +1043,20 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		for _, p := range trackposList {
 			if p.Pos == maxpos && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == true {
 				if forcingLog {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Ignored server is the most up to date ")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, LvlInfo, "Ignored server is the most up to date ")
 				}
 				return p.Indice
 			}
 		}
 		if cluster.Conf.LogFailedElection {
 			data, _ := json.MarshalIndent(trackposList, "", "\t")
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Election matrice maxpos>0: %s ", data)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, LvlInfo, "Election matrice maxpos>0: %s ", data)
 		}
 		return -1
 	}
 	if cluster.Conf.LogFailedElection {
 		data, _ := json.MarshalIndent(trackposList, "", "\t")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Election matrice: %s ", data)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, LvlInfo, "Election matrice: %s ", data)
 	}
 	return -1
 }
