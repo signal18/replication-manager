@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
@@ -89,11 +90,11 @@ func (server *ServerMonitor) IsMysqlDumpUValidOption(option string) bool {
 }
 
 func (server *ServerMonitor) IsSlaveOfReplicationSource(name string) bool {
-
+	cluster := server.ClusterGroup
 	if server.Replications != nil {
 
 		for _, ss := range server.Replications {
-			server.ClusterGroup.LogPrintf(LvlDbg, "IsSlaveOfReplicationSource check %s drop unlinked server %s ", ss.ConnectionName.String, name)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "IsSlaveOfReplicationSource check %s drop unlinked server %s ", ss.ConnectionName.String, name)
 			if ss.ConnectionName.String == name {
 				return true
 			}
@@ -382,7 +383,7 @@ func (server *ServerMonitor) HasCycling() bool {
 	for range server.ClusterGroup.Servers {
 		currentMaster, _ := server.ClusterGroup.GetMasterFromReplication(currentSlave)
 		if currentMaster != nil {
-			//	server.ClusterGroup.LogPrintf("INFO", "Cycling my current master id :%d me id:%d", currentMaster.ServerID, currentSlave.ServerID)
+			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,"INFO", "Cycling my current master id :%d me id:%d", currentMaster.ServerID, currentSlave.ServerID)
 			if currentMaster.ServerID == searchServerID {
 				return true
 			} else {
@@ -425,7 +426,8 @@ func (server *ServerMonitor) IsRunning() bool {
 }
 
 func (server *ServerMonitor) IsConnected() bool {
-	server.GetCluster().LogPrintf(LvlInfo, "Waiting state running state is %s  with topology %s and pool %s ", server.State, server.GetCluster().GetTopology(), server.Conn)
+	cluster := server.ClusterGroup
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Waiting state running state is %s  with topology %s and pool %s ", server.State, server.GetCluster().GetTopology(), server.Conn)
 
 	if server.State == stateFailed /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
 		return false

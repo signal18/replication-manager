@@ -13,12 +13,14 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 func (cluster *Cluster) TarGzWrite(_path string, tw *tar.Writer, fi os.FileInfo, trimprefix string) {
 	fr, err := os.Open(_path)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Compliance writing config.tar.gz failed : %s", err)
 	}
 	defer fr.Close()
 	h := new(tar.Header)
@@ -40,26 +42,26 @@ func (cluster *Cluster) TarGzWrite(_path string, tw *tar.Writer, fi os.FileInfo,
 
 	err = tw.WriteHeader(h)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Compliance writing config.tar.gz failed : %s", err)
 	}
 	if !fi.Mode().IsRegular() { //nothing more to do for non-regular
 		return
 	}
 	_, err = io.Copy(tw, fr)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Compliance writing config.tar.gz failed : %s", err)
 	}
 }
 
 func (cluster *Cluster) IterDirectory(dirPath string, tw *tar.Writer, trimprefix string) {
 	dir, err := os.Open(dirPath)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Compliance writing config.tar.gz failed : %s", err)
 	}
 	defer dir.Close()
 	fis, err := dir.Readdir(0)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Compliance writing config.tar.gz failed : %s", err)
 	}
 	for _, fi := range fis {
 		curPath := dirPath + "/" + fi.Name()
@@ -77,7 +79,7 @@ func (cluster *Cluster) TarGz(outFilePath string, inPath string) {
 	// file write
 	fw, err := os.Create(outFilePath)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Compliance writing config.tar.gz failed : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Compliance writing config.tar.gz failed : %s", err)
 	}
 	defer fw.Close()
 

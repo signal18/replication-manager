@@ -33,7 +33,7 @@ func (cluster *Cluster) CheckFailed() {
 		return
 	}
 	if cluster.master == nil {
-		cluster.LogPrintf(LvlDbg, "Master not discovered, skipping failover check")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Master not discovered, skipping failover check")
 	}
 
 	if cluster.isFoundCandidateMaster() &&
@@ -63,57 +63,57 @@ func (cluster *Cluster) CheckFailed() {
 func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcingLog bool) bool {
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
-		cluster.LogPrintf(LvlDbg, "Error in getting slave status in testing slave electable for switchover %s: %s  ", sl.URL, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Error in getting slave status in testing slave electable for switchover %s: %s  ", sl.URL, err)
 		return false
 	}
 	hasBinLogs, err := cluster.IsEqualBinlogFilters(cluster.master, sl)
 	if err != nil {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Could not check binlog filters on %s", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Could not check binlog filters on %s", sl.URL)
+		// }
 		return false
 	}
 	if (!cluster.Conf.SwitchLowerRelease) && (sl.DBVersion.Major < cluster.master.DBVersion.Major || (sl.DBVersion.Major == cluster.master.DBVersion.Major && sl.DBVersion.Minor < cluster.master.DBVersion.Minor)) {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Could not elect a minor version as leader without enabing switchover-lower-release %s", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Could not elect a minor version as leader without enabing switchover-lower-release %s", sl.URL)
+		// }
 		return false
 	}
 	if hasBinLogs == false && cluster.Conf.CheckBinFilter == true && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Binlog filters differ on master and slave %s. Skipping", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Binlog filters differ on master and slave %s. Skipping", sl.URL)
+		// }
 		return false
 	}
 	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") && cluster.Conf.CheckReplFilter == true {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Replication filters differ on master and slave %s. Skipping", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Replication filters differ on master and slave %s. Skipping", sl.URL)
+		// }
 		return false
 	}
 	if cluster.Conf.SwitchGtidCheck && cluster.IsCurrentGTIDSync(sl, cluster.master) == false && cluster.Conf.RplChecks == true {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
+		// }
 		return false
 	}
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.SwitchSync && cluster.Conf.RplChecks {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
+		// }
 		return false
 	}
 	if ss.SecondsBehindMaster.Valid == false && cluster.Conf.RplChecks == true {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Slave %s is stopped. Skipping", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Slave %s is stopped. Skipping", sl.URL)
+		// }
 		return false
 	}
 
 	if sl.IsMaxscale || sl.IsRelay {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Slave %s is a relay slave. Skipping", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Slave %s is a relay slave. Skipping", sl.URL)
+		// }
 		return false
 	}
 	return true
@@ -154,7 +154,7 @@ func (cluster *Cluster) isMaxMasterFailedCountReached() bool {
 
 func (cluster *Cluster) isMaxClusterFailoverCountNotReached() bool {
 	// illimited failed count
-	//cluster.LogPrintf("CHECK: Failover Counter Reach")
+	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover Counter Reach")
 	if cluster.Conf.FailLimit == 0 {
 		return true
 	}
@@ -171,7 +171,7 @@ func (cluster *Cluster) isBetweenFailoverTimeValid() bool {
 	if cluster.Conf.FailTime == 0 {
 		return true
 	}
-	//	cluster.LogPrintf("CHECK: Failover Time to short with previous failover")
+	//	cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover Time to short with previous failover")
 	if rem > 0 {
 		cluster.StateMachine.AddState("ERR00029", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00029"]), ErrFrom: "CHECK"})
 		return false
@@ -183,7 +183,7 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 	if cluster.Conf.CheckFalsePositiveHeartbeat == false {
 		return false
 	}
-	//cluster.LogPrintf("CHECK: Failover Slaves heartbeats")
+	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover Slaves heartbeats")
 
 	for _, s := range cluster.slaves {
 		relaycheck, _ := cluster.GetMasterFromReplication(s)
@@ -192,15 +192,15 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 				status, logs, err := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
 				cluster.LogSQL(logs, err, s.URL, "isOneSlaveHeartbeatIncreasing", LvlDbg, "GetStatusAsInt")
 				saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
-				if cluster.Conf.LogLevel > 1 {
-					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
-				}
+				// if cluster.Conf.LogLevel > 1 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
+				// }
 				time.Sleep(time.Duration(cluster.Conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
 				status2, logs, err := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
 				cluster.LogSQL(logs, err, s.URL, "isOneSlaveHeartbeatIncreasing", LvlDbg, "GetStatusAsInt")
-				if cluster.Conf.LogLevel > 1 {
-					cluster.LogPrintf(LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
-				}
+				// if cluster.Conf.LogLevel > 1 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
+				// }
 				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
 					cluster.StateMachine.AddState("ERR00028", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.URL), ErrFrom: "CHECK"})
 					return true
@@ -218,45 +218,45 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 	if cluster.Conf.CheckFalsePositiveMaxscale == false {
 		return false
 	}
-	//cluster.LogPrintf("CHECK: Failover Maxscale Master Satus")
+	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover Maxscale Master Satus")
 	m := maxscale.MaxScale{Host: cluster.Conf.MxsHost, Port: cluster.Conf.MxsPort, User: cluster.Conf.MxsUser, Pass: cluster.Conf.MxsPass}
 	err := m.Connect()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Could not connect to MaxScale:", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could not connect to MaxScale:", err)
 		return false
 	}
 	defer m.Close()
 	if cluster.master.MxsServerName == "" {
-		cluster.LogPrintf(LvlInfo, "MaxScale server name undiscovered")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "MaxScale server name undiscovered")
 		return false
 	}
 	//disable monitoring
 
 	var monitor string
 	if cluster.Conf.MxsGetInfoMethod == "maxinfo" {
-		cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxinfo")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Getting Maxscale monitor via maxinfo")
 		m.GetMaxInfoMonitors("http://" + cluster.Conf.MxsHost + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/monitors")
 		monitor = m.GetMaxInfoStoppedMonitor()
 
 	} else {
-		cluster.LogPrintf(LvlDbg, "Getting Maxscale monitor via maxadmin")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Getting Maxscale monitor via maxadmin")
 		_, err = m.ListMonitors()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "MaxScale client could not list monitors: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "MaxScale client could not list monitors: %s", err)
 			return false
 		}
 		monitor = m.GetStoppedMonitor()
 	}
 	if monitor != "" {
 		cmd := "Restart monitor \"" + monitor + "\""
-		cluster.LogPrintf("INFO : %s", cmd)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO : %s", cmd)
 		err = m.RestartMonitor(monitor)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "MaxScale client could not startup monitor: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "MaxScale client could not startup monitor: %s", err)
 			return false
 		}
 	} else {
-		cluster.LogPrintf(LvlInfo, "MaxScale Monitor not found")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "MaxScale Monitor not found")
 		return false
 	}
 
@@ -291,7 +291,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	if cluster.Conf.Arbitration == false {
 		return true
 	}
-	//	cluster.LogPrintf("CHECK: Failover External Arbitration")
+	//	cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover External Arbitration")
 
 	url := "http://" + cluster.Conf.ArbitrationSasHosts + "/arbitrator"
 	var mst string
@@ -306,7 +306,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s", err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err.Error())
 		cluster.StateMachine.AddState("ERR00022", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
@@ -320,12 +320,12 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	var r response
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Arbitrator sent invalid JSON")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Arbitrator sent invalid JSON")
 		cluster.StateMachine.AddState("ERR00022", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
 		return false
 	}
 	if r.Arbitration == "winner" {
-		cluster.LogPrintf(LvlInfo, "Arbitrator says: winner")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Arbitrator says: winner")
 		return true
 	}
 	cluster.StateMachine.AddState("ERR00022", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
@@ -336,7 +336,7 @@ func (cluster *Cluster) isExternalOk() bool {
 	if cluster.Conf.CheckFalsePositiveExternal == false {
 		return false
 	}
-	//cluster.LogPrintf("CHECK: Failover External Request")
+	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover External Request")
 	if cluster.master == nil {
 		return false
 	}
@@ -389,25 +389,25 @@ func (cluster *Cluster) isValidConfig() error {
 		//cluster.logPtr, err = os.OpenFile(cluster.Conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 		//log.
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Failed opening logfile, disabling for the rest of the session")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Failed opening logfile, disabling for the rest of the session")
 			cluster.Conf.LogFile = ""
 		}
 	}
 
 	// if slaves option has been supplied, split into a slice.
 	if cluster.Conf.Hosts == "" {
-		cluster.LogPrintf(LvlErr, "No hosts list specified")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No hosts list specified")
 		return errors.New("No hosts list specified")
 	}
 
 	// validate users
 	if cluster.Conf.User == "" {
-		cluster.LogPrintf(LvlErr, "No master user/pair specified")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No master user/pair specified")
 		return errors.New("No master user/pair specified")
 	}
 
 	if cluster.Conf.RplUser == "" {
-		cluster.LogPrintf(LvlErr, "No replication user/pair specified")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No replication user/pair specified")
 		return errors.New("No replication user/pair specified")
 	}
 
@@ -416,7 +416,7 @@ func (cluster *Cluster) isValidConfig() error {
 		ihosts := strings.Split(cluster.Conf.IgnoreSrv, ",")
 		for _, host := range ihosts {
 			if !strings.Contains(cluster.Conf.Hosts, host) {
-				cluster.LogPrintf(LvlErr, clusterError["ERR00059"], host)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, clusterError["ERR00059"], host)
 			}
 		}
 	}
@@ -426,7 +426,7 @@ func (cluster *Cluster) isValidConfig() error {
 
 	for _, host := range pfa {
 		if !strings.Contains(cluster.Conf.Hosts, host) {
-			cluster.LogPrintf(LvlErr, clusterError["ERR00074"], host)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, clusterError["ERR00074"], host)
 		}
 	}
 
@@ -493,7 +493,7 @@ func (cluster *Cluster) CheckAlert(state state.State) {
 
 		err := cluster.SendAlert(a)
 		if err != nil {
-			cluster.LogPrintf("ERROR", "Could not send alert: %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Could not send alert: %s ", err)
 		}
 
 	}
@@ -501,7 +501,7 @@ func (cluster *Cluster) CheckAlert(state state.State) {
 
 func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 	if cluster.IsAlertDisable {
-		cluster.LogPrintf(LvlInfo, "Cancel alert caused by alert disabled from scheduler")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Cancel alert caused by alert disabled from scheduler")
 		return nil
 	}
 	if cluster.Conf.MailTo != "" {
@@ -509,14 +509,14 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 	}
 
 	if cluster.Conf.AlertScript != "" {
-		cluster.LogPrintf("INFO", "Calling alert script")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling alert script")
 		var out []byte
 		out, err := exec.Command(cluster.Conf.AlertScript, alert.Cluster, alert.Host, alert.PrevState, alert.State).CombinedOutput()
 		if err != nil {
-			cluster.LogPrintf("ERROR", "%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 		}
 
-		cluster.LogPrintf("INFO", "Alert script complete:", string(out))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Alert script complete:", string(out))
 	}
 
 	return nil
@@ -530,25 +530,25 @@ func (cluster *Cluster) CheckAllTableChecksum() {
 
 func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 
-	cluster.LogPrintf(LvlInfo, "Checksum master table %s.%s %s", schema, table, cluster.master.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Checksum master table %s.%s %s", schema, table, cluster.master.URL)
 
 	Conn, err := cluster.master.GetNewDBConn()
 	if err != nil {
-		cluster.master.ClusterGroup.LogPrintf(LvlErr, "Error connection in exec query no log %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error connection in exec query no log %s", err)
 		return
 	}
 	defer Conn.Close()
 	Conn.SetConnMaxLifetime(3595 * time.Second)
 	pk, _ := cluster.master.GetTablePK(schema, table)
 	if pk == "" {
-		cluster.master.ClusterGroup.LogPrintf(LvlErr, "Checksum, no primary key for table %s.%s", schema, table)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Checksum, no primary key for table %s.%s", schema, table)
 		t := cluster.master.DictTables[schema+"."+table]
 		t.TableSync = "NA"
 		cluster.master.DictTables[schema+"."+table] = t
 		return
 	}
 	if strings.Contains(pk, ",") {
-		cluster.master.ClusterGroup.LogPrintf(LvlInfo, "Checksum, composit primary key for table %s.%s", schema, table)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Checksum, composit primary key for table %s.%s", schema, table)
 	}
 	Conn.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 	Conn.Exec("USE replication_manager_schema")
@@ -560,13 +560,13 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	_, err = Conn.Exec(query)
 	Conn.Exec("SET SESSION binlog_format = 'STATEMENT'")
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ERROR: Could not process chunck %s %s", query, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "ERROR: Could not process chunck %s %s", query, err)
 		return
 	}
 	var md5Sum string
 	err = Conn.QueryRowx("SELECT CONCAT( \"SUM(CRC32(CONCAT(\" , GROUP_CONCAT( CONCAT( \"IFNULL(\" , COLUMN_NAME, \",'N')\")),\")))\") as fields FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA ='" + schema + "' AND TABLE_NAME='" + table + "'").Scan(&md5Sum)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ERROR: Could not get SQL md5Sum", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "ERROR: Could not get SQL md5Sum", err)
 		return
 	}
 
@@ -578,7 +578,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		/*	query := "SELECT (select COLUMN_TYPE from information_schema.columns C where C.TABLE_NAME=TABLE_NAME AND C.COLUMN_NAME=COLUMN_NAME AND C.TABLE_SCHEMA=TABLE_SCHEMA LIMIT 1) as TYPE   from information_schema.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME='PRIMARY' AND CONSTRAINT_SCHEMA='" + schema + "' AND TABLE_NAME='" + table + "' AND  ORDINAL_POSITION=" + strconv.Itoa(i+1)
 			err := Conn.QueryRowx(query).Scan(&ftype)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "ERROR: Could not fetch  datatype %s %s", query, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,LvlErr, "ERROR: Could not fetch  datatype %s %s", query, err)
 				return
 			}
 			separator := ""
@@ -592,22 +592,22 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, chunkMinKey , chunkMaxKey," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunck limit 1) B on " + predicate
 		_, err := Conn.Exec(query)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "ERROR: Could not process chunck %s %s", query, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "ERROR: Could not process chunck %s %s", query, err)
 			return
 		}
 		res, err2 := Conn.Exec("DELETE FROM replication_manager_schema.table_chunck limit 1")
 		if err2 != nil {
-			cluster.LogPrintf(LvlErr, "Checksum error deleting chunck %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Checksum error deleting chunck %s", err)
 			return
 		}
 
 		i, err3 := res.RowsAffected()
 		if err3 != nil {
-			cluster.LogPrintf(LvlErr, "Checksum can't fetch rows affected ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Checksum can't fetch rows affected ", err)
 			return
 		}
 		if i == 0 {
-			cluster.LogPrintf(LvlInfo, "Finished checksum table %s.%s", schema, table)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Finished checksum table %s.%s", schema, table)
 			break
 		}
 		/*	slave := cluster.GetFirstWorkingSlave()
@@ -619,13 +619,13 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	}
 	cluster.master.Refresh()
 	masterSeq := cluster.master.CurrentGtid.GetSeqServerIdNos(uint64(cluster.master.ServerID))
-	cluster.LogPrintf(LvlInfo, "Wait sync: Master sequence %d", masterSeq)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Wait sync: Master sequence %d", masterSeq)
 
 	for _, s := range cluster.slaves {
 		if !s.IsFailed() && !s.IsReplicationBroken() {
 			for true {
 				slaveSeq := s.SlaveGtid.GetSeqServerIdNos(uint64(cluster.master.ServerID))
-				cluster.LogPrintf(LvlInfo, "Wait sync on slave %s sequence %d", s.URL, slaveSeq)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Wait sync on slave %s sequence %d", s.URL, slaveSeq)
 				if slaveSeq >= masterSeq {
 					break
 				} else {
@@ -646,7 +646,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		for _, chunk := range masterChecksums {
 			if chunk.ChunkCheckSum != slaveChecksums[chunk.ChunkId].ChunkCheckSum {
 				checkok = false
-				cluster.LogPrintf(LvlInfo, "Checksum table failed chunk(%s,%s) %s.%s %s", chunk.ChunkMinKey, chunk.ChunkMaxKey, schema, table, s.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Checksum table failed chunk(%s,%s) %s.%s %s", chunk.ChunkMinKey, chunk.ChunkMaxKey, schema, table, s.URL)
 				t := cluster.master.DictTables[schema+"."+table]
 				t.TableSync = "ER"
 				cluster.master.DictTables[schema+"."+table] = t
@@ -654,7 +654,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 
 		}
 		if checkok {
-			cluster.LogPrintf(LvlInfo, "Checksum table succeed %s.%s %s", schema, table, s.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Checksum table succeed %s.%s %s", schema, table, s.URL)
 			t := cluster.master.DictTables[schema+"."+table]
 			t.TableSync = "OK"
 			cluster.master.DictTables[schema+"."+table] = t
@@ -728,18 +728,18 @@ func (cluster *Cluster) CheckCredentialRotation() {
 	cluster.inConnectVault = true
 	defer func() { cluster.inConnectVault = false }()
 	if cluster.HasReplicationCredentialsRotation() {
-		//cluster.LogPrintf(LvlInfo, "TEST checkReplicationCredentialsRotation")
+		//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,LvlInfo, "TEST checkReplicationCredentialsRotation")
 		cluster.SetClusterReplicationCredentialsFromConfig()
 		for _, slave := range cluster.slaves {
 			ss, err := slave.GetSlaveStatus(slave.ReplicationSourceName)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "No replication channel %s on slave %s : %s", slave.ReplicationSourceName, slave.URL, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No replication channel %s on slave %s : %s", slave.ReplicationSourceName, slave.URL, err)
 			}
 			slave.SetReplicationCredentialsRotation(ss)
 		}
 	}
 	if cluster.HasMonitoringCredentialsRotation() {
-		//cluster.LogPrintf(LvlInfo, "TEST checkCredentialsRotation")
+		//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,LvlInfo, "TEST checkCredentialsRotation")
 		cluster.SetClusterMonitorCredentialsFromConfig()
 		cluster.SetDbServersMonitoringCredential(cluster.Conf.Secrets["db-servers-credential"].Value)
 	}
@@ -763,11 +763,11 @@ func (cluster *Cluster) CheckCanSaveDynamicConfig() {
 }
 
 func (cluster *Cluster) CheckIsOverwrite() {
-	cluster.LogPrintf(LvlDbg, "Check overwrite conf path : %s\n", cluster.Conf.WorkingDir+"/"+cluster.Name)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Check overwrite conf path : %s\n", cluster.Conf.WorkingDir+"/"+cluster.Name)
 	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/overwrite.toml"); !os.IsNotExist(err) {
 		input, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/overwrite.toml")
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Cannot read config file %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cannot read config file %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", err)
 			return
 		}
 
@@ -777,9 +777,9 @@ func (cluster *Cluster) CheckIsOverwrite() {
 				line = strings.ReplaceAll(line, " ", "")
 				if line != "" {
 					cluster.SetState("WARN0102", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0102"]), ErrFrom: "CLUSTER"})
-					cluster.LogPrintf(LvlDbg, "Check overwrite is not empty line %d : %s\n", i, line)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Check overwrite is not empty line %d : %s\n", i, line)
 				} else {
-					cluster.LogPrintf(LvlDbg, "Check overwrite is empty line %d : %s\n", i, line)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Check overwrite is empty line %d : %s\n", i, line)
 				}
 
 			}
@@ -796,7 +796,7 @@ func (cluster *Cluster) CheckInjectConfig() {
 		} else {
 			data, err := os.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/inject.toml")
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Cannot read config file %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/inject.toml", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cannot read config file %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/inject.toml", err)
 				return
 			}
 			//extract all the data of inject.toml file
@@ -815,7 +815,7 @@ func (cluster *Cluster) CheckInjectConfig() {
 			file, _ := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/inject.toml", os.O_WRONLY|os.O_TRUNC, 0644)
 			err = file.Truncate(0)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Cannot truncate config file after extraction %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/inject.toml", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cannot truncate config file after extraction %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/inject.toml", err)
 			}
 			file.Close()
 			if cluster.Conf.GitUrl != "" {

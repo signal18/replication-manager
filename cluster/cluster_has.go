@@ -17,9 +17,9 @@ import (
 
 func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
 	for _, sv := range cluster.Servers {
-		//	cluster.LogPrintf(LvlInfo, "HasServer:%s %s, %s %s", sv.Id, srv.Id, sv.URL, srv.URL)
+		//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "HasServer:%s %s, %s %s", sv.Id, srv.Id, sv.URL, srv.URL)
 		// id can not be used for checking equality because  same srv in different clusters
-		// cluster.LogPrintf(LvlInfo, "HasServer check  %s  vs  %s  ", sv.URL, srv.URL)
+		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "HasServer check  %s  vs  %s  ", sv.URL, srv.URL)
 		// When server has no port URL has no port then discovery use port
 		if sv.URL == srv.URL || sv.URL == srv.URL+":3306" {
 			return true
@@ -78,7 +78,7 @@ func (cluster *Cluster) IsProvisioned() bool {
 		if !db.HasProvisionCookie() {
 			if db.IsRunning() {
 				db.SetProvisionCookie()
-				cluster.LogPrintf(LvlInfo, "Can DB Connect creating cookie state:%s", db.State)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Can DB Connect creating cookie state:%s", db.State)
 			} else {
 				return false
 			}
@@ -88,7 +88,7 @@ func (cluster *Cluster) IsProvisioned() bool {
 		if !px.HasProvisionCookie() {
 			if px.IsRunning() {
 				px.SetProvisionCookie()
-				cluster.LogPrintf(LvlInfo, "Can Proxy Connect creating cookie state:%s", px.GetState())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Can Proxy Connect creating cookie state:%s", px.GetState())
 			} else {
 				return false
 			}
@@ -363,7 +363,7 @@ func (cluster *Cluster) HasReplicationCredentialsRotation() bool {
 	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(cluster.Conf.RplUser) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
-			//cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)
+			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlErr, "Fail Vault connection: %v", err)
 			return false
 		}
 		_, newpass, err := cluster.GetVaultReplicationCredentials(client)
@@ -385,7 +385,7 @@ func (cluster *Cluster) HasMonitoringCredentialsRotation() bool {
 	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(cluster.Conf.User) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
-			//cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)
+			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlErr, "Fail Vault connection: %v", err)
 			return false
 		}
 		newuser, newpass, err := cluster.GetVaultMonitorCredentials(client)
@@ -404,7 +404,7 @@ func (cluster *Cluster) HasProxyCredentialsRotation() bool {
 	if cluster.Conf.IsVaultUsed() {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Fail Vault connection: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Fail Vault connection: %v", err)
 			return false
 		}
 		if cluster.Conf.ProxysqlOn && cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 )
 
 func (regtest *RegTest) TestSwitchoverBackPreferedMasterNoRplCheckSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
@@ -18,20 +19,20 @@ func (regtest *RegTest) TestSwitchoverBackPreferedMasterNoRplCheckSemiSync(clust
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
 		return false
 	}
 	cluster.SetPrefMaster(cluster.GetMaster().URL)
-	cluster.LogPrintf("TEST", "Set cluster.conf.PrefMaster %s", "cluster.conf.PrefMaster")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Set cluster.conf.PrefMaster %s", "cluster.conf.PrefMaster")
 	time.Sleep(2 * time.Second)
 	SaveMasterURL := cluster.GetMaster().URL
 	for i := 0; i < 2; i++ {
-		cluster.LogPrintf("TEST", "New Master  %s Failover counter %d", cluster.GetMaster().URL, i)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s Failover counter %d", cluster.GetMaster().URL, i)
 		cluster.SwitchoverWaitTest()
-		cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s ", cluster.GetMaster().URL)
 	}
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogPrintf(LvlErr, "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
 	return true

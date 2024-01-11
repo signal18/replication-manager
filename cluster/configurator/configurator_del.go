@@ -9,7 +9,7 @@ package configurator
 func (configurator *Configurator) DropProxyTag(dtag string) {
 	var newtags []string
 	for _, tag := range configurator.ProxyTags {
-		//	cluster.LogPrintf(LvlInfo, "%s %s", tag, dtag)
+		//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "%s %s", tag, dtag)
 		if dtag != tag {
 			newtags = append(newtags, tag)
 		}

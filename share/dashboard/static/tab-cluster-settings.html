@@ -8,6 +8,11 @@
                   <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;;transition: 0.3s;" ng-click="setSettingsMenu('monitoring')" class="md-primary" >
                     Monitoring
                   </md-button>
+                  <BR>
+                    <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;;transition: 0.3s;" ng-click="setSettingsMenu('logs')" class="md-primary">
+                      Logs
+                    </md-button>
+                  <BR>
                   <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;;transition: 0.3s;" ng-click="setSettingsMenu('replication')" class="md-primary" >
                     Replication
                   </md-button>
@@ -43,6 +48,7 @@
           <div ng-if="settingsMenu.general" ng-include src="'static/card-setting-testmode.html'"></div>
           <div ng-if="settingsMenu.proxies" ng-include src="'static/card-setting-proxy.html'"></div>
           <div ng-if="settingsMenu.cloud18" ng-include src="'static/card-setting-cloud18.html'"></div>
+          <div ng-if="settingsMenu.logs" ng-include src="'static/card-setting-logs.html'"></div>
         </div>
     </div>
 

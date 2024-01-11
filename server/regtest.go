@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/regtest"
 )
 
@@ -54,7 +55,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 
 	for key, test := range allTests {
 		var res bool
-		cl.LogPrintf("TEST", "%s", test.Name)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s", test.Name)
 
 		if testExp == "SUITE" {
 			regtest.CopyConfig(cl, test)
@@ -209,7 +210,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	}
 	sort.Strings(keys)
 	for _, v := range keys {
-		cl.LogPrintf("TEST", "Result %s -> %s", strings.Trim(v+strings.Repeat(" ", 60-len(v)), "test"), allTests[v].Result)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Result %s -> %s", strings.Trim(v+strings.Repeat(" ", 60-len(v)), "test"), allTests[v].Result)
 	}
 	cl.CleanAll = false
 	regtest.SaveTestsFromResult(cl, allTests)

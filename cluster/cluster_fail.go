@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/state"
@@ -34,27 +35,27 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// Phase 1: Cleanup and election
 	var err error
 	if fail == false {
-		cluster.LogPrintf(LvlInfo, "--------------------------")
-		cluster.LogPrintf(LvlInfo, "Starting master switchover")
-		cluster.LogPrintf(LvlInfo, "--------------------------")
-		cluster.LogPrintf(LvlInfo, "Checking long running updates on master %d", cluster.Conf.SwitchWaitWrite)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "--------------------------")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Starting master switchover")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "--------------------------")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Checking long running updates on master %d", cluster.Conf.SwitchWaitWrite)
 		if cluster.master == nil {
-			cluster.LogPrintf(LvlErr, "Cannot switchover without a master")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cannot switchover without a master")
 			return false
 		}
 		if cluster.master.Conn == nil {
-			cluster.LogPrintf(LvlErr, "Cannot switchover without a master connection")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cannot switchover without a master connection")
 			return false
 		}
 		qt, logs, err := dbhelper.CheckLongRunningWrites(cluster.master.Conn, cluster.Conf.SwitchWaitWrite)
 		cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlDbg, "CheckLongRunningWrites")
 		if qt > 0 {
-			cluster.LogPrintf(LvlErr, "Long updates running on master. Cannot switchover")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Long updates running on master. Cannot switchover")
 			cluster.StateMachine.RemoveFailoverState()
 			return false
 		}
 
-		cluster.LogPrintf(LvlInfo, "Flushing tables on master %s", cluster.master.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Flushing tables on master %s", cluster.master.URL)
 		workerFlushTable := make(chan error, 1)
 		if cluster.master.DBVersion.IsMariaDB() && cluster.master.DBVersion.Major > 10 && cluster.master.DBVersion.Minor >= 1 {
 
@@ -77,10 +78,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		select {
 		case err = <-workerFlushTable:
 			if err != nil {
-				cluster.LogPrintf(LvlWarn, "Could not flush tables on master", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Could not flush tables on master", err)
 			}
 		case <-time.After(time.Second * time.Duration(cluster.Conf.SwitchWaitTrx)):
-			cluster.LogPrintf(LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.Conf.SwitchWaitTrx)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.Conf.SwitchWaitTrx)
 			cluster.StateMachine.RemoveFailoverState()
 			return false
 		}
@@ -91,11 +92,11 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.StateMachine.RemoveFailoverState()
 			return true
 		}
-		cluster.LogPrintf(LvlInfo, "------------------------")
-		cluster.LogPrintf(LvlInfo, "Starting master failover")
-		cluster.LogPrintf(LvlInfo, "------------------------")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "------------------------")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Starting master failover")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "------------------------")
 	}
-	cluster.LogPrintf(LvlInfo, "Electing a new master")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Electing a new master")
 	for _, s := range cluster.slaves {
 		s.Refresh()
 	}
@@ -106,15 +107,15 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		key = cluster.electSwitchoverCandidate(cluster.slaves, true)
 	}
 	if key == -1 {
-		cluster.LogPrintf(LvlErr, "No candidates found")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No candidates found")
 		cluster.StateMachine.RemoveFailoverState()
 		return false
 	}
 
-	cluster.LogPrintf(LvlInfo, "Slave %s has been elected as a new master", cluster.slaves[key].URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Slave %s has been elected as a new master", cluster.slaves[key].URL)
 
 	if fail && !cluster.isSlaveElectable(cluster.slaves[key], true) {
-		cluster.LogPrintf(LvlInfo, "Elected slave have issue cancelling failover", cluster.slaves[key].URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Elected slave have issue cancelling failover", cluster.slaves[key].URL)
 		cluster.StateMachine.RemoveFailoverState()
 		return false
 	}
@@ -143,22 +144,22 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// If it's a failover, wait for the SQL thread to read all relay logs.
 	// If maxsclale we should wait for relay catch via old style
 
-	cluster.LogPrintf(LvlInfo, "Waiting for candidate master %s to apply relay log", cluster.master.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Waiting for candidate master %s to apply relay log", cluster.master.URL)
 	err = cluster.master.ReadAllRelayLogs()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Error while reading relay logs on candidate %s: %s", cluster.master.URL, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error while reading relay logs on candidate %s: %s", cluster.master.URL, err)
 	}
 
 	//cluster.failoverCrash()
 
-	cluster.LogPrintf(LvlInfo, "Save replication status and crash infos before opening traffic")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Save replication status and crash infos before opening traffic")
 	ms, err := cluster.master.GetSlaveStatus(cluster.master.ReplicationSourceName)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Failover can not fetch replication info on new master: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Failover can not fetch replication info on new master: %s", err)
 	}
-	cluster.LogPrintf(LvlDbg, "master_log_file=%s", ms.MasterLogFile.String)
-	cluster.LogPrintf(LvlDbg, "master_log_pos=%s", ms.ReadMasterLogPos.String)
-	cluster.LogPrintf(LvlDbg, "Candidate semisync %t", cluster.master.SemiSyncSlaveStatus)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "master_log_file=%s", ms.MasterLogFile.String)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "master_log_pos=%s", ms.ReadMasterLogPos.String)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Candidate semisync %t", cluster.master.SemiSyncSlaveStatus)
 	crash := new(Crash)
 	crash.URL = cluster.oldMaster.URL
 	crash.ElectedMasterURL = cluster.master.URL
@@ -173,7 +174,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			crash.FailoverIOGtid = gtid.NewList(ms.GtidIOPos.String)
 		}
 	} else if cluster.master.DBVersion.IsMySQLOrPerconaGreater57() && cluster.master.HasGTIDReplication() {
-		cluster.LogPrintf(LvlInfo, "MySQL GTID saving crash info for replication ExexecutedGtidSet %s", ms.ExecutedGtidSet.String)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "MySQL GTID saving crash info for replication ExexecutedGtidSet %s", ms.ExecutedGtidSet.String)
 		crash.FailoverIOGtid = gtid.NewMySQLList(strings.ToUpper(ms.ExecutedGtidSet.String), cluster.GetCrcTable())
 	}
 	cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
@@ -182,17 +183,17 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// if relay server than failover and switchover converge to a new binlog  make this happen
 	var relaymaster *ServerMonitor
 	if cluster.Conf.MxsBinlogOn || cluster.Conf.MultiTierSlave {
-		cluster.LogPrintf(LvlInfo, "Candidate master has to catch up with relay server log position")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Candidate master has to catch up with relay server log position")
 		relaymaster = cluster.GetRelayServer()
 		if relaymaster != nil {
 			rs, err := relaymaster.GetSlaveStatus(relaymaster.ReplicationSourceName)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Can't find slave status on relay server %s", relaymaster.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Can't find slave status on relay server %s", relaymaster.URL)
 			}
 			relaymaster.Refresh()
 
 			binlogfiletoreach, _ := strconv.Atoi(strings.Split(rs.MasterLogFile.String, ".")[1])
-			cluster.LogPrintf(LvlInfo, "Relay server log pos reached %d", binlogfiletoreach)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Relay server log pos reached %d", binlogfiletoreach)
 			logs, err := dbhelper.ResetMaster(cluster.master.Conn, cluster.Conf.MasterConn, cluster.master.DBVersion)
 			cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlInfo, "Reset Master on candidate Master")
 			ctbinlog := 0
@@ -210,19 +211,19 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlInfo, "Backing up master pos %s %s", crash.FailoverMasterLogFile, crash.FailoverMasterLogPos)
 
 		} else {
-			cluster.LogPrintf(LvlErr, "No relay server found")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No relay server found")
 		}
 	} // end relay server
 
 	// Phase 3: Prepare new master
 	if !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterGrouprep {
-		cluster.LogPrintf(LvlInfo, "Stopping slave threads on new master")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Stopping slave threads on new master")
 		if cluster.master.DBVersion.IsMariaDB() || (cluster.master.DBVersion.IsMariaDB() == false && cluster.master.DBVersion.Minor < 7) {
 			logs, err := cluster.master.StopSlave()
 			cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlErr, "Failed stopping slave on new master %s %s", cluster.master.URL, err)
 		}
 		if cluster.master.ClusterGroup.Conf.FailoverSemiSyncState {
-			cluster.LogPrintf("INFO", "Enable semisync leader and disable semisync replica on %s", cluster.master.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enable semisync leader and disable semisync replica on %s", cluster.master.URL)
 			logs, err := cluster.master.SetSemiSyncLeader()
 			cluster.LogSQL(logs, err, cluster.master.URL, "Rejoin", LvlErr, "Failed enable semisync leader and disable semisync replica on %s %s", cluster.master.URL, err)
 		}
@@ -234,7 +235,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.Save()
 
 	if !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterGrouprep {
-		cluster.LogPrintf(LvlInfo, "Resetting slave on new master and set read/write mode on")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Resetting slave on new master and set read/write mode on")
 		if cluster.master.DBVersion.IsMySQLOrPercona() {
 			// Need to stop all threads to reset on MySQL
 			logs, err := cluster.master.StopSlave()
@@ -250,15 +251,15 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	err = cluster.master.SetReadWrite()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Could not set new master as read-write")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could not set new master as read-write")
 	}
-	cluster.LogPrintf(LvlInfo, "Failover proxies")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Failover proxies")
 	cluster.failoverProxies()
 	cluster.failoverProxiesWaitMonitor()
 	cluster.failoverPostScript(fail)
 	cluster.failoverEnableEventScheduler()
 	// Insert a bogus transaction in order to have a new GTID pos on master
-	cluster.LogPrintf(LvlInfo, "Inject fake transaction on new master %s ", cluster.master.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Inject fake transaction on new master %s ", cluster.master.URL)
 	logs, err := dbhelper.FlushTables(cluster.master.Conn)
 	cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlErr, "Could not flush tables on new master for fake trx %s", err)
 
@@ -270,9 +271,9 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		// ********
 		// Phase 4: Demote old master to slave
 		// ********
-		cluster.LogPrintf(LvlInfo, "Killing new connections on old master showing before update route")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Killing new connections on old master showing before update route")
 		dbhelper.KillThreads(cluster.oldMaster.Conn, cluster.oldMaster.DBVersion)
-		cluster.LogPrintf(LvlInfo, "Switching old leader to slave")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Switching old leader to slave")
 		logs, err := dbhelper.UnlockTables(cluster.oldMaster.Conn)
 		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not unlock tables on old master %s", err)
 
@@ -304,15 +305,15 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		oldmasterneedslavestart := true
 		if cluster.oldMaster.HasMariaDBGTID() == false && cluster.oldMaster.HasMySQLGTID() == false {
 			changemasteropt.Mode = "POSITIONAL"
-			cluster.LogPrintf(LvlInfo, "Doing positional switch of old Master")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Doing positional switch of old Master")
 		} else if cluster.oldMaster.HasMySQLGTID() == true {
 			// We can do MySQL 5.7 style failover
-			cluster.LogPrintf(LvlInfo, "Doing MySQL GTID switch of the old master")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Doing MySQL GTID switch of the old master")
 			changemasteropt.Mode = "MASTER_AUTO_POSITION"
 		} else if cluster.Conf.MxsBinlogOn == false {
 			// current pos is needed on old master as writes diverges from slave pos
 			// if gtid_slave_pos was forced use slave_pos : positional to GTID promotion
-			cluster.LogPrintf(LvlInfo, "Doing MariaDB GTID switch of the old master")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Doing MariaDB GTID switch of the old master")
 			if one_shoot_slave_pos {
 				changemasteropt.Mode = "SLAVE_POS"
 			} else {
@@ -322,7 +323,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			// Is Maxscale
 			// Don't start slave until the relay as been point to new master
 			oldmasterneedslavestart = false
-			cluster.LogPrintf(LvlInfo, "Pointing old master to relay server")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Pointing old master to relay server")
 			if relaymaster.MxsHaveGtid {
 				changemasteropt.Mode = "SLAVE_POS"
 				changemasteropt.Host = relaymaster.Host
@@ -372,7 +373,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// Phase 5: Switch slaves to new master
 	// ********
 
-	cluster.LogPrintf(LvlInfo, "Switching other slaves to the new master")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Switching other slaves to the new master")
 	for _, sl := range cluster.slaves {
 		// Don't switch if slave was the old master or is in a multiple master setup or with relay server.
 		if sl.URL == cluster.oldMaster.URL || sl.State == stateMaster || (sl.IsRelay == false && cluster.Conf.MxsBinlogOn == true) {
@@ -383,7 +384,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		if fail == false && cluster.Conf.MxsBinlogOn == false && cluster.Conf.SwitchSlaveWaitCatch {
 			sl.WaitSyncToMaster(cluster.oldMaster)
 		}
-		cluster.LogPrintf(LvlInfo, "Change master on slave %s", sl.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Change master on slave %s", sl.URL)
 		logs, err = sl.StopSlave()
 		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not stop slave on server %s, %s", sl.URL, err)
 		if fail == false && cluster.Conf.MxsBinlogOn == false && cluster.Conf.SwitchSlaveWaitCatch {
@@ -415,22 +416,22 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 				pseudoGTID, logs, err := sl.GetLastPseudoGTID()
 				cluster.LogSQL(logs, err, sl.URL, "MasterFailover", LvlErr, "Could not get pseudoGTID on slave %s, %s", sl.URL, err)
-				cluster.LogPrintf(LvlInfo, "Found pseudoGTID %s", pseudoGTID)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Found pseudoGTID %s", pseudoGTID)
 				slFile, slPos, logs, err := sl.GetBinlogPosFromPseudoGTID(pseudoGTID)
 				cluster.LogSQL(logs, err, sl.URL, "MasterFailover", LvlErr, "Could not find pseudoGTID in slave %s, %s", sl.URL, err)
-				cluster.LogPrintf(LvlInfo, "Found Coordinates on slave %s, %s", slFile, slPos)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Found Coordinates on slave %s, %s", slFile, slPos)
 				slSkip, logs, err := sl.GetNumberOfEventsAfterPos(slFile, slPos)
 				cluster.LogSQL(logs, err, sl.URL, "MasterFailover", LvlErr, "Could not find number of events after pseudoGTID in slave %s, %s", sl.URL, err)
-				cluster.LogPrintf(LvlInfo, "Found %d events to skip after coordinates on slave %s,%s", slSkip, slFile, slPos)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Found %d events to skip after coordinates on slave %s,%s", slSkip, slFile, slPos)
 
 				mFile, mPos, logs, err := cluster.master.GetBinlogPosFromPseudoGTID(pseudoGTID)
 				cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlErr, "Could not find pseudoGTID in master %s, %s", cluster.master.URL, err)
-				cluster.LogPrintf(LvlInfo, "Found coordinate on master %s ,%s", mFile, mPos)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Found coordinate on master %s ,%s", mFile, mPos)
 				mFile, mPos, logs, err = cluster.master.GetBinlogPosAfterSkipNumberOfEvents(mFile, mPos, slSkip)
 				cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlErr, "Could not skip event after pseudoGTID in master %s, %s", cluster.master.URL, err)
-				cluster.LogPrintf(LvlInfo, "Found skip coordinate on master %s, %s", mFile, mPos)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Found skip coordinate on master %s, %s", mFile, mPos)
 
-				cluster.LogPrintf(LvlInfo, "Doing Positional switch of slave %s", sl.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Doing Positional switch of slave %s", sl.URL)
 				changemasteropt.Logfile = mFile
 				changemasteropt.Logpos = mPos
 				changemasteropt.Mode = "POSITIONAL"
@@ -474,7 +475,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}, sl.DBVersion)
 		} else { // We deduct we are in maxscale binlog server , but can have support for GTID or not
 
-			cluster.LogPrintf(LvlInfo, "Pointing relay to the new master: %s:%s", cluster.master.Host, cluster.master.Port)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Pointing relay to the new master: %s:%s", cluster.master.Host, cluster.master.Port)
 			if sl.MxsHaveGtid {
 				logs, changeMasterErr = dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
 					Host:        cluster.master.Host,
@@ -508,7 +509,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogSQL(logs, err, sl.URL, "MasterFailover", LvlErr, "Could not start slave on server %s, %s", sl.URL, err)
 		// now start the old master as relay is ready
 		if cluster.Conf.MxsBinlogOn && fail == false {
-			cluster.LogPrintf(LvlInfo, "Restarting old master replication relay server ready")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Restarting old master replication relay server ready")
 			cluster.oldMaster.StartSlave()
 		}
 		if cluster.Conf.ReadOnly && cluster.Conf.MxsBinlogOn == false && !cluster.IsInIgnoredReadonly(sl) {
@@ -518,7 +519,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			if cluster.Conf.MxsBinlogOn == false {
 				err = sl.SetReadWrite()
 				if err != nil {
-					cluster.LogPrintf(LvlErr, "Could not remove slave %s as read-only, %s", sl.URL, err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could not remove slave %s as read-only, %s", sl.URL, err)
 				}
 			}
 		}
@@ -526,7 +527,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// if consul or internal proxy need to adapt read only route to new slaves
 	cluster.backendStateChangeProxies()
 
-	cluster.LogPrintf(LvlInfo, "Master switch on %s complete", cluster.master.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Master switch on %s complete", cluster.master.URL)
 	cluster.master.FailCount = 0
 	if fail == true {
 		cluster.FailoverCtr++
@@ -538,7 +539,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	if cluster.Conf.FailoverSwitchToPrefered && fail == true && cluster.Conf.PrefMaster != "" && !cluster.master.IsPrefered() {
 		prm := cluster.foundPreferedMaster(cluster.slaves)
 		if prm != nil {
-			cluster.LogPrintf(LvlInfo, "Switchover after failover not on a prefered leader after failover")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Switchover after failover not on a prefered leader after failover")
 			cluster.MasterFailover(false)
 		}
 	}
@@ -552,16 +553,16 @@ func (cluster *Cluster) failoverPostScript(fail bool) {
 		var out []byte
 		var err error
 
-		cluster.LogPrintf(LvlInfo, "Calling post-failover script")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Calling post-failover script")
 		failtype := "failover"
 		if !fail {
 			failtype = "switchover"
 		}
 		out, err = exec.Command(cluster.Conf.PostScript, cluster.oldMaster.Host, cluster.GetMaster().Host, cluster.oldMaster.Port, cluster.GetMaster().Port, cluster.oldMaster.MxsServerName, cluster.GetMaster().MxsServerName, failtype).CombinedOutput()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
 		}
-		cluster.LogPrintf(LvlInfo, "Post-failover script complete %s", string(out))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Post-failover script complete %s", string(out))
 	}
 }
 
@@ -573,33 +574,33 @@ func (cluster *Cluster) failoverPreScript(fail bool) {
 			failtype = "switchover"
 		}
 
-		cluster.LogPrintf(LvlInfo, "Calling pre-failover script")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Calling pre-failover script")
 		var out []byte
 		var err error
 		out, err = exec.Command(cluster.Conf.PreScript, cluster.oldMaster.Host, cluster.GetMaster().Host, cluster.oldMaster.Port, cluster.GetMaster().Port, cluster.oldMaster.MxsServerName, cluster.GetMaster().MxsServerName, failtype).CombinedOutput()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
 		}
-		cluster.LogPrintf(LvlInfo, "Pre-failover script complete:", string(out))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Pre-failover script complete:", string(out))
 	}
 }
 
 func (cluster *Cluster) failoverProxiesWaitMonitor() {
-	cluster.LogPrintf(LvlInfo, "Waiting %ds for unmanaged proxy to monitor route change", cluster.Conf.SwitchSlaveWaitRouteChange)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Waiting %ds for unmanaged proxy to monitor route change", cluster.Conf.SwitchSlaveWaitRouteChange)
 	time.Sleep(time.Duration(cluster.Conf.SwitchSlaveWaitRouteChange) * time.Second)
 }
 
 func (cluster *Cluster) failoverEnableEventScheduler() {
 
 	if cluster.Conf.FailEventScheduler {
-		cluster.LogPrintf(LvlInfo, "Enable Event Scheduler on the new master")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Enable Event Scheduler on the new master")
 		logs, err := cluster.master.SetEventScheduler(true)
 		cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlErr, "Could not enable event scheduler on the new master")
 	}
 	if cluster.Conf.FailEventStatus {
 		for _, v := range cluster.master.EventStatus {
 			if v.Status == 3 {
-				cluster.LogPrintf(LvlInfo, "Set ENABLE for event %s %s on new master", v.Db, v.Name)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Set ENABLE for event %s %s on new master", v.Db, v.Name)
 				logs, err := dbhelper.SetEventStatus(cluster.master.Conn, v, 1)
 				cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlErr, "Could not Set ENABLE for event %s %s on new master", v.Db, v.Name)
 			}
@@ -615,13 +616,13 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 		if rep.ConnectionName.String != cluster.Conf.MasterConn {
 			myparentrplpassword := ""
 			parentCluster := cluster.GetParentClusterFromReplicationSource(rep)
-			cluster.LogPrintf(LvlInfo, "Failover replication source %s ", rep.ConnectionName.String)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Failover replication source %s ", rep.ConnectionName.String)
 			// need a way to found parent replication password
 			if parentCluster != nil {
 				myparentrplpassword = parentCluster.GetRplPass()
 			} else {
-				cluster.LogPrintf(LvlErr, "Unable to found a monitored cluster for replication source %s ", rep.ConnectionName.String)
-				cluster.LogPrintf(LvlErr, "Moving source %s with empty password to preserve replication stream on new master", rep.ConnectionName.String)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Unable to found a monitored cluster for replication source %s ", rep.ConnectionName.String)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Moving source %s with empty password to preserve replication stream on new master", rep.ConnectionName.String)
 			}
 
 			var changemasteropt dbhelper.ChangeMasterOpt
@@ -669,8 +670,9 @@ func (cluster *Cluster) electSwitchoverGroupReplicationCandidate(l []*ServerMoni
 	//	Return prefered if exists
 	for i, sl := range l {
 		if cluster.IsInPreferedHosts(sl) {
-			if (cluster.Conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
-				cluster.LogPrintf(LvlDbg, "Election rig: %s elected as preferred master", sl.URL)
+			// if (cluster.Conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
+			if cluster.IsInFailover() {
+				cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlDbg, "Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
 		}
@@ -740,8 +742,9 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 
 		/* Rig the election if the examined slave is preferred candidate master in switchover */
 		if cluster.IsInPreferedHosts(sl) {
-			if (cluster.Conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
-				cluster.LogPrintf(LvlDbg, "Election rig: %s elected as preferred master", sl.URL)
+			// if (cluster.Conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
+			if cluster.IsInFailover() {
+				cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlDbg, "Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
 		}
@@ -965,7 +968,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 	}
 	if forcingLog {
 		data, _ := json.MarshalIndent(trackposList, "", "\t")
-		cluster.LogPrintf(LvlInfo, "Election matrice: %s ", data)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Election matrice: %s ", data)
 	}
 
 	if maxseq > 0 {
@@ -987,7 +990,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		for _, p := range trackposList {
 			if p.Seq == maxseq && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == true {
 				if forcingLog {
-					cluster.LogPrintf(LvlInfo, "Ignored server is the most up to date ")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Ignored server is the most up to date ")
 				}
 				return p.Indice
 			}
@@ -996,7 +999,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 
 		if cluster.Conf.LogFailedElection {
 			data, _ := json.MarshalIndent(trackposList, "", "\t")
-			cluster.LogPrintf(LvlInfo, "Election matrice maxseq >0: %s ", data)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Election matrice maxseq >0: %s ", data)
 		}
 		return -1
 	}
@@ -1040,20 +1043,20 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		for _, p := range trackposList {
 			if p.Pos == maxpos && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == true {
 				if forcingLog {
-					cluster.LogPrintf(LvlInfo, "Ignored server is the most up to date ")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Ignored server is the most up to date ")
 				}
 				return p.Indice
 			}
 		}
 		if cluster.Conf.LogFailedElection {
 			data, _ := json.MarshalIndent(trackposList, "", "\t")
-			cluster.LogPrintf(LvlInfo, "Election matrice maxpos>0: %s ", data)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Election matrice maxpos>0: %s ", data)
 		}
 		return -1
 	}
 	if cluster.Conf.LogFailedElection {
 		data, _ := json.MarshalIndent(trackposList, "", "\t")
-		cluster.LogPrintf(LvlInfo, "Election matrice: %s ", data)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Election matrice: %s ", data)
 	}
 	return -1
 }
@@ -1061,54 +1064,54 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) bool {
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
-		cluster.LogPrintf(LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
 		return false
 	}
 	//if master is alived and IO Thread stops then not a good candidate and not forced
 	if ss.SlaveIORunning.String == "No" && cluster.Conf.RplChecks && !cluster.IsMasterFailed() {
 		cluster.StateMachine.AddState("ERR00087", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00087"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s IO Thread is stopped %s. Skipping", sl.URL, ss.LastIOError.String)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Unsafe failover condition. Slave %s IO Thread is stopped %s. Skipping", sl.URL, ss.LastIOError.String)
+		// }
 		return false
 	}
 
 	/* binlog + ping  */
 	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host, sl.DBVersion) == false {
 		cluster.StateMachine.AddState("ERR00040", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00040"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Slave %s does not ping or has no binlogs. Skipping", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Slave %s does not ping or has no binlogs. Skipping", sl.URL)
+		// }
 		return false
 	}
 	if sl.IsMaintenance {
 		cluster.StateMachine.AddState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
+		// }
 		return false
 	}
 
 	if ss.SecondsBehindMaster.Int64 > cluster.Conf.FailMaxDelay && cluster.Conf.FailMaxDelay != -1 && cluster.Conf.RplChecks == true {
 		cluster.StateMachine.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"]+" Sql: "+sl.GetProcessListReplicationLongQuery(), sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK", ServerUrl: sl.URL})
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
+		// }
 
 		return false
 	}
 
 	if ss.SlaveSQLRunning.String == "No" && cluster.Conf.RplChecks {
 		cluster.StateMachine.AddState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
+		// }
 		return false
 	}
 
 	//if master is alived and connection issues, we have to refetch password from vault
 	if ss.SlaveIORunning.String == "Connecting" && !cluster.IsMasterFailed() {
-		cluster.LogPrintf(LvlDbg, "isSlaveElect lastIOErrno: %s", ss.LastIOErrno.String)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlDbg, "isSlaveElect lastIOErrno: %s", ss.LastIOErrno.String)
 		if ss.LastIOErrno.String == "1045" {
 			cluster.StateMachine.AddState("ERR00088", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00088"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			sl.SetReplicationCredentialsRotation(ss)
@@ -1117,15 +1120,15 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.FailSync && cluster.Conf.RplChecks {
 		cluster.StateMachine.AddState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
+		// }
 		return false
 	}
 	if sl.IsIgnored() {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Slave is in ignored list %s", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Slave is in ignored list %s", sl.URL)
+		// }
 		return false
 	}
 	return true
@@ -1134,22 +1137,22 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) bool {
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
-		cluster.LogPrintf(LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
 		return false
 	}
 
 	if sl.IsMaintenance {
 		cluster.StateMachine.AddState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
+		// }
 		return false
 	}
 
 	/*if ss.SecondsBehindMaster.Int64 > cluster.Conf.FailMaxDelay && cluster.Conf.FailMaxDelay != -1  {
 		cluster.StateMachine.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"]+" Sql: "+sl.GetProcessListReplicationLongQuery(), sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
+			cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral,LvlWarn, "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
 		}
 
 		return false
@@ -1157,22 +1160,22 @@ func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) b
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.FailSync && cluster.Conf.RplChecks {
 		cluster.StateMachine.AddState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
+			cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral,LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		}
 		return false
 	}
 	*/
 	if ss.SlaveSQLRunning.String == "No" {
 		cluster.StateMachine.AddState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
+		// }
 		return false
 	}
 	if sl.IsIgnored() {
-		if cluster.Conf.LogLevel > 1 || forcingLog {
-			cluster.LogPrintf(LvlWarn, "Slave is in ignored list %s", sl.URL)
-		}
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlWarn, "Slave is in ignored list %s", sl.URL)
+		// }
 		return false
 	}
 	return true
@@ -1195,27 +1198,27 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	var err error
 	cluster.oldMaster = cluster.vmaster
 	if fail == false {
-		cluster.LogPrintf(LvlInfo, "----------------------------------")
-		cluster.LogPrintf(LvlInfo, "Starting virtual master switchover")
-		cluster.LogPrintf(LvlInfo, "----------------------------------")
-		cluster.LogPrintf(LvlInfo, "Checking long running updates on virtual master %d", cluster.Conf.SwitchWaitWrite)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "----------------------------------")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Starting virtual master switchover")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "----------------------------------")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Checking long running updates on virtual master %d", cluster.Conf.SwitchWaitWrite)
 		if cluster.vmaster == nil {
-			cluster.LogPrintf(LvlErr, "Cannot switchover without a virtual master")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cannot switchover without a virtual master")
 			return false
 		}
 		if cluster.vmaster.Conn == nil {
-			cluster.LogPrintf(LvlErr, "Cannot switchover without a vmaster connection")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cannot switchover without a vmaster connection")
 			return false
 		}
 		qt, logs, err := dbhelper.CheckLongRunningWrites(cluster.vmaster.Conn, cluster.Conf.SwitchWaitWrite)
 		cluster.LogSQL(logs, err, cluster.vmaster.URL, "MasterFailover", LvlDbg, "CheckLongRunningWrites")
 		if qt > 0 {
-			cluster.LogPrintf(LvlErr, "Long updates running on virtual master. Cannot switchover")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Long updates running on virtual master. Cannot switchover")
 			cluster.StateMachine.RemoveFailoverState()
 			return false
 		}
 
-		cluster.LogPrintf(LvlInfo, "Flushing tables on virtual master %s", cluster.vmaster.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Flushing tables on virtual master %s", cluster.vmaster.URL)
 		workerFlushTable := make(chan error, 1)
 
 		go func() {
@@ -1228,21 +1231,21 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		select {
 		case err = <-workerFlushTable:
 			if err != nil {
-				cluster.LogPrintf(LvlWarn, "Could not flush tables on master", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Could not flush tables on master", err)
 			}
 		case <-time.After(time.Second * time.Duration(cluster.Conf.SwitchWaitTrx)):
-			cluster.LogPrintf(LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.Conf.SwitchWaitTrx)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.Conf.SwitchWaitTrx)
 			cluster.StateMachine.RemoveFailoverState()
 			return false
 		}
 		cluster.master = cluster.vmaster
 	} else {
-		cluster.LogPrintf(LvlInfo, "-------------------------------")
-		cluster.LogPrintf(LvlInfo, "Starting virtual master failover")
-		cluster.LogPrintf(LvlInfo, "-------------------------------")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "-------------------------------")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Starting virtual master failover")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "-------------------------------")
 		cluster.oldMaster = cluster.master
 	}
-	cluster.LogPrintf(LvlInfo, "Electing a new virtual master")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Electing a new virtual master")
 	for _, s := range cluster.slaves {
 		s.Refresh()
 	}
@@ -1258,11 +1261,11 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 
 	}
 	if key == -1 {
-		cluster.LogPrintf(LvlErr, "No candidates found")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No candidates found")
 		cluster.StateMachine.RemoveFailoverState()
 		return false
 	}
-	cluster.LogPrintf(LvlInfo, "Server %s has been elected as a new master", cluster.slaves[key].URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Server %s has been elected as a new master", cluster.slaves[key].URL)
 
 	// Shuffle the server list
 
@@ -1279,17 +1282,17 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 
 	// Phase 2: Reject updates and sync slaves on switchover
 	if fail == false && cluster.GetTopology() != topoMultiMasterWsrep {
-		cluster.LogPrintf(LvlInfo, "Rejecting updates on %s (old master)", cluster.oldMaster.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Rejecting updates on %s (old master)", cluster.oldMaster.URL)
 		cluster.oldMaster.freeze()
 	}
 	if !fail && cluster.Conf.MultiMasterGrouprep {
 		result, errswitch := cluster.slaves[key].SetGroupReplicationPrimary()
 		cluster.StateMachine.RemoveFailoverState()
 		if errswitch == nil {
-			cluster.LogPrintf(LvlInfo, "Server %s elected as new leader %s", cluster.slaves[key].URL, result)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Server %s elected as new leader %s", cluster.slaves[key].URL, result)
 
 		}
-		cluster.LogPrintf(LvlInfo, "Server %s failed elected as new leader %s", cluster.slaves[key].URL, result)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Server %s failed elected as new leader %s", cluster.slaves[key].URL, result)
 
 	}
 	// Failover for ring
@@ -1299,26 +1302,26 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		// If it's a failover, wait for the SQL thread to read all relay logs.
 		// If maxsclale we should wait for relay catch via old style
 
-		cluster.LogPrintf(LvlInfo, "Waiting for candidate master to apply relay log")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Waiting for candidate master to apply relay log")
 		err = cluster.master.ReadAllRelayLogs()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Error while reading relay logs on candidate: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error while reading relay logs on candidate: %s", err)
 		}
 
 		crash := new(Crash)
 		crash.URL = cluster.oldMaster.URL
 		crash.ElectedMasterURL = cluster.master.URL
-		cluster.LogPrintf(LvlInfo, "Save replication status before electing")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Save replication status before electing")
 		ms, err := cluster.master.GetSlaveStatus(cluster.master.ReplicationSourceName)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Faiover can not fetch replication info on new master: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Faiover can not fetch replication info on new master: %s", err)
 		}
-		cluster.LogPrintf(LvlInfo, "master_log_file=%s", ms.MasterLogFile.String)
-		cluster.LogPrintf(LvlInfo, "master_log_pos=%s", ms.ReadMasterLogPos.String)
-		cluster.LogPrintf(LvlInfo, "Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "master_log_file=%s", ms.MasterLogFile.String)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "master_log_pos=%s", ms.ReadMasterLogPos.String)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Candidate was in sync=%t", cluster.master.SemiSyncSlaveStatus)
 		//		cluster.master.FailoverMasterLogFile = cluster.master.MasterLogFile
 		//		cluster.master.FailoverMasterLogPos = cluster.master.MasterLogPos
-		cluster.LogPrintf("INFO ", "Save crash information")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO ", "Save crash information")
 
 		crash.FailoverMasterLogFile = ms.MasterLogFile.String
 		crash.FailoverMasterLogPos = ms.ReadMasterLogPos.String
@@ -1346,7 +1349,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 
 	err = cluster.master.SetReadWrite()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Could not set new master as read-write %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could not set new master as read-write %s", err)
 	}
 	// Call post-failover script before unlocking the old master.
 	cluster.failoverProxies()
@@ -1356,7 +1359,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	if cluster.Conf.FailEventStatus {
 		for _, v := range cluster.master.EventStatus {
 			if v.Status == 3 {
-				cluster.LogPrintf(LvlInfo, "Set ENABLE for event %s %s on new master", v.Db, v.Name)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Set ENABLE for event %s %s on new master", v.Db, v.Name)
 				logs, err := dbhelper.SetEventStatus(cluster.vmaster.Conn, v, 1)
 				cluster.LogSQL(logs, err, cluster.vmaster.URL, "MasterFailover", LvlErr, "Could not Set ENABLE for event %s %s on new master", v.Db, v.Name)
 			}
@@ -1370,7 +1373,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		// ********
 		// Phase 4: Demote old master to slave
 		// ********
-		cluster.LogPrintf(LvlInfo, "Switching old master as a slave")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Switching old master as a slave")
 		logs, err := dbhelper.UnlockTables(cluster.oldMaster.Conn)
 		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", LvlErr, "Could not unlock tables on old master %s", err)
 
@@ -1382,7 +1385,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		} else {
 			err = cluster.oldMaster.SetReadWrite()
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Could not set old master as read-write, %s", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could not set old master as read-write, %s", err)
 			}
 		}
 		// Galara does not freeze old master because of bug https://jira.mariadb.org/browse/MDEV-9134
@@ -1402,7 +1405,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		// ********
 		cluster.CloseRing(cluster.oldMaster)
 	}
-	cluster.LogPrintf(LvlInfo, "Virtual Master switch on %s complete", cluster.vmaster.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Virtual Master switch on %s complete", cluster.vmaster.URL)
 	cluster.vmaster.FailCount = 0
 	if fail == true {
 		cluster.FailoverCtr++
@@ -1420,9 +1423,9 @@ func (cluster *Cluster) electVirtualCandidate(oldMaster *ServerMonitor, forcingL
 		/* If server is in the ignore list, do not elect it */
 		if sl.IsIgnored() {
 			cluster.StateMachine.AddState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ErrFrom: "CHECK"})
-			if cluster.Conf.LogLevel > 1 || forcingLog {
-				cluster.LogPrintf(LvlDbg, "%s is in the ignore list. Skipping", sl.URL)
-			}
+			// if cluster.Conf.LogLevel > 1 || forcingLog {
+			cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, LvlDbg, "%s is in the ignore list. Skipping", sl.URL)
+			// }
 			continue
 		}
 		if sl.State != stateFailed && sl.ServerID != oldMaster.ServerID {
@@ -1434,17 +1437,17 @@ func (cluster *Cluster) electVirtualCandidate(oldMaster *ServerMonitor, forcingL
 }
 
 func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
-	cluster.LogPrintf(LvlInfo, "Closing ring around %s", cluster.oldMaster.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Closing ring around %s", cluster.oldMaster.URL)
 	child := cluster.GetRingChildServer(cluster.oldMaster)
 	if child == nil {
 		return errors.New("Can't find child in ring")
 	}
-	cluster.LogPrintf(LvlInfo, "Child is %s", child.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Child is %s", child.URL)
 	parent := cluster.GetRingParentServer(oldMaster)
 	if parent == nil {
 		return errors.New("Can't find parent in ring")
 	}
-	cluster.LogPrintf(LvlInfo, "Parent is %s", parent.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Parent is %s", parent.URL)
 	logs, err := child.StopSlave()
 	cluster.LogSQL(logs, err, child.URL, "MasterFailover", LvlErr, "Could not stop slave on server %s, %s", child.URL, err)
 

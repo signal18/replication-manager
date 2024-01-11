@@ -6,13 +6,16 @@
 
 package regtest
 
-import "github.com/signal18/replication-manager/cluster"
+import (
+	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
+)
 
 func (regtest *RegTest) TestFailoverNumberFailureLimitReach(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
 
 		return false
 	}
@@ -20,7 +23,7 @@ func (regtest *RegTest) TestFailoverNumberFailureLimitReach(cluster *cluster.Clu
 	SaveMaster := cluster.GetMaster()
 	SaveMasterURL := cluster.GetMaster().URL
 
-	cluster.LogPrintf("INFO :  Master is %s", cluster.GetMaster().URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO :  Master is %s", cluster.GetMaster().URL)
 	cluster.SetMasterStateFailed()
 	cluster.SetInteractive(false)
 	cluster.GetMaster().FailCount = cluster.GetMaxFail()
@@ -33,9 +36,9 @@ func (regtest *RegTest) TestFailoverNumberFailureLimitReach(cluster *cluster.Clu
 	cluster.CheckFailed()
 
 	cluster.WaitFailoverEnd()
-	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogPrintf(LvlErr, "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 
 		SaveMaster.FailCount = 0
 		return false

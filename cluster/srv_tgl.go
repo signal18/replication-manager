@@ -9,23 +9,27 @@
 
 package cluster
 
-import "github.com/signal18/replication-manager/utils/dbhelper"
+import (
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dbhelper"
+)
 
 func (server *ServerMonitor) SwitchMaintenance() error {
-	if server.ClusterGroup.GetTopology() == topoMultiMasterWsrep || server.ClusterGroup.GetTopology() == topoMultiMasterRing {
+	cluster := server.ClusterGroup
+	if cluster.GetTopology() == topoMultiMasterWsrep || cluster.GetTopology() == topoMultiMasterRing {
 		if server.IsVirtualMaster && server.IsMaintenance == false {
-			server.ClusterGroup.SwitchOver()
+			cluster.SwitchOver()
 		}
 	}
-	if server.ClusterGroup.GetTopology() == topoMultiMasterRing {
+	if cluster.GetTopology() == topoMultiMasterRing {
 		if server.IsMaintenance {
-			server.ClusterGroup.CloseRing(server)
+			cluster.CloseRing(server)
 		} else {
 			server.RejoinLoop()
 		}
 	}
 	server.IsMaintenance = !server.IsMaintenance
-	server.ClusterGroup.failoverProxies()
+	cluster.failoverProxies()
 
 	return nil
 }
@@ -91,8 +95,9 @@ func (server *ServerMonitor) SwitchSlowQueryCapture() {
 }
 
 func (server *ServerMonitor) SwitchSlowQueryCapturePFS() {
+	cluster := server.ClusterGroup
 	if !server.HavePFS {
-		server.ClusterGroup.LogPrintf(LvlInfo, "Could not capture queries with performance schema disable")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Could not capture queries with performance schema disable")
 		return
 	}
 	if !server.HavePFSSlowQueryLog {
