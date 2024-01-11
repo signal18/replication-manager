@@ -1181,6 +1181,10 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchProxyJanitorDebug()
 	case "maxscale-debug":
 		mycluster.SwitchMxsDebug()
+	case "force-binlog-purge":
+		mycluster.SwitchForceBinlogPurge()
+	case "force-purge-binlog-on-restore":
+		mycluster.SwitchForcePurgeBinlogOnRestore()
 	}
 }
 
@@ -1390,6 +1394,9 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "maxscale-log-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetMxsLogLevel(val)
+	case "force-purge-binlog-total-size":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetForcePurgeBinlogTotalSize(val)
 	}
 }
 

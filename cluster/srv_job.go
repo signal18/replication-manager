@@ -1208,3 +1208,58 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	dest.StartSlave()
 	return nil
 }
+
+func (server *ServerMonitor) JobBinlogPurge() error {
+	cluster := server.ClusterGroup
+	if !server.IsMaster() {
+		err := errors.New("Purge only master binlog")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, err.Error())
+		return err
+	}
+
+	binlogfilestart, _ := strconv.Atoi(strings.Split(server.BinaryLogFile, ".")[1])
+	prefix := strings.Split(server.BinaryLogFile, ".")[0]
+	binlogfilestop := binlogfilestart + 1 - len(server.BinaryLogFile)
+
+	// If force purge binlog total size is set (default 30)
+	if cluster.Conf.ForcePurgeBinlogTotalSize > 0 {
+		var totalSize uint
+		totalSize = 0
+		lastfile := 0
+
+		for binlogfilestop < binlogfilestart {
+			if binlogfilestop > 0 {
+				filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestart)
+				if size, ok := server.BinaryLogFiles[filename]; ok {
+					if size+totalSize <= uint(cluster.Conf.ForcePurgeBinlogTotalSize*(1024*1024*1024)) {
+						totalSize += size
+						lastfile = binlogfilestart
+					}
+				}
+			}
+			//Descending
+			binlogfilestart--
+		}
+
+		filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestop)
+		lastfilename := prefix + "." + fmt.Sprintf("%06d", lastfile)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Purging binlog of %s, from: %s before :%s", server.URL, filename, lastfilename)
+
+		for binlogfilestop < lastfile {
+			if binlogfilestop > 0 {
+				filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestop)
+				if _, ok := server.BinaryLogFiles[filename]; ok {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Purging binlog of %s,%s", server.URL, filename)
+					_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
+					}
+				}
+			}
+			//From oldest
+			binlogfilestop++
+		}
+	}
+
+	return nil
+}

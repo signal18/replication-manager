@@ -1496,13 +1496,9 @@ func (cluster *Cluster) SetPrintDelayStatInterval(keep string) error {
 	return nil
 }
 
-func (cluster *Cluster) SetForcePurgeBinlogTotalSize(maxsize string) error {
-	numsize, err := strconv.Atoi(maxsize)
-	if err != nil {
-		return err
-	}
+func (cluster *Cluster) SetForcePurgeBinlogTotalSize(numsize int) error {
 	cluster.LogPrintf(LvlInfo, "Purge Binlog Total Size set to %s", strconv.Itoa(numsize))
-	cluster.Conf.PrintDelayStatInterval = numsize
+	cluster.Conf.ForcePurgeBinlogTotalSize = numsize
 	return nil
 }
 

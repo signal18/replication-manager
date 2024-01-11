@@ -568,6 +568,10 @@ func (cluster *Cluster) SwitchMxsDebug() {
 }
 
 func (cluster *Cluster) SwitchForceBinlogPurge() {
+	// Deactivate the purge
+	if cluster.Conf.ForceBinlogPurge {
+		cluster.SetForcePurgeBinlogTotalSize(0)
+	}
 	cluster.Conf.ForceBinlogPurge = !cluster.Conf.ForceBinlogPurge
 }
 

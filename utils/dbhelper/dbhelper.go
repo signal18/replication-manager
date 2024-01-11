@@ -2900,3 +2900,15 @@ func SetMaxBinlogTotalSize(db *sqlx.DB, size int) (string, error) {
 	}
 	return query, err
 }
+
+func PurgeBinlogTo(db *sqlx.DB, filename string) (string, error) {
+	var err error
+	query := "PURGE BINARY LOGS TO '" + filename + "'"
+
+	if filename != "" {
+		_, err = db.Exec(query)
+	} else {
+		return query, errors.New("Invalid filename for PURGE BINARY LOGS TO")
+	}
+	return query, err
+}
