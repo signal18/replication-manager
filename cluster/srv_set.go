@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 )
@@ -56,21 +57,23 @@ func (server *ServerMonitor) SetGroupReplicationPrimary() (string, error) {
 }
 
 func (server *ServerMonitor) SetState(state string) {
+	cluster := server.ClusterGroup
 	if server.PrevState != state {
-		server.ClusterGroup.LogPrintf(LvlInfo, "Server %s state transition from %s changed to: %s", server.URL, server.PrevState, state)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Server %s state transition from %s changed to: %s", server.URL, server.PrevState, state)
 		_, file, no, ok := runtime.Caller(1)
 		if ok {
-			server.ClusterGroup.LogPrintf(LvlInfo, "Set state called from %s#%d\n", file, no)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Set state called from %s#%d\n", file, no)
 		}
 	}
 	server.State = state
 }
 
 func (server *ServerMonitor) SetPrevState(state string) {
+	cluster := server.ClusterGroup
 	if state == "" {
 		return
 	}
-	server.ClusterGroup.LogPrintf(LvlInfo, "Server %s previous state set to: %s", server.URL, state)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Server %s previous state set to: %s", server.URL, state)
 	server.PrevState = state
 }
 
@@ -79,13 +82,14 @@ func (server *ServerMonitor) SetFailed() {
 }
 
 func (server *ServerMonitor) SetMaster() {
+	cluster := server.ClusterGroup
 	server.SetState(stateMaster)
-	//server.ClusterGroup.LogPrintf(LvlInfo, "Server %s state transition from %s changed to: %s in SetMaster", server.URL, server.PrevState, stateMaster)
+	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Server %s state transition from %s changed to: %s in SetMaster", server.URL, server.PrevState, stateMaster)
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
-		server.ClusterGroup.LogPrintf(LvlDbg, "SetMaster called from %s#%d\n", file, no)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "SetMaster called from %s#%d\n", file, no)
 	}
-	for _, s := range server.ClusterGroup.Servers {
+	for _, s := range cluster.Servers {
 		s.HaveNoMasterOnStart = false
 	}
 }
@@ -121,6 +125,7 @@ func (server *ServerMonitor) SetSemiSyncLeader() (string, error) {
 }
 
 func (server *ServerMonitor) SetReadOnly() (string, error) {
+	cluster := server.ClusterGroup
 	logs := ""
 	if !server.IsReadOnly() {
 		logs, err := dbhelper.SetReadOnly(server.Conn, true)
@@ -128,7 +133,7 @@ func (server *ServerMonitor) SetReadOnly() (string, error) {
 			return logs, err
 		}
 	}
-	if server.HasSuperReadOnlyCapability() && server.ClusterGroup.Conf.SuperReadOnly {
+	if server.HasSuperReadOnlyCapability() && cluster.Conf.SuperReadOnly {
 		logs, err := dbhelper.SetSuperReadOnly(server.Conn, true)
 		if err != nil {
 			return logs, err
@@ -150,20 +155,21 @@ func (server *ServerMonitor) SetLongQueryTime(queryTime string) (string, error) 
 }
 
 func (server *ServerMonitor) SetReadWrite() error {
-	if server.ClusterGroup.Conf.Arbitration && server.ClusterGroup.IsFailedArbitrator {
-		server.ClusterGroup.LogPrintf(LvlErr, "Cancel ReadWrite on %s caused by arbitration failed ", server.URL)
+	cluster := server.ClusterGroup
+	if cluster.Conf.Arbitration && cluster.IsFailedArbitrator {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cancel ReadWrite on %s caused by arbitration failed ", server.URL)
 		return errors.New("Arbitration is Failed")
 	}
 	if server.IsReadOnly() {
 		logs, err := dbhelper.SetReadOnly(server.Conn, false)
-		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set Read Write on %s : %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set Read Write on %s : %s", server.URL, err)
 		if err != nil {
 			return err
 		}
 	}
 	if server.HasSuperReadOnlyCapability() {
 		logs, err := dbhelper.SetSuperReadOnly(server.Conn, false)
-		server.ClusterGroup.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set Super Read Write on %s : %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set Super Read Write on %s : %s", server.URL, err)
 		if err != nil {
 			return err
 		}
@@ -176,23 +182,24 @@ func (server *ServerMonitor) SetMaintenance() {
 }
 
 func (server *ServerMonitor) SetDSN() {
+	cluster := server.ClusterGroup
 	pgdsn := func() string {
 		dsn := ""
 		//push the password at the end because empty password may consider next parameter is paswword
-		if server.ClusterGroup.HaveDBTLSCert {
+		if cluster.HaveDBTLSCert {
 			dsn += "sslmode=enable"
 		} else {
 			dsn += "sslmode=disable"
 		}
-		dsn += fmt.Sprintf(" host=%s port=%s user=%s dbname=%s connect_timeout=%d password=%s ", server.Host, server.Port, server.User, server.PostgressDB, server.ClusterGroup.Conf.Timeout, server.Pass)
+		dsn += fmt.Sprintf(" host=%s port=%s user=%s dbname=%s connect_timeout=%d password=%s ", server.Host, server.Port, server.User, server.PostgressDB, cluster.Conf.Timeout, server.Pass)
 		//dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s connect_timeout=1", server.Host, server.Port, server.User, server.Pass, "postgres")
 
 		return dsn
 	}
 	mydsn := func() string {
-		params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", server.ClusterGroup.Conf.Timeout, server.ClusterGroup.Conf.ReadTimeout)
+		params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", cluster.Conf.Timeout, cluster.Conf.ReadTimeout)
 		dsn := server.User + ":" + server.Pass + "@"
-		if server.ClusterGroup.Conf.TunnelHost != "" {
+		if cluster.Conf.TunnelHost != "" {
 			dsn += "tcp(127.0.0.1:" + server.TunnelPort + ")/" + params
 		} else if server.Host != "" {
 			//don't use IP as it can change under orchestrator
@@ -206,21 +213,21 @@ func (server *ServerMonitor) SetDSN() {
 			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
 			//		}
 		} else {
-			dsn += "unix(" + server.ClusterGroup.Conf.Socket + ")/" + params
+			dsn += "unix(" + cluster.Conf.Socket + ")/" + params
 		}
-		if server.ClusterGroup.HaveDBTLSCert {
+		if cluster.HaveDBTLSCert {
 			dsn += server.TLSConfigUsed
 		}
 		return dsn
 	}
-	if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
+	if cluster.Conf.MasterSlavePgStream || cluster.Conf.MasterSlavePgLogical {
 		server.DSN = pgdsn()
 	} else {
 		server.DSN = mydsn()
-		if server.ClusterGroup.HaveDBTLSCert {
-			mysql.RegisterTLSConfig(ConstTLSCurrentConfig, server.ClusterGroup.tlsconf)
-			if server.ClusterGroup.HaveDBTLSOldCert {
-				mysql.RegisterTLSConfig(ConstTLSOldConfig, server.ClusterGroup.tlsoldconf)
+		if cluster.HaveDBTLSCert {
+			mysql.RegisterTLSConfig(ConstTLSCurrentConfig, cluster.tlsconf)
+			if cluster.HaveDBTLSOldCert {
+				mysql.RegisterTLSConfig(ConstTLSOldConfig, cluster.tlsoldconf)
 			}
 		}
 	}
@@ -233,8 +240,9 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 	server.URL = url
 	server.Host, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
+	cluster := server.ClusterGroup
 	if err != nil {
-		server.GetCluster().LogPrintf(LvlErr, "Cannot resolved DNS for host %s, error: %s", server.Host, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cannot resolved DNS for host %s, error: %s", server.Host, err.Error())
 	}
 	if server.PostgressDB == "" {
 		server.PostgressDB = "test"
@@ -244,6 +252,7 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 }
 
 func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) (string, error) {
+	cluster := server.ClusterGroup
 	server.StopSlave()
 
 	changeOpt := dbhelper.ChangeMasterOpt{
@@ -253,10 +262,10 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 		Password:    master.ClusterGroup.GetRplPass(),
 		Retry:       strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 		Heartbeat:   strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-		SSL:         server.ClusterGroup.Conf.ReplicationSSL,
-		Channel:     server.ClusterGroup.Conf.MasterConn,
+		SSL:         cluster.Conf.ReplicationSSL,
+		Channel:     cluster.Conf.MasterConn,
 		IsDelayed:   server.IsDelayed,
-		Delay:       strconv.Itoa(server.ClusterGroup.Conf.HostsDelayedTime),
+		Delay:       strconv.Itoa(cluster.Conf.HostsDelayedTime),
 		PostgressDB: server.PostgressDB,
 	}
 
@@ -269,24 +278,25 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 }
 
 func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) (string, error) {
+	cluster := server.ClusterGroup
 	var err error
 	logs := ""
 	changeOpt := dbhelper.ChangeMasterOpt{
-		SSL:         server.ClusterGroup.Conf.ReplicationSSL,
-		Channel:     server.ClusterGroup.Conf.MasterConn,
+		SSL:         cluster.Conf.ReplicationSSL,
+		Channel:     cluster.Conf.MasterConn,
 		IsDelayed:   server.IsDelayed,
-		Delay:       strconv.Itoa(server.ClusterGroup.Conf.HostsDelayedTime),
+		Delay:       strconv.Itoa(cluster.Conf.HostsDelayedTime),
 		PostgressDB: server.PostgressDB,
 	}
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
 		// We can do MySQL 5.7 style failover
-		server.ClusterGroup.LogPrintf(LvlInfo, "Doing MySQL GTID switch of the old master")
-		changeOpt.Host = server.ClusterGroup.master.Host
-		changeOpt.Port = server.ClusterGroup.master.Port
-		changeOpt.User = server.ClusterGroup.GetRplUser()
-		changeOpt.Password = server.ClusterGroup.GetRplPass()
-		changeOpt.Retry = strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatRetry)
-		changeOpt.Heartbeat = strconv.Itoa(server.ClusterGroup.Conf.ForceSlaveHeartbeatTime)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Doing MySQL GTID switch of the old master")
+		changeOpt.Host = cluster.master.Host
+		changeOpt.Port = cluster.master.Port
+		changeOpt.User = cluster.GetRplUser()
+		changeOpt.Password = cluster.GetRplPass()
+		changeOpt.Retry = strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry)
+		changeOpt.Heartbeat = strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime)
 		changeOpt.Mode = "MASTER_AUTO_POSITION"
 		logs, err = dbhelper.ChangeMaster(server.Conn, changeOpt, server.DBVersion)
 	} else {
@@ -332,10 +342,11 @@ func (server *ServerMonitor) SetInnoDBMonitor() {
 }
 
 func (server *ServerMonitor) createCookie(key string) error {
+	cluster := server.ClusterGroup
 	newFile, err := os.Create(server.Datadir + "/@" + key)
 	defer newFile.Close()
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlDbg, "Create cookie (%s) %s", key, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Create cookie (%s) %s", key, err)
 	}
 	return err
 }
@@ -376,19 +387,19 @@ func (server *ServerMonitor) SetBackupLogicalCookie() error {
 }
 
 func (server *ServerMonitor) SetReplicationCredentialsRotation(ss *dbhelper.SlaveStatus) {
-
+	cluster := server.ClusterGroup
 	if server.GetCluster().Conf.IsVaultUsed() {
 		server.GetCluster().SetClusterReplicationCredentialsFromConfig()
-		server.GetCluster().LogPrintf(LvlInfo, "Vault replication user password rotation")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Vault replication user password rotation")
 		err := server.rejoinSlaveChangePassword(ss)
 		if err != nil {
-			server.GetCluster().LogPrintf(LvlWarn, "Rejoin slave change password error: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Rejoin slave change password error: %s", err)
 		}
 		if server.GetCluster().Conf.VaultMode == VaultConfigStoreV2 {
 			for _, u := range server.GetCluster().master.Users {
 				if u.User == server.GetCluster().GetRplUser() {
 					logs, err := dbhelper.SetUserPassword(server.GetCluster().master.Conn, server.GetCluster().master.DBVersion, u.Host, u.User, server.GetCluster().GetRplPass())
-					server.ClusterGroup.LogSQL(logs, err, server.URL, "Security", LvlErr, "Alter user : %s", err)
+					cluster.LogSQL(logs, err, server.URL, "Security", LvlErr, "Alter user : %s", err)
 
 				}
 

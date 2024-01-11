@@ -9,13 +9,14 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 )
 
 func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Router) {
@@ -648,14 +649,14 @@ func (repman *ReplicationManager) handlerMuxServerSwitchover(w http.ResponseWrit
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive switchover request")
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlInfo, "Rest API receive switchover request")
 			savedPrefMaster := mycluster.GetPreferedMasterList()
 			if mycluster.IsMasterFailed() {
-				mycluster.LogPrintf(cluster.LvlErr, "Master failed, cannot initiate switchover")
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "Master failed, cannot initiate switchover")
 				http.Error(w, "Leader is failed can not promote", http.StatusBadRequest)
 				return
 			}
-			mycluster.LogPrintf(cluster.LvlInfo, "API force for prefered leader: %s", node.URL)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlInfo, "API force for prefered leader: %s", node.URL)
 			mycluster.SetPrefMaster(node.URL)
 			mycluster.MasterFailover(false)
 			mycluster.SetPrefMaster(savedPrefMaster)
@@ -669,7 +670,6 @@ func (repman *ReplicationManager) handlerMuxServerSwitchover(w http.ResponseWrit
 	}
 }
 
-
 func (repman *ReplicationManager) handlerMuxServerSetPrefered(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -681,8 +681,8 @@ func (repman *ReplicationManager) handlerMuxServerSetPrefered(w http.ResponseWri
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive set node as prefered request")
-			if !mycluster.IsInPreferedHosts(node){
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlInfo, "Rest API receive set node as prefered request")
+			if !mycluster.IsInPreferedHosts(node) {
 				savedPrefMaster := mycluster.GetPreferedMasterList()
 				if savedPrefMaster == "" {
 					mycluster.SetPrefMaster(node.URL)
@@ -711,8 +711,8 @@ func (repman *ReplicationManager) handlerMuxServerSetUnrated(w http.ResponseWrit
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive set node as unrated request")
-			if mycluster.IsInPreferedHosts(node){
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlInfo, "Rest API receive set node as unrated request")
+			if mycluster.IsInPreferedHosts(node) {
 				savedPrefMaster := mycluster.GetPreferedMasterList()
 				if savedPrefMaster == node.URL {
 					mycluster.SetPrefMaster("")
@@ -723,7 +723,7 @@ func (repman *ReplicationManager) handlerMuxServerSetUnrated(w http.ResponseWrit
 					mycluster.SetPrefMaster(newPrefMaster)
 				}
 			}
-			if mycluster.IsInIgnoredHosts(node){
+			if mycluster.IsInIgnoredHosts(node) {
 				savedIgnoredHost := mycluster.GetIgnoredHostList()
 				if savedIgnoredHost == node.URL {
 					mycluster.SetIgnoreSrv("")
@@ -755,8 +755,8 @@ func (repman *ReplicationManager) handlerMuxServerSetIgnored(w http.ResponseWrit
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			mycluster.LogPrintf(cluster.LvlInfo, "Rest API receive set node as prefered request")
-			if !mycluster.IsInIgnoredHosts(node){
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlInfo, "Rest API receive set node as prefered request")
+			if !mycluster.IsInIgnoredHosts(node) {
 				savedIgnoredHost := mycluster.GetIgnoredHostList()
 				if savedIgnoredHost == "" {
 					mycluster.SetIgnoreSrv(node.URL)

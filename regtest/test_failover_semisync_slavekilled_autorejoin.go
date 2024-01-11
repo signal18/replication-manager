@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 )
 
 func (regtest *RegTest) TestFailoverSemisyncSlavekilledAutoRejoin(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
@@ -32,7 +33,7 @@ func (regtest *RegTest) TestFailoverSemisyncSlavekilledAutoRejoin(cluster *clust
 	cluster.FailoverAndWait()
 
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf("TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 
 		return false
 	}
@@ -48,7 +49,7 @@ func (regtest *RegTest) TestFailoverSemisyncSlavekilledAutoRejoin(cluster *clust
 	SaveMaster.ReadAllRelayLogs()
 
 	if killedSlave.HasSiblings(cluster.GetSlaves()) == false {
-		cluster.LogPrintf(LvlErr, "Not all slaves pointing to master")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Not all slaves pointing to master")
 
 		return false
 	}

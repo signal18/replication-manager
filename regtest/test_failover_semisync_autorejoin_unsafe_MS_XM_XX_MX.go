@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 )
 
 func (regtest *RegTest) TestFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
@@ -48,7 +49,7 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS(cluster *
 	wg.Wait()
 
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogPrintf("TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 
 		return false
 	}
@@ -69,19 +70,19 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS(cluster *
 
 	for _, s := range cluster.GetSlaves() {
 		if s.IsReplicationBroken() {
-			cluster.LogPrintf(LvlErr, "Slave  %s issue on replication", s.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Slave  %s issue on replication", s.URL)
 
 			return false
 		}
 	}
 	time.Sleep(10 * time.Second)
 	if cluster.ChecksumBench() != true {
-		cluster.LogPrintf(LvlErr, "Inconsitant slave")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Inconsitant slave")
 
 		return false
 	}
 	if len(cluster.GetServers()) == 2 && SaveMasterURL != cluster.GetMaster().URL {
-		cluster.LogPrintf(LvlErr, "Unexpected master for 2 nodes cluster")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Unexpected master for 2 nodes cluster")
 		return false
 	}
 

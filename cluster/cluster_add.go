@@ -44,7 +44,7 @@ func (cluster *Cluster) AddDBTagConfig(tag string) {
 func (cluster *Cluster) AddDBTag(tag string) {
 
 	if !cluster.Configurator.HaveDBTag(tag) {
-		cluster.LogPrintf(LvlInfo, "Adding database tag %s ", tag)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Adding database tag %s ", tag)
 		cluster.AddDBTagConfig(tag)
 		if cluster.Conf.ProvDBApplyDynamicConfig {
 			for _, srv := range cluster.Servers {
@@ -130,7 +130,7 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 func (cluster *Cluster) AddUser(user string) error {
 	pass, _ := cluster.GeneratePassword()
 	if _, ok := cluster.APIUsers[user]; ok {
-		cluster.LogPrintf(LvlErr, "User %s already exist ", user)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "User %s already exist ", user)
 	} else {
 		if cluster.Conf.GetDecryptedValue("api-credentials-external") == "" {
 			cluster.Conf.APIUsersExternal = user + ":" + pass

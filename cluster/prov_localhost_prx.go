@@ -6,15 +6,17 @@
 
 package cluster
 
+import "github.com/signal18/replication-manager/config"
+
 func (cluster *Cluster) LocalhostProvisionProxyService(pri DatabaseProxy) error {
 	pri.GetProxyConfig()
 
 	if prx, ok := pri.(*MariadbShardProxy); ok {
-		cluster.LogPrintf(LvlInfo, "Bootstrap MariaDB Sharding Cluster")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Bootstrap MariaDB Sharding Cluster")
 		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.GetPort(), prx.User, prx.Pass, true, "")
 		err := srv.Refresh()
 		if err == nil {
-			cluster.LogPrintf(LvlWarn, "Can connect to requested signal18 sharding proxy")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlWarn, "Can connect to requested signal18 sharding proxy")
 			//that's ok a sharding proxy can be decalre in multiple cluster , should not block provisionning
 			cluster.errorChan <- err
 			return nil
@@ -22,7 +24,7 @@ func (cluster *Cluster) LocalhostProvisionProxyService(pri DatabaseProxy) error 
 		srv.ClusterGroup = cluster
 		err = cluster.LocalhostProvisionDatabaseService(srv)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Bootstrap MariaDB Sharding Cluster Failed")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Bootstrap MariaDB Sharding Cluster Failed")
 			cluster.errorChan <- err
 			return err
 		}
@@ -33,7 +35,7 @@ func (cluster *Cluster) LocalhostProvisionProxyService(pri DatabaseProxy) error 
 	if prx, ok := pri.(*ProxySQLProxy); ok {
 		err := cluster.LocalhostProvisionProxySQLService(prx)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Bootstrap Proxysql Failed")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Bootstrap Proxysql Failed")
 			cluster.errorChan <- err
 			return err
 		}

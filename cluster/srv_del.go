@@ -11,12 +11,15 @@ package cluster
 
 import (
 	"os"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 func (server *ServerMonitor) delCookie(key string) error {
+	cluster := server.ClusterGroup
 	err := os.Remove(server.Datadir + "/@" + key)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlDbg, "Remove cookie (%s) %s", key, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Remove cookie (%s) %s", key, err)
 	}
 
 	return err

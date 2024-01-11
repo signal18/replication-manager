@@ -91,9 +91,9 @@ func (cluster *Cluster) ProvisionServices() error {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Provisionning error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Provisionning error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
 			} else {
-				cluster.LogPrintf(LvlInfo, "Provisionning done for database %s", cluster.Name+"/svc/"+server.Name)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Provisionning done for database %s", cluster.Name+"/svc/"+server.Name)
 				server.SetProvisionCookie()
 				server.DelReprovisionCookie()
 				server.DelRestartCookie()
@@ -129,9 +129,9 @@ func (cluster *Cluster) ProvisionServices() error {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Provisionning proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Provisionning proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
 			} else {
-				cluster.LogPrintf(LvlInfo, "Provisionning done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Provisionning done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
 				prx.SetProvisionCookie()
 			}
 		}
@@ -225,9 +225,9 @@ func (cluster *Cluster) Unprovision() error {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Unprovision error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Unprovision error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
 			} else {
-				cluster.LogPrintf(LvlInfo, "Unprovision done for database %s", cluster.Name+"/svc/"+server.Name)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Unprovision done for database %s", cluster.Name+"/svc/"+server.Name)
 				server.DelProvisionCookie()
 				server.DelRestartCookie()
 				server.DelReprovisionCookie()
@@ -238,7 +238,7 @@ func (cluster *Cluster) Unprovision() error {
 	if err == nil {
 		cluster.ResetStates()
 	} else {
-		cluster.LogPrintf(LvlErr, "Failed to wait for all databases down : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Failed to wait for all databases down : %s", err)
 	}
 
 	for _, prx := range cluster.Proxies {
@@ -265,15 +265,15 @@ func (cluster *Cluster) Unprovision() error {
 	for _, prx := range cluster.Proxies {
 		/*	prx, ok := pri.(*Proxy)
 			if !ok {
-				cluster.LogPrintf(LvlErr, "Unprovision proxy continue ")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlErr, "Unprovision proxy continue ")
 				continue
 			}*/
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
 			} else {
-				cluster.LogPrintf(LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
 				prx.DelProvisionCookie()
 				prx.DelRestartCookie()
 				prx.DelReprovisionCookie()
@@ -349,7 +349,7 @@ func (cluster *Cluster) RollingUpgrade() {
 }
 
 func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
-	cluster.LogPrintf(LvlInfo, "Stopping database service %s", cluster.Name+"/svc/"+server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Stopping database service %s", cluster.Name+"/svc/"+server.URL)
 	var err error
 
 	switch cluster.GetOrchestrator() {
@@ -374,7 +374,7 @@ func (cluster *Cluster) StopDatabaseService(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
-	cluster.LogPrintf(LvlInfo, "Stopping Proxy service %s", cluster.Name+"/svc/"+server.GetName())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Stopping Proxy service %s", cluster.Name+"/svc/"+server.GetName())
 	var err error
 
 	switch cluster.GetOrchestrator() {
@@ -399,7 +399,7 @@ func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 }
 
 func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
-	cluster.LogPrintf(LvlInfo, "Starting Proxy service %s", cluster.Name+"/svc/"+server.GetName())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Starting Proxy service %s", cluster.Name+"/svc/"+server.GetName())
 	var err error
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
@@ -429,7 +429,7 @@ func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
 }
 
 func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
-	cluster.LogPrintf(LvlInfo, "Starting Database service %s", cluster.Name+"/svc/"+server.Name)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Starting Database service %s", cluster.Name+"/svc/"+server.Name)
 	var err error
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
@@ -459,32 +459,32 @@ func (cluster *Cluster) StartAllNodes() error {
 
 func (cluster *Cluster) BootstrapReplicationCleanup() error {
 
-	cluster.LogPrintf(LvlInfo, "Cleaning up replication on existing servers")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Cleaning up replication on existing servers")
 	cluster.StateMachine.SetFailoverState()
 	for _, server := range cluster.Servers {
 		err := server.Refresh()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Refresh failed in Cleanup on server %s %s", server.URL, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Refresh failed in Cleanup on server %s %s", server.URL, err)
 			return err
 		}
 		if cluster.Conf.Verbose {
-			cluster.LogPrintf(LvlInfo, "SetDefaultMasterConn on server %s ", server.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "SetDefaultMasterConn on server %s ", server.URL)
 		}
 		logs, err := dbhelper.SetDefaultMasterConn(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
 		cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", LvlDbg, "BootstrapReplicationCleanup %s %s ", server.URL, err)
 		if err != nil {
 			if cluster.Conf.Verbose {
-				cluster.LogPrintf(LvlInfo, "RemoveFailoverState on server %s ", server.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "RemoveFailoverState on server %s ", server.URL)
 			}
 			continue
 		}
 
-		cluster.LogPrintf(LvlInfo, "Reset Master on server %s ", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Reset Master on server %s ", server.URL)
 
 		logs, err = dbhelper.ResetMaster(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
 		cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", LvlErr, "Reset Master on server %s %s", server.URL, err)
 		if cluster.Conf.Verbose {
-			cluster.LogPrintf(LvlInfo, "Stop all slaves or stop slave %s ", server.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Stop all slaves or stop slave %s ", server.URL)
 		}
 		if server.DBVersion.IsMariaDB() {
 			logs, err = dbhelper.StopAllSlaves(server.Conn, server.DBVersion)
@@ -495,7 +495,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 
 		if server.DBVersion.IsMariaDB() {
 			if cluster.Conf.Verbose {
-				cluster.LogPrintf(LvlInfo, "SET GLOBAL gtid_slave_pos='' on %s", server.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "SET GLOBAL gtid_slave_pos='' on %s", server.URL)
 			}
 			logs, err := dbhelper.SetGTIDSlavePos(server.Conn, "")
 			cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", LvlErr, "Can reset GTID slave pos %s %s", server.URL, err)
@@ -515,13 +515,13 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 	var err error
 
 	if cluster.Conf.MultiMasterWsrep {
-		cluster.LogPrintf(LvlInfo, "Galera cluster ignoring replication setup")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Galera cluster ignoring replication setup")
 		return nil
 	}
 	if clean {
 		err := cluster.BootstrapReplicationCleanup()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Cleanup error %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cleanup error %s", err)
 		}
 	}
 	for _, server := range cluster.Servers {
@@ -623,7 +623,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 
 			}
 		}
-		cluster.LogPrintf(LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
 	}
 	// Multi Master
 	if cluster.Conf.MultiMaster == true {
@@ -737,7 +737,7 @@ func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 		svc := cluster.OpenSVCConnect()
 		err := svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", password)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "ProvisionRotatePasswords error: Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "ProvisionRotatePasswords error: Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
 		}
 	}
 	return nil

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
@@ -19,29 +20,29 @@ func (regtest *RegTest) TestSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync(c
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
 		return false
 	}
 	SaveMasterURL := cluster.GetMaster().URL
 	db, err := cluster.GetClusterProxyConn()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Can't take proxy conn %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Can't take proxy conn %s ", err)
 		return false
 	}
 	dbhelper.InjectTrxWithoutCommit(db)
 	time.Sleep(12 * time.Second)
-	cluster.LogPrintf("TEST", "Master is %s", cluster.GetMaster().URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Master is %s", cluster.GetMaster().URL)
 	cluster.SwitchoverWaitTest()
-	cluster.LogPrintf("TEST", "New Master  %s ", cluster.GetMaster().URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s ", cluster.GetMaster().URL)
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
 
 		return false
 	}
 	time.Sleep(2 * time.Second)
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogPrintf(LvlErr, "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
 	return true

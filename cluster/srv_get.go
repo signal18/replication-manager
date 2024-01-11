@@ -52,12 +52,12 @@ func (server *ServerMonitor) GetSshEnv() string {
 }
 
 func (server *ServerMonitor) GetUniversalGtidServerID() uint64 {
-
+	cluster := server.ClusterGroup
 	if server.IsMariaDB() {
 		return uint64(server.ServerID)
 	}
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
-		server.ClusterGroup.LogPrintf("INFO", " %s %s", server.Variables["SERVER_UUID"], server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", " %s %s", server.Variables["SERVER_UUID"], server.URL)
 		return crc64.Checksum([]byte(strings.ToUpper(server.Variables["SERVER_UUID"])), server.GetCluster().GetCrcTable())
 
 	}
@@ -288,7 +288,7 @@ func (server *ServerMonitor) GetVariables() []dbhelper.Variable {
 
 func (server *ServerMonitor) GetQueryFromPFSDigest(digest string) (string, string, error) {
 	for _, v := range server.PFSQueries {
-		//server.ClusterGroup.LogPrintf(LvlInfo, "Status %s %s", digest, v.Digest)
+		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status %s %s", digest, v.Digest)
 		if v.Digest == digest {
 			return v.Schema_name, v.Query, nil
 		}
@@ -367,13 +367,13 @@ func (server *ServerMonitor) GetServerConnections() int {
 func (server *ServerMonitor) GetStatusDelta() []dbhelper.Variable {
 	var delta []dbhelper.Variable
 	for k, v := range server.Status {
-		//server.ClusterGroup.LogPrintf(LvlInfo, "Status %s %s", k, v)
+		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status %s %s", k, v)
 		i1, err := strconv.ParseInt(v, 10, 64)
 		if err == nil {
 			i2, err2 := strconv.ParseInt(server.PrevStatus[k], 10, 64)
-			//	server.ClusterGroup.LogPrintf(LvlInfo, "Status now %s %d", k, v)
+			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status now %s %d", k, v)
 			if err2 == nil && i2-i1 != 0 {
-				//			server.ClusterGroup.LogPrintf(LvlInfo, "Status prev %s %d", k, v)
+				//			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status prev %s %d", k, v)
 				var r dbhelper.Variable
 				r.Variable_name = k
 				r.Value = strconv.FormatInt(i1-i2, 10)
@@ -536,8 +536,9 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 }
 
 func (server *ServerMonitor) GetSlowLogTable() {
+	cluster := server.ClusterGroup
 
-	if server.ClusterGroup.IsInFailover() {
+	if cluster.IsInFailover() {
 		return
 	}
 	if !server.HasLogsInSystemTables() {
@@ -546,7 +547,7 @@ func (server *ServerMonitor) GetSlowLogTable() {
 	if server.IsDown() {
 		return
 	}
-	if !server.GetCluster().GetConf().MonitorQueries {
+	if !cluster.GetConf().MonitorQueries {
 		return
 	}
 	if server.IsInSlowQueryCapture {
@@ -557,7 +558,7 @@ func (server *ServerMonitor) GetSlowLogTable() {
 
 	f, err := os.OpenFile(server.Datadir+"/log/log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Error writing slow queries %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error writing slow queries %s", err)
 		return
 	}
 	fi, _ := f.Stat()
@@ -575,7 +576,7 @@ func (server *ServerMonitor) GetSlowLogTable() {
 		err = server.Conn.Select(&slowqueries, "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id,0 as rows_affected FROM  mysql.slow_log WHERE start_time > FROM_UNIXTIME("+strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10)+")")
 	}
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Could not get slow queries from table %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could not get slow queries from table %s", err)
 	}
 	for _, s := range slowqueries {
 
@@ -631,12 +632,13 @@ func (server *ServerMonitor) GetInnoDBStatus() []dbhelper.Variable {
 }
 
 func (server *ServerMonitor) GetTableDefinition(schema string, table string) (string, error) {
+	cluster := server.ClusterGroup
 	query := "SHOW CREATE TABLE `" + schema + "`.`" + table + "`"
 	var tbl, ddl string
 
 	err := server.Conn.QueryRowx(query).Scan(&tbl, &ddl)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Failed query %s %s", query, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Failed query %s %s", query, err)
 		return "", err
 	}
 	return ddl, nil
@@ -654,11 +656,12 @@ func (server *ServerMonitor) GetDatabaseBasedir() string {
 }
 
 func (server *ServerMonitor) GetTablePK(schema string, table string) (string, error) {
+	cluster := server.ClusterGroup
 	query := "SELECT group_concat( distinct column_name) from information_schema.KEY_COLUMN_USAGE WHERE CONSTRAINT_NAME='PRIMARY' AND CONSTRAINT_SCHEMA='" + schema + "' AND TABLE_NAME='" + table + "'"
 	var pk string
 	err := server.Conn.QueryRowx(query).Scan(&pk)
 	if err != nil {
-		server.ClusterGroup.LogPrintf(LvlErr, "Failed query %s %s", query, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Failed query %s %s", query, err)
 		return "", nil
 	}
 	return pk, nil

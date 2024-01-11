@@ -50,7 +50,8 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 
 func (proxy *ProxySQLProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.BoolVar(&conf.ProxysqlOn, "proxysql", false, "Use ProxySQL")
-	flags.BoolVar(&conf.ProxysqlDebug, "proxysql-debug", false, "Extra info on monitoring backend")
+	flags.BoolVar(&conf.ProxysqlDebug, "proxysql-debug", true, "Extra info on monitoring backend")
+	flags.IntVar(&conf.ProxysqlLogLevel, "proxysql-log-level", 1, "Extra info on monitoring backend")
 	flags.BoolVar(&conf.ProxysqlSaveToDisk, "proxysql-save-to-disk", false, "Save proxysql change to sqllight")
 	flags.StringVar(&conf.ProxysqlHosts, "proxysql-servers", "", "ProxySQL hosts")
 	flags.StringVar(&conf.ProxysqlHostsIPV6, "proxysql-servers-ipv6", "", "ProxySQL extra IPV6 bind for interfaces")
@@ -151,10 +152,10 @@ func (proxy *ProxySQLProxy) Init() {
 	for _, s := range cluster.Servers {
 
 		if s.State == stateUnconn || s.IsIgnored() {
-			cluster.LogPrintf(LvlErr, "ProxySQL add backend %s as offline (%s)", s.URL, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL add backend %s as offline (%s)", s.URL, err)
 			err = psql.AddOfflineServer(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "ProxySQL could not add backend %s as offline (%s)", s.URL, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not add backend %s as offline (%s)", s.URL, err)
 			}
 		} else {
 			//weight string, max_replication_lag string, max_connections string, compression string
@@ -162,29 +163,29 @@ func (proxy *ProxySQLProxy) Init() {
 			if s.IsLeader() {
 				err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
 				if err != nil {
-					cluster.LogPrintf(LvlErr, "ProxySQL could not add writer %s (%s) ", s.URL, err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not add writer %s (%s) ", s.URL, err)
 				}
 				if cluster.Configurator.HasProxyReadLeader() {
 					err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
 					if err != nil {
-						cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
 					}
 				}
 			} else if s.State == stateSlave {
 				err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
 				if err != nil {
-					cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
 				}
 			}
-			if cluster.Conf.LogLevel > 2 || cluster.Conf.ProxysqlDebug {
-				cluster.LogPrintf(LvlWarn, "ProxySQL init backend  %s with state %s ", s.URL, s.State)
-			}
+			// if cluster.Conf.LogLevel > 2 || cluster.Conf.ProxysqlDebug {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlWarn, "ProxySQL init backend  %s with state %s ", s.URL, s.State)
+			// }
 
 		}
 	}
 	err = psql.LoadServersToRuntime()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
 	}
 	if proxy.ClusterGroup.Conf.ProxysqlSaveToDisk {
 		psql.SaveServersToDisk()
@@ -205,7 +206,7 @@ func (proxy *ProxySQLProxy) CertificatesReload() error {
 	defer psql.Connection.Close()
 	err = psql.ReloadTLS()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Reload TLS failed %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "Reload TLS failed %s", err)
 		return err
 	}
 	return nil
@@ -224,28 +225,28 @@ func (proxy *ProxySQLProxy) Failover() {
 		if s.State == stateUnconn || s.IsIgnored() {
 			err = psql.SetOffline(misc.Unbracket(s.Host), s.Port)
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Failover ProxySQL could not set server %s offline (%s)", s.URL, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "Failover ProxySQL could not set server %s offline (%s)", s.URL, err)
 			} else {
-				cluster.LogPrintf(LvlInfo, "Failover ProxySQL set server %s offline", s.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Failover ProxySQL set server %s offline", s.URL)
 			}
 		}
 		if s.IsMaster() && !s.IsRelay && cluster.oldMaster != nil {
 			err = psql.ReplaceWriter(misc.Unbracket(s.Host), s.Port, misc.Unbracket(cluster.oldMaster.Host), cluster.oldMaster.Port, cluster.Configurator.HasProxyReadLeader(), proxy.UseSSL())
 			if err != nil {
-				cluster.LogPrintf(LvlErr, "Failover ProxySQL could not set server %s Master (%s)", s.URL, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "Failover ProxySQL could not set server %s Master (%s)", s.URL, err)
 			} else {
-				cluster.LogPrintf(LvlInfo, "Failover ProxySQL set server %s master", s.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Failover ProxySQL set server %s master", s.URL)
 			}
 		}
 	}
 	err = psql.LoadServersToRuntime()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "Failover ProxySQL could not load servers to runtime (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "Failover ProxySQL could not load servers to runtime (%s)", err)
 	}
 	if proxy.ClusterGroup.Conf.ProxysqlSaveToDisk {
 		err = psql.SaveServersToDisk()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "Failover ProxySQL could not save servers to disk (%s)", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "Failover ProxySQL could not save servers to disk (%s)", err)
 		}
 	}
 
@@ -254,9 +255,9 @@ func (proxy *ProxySQLProxy) Failover() {
 func (proxy *ProxySQLProxy) Refresh() error {
 
 	cluster := proxy.ClusterGroup
-	if cluster.Conf.LogLevel > 9 {
-		cluster.LogPrintf(LvlDbg, "ProxySQL port : %s, user %s, pass %s\n", proxy.Port, proxy.User, proxy.Pass)
-	}
+	// if cluster.Conf.LogLevel > 9 {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlDbg, "ProxySQL port : %s, user %s, pass %s\n", proxy.Port, proxy.User, proxy.Pass)
+	// }
 	if cluster.Conf.ProxysqlOn == false {
 		return nil
 	}
@@ -325,7 +326,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			// if ProxySQL and replication-manager states differ, resolve the conflict
 			if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave && !s.IsIgnored() {
 				if cluster.Conf.ProxysqlDebug {
-					cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting online as reader rejoining server %s", s.URL)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Monitor ProxySQL setting online as reader rejoining server %s", s.URL)
 				}
 				err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
 				if err != nil {
@@ -336,7 +337,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 
 			if s.IsSlaveOrSync() && s.IsMaintenance && isFoundBackendRead && bke.PrxStatus == "ONLINE" {
 				if cluster.Conf.ProxysqlDebug {
-					cluster.LogPrintf(LvlInfo, "Monitor ProxySQL  replicat %s Offline SOFT from reader group cause by maintenance ", s.URL)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Monitor ProxySQL  replicat %s Offline SOFT from reader group cause by maintenance ", s.URL)
 				}
 				err = psql.SetOfflineSoft(misc.Unbracket(s.Host), s.Port)
 				updated = true
@@ -344,7 +345,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 
 			// if server is Standalone, and writer set offline in ProxySQL
 			if s.State == stateUnconn && bke.PrxStatus == "ONLINE" {
-				cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting writer offline standalone server %s", s.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Monitor ProxySQL setting writer offline standalone server %s", s.URL)
 				err = psql.SetOffline(misc.Unbracket(s.Host), s.Port)
 				if err != nil {
 					cluster.StateMachine.AddState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
@@ -354,7 +355,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 
 			} else if s.State == stateUnconn && bkeread.PrxStatus == "ONLINE" && isFoundBackendRead {
 				// if server is Standalone, and reader shunned it in ProxySQL
-				cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting reader offline standalone server %s", s.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Monitor ProxySQL setting reader offline standalone server %s", s.URL)
 				err = psql.SetOfflineSoft(misc.Unbracket(s.Host), s.Port)
 				if err != nil {
 					cluster.StateMachine.AddState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
@@ -372,7 +373,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				if psql.ExistAsWriterOrOffline(misc.Unbracket(s.Host), s.Port) {
 					err = psql.SetOnline(misc.Unbracket(s.Host), s.Port)
 					if err != nil {
-						cluster.LogPrintf(LvlErr, "Monitor ProxySQL setting online failed server %s", s.URL)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "Monitor ProxySQL setting online failed server %s", s.URL)
 					}
 				} else {
 					//scenario restart with failed leader
@@ -383,11 +384,11 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			} else if s.IsLeader() && !isFoundBackendRead && (cluster.Configurator.HasProxyReadLeader() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && cluster.HasNoValidSlave())) {
 				// Add  leader in reader group if not found and setup
 				if cluster.Conf.ProxysqlDebug {
-					cluster.LogPrintf(LvlInfo, "Monitor ProxySQL add leader in reader group in %s", s.URL)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Monitor ProxySQL add leader in reader group in %s", s.URL)
 				}
 				err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
 				if err != nil {
-					cluster.LogPrintf(LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
 				}
 				updated = true
 			} else if s.IsLeader() && isFoundBackendRead && (!cluster.Configurator.HasProxyReadLeader()) {
@@ -395,18 +396,18 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				// Cancel learder remove because no valid reader
 				if !cluster.Configurator.HasProxyReadLeaderNoSlave() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && !cluster.HasNoValidSlave()) {
 					if cluster.Conf.ProxysqlDebug {
-						cluster.LogPrintf(LvlInfo, "Monitor ProxySQL Drop the leader in reader group from %s", s.URL)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Monitor ProxySQL Drop the leader in reader group from %s", s.URL)
 					}
 					err = psql.DropReader(misc.Unbracket(s.Host), s.Port)
 					if err != nil {
-						cluster.LogPrintf(LvlErr, "ProxySQL could not drop reader in %s (%s)", s.URL, err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not drop reader in %s (%s)", s.URL, err)
 					}
 					updated = true
 				}
 			} else if s.IsSlaveOrSync() && !s.IsIgnored() && (s.PrevState == stateUnconn || s.PrevState == stateFailed) {
 				err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
 				if cluster.Conf.ProxysqlDebug {
-					cluster.LogPrintf(LvlInfo, "Monitor ProxySQL setting reader standalone server %s", s.URL)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Monitor ProxySQL setting reader standalone server %s", s.URL)
 				}
 				if err != nil {
 					cluster.StateMachine.AddState("ERR00072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00072"], proxy.Name, s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
@@ -446,7 +447,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			changedUser := false
 			for _, user := range uniUsers {
 				if _, ok := myprxusermap[user.User+":"+user.Password]; !ok {
-					cluster.LogPrintf(LvlInfo, "Add ProxySQL user %s ", user.User)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Add ProxySQL user %s ", user.User)
 					err := psql.AddUser(user.User, user.Password)
 					if err != nil {
 						cluster.StateMachine.AddState("ERR00054", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00054"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
@@ -464,7 +465,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 	if updated {
 		err = psql.LoadServersToRuntime()
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
 		} else {
 			err = psql.SaveServersToDisk()
 		}
@@ -527,11 +528,11 @@ func (proxy *ProxySQLProxy) SetMaintenance(s *ServerMonitor) {
 	cluster := proxy.ClusterGroup
 	// TODO ? check if needed
 	/*	if cluster.GetMaster() != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL set maintenance cancel for server %s:%s as proxysql as no leader", s.Host, s.Port)
+		cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxySQL,LvlErr, "ProxySQL set maintenance cancel for server %s:%s as proxysql as no leader", s.Host, s.Port)
 			return
 	} */
 	if !cluster.Conf.ProxysqlOn {
-		cluster.LogPrintf(LvlErr, "ProxySQL set maintenance cancel for server %s:%s as proxysql off in config", s.Host, s.Port)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL set maintenance cancel for server %s:%s as proxysql off in config", s.Host, s.Port)
 		return
 	}
 
@@ -545,17 +546,17 @@ func (proxy *ProxySQLProxy) SetMaintenance(s *ServerMonitor) {
 	if s.IsMaintenance {
 		err = psql.SetOfflineSoft(misc.Unbracket(s.Host), s.Port)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "ProxySQL could not set %s:%s as offline_soft (%s)", s.Host, s.Port, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not set %s:%s as offline_soft (%s)", s.Host, s.Port, err)
 		}
 	} else {
 		err = psql.SetOnlineSoft(misc.Unbracket(s.Host), s.Port)
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "ProxySQL could not set %s:%s as online (%s)", s.Host, s.Port, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not set %s:%s as online (%s)", s.Host, s.Port, err)
 		}
 	}
 	err = psql.LoadServersToRuntime()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not load servers to runtime (%s)", err)
 	}
 }
 
@@ -570,33 +571,33 @@ func (proxy *ProxySQLProxy) RotateMonitoringPasswords(password string) {
 
 	vars, err := psql.GetVariables()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not get mysql variables (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not get mysql variables (%s)", err)
 	}
 	mon_user := vars["MYSQL-MONITOR_USERNAME"]
-	//cluster.LogPrintf(LvlInfo, "RotationMonitorPasswords user %s", user)
-	//cluster.LogPrintf(LvlInfo, "RotationMonitorPasswords dbUser %s", cluster.dbUser)
+	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxySQL,LvlInfo, "RotationMonitorPasswords user %s", user)
+	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxySQL,LvlInfo, "RotationMonitorPasswords dbUser %s", cluster.dbUser)
 	err = psql.SetMySQLVariable("mysql-monitor_password", password)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not set mysql variables (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not set mysql variables (%s)", err)
 	}
 
 	if mon_user != strings.ToUpper(cluster.GetDbUser()) {
 		err = psql.SetMySQLVariable("mysql-monitor_username", cluster.GetDbUser())
 		if err != nil {
-			cluster.LogPrintf(LvlErr, "ProxySQL could not set mysql variables (%s)", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not set mysql variables (%s)", err)
 		}
 	}
 	err = psql.LoadMySQLVariablesToRuntime()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not load varibles to runtime (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not load varibles to runtime (%s)", err)
 	}
 
 	err = psql.SaveMySQLVariablesToDisk()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not save admin variables to disk (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not save admin variables to disk (%s)", err)
 	}
 
-	cluster.LogPrintf(LvlInfo, "Password rotation is done for the proxySQL monitor")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Password rotation is done for the proxySQL monitor")
 }
 
 func (proxy *ProxySQLProxy) RotateProxyPasswords(password string) {
@@ -610,17 +611,17 @@ func (proxy *ProxySQLProxy) RotateProxyPasswords(password string) {
 
 	err = psql.SetMySQLVariable("admin-admin_credentials", proxy.User+":"+password)
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not set mysql variables (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not set mysql variables (%s)", err)
 	}
 
 	err = psql.LoadAdminVariablesToRuntime()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not load admin variables to runtime (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not load admin variables to runtime (%s)", err)
 	}
 
 	err = psql.SaveAdminVariablesToDisk()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not save admin variables to disk (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not save admin variables to disk (%s)", err)
 	}
 	proxy.Pass = password
 }
@@ -636,6 +637,6 @@ func (proxy *ProxySQLProxy) Shutdown() {
 
 	err = psql.Shutdown()
 	if err != nil {
-		cluster.LogPrintf(LvlErr, "ProxySQL could not shutdown (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlErr, "ProxySQL could not shutdown (%s)", err)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -82,7 +83,7 @@ func (regtest *RegTest) CreateTestsFromShare(cl *cluster.Cluster) map[string]clu
 	var allTests = map[string]cluster.Test{}
 	err := filepath.Walk(Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			cl.LogPrintf(LvlErr, "TEST : %s", err)
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "TEST : %s", err)
 			return err
 		}
 		if !info.IsDir() {
@@ -131,7 +132,7 @@ func (regtest *RegTest) CopyConfig(cl *cluster.Cluster, test cluster.Test) error
 		return nil
 	}
 	dstFile := cl.GetIncludeDir() + "/" + filepath.Base(srcFile)
-	cl.LogPrintf("INFO", "Copy from %s to %s", srcFile, dstFile)
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Copy from %s to %s", srcFile, dstFile)
 	os.Remove(dstFile)
 	misc.CopyFile(srcFile, dstFile)
 	return nil
@@ -155,7 +156,7 @@ func (regtest *RegTest) GetTestsFromPath(cl *cluster.Cluster, tests map[string]c
 	var allTests = map[string]cluster.Test{}
 	for key, thisTest := range tests {
 		var test cluster.Test
-		cl.LogPrintf("TEST", "filter %s %s", key, path)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "filter %s %s", key, path)
 
 		if strings.Contains(key, path) {
 
