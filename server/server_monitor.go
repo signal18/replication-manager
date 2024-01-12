@@ -96,6 +96,7 @@ func init() {
 	monitorCmd.Flags().IntVar(&conf.LogSSTLevel, "log-sst-level", 1, "Log SST Level")
 	monitorCmd.Flags().IntVar(&conf.SSTSendBuffer, "sst-send-buffer", 16384, "SST send buffer size")
 	monitorCmd.Flags().BoolVar(&conf.LogConfigLoad, "log-config-load", true, "Log config decryption")
+	monitorCmd.Flags().BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
 	monitorCmd.Flags().IntVar(&conf.LogConfigLoadLevel, "log-config-load-level", 1, "Log Config Load Level")
 	monitorCmd.Flags().BoolVar(&conf.LogHeartbeat, "log-heartbeat", true, "Log Heartbeat")
 	monitorCmd.Flags().IntVar(&conf.LogHeartbeatLevel, "log-heartbeat-level", 1, "Log Hearbeat Level")
