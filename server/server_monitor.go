@@ -98,7 +98,6 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.LogConfigLoad, "log-config-load", true, "Log config decryption")
 	monitorCmd.Flags().BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
 	monitorCmd.Flags().IntVar(&conf.LogConfigLoadLevel, "log-config-load-level", 1, "Log Config Load Level")
-	monitorCmd.Flags().BoolVar(&conf.LogHeartbeat, "log-heartbeat", true, "Log Heartbeat")
 	monitorCmd.Flags().IntVar(&conf.LogHeartbeatLevel, "log-heartbeat-level", 1, "Log Hearbeat Level")
 	monitorCmd.Flags().BoolVar(&conf.LogFailedElection, "log-failed-election", true, "Log failed election")
 	monitorCmd.Flags().IntVar(&conf.LogFailedElectionLevel, "log-failed-election-level", 1, "Log failed election Level")
