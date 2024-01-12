@@ -1007,6 +1007,41 @@ func (conf *Config) GetDecryptedPassword(key string, value string) string {
 	return value
 }
 
+func (conf *Config) Reveal(clusterName string, tmpDir string) {
+	fileName := fmt.Sprintf("%s/%s.reveal", tmpDir, clusterName)
+	file, err := os.Create(fileName)
+	if err != nil {
+		fmt.Printf("Erreur lors de la création du fichier %s: %v\n", fileName, err)
+		return
+	}
+	defer file.Close()
+
+	// Utiliser la réflexion pour parcourir les champs de Config
+	val := reflect.ValueOf(conf).Elem()
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		key := val.Type().Field(i).Name
+
+		if field.Kind() == reflect.String && strings.HasPrefix(field.String(), "hash_") {
+			decryptedValue := conf.GetDecryptedPassword(key, field.String())
+			line := fmt.Sprintf("Key: %s, Decrypted Value: %s\n", key, decryptedValue)
+			fmt.Fprintf(file, line)
+		}
+	}
+
+	// Lecture et affichage du contenu du fichier
+	readAndPrintFile(fileName)
+}
+
+func readAndPrintFile(fileName string) {
+	content, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		fmt.Printf("Erreur lors de la lecture du fichier %s: %v\n", fileName, err)
+		return
+	}
+	fmt.Printf("Contenu de %s:\n%s\n", fileName, string(content))
+}
+
 func (conf *Config) IsPath(str string) bool {
 
 	if strings.Contains(str, "=") || strings.Contains(str, "+") {

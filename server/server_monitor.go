@@ -95,7 +95,6 @@ func init() {
 	monitorCmd.Flags().BoolVar(&conf.LogSST, "log-sst", false, "Log open and close SST transfert")
 	monitorCmd.Flags().IntVar(&conf.SSTSendBuffer, "sst-send-buffer", 16384, "SST send buffer size")
 	monitorCmd.Flags().BoolVar(&conf.LogConfigLoad, "log-config-load", false, "Log config decryption")
-	monitorCmd.Flags().BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
 	monitorCmd.Flags().BoolVar(&conf.LogFailedElection, "log-failed-election", false, "Log failed election")
 	monitorCmd.Flags().BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
 	monitorCmd.Flags().BoolVar(&conf.MonitorCapture, "monitoring-capture", true, "Enable capture on error for 5 monitor loops")
