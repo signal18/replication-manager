@@ -1,6 +1,10 @@
 {
-<<<<<<< Updated upstream
-=======
-    "go.testFlags": ["-v"]
->>>>>>> Stashed changes
+    "go.alternateTools": {
+        "customFormatter": "gofmt"
+    },
+    "[go]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "golang.go"
+    },
+
 }
