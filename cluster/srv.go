@@ -126,6 +126,7 @@ type ServerMonitor struct {
 	IsDelayed                   bool                         `json:"isDelayed"`
 	IsFull                      bool                         `json:"isFull"`
 	IsConfigGen                 bool                         `json:"isConfigGen"`
+	IsPurgingBinlog             bool                         `json:"isPurgingBinlog"`
 	Ignored                     bool                         `json:"ignored"`
 	Prefered                    bool                         `json:"prefered"`
 	PreferedBackup              bool                         `json:"preferedBackup"`
@@ -812,6 +813,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.CheckDisks()
 		}
 
+		server.CheckAndPurgeBinlogs()
 	} // End not PG
 
 	// Set channel source name is dangerous with multi cluster

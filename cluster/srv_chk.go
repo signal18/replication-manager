@@ -465,6 +465,7 @@ func (server *ServerMonitor) CheckAndPurgeBinlogs() {
 			}
 
 			if compatible {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "MariaDB Version is compatible for max_binlog_total_size, using set global variable instead of manual purging")
 				v, ok := server.Variables["max_binlog_total_size"]
 				if ok {
 					size, err := strconv.Atoi(v)
@@ -484,7 +485,11 @@ func (server *ServerMonitor) CheckAndPurgeBinlogs() {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Variable max_binlog_total_size not found")
 				}
 			} else {
-				go server.JobBinlogPurge()
+				// prevent multiple purge
+				if !server.IsPurgingBinlog {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "MariaDB Version is not compatible for max_binlog_total_size, using manual purging")
+					go server.JobBinlogPurge()
+				}
 			}
 		}
 	}
