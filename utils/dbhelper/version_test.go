@@ -18,7 +18,7 @@ func TestMySQLVersion(t *testing.T) {
 	tstring, cstring = "8.0.28", ""
 	mv, _ := NewMySQLVersion(tstring, cstring)
 
-	t.Logf("Created Version of %s with version %d.%d.%d", mv.Flavor, mv.Major, mv.Minor, mv.Release)
+	t.Logf("Created Version of %s with version %s", mv.Flavor, mv.ToString())
 
 	if mv.Equal("8.0.28") {
 		t.Log("Equal(8.0.28) is true (Correct)")
@@ -135,12 +135,12 @@ func TestMariaDBVersion(t *testing.T) {
 	tstring, cstring = "10.11.6-MariaDB-1:10.11.6+maria~ubu2204-log", "MariaDB"
 	mv, _ := NewMySQLVersion(tstring, cstring)
 
-	t.Logf("Created Version of %s with version %d.%d.%d", mv.Flavor, mv.Major, mv.Minor, mv.Release)
+	t.Logf("Created Version of %s with version %s", mv.Flavor, mv.ToString())
 
-	if mv.Equal("10.11.6") {
-		t.Log("Equal(10.11.6) is true (Correct)")
+	if mv.Equal(mv.ToString()) {
+		t.Log("Equal(mv.ToString()) is true (Correct)")
 	} else {
-		t.Error("Equal(10.11.6) is false (Incorrect)")
+		t.Error("Equal(mv.ToString()) is false (Incorrect)")
 	}
 
 	if mv.Equal("10.11") {

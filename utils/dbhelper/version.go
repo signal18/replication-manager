@@ -10,6 +10,7 @@
 package dbhelper
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -73,6 +74,10 @@ func (mv *MySQLVersion) ToInt(tokens int) int {
 	}
 
 	return (mv.Major * 1000000) + (mv.Minor * 1000) + mv.Release
+}
+
+func (mv *MySQLVersion) ToString() string {
+	return fmt.Sprintf("%d.%d.%d", mv.Major, mv.Minor, mv.Release)
 }
 
 func (mv *MySQLVersion) Greater(vstring string) bool {
