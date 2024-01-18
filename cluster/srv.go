@@ -226,7 +226,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.Domain = domain
 	server.TLSConfigUsed = ConstTLSCurrentConfig
 	server.ClusterGroup = cluster
-	server.DBVersion = dbhelper.NewMySQLVersion("Unknowed-0.0.0", "")
+	server.DBVersion, _ = dbhelper.NewMySQLVersion("Unknowed-0.0.0", "")
 	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	server.IsGroupReplicationSlave = false
