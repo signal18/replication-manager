@@ -1496,6 +1496,12 @@ func (cluster *Cluster) SetPrintDelayStatInterval(keep string) error {
 	return nil
 }
 
+func (cluster *Cluster) SetForcePurgeBinlogTotalSize(numsize int) error {
+	cluster.LogPrintf(LvlInfo, "Purge Binlog Total Size set to %s", strconv.Itoa(numsize))
+	cluster.Conf.ForcePurgeBinlogTotalSize = numsize
+	return nil
+}
+
 func (cluster *Cluster) SetLogFailedElectionLevel(value int) {
 	cluster.Conf.LogFailedElectionLevel = value
 	if value > 0 {

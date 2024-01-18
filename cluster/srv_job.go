@@ -12,6 +12,7 @@ package cluster
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 
 	"errors"
 	"fmt"
@@ -1207,4 +1208,80 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Start slave after dump on %s", dest.URL)
 	dest.StartSlave()
 	return nil
+}
+
+func (server *ServerMonitor) JobBinlogPurge() error {
+	var err error
+	//Block multiple purge
+	server.IsPurgingBinlog = true
+	cluster := server.ClusterGroup
+	if !server.IsMaster() {
+		err = errors.New("Purge only master binlog")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, err.Error())
+		//Release block
+		server.IsPurgingBinlog = false
+		return err
+	}
+
+	// server.BinaryLogFiles does not having any value
+	if len(server.BinaryLogFiles) == 0 {
+		server.BinaryLogFiles, _, _ = dbhelper.GetBinaryLogs(server.Conn, server.DBVersion)
+	}
+
+	jtext, _ := json.MarshalIndent(server.BinaryLogFiles, " ", "\t")
+
+	binlogfilestart, _ := strconv.Atoi(strings.Split(server.BinaryLogFile, ".")[1])
+	prefix := strings.Split(server.BinaryLogFile, ".")[0]
+	binlogfilestop := binlogfilestart + 1 - len(server.BinaryLogFiles)
+
+	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "server:%s start:%s stop:%s list: %s", server.URL, fmt.Sprintf("%06d", binlogfilestart), fmt.Sprintf("%06d", binlogfilestop), string(jtext))
+	// If force purge binlog total size is set (default 30)
+	if cluster.Conf.ForcePurgeBinlogTotalSize > 0 {
+		var totalSize uint
+		totalSize = 0
+		lastfile := binlogfilestart
+
+		for binlogfilestop <= binlogfilestart {
+			filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestart)
+			if size, ok := server.BinaryLogFiles[filename]; ok {
+				if size+totalSize <= uint(cluster.Conf.ForcePurgeBinlogTotalSize*(1024*1024*1024)) {
+					totalSize += size
+					lastfile = binlogfilestart
+				}
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Filename not found on %s: %s. List: %s", server.URL, filename, string(jtext))
+			}
+			//Descending
+			binlogfilestart--
+		}
+
+		filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestop)
+		lastfilename := prefix + "." + fmt.Sprintf("%06d", lastfile)
+
+		// Purging binlog if more than total size
+		if binlogfilestop < lastfile {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Purging binlog of %s, from: %s before :%s", server.URL, filename, lastfilename)
+			for binlogfilestop < lastfile {
+				if binlogfilestop > 0 {
+					filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestop)
+					if _, ok := server.BinaryLogFiles[filename]; ok {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Purging binlog of %s,%s", server.URL, filename)
+						_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)
+						if err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
+						}
+					} else {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Binlog filename not found on %s: %s. List: %s", server.URL, filename, string(jtext))
+					}
+				}
+				//From oldest
+				binlogfilestop++
+			}
+		}
+
+	}
+
+	//Release block
+	server.IsPurgingBinlog = false
+	return err
 }

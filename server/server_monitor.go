@@ -271,6 +271,9 @@ func init() {
 		monitorCmd.Flags().BoolVar(&conf.ForceSyncBinlog, "force-sync-binlog", false, "Automatically force master crash safe")
 		monitorCmd.Flags().BoolVar(&conf.ForceSyncInnoDB, "force-sync-innodb", false, "Automatically force master innodb crash safe")
 		monitorCmd.Flags().BoolVar(&conf.ForceNoslaveBehind, "force-noslave-behind", false, "Automatically force no slave behing")
+		monitorCmd.Flags().BoolVar(&conf.ForceBinlogPurge, "force-binlog-purge", false, "Automatically force purging binlog based on total size")
+		monitorCmd.Flags().IntVar(&conf.ForcePurgeBinlogTotalSize, "force-purge-binlog-total-size", 30, "Maximum total binlog size")
+		monitorCmd.Flags().BoolVar(&conf.ForcePurgeBinlogOnRestore, "force-purge-binlog-on-restore", false, "Automatically force purging binlog when restoring")
 	}
 
 	monitorCmd.Flags().BoolVar(&conf.HttpServ, "http-server", true, "Start the HTTP monitor")

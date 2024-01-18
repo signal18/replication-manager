@@ -566,3 +566,15 @@ func (cluster *Cluster) SwitchMxsDebug() {
 	}
 	cluster.Conf.MxsDebug = !cluster.Conf.MxsDebug
 }
+
+func (cluster *Cluster) SwitchForceBinlogPurge() {
+	// Deactivate the purge
+	if cluster.Conf.ForceBinlogPurge {
+		cluster.SetForcePurgeBinlogTotalSize(0)
+	}
+	cluster.Conf.ForceBinlogPurge = !cluster.Conf.ForceBinlogPurge
+}
+
+func (cluster *Cluster) SwitchForcePurgeBinlogOnRestore() {
+	cluster.Conf.ForcePurgeBinlogOnRestore = !cluster.Conf.ForcePurgeBinlogOnRestore
+}

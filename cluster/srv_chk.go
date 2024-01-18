@@ -446,3 +446,51 @@ func (server *ServerMonitor) CheckMonitoringCredentialsRotation() {
 		}
 	}
 }
+
+// Check And Purge Binlogs check mariadb binlog
+func (server *ServerMonitor) CheckAndPurgeBinlogs() {
+	cluster := server.ClusterGroup
+	compatible := false
+
+	// Only work if ForceBinlogPurge is on
+	if cluster.Conf.ForceBinlogPurge {
+		// Only on Master with MySQL or MariaDB
+		if server.IsMaster() && (server.IsMySQL() || server.IsMariaDB()) {
+			//Only MariaDB v.11 and up
+			if server.IsMariaDB() && server.DBVersion.Major >= 11 {
+				//Set Global Variables only MariaDB v.11.4 and up
+				if server.DBVersion.Major > 11 || server.DBVersion.Minor >= 4 {
+					compatible = true
+				}
+			}
+
+			if compatible {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "MariaDB Version is compatible for max_binlog_total_size, using set global variable instead of manual purging")
+				v, ok := server.Variables["max_binlog_total_size"]
+				if ok {
+					size, err := strconv.Atoi(v)
+					confsize := cluster.Conf.ForcePurgeBinlogTotalSize * 1024 * 1024 * 1024
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Fail parsing max_binlog_total_size variable: %s", err.Error())
+					} else {
+						if size != confsize {
+							_, err := dbhelper.SetMaxBinlogTotalSize(server.Conn, cluster.Conf.ForcePurgeBinlogTotalSize)
+							if err != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Fail setting max_binlog_total_size variable: %s", err.Error())
+							}
+						}
+					}
+				} else {
+					// Very unlikely
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Variable max_binlog_total_size not found")
+				}
+			} else {
+				// prevent multiple purge
+				if !server.IsPurgingBinlog {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "MariaDB Version is not compatible for max_binlog_total_size, using manual purging")
+					go server.JobBinlogPurge()
+				}
+			}
+		}
+	}
+}

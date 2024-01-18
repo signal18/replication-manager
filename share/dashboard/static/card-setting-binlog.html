@@ -1,0 +1,39 @@
+<md-card>
+    <table ng-if="settings" class="table">
+        <tr>
+            <th>Enforce Binlog Purge</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceBinlogPurge"
+                           ng-click="switchsettings('force-binlog-purge')" aria-label="forceBinlogPurge Mode Change">
+                    <span ng-if="selectedCluster.config.forceBinlogPurge" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.forceBinlogPurge" class="label label-warning">Off</span>
+
+            </md-switch>
+            </td>
+        </tr>
+        <tr>
+            <th>Max Binlog Total Size in GB</th>
+        </tr>
+        <tr>
+            <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+                    ng-model="selectedCluster.config.forcePurgeBinlogTotalSize"
+                    ng-change="setsettings('force-purge-binlog-total-size',selectedCluster.config.forcePurgeBinlogTotalSize)" step="1" min="0" max="256" round="0"
+                    aria-label="Purge Binlog Total Size"></md-slider></td>
+        </tr>
+        <tr>
+            <th>Enforce Binlog Purge on Restore</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forcePurgeBinlogOnRestore"
+                           ng-click="switchsettings('force-binlog-purge-on-restore')" aria-label="forcePurgeBinlogOnRestore Mode Change">
+                    <span ng-if="selectedCluster.config.forcePurgeBinlogOnRestore" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.forcePurgeBinlogOnRestore" class="label label-warning">Off</span>
+
+            </md-switch>
+            </td>
+        </tr>
+    </table>
+</md-card>
