@@ -100,6 +100,10 @@ func (mv *MySQLVersion) Equal(vstring string) bool {
 	return mv.ToInt(tokens) == v.ToInt(tokens)
 }
 
+func (mv *MySQLVersion) Between(minvstring string, maxvstring string) bool {
+	return mv.GreaterEqual(minvstring) && mv.LowerEqual(maxvstring)
+}
+
 func (mv *MySQLVersion) IsMySQL() bool {
 	if mv.Flavor == "MySQL" {
 		return true

@@ -116,6 +116,18 @@ func TestMySQLVersion(t *testing.T) {
 		t.Error("Lower(5) is true (Incorrect)")
 	}
 
+	if mv.Between("5", "8") {
+		t.Log("Between(5,8) is true (Correct)")
+	} else {
+		t.Error("Between(5,8) is false (Incorrect)")
+	}
+
+	if mv.Between("10", "11") == false {
+		t.Log("Between(10,11) is false (Correct)")
+	} else {
+		t.Error("Between(10,11) is true (Incorrect)")
+	}
+
 }
 
 func TestMariaDBVersion(t *testing.T) {
@@ -219,6 +231,18 @@ func TestMariaDBVersion(t *testing.T) {
 		t.Log("Lower(5) is false (Correct)")
 	} else {
 		t.Error("Lower(5) is true (Incorrect)")
+	}
+
+	if mv.Between("5", "10") {
+		t.Log("Between(5,10) is true (Correct)")
+	} else {
+		t.Error("Between(5,10) is false (Incorrect)")
+	}
+
+	if mv.Between("5", "8") == false {
+		t.Log("Between(5,8) is false (Correct)")
+	} else {
+		t.Error("Between(5,8) is true (Incorrect)")
 	}
 
 }
