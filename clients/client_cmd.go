@@ -26,6 +26,7 @@ import (
 
 	termbox "github.com/nsf/termbox-go"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/server"
 	"github.com/signal18/replication-manager/utils/s18log"
 	log "github.com/sirupsen/logrus"
@@ -77,6 +78,29 @@ var (
 	cliConfirm                   string
 	cfgGroup                     string
 	memprofile                   string
+	cpuprofile                   string
+	// Provisoning to add flags for compile
+	WithProvisioning      string = "OFF"
+	WithArbitration       string = "OFF"
+	WithArbitrationClient string = "OFF"
+	WithProxysql          string = "OFF"
+	WithHaproxy           string = "OFF"
+	WithMaxscale          string = "OFF"
+	WithMariadbshardproxy string = "OFF"
+	WithMonitoring        string = "ON"
+	WithMail              string = "ON"
+	WithHttp              string = "ON"
+	WithEnforce           string = "OFF"
+	WithDeprecate         string = "ON"
+	WithOpenSVC           string = "OFF"
+	WithTarball           string
+	WithEmbed             string = "ON"
+	WithMySQLRouter       string
+	WithSphinx            string = "OFF"
+	WithBackup            string = "OFF"
+	GoOS                  string = "linux"
+	GoArch                string = "amd64"
+	conf                  config.Config
 )
 
 type RequetParam struct {
