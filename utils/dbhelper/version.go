@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	version "github.com/mcuadros/go-version"
 )
 
 type MySQLVersion struct {
@@ -24,11 +22,15 @@ type MySQLVersion struct {
 	Release int    `json:"release"`
 }
 
-func NewMySQLVersion(version string, versionComment string) *MySQLVersion {
+/*
+Create new MySQLVersion object from string
+*/
+func NewMySQLVersion(version string, versionComment string) (*MySQLVersion, int) {
+	var tokens []string
 	mv := new(MySQLVersion)
-	if strings.Contains(version, "MariaDB") {
+	if strings.Contains(version, "MariaDB") || strings.Contains(versionComment, "MariaDB") {
 		mv.Flavor = "MariaDB"
-	} else if strings.Contains(version, "PostgreSQL") {
+	} else if strings.Contains(version, "PostgreSQL") || strings.Contains(versionComment, "PostgreSQL") {
 		mv.Flavor = "PostgreSQL"
 	} else if strings.Contains(versionComment, "Percona") {
 		mv.Flavor = "Percona"
@@ -38,38 +40,73 @@ func NewMySQLVersion(version string, versionComment string) *MySQLVersion {
 	if mv.Flavor == "PostgreSQL" {
 		infos := strings.Split(version, " ")
 		version = infos[1]
-		tokens := strings.Split(version, ".")
+		tokens = strings.Split(version, ".")
 		mv.Major, _ = strconv.Atoi(tokens[0])
-		mv.Minor, _ = strconv.Atoi(tokens[1])
+		if len(tokens) >= 2 {
+			mv.Minor, _ = strconv.Atoi(tokens[1])
+		}
+		if len(tokens) >= 3 {
+			mv.Release, _ = strconv.Atoi(tokens[2])
+		}
 	} else {
 		infos := strings.Split(version, "-")
 		version = infos[0]
-		tokens := strings.Split(version, ".")
+		tokens = strings.Split(version, ".")
+		mv.Major, _ = strconv.Atoi(tokens[0])
 		if len(tokens) >= 2 {
-			mv.Major, _ = strconv.Atoi(tokens[0])
 			mv.Minor, _ = strconv.Atoi(tokens[1])
+		}
+		if len(tokens) >= 3 {
 			mv.Release, _ = strconv.Atoi(tokens[2])
 		}
 	}
-	return mv
+	return mv, len(tokens)
 }
 
-func (mv *MySQLVersion) Between(Min MySQLVersion, Max MySQLVersion) bool {
-	ver := "1" + fmt.Sprintf("%03d", mv.Major) + fmt.Sprintf("%03d", mv.Minor) + fmt.Sprintf("%03d", mv.Release)
-	ver_min := "1" + fmt.Sprintf("%03d", Min.Major) + fmt.Sprintf("%03d", Min.Minor) + fmt.Sprintf("%03d", Min.Release)
-	ver_max := "1" + fmt.Sprintf("%03d", Max.Major) + fmt.Sprintf("%03d", Max.Minor) + fmt.Sprintf("%03d", Max.Release)
-	sup := version.Compare(ver, ver_min, ">")
-	inf := version.Compare(ver_max, ver, ">")
-	if sup && inf {
-		return true
+func (mv *MySQLVersion) ToInt(tokens int) int {
+	//Major
+	if tokens == 1 {
+		return mv.Major * 1000000
 	}
-	return false
+	//Minor
+	if tokens == 2 {
+		return (mv.Major * 1000000) + (mv.Minor * 1000)
+	}
+
+	return (mv.Major * 1000000) + (mv.Minor * 1000) + mv.Release
 }
 
-func (mv *MySQLVersion) Greater(Min MySQLVersion) bool {
-	ver := "1" + fmt.Sprintf("%03d", mv.Major) + fmt.Sprintf("%03d", mv.Minor) + fmt.Sprintf("%03d", mv.Release)
-	ver_min := "1" + fmt.Sprintf("%03d", Min.Major) + fmt.Sprintf("%03d", Min.Minor) + fmt.Sprintf("%03d", Min.Release)
-	return version.Compare(ver, ver_min, ">")
+func (mv *MySQLVersion) ToString() string {
+	return fmt.Sprintf("%d.%d.%d", mv.Major, mv.Minor, mv.Release)
+}
+
+func (mv *MySQLVersion) Greater(vstring string) bool {
+	v, tokens := NewMySQLVersion(vstring, mv.Flavor)
+	return mv.ToInt(tokens) > v.ToInt(tokens)
+}
+
+func (mv *MySQLVersion) GreaterEqual(vstring string) bool {
+	v, tokens := NewMySQLVersion(vstring, mv.Flavor)
+	return mv.ToInt(tokens) >= v.ToInt(tokens)
+}
+
+func (mv *MySQLVersion) Lower(vstring string) bool {
+	v, tokens := NewMySQLVersion(vstring, mv.Flavor)
+	return mv.ToInt(tokens) < v.ToInt(tokens)
+}
+
+func (mv *MySQLVersion) LowerEqual(vstring string) bool {
+	v, tokens := NewMySQLVersion(vstring, mv.Flavor)
+	return mv.ToInt(tokens) <= v.ToInt(tokens)
+}
+
+func (mv *MySQLVersion) Equal(vstring string) bool {
+	v, tokens := NewMySQLVersion(vstring, mv.Flavor)
+	return mv.ToInt(tokens) == v.ToInt(tokens)
+}
+
+func (mv *MySQLVersion) Between(minvstring string, maxvstring string) bool {
+	return mv.GreaterEqual(minvstring) && mv.LowerEqual(maxvstring)
 }
 
 func (mv *MySQLVersion) IsMySQL() bool {

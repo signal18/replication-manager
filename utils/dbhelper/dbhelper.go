@@ -668,7 +668,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 		case "SLAVE_POS":
 			cm += ", " + masterOrSource + "_USE_GTID=SLAVE_POS"
 		case "CURRENT_POS":
-			if myver.Greater(*NewMySQLVersion("10.10.0", "")) && myver.IsMariaDB() {
+			if myver.Greater("10.10.0") && myver.IsMariaDB() {
 				cm += ", " + masterOrSource + "_USE_GTID=SLAVE_POS, MASTER_DEMOTE_TO_SLAVE=1"
 			} else {
 				cm += ", " + masterOrSource + "_USE_GTID=CURRENT_POS"
@@ -734,12 +734,13 @@ func GetDBVersion(db *sqlx.DB) (*MySQLVersion, string, error) {
 	if err != nil {
 		return &MySQLVersion{}, stmt, err
 	}
-	v := NewMySQLVersion(version, "")
+	v, _ := NewMySQLVersion(version, "")
 	if !v.IsPPostgreSQL() {
 		stmt = "SELECT @@version_comment"
 		db.QueryRowx(stmt).Scan(&versionComment)
 	}
-	return NewMySQLVersion(version, versionComment), stmt, nil
+	nv, _ := NewMySQLVersion(version, versionComment)
+	return nv, stmt, nil
 }
 
 // Unused does not look like safe way or documenting it
@@ -2682,9 +2683,7 @@ func BenchCleanup(db *sqlx.DB) error {
 
 func AnalyzeTable(db *sqlx.DB, myver *MySQLVersion, table string) (string, error) {
 	query := "ANALYZE TABLE " + table
-	var v *MySQLVersion
-	v = NewMySQLVersion("10.4.0", "")
-	if myver.Greater(*v) && myver.IsMariaDB() {
+	if myver.Greater("10.4.0") && myver.IsMariaDB() {
 		query += " PERSISTENT FOR ALL"
 	}
 	_, err := db.Exec(query)

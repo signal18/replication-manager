@@ -935,7 +935,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 				if len(cred) > 1 {
 					tab_cred = append(tab_cred, conf.GetDecryptedPassword(k, cred))
 				} else {
-					log.WithField("cluster", "config").Errorf("Empty credential do not decrypt key: %s", k)
+					log.WithField("cluster", "config").Debugf("Empty credential do not decrypt key: %s", k)
 				}
 			}
 		}
@@ -1601,7 +1601,7 @@ func (conf *Config) GetTarballs(is_not_embed bool) ([]Tarball, error) {
 	if is_not_embed {
 
 		file := conf.ShareDir + "/repo/tarballs.json"
-		fmt.Printf("GetTarballs1 file value : %s ", file)
+		log.WithField("cluster", "config").Infof("GetTarballs1 file value : %s ", file)
 		jsonFile, err := os.Open(file)
 		if err != nil {
 			return tarballs.Tarballs, err
@@ -1664,10 +1664,10 @@ func (conf Config) MergeConfig(path string, name string, ImmMap map[string]inter
 	dynMap := make(map[string]interface{})
 
 	if _, err := os.Stat(path + "/" + name + "/overwrite.toml"); os.IsNotExist(err) {
-		fmt.Printf("No monitoring saved config found " + path + "/" + name + "/overwrite.toml")
+		log.WithField("cluster", "config").Infof("No monitoring saved config found %s", path+"/"+name+"/overwrite.toml")
 		return err
 	} else {
-		fmt.Printf("Parsing saved config from working directory %s ", path+"/"+name+"/overwrite.toml")
+		log.WithField("cluster", "config").Infof("Parsing saved config from working directory %s", path+"/"+name+"/overwrite.toml")
 
 		dynRead.AddConfigPath(path + "/" + name)
 		err := dynRead.ReadInConfig()
