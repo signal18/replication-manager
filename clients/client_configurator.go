@@ -38,6 +38,14 @@ var PanIndex int
 var dbHost string
 var dbUser string
 var dbPassword string
+var memoryInput string
+var ioDiskInput string
+var userInput string
+var userInput2 string
+var inputMode bool = false
+var inputMode2 bool = false
+var cursorPos int = 0
+var cursorPos2 int = 0
 
 var configuratorCmd = &cobra.Command{
 	Use:   "configurator",
@@ -128,14 +136,14 @@ var configuratorCmd = &cobra.Command{
 					}
 					if event.Key == termbox.KeyArrowDown {
 						PanIndex++
-						if PanIndex >= 3 {
+						if PanIndex >= 5 {
 							PanIndex = 0
 						}
 					}
 					if event.Key == termbox.KeyArrowUp {
 						PanIndex--
 						if PanIndex < 0 {
-							PanIndex = 2
+							PanIndex = 4
 						}
 					}
 					if event.Key == termbox.KeyEnter {
@@ -144,7 +152,77 @@ var configuratorCmd = &cobra.Command{
 							configurator.AddDBTag(dbCurrrentTag)
 						case 2:
 							configurator.DropDBTag(dbCurrrentTag)
+						case 3:
+							if inputMode {
+								// L'utilisateur a terminé la saisie, appuyez sur Entrée pour soumettre
+								inputMode = false
+								memoryInput = userInput
+							} else {
+								// Activez le mode de saisie
+								inputMode = true
+							}
+
+						case 4:
+							if inputMode2 {
+								// L'utilisateur a terminé la saisie, appuyez sur Entrée pour soumettre
+								inputMode2 = false
+								ioDiskInput = userInput2
+							} else {
+								// Activez le mode de saisie
+								inputMode2 = true
+							}
 						default:
+						}
+					} else if inputMode || inputMode2 {
+						// Gérer la saisie de l'utilisateur dans le mode de saisie
+						if event.Ch != 0 && event.Ch >= '0' && event.Ch <= '9' { // Vérifier si le caractère est un chiffre
+							// Ajouter un nouveau caractère à la position du curseur
+							switch PanIndex {
+							case 3:
+								userInput = userInput[:cursorPos] + string(event.Ch) + userInput[cursorPos:]
+								cursorPos++
+							case 4:
+								userInput2 = userInput2[:cursorPos2] + string(event.Ch) + userInput2[cursorPos2:]
+								cursorPos2++
+							}
+						}
+						if event.Key == termbox.KeyBackspace || event.Key == termbox.KeyBackspace2 {
+							switch PanIndex {
+							case 3:
+								if cursorPos > 0 && len(userInput) > 0 {
+									// Supprimer le caractère à gauche du curseur
+									userInput = userInput[:cursorPos-1] + userInput[cursorPos:]
+									cursorPos--
+								}
+							case 4:
+								if cursorPos2 > 0 && len(userInput2) > 0 {
+									// Supprimer le caractère à gauche du curseur
+									userInput2 = userInput2[:cursorPos2-1] + userInput2[cursorPos2:]
+									cursorPos2--
+								}
+							}
+
+						}
+						if event.Key == termbox.KeyArrowLeft {
+							if cursorPos > 0 {
+								// Déplacer le curseur vers la gauche
+								cursorPos--
+							}
+							if cursorPos2 > 0 {
+								// Déplacer le curseur vers la gauche
+								cursorPos2--
+							}
+						}
+						if event.Key == termbox.KeyArrowRight {
+							if cursorPos < len(userInput) {
+								// Déplacer le curseur vers la droite
+								cursorPos++
+							}
+							if cursorPos2 < len(userInput2) {
+								// Déplacer le curseur vers la droite
+								cursorPos2++
+							}
+
 						}
 					}
 
@@ -310,6 +388,58 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 		curWitdh += len(tag)
 		curWitdh++
 
+	}
+
+	//Marie
+	if PanIndex == 3 || PanIndex == 4 {
+		colorCell = termbox.ColorCyan
+	} else {
+		colorCell = termbox.ColorWhite
+	}
+
+	cliTlog.Line++
+	cliPrintfTb(0, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, "%s", strings.Repeat(tableau, width))
+	cliTlog.Line++
+
+	if PanIndex == 3 {
+		colorCell = termbox.ColorCyan
+	} else {
+		colorCell = termbox.ColorWhite
+	}
+
+	cliPrintTb(1, cliTlog.Line, colorCell, termbox.ColorBlack, "MEMORY : ")
+	if !inputMode {
+		cliPrintTb(1+len("MEMORY :"), cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, memoryInput)
+	}
+	// Si nous sommes en mode de saisie, affichez aussi ce que l'utilisateur a saisi jusqu'à présent
+	if inputMode && PanIndex == 3 {
+		cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "MEMORY :")
+		// Afficher la saisie de l'utilisateur avec le curseur
+		displayInput := userInput[:cursorPos] + "|" + userInput[cursorPos:]
+		cliPrintTb(len("MEMORY : "), cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, displayInput)
+		cliTlog.Line++
+	}
+
+	cliTlog.Line++
+	cliTlog.Line++
+
+	if PanIndex == 4 {
+		colorCell = termbox.ColorCyan
+	} else {
+		colorCell = termbox.ColorWhite
+	}
+
+	cliPrintTb(1, cliTlog.Line, colorCell, termbox.ColorBlack, "IO DISK : ")
+	if !inputMode2 {
+		cliPrintTb(1+len("IO DISK :"), cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, ioDiskInput)
+	}
+	// Si nous sommes en mode de saisie, affichez aussi ce que l'utilisateur a saisi jusqu'à présent
+	if inputMode2 && PanIndex == 4 {
+		cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "IO DISK :")
+		// Afficher la saisie de l'utilisateur avec le curseur
+		displayInput2 := userInput2[:cursorPos2] + "|" + userInput2[cursorPos2:]
+		cliPrintTb(len("IO DISK : "), cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, displayInput2)
+		cliTlog.Line++
 	}
 
 	cliTlog.Line++
