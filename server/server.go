@@ -872,9 +872,12 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	} else {
 		//adds config files by searching them in different folders
 		fistRead.SetConfigName("config")
-		fistRead.AddConfigPath("/etc/replication-manager/")
+		if conf.WithEmbed == "OFF" {
+			fistRead.AddConfigPath("/etc/replication-manager/")
+		} else {
+			fistRead.AddConfigPath("./.replication-manager")
+		}
 		fistRead.AddConfigPath(".")
-		fistRead.AddConfigPath("./.replication-manager")
 
 		//if tarball, add config path
 		if conf.WithTarball == "ON" {
