@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 
 	"os"
@@ -1852,4 +1853,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 	}
 
 	return false
+}
+
+func (conf *Config) SetLogOutput(out io.Writer) {
+	log.SetOutput(out)
 }
