@@ -22,6 +22,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/configurator"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/server"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -72,15 +73,41 @@ var configuratorCmd = &cobra.Command{
 		RepMan.InitConfig(conf)
 		go RepMan.Run()
 		time.Sleep(2 * time.Second)
+		cluster:= RepMan.Clusters[RepMan.ClusterList[0]]
+		if cluster == nil  {
+			log.Fatalf("No Cluster found .replication-manager/config.toml")
+		 }
+		for _ , s := range cluster.Servers 	 {
+			conn , err := s.GetNewDBConn()
+			if err !=nil  {
+					log.WithError(err).Fatalf("Connecting error to database in .replication-manager/config.toml: %s", s.URL)
+			}
+			variables, _, err := dbhelper.GetVariablesCase(conn, s.DBVersion,"LOWER")
+			if err !=nil  {
+					log.WithError(err).Fatalf("Get variables failed %s", s.URL)
+			}
+
+			log.Infof("datadir %s",  variables["DATADIR"])
+		}
 		RepMan.Clusters["mycluster"].WaitDatabaseCanConn()
 		//	var conf config.Config
 		var configurator configurator.Configurator
 		configurator.Init(conf)
+
+		for _ , server := range cluster.Servers 	 {
+			err := configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir,  server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv())
+			if err !=nil  {
+					log.WithError(err).Fatalf("Generate database config failed %s", server.URL)
+			}
+			log.Infof("Generate database config datadir %s/config.tar.gz", server.Datadir)
+		}
+
 		dbCategories = configurator.GetDBModuleCategories()
 		dbCategoriesSortedKeys = make([]string, 0, len(dbCategories))
 		for k := range dbCategories {
 			dbCategoriesSortedKeys = append(dbCategoriesSortedKeys, k)
 		}
+
 		sort.Strings(dbCategoriesSortedKeys)
 		defaultTags := configurator.GetDBTags()
 		for _, v := range defaultTags {
@@ -119,6 +146,7 @@ var configuratorCmd = &cobra.Command{
 		interval := time.Millisecond
 		ticker := time.NewTicker(interval * time.Duration(20))
 
+
 		cliDisplayConfigurator(&configurator)
 
 		for cliExit == false {
@@ -130,6 +158,10 @@ var configuratorCmd = &cobra.Command{
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
+
+						log.Infof("CtrlS")
+
+						cliExit = true
 					}
 
 					if event.Key == termbox.KeyArrowLeft {
@@ -392,10 +424,13 @@ var configuratorCmd = &cobra.Command{
 					if event.Key == termbox.KeyCtrlC {
 						cliExit = true
 					}
+
+
+
 				}
 				switch event.Ch {
-				case 's':
-					termbox.Sync()
+			//	case 's':
+			//		termbox.Sync()
 				default:
 				}
 				cliDisplayConfigurator(&configurator)

@@ -1686,7 +1686,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	myClusterConf.DefaultFlagMap = repman.DefaultFlagMap
 
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
-
+	log.Infof("Starting cluster: %s workingdir %s", clusterName, myClusterConf.WorkingDir)
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
