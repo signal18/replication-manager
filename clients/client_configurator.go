@@ -512,8 +512,8 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 	if inputMode && PanIndex == 2 {
 		cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "MEMORY :")
 		// Afficher la saisie de l'utilisateur avec le curseur
-		formattedInput := fmt.Sprintf("[%-6s]", userInput[:cursorPos]+"|"+userInput[cursorPos:])
-		cliPrintTb(len("MEMORY : ")+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput)
+		displayInput := userInput[:cursorPos] + "|" + userInput[cursorPos:]
+		cliPrintTb(len("MEMORY : ")+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, displayInput)
 		cliTlog.Line++
 	}
 	cliTlog.Line++
@@ -533,8 +533,8 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 	if inputMode2 && PanIndex == 3 {
 		cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "IO DISK :")
 		// Afficher la saisie de l'utilisateur avec le curseur
-		formattedInput2 := fmt.Sprintf("[%-6s]", userInput2[:cursorPos2]+"|"+userInput2[cursorPos2:])
-		cliPrintTb(len("IO DISK : ")+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput2)
+		displayInput2 := userInput2[:cursorPos2] + "|" + userInput2[cursorPos2:]
+		cliPrintTb(len("IO DISK : ")+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, displayInput2)
 		cliTlog.Line++
 	}
 
@@ -555,8 +555,8 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 	if inputMode3 && PanIndex == 4 {
 		cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "CORES :")
 		// Afficher la saisie de l'utilisateur avec le curseur
-		formattedInput3 := fmt.Sprintf("[%-6s]", userInput3[:cursorPos3]+"|"+userInput3[cursorPos3:])
-		cliPrintTb(len("CORES : ")+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput3)
+		displayInput3 := userInput3[:cursorPos3] + "|" + userInput3[cursorPos3:]
+		cliPrintTb(len("CORES : ")+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, displayInput3)
 		cliTlog.Line++
 	}
 
@@ -568,18 +568,19 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 	} else {
 		colorCell = termbox.ColorWhite
 	}
-	// Si nous sommes en mode de saisie, affichez aussi ce que l'utilisateur a saisi jusqu'à présent
-	if inputMode4 && PanIndex == 5 {
-		cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "CONNECTIONS : ")
-		// Afficher la saisie de l'utilisateur avec le curseur
-		formattedInput4 := fmt.Sprintf("[%-6s]", userInput4[:cursorPos4]+"|"+userInput4[cursorPos4:])
-		cliPrintTb(len("CONNECTIONS : ")+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput4)
-		cliTlog.Line++
-	}
 
 	cliPrintTb(1, cliTlog.Line, colorCell, termbox.ColorBlack, "CONNECTIONS : ")
 	if !inputMode4 {
 		cliPrintTb(1+len("CONNECTIONS : "), cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, connectionsInput)
+	}
+
+	// Si nous sommes en mode de saisie, affichez aussi ce que l'utilisateur a saisi jusqu'à présent
+	if inputMode4 && PanIndex == 5 {
+		cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "CONNECTIONS : ")
+		// Afficher la saisie de l'utilisateur avec le curseur
+		displayInput4 := userInput4[:cursorPos4] + "|" + userInput4[cursorPos4:]
+		cliPrintTb(len("CONNECTIONS : ")+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, displayInput4)
+		cliTlog.Line++
 	}
 
 	cliTlog.Line++
