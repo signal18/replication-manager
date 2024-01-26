@@ -286,6 +286,11 @@ func (server *ServerMonitor) GetVariables() []dbhelper.Variable {
 	return variables
 }
 
+func (server *ServerMonitor) GetVariablesCaseSensitive() map[string]string {
+	variables, _, _ := dbhelper.GetVariablesCase(server.Conn, server.DBVersion, "LOWER")
+	return variables
+}
+
 func (server *ServerMonitor) GetQueryFromPFSDigest(digest string) (string, string, error) {
 	for _, v := range server.PFSQueries {
 		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status %s %s", digest, v.Digest)

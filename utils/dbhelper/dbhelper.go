@@ -1715,13 +1715,23 @@ func GetStatusAsInt(db *sqlx.DB, myver *MySQLVersion) (map[string]int64, string,
 }
 
 func GetVariables(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, error) {
+	return GetVariablesCase(db, myver, "UPPER")
+}
+
+func GetVariablesCase(db *sqlx.DB, myver *MySQLVersion, vcase string) (map[string]string, string, error) {
 
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
-	query := "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_variables"
 
+	query := "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, Variable_Value AS value FROM " + source + ".global_variables"
+	if vcase == "UPPER" {
+		query = "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_variables"
+	}
 	if myver.IsPPostgreSQL() {
-		query = "SELECT upper(name) AS variable_name, upper(setting) AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
+		query = "SELECT upper(name) AS variable_name, setting AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
+		if vcase == "UPPER" {
+			query = "SELECT upper(name) AS variable_name, upper(setting) AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
+		}
 	}
 	rows, err := db.Queryx(query)
 	if err != nil {
