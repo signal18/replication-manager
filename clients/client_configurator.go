@@ -20,7 +20,6 @@ import (
 
 	termbox "github.com/nsf/termbox-go"
 	"github.com/signal18/replication-manager/cluster/configurator"
-	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/server"
 	log "github.com/sirupsen/logrus"
@@ -74,6 +73,22 @@ var configuratorCmd = &cobra.Command{
 		go RepMan.Run()
 		time.Sleep(2 * time.Second)
 		RepMan.Clusters["mycluster"].WaitDatabaseCanConn()
+		//	var conf config.Config
+		var configurator configurator.Configurator
+		configurator.Init(conf)
+		dbCategories = configurator.GetDBModuleCategories()
+		dbCategoriesSortedKeys = make([]string, 0, len(dbCategories))
+		for k := range dbCategories {
+			dbCategoriesSortedKeys = append(dbCategoriesSortedKeys, k)
+		}
+		sort.Strings(dbCategoriesSortedKeys)
+		defaultTags:= configurator.GetDBTags()
+		for _, v := range defaultTags {
+
+			addedTags[v] = true
+		 //fmt.Printf("%s \n" ,v)
+		}
+	 //os.Exit(3)
 		fmt.Printf("%s \n", RepMan.Clusters["mycluster"].Conf.ProvTags)
 		conf.SetLogOutput(ioutil.Discard)
 		err := termbox.Init()
@@ -89,15 +104,11 @@ var configuratorCmd = &cobra.Command{
 		termboxChan := cliNewTbChan()
 		interval := time.Millisecond
 		ticker := time.NewTicker(interval * time.Duration(20))
-		var conf config.Config
-		var configurator configurator.Configurator
-		configurator.Init(conf)
-		dbCategories = configurator.GetDBModuleCategories()
-		dbCategoriesSortedKeys = make([]string, 0, len(dbCategories))
-		for k := range dbCategories {
-			dbCategoriesSortedKeys = append(dbCategoriesSortedKeys, k)
-		}
-		sort.Strings(dbCategoriesSortedKeys)
+
+
+
+
+
 		cliDisplayConfigurator(&configurator)
 
 		for cliExit == false {
@@ -191,10 +202,10 @@ var configuratorCmd = &cobra.Command{
 							PanIndex = 1
 						case 1:
 							if addedTags[dbCurrrentTag] {
-								//configurator.DropDBTag(dbCurrrentTag)
+								configurator.DropDBTag(dbCurrrentTag)
 								addedTags[dbCurrrentTag] = false
 							} else {
-								//configurator.AddDBTag(dbCurrrentTag)
+								configurator.AddDBTag(dbCurrrentTag)
 								addedTags[dbCurrrentTag] = true
 							}
 						case 2:
@@ -460,7 +471,7 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 	dbUsedTags = configurator.GetDBTags()
 
 	for _, tag := range tags {
-		if dbCurrrentCategory == tag.Category && !configurator.HaveDBTag(tag.Name) {
+		if dbCurrrentCategory == tag.Category /*&& !configurator.HaveDBTag(tag.Name)*/ {
 			dbCurrentCategoryTags = append(dbCurrentCategoryTags, tag)
 		}
 	}
