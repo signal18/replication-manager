@@ -31,6 +31,8 @@ var dbCurrrentTag string
 var dbCurrrentCategory string
 var dbCategories map[string]string
 var dbCategoriesSortedKeys []string
+var dbResourceCategories = []string{"MEMORY", "DISK", "CPU", "NETWORK"}
+var dbResourceCategoryIndex int = 0
 var dbUsedTags []string
 var dbCategoryIndex int
 var dbTagIndex int
@@ -44,18 +46,8 @@ var memoryInput string
 var ioDiskInput string
 var coresInput string
 var connectionsInput string
-var userInput string
-var userInput2 string
-var userInput3 string
-var userInput4 string
 var inputMode bool = false
-var inputMode2 bool = false
-var inputMode3 bool = false
-var inputMode4 bool = false
 var cursorPos int = 0
-var cursorPos2 int = 0
-var cursorPos3 int = 0
-var cursorPos4 int = 0
 var RepMan *server.ReplicationManager
 var addedTags = make(map[string]bool)
 
@@ -118,16 +110,9 @@ var configuratorCmd = &cobra.Command{
 		//os.Exit(3)
 
 		//default
-		userInput = configurator.GetConfigDBMemory()
 		memoryInput = configurator.GetConfigDBMemory()
-
-		userInput2 = configurator.GetConfigDBDiskIOPS()
 		ioDiskInput = configurator.GetConfigDBDiskIOPS()
-
-		userInput3 = configurator.GetConfigDBCores()
 		coresInput = configurator.GetConfigDBCores()
-
-		userInput4 = configurator.GetConfigMaxConnections()
 		connectionsInput = configurator.GetConfigMaxConnections()
 
 		fmt.Printf("%s \n", RepMan.Clusters["mycluster"].Conf.ProvTags)
@@ -171,6 +156,16 @@ var configuratorCmd = &cobra.Command{
 							if dbCategoryIndex < 0 {
 								dbCategoryIndex = len(dbCategoriesSortedKeys) - 1
 							}
+						case 2:
+							dbResourceCategoryIndex--
+							if dbResourceCategoryIndex < 0 {
+								dbResourceCategoryIndex = len(dbResourceCategories) - 1
+							}
+						case 3:
+							if cursorPos > 0 {
+								// Déplacer le curseur vers la gauche
+								cursorPos--
+							}
 						default:
 						}
 					}
@@ -182,6 +177,35 @@ var configuratorCmd = &cobra.Command{
 							dbTagIndex = 0
 							if dbCategoryIndex >= len(dbCategoriesSortedKeys) {
 								dbCategoryIndex = 0
+							}
+						case 2:
+							dbResourceCategoryIndex++
+							if dbResourceCategoryIndex >= len(dbResourceCategories) {
+								dbResourceCategoryIndex = 0
+							}
+						case 3:
+							switch dbResourceCategoryIndex {
+							case 0:
+								if cursorPos < len(memoryInput) {
+									// Déplacer le curseur vers la droite
+									cursorPos++
+								}
+							case 1:
+								if cursorPos < len(ioDiskInput) {
+									// Déplacer le curseur vers la droite
+									cursorPos++
+								}
+							case 2:
+								if cursorPos < len(coresInput) {
+									// Déplacer le curseur vers la droite
+									cursorPos++
+								}
+							case 3:
+								if cursorPos < len(connectionsInput) {
+									// Déplacer le curseur vers la droite
+									cursorPos++
+								}
+							default:
 							}
 						default:
 						}
@@ -201,12 +225,6 @@ var configuratorCmd = &cobra.Command{
 								}
 							}
 						case 2:
-							PanIndex = 3
-						case 3:
-							PanIndex = 4
-						case 4:
-							PanIndex = 5
-						case 5:
 							PanIndex = 0
 						default:
 						}
@@ -215,7 +233,7 @@ var configuratorCmd = &cobra.Command{
 					if event.Key == termbox.KeyArrowUp {
 						switch PanIndex {
 						case 0:
-							PanIndex = 5
+							PanIndex = 2
 						case 1:
 							if dbTagIndex > 0 {
 								dbTagIndex--
@@ -227,12 +245,6 @@ var configuratorCmd = &cobra.Command{
 							}
 						case 2:
 							PanIndex = 0
-						case 3:
-							PanIndex = 2
-						case 4:
-							PanIndex = 3
-						case 5:
-							PanIndex = 4
 						default:
 						}
 					}
@@ -250,156 +262,83 @@ var configuratorCmd = &cobra.Command{
 								addedTags[dbCurrrentTag] = true
 							}
 						case 2:
-							if inputMode {
-								// L'utilisateur a terminé la saisie, appuyez sur Entrée pour soumettre
-								inputMode = false
-								memoryInput = userInput
-							} else {
-								// Activez le mode de saisie
-								inputMode = true
+							PanIndex = 3
+							inputMode = true
+							switch dbResourceCategoryIndex {
+							case 0:
+								cursorPos = len(memoryInput)
+							case 1:
+								cursorPos = len(ioDiskInput)
+							case 2:
+								cursorPos = len(coresInput)
+							case 3:
+								cursorPos = len(connectionsInput)
+							default:
 							}
-
 						case 3:
-							if inputMode2 {
-								// L'utilisateur a terminé la saisie, appuyez sur Entrée pour soumettre
-								inputMode2 = false
-								ioDiskInput = userInput2
-							} else {
-								// Activez le mode de saisie
-								inputMode2 = true
-							}
-						case 4:
-							if inputMode3 {
-								// L'utilisateur a terminé la saisie, appuyez sur Entrée pour soumettre
-								inputMode3 = false
-								coresInput = userInput3
-							} else {
-								// Activez le mode de saisie
-								inputMode3 = true
-							}
-						case 5:
-							if inputMode4 {
-								// L'utilisateur a terminé la saisie, appuyez sur Entrée pour soumettre
-								inputMode4 = false
-								connectionsInput = userInput4
-							} else {
-								// Activez le mode de saisie
-								inputMode4 = true
-							}
+							inputMode = false
+							cursorPos = 0
+							PanIndex = 2
 						default:
 						}
 					}
 
-					if inputMode || inputMode2 || inputMode3 || inputMode4 {
+					if inputMode {
 						// Gérer la saisie de l'utilisateur dans le mode de saisie
 						if event.Ch != 0 && event.Ch >= '0' && event.Ch <= '9' { // Vérifier si le caractère est un chiffre
 							// Ajouter un nouveau caractère à la position du curseur
-							switch PanIndex {
+							switch dbResourceCategoryIndex {
+							case 0:
+								if len(memoryInput) < 6 {
+									memoryInput = memoryInput[:cursorPos] + string(event.Ch) + memoryInput[cursorPos:]
+									cursorPos++
+								}
+							case 1:
+								if len(ioDiskInput) < 6 {
+									ioDiskInput = ioDiskInput[:cursorPos] + string(event.Ch) + ioDiskInput[cursorPos:]
+									cursorPos++
+								}
 							case 2:
-								if len(userInput) < 6 {
-									userInput = userInput[:cursorPos] + string(event.Ch) + userInput[cursorPos:]
+								if len(coresInput) < 6 {
+									coresInput = coresInput[:cursorPos] + string(event.Ch) + coresInput[cursorPos:]
 									cursorPos++
 								}
 							case 3:
-								if len(userInput2) < 6 {
-									userInput2 = userInput2[:cursorPos2] + string(event.Ch) + userInput2[cursorPos2:]
-									cursorPos2++
-								}
-							case 4:
-								if len(userInput3) < 6 {
-									userInput3 = userInput3[:cursorPos3] + string(event.Ch) + userInput3[cursorPos3:]
-									cursorPos3++
-								}
-							case 5:
-								if len(userInput4) < 6 {
-									userInput4 = userInput4[:cursorPos4] + string(event.Ch) + userInput4[cursorPos4:]
-									cursorPos4++
-								}
-							default:
-							}
-						}
-
-						if event.Key == termbox.KeyBackspace || event.Key == termbox.KeyBackspace2 {
-							switch PanIndex {
-							case 2:
-								if cursorPos > 0 && len(userInput) > 0 {
-									// Supprimer le caractère à gauche du curseur
-									userInput = userInput[:cursorPos-1] + userInput[cursorPos:]
-									cursorPos--
-								}
-							case 3:
-								if cursorPos2 > 0 && len(userInput2) > 0 {
-									// Supprimer le caractère à gauche du curseur
-									userInput2 = userInput2[:cursorPos2-1] + userInput2[cursorPos2:]
-									cursorPos2--
-								}
-							case 4:
-								if cursorPos3 > 0 && len(userInput3) > 0 {
-									// Supprimer le caractère à gauche du curseur
-									userInput3 = userInput3[:cursorPos3-1] + userInput3[cursorPos3:]
-									cursorPos3--
-								}
-							case 5:
-								if cursorPos4 > 0 && len(userInput4) > 0 {
-									// Supprimer le caractère à gauche du curseur
-									userInput4 = userInput4[:cursorPos4-1] + userInput4[cursorPos4:]
-									cursorPos4--
-								}
-							default:
-							}
-
-						}
-
-						if event.Key == termbox.KeyArrowLeft {
-							switch PanIndex {
-							case 2:
-								if cursorPos > 0 {
-									// Déplacer le curseur vers la gauche
-									cursorPos--
-								}
-							case 3:
-								if cursorPos2 > 0 {
-									// Déplacer le curseur vers la gauche
-									cursorPos2--
-								}
-							case 4:
-								if cursorPos3 > 0 {
-									// Déplacer le curseur vers la gauche
-									cursorPos3--
-								}
-							case 5:
-								if cursorPos4 > 0 {
-									// Déplacer le curseur vers la gauche
-									cursorPos4--
-								}
-							default:
-							}
-						}
-
-						if event.Key == termbox.KeyArrowRight {
-							switch PanIndex {
-							case 2:
-								if cursorPos < len(userInput) {
-									// Déplacer le curseur vers la droite
+								if len(connectionsInput) < 6 {
+									connectionsInput = connectionsInput[:cursorPos] + string(event.Ch) + connectionsInput[cursorPos:]
 									cursorPos++
 								}
-							case 3:
-								if cursorPos2 < len(userInput2) {
-									// Déplacer le curseur vers la droite
-									cursorPos2++
-								}
-							case 4:
-								if cursorPos3 < len(userInput3) {
-									// Déplacer le curseur vers la droite
-									cursorPos3++
-								}
-							case 5:
-								if cursorPos4 < len(userInput4) {
-									// Déplacer le curseur vers la droite
-									cursorPos4++
-								}
 							default:
 							}
+						}
+					}
+					if event.Key == termbox.KeyBackspace || event.Key == termbox.KeyBackspace2 {
+						switch dbResourceCategoryIndex {
+						case 0:
+							if cursorPos > 0 && len(memoryInput) > 0 {
+								// Supprimer le caractère à gauche du curseur
+								memoryInput = memoryInput[:cursorPos-1] + memoryInput[cursorPos:]
+								cursorPos--
+							}
+						case 1:
+							if cursorPos > 0 && len(ioDiskInput) > 0 {
+								// Supprimer le caractère à gauche du curseur
+								ioDiskInput = ioDiskInput[:cursorPos-1] + ioDiskInput[cursorPos:]
+								cursorPos--
+							}
+						case 2:
+							if cursorPos > 0 && len(coresInput) > 0 {
+								// Supprimer le caractère à gauche du curseur
+								coresInput = coresInput[:cursorPos-1] + coresInput[cursorPos:]
+								cursorPos--
+							}
+						case 3:
+							if cursorPos > 0 && len(connectionsInput) > 0 {
+								// Supprimer le caractère à gauche du curseur
+								connectionsInput = connectionsInput[:cursorPos-1] + connectionsInput[cursorPos:]
+								cursorPos--
+							}
+						default:
 						}
 					}
 
@@ -410,6 +349,10 @@ var configuratorCmd = &cobra.Command{
 							startViewIndex = 0
 							endViewIndex = maxTagsInView
 							PanIndex = 0
+						case 3:
+							inputMode = false
+							cursorPos = 0
+							PanIndex = 2
 						default:
 						}
 					}
@@ -472,8 +415,8 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 
 	cliPrintfTb(0, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, "%s", strings.Repeat(tableau, width))
 	cliTlog.Line++
-	cliPrintTb(1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, "TAGS :")
-	curWitdh := len("TAGS :") + 2
+	cliPrintTb(1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, "DATABASE FEATURES :")
+	curWitdh := len("DATABASE FEATURES :") + 2
 
 	for i, cat := range dbCategoriesSortedKeys {
 		tag := dbCategories[cat]
@@ -544,11 +487,22 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 	} else {
 		colorCell = termbox.ColorWhite
 	}
-
+	curWitdh = len("OS RESSOURCES :") + 2
 	cliTlog.Line++
 	cliPrintfTb(0, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, "%s", strings.Repeat(tableau, width))
 	cliTlog.Line++
-	cliPrintTb(1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, "RESSOURCES :")
+	cliPrintTb(1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, "OS RESSOURCES :")
+	for i, res := range dbResourceCategories {
+		if i == dbResourceCategoryIndex {
+			cliPrintTb(curWitdh, cliTlog.Line, termbox.ColorBlack, colorCell, res)
+		} else {
+			cliPrintTb(curWitdh, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, res)
+		}
+
+		curWitdh += len(res)
+		curWitdh++
+	}
+
 	cliTlog.Line++
 	cliPrintfTb(0, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, "%s", strings.Repeat(tableau, width))
 	cliTlog.Line++
@@ -563,99 +517,151 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 		}
 	}
 
-	// Ajouter un peu d'espace entre l'étiquette et l'entrée
-	labelPadding := 2
-
 	if PanIndex == 2 {
 		colorCell = termbox.ColorCyan
 	} else {
 		colorCell = termbox.ColorWhite
 	}
 
-	cliPrintTb(1, cliTlog.Line, colorCell, termbox.ColorBlack, "MEMORY")
-	if !inputMode {
-		formattedInput := formatInput(userInput, cursorPos, inputMode)
-		cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, formattedInput)
+	switch dbResourceCategoryIndex {
+	case 0:
+		if !inputMode {
+			formattedInput := formatInput(memoryInput, cursorPos, inputMode)
+			formattedInput = formattedInput + " Mb"
+			cliPrintTb(1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, formattedInput)
+		} else {
+			formattedInput := formatInput(memoryInput, cursorPos, inputMode)
+			formattedInput = formattedInput + " Mb"
+			cliPrintTb(1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput)
+		}
+	case 1:
+		if !inputMode {
+			formattedInput := formatInput(ioDiskInput, cursorPos, inputMode)
+			formattedInput = formattedInput + " Random iops"
+			cliPrintTb(1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, formattedInput)
+		} else {
+			formattedInput := formatInput(ioDiskInput, cursorPos, inputMode)
+			formattedInput = formattedInput + " Random iops"
+			cliPrintTb(1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput)
+		}
+	case 2:
+		if !inputMode {
+			formattedInput := formatInput(coresInput, cursorPos, inputMode)
+			formattedInput = formattedInput + " Cores"
+			cliPrintTb(1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, formattedInput)
+		} else {
+			formattedInput := formatInput(coresInput, cursorPos, inputMode)
+			formattedInput = formattedInput + " Cores"
+			cliPrintTb(1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput)
+		}
+	case 3:
+		if !inputMode {
+			formattedInput := formatInput(connectionsInput, cursorPos, inputMode)
+			formattedInput = formattedInput + " Max connections"
+			cliPrintTb(1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, formattedInput)
+		} else {
+			formattedInput := formatInput(connectionsInput, cursorPos, inputMode)
+			formattedInput = formattedInput + " Max connections"
+			cliPrintTb(1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput)
+		}
+	default:
 	}
-	// Si nous sommes en mode de saisie, affichez aussi ce que l'utilisateur a saisi jusqu'à présent
-	if inputMode && PanIndex == 2 {
-		cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "MEMORY")
-		// Afficher la saisie de l'utilisateur avec le curseur
-		formattedInput := formatInput(userInput, cursorPos, inputMode)
-		cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput)
+
+	//}
+
+	// Ajouter un peu d'espace entre l'étiquette et l'entrée
+	//labelPadding := 2
+	/*
+		if PanIndex == 2 {
+			colorCell = termbox.ColorCyan
+		} else {
+			colorCell = termbox.ColorWhite
+		}
+
+		cliPrintTb(1, cliTlog.Line, colorCell, termbox.ColorBlack, "MEMORY")
+		if !inputMode {
+			formattedInput := formatInput(userInput, cursorPos, inputMode)
+			cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, formattedInput)
+		}
+		// Si nous sommes en mode de saisie, affichez aussi ce que l'utilisateur a saisi jusqu'à présent
+		if inputMode && PanIndex == 2 {
+			cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "MEMORY")
+			// Afficher la saisie de l'utilisateur avec le curseur
+			formattedInput := formatInput(userInput, cursorPos, inputMode)
+			cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput)
+			cliTlog.Line++
+		}
 		cliTlog.Line++
-	}
-	cliTlog.Line++
-	cliTlog.Line++
-
-	if PanIndex == 3 {
-		colorCell = termbox.ColorCyan
-	} else {
-		colorCell = termbox.ColorWhite
-	}
-
-	cliPrintTb(1, cliTlog.Line, colorCell, termbox.ColorBlack, "IO DISK")
-	if !inputMode2 {
-		formattedInput2 := formatInput(userInput2, cursorPos2, inputMode2)
-		cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, formattedInput2)
-	}
-	// Si nous sommes en mode de saisie, affichez aussi ce que l'utilisateur a saisi jusqu'à présent
-	if inputMode2 && PanIndex == 3 {
-		cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "IO DISK")
-		// Afficher la saisie de l'utilisateur avec le curseur
-		formattedInput2 := formatInput(userInput2, cursorPos2, inputMode2)
-		cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput2)
 		cliTlog.Line++
-	}
 
-	cliTlog.Line++
-	cliTlog.Line++
+		if PanIndex == 3 {
+			colorCell = termbox.ColorCyan
+		} else {
+			colorCell = termbox.ColorWhite
+		}
 
-	if PanIndex == 4 {
-		colorCell = termbox.ColorCyan
-	} else {
-		colorCell = termbox.ColorWhite
-	}
+		cliPrintTb(1, cliTlog.Line, colorCell, termbox.ColorBlack, "IO DISK")
+		if !inputMode2 {
+			formattedInput2 := formatInput(userInput2, cursorPos2, inputMode2)
+			cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, formattedInput2)
+		}
+		// Si nous sommes en mode de saisie, affichez aussi ce que l'utilisateur a saisi jusqu'à présent
+		if inputMode2 && PanIndex == 3 {
+			cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "IO DISK")
+			// Afficher la saisie de l'utilisateur avec le curseur
+			formattedInput2 := formatInput(userInput2, cursorPos2, inputMode2)
+			cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput2)
+			cliTlog.Line++
+		}
 
-	cliPrintTb(1, cliTlog.Line, colorCell, termbox.ColorBlack, "CORES")
-	if !inputMode3 {
-		formattedInput3 := formatInput(userInput3, cursorPos3, inputMode3)
-
-		cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, formattedInput3)
-	}
-	// Si nous sommes en mode de saisie, affichez aussi ce que l'utilisateur a saisi jusqu'à présent
-	if inputMode3 && PanIndex == 4 {
-		cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "CORES")
-		// Afficher la saisie de l'utilisateur avec le curseur
-		formattedInput3 := formatInput(userInput3, cursorPos3, inputMode3)
-		cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput3)
 		cliTlog.Line++
-	}
-
-	cliTlog.Line++
-	cliTlog.Line++
-
-	if PanIndex == 5 {
-		colorCell = termbox.ColorCyan
-	} else {
-		colorCell = termbox.ColorWhite
-	}
-
-	cliPrintTb(1, cliTlog.Line, colorCell, termbox.ColorBlack, "CONNECTIONS")
-	if !inputMode4 {
-		formattedInput4 := formatInput(userInput4, cursorPos4, inputMode4)
-		cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, formattedInput4)
-	}
-
-	// Si nous sommes en mode de saisie, affichez aussi ce que l'utilisateur a saisi jusqu'à présent
-	if inputMode4 && PanIndex == 5 {
-		cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "CONNECTIONS")
-		// Afficher la saisie de l'utilisateur avec le curseur
-		formattedInput4 := formatInput(userInput4, cursorPos4, inputMode4)
-		cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput4)
 		cliTlog.Line++
-	}
 
+		if PanIndex == 4 {
+			colorCell = termbox.ColorCyan
+		} else {
+			colorCell = termbox.ColorWhite
+		}
+
+		cliPrintTb(1, cliTlog.Line, colorCell, termbox.ColorBlack, "CORES")
+		if !inputMode3 {
+			formattedInput3 := formatInput(userInput3, cursorPos3, inputMode3)
+
+			cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, formattedInput3)
+		}
+		// Si nous sommes en mode de saisie, affichez aussi ce que l'utilisateur a saisi jusqu'à présent
+		if inputMode3 && PanIndex == 4 {
+			cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "CORES")
+			// Afficher la saisie de l'utilisateur avec le curseur
+			formattedInput3 := formatInput(userInput3, cursorPos3, inputMode3)
+			cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput3)
+			cliTlog.Line++
+		}
+
+		cliTlog.Line++
+		cliTlog.Line++
+
+		if PanIndex == 5 {
+			colorCell = termbox.ColorCyan
+		} else {
+			colorCell = termbox.ColorWhite
+		}
+
+		cliPrintTb(1, cliTlog.Line, colorCell, termbox.ColorBlack, "CONNECTIONS")
+		if !inputMode4 {
+			formattedInput4 := formatInput(userInput4, cursorPos4, inputMode4)
+			cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, formattedInput4)
+		}
+
+		// Si nous sommes en mode de saisie, affichez aussi ce que l'utilisateur a saisi jusqu'à présent
+		if inputMode4 && PanIndex == 5 {
+			cliPrintTb(1, cliTlog.Line, termbox.ColorBlack, colorCell, "CONNECTIONS")
+			// Afficher la saisie de l'utilisateur avec le curseur
+			formattedInput4 := formatInput(userInput4, cursorPos4, inputMode4)
+			cliPrintTb(maxLabelWidth+labelPadding+1, cliTlog.Line, colorCell|termbox.AttrBold, termbox.ColorBlack, formattedInput4)
+			cliTlog.Line++
+		}
+	*/
 	cliTlog.Line++
 	cliTlog.Line++
 	cliTlog.Line++
