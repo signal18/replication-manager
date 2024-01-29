@@ -83,25 +83,26 @@ var configuratorCmd = &cobra.Command{
 		}
 		RepMan.Clusters["mycluster"].WaitDatabaseCanConn()
 		//	var conf config.Config
-		var configurator configurator.Configurator
-		configurator.Init(conf)
+		//var configurator configurator.Configurator
+		//configurator.Init(conf)
+		//configurator := cluster.Configurator
 
-		for _ , server := range cluster.Servers 	 {
-			err := configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir,  server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv())
-			if err !=nil  {
-					log.WithError(err).Fatalf("Generate database config failed %s", server.URL)
+		for _, server := range cluster.Servers {
+			err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv())
+			if err != nil {
+				log.WithError(err).Fatalf("Generate database config failed %s", server.URL)
 			}
 			log.Infof("Generate database config datadir %s/config.tar.gz", server.Datadir)
 		}
 
-		dbCategories = configurator.GetDBModuleCategories()
+		dbCategories = cluster.Configurator.GetDBModuleCategories()
 		dbCategoriesSortedKeys = make([]string, 0, len(dbCategories))
 		for k := range dbCategories {
 			dbCategoriesSortedKeys = append(dbCategoriesSortedKeys, k)
 		}
 
 		sort.Strings(dbCategoriesSortedKeys)
-		defaultTags := configurator.GetDBTags()
+		defaultTags := cluster.Configurator.GetDBTags()
 		for _, v := range defaultTags {
 
 			addedTags[v] = true
@@ -110,10 +111,10 @@ var configuratorCmd = &cobra.Command{
 		//os.Exit(3)
 
 		//default
-		memoryInput = configurator.GetConfigDBMemory()
-		ioDiskInput = configurator.GetConfigDBDiskIOPS()
-		coresInput = configurator.GetConfigDBCores()
-		connectionsInput = configurator.GetConfigMaxConnections()
+		memoryInput = cluster.Configurator.GetConfigDBMemory()
+		ioDiskInput = cluster.Configurator.GetConfigDBDiskIOPS()
+		coresInput = cluster.Configurator.GetConfigDBCores()
+		connectionsInput = cluster.Configurator.GetConfigMaxConnections()
 
 		fmt.Printf("%s \n", RepMan.Clusters["mycluster"].Conf.ProvTags)
 		conf.SetLogOutput(ioutil.Discard)
@@ -131,20 +132,20 @@ var configuratorCmd = &cobra.Command{
 		interval := time.Millisecond
 		ticker := time.NewTicker(interval * time.Duration(20))
 
-
-		cliDisplayConfigurator(&configurator)
+		cliDisplayConfigurator(&cluster.Configurator)
 
 		for cliExit == false {
 			select {
 			case <-ticker.C:
-				cliDisplayConfigurator(&configurator)
+				cliDisplayConfigurator(&cluster.Configurator)
 
 			case event := <-termboxChan:
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
+						cluster.Save()
 						for _, server := range cluster.Servers {
-							err := configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv())
+							err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv())
 							if err != nil {
 								log.WithError(err).Fatalf("Generate database config failed %s", server.URL)
 							}
@@ -260,12 +261,14 @@ var configuratorCmd = &cobra.Command{
 							PanIndex = 1
 						case 1:
 							if addedTags[dbCurrrentTag] {
-								configurator.DropDBTag(dbCurrrentTag)
+								cluster.DropDBTag(dbCurrrentTag)
 								addedTags[dbCurrrentTag] = false
 							} else {
-								configurator.AddDBTag(dbCurrrentTag)
+								cluster.AddDBTag(dbCurrrentTag)
 								addedTags[dbCurrrentTag] = true
 							}
+							cluster.SetTagsFromConfigurator()
+
 						case 2:
 							PanIndex = 3
 							inputMode = true
@@ -283,14 +286,14 @@ var configuratorCmd = &cobra.Command{
 						case 3:
 							switch dbResourceCategoryIndex {
 							case 0: // MEMORY
-								configurator.SetDBMemory(memoryInput)
+								cluster.SetDBMemorySize(memoryInput)
 							case 1: // DISK
-								configurator.SetDBDiskIOPS(ioDiskInput)
+								cluster.SetDBDiskSize(ioDiskInput)
 							case 2: // CPU
-								configurator.SetDBCores(coresInput)
+								cluster.SetDBCores(coresInput)
 							case 3: // NETWORK
 								// Supposons que vous avez une fonction pour régler les connections
-								configurator.SetDBMaxConnections(connectionsInput)
+								cluster.SetDBMaxConnections(connectionsInput)
 							default:
 							}
 							inputMode = false
@@ -369,14 +372,14 @@ var configuratorCmd = &cobra.Command{
 						case 3:
 							switch dbResourceCategoryIndex {
 							case 0: // MEMORY
-								configurator.SetDBMemory(memoryInput)
+								cluster.SetDBMemorySize(memoryInput)
 							case 1: // DISK
-								configurator.SetDBDiskIOPS(ioDiskInput)
+								cluster.SetDBDiskSize(ioDiskInput)
 							case 2: // CPU
-								configurator.SetDBCores(coresInput)
+								cluster.SetDBCores(coresInput)
 							case 3: // NETWORK
 								// Supposons que vous avez une fonction pour régler les connections
-								configurator.SetDBMaxConnections(connectionsInput)
+								cluster.SetDBMaxConnections(connectionsInput)
 							default:
 							}
 							inputMode = false
@@ -404,7 +407,7 @@ var configuratorCmd = &cobra.Command{
 			//		termbox.Sync()
 				default:
 				}
-				cliDisplayConfigurator(&configurator)
+				cliDisplayConfigurator(&cluster.Configurator)
 
 			}
 		}
