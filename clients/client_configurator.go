@@ -143,9 +143,13 @@ var configuratorCmd = &cobra.Command{
 				switch event.Type {
 				case termbox.EventKey:
 					if event.Key == termbox.KeyCtrlS {
-
-						log.Infof("CtrlS")
-
+						for _, server := range cluster.Servers {
+							err := configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv())
+							if err != nil {
+								log.WithError(err).Fatalf("Generate database config failed %s", server.URL)
+							}
+							log.Infof("Generate database config datadir %s/config.tar.gz", server.Datadir)
+						}
 						cliExit = true
 					}
 
@@ -277,6 +281,18 @@ var configuratorCmd = &cobra.Command{
 							default:
 							}
 						case 3:
+							switch dbResourceCategoryIndex {
+							case 0: // MEMORY
+								configurator.SetDBMemory(memoryInput)
+							case 1: // DISK
+								configurator.SetDBDiskIOPS(ioDiskInput)
+							case 2: // CPU
+								configurator.SetDBCores(coresInput)
+							case 3: // NETWORK
+								// Supposons que vous avez une fonction pour régler les connections
+								configurator.SetDBMaxConnections(connectionsInput)
+							default:
+							}
 							inputMode = false
 							cursorPos = 0
 							PanIndex = 2
@@ -351,6 +367,18 @@ var configuratorCmd = &cobra.Command{
 							endViewIndex = maxTagsInView
 							PanIndex = 0
 						case 3:
+							switch dbResourceCategoryIndex {
+							case 0: // MEMORY
+								configurator.SetDBMemory(memoryInput)
+							case 1: // DISK
+								configurator.SetDBDiskIOPS(ioDiskInput)
+							case 2: // CPU
+								configurator.SetDBCores(coresInput)
+							case 3: // NETWORK
+								// Supposons que vous avez une fonction pour régler les connections
+								configurator.SetDBMaxConnections(connectionsInput)
+							default:
+							}
 							inputMode = false
 							cursorPos = 0
 							PanIndex = 2
