@@ -715,3 +715,41 @@ func (configurator *Configurator) GetDatabaseDynamicConfig(filter string, cmd st
 	}
 	return mydynamicconf, nil
 }
+
+func (configurator *Configurator) GetDatabaseConfig(filter string, datadir string) (string, error) {
+	mydynamicconf := ""
+	// processing symlink
+	type Link struct {
+		Symlink string `json:"symlink"`
+		Target  string `json:"target"`
+	}
+	for _, rule := range configurator.DBModule.Rulesets {
+		if strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf.generic") {
+			for _, variable := range rule.Variables {
+				if variable.Class == "symlink" {
+					if configurator.IsFilterInDBTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
+						//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "content %s %s", filter, rule.Filter)
+						if filter == "" || strings.Contains(rule.Filter, filter) {
+							var f Link
+							json.Unmarshal([]byte(variable.Value), &f)
+							fpath := datadir + "/init/etc/mysql/conf.d/"
+							//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config symlink %s , %s", fpath, f.Target)
+							file, err := os.Open(fpath + f.Target)
+							if err == nil {
+								scanner := bufio.NewScanner(file)
+								for scanner.Scan() {
+									mydynamicconf = mydynamicconf + strings.Split(scanner.Text(), ":")[1]
+								}
+								file.Close()
+
+							} else {
+								return mydynamicconf, errors.New(fmt.Sprintf("Error in dynamic config: %s", err))
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return mydynamicconf, nil
+}
