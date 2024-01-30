@@ -606,7 +606,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvIopsLatency, "prov-db-disk-iops-latency", "0.002", "IO latency in s")
 	flags.StringVar(&conf.ProvCores, "prov-db-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 	flags.BoolVar(&conf.ProvDBApplyDynamicConfig, "prov-db-apply-dynamic-config", false, "Dynamic database config change")
-	flags.StringVar(&conf.ProvTags, "prov-db-tags", "semisync,row,innodb,noquerycache,threadpool,slow,pfs,docker,linux,readonly,diskmonitor,sqlerror,compressbinlog,readonly", "playbook configuration tags")
+	flags.StringVar(&conf.ProvTags, "prov-db-tags", "semisync,row,innodb,noquerycache,threadpool,slow,pfs,docker,linux,readonly,diskmonitor,sqlerror,compressbinlog", "playbook configuration tags")
 	flags.StringVar(&conf.ProvDomain, "prov-db-domain", "0", "Config domain id for the cluster")
 	flags.StringVar(&conf.ProvMem, "prov-db-memory", "256", "Memory in M for micro service VM")
 	flags.StringVar(&conf.ProvMemSharedPct, "prov-db-memory-shared-pct", "threads:16,innodb:60,myisam:10,aria:10,rocksdb:1,tokudb:1,s3:1,archive:1,querycache:0", "% memory shared per buffer")
