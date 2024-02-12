@@ -37,6 +37,7 @@ func (u *APIUser) Granted(grant string) error {
 
 func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string, AuthMethod string) bool {
 	if user, ok := cluster.APIUsers[strUser]; ok {
+		fmt.Printf("password :" + user.Password)
 		if user.Password == strPassword || AuthMethod == "oidc" {
 			return cluster.IsURLPassACL(strUser, URL)
 		}
@@ -88,6 +89,7 @@ func (cluster *Cluster) SetGrant(user string, grant string, enable bool) {
 
 func (cluster *Cluster) LoadAPIUsers() error {
 	credentials := strings.Split(cluster.Conf.Secrets["api-credentials"].Value+","+cluster.Conf.Secrets["api-credentials-external"].Value, ",")
+	fmt.Printf(cluster.Conf.Secrets["api-credentials"].Value + "," + cluster.Conf.Secrets["api-credentials-external"].Value)
 	meUsers := make(map[string]APIUser)
 	for _, credential := range credentials {
 		var newapiuser APIUser

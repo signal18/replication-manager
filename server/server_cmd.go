@@ -46,10 +46,11 @@ var (
 	// FullVersion is the semantic version number + git commit hash
 	FullVersion string
 	// Build is the build date of replication-manager
-	Build  string
-	GoOS   string = "linux"
-	GoArch string = "amd64"
-	conf   config.Config
+	Build         string
+	GoOS          string = "linux"
+	GoArch        string = "amd64"
+	conf          config.Config
+	overwriteConf config.Config
 )
 
 var rootCmd = &cobra.Command{
@@ -74,8 +75,6 @@ var versionCmd = &cobra.Command{
 	},
 }
 
-var overwriteConf config.Config
-
 func init() {
 
 	conf.GoArch = GoArch
@@ -93,7 +92,7 @@ func init() {
 
 	//configMergeCmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Cluster name (default is none)")
 	//configMergeCmd.PersistentFlags().StringVar(&conf.ConfigFile, "config", "", "Configuration file (default is config.toml)")
-	rootCmd.PersistentFlags().StringVar(&conf.WorkingDir, "monitoring-datadir", "", "Configuration file (default is config.toml)")
+	//rootCmd.PersistentFlags().StringVar(&conf.WorkingDir, "monitoring-datadir", "", "Configuration file (default is config.toml)")
 
 	rootCmd.AddCommand(versionCmd)
 	//rootCmd.AddCommand(configMergeCmd)

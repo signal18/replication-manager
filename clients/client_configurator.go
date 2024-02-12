@@ -25,6 +25,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+		"github.com/spf13/viper"
 )
 
 var dbCurrrentTag string
@@ -62,11 +63,18 @@ var configuratorCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		conf.WithEmbed = WithEmbed
 		RepMan = new(server.ReplicationManager)
+		RepMan.SetDefaultFlags(viper.GetViper())
 		RepMan.InitConfig(conf)
 		go RepMan.Run()
 		time.Sleep(2 * time.Second)
+<<<<<<< HEAD
 		cluster:= RepMan.Clusters[RepMan.ClusterList[0]]
 		if cluster == nil  {
+=======
+		cluster := RepMan.Clusters[RepMan.ClusterList[0]]
+
+		if cluster == nil {
+>>>>>>> Limit parameter scope to it's minimal naeed outside of the server class
 			log.Fatalf("No Cluster found .replication-manager/config.toml")
 		 }
 		for _ , s := range cluster.Servers 	 {

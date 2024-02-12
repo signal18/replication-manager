@@ -57,43 +57,44 @@ var RepMan *ReplicationManager
 
 // Global variables
 type ReplicationManager struct {
-	OpenSVC                                          opensvc.Collector                 `json:"-"`
-	Version                                          string                            `json:"version"`
-	Fullversion                                      string                            `json:"fullVersion"`
-	Os                                               string                            `json:"os"`
-	Arch                                             string                            `json:"arch"`
-	MemProfile                                       string                            `json:"memprofile"`
-	CpuProfile                                       string                            `json:"cpuprofile"`
-	Clusters                                         map[string]*cluster.Cluster       `json:"-"`
-	Agents                                           []opensvc.Host                    `json:"agents"`
-	UUID                                             string                            `json:"uuid"`
-	Hostname                                         string                            `json:"hostname"`
-	Status                                           string                            `json:"status"`
-	SplitBrain                                       bool                              `json:"spitBrain"`
-	ClusterList                                      []string                          `json:"clusters"`
-	Tests                                            []string                          `json:"tests"`
-	Conf                                             config.Config                     `json:"config"`
-	ImmuableFlagMaps                                 map[string]map[string]interface{} `json:"-"`
-	DynamicFlagMaps                                  map[string]map[string]interface{} `json:"-"`
-	DefaultFlagMap                                   map[string]interface{}            `json:"-"`
-	CommandLineFlag                                  []string                          `json:"-"`
-	ConfigPathList                                   []string                          `json:"-"`
-	Logs                                             s18log.HttpLog                    `json:"logs"`
-	ServicePlans                                     []config.ServicePlan              `json:"servicePlans"`
-	ServiceOrchestrators                             []config.ConfigVariableType       `json:"serviceOrchestrators"`
-	ServiceAcl                                       []config.Grant                    `json:"serviceAcl"`
-	ServiceRepos                                     []config.DockerRepo               `json:"serviceRepos"`
-	ServiceTarballs                                  []config.Tarball                  `json:"serviceTarballs"`
-	ServiceFS                                        map[string]bool                   `json:"serviceFS"`
-	ServiceVM                                        map[string]bool                   `json:"serviceVM"`
-	ServiceDisk                                      map[string]string                 `json:"serviceDisk"`
-	ServicePool                                      map[string]bool                   `json:"servicePool"`
-	BackupLogicalList                                map[string]bool                   `json:"backupLogicalList"`
-	BackupPhysicalList                               map[string]bool                   `json:"backupPhysicalList"`
-	currentCluster                                   *cluster.Cluster                  `json:"-"`
-	UserAuthTry                                      map[string]authTry                `json:"-"`
-	OAuthAccessToken                                 *oauth2.Token                     `json:"-"`
-	ViperConfig                                      *viper.Viper                      `json:"-"`
+	OpenSVC          opensvc.Collector                 `json:"-"`
+	Version          string                            `json:"version"`
+	Fullversion      string                            `json:"fullVersion"`
+	Os               string                            `json:"os"`
+	Arch             string                            `json:"arch"`
+	MemProfile       string                            `json:"memprofile"`
+	CpuProfile       string                            `json:"cpuprofile"`
+	Clusters         map[string]*cluster.Cluster       `json:"-"`
+	Agents           []opensvc.Host                    `json:"agents"`
+	UUID             string                            `json:"uuid"`
+	Hostname         string                            `json:"hostname"`
+	Status           string                            `json:"status"`
+	SplitBrain       bool                              `json:"spitBrain"`
+	ClusterList      []string                          `json:"clusters"`
+	Tests            []string                          `json:"tests"`
+	Conf             config.Config                     `json:"config"`
+	ImmuableFlagMaps map[string]map[string]interface{} `json:"-"`
+	DynamicFlagMaps  map[string]map[string]interface{} `json:"-"`
+	DefaultFlagMap   map[string]interface{}            `json:"-"`
+	//Adding default flags from AddFlags
+	CommandLineFlag                                  []string                    `json:"-"`
+	ConfigPathList                                   []string                    `json:"-"`
+	Logs                                             s18log.HttpLog              `json:"logs"`
+	ServicePlans                                     []config.ServicePlan        `json:"servicePlans"`
+	ServiceOrchestrators                             []config.ConfigVariableType `json:"serviceOrchestrators"`
+	ServiceAcl                                       []config.Grant              `json:"serviceAcl"`
+	ServiceRepos                                     []config.DockerRepo         `json:"serviceRepos"`
+	ServiceTarballs                                  []config.Tarball            `json:"serviceTarballs"`
+	ServiceFS                                        map[string]bool             `json:"serviceFS"`
+	ServiceVM                                        map[string]bool             `json:"serviceVM"`
+	ServiceDisk                                      map[string]string           `json:"serviceDisk"`
+	ServicePool                                      map[string]bool             `json:"servicePool"`
+	BackupLogicalList                                map[string]bool             `json:"backupLogicalList"`
+	BackupPhysicalList                               map[string]bool             `json:"backupPhysicalList"`
+	currentCluster                                   *cluster.Cluster            `json:"-"`
+	UserAuthTry                                      map[string]authTry          `json:"-"`
+	OAuthAccessToken                                 *oauth2.Token               `json:"-"`
+	ViperConfig                                      *viper.Viper                `json:"-"`
 	tlog                                             s18log.TermLog
 	termlength                                       int
 	exitMsg                                          string
@@ -188,6 +189,21 @@ type Heartbeat struct {
 var confs = make(map[string]config.Config)
 var cfgGroup string
 var cfgGroupIndex int
+
+func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
+
+	repman.DefaultFlagMap = make(map[string]interface{})
+	for _, f := range v.AllKeys() {
+		repman.DefaultFlagMap[f] = v.Get(f)
+		fmt.Printf("%s %v \n", f, v.Get(f))
+	}
+
+	/*flags.VisitAll(func(f *pflag.Flag) {
+		fmt.Printf("%s,%v", f.Name, f.Value)
+		repman.DefaultFlagMapBis[f.Name] = f.Value
+	})*/
+
+}
 
 func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 
@@ -764,6 +780,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 		}
 	}
+
 }
 
 // DicoverClusters from viper merged config send a sperated list of clusters
