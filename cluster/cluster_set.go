@@ -394,7 +394,7 @@ func (cluster *Cluster) SetDBIOPSFromConfigurator() {
 
 func (cluster *Cluster) SetTagsFromConfigurator() {
 	cluster.Conf.ProvTags = cluster.Configurator.GetConfigDBTags()
-	cluster.Conf.ProvTags = cluster.Configurator.GetConfigProxyTags()
+	cluster.Conf.ProvProxTags = cluster.Configurator.GetConfigProxyTags()
 }
 
 func (cluster *Cluster) SetDBDiskIOPS(value string) {

@@ -263,6 +263,10 @@ func initStatusFlags(cmd *cobra.Command) {
 func initConfiguratorFlags(cmd *cobra.Command) {
 	initServerApiFlags(configuratorCmd)
 	RepMan.AddFlags(configuratorCmd.Flags(), &conf)
+	v := viper.GetViper()
+	v.SetConfigType("toml")
+	viper.BindPFlags(configuratorCmd.Flags())
+	cmd.AddCommand(configuratorCmd)
 	viper.BindPFlags(cmd.Flags())
 }
 
