@@ -69,27 +69,22 @@ var configuratorCmd = &cobra.Command{
 		RepMan.InitConfig(conf)
 		go RepMan.Run()
 		time.Sleep(2 * time.Second)
-<<<<<<< HEAD
-		cluster:= RepMan.Clusters[RepMan.ClusterList[0]]
-		if cluster == nil  {
-=======
 		cluster := RepMan.Clusters[RepMan.ClusterList[0]]
 
 		if cluster == nil {
->>>>>>> Limit parameter scope to it's minimal naeed outside of the server class
 			log.Fatalf("No Cluster found .replication-manager/config.toml")
-		 }
-		for _ , s := range cluster.Servers 	 {
-			conn , err := s.GetNewDBConn()
-			if err !=nil  {
-					log.WithError(err).Fatalf("Connecting error to database in .replication-manager/config.toml: %s", s.URL)
+		}
+		for _, s := range cluster.Servers {
+			conn, err := s.GetNewDBConn()
+			if err != nil {
+				log.WithError(err).Fatalf("Connecting error to database in .replication-manager/config.toml: %s", s.URL)
 			}
-			variables, _, err := dbhelper.GetVariablesCase(conn, s.DBVersion,"LOWER")
-			if err !=nil  {
-					log.WithError(err).Fatalf("Get variables failed %s", s.URL)
+			variables, _, err := dbhelper.GetVariablesCase(conn, s.DBVersion, "LOWER")
+			if err != nil {
+				log.WithError(err).Fatalf("Get variables failed %s", s.URL)
 			}
 
-			log.Infof("datadir %s",  variables["DATADIR"])
+			log.Infof("datadir %s", variables["DATADIR"])
 		}
 		RepMan.Clusters["mycluster"].WaitDatabaseCanConn()
 		//	var conf config.Config
@@ -409,12 +404,10 @@ var configuratorCmd = &cobra.Command{
 						cliExit = true
 					}
 
-
-
 				}
 				switch event.Ch {
-			//	case 's':
-			//		termbox.Sync()
+				//	case 's':
+				//		termbox.Sync()
 				default:
 				}
 				cliDisplayConfigurator(&cluster.Configurator)
