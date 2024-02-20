@@ -195,7 +195,7 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 	repman.DefaultFlagMap = make(map[string]interface{})
 	for _, f := range v.AllKeys() {
 		repman.DefaultFlagMap[f] = v.Get(f)
-		fmt.Printf("%s %v \n", f, v.Get(f))
+		//	fmt.Printf("%s %v \n", f, v.Get(f))
 	}
 
 	/*flags.VisitAll(func(f *pflag.Flag) {
