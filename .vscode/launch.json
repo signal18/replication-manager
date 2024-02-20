@@ -4,7 +4,16 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
+        {   "buildFlags": "-v --tags 'clients' --ldflags ' -X 'github.com/signal18/replication-manager/server.Version=debug' -X 'github.com/signal18/replication-manager/server.FullVersion=debugfull' -X 'github.com/signal18/replication-manager/server.Build=30-05-2023' -X github.com/signal18/replication-manager/server.WithOpenSVC=ON  -X github.com/signal18/replication-manager/server.WithEmbed=ON",
+            "name": "configurator",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceRoot}",
+            "env": {},
+            "args": ["configurator"],
+        }
+,
         {   
             "buildFlags": "-v --tags 'server' --ldflags ' -X 'github.com/signal18/replication-manager/server.Version=debug' -X 'github.com/signal18/replication-manager/server.FullVersion=debugfull' -X 'github.com/signal18/replication-manager/server.Build=30-05-2023' -X github.com/signal18/replication-manager/server.WithOpenSVC=ON",
             "name": "replication-manager-pro",

@@ -439,7 +439,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.BoolVar(&conf.ForceNoslaveBehind, "force-noslave-behind", false, "Automatically force no slave behing")
 	}
 
-	flags.BoolVar(&conf.HttpServ, "http-server", true, "Start the HTTP monitor")
+	flags.BoolVar(&conf.HttpServ, "http-server", true, "Start the HTTP server")
+	flags.BoolVar(&conf.ApiServ, "api-server", true, "Start the API HTTPS server")
+
 	flags.StringVar(&conf.BindAddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
 	flags.StringVar(&conf.HttpPort, "http-port", "10001", "HTTP monitor to listen on this port")
 	if runtime.GOOS == "darwin" {
@@ -1440,8 +1442,6 @@ func (repman *ReplicationManager) Run() error {
 	repman.BackupLogicalList = repman.Conf.GetBackupLogicalType()
 	repman.BackupPhysicalList = repman.Conf.GetBackupPhysicalType()
 
-	go repman.apiserver()
-
 	if repman.Conf.ProvOrchestrator == "opensvc" {
 		repman.Agents = []opensvc.Host{}
 		repman.OpenSVC.Host, repman.OpenSVC.Port = misc.SplitHostPort(repman.Conf.ProvHost)
@@ -1497,7 +1497,9 @@ func (repman *ReplicationManager) Run() error {
 	}
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
-
+	if repman.Conf.ApiServ {
+		go repman.apiserver()
+	}
 	// HTTP server should start after Cluster Init or may lead to various nil pointer if clients still requesting
 	if repman.Conf.HttpServ {
 		go repman.httpserver()
@@ -1703,6 +1705,8 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	myClusterConf.DefaultFlagMap = repman.DefaultFlagMap
 
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
+	//log.Infof("Default config for %s workingdir:\n %v", clusterName, myClusterConf.DefaultFlagMap)
+
 	log.Infof("Starting cluster: %s workingdir %s", clusterName, myClusterConf.WorkingDir)
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster

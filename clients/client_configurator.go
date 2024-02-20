@@ -64,6 +64,8 @@ var configuratorCmd = &cobra.Command{
 		conf.WithEmbed = WithEmbed
 		RepMan = new(server.ReplicationManager)
 		RepMan.SetDefaultFlags(viper.GetViper())
+		conf.HttpServ = false
+		conf.ApiServ = false
 		RepMan.InitConfig(conf)
 		go RepMan.Run()
 		time.Sleep(2 * time.Second)

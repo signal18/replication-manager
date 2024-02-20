@@ -243,6 +243,7 @@ type Config struct {
 	BindAddr                                  string                 `mapstructure:"http-bind-address" toml:"http-bind-address" json:"httpBindAdress"`
 	HttpPort                                  string                 `mapstructure:"http-port" toml:"http-port" json:"httpPort"`
 	HttpServ                                  bool                   `mapstructure:"http-server" toml:"http-server" json:"httpServer"`
+	ApiServ                                   bool                   `mapstructure:"http-server" toml:"api-server" json:"apiServer"`
 	HttpRoot                                  string                 `mapstructure:"http-root" toml:"http-root" json:"httpRoot"`
 	HttpAuth                                  bool                   `mapstructure:"http-auth" toml:"http-auth" json:"httpAuth"`
 	HttpBootstrapButton                       bool                   `mapstructure:"http-bootstrap-button" toml:"http-bootstrap-button" json:"httpBootstrapButton"`
