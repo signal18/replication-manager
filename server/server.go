@@ -1068,7 +1068,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	if strClusters == "" {
 		// Discovering the clusters from all merged conf files build clusterDiscovery map
 		strClusters = repman.DiscoverClusters(fistRead)
-		log.WithField("clusters", strClusters).Debug("New clusters discovered")
+		log.WithField("clusters", strClusters).Infof("Clusters discovered: %s", strClusters)
 	}
 
 	cfgGroupIndex = 0
@@ -1092,81 +1092,80 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	//	backupvipersave := viper.GetViper()
 
 	//if clusters have been discovered
-	if strClusters != "" {
-		//set cluster list
-		repman.ClusterList = strings.Split(strClusters, ",")
-		repman.ImmuableFlagMaps["default"] = ImmuableMap
-		conf.ImmuableFlagMap = ImmuableMap
-		//load config file from git hub
-		conf.DecryptSecretsFromConfig()
+	if strClusters == "" {
 
-		if conf.GitUrl != "" && conf.GitAccesToken != "" && !conf.Cloud18 {
-			var tok string
-
-			if conf.IsVaultUsed() && conf.IsPath(conf.GitAccesToken) {
-				conn, err := conf.GetVaultConnection()
-				if err != nil {
-					log.Printf("Error vault connection %v", err)
-				}
-				tok, err = conf.GetVaultCredentials(conn, conf.GitAccesToken, "git-acces-token")
-				if err != nil {
-					log.Printf("Error get vault git-acces-token value %v", err)
-					tok = conf.GetDecryptedValue("git-acces-token")
-				} else {
-					var Secrets config.Secret
-					Secrets.Value = tok
-					conf.Secrets["git-acces-token"] = Secrets
-				}
-
-			} else {
-				tok = conf.GetDecryptedValue("git-acces-token")
-			}
-
-			conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, tok, conf.WorkingDir)
-		}
-
-		if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
-			acces_tok := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.LogGit)
-			personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, conf.LogGit)
-			if personal_access_token != "" {
-				var Secrets config.Secret
-				Secrets.Value = personal_access_token
-				conf.Secrets["git-acces-token"] = Secrets
-				conf.GitUrl = conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + ".git"
-				conf.GitUsername = conf.Cloud18GitUser
-				conf.GitAccesToken = personal_access_token
-				conf.ImmuableFlagMap["git-url"] = conf.GitUrl
-				conf.ImmuableFlagMap["git-username"] = conf.GitUsername
-				conf.ImmuableFlagMap["git-acces-token"] = personal_access_token
-				conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, conf.GitAccesToken, conf.WorkingDir)
-				conf.PushConfigToGit(conf.GitUrl, conf.GitAccesToken, conf.GitUsername, conf.WorkingDir, []string{})
-				//conf.GitAddReadMe(conf.GitUrl, conf.GitAccesToken, conf.GitUsername, conf.WorkingDir)
-
-			} else if conf.LogGit {
-				log.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof("Could not get personal access token from gitlab")
-			}
-
-		}
-
-		//add config from cluster to the config map
-		for _, cluster := range repman.ClusterList {
-			//vipersave := backupvipersave
-			confs[cluster] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cluster, conf)
-			cfgGroupIndex++
-
-		}
-
-		cfgGroupIndex--
-		log.WithField("cluster", repman.ClusterList[cfgGroupIndex]).Debug("Default Cluster set")
-
-	} else {
 		//add default to the clusterlist if no cluster discover
-		repman.ClusterList = append(repman.ClusterList, "Default")
-		log.WithField("cluster", repman.ClusterList[cfgGroupIndex]).Debug("Default Cluster set")
+		log.WithField("cluster", "Default").Debug("No clusters dicoverd add Default Cluster")
 
-		confs["Default"] = conf
+		strClusters += "Default"
 
 	}
+
+	//set cluster list
+	repman.ClusterList = strings.Split(strClusters, ",")
+	repman.ImmuableFlagMaps["default"] = ImmuableMap
+	conf.ImmuableFlagMap = ImmuableMap
+	//load config file from git hub
+	conf.DecryptSecretsFromConfig()
+
+	if conf.GitUrl != "" && conf.GitAccesToken != "" && !conf.Cloud18 {
+		var tok string
+
+		if conf.IsVaultUsed() && conf.IsPath(conf.GitAccesToken) {
+			conn, err := conf.GetVaultConnection()
+			if err != nil {
+				log.Printf("Error vault connection %v", err)
+			}
+			tok, err = conf.GetVaultCredentials(conn, conf.GitAccesToken, "git-acces-token")
+			if err != nil {
+				log.Printf("Error get vault git-acces-token value %v", err)
+				tok = conf.GetDecryptedValue("git-acces-token")
+			} else {
+				var Secrets config.Secret
+				Secrets.Value = tok
+				conf.Secrets["git-acces-token"] = Secrets
+			}
+
+		} else {
+			tok = conf.GetDecryptedValue("git-acces-token")
+		}
+
+		conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, tok, conf.WorkingDir)
+	}
+
+	if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
+		acces_tok := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.LogGit)
+		personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, conf.LogGit)
+		if personal_access_token != "" {
+			var Secrets config.Secret
+			Secrets.Value = personal_access_token
+			conf.Secrets["git-acces-token"] = Secrets
+			conf.GitUrl = conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + ".git"
+			conf.GitUsername = conf.Cloud18GitUser
+			conf.GitAccesToken = personal_access_token
+			conf.ImmuableFlagMap["git-url"] = conf.GitUrl
+			conf.ImmuableFlagMap["git-username"] = conf.GitUsername
+			conf.ImmuableFlagMap["git-acces-token"] = personal_access_token
+			conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, conf.GitAccesToken, conf.WorkingDir)
+			conf.PushConfigToGit(conf.GitUrl, conf.GitAccesToken, conf.GitUsername, conf.WorkingDir, []string{})
+			//conf.GitAddReadMe(conf.GitUrl, conf.GitAccesToken, conf.GitUsername, conf.WorkingDir)
+
+		} else if conf.LogGit {
+			log.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof("Could not get personal access token from gitlab")
+		}
+
+	}
+
+	//add config from cluster to the config map
+	for _, cluster := range repman.ClusterList {
+		//vipersave := backupvipersave
+		confs[cluster] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cluster, conf)
+		cfgGroupIndex++
+
+	}
+
+	cfgGroupIndex--
+	log.WithField("cluster", repman.ClusterList[cfgGroupIndex]).Debug("Default Cluster set")
 
 	//fmt.Printf("%+v\n", fistRead.AllSettings())
 	repman.Confs = confs
@@ -1703,11 +1702,11 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	myClusterConf.ImmuableFlagMap = repman.ImmuableFlagMaps[clusterName]
 	myClusterConf.DynamicFlagMap = repman.DynamicFlagMaps[clusterName]
 	myClusterConf.DefaultFlagMap = repman.DefaultFlagMap
+	log.Infof("Starting cluster: %s workingdir %s", clusterName, myClusterConf.WorkingDir)
 
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
 	//log.Infof("Default config for %s workingdir:\n %v", clusterName, myClusterConf.DefaultFlagMap)
 
-	log.Infof("Starting cluster: %s workingdir %s", clusterName, myClusterConf.WorkingDir)
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)

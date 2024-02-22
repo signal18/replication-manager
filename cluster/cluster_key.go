@@ -189,7 +189,13 @@ func (cluster *Cluster) createKeys() error {
 		BasicConstraintsValid: true,
 		IsCA:                  false,
 	}
+	if len(cluster.Servers) == 0 {
+		return errors.New("No servers list")
+	}
 	for _, h := range cluster.Servers {
+		if h == nil {
+			return errors.New("No servers list")
+		}
 		leafTemplate.DNSNames = append(leafTemplate.DNSNames, h.Host)
 	}
 	derBytes, err = x509.CreateCertificate(rand.Reader, &leafTemplate, &rootTemplate, &leafKey.PublicKey, rootKey)

@@ -23,7 +23,13 @@ func (server *ServerMonitor) IsSemiSyncMaster() bool {
 }
 
 func (server *ServerMonitor) IsSemiSyncReplica() bool {
-	return server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "ON" || server.Status["RPL_SEMI_SYNC_REPLICA_STATUS"] == "ON"
+	if server.DBVersion.IsMariaDB() || (server.DBVersion.IsMySQLOrPercona() && server.DBVersion.Lower("8.0")) {
+		return server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "ON" || server.Status["RPL_SEMI_SYNC_REPLICA_STATUS"] == "ON"
+	}
+	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0") {
+		return server.Status["RPL_SEMI_SYNC_SOURCE_STATUS"] == "ON" || server.Status["RPL_SEMI_SYNC_SOURCE_STATUS"] == "ON"
+	}
+	return false
 }
 
 func (server *ServerMonitor) HasSemiSync() bool {
