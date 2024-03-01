@@ -708,10 +708,14 @@ func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
 	if !(cluster.GetMaster().HasMySQLGTID()) {
 		return true
 	}
+	if !cluster.Conf.RplCheckErrantTrx {
+		return true
+	}
 	for _, s := range cluster.slaves {
 		if s.IsFailed() || s.IsIgnored() {
 			continue
 		}
+
 		hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, cluster.master.Variables["GTID_EXECUTED"], s.Variables["GTID_EXECUTED"])
 		if hasErrantTrx {
 			cluster.SetState("WARN0091", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0091"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})

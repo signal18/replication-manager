@@ -9,7 +9,7 @@ import (
 func HaveErrantTransactions(db *sqlx.DB, gtidMaster string, gtidSlave string) (bool, string, error) {
 
 	count := 0
-	query := "select gtid_subset('" + gtidMaster + "','" + gtidSlave + "') as slave_is_subset"
+	query := "select gtid_subset('" + gtidSlave + "','" + gtidMaster + "') as slave_is_subset"
 
 	err := db.QueryRowx(query).Scan(&count)
 	if err != nil {
