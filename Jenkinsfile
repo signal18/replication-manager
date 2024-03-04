@@ -14,6 +14,7 @@ pipeline {
                         def Image = docker.build('signal18/replication-manager:2.3', '-f docker/Dockerfile .')
                         Image.push()
                         Image.push('latest')
+                        Image.push(env.TAG_NAME)
                     }
                 }
             }
@@ -25,6 +26,7 @@ pipeline {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
                         def Image = docker.build('signal18/replication-manager:2.3-pro', '-f docker/Dockerfile.pro .')
                         Image.push()
+                        Image.push(env.TAG_NAME+"-pro")                        
                     }
                 }
             }
@@ -36,6 +38,7 @@ pipeline {
                         def Image = docker.build('signal18/replication-manager:2.3-dev', '-f docker/Dockerfile.dev .')
                         Image.push()
                         Image.push('dev')
+                        Image.push(env.TAG_NAME+"-dev")                                                
                     }
                 }
             }
