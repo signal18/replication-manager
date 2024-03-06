@@ -1,7 +1,9 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <svaroqui@gmail.com>
+//
+//	Stephane Varoqui  <svaroqui@gmail.com>
+//
 // This source code is licensed under the GNU General Public License, version 3.
 package opensvc
 
@@ -25,8 +27,8 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
-	//	pkcs12 "software.sslmate.com/src/go-pkcs12"
-	"golang.org/x/crypto/pkcs12"
+	pkcs12 "software.sslmate.com/src/go-pkcs12"
+	//"golang.org/x/crypto/pkcs12"
 )
 
 type Addr struct {
@@ -1324,7 +1326,7 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 	return r.Data, nil
 }
 
-//cycle W -> R -> T
+// cycle W -> R -> T
 func (collector *Collector) GetActionStatus(actionid string) string {
 
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
