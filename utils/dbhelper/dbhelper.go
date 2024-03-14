@@ -142,6 +142,7 @@ type Processlist struct {
 	Db           sql.NullString  `json:"db" db:"db"`
 	Command      string          `json:"command" db:"Command"`
 	Time         sql.NullFloat64 `json:"time" db:"Time"`
+	TimeMs       sql.NullFloat64 `json:"timeMs" db:"Time_ms"`
 	State        sql.NullString  `json:"state" db:"State"`
 	Info         sql.NullString  `json:"info" db:"Info"`
 	Progress     sql.NullFloat64 `json:"progress" db:"Progress"`
@@ -388,6 +389,26 @@ func GetBinaryLogs(db *sqlx.DB, version *MySQLVersion) (map[string]uint, string,
 	return vars, query, nil
 }
 
+func AnalyzeQuery(db *sqlx.DB, version *MySQLVersion, schema string, query string) (string, string, error) {
+	var res string
+	if schema != "" {
+		db.Exec("USE " + schema)
+	}
+	stmt := "ANALYZE  FORMAT=JSON " + query
+	rows, err := db.Query(stmt)
+	if err != nil {
+		return "", stmt, err
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		if err := rows.Scan(&res); err != nil {
+			return res, stmt, err
+		}
+	}
+	return res, stmt, err
+}
+
 func GetProcesslistTable(db *sqlx.DB, version *MySQLVersion) ([]Processlist, string, error) {
 	pl := []Processlist{}
 	var err error
@@ -412,24 +433,28 @@ func GetProcesslistTable(db *sqlx.DB, version *MySQLVersion) ([]Processlist, str
 	return pl, stmt, nil
 }
 
-func AnalyzeQuery(db *sqlx.DB, version *MySQLVersion, schema string, query string) (string, string, error) {
-	var res string
-	if schema != "" {
-		db.Exec("USE " + schema)
-	}
-	stmt := "ANALYZE  FORMAT=JSON " + query
-	rows, err := db.Query(stmt)
-	if err != nil {
-		return "", stmt, err
-	}
-	defer rows.Close()
-
-	if rows.Next() {
-		if err := rows.Scan(&res); err != nil {
-			return res, stmt, err
+func GetProcesslistTableFromUser(db *sqlx.DB, version *MySQLVersion, user string) ([]Processlist, string, error) {
+	pl := []Processlist{}
+	var err error
+	stmt := ""
+	if version.IsMariaDB() {
+		//MariaDB
+		stmt = "SELECT Id, User, Host, `Db` AS `db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO_BINARY,''),1,1000) as Info, CASE WHEN Max_Stage < 2 THEN Progress ELSE (Stage-1)/Max_Stage*100+Progress/Max_Stage END AS Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE User='+ user +'"
+	} else if version.IsMySQLOrPercona() {
+		//MySQL
+		stmt = "SELECT Id, User, Host, `Db` AS `db`, Command, Time as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info ,0 as Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE  User='+ user +'"
+		if version.GreaterEqual("8.0") {
+			stmt = "SELECT Id, User, Host, `Db` AS `db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info ,0 as Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE   User='+ user +'"
 		}
+	} else if version.IsPPostgreSQL() {
+		// WHERE state <> 'idle' 		AND pid<>pg_backend_pid()
+		stmt = `SELECT pid as "Id", coalesce(usename,'') as "User",coalesce(client_hostname || client_port,'') as "Host" , coalesce(datname,'') as db , coalesce(query,'') as "Command", extract(epoch from NOW()) - extract(epoch from query_start) as "Time",  coalesce(state,'') as "State",COALESCE(application_name,'')  as "Info" ,0 as "Progress"  FROM pg_stat_activity`
 	}
-	return res, stmt, err
+	err = db.Select(&pl, stmt)
+	if err != nil {
+		return nil, stmt, fmt.Errorf("ERROR: Could not get processlist: %s", err)
+	}
+	return pl, stmt, nil
 }
 
 func GetProcesslist(db *sqlx.DB, version *MySQLVersion) ([]Processlist, string, error) {
@@ -751,7 +776,7 @@ func GetHostFromProcessList(db *sqlx.DB, user string, version *MySQLVersion) (st
 	pl := []Processlist{}
 	var err error
 	logs := ""
-	pl, logs, err = GetProcesslist(db, version)
+	pl, logs, err = GetProcesslistTableFromUser(db, version, user)
 	if err != nil {
 		return "N/A", logs, err
 	}
