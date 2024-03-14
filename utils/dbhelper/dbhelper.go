@@ -398,6 +398,9 @@ func GetProcesslistTable(db *sqlx.DB, version *MySQLVersion) ([]Processlist, str
 	} else if version.IsMySQLOrPercona() {
 		//MySQL
 		stmt = "SELECT Id, User, Host, `Db` AS `db`, Command, Time as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info ,0 as Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME DESC LIMIT 50"
+		if version.GreaterEqual("8.0") {
+			stmt = "SELECT Id, User, Host, `Db` AS `db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info ,0 as Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME DESC LIMIT 50"
+		}
 	} else if version.IsPPostgreSQL() {
 		// WHERE state <> 'idle' 		AND pid<>pg_backend_pid()
 		stmt = `SELECT pid as "Id", coalesce(usename,'') as "User",coalesce(client_hostname || client_port,'') as "Host" , coalesce(datname,'') as db , coalesce(query,'') as "Command", extract(epoch from NOW()) - extract(epoch from query_start) as "Time",  coalesce(state,'') as "State",COALESCE(application_name,'')  as "Info" ,0 as "Progress"  FROM pg_stat_activity`
