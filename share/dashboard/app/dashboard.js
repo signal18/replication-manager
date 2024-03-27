@@ -873,7 +873,7 @@ function (
 
     $scope.startPromise = function()  {
           $timeout.cancel( $scope.promise);
-          console.log(  $scope.refreshInterval);
+  //        console.log(  $scope.refreshInterval);
       if ($scope.isLoggedIn) {
           promise = $timeout(function() {
             $scope.callServices();
@@ -889,7 +889,7 @@ function (
 
 
     $scope.start = function() {
-      console.log("start promise");
+  //    console.log("start promise");
       // Don't start if already defined
       if ( $scope.promise ) return;
       $scope.startPromise();

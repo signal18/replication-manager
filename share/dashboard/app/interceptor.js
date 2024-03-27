@@ -1,7 +1,7 @@
 app.factory('BearerAuthInterceptor', ['$q', '$location', '$localStorage', function ($q, $location, $localStorage) {
     return {
         request: function(config) {
-            console.log(config);
+          //  console.log(config);
             config.headers = config.headers || {};
             if ($localStorage.currentUser && $localStorage.currentUser.token) {
                 config.headers.Authorization = 'Bearer ' + $localStorage.currentUser.token;
@@ -9,14 +9,14 @@ app.factory('BearerAuthInterceptor', ['$q', '$location', '$localStorage', functi
             return config || $q.when(config);
         },
         response: function(response) {
-            console.log(response);
+        //    console.log(response);
             if (response.status === 401 || response.status === 404 || response.status === 503 ) {
                 $location.path('login');
             }
             return response || $q.when(response);
         },
         responseError: function (response) {
-            console.log(response);
+        //    console.log(response);
             if (response.status === 401 || response.status === 404 || response.status === 503 || response.status === 429) {
                 $localStorage.currentUser = '';
                 $location.path('login');

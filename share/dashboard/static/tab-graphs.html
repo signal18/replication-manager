@@ -1,0 +1,133 @@
+
+<style>
+
+@import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz:400,700);
+@import url(graphstyle.css);
+
+#qps { min-height: 200px; }
+
+</style>
+<div id="body">
+
+
+  <div id="qps"></div>
+  <div id="cores"></div>
+  <div id="net"></div>
+  <div id="sbm"></div>
+
+</div>
+
+
+
+           <script src="static/vendor/d3.v2.min.js"></script>
+           <script src="static/vendor/cubism.v1.js"></script>
+           <script src="static/vendor/highlight.min.js"></script>
+           <script>
+
+             var context = cubism.context() // a default context
+                .serverDelay(5e3)
+                .clientDelay(5e3)
+                 .step(1e4) // ten seconds
+                 .size(720); // four hours
+                graphite = context.graphite("http://"+window.location.hostname+":10002");
+
+               //  var foo = graphite.metric("sumSeries(nonNegativeDerivative(exclude(mysql.*.mysql_global_status_queries),'idle','idle')))").alias("Queries");
+                var dataQps = graphite.metric("perSecond(mysql.*.mysql_global_status_queries)").alias("Qps");
+
+                var dataNetIn = graphite.metric("perSecond(mysql.*.mysql_global_status_bytes_received)").alias("BytesIn");
+                var dataNetOut = graphite.metric("perSecond(mysql.*.mysql_global_status_bytes_sent)").alias("BytesOut");;
+                var sbm = graphite.metric("sumSeries(mysql.*.mysql_slave_status_seconds_behind_master)").alias("ReplDelay");;
+                var cores = graphite.metric("sumSeries(mysql.*.mysql_global_status_threads_running)").alias("Threads");;
+
+              //  var bar = graphite.metric("perSecond(mysql.*.mysql_global_status_bytes_*)").alias("NetworkBytes");
+
+
+
+	d3.select("#qps").call(function(div) {
+
+     div.selectAll(".horizon")
+         .data([dataQps])
+         .enter().append("div")
+         .attr("class", "horizon")
+         .call(context.horizon()
+         .extent([0, 1000])
+         .colors([ '#ef3b2c', '#084594', '#2171b5', '#4292c6', '#6baed6', '#9ecae1', '#c6dbef', '#deebf7', '#f7fbff', '#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#006d2c', '#00441b'])
+         .height(256)
+         );
+
+         div.append("div")
+              .attr("class", "axis")
+              .call(context.axis().orient("top"));
+
+     div.append("div")
+         .attr("class", "rule")
+         .call(context.rule());
+});
+
+
+d3.select("#net").call(function(div) {
+
+   div.selectAll(".horizon")
+       .data([dataNetIn,dataNetOut])
+       .enter().append("div")
+       .attr("class", "horizon")
+       .call(context.horizon()
+       .colors([ '#ef3b2c', '#084594', '#2171b5', '#4292c6', '#6baed6', '#9ecae1', '#c6dbef', '#deebf7', '#f7fbff', '#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#006d2c', '#00441b'])
+       .extent([0, 100000])
+       .height(256)
+       );
+       div.append("div")
+            .attr("class", "axis")
+            .call(context.axis().orient("top"));
+
+   div.append("div")
+       .attr("class", "rule")
+       .call(context.rule());
+});
+
+d3.select("#cores").call(function(div) {
+
+   div.selectAll(".horizon")
+       .data([cores])
+       .enter().append("div")
+       .attr("class", "horizon")
+       .call(context.horizon()
+       .colors([ '#ef3b2c', '#084594', '#2171b5', '#4292c6', '#6baed6', '#9ecae1', '#c6dbef', '#deebf7', '#f7fbff', '#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#006d2c', '#00441b'])
+       .extent([0, 1024])
+       .height(128)
+       );
+       div.append("div")
+            .attr("class", "axis")
+            .call(context.axis().orient("top"));
+
+   div.append("div")
+       .attr("class", "rule")
+       .call(context.rule());
+});
+
+d3.select("#sbm").call(function(div) {
+
+   div.selectAll(".horizon")
+       .data([sbm])
+       .enter().append("div")
+       .attr("class", "horizon")
+       .call(context.horizon()
+       .colors([ '#ef3b2c', '#084594', '#2171b5', '#4292c6', '#6baed6', '#9ecae1', '#c6dbef', '#deebf7', '#f7fbff', '#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#006d2c', '#00441b'])
+       .extent([0, 8000])
+       .height(256)
+       );
+       div.append("div")
+            .attr("class", "axis")
+            .call(context.axis().orient("top"));
+
+   div.append("div")
+       .attr("class", "rule")
+       .call(context.rule());
+});
+
+// On mousemove, reposition the chart values to match the rule.
+context.on("focus", function(i) {
+  d3.selectAll(".value").style("right", i == null ? null : context.size() - i + "px");
+});
+
+</script>
