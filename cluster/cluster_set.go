@@ -971,7 +971,10 @@ func (cluster *Cluster) SetLogStdout() {
 }
 
 func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
+	cluster.Lock()
 	cluster.clusterList = clusters
+	cluster.Unlock()
+
 }
 
 func (cluster *Cluster) SetState(key string, s state.State) {

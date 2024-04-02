@@ -674,6 +674,8 @@ func (cluster *Cluster) GetClusterListFromShardProxy(shardproxy string) map[stri
 }
 func (cluster *Cluster) GetClusterListFromName(name string) map[string]*Cluster {
 	var clusters = make(map[string]*(Cluster))
+	cluster.Lock()
+	defer cluster.Unlock()
 	for _, c := range cluster.clusterList {
 		if cluster.Name == name {
 			clusters[c.GetName()] = c
@@ -684,13 +686,14 @@ func (cluster *Cluster) GetClusterListFromName(name string) map[string]*Cluster 
 
 func (cluster *Cluster) GetChildClusters() map[string]*Cluster {
 	var clusters = make(map[string]*(Cluster))
+	cluster.Lock()
+	defer cluster.Unlock()
 	for _, c := range cluster.clusterList {
 		//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlErr, "GetChildClusters %s %s ", cluster.Name, c.Conf.ClusterHead)
 		if cluster.Name == c.Conf.ClusterHead {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Discovering of a child cluster via ClusterHead %s replication source %s", c.Name, c.Conf.ClusterHead)
 			clusters[c.Name] = c
 		}
-		// lopp over master multi source replication
 		condidateclustermaster := c.GetMaster()
 		if condidateclustermaster != nil && c.Name != cluster.Name {
 			for _, rep := range condidateclustermaster.Replications {
@@ -706,7 +709,8 @@ func (cluster *Cluster) GetChildClusters() map[string]*Cluster {
 }
 
 func (cluster *Cluster) GetParentClusterFromReplicationSource(rep dbhelper.SlaveStatus) *Cluster {
-
+	cluster.Lock()
+	defer cluster.Unlock()
 	for _, c := range cluster.clusterList {
 		if cluster.Name != c.Name {
 			for _, srv := range c.Servers {
