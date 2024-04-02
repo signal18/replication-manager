@@ -724,6 +724,8 @@ func (cluster *Cluster) GetProxyAgent(server DatabaseProxy) (Agent, error) {
 
 func (cluster *Cluster) GetAgentInOrchetrator(name string) (Agent, error) {
 	var node Agent
+	cluster.Lock()
+	defer cluster.Unlock()
 	for _, node := range cluster.Agents {
 		if name == node.HostName {
 			return node, nil

@@ -487,7 +487,11 @@ func (cluster *Cluster) initOrchetratorNodes() {
 		return
 	}
 	cluster.inInitNodes = true
-	defer func() { cluster.inInitNodes = false }()
+	cluster.Lock()
+	defer func() {
+		cluster.inInitNodes = false
+		cluster.Unlock()
+	}()
 
 	//defer cluster.insideInitNodes = false
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
@@ -809,8 +813,10 @@ func (cluster *Cluster) Save() error {
 	if err != nil {
 		return err
 	}
-
+	cluster.Lock()
 	saveAgents, _ := json.MarshalIndent(cluster.Agents, "", "\t")
+	cluster.Unlock()
+
 	err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/agents.json", saveAgents, 0644)
 	if err != nil {
 		return err
