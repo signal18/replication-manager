@@ -13,8 +13,7 @@
                <tr>
                   <td>Is Monitored</td>
                   <td>
-                     <span ng-if="!cluster.config.monitoringPause"><i class="fas fa-lightbulb" style="color:green" /></span>
-                     <span ng-if="cluster.config.monitoringPause"><i class="fas fa-lightbulb" style="color:red" /></span>
+                     <i class="fas fa-lightbulb" ng-class="cluster.config.monitoringPause ? 'icon-red' : 'icon-green'"/>
                   </td>
                </tr>
                <tr>
@@ -37,16 +36,13 @@
                <tr>
                   <td>Is Down</td>
                   <td>
-                     <span ng-if="!cluster.isDown && cluster.isFailable"><i class="fas fa-lightbulb" style="color:green" /></span>
-                     <span ng-if="!cluster.isDown && !cluster.isFailable"><i class="fas fa-lightbulb" style="color:orange" /></span>
-                     <span ng-if="cluster.isDown"><i class="fas fa-lightbulb" style="color:red" /></span>
+                     <i class="fas fa-lightbulb" ng-class="{'icon-green' : !cluster.isDown && cluster.isFailable, 'icon-orange': !cluster.isDown && !cluster.isFailable, 'icon-red': cluster.isDown}"/>
                   </td>
                </tr>
                <tr>
                   <td>Is Provisioned</td>
                   <td>
-                     <span ng-if="cluster.isProvision==true"><i class="far fa-hand-point-up" style="color:green" /></span>
-                     <span ng-if="cluster.isProvision==false"><i class="far fa-hand-point-down" style="color:red" /></span>
+                     <i ng-class="cluster.isProvision ? 'icon-green' : 'icon-red'" class="far fa-hand-point-up"/>
                   </td>
                </tr>
                <tr>
