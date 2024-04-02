@@ -229,3 +229,15 @@ img.vicon {
 span.cluster {
   margin: 0 16px;
 }
+
+.icon-green {
+  color: green
+}
+
+.icon-orange {
+  color: orange
+}
+
+.icon-red {
+  color: red
+}
