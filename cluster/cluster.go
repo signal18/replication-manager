@@ -604,46 +604,47 @@ func (cluster *Cluster) Run() {
 					if !cluster.IsInFailover() {
 						wg.Add(1)
 						go cluster.refreshProxies(wg)
-					}
-					if cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.StateMachine.IsInSchemaMonitor() {
-						go cluster.MonitorSchema()
-					}
-					if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
-						cluster.InjectProxiesTraffic()
-					}
-					if cluster.StateMachine.GetHeartbeats()%30 == 0 {
-						go cluster.initOrchetratorNodes()
-						cluster.MonitorQueryRules()
-						cluster.MonitorVariablesDiff()
-						go cluster.ResticFetchRepo()
-						cluster.IsValidBackup = cluster.HasValidBackup()
-						go cluster.CheckCredentialRotation()
-						cluster.CheckCanSaveDynamicConfig()
-						cluster.CheckIsOverwrite()
 
-					} else {
-						cluster.StateMachine.PreserveState("WARN0093")
-						cluster.StateMachine.PreserveState("WARN0084")
-						cluster.StateMachine.PreserveState("WARN0095")
-						cluster.StateMachine.PreserveState("WARN0101")
-						cluster.StateMachine.PreserveState("ERR00090")
-						cluster.StateMachine.PreserveState("WARN0102")
-					}
-					if !cluster.CanInitNodes {
-						cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
-					}
-					if !cluster.CanConnectVault {
-						cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
-					}
+						if cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.StateMachine.IsInSchemaMonitor() {
+							go cluster.MonitorSchema()
+						}
+						if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
+							cluster.InjectProxiesTraffic()
+						}
+						if cluster.StateMachine.GetHeartbeats()%30 == 0 {
+							go cluster.initOrchetratorNodes()
+							cluster.MonitorQueryRules()
+							cluster.MonitorVariablesDiff()
+							go cluster.ResticFetchRepo()
+							cluster.IsValidBackup = cluster.HasValidBackup()
+							go cluster.CheckCredentialRotation()
+							cluster.CheckCanSaveDynamicConfig()
+							cluster.CheckIsOverwrite()
 
-					if cluster.StateMachine.GetHeartbeats()%36000 == 0 {
-						cluster.ResticPurgeRepo()
-					} else {
-						cluster.StateMachine.PreserveState("WARN0094")
+						} else {
+							cluster.StateMachine.PreserveState("WARN0093")
+							cluster.StateMachine.PreserveState("WARN0084")
+							cluster.StateMachine.PreserveState("WARN0095")
+							cluster.StateMachine.PreserveState("WARN0101")
+							cluster.StateMachine.PreserveState("ERR00090")
+							cluster.StateMachine.PreserveState("WARN0102")
+						}
+						if !cluster.CanInitNodes {
+							cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
+						}
+						if !cluster.CanConnectVault {
+							cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
+						}
+
+						if cluster.StateMachine.GetHeartbeats()%36000 == 0 {
+							cluster.ResticPurgeRepo()
+						} else {
+							cluster.StateMachine.PreserveState("WARN0094")
+						}
+						cluster.PrintDelayStat()
 					}
-					cluster.PrintDelayStat()
+					wg.Wait()
 				}
-				wg.Wait()
 				// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so elelection win but server is ignored see electFailoverCandidate
 				err := cluster.AddChildServers()
 
