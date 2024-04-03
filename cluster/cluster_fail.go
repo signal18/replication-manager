@@ -31,7 +31,13 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		res := cluster.VMasterFailover(fail)
 		return res
 	}
+	if cluster.IsInFailover() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Cancel already in failover")
+		return false
+	}
+
 	cluster.StateMachine.SetFailoverState()
+	defer cluster.StateMachine.RemoveFailoverState()
 	// Phase 1: Cleanup and election
 	var err error
 	if fail == false {
@@ -51,7 +57,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", LvlDbg, "CheckLongRunningWrites")
 		if qt > 0 {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Long updates running on master. Cannot switchover")
-			cluster.StateMachine.RemoveFailoverState()
+
 			return false
 		}
 
@@ -82,14 +88,12 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		case <-time.After(time.Second * time.Duration(cluster.Conf.SwitchWaitTrx)):
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.Conf.SwitchWaitTrx)
-			cluster.StateMachine.RemoveFailoverState()
 			return false
 		}
 
 	} else {
 		if cluster.Conf.MultiMasterGrouprep {
 			// group replication auto elect a new master in case of failure do nothing
-			cluster.StateMachine.RemoveFailoverState()
 			return true
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "------------------------")
@@ -108,7 +112,6 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}
 	if key == -1 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No candidates found")
-		cluster.StateMachine.RemoveFailoverState()
 		return false
 	}
 
@@ -116,7 +119,6 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 	if fail && !cluster.isSlaveElectable(cluster.slaves[key], true) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Elected slave have issue cancelling failover", cluster.slaves[key].URL)
-		cluster.StateMachine.RemoveFailoverState()
 		return false
 	}
 	// Shuffle the server list
@@ -533,16 +535,16 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		cluster.FailoverCtr++
 		cluster.FailoverTs = time.Now().Unix()
 	}
-	cluster.StateMachine.RemoveFailoverState()
 
 	// Not a prefered master this code is not default
-	if cluster.Conf.FailoverSwitchToPrefered && fail == true && cluster.Conf.PrefMaster != "" && !cluster.master.IsPrefered() {
+	// such code is to dangerous documentation is needed
+	/*	if cluster.Conf.FailoverSwitchToPrefered && fail == true && cluster.Conf.PrefMaster != "" && !cluster.master.IsPrefered() {
 		prm := cluster.foundPreferedMaster(cluster.slaves)
 		if prm != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Switchover after failover not on a prefered leader after failover")
 			cluster.MasterFailover(false)
 		}
-	}
+	}*/
 
 	return true
 }
@@ -1192,8 +1194,13 @@ func (cluster *Cluster) foundPreferedMaster(l []*ServerMonitor) *ServerMonitor {
 
 // VMasterFailover triggers a leader change and returns the new master URL when all possible leader multimaster ring or galera
 func (cluster *Cluster) VMasterFailover(fail bool) bool {
+	if cluster.IsInFailover() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Cancel already in failover")
+		return false
+	}
 
 	cluster.StateMachine.SetFailoverState()
+	defer cluster.StateMachine.RemoveFailoverState()
 	// Phase 1: Cleanup and election
 	var err error
 	cluster.oldMaster = cluster.vmaster
@@ -1214,7 +1221,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.LogSQL(logs, err, cluster.vmaster.URL, "MasterFailover", LvlDbg, "CheckLongRunningWrites")
 		if qt > 0 {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Long updates running on virtual master. Cannot switchover")
-			cluster.StateMachine.RemoveFailoverState()
+
 			return false
 		}
 
@@ -1235,7 +1242,6 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 			}
 		case <-time.After(time.Second * time.Duration(cluster.Conf.SwitchWaitTrx)):
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.Conf.SwitchWaitTrx)
-			cluster.StateMachine.RemoveFailoverState()
 			return false
 		}
 		cluster.master = cluster.vmaster
@@ -1262,7 +1268,6 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	}
 	if key == -1 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No candidates found")
-		cluster.StateMachine.RemoveFailoverState()
 		return false
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Server %s has been elected as a new master", cluster.slaves[key].URL)
@@ -1287,7 +1292,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	}
 	if !fail && cluster.Conf.MultiMasterGrouprep {
 		result, errswitch := cluster.slaves[key].SetGroupReplicationPrimary()
-		cluster.StateMachine.RemoveFailoverState()
+
 		if errswitch == nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Server %s elected as new leader %s", cluster.slaves[key].URL, result)
 
@@ -1413,7 +1418,6 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	}
 	cluster.master = nil
 
-	cluster.StateMachine.RemoveFailoverState()
 	return true
 }
 
