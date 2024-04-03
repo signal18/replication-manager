@@ -28,8 +28,8 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/codegangsta/negroni"
-	jwt "github.com/dgrijalva/jwt-go"
-	"github.com/dgrijalva/jwt-go/request"
+	jwt "github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/request"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cert"
 	"github.com/signal18/replication-manager/cluster"
@@ -45,6 +45,8 @@ var apiPass string
 var apiUser string
 
 func (repman *ReplicationManager) initKeys() {
+	repman.Lock()
+	defer repman.Unlock()
 	var (
 		err         error
 		privKey     *rsa.PrivateKey

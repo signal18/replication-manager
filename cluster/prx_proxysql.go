@@ -253,7 +253,6 @@ func (proxy *ProxySQLProxy) Failover() {
 }
 
 func (proxy *ProxySQLProxy) Refresh() error {
-
 	cluster := proxy.ClusterGroup
 	// if cluster.Conf.LogLevel > 9 {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlDbg, "ProxySQL port : %s, user %s, pass %s\n", proxy.Port, proxy.User, proxy.Pass)
@@ -298,6 +297,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 		if err != nil {
 			isFoundBackendWrite = false
 		} else {
+
 			proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
 		}
 		isFoundBackendRead := true

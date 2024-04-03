@@ -75,7 +75,8 @@ func (cluster *Cluster) newServerList() error {
 func (cluster *Cluster) AddChildServers() error {
 
 	mychilds := cluster.GetChildClusters()
-
+	cluster.Lock()
+	defer cluster.Unlock()
 	for _, c := range mychilds {
 		for _, sv := range c.Servers {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "AddChildServers checking %s of %s ", sv.URL, c.Name)
@@ -126,6 +127,9 @@ func (cluster *Cluster) AddChildServers() error {
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
 func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
+	cluster.Lock()
+	defer cluster.Unlock()
+
 	defer wcg.Done()
 	//monitor ignored server fist so that their replication position get oldest
 	wg := new(sync.WaitGroup)

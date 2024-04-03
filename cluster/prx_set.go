@@ -27,6 +27,10 @@ func (p *Proxy) SetID() {
 		10)
 }
 
+func (p *Proxy) SetLock() {
+	p.Lock.Lock()
+}
+
 // TODO: clarify where this is used, can maybe be replaced with a Getter
 func (proxy *Proxy) SetServiceName(namespace string) {
 	proxy.ServiceName = namespace + "/svc/" + proxy.Name

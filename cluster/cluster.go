@@ -546,6 +546,8 @@ func (cluster *Cluster) Run() {
 		go cluster.createKeys()
 	}
 
+	cluster.Topology = cluster.GetTopologyFromConf()
+
 	for cluster.exit == false {
 		if !cluster.Conf.MonitorPause {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
@@ -653,7 +655,6 @@ func (cluster *Cluster) Run() {
 				// CheckFailed trigger failover code if passing all false positiv and constraints
 				cluster.CheckFailed()
 
-				cluster.Topology = cluster.GetTopology()
 				cluster.SetStatus()
 				cluster.StateProcessing()
 			}
@@ -813,9 +814,8 @@ func (cluster *Cluster) Save() error {
 	if err != nil {
 		return err
 	}
-	cluster.Lock()
+
 	saveAgents, _ := json.MarshalIndent(cluster.Agents, "", "\t")
-	cluster.Unlock()
 
 	err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/agents.json", saveAgents, 0644)
 	if err != nil {
@@ -1428,6 +1428,7 @@ func (cluster *Cluster) MonitorSchema() {
 			t.TableSync = oldtable.TableSync
 		}
 		// lookup other clusters
+
 		for _, cl := range cluster.clusterList {
 			if cl.GetName() != cluster.GetName() {
 

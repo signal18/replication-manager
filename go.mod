@@ -119,6 +119,7 @@ require (
 	github.com/go-git/go-git v4.7.0+incompatible // indirect
 	github.com/go-git/go-git/v5 v5.6.1 // indirect
 	github.com/go-ole/go-ole v1.2.5 // indirect
+	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/gonum/blas v0.0.0-20180125090452-e7c5890b24cf // indirect
 	github.com/gonum/floats v0.0.0-20180125090339-7de1f4ea7ab5 // indirect
 	github.com/gonum/internal v0.0.0-20180125090855-fda53f8d2571 // indirect

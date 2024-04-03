@@ -184,6 +184,7 @@ type ServerMonitor struct {
 	DelayStat                   *ServerDelayStat             `json:"delayStat"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
+	sync.Mutex
 }
 
 type serverList []*ServerMonitor
@@ -595,6 +596,8 @@ var start_time time.Time
 
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
+	server.Lock()
+	defer server.Unlock()
 	cluster := server.ClusterGroup
 	var err error
 

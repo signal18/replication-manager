@@ -16,6 +16,10 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
+func (proxy *Proxy) DelLock() {
+	proxy.Lock.Unlock()
+}
+
 func (proxy *Proxy) delCookie(key string) error {
 	err := os.Remove(proxy.Datadir + "/@" + key)
 	cluster := proxy.ClusterGroup

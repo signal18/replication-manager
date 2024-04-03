@@ -65,6 +65,7 @@ type Proxy struct {
 	ServiceName     string               `json:"serviceName"`
 	Agent           string               `json:"agent"`
 	Weight          string               `json:"weight"`
+	Lock            sync.Mutex
 }
 
 type DatabaseProxy interface {
@@ -83,7 +84,8 @@ type DatabaseProxy interface {
 
 	GetFailCount() int
 	SetFailCount(c int)
-
+	DelLock()
+	SetLock()
 	GetAgent() string
 	GetName() string
 	GetHost() string
@@ -319,7 +321,9 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint64) {
 // called  by server monitor if state change
 func (cluster *Cluster) backendStateChangeProxies() {
 	for _, pr := range cluster.Proxies {
+		pr.SetLock()
 		pr.BackendsStateChange()
+		pr.DelLock()
 	}
 }
 
@@ -332,6 +336,8 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 	for _, pr := range cluster.Proxies {
 		if pr != nil {
 			var err error
+			pr.SetLock()
+
 			err = pr.Refresh()
 			if err == nil {
 				pr.SetFailCount(0)
@@ -363,6 +369,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 			if cluster.Conf.GraphiteMetrics {
 				pr.SendStats()
 			}
+			pr.DelLock()
 		}
 	}
 	// if cluster.Conf.LogLevel > 2 {

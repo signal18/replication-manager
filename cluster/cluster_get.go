@@ -593,7 +593,8 @@ func (cluster *Cluster) GetProxyServerIdList() []string {
 	return ret
 }
 
-func (cluster *Cluster) GetTopology() string {
+func (cluster *Cluster) GetTopologyFromConf() string {
+
 	cluster.Conf.Topology = topoUnknown
 	if cluster.Conf.MultiMaster {
 		cluster.Conf.Topology = topoMultiMaster
@@ -624,6 +625,10 @@ func (cluster *Cluster) GetTopology() string {
 		}
 	}
 	return cluster.Conf.Topology
+}
+
+func (cluster *Cluster) GetTopology() string {
+	return cluster.Topology
 }
 
 /*
