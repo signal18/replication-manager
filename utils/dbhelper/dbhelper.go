@@ -1194,7 +1194,7 @@ func SetMultiSourceRepl(db *sqlx.DB, master_host string, master_port string, mas
 	return logs, err
 }
 
-func InstallSemiSync(db *sqlx.DB) (string, error) {
+func InstallSemiSync(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 	stmt := "INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so'"
 	logs := stmt
 	_, err := db.Exec(stmt)
@@ -2172,16 +2172,16 @@ func SetMaxConnections(db *sqlx.DB, connections string, myver *MySQLVersion) (st
 func SetSemiSyncSlave(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 
 	query := "SET GLOBAL rpl-semi-sync-slave-enabled=1"
-	if myver.IsMySQL() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
-		query = "SET GLOBAL rpl_semi_sync_replica_enabled=1"
+	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+		query = "SET GLOBAL rpl_semi_sync_replica_enabled=ON"
 	}
 	_, err := db.Exec(query)
 	if err != nil {
 		return query, err
 	}
 	query = "SET GLOBAL rpl-semi-sync-master-enabled=0"
-	if myver.IsMySQL() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
-		query = "SET GLOBAL rpl_semi_sync_source_enabled=0"
+	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+		query = "SET GLOBAL rpl_semi_sync_source_enabled=OFF"
 	}
 	_, err = db.Exec(query)
 	return query, err
@@ -2190,16 +2190,16 @@ func SetSemiSyncSlave(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 func SetSemiSyncMaster(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 
 	query := "SET GLOBAL rpl-semi-sync-master-enabled=1"
-	if myver.IsMySQL() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
-		query = "SET GLOBAL rpl_semi_sync_source_enabled=1"
+	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+		query = "SET GLOBAL rpl_semi_sync_source_enabled=ON"
 	}
 	_, err := db.Exec(query)
 	if err != nil {
 		return query, err
 	}
 	query = "SET GLOBAL rpl-semi-sync-slave-enabled=0"
-	if myver.IsMySQL() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
-		query = "SET GLOBAL rpl_semi_sync_replica_enabled=0"
+	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+		query = "SET GLOBAL rpl_semi_sync_replica_enabled=OFF"
 	}
 	_, err = db.Exec(query)
 	return query, err
