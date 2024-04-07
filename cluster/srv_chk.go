@@ -165,7 +165,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	cluster := server.ClusterGroup
 	if cluster.Conf.ForceSlaveSemisync && sl.HaveSemiSync == false && cluster.GetTopology() != topoMultiMasterWsrep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "DEBUG", "Enforce semisync on slave %s", sl.URL)
-		dbhelper.InstallSemiSync(sl.Conn)
+		dbhelper.InstallSemiSync(sl.Conn, server.DBVersion)
 	} else if sl.IsIgnored() == false && sl.HaveSemiSync == false && cluster.GetTopology() != topoMultiMasterWsrep {
 		cluster.StateMachine.AddState("WARN0048", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0048"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
@@ -280,7 +280,7 @@ func (server *ServerMonitor) CheckMasterSettings() {
 	cluster := server.ClusterGroup
 	if cluster.Conf.ForceSlaveSemisync && server.HaveSemiSync == false {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce semisync on Master %s", server.URL)
-		dbhelper.InstallSemiSync(server.Conn)
+		dbhelper.InstallSemiSync(server.Conn, server.DBVersion)
 	} else if server.HaveSemiSync == false && cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoMultiMasterGrouprep {
 		cluster.StateMachine.AddState("WARN0060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0060"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
