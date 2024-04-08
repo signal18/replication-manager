@@ -542,7 +542,9 @@ func (cluster *Cluster) Run() {
 		go cluster.createKeys()
 	}
 
+	cluster.Lock()
 	cluster.Topology = cluster.GetTopologyFromConf()
+	cluster.Unlock()
 
 	for cluster.exit == false {
 		if !cluster.Conf.MonitorPause {
@@ -656,6 +658,13 @@ func (cluster *Cluster) Run() {
 				cluster.StateProcessing()
 			}
 		}
+
+		if cluster.Conf.Topology == topoUnknown {
+			cluster.Lock()
+			cluster.Topology = cluster.GetTopologyFromConf()
+			cluster.Unlock()
+		}
+
 		time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))
 
 	}
