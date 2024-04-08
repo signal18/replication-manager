@@ -487,11 +487,6 @@ func (cluster *Cluster) initOrchetratorNodes() {
 		return
 	}
 	cluster.inInitNodes = true
-	cluster.Lock()
-	defer func() {
-		cluster.inInitNodes = false
-		cluster.Unlock()
-	}()
 
 	//defer cluster.insideInitNodes = false
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
@@ -511,6 +506,7 @@ func (cluster *Cluster) initOrchetratorNodes() {
 	}
 
 	cluster.SetAgentsCpuCoreMem()
+	cluster.inInitNodes = false
 
 }
 
