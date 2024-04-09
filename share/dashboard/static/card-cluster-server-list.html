@@ -83,8 +83,8 @@
 </td>
 <td>{{server.replications[0].secondsBehindMaster.Int64}}</td>
 <td>{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
-    <td class="state"><i ng-if="server.ignored==true" class="fa fa-1x fa-thumbs-down text-danger"/><i
-            ng-if="server.prefered==true" class="fa fa-1x fa-thumbs-up text-success"/></td>
+    <td class="state"><i ng-if="server.ignored==true" class="fa fa-1x fa-thumbs-down text-danger"></i><i
+            ng-if="server.prefered==true" class="fa fa-1x fa-thumbs-up text-success"></i></td>
     <td class="state"><i ng-if="server.replications[0].slaveIoRunning.String=='Yes'"
                          class="fa fa-1x fa-check-circle text-success"></i><i
             ng-if="server.replications[0].slaveIoRunning.String!='Yes'"

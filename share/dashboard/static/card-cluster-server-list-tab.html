@@ -59,8 +59,8 @@
                 <span ng-switch-default class="label label-default">{{server.state}}
                     <label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
           </td>
-        <td align="center" class="tabicon"><i ng-if="server.ignored==true" class="fa fa-1x fa-thumbs-down text-danger"/><i
-                ng-if="server.prefered==true" class="fa fa-1x fa-thumbs-up text-success"/></td>
+        <td align="center" class="tabicon"><i ng-if="server.ignored==true" class="fa fa-1x fa-thumbs-down text-danger"></i><i
+                ng-if="server.prefered==true" class="fa fa-1x fa-thumbs-up text-success"></i></td>
         <td align="center" class="tabicon"><i ng-if="server.readOnly=='ON'" class="fa fa-1x fa-check-circle text-success"></i><i
                 ng-if="server.readOnly!='ON'" class="fa fa-1x fa-times-circle text-danger"></i></td>
         <td align="center" class="tabicon"><i ng-if="server.eventScheduler==true" class="fa fa-1x fa-check-circle text-success"></i><i

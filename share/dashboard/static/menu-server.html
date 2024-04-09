@@ -24,7 +24,7 @@
             </span>
          </md-button>
          <md-menu-content>
-            <md-menu-item ng-if="server.prefered==false" ng-click="dbsetprefered(server.id)">
+            <md-menu-item ng-if="server.prefered==false && server.ignored==false" ng-click="dbsetprefered(server.id)">
                <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-failover']==false">
                   <md-icon md-menu-align-target class="fas fa-thumbs-up"></md-icon>
                   Set as Preferred
