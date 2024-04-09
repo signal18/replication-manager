@@ -1196,24 +1196,36 @@ func SetMultiSourceRepl(db *sqlx.DB, master_host string, master_port string, mas
 
 func InstallSemiSync(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 	stmt := "INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so'"
+	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+		stmt = "INSTALL PLUGIN rpl_semi_sync_replica SONAME 'semisync_replica.so'"
+	}
 	logs := stmt
 	_, err := db.Exec(stmt)
 	if err != nil {
 		return logs, err
 	}
 	stmt = "INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so'"
+	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+		stmt = "INSTALL PLUGIN rpl_semi_sync_source SONAME 'semisync_source.so';"
+	}
 	logs += "\n" + stmt
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return logs, err
 	}
 	stmt = "set global rpl_semi_sync_master_enabled='ON'"
+	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+		stmt = "SET GLOBAL rpl_semi_sync_source_enabled=ON"
+	}
 	logs += "\n" + stmt
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return logs, err
 	}
 	stmt = "set global rpl_semi_sync_slave_enabled='ON'"
+	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+		stmt = "SET GLOBAL rpl_semi_sync_replica_enabled=ON"
+	}
 	logs += "\n" + stmt
 	_, err = db.Exec(stmt)
 	if err != nil {
