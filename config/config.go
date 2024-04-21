@@ -234,6 +234,10 @@ type Config struct {
 	ForceBinlogCompress                       bool                   `mapstructure:"force-binlog-compress" toml:"force-binlog-compress" json:"forceBinlogCompress"`
 	ForceBinlogSlowqueries                    bool                   `mapstructure:"force-binlog-slowqueries" toml:"force-binlog-slowqueries" json:"forceBinlogSlowqueries"`
 	ForceBinlogChecksum                       bool                   `mapstructure:"force-binlog-checksum" toml:"force-binlog-checksum" json:"forceBinlogChecksum"`
+	ForceBinlogPurge                          bool                   `mapstructure:"force-binlog-purge" toml:"force-binlog-purge" json:"forceBinlogPurge"`
+	ForceBinlogPurgeOnRestore                 bool                   `mapstructure:"force-binlog-purge-on-restore" toml:"force-binlog-purge-on-restore" json:"forceBinlogPurgeOnRestore"`
+	ForceBinlogPurgeTotalSize                 int                    `mapstructure:"force-binlog-purge-total-size" toml:"force-binlog-purge-total-size" json:"forceBinlogPurgeTotalSize"`
+	ForceBinlogPurgeMinReplica                int                    `mapstructure:"force-binlog-purge-min-replica" toml:"force-binlog-purge-min-replica" json:"forceBinlogPurgeMinReplica"`
 	ForceInmemoryBinlogCacheSize              bool                   `mapstructure:"force-inmemory-binlog-cache-size" toml:"force-inmemory-binlog-cache-size" json:"forceInmemoryBinlogCacheSize"`
 	ForceDiskRelayLogSizeLimit                bool                   `mapstructure:"force-disk-relaylog-size-limit" toml:"force-disk-relaylog-size-limit" json:"forceDiskRelaylogSizeLimit"`
 	ForceDiskRelayLogSizeLimitSize            uint64                 `mapstructure:"force-disk-relaylog-size-limit-size"  toml:"force-disk-relaylog-size-limit-size" json:"forceDiskRelaylogSizeLimitSize"`

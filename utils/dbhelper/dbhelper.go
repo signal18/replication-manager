@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/percona/go-mysql/query"
@@ -29,6 +30,9 @@ import (
 )
 
 const debug = false
+const (
+	DDMMYYYYhhmmss = "2006-01-02 15:04:05"
+)
 
 type Plugin struct {
 	Name    string         `json:"name"`
@@ -317,13 +321,7 @@ func GetQueryExplain(db *sqlx.DB, version *MySQLVersion, schema string, query st
 		_, err = db.Exec("USE " + schema)
 	}
 	stmt := "Explain " + query
-	if version.IsMariaDB() {
-		//MariaDB
-		err = db.Select(&pl, stmt)
-	} else {
-		//MySQL
-		err = db.Select(&pl, stmt)
-	}
+	err = db.Select(&pl, stmt)
 	if err != nil {
 		return nil, stmt, fmt.Errorf("ERROR: Could not get Explain: %s", err)
 	}
@@ -351,7 +349,7 @@ func GetQueryResponseTime(db *sqlx.DB, version *MySQLVersion) ([]ResponseTime, s
 	pl := []ResponseTime{}
 	var err error
 	stmt := "SELECT * FROM INFORMATION_SCHEMA.QUERY_RESPONSE_TIME"
-	if version.IsMySQL() || version.IsPPostgreSQL() {
+	if version.IsMySQL() || version.IsPostgreSQL() {
 		return nil, stmt, fmt.Errorf("ERROR: QUERY_RESPONSE_TIME not available on MySQL or PostgeSQL: %s", err)
 	}
 	err = db.Select(&pl, stmt)
@@ -365,7 +363,7 @@ func GetBinaryLogs(db *sqlx.DB, version *MySQLVersion) (map[string]uint, string,
 
 	vars := make(map[string]uint)
 	query := "SHOW BINARY LOGS"
-	if version.IsPPostgreSQL() {
+	if version.IsPostgreSQL() {
 		return nil, query, fmt.Errorf("ERROR: QUERY_RESPONSE_TIME not available on PostgeSQL")
 	}
 	rows, err := db.Queryx(query)
@@ -422,7 +420,7 @@ func GetProcesslistTable(db *sqlx.DB, version *MySQLVersion) ([]Processlist, str
 		if version.GreaterEqual("8.0") {
 			stmt = "SELECT Id, User, Host, `Db` AS `db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info ,0 as Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME DESC LIMIT 50"
 		}
-	} else if version.IsPPostgreSQL() {
+	} else if version.IsPostgreSQL() {
 		// WHERE state <> 'idle' 		AND pid<>pg_backend_pid()
 		stmt = `SELECT pid as "Id", coalesce(usename,'') as "User",coalesce(client_hostname || client_port,'') as "Host" , coalesce(datname,'') as db , coalesce(query,'') as "Command", extract(epoch from NOW()) - extract(epoch from query_start) as "Time",  coalesce(state,'') as "State",COALESCE(application_name,'')  as "Info" ,0 as "Progress"  FROM pg_stat_activity`
 	}
@@ -446,7 +444,7 @@ func GetProcesslistTableFromUser(db *sqlx.DB, version *MySQLVersion, user string
 		if version.GreaterEqual("8.0") {
 			stmt = "SELECT Id, User, Host, `Db` AS `db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info ,0 as Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE   User='+ user +'"
 		}
-	} else if version.IsPPostgreSQL() {
+	} else if version.IsPostgreSQL() {
 		// WHERE state <> 'idle' 		AND pid<>pg_backend_pid()
 		stmt = `SELECT pid as "Id", coalesce(usename,'') as "User",coalesce(client_hostname || client_port,'') as "Host" , coalesce(datname,'') as db , coalesce(query,'') as "Command", extract(epoch from NOW()) - extract(epoch from query_start) as "Time",  coalesce(state,'') as "State",COALESCE(application_name,'')  as "Info" ,0 as "Progress"  FROM pg_stat_activity`
 	}
@@ -464,7 +462,7 @@ func GetProcesslist(db *sqlx.DB, version *MySQLVersion) ([]Processlist, string, 
 	if version.IsMariaDB() {
 		//MariaDB
 		query = "SHOW FULL PROCESSLIST"
-	} else if version.IsPPostgreSQL() {
+	} else if version.IsPostgreSQL() {
 		// WHERE state <> 'idle' 		AND pid<>pg_backend_pid()
 		query = `SELECT pid as "Id", coalesce(usename,'') as "User",coalesce(client_hostname || client_port,'') as "Host" , coalesce(datname,'') as db ,COALESCE(application_name,'')  as "Command", extract(epoch from NOW()) - extract(epoch from query_start) as "Time",  coalesce(state,'') as "State", coalesce(query,'')  as "Info" ,0 as "Progress"  FROM pg_stat_activity`
 	} else {
@@ -655,7 +653,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string
 		masterOrSource = "SOURCE"
 	}
 	cm := ""
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		if opt.Channel == "" {
 			opt.Channel = "alltables"
 		}
@@ -763,7 +761,7 @@ func GetDBVersion(db *sqlx.DB) (*MySQLVersion, string, error) {
 		return &MySQLVersion{}, stmt, err
 	}
 	v, _ := NewMySQLVersion(version, "")
-	if !v.IsPPostgreSQL() {
+	if !v.IsPostgreSQL() {
 		stmt = "SELECT @@version_comment"
 		db.QueryRowx(stmt).Scan(&versionComment)
 	}
@@ -794,7 +792,7 @@ func GetHostFromConnection(db *sqlx.DB, user string, version *MySQLVersion) (str
 	}
 	var value string
 	query := "select user()"
-	if version.IsPPostgreSQL() {
+	if version.IsPostgreSQL() {
 		query = "select inet_client_addr()"
 	}
 	err := db.QueryRowx(query).Scan(&value)
@@ -802,7 +800,7 @@ func GetHostFromConnection(db *sqlx.DB, user string, version *MySQLVersion) (str
 		log.Println("ERROR: Could not get SQL User()", err)
 		return "N/A", query, err
 	}
-	if version.IsPPostgreSQL() {
+	if version.IsPostgreSQL() {
 		return value, query, nil
 	}
 	return strings.Split(value, "@")[1], query, nil
@@ -824,7 +822,7 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 		iprange2 := splitip[0] + ":" + splitip[1] + ":%:%"
 		iprange3 := splitip[0] + ":" + splitip[1] + ":" + splitip[2] + ":%"
 
-		if myver.IsPPostgreSQL() {
+		if myver.IsPostgreSQL() {
 			stmt = `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = '` + user + `'`
 			row := db.QueryRowx(stmt)
 			err = row.StructScan(&priv)
@@ -853,7 +851,7 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 
 	iprange3 := splitip[0] + "." + splitip[1] + "." + splitip[2] + ".%"
 
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		stmt = `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = '` + user + `'`
 		row := db.QueryRowx(stmt)
 		err = row.StructScan(&priv)
@@ -876,7 +874,7 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string, ip string, myver *MySQLVersion) (bool, string, error) {
 
 	stmt := ""
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		stmt = "SELECT passwd  AS pass ,passwd AS upass  FROM pg_catalog.pg_user u WHERE usename = ?"
 		rows, err := db.Query(stmt, user)
 		if err != nil {
@@ -947,7 +945,7 @@ func GetSlaveStatus(db *sqlx.DB, Channel string, myver *MySQLVersion) (SlaveStat
 	if Channel == "" {
 
 		query = "SHOW SLAVE STATUS"
-		if myver.IsPPostgreSQL() {
+		if myver.IsPostgreSQL() {
 			/*		query = `select
 						received_lsn ,subname "Connection_name",
 						pg_walfile_name(received_lsn) as "Master_Log_File",
@@ -1071,7 +1069,7 @@ func GetMSlaveStatus(db *sqlx.DB, conn string, myver *MySQLVersion) (SlaveStatus
 	var err error
 	logs := ""
 
-	if myver.IsMariaDB() || myver.IsPPostgreSQL() {
+	if myver.IsMariaDB() || myver.IsPostgreSQL() {
 		ss, logs, err = GetAllSlavesStatus(db, myver)
 	} else {
 		var s SlaveStatus
@@ -1130,7 +1128,7 @@ func GetAllSlavesStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, string
 
 	query := "SHOW ALL SLAVES STATUS"
 	//		CASE WHEN sqt.nbrep=1 THEN	 ss.subname ELSE '' END as "Connection_name",
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		query = `SELECT
 								ss.subname as "Connection_name",
 								ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[2],'host=') as "Master_Host",
@@ -1429,7 +1427,7 @@ func GetMasterStatus(db *sqlx.DB, myver *MySQLVersion) (MasterStatus, string, er
 	ms := MasterStatus{}
 	udb := db.Unsafe()
 	query := "SHOW MASTER STATUS"
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		query = `select
 		 	 'master.' ||	pg_walfile_name(pg_current_wal_lsn()) as "File" ,
 				(SELECT file_offset  FROM pg_walfile_name_offset(pg_current_wal_lsn())) as "Position" ,
@@ -1534,7 +1532,7 @@ func GetStatus(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, err
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
 	query := "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status"
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		query = `SELECT 'COM_QUERY' as "variable_name",  SUM(xact_commit + xact_rollback)::text as "value" FROM pg_stat_database
 			UNION ALL SELECT 'COM_INSERT' as "variable_name",SUM(tup_inserted)::text as "value" FROM pg_stat_database
 			UNION ALL SELECT 'COM_UPDATE' as "variable_name",SUM(tup_updated)::text as "value" FROM pg_stat_database
@@ -1767,7 +1765,7 @@ func GetVariablesCase(db *sqlx.DB, myver *MySQLVersion, vcase string) (map[strin
 	if vcase == "UPPER" {
 		query = "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_variables"
 	}
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		query = "SELECT upper(name) AS variable_name, setting AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
 		if vcase == "UPPER" {
 			query = "SELECT upper(name) AS variable_name, upper(setting) AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
@@ -1810,7 +1808,7 @@ func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 }
 
 func GetNoBlockOnMedataLock(db *sqlx.DB, myver *MySQLVersion) string {
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		return ""
 	}
 	noBlockOnMedataLock := "/*replication-manager*/ "
@@ -1825,7 +1823,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Tabl
 
 	logs := ""
 	query := GetNoBlockOnMedataLock(db, myver) + "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema', 'sys') AND SCHEMA_NAME NOT LIKE '#%'"
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		query = `SELECT SCHEMA_NAME AS "SCHEMA_NAME" FROM information_schema.schemata  WHERE SCHEMA_NAME not in ('information_schema','pg_catalog')`
 	}
 	databases, err := db.Queryx(query)
@@ -1842,7 +1840,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Tabl
 			return vars, tblList, query, err
 		}
 		query := GetNoBlockOnMedataLock(db, myver) + "SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name, COALESCE(a.ENGINE,'') as Engine,COALESCE(a.TABLE_ROWS,0) as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length , 0 as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' AND  a.TABLE_SCHEMA='" + schema + "'"
-		if myver.IsPPostgreSQL() {
+		if myver.IsPostgreSQL() {
 			query = `SELECT a.schemaname as "Table_schema" ,  a.tablename as "Table_name" ,'postgres' as "Engine",COALESCE(b.n_live_tup,0) as "Table_rows" ,0 as "Data_length",0 as "Index_length" , 0 as "Table_crc"  FROM pg_catalog.pg_tables  a LEFT JOIN pg_catalog.pg_stat_user_tables b ON (a.schemaname=b.schemaname AND a.tablename=b.relname )  WHERE  a.schemaname='` + schema + `'`
 		}
 		logs += "\n" + query
@@ -1868,7 +1866,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Tabl
 			*/
 
 			query := GetNoBlockOnMedataLock(db, myver) + "SHOW CREATE TABLE `" + schema + "`.`" + v.TableName + "`"
-			if myver.IsPPostgreSQL() {
+			if myver.IsPostgreSQL() {
 				query = "SELECT 'CREATE TABLE `" + schema + "`.`" + v.TableName + "` (' || E'\n'|| '' || string_agg(column_list.column_expr, ', ' || E'\n' || '') ||   '' || E'\n' || ') ENGINE=postgress;' FROM (   SELECT '    `' || column_name || '` ' || data_type ||   coalesce('(' || character_maximum_length || ')', '') ||   case when is_nullable = 'YES' then '' else ' NOT NULL' end as column_expr  FROM information_schema.columns  WHERE table_schema = '" + schema + "' AND table_name = '" + v.TableName + "' ORDER BY ordinal_position) column_list"
 			}
 			logs += "\n" + query
@@ -1894,7 +1892,7 @@ func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, string, error
 	// password was remover from system table in mysql 8.0
 
 	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user where host<>'localhost' "
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		query = "SELECT usename as user , '%' as host , 'unknow'  as password, 0 FROM pg_catalog.pg_user"
 	} else if (myver.IsMySQL() || myver.IsPercona()) && (myver.Major > 7 || (myver.Major == 5 && myver.Minor >= 7)) {
 		if myver.Major > 7 {
@@ -2020,7 +2018,7 @@ func UnlockTables(db *sqlx.DB) (string, error) {
 
 func StopSlave(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
 	cmd := ""
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		if Channel == "" {
 			Channel = "alltables"
 		}
@@ -2251,7 +2249,7 @@ func SkipBinlogEvent(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, 
 
 func StartSlave(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
 	cmd := ""
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		if Channel == "" {
 			Channel = "alltables"
 		}
@@ -2293,7 +2291,7 @@ func BootstrapGroupReplication(db *sqlx.DB, myver *MySQLVersion) (string, error)
 }
 func ResetSlave(db *sqlx.DB, all bool, Channel string, myver *MySQLVersion) (string, error) {
 	stmt := ""
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		if Channel == "" {
 			Channel = "alltables"
 		}
@@ -2316,7 +2314,7 @@ func ResetSlave(db *sqlx.DB, all bool, Channel string, myver *MySQLVersion) (str
 
 func ResetMaster(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
 	stmt := ""
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		if Channel == "" {
 			Channel = "alltables"
 		}
@@ -2331,7 +2329,7 @@ func ResetMaster(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, erro
 
 func PostgresGetChannel(db *sqlx.DB, myver *MySQLVersion) (string, string, error) {
 	stmt := ""
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 
 		stmt += "select slot_name from pg_replication_slots"
 		channels := []string{}
@@ -2525,7 +2523,7 @@ func KillThreads(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 	//SELECT pg_terminate_backend(11929);
 	var ids []int
 	query := "SELECT Id FROM information_schema.PROCESSLIST WHERE Command != 'binlog dump' AND User != 'system user' AND Id != CONNECTION_ID()"
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		query = "SELECT pid  FROM pg_stat_activity where backend_type='client backend' and pid<>pg_backend_pid()"
 	}
 	logs := query
@@ -2546,7 +2544,7 @@ func KillThreads(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 }
 
 func KillThread(db *sqlx.DB, id string, myver *MySQLVersion) (string, error) {
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		_, err := db.Exec("SELECT pg_terminate_backend(" + id + ")")
 		return "SELECT pg_terminate_backend(" + id + ")", err
 	}
@@ -2556,7 +2554,7 @@ func KillThread(db *sqlx.DB, id string, myver *MySQLVersion) (string, error) {
 
 func KillQuery(db *sqlx.DB, id string, myver *MySQLVersion) (string, error) {
 
-	if myver.IsPPostgreSQL() {
+	if myver.IsPostgreSQL() {
 		_, err := db.Exec("SELECT pg_terminate_backend(" + id + ")")
 		return "SELECT pg_terminate_backend(" + id + ")", err
 	}
@@ -2936,4 +2934,48 @@ func DuplicateUserPassword(db *sqlx.DB, myver *MySQLVersion, old_user_name strin
 		}
 	}
 	return query, nil
+}
+
+func PurgeBinlogTo(db *sqlx.DB, filename string) (string, error) {
+	var err error
+	query := "PURGE BINARY LOGS TO '" + filename + "'"
+
+	if filename != "" {
+		_, err = db.Exec(query)
+	} else {
+		return query, errors.New("Invalid filename for PURGE BINARY LOGS TO")
+	}
+	return query, err
+}
+
+func PurgeBinlogBefore(db *sqlx.DB, ts int64) (string, error) {
+	var err error
+	var tstring string = time.Unix(ts, 0).Format(DDMMYYYYhhmmss)
+	query := "PURGE BINARY LOGS BEFORE '" + tstring + "'"
+	_, err = db.Exec(query)
+	return query, err
+}
+
+func SetMaxBinlogTotalSize(db *sqlx.DB, size int) (string, error) {
+	var err error
+	query := "SET GLOBAL max_binlog_total_size = " + strconv.Itoa(size) + ""
+
+	if size >= 0 {
+		_, err = db.Exec(query)
+	} else {
+		return query, errors.New("Invalid size for max_binlog_total_size")
+	}
+	return query, err
+}
+
+func SetSlaveConnectionsNeededForPurge(db *sqlx.DB, size int) (string, error) {
+	var err error
+	query := "SET GLOBAL slave_connections_needed_for_purge = " + strconv.Itoa(size) + ""
+
+	if size >= 0 {
+		_, err = db.Exec(query)
+	} else {
+		return query, errors.New("Invalid value for slave_connections_needed_for_purge")
+	}
+	return query, err
 }

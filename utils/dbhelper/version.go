@@ -116,7 +116,7 @@ func (mv *MySQLVersion) IsMySQL() bool {
 	return false
 }
 
-func (mv *MySQLVersion) IsPPostgreSQL() bool {
+func (mv *MySQLVersion) IsPostgreSQL() bool {
 	if mv.Flavor == "PostgreSQL" {
 		return true
 	}

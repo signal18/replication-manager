@@ -179,11 +179,14 @@ type ServerMonitor struct {
 	SSTPort                     string                       `json:"sstPort"`       //used to send data to dbjobs
 	Agent                       string                       `json:"agent"`         //used to provision service in orchestrator
 	BinaryLogFiles              map[string]uint              `json:"binaryLogFiles"`
+	BinaryLogOldestFile         string                       `json:"-"`
+	OldestBinaryLogTimestamp    int64                        `json:"-"`
 	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
 	WorkLoad                    map[string]WorkLoad          `json:"workLoad"`
 	DelayStat                   *ServerDelayStat             `json:"delayStat"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
+	InPurgingBinaryLog          bool
 	sync.Mutex
 }
 
@@ -645,7 +648,7 @@ func (server *ServerMonitor) Refresh() error {
 		if err != nil {
 			return nil
 		}
-		if !server.DBVersion.IsPPostgreSQL() {
+		if !server.DBVersion.IsPostgreSQL() {
 			if cluster.Conf.MultiMasterGrouprep {
 				server.IsGroupReplicationMaster, err = dbhelper.IsGroupReplicationMaster(server.Conn, server.DBVersion, server.Host)
 				server.IsGroupReplicationSlave, err = dbhelper.IsGroupReplicationSlave(server.Conn, server.DBVersion, server.Host)
@@ -773,19 +776,30 @@ func (server *ServerMonitor) Refresh() error {
 		// binary log might be closed for that server
 	} else {
 		server.BinaryLogFile = server.MasterStatus.File
+
+		if len(server.BinaryLogFiles) == 0 {
+			go server.RefreshBinaryLogs()
+		}
+
 		if server.BinaryLogFilePrevious != "" && server.BinaryLogFilePrevious != server.BinaryLogFile {
-			server.BinaryLogFiles, logs, err = dbhelper.GetBinaryLogs(server.Conn, server.DBVersion)
-			cluster.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get binary log files %s %s", server.URL, err)
 			if server.BinaryLogFilePrevious != "" {
 				server.JobBackupBinlog(server.BinaryLogFilePrevious)
 				go server.JobBackupBinlogPurge(server.BinaryLogFilePrevious)
 			}
+			server.RefreshBinaryLogs()
 		}
+
 		server.BinaryLogFilePrevious = server.BinaryLogFile
 		server.BinaryLogPos = strconv.FormatUint(uint64(server.MasterStatus.Position), 10)
+
+		if server.IsMaster() {
+			go server.CheckAndPurgeBinlogMaster()
+		} else {
+			go server.CheckAndPurgeBinlogSlave()
+		}
 	}
 
-	if !server.DBVersion.IsPPostgreSQL() {
+	if !server.DBVersion.IsPostgreSQL() {
 		server.BinlogDumpThreads, logs, err = dbhelper.GetBinlogDumpThreads(server.Conn, server.DBVersion)
 		if err != nil {
 			if strings.Contains(err.Error(), "Errcode: 28 ") || strings.Contains(err.Error(), "errno: 28 ") {
@@ -821,9 +835,9 @@ func (server *ServerMonitor) Refresh() error {
 
 	// SHOW SLAVE STATUS
 
-	if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() || server.DBVersion.IsPPostgreSQL() {
+	if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() || server.DBVersion.IsPostgreSQL() {
 		server.Replications, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
-		if len(server.Replications) > 0 && err == nil && server.DBVersion.IsPPostgreSQL() && server.ReplicationSourceName == "" {
+		if len(server.Replications) > 0 && err == nil && server.DBVersion.IsPostgreSQL() && server.ReplicationSourceName == "" {
 			//setting first subscription if we don't have one
 			server.ReplicationSourceName = server.Replications[0].ConnectionName.String
 		}
@@ -844,7 +858,7 @@ func (server *ServerMonitor) Refresh() error {
 	} else {
 
 		server.IsSlave = true
-		if server.DBVersion.IsPPostgreSQL() {
+		if server.DBVersion.IsPostgreSQL() {
 			//PostgresQL as no server_id concept mimic via internal server id for topology detection
 			var sid uint64
 			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), cluster.GetCrcTable()), 10), 10, 64)
@@ -906,7 +920,7 @@ func (server *ServerMonitor) Refresh() error {
 		cluster.SetState("WARN0088", state.State{ErrType: LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0088"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 	}
 	// monitor plugins
-	if !server.DBVersion.IsPPostgreSQL() {
+	if !server.DBVersion.IsPostgreSQL() {
 		if cluster.StateMachine.GetHeartbeats()%60 == 0 {
 			if cluster.Conf.MonitorPlugins {
 				server.Plugins, logs, err = dbhelper.GetPlugins(server.Conn, server.DBVersion)

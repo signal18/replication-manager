@@ -12,6 +12,8 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/signal18/replication-manager/config"
@@ -538,4 +540,36 @@ func (cluster *Cluster) MultipleSlavesUp(candidate *ServerMonitor) bool {
 		return true
 	}
 	return false
+}
+
+func (cluster *Cluster) CheckSlavesReplications() {
+	connected := 0
+	binInt := 0
+	oldest := ""
+	for _, sl := range cluster.slaves {
+		// Counting if slave is sync or late but not error
+		if sl.State == stateSlave || sl.State == stateSlaveLate {
+			connected++
+		}
+
+		parts := strings.Split(sl.SlaveStatus.MasterLogFile.String, ".")
+		curInt, err := strconv.Atoi(parts[len(parts)-1])
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Error while checking master log file in slave %s : %s\n", sl.Host+":"+sl.Port, err.Error())
+		}
+		if curInt > 0 && (binInt == 0 || curInt < binInt) {
+			binInt = curInt
+			oldest = sl.SlaveStatus.MasterLogFile.String
+		}
+	}
+
+	if cluster.SlavesConnected != connected {
+		cluster.SetSlavesConnected(connected)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Connected slaves : %d\n", connected)
+	}
+
+	if oldest != "" && cluster.SlavesOldestMasterFile.Suffix != binInt {
+		cluster.SetSlavesOldestMasterFile(oldest)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Oldest master log used for all slaves : %s\n", oldest)
+	}
 }
