@@ -321,13 +321,7 @@ func GetQueryExplain(db *sqlx.DB, version *MySQLVersion, schema string, query st
 		_, err = db.Exec("USE " + schema)
 	}
 	stmt := "Explain " + query
-	if version.IsMariaDB() {
-		//MariaDB
-		err = db.Select(&pl, stmt)
-	} else {
-		//MySQL
-		err = db.Select(&pl, stmt)
-	}
+	err = db.Select(&pl, stmt)
 	if err != nil {
 		return nil, stmt, fmt.Errorf("ERROR: Could not get Explain: %s", err)
 	}
