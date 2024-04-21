@@ -233,7 +233,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 		lastfile := 0
 
 		//Accumulating newest binlog size and shifting to oldest
-		for totalSize < uint(cluster.Conf.ForceBinlogPurgeTotalSize*(32*1024*1024)) {
+		for totalSize < uint(cluster.Conf.ForceBinlogPurgeTotalSize*(1024*1024*1024)) {
 			filename := prefix + "." + fmt.Sprintf("%06d", latestbinlog)
 			if size, ok := server.BinaryLogFiles[filename]; ok {
 				//accumulating size
