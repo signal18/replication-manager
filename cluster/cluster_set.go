@@ -1611,3 +1611,31 @@ func (cluster *Cluster) SetMxsLogLevel(value int) {
 		cluster.Conf.MxsDebug = false
 	}
 }
+
+func (cluster *Cluster) SetSlavesOldestMasterFile(value string) error {
+
+	parts := strings.Split(value, ".")
+	prefix := strings.Join(parts[:len(parts)-1], ".")
+	suffix, err := strconv.Atoi(parts[len(parts)-1])
+
+	if err != nil {
+		return err
+	}
+
+	cluster.SlavesOldestMasterFile.Prefix = prefix
+	cluster.SlavesOldestMasterFile.Suffix = suffix
+
+	return nil
+}
+
+func (cluster *Cluster) SetSlavesConnected(value int) {
+	cluster.SlavesConnected = value
+}
+
+func (cluster *Cluster) SetForceBinlogPurgeTotalSize(value int) {
+	cluster.Conf.ForceBinlogPurgeTotalSize = value
+}
+
+func (cluster *Cluster) SetForceBinlogPurgeMinReplica(value int) {
+	cluster.Conf.ForceBinlogPurgeMinReplica = value
+}

@@ -205,7 +205,16 @@ type Cluster struct {
 	SstAvailablePorts         map[string]string           `json:"sstAvailablePorts"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
-	crcTable *crc64.Table
+	crcTable               *crc64.Table
+	SlavesOldestMasterFile SlavesOldestMasterFile
+	SlavesConnected        int
+}
+
+type SlavesOldestMasterFile struct {
+	Prefix          string
+	Suffix          int
+	OldestTimestamp time.Time
+	sync.Mutex
 }
 
 type ClusterSorter []*Cluster
@@ -639,6 +648,7 @@ func (cluster *Cluster) Run() {
 						} else {
 							cluster.StateMachine.PreserveState("WARN0094")
 						}
+						cluster.CheckSlavesReplications()
 						cluster.PrintDelayStat()
 					}
 					wg.Wait()
@@ -773,6 +783,8 @@ func (cluster *Cluster) StateProcessing() {
 }
 
 func (cluster *Cluster) Stop() {
+	cluster.Lock()
+	defer cluster.Unlock()
 	//	cluster.scheduler.Stop()
 	cluster.Save()
 	if cluster.Conf.GitUrl != "" {
