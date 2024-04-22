@@ -795,7 +795,7 @@ func (server *ServerMonitor) Refresh() error {
 		if cluster.Conf.ForceBinlogPurge {
 			if server.IsMaster() {
 				if cluster.Conf.ForceBinlogPurgeOnRestore {
-					go server.JobBinlogPurgeMasterOnRestore()
+					go server.CheckAndPurgeBinlogMasterOnRestore()
 				} else {
 					go server.CheckAndPurgeBinlogMaster()
 				}
