@@ -792,10 +792,16 @@ func (server *ServerMonitor) Refresh() error {
 		server.BinaryLogFilePrevious = server.BinaryLogFile
 		server.BinaryLogPos = strconv.FormatUint(uint64(server.MasterStatus.Position), 10)
 
-		if server.IsMaster() {
-			go server.CheckAndPurgeBinlogMaster()
-		} else {
-			go server.CheckAndPurgeBinlogSlave()
+		if cluster.Conf.ForceBinlogPurge {
+			if server.IsMaster() {
+				if cluster.Conf.ForceBinlogPurgeOnRestore {
+					go server.CheckAndPurgeBinlogMasterOnRestore()
+				} else {
+					go server.CheckAndPurgeBinlogMaster()
+				}
+			} else {
+				go server.CheckAndPurgeBinlogSlave()
+			}
 		}
 	}
 
