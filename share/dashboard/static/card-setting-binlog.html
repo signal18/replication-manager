@@ -1,0 +1,47 @@
+<md-card>
+    <table ng-if="settings" class="table">
+        <tr>
+            <th>Enforce Binlog Purge</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceBinlogPurge"
+                           ng-click="switchsettings('force-binlog-purge')" aria-label="forceBinlogPurge Mode Change">
+                    <span ng-if="selectedCluster.config.forceBinlogPurge" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.forceBinlogPurge" class="label label-warning">Off</span>
+
+            </md-switch>
+            </td>
+        </tr>
+        <tr>
+            <th>Max Binlog Total Size in GB</th>
+        </tr>
+        <tr>
+            <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+                    ng-model="selectedCluster.config.forceBinlogPurgeTotalSize"
+                    ng-change="setsettings('force-binlog-purge-total-size',selectedCluster.config.forceBinlogPurgeTotalSize)" step="1" min="0" max="256" round="0"
+                    aria-label="Purge Binlog Total Size"></md-slider></td>
+        </tr>
+        <tr>
+            <th>Minimum Replica(s) needed for purging</th>
+        </tr>
+        <tr>
+            <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+                    ng-model="selectedCluster.config.forceBinlogPurgeMinReplica"
+                    ng-change="setsettings('force-binlog-purge-min-replica',selectedCluster.config.forceBinlogPurgeMinReplica)" step="1" min="0" max="12" round="0"
+                    aria-label="Purge Binlog Min Replica"></md-slider></td>
+        </tr>
+        <tr>
+            <th>Enforce Binlog Purge on Restore</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceBinlogPurgeOnRestore" ng-click="switchsettings('force-binlog-purge-on-restore')" aria-label="forceBinlogPurgeOnRestore Mode Change">
+                    <span ng-if="selectedCluster.config.forceBinlogPurgeOnRestore" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.forceBinlogPurgeOnRestore" class="label label-warning">Off</span>
+
+            </md-switch>
+            </td>
+        </tr>
+    </table>
+</md-card>

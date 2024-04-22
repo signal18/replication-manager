@@ -566,3 +566,11 @@ func (cluster *Cluster) SwitchMxsDebug() {
 	}
 	cluster.Conf.MxsDebug = !cluster.Conf.MxsDebug
 }
+
+func (cluster *Cluster) SwitchForceBinlogPurge() {
+	cluster.Conf.ForceBinlogPurge = !cluster.Conf.ForceBinlogPurge
+}
+
+func (cluster *Cluster) SwitchForceBinlogPurgeOnRestore() {
+	cluster.Conf.ForceBinlogPurgeOnRestore = !cluster.Conf.ForceBinlogPurgeOnRestore
+}

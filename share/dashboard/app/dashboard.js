@@ -1585,7 +1585,7 @@ function (
       };
 
       $scope.switchsettings = function (setting) {
-        httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/' + setting);
+        if (confirm("Confirm switch settings for "+setting.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/switch/' + setting);
       };
 
       $scope.reshardtable = function (schema,table) {

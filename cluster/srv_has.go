@@ -355,7 +355,7 @@ func (sl serverList) HasAllSlavesRunning() bool {
 
 /* Check Consistency parameters on server */
 func (server *ServerMonitor) IsAcid() bool {
-	if server.DBVersion.IsPPostgreSQL() {
+	if server.DBVersion.IsPostgreSQL() {
 		if server.Variables["FSYNC"] == "ON" && server.Variables["SYNCHRONOUS_COMMIT"] == "ON" {
 			return true
 		}
@@ -593,4 +593,8 @@ func (server *ServerMonitor) IsSlaveOrSync() bool {
 		return true
 	}
 	return false
+}
+
+func (server *ServerMonitor) IsPurgingBinlog() bool {
+	return server.InPurgingBinaryLog
 }
