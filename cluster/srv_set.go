@@ -407,3 +407,7 @@ func (server *ServerMonitor) SetReplicationCredentialsRotation(ss *dbhelper.Slav
 		}
 	}
 }
+
+func (server *ServerMonitor) SetBackingUpBinaryLog(value bool) {
+	server.IsBackingUpBinaryLog = value
+}

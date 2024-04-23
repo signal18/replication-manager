@@ -187,6 +187,7 @@ type ServerMonitor struct {
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 	InPurgingBinaryLog          bool
+	IsBackingUpBinaryLog        bool
 	sync.Mutex
 }
 
@@ -783,7 +784,7 @@ func (server *ServerMonitor) Refresh() error {
 
 		if server.BinaryLogFilePrevious != "" && server.BinaryLogFilePrevious != server.BinaryLogFile {
 			if server.BinaryLogFilePrevious != "" {
-				server.JobBackupBinlog(server.BinaryLogFilePrevious)
+				server.InitiateJobBackupBinlog(server.BinaryLogFilePrevious)
 				go server.JobBackupBinlogPurge(server.BinaryLogFilePrevious)
 			}
 			server.RefreshBinaryLogs()
@@ -794,10 +795,12 @@ func (server *ServerMonitor) Refresh() error {
 
 		if cluster.Conf.ForceBinlogPurge {
 			if server.IsMaster() {
-				if cluster.Conf.ForceBinlogPurgeOnRestore {
-					go server.CheckAndPurgeBinlogMasterOnRestore()
-				} else {
-					go server.CheckAndPurgeBinlogMaster()
+				if !server.IsBackingUpBinaryLog {
+					if cluster.Conf.ForceBinlogPurgeOnRestore {
+						go server.CheckAndPurgeBinlogMasterOnRestore()
+					} else {
+						go server.CheckAndPurgeBinlogMaster()
+					}
 				}
 			} else {
 				go server.CheckAndPurgeBinlogSlave()

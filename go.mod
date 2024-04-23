@@ -34,23 +34,23 @@ require (
 	github.com/evmar/gocairo v0.0.0-20160222165215-ddd30f837497
 	github.com/facebookgo/grace v0.0.0-20170218225239-4afe952a37a4
 	github.com/facebookgo/pidfile v0.0.0-20150612191647-f242e2999868
-	github.com/go-sql-driver/mysql v1.5.0
+	github.com/go-sql-driver/mysql v1.6.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/gonum/matrix v0.0.0-20180124231301-a41cc49d4c29
-	github.com/google/uuid v1.1.2
+	github.com/google/uuid v1.3.0
 	github.com/gorilla/handlers v1.3.0
 	github.com/gorilla/mux v1.8.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.5.0
 	github.com/gwenn/yacr v0.0.0-20180209192453-77093bdc7e72
-	github.com/helloyi/go-sshclient v1.0.0
+	github.com/helloyi/go-sshclient v1.2.0
 	github.com/howeyc/fsnotify v0.0.0-20151003194602-f0c08ee9c607
 	github.com/hpcloud/tail v1.0.0
 	github.com/hydrogen18/stalecucumber v0.0.0-20161215203336-0a94983f3e27
 	github.com/improbable-eng/grpc-web v0.14.0
 	github.com/iu0v1/gelada v1.2.2
 	github.com/jacobsa/fuse v0.0.0-20211125163655-ffd6c474e806
-	github.com/jmoiron/sqlx v1.2.0
+	github.com/jmoiron/sqlx v1.3.3
 	github.com/jordan-wright/email v0.0.0-20160301001728-a62870b0c368
 	github.com/juju/errors v0.0.0-20220203013757-bd733f3c86b9
 	github.com/kisielk/og-rek v0.0.0-20170425174049-dd41cde712de
@@ -58,7 +58,7 @@ require (
 	github.com/lestrrat/go-strftime v0.0.0-20170113112000-04ef93e28531
 	github.com/lib/pq v1.3.0
 	github.com/magneticio/vamp-router v0.0.0-20151116102511-29379b621548
-	github.com/mattn/go-sqlite3 v1.9.0
+	github.com/mattn/go-sqlite3 v1.14.6
 	github.com/micro/go-micro v0.27.1
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mjibson/go-dsp v0.0.0-20170104183934-49dba8372707
@@ -118,6 +118,7 @@ require (
 	github.com/gin-gonic/gin v1.7.2 // indirect
 	github.com/go-git/go-git v4.7.0+incompatible // indirect
 	github.com/go-git/go-git/v5 v5.6.1 // indirect
+	github.com/go-mysql-org/go-mysql v1.7.0 // indirect
 	github.com/go-ole/go-ole v1.2.5 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/gonum/blas v0.0.0-20180125090452-e7c5890b24cf // indirect

@@ -1969,8 +1969,19 @@ func GetSchemasMap(db *sqlx.DB) (map[string]string, string, error) {
 func GetVariableByName(db *sqlx.DB, name string, myver *MySQLVersion) (string, string, error) {
 	var value string
 	source := GetVariableSource(db, myver)
+	query := "SELECT Variable_Value AS Value FROM " + source + ".global_variables WHERE Variable_Name = ?"
+	err := db.QueryRowx(query, name).Scan(&value)
+	if err != nil {
+		return "", query, errors.New("Could not get variable by name")
+	}
+	return value, query, nil
+}
+
+func GetVariableByNameToUpper(db *sqlx.DB, name string, myver *MySQLVersion) (string, string, error) {
+	var value string
+	source := GetVariableSource(db, myver)
 	query := "SELECT UPPER(Variable_Value) AS Value FROM " + source + ".global_variables WHERE Variable_Name = ?"
-	err := db.QueryRowx("SELECT UPPER(Variable_Value) AS Value FROM "+source+".global_variables WHERE Variable_Name = ?", name).Scan(&value)
+	err := db.QueryRowx(query, name).Scan(&value)
 	if err != nil {
 		return "", query, errors.New("Could not get variable by name")
 	}
@@ -2408,7 +2419,7 @@ func CheckReplicationFilters(m *sqlx.DB, s *sqlx.DB, myver *MySQLVersion) bool {
 
 func GetEventScheduler(dbM *sqlx.DB, myver *MySQLVersion) bool {
 
-	sES, _, _ := GetVariableByName(dbM, "EVENT_SCHEDULER", myver)
+	sES, _, _ := GetVariableByNameToUpper(dbM, "EVENT_SCHEDULER", myver)
 	if sES != "ON" {
 		return false
 	}
@@ -2432,8 +2443,8 @@ func CheckSlaveSync(dbS *sqlx.DB, dbM *sqlx.DB, myver *MySQLVersion) bool {
 	if debug {
 		log.Printf("CheckSlaveSync called")
 	}
-	sGtid, _, _ := GetVariableByName(dbS, "GTID_CURRENT_POS", myver)
-	mGtid, _, _ := GetVariableByName(dbM, "GTID_CURRENT_POS", myver)
+	sGtid, _, _ := GetVariableByNameToUpper(dbS, "GTID_CURRENT_POS", myver)
+	mGtid, _, _ := GetVariableByNameToUpper(dbM, "GTID_CURRENT_POS", myver)
 	if sGtid == mGtid {
 		return true
 	} else {
@@ -2445,7 +2456,7 @@ func CheckSlaveSemiSync(dbS *sqlx.DB, myver *MySQLVersion) bool {
 	if debug {
 		log.Printf("CheckSlaveSemiSync called")
 	}
-	sync, _, _ := GetVariableByName(dbS, "RPL_SEMI_SYNC_SLAVE_STATUS", myver)
+	sync, _, _ := GetVariableByNameToUpper(dbS, "RPL_SEMI_SYNC_SLAVE_STATUS", myver)
 
 	if sync == "ON" {
 		return true

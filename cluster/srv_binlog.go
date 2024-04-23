@@ -133,7 +133,7 @@ func (server *ServerMonitor) SetMaxBinlogTotalSize() error {
 	cluster := server.ClusterGroup
 	totalsize := cluster.Conf.ForceBinlogPurgeTotalSize * 1024 * 1024 * 1024
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11.4 and up
-		v, ok := server.Variables["max_binlog_total_size"]
+		v, ok := server.Variables["MAX_BINLOG_TOTAL_SIZE"]
 		if !ok {
 			return errors.New("Variable max_binlog_total_size not found")
 		}
@@ -360,7 +360,7 @@ func (server *ServerMonitor) JobBinlogPurgeMasterOnRestore() {
 
 		//Check if file exists
 		if _, ok := server.BinaryLogFiles[filename]; ok {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Purging binlog of %s: %s. ", server.URL, filename)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Purging binlog of %s: %s. ", server.URL, filename)
 			_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
@@ -410,12 +410,15 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 			return
 		}
 
-		//Purge slaves to oldest master binlog timestamp
-		if master.OldestBinaryLogTimestamp > server.OldestBinaryLogTimestamp {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Purging slave binlog of %s until oldest timestamp on master: %s", server.URL, time.Unix(master.OldestBinaryLogTimestamp, 0).String())
-			_, err := dbhelper.PurgeBinlogBefore(server.Conn, master.OldestBinaryLogTimestamp)
+		//Purge slaves to oldest master binlog timestamp and skip if slave only has 1 binary logs file left
+		if master.OldestBinaryLogTimestamp > server.OldestBinaryLogTimestamp && len(server.BinaryLogFiles) > 1 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Purging slave binlog of %s from %s until oldest timestamp on master: %s", server.URL, time.Unix(server.OldestBinaryLogTimestamp, 0).String(), time.Unix(master.OldestBinaryLogTimestamp, 0).String())
+			q, err := dbhelper.PurgeBinlogBefore(server.Conn, master.OldestBinaryLogTimestamp)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error purging binlog of %s : %s", server.URL, err.Error())
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Executed query: %s", q)
+
 			}
 
 			server.RefreshBinaryLogs()
