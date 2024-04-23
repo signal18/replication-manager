@@ -1234,17 +1234,20 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string) error {
 	}
 	defer client.Close()
 
-	basename, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_BIN_BASENAME", server.DBVersion)
+	if server.BinaryLogDir == "" {
+		basename, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_BIN_BASENAME", server.DBVersion)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Variable log_bin_basename not found!")
+			return err
+		}
 
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Variable log_bin_basename not found!")
-		return err
+		parts := strings.Split(basename, "/")
+		binlogpath := strings.Join(parts[:len(parts)-1], "/")
+
+		server.SetBinaryLogDir(binlogpath)
 	}
 
-	parts := strings.Split(basename, "/")
-	binlogpath := strings.Join(parts[:len(parts)-1], "/")
-
-	remotefile := binlogpath + "/" + binlogfile
+	remotefile := server.BinaryLogDir + "/" + binlogfile
 	localfile := server.GetMyBackupDirectory() + "/" + binlogfile
 
 	fileinfo, err := client.Sftp().Stat(remotefile)
