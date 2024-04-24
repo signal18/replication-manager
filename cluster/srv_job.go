@@ -1018,6 +1018,9 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string) error {
 		return errors.New("Copy binlog not enable")
 	}
 
+	server.SetBackingUpBinaryLog(true)
+	defer server.SetBackingUpBinaryLog(false)
+
 	cmdrun := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory(), binlogfile)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "%s", strings.Replace(cmdrun.String(), cluster.GetRplPass(), "XXXX", 1))
 
@@ -1057,7 +1060,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 			if _, err := os.Stat(server.GetMyBackupDirectory() + "/" + filename); os.IsNotExist(err) {
 				if _, ok := server.BinaryLogFiles[filename]; ok {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Backup master missing binlog of %s,%s", server.URL, filename)
-					server.JobBackupBinlog(filename)
+					server.InitiateJobBackupBinlog(filename)
 				}
 			}
 			keeping[filename] = binlogfilestop
@@ -1207,4 +1210,81 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Start slave after dump on %s", dest.URL)
 	dest.StartSlave()
 	return nil
+}
+
+func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string) error {
+	cluster := server.ClusterGroup
+	if !server.IsMaster() {
+		return errors.New("Copy only master binlog")
+	}
+	if cluster.IsInFailover() {
+		return errors.New("Cancel job copy binlog during failover")
+	}
+	if !cluster.Conf.BackupBinlogs {
+		return errors.New("Copy binlog not enable")
+	}
+
+	server.SetBackingUpBinaryLog(true)
+	defer server.SetBackingUpBinaryLog(false)
+
+	client, err := server.GetCluster().OnPremiseConnect(server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "OnPremise run  job  %s", err)
+		return err
+	}
+	defer client.Close()
+
+	if server.BinaryLogDir == "" {
+		basename, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_BIN_BASENAME", server.DBVersion)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Variable log_bin_basename not found!")
+			return err
+		}
+
+		parts := strings.Split(basename, "/")
+		binlogpath := strings.Join(parts[:len(parts)-1], "/")
+
+		server.SetBinaryLogDir(binlogpath)
+	}
+
+	remotefile := server.BinaryLogDir + "/" + binlogfile
+	localfile := server.GetMyBackupDirectory() + "/" + binlogfile
+
+	fileinfo, err := client.Sftp().Stat(remotefile)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error while getting binlog file [%s] stat:  %s", remotefile, err)
+		return err
+	}
+
+	err = client.Sftp().Download(remotefile, localfile)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Download binlog error:  %s", err)
+		return err
+	}
+
+	localinfo, err := os.Stat(localfile)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error while getting backed up binlog file [%s] stat:  %s", localfile, err)
+		return err
+	}
+
+	if fileinfo.Size() != localinfo.Size() {
+		err := errors.New("Remote filesize is different with downloaded filesize")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error while getting backed up binlog file [%s] stat:  %s", localfile, err)
+		return err
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string) error {
+	cluster := server.ClusterGroup
+	switch cluster.Conf.BackupBinlogsMethod {
+	case "client":
+		return server.JobBackupBinlog(binlogfile)
+	case "ssh":
+		return server.JobBackupBinlogSSH(binlogfile)
+	}
+
+	return errors.New("Wrong configuration for Backup Binlog Method!")
 }
