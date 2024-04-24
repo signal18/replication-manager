@@ -184,10 +184,19 @@ type ServerMonitor struct {
 	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
 	WorkLoad                    map[string]WorkLoad          `json:"workLoad"`
 	DelayStat                   *ServerDelayStat             `json:"delayStat"`
+	SlaveVariables              SlaveVariables               `json:"slaveVariables"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 	InPurgingBinaryLog          bool
 	sync.Mutex
+}
+
+type SlaveVariables struct {
+	SlaveParallelMaxQueued int    `json:"slaveParallelMaxQueued"`
+	SlaveParallelMode      string `json:"slaveParallelMode"`
+	SlaveParallelThreads   int    `json:"slaveParallelThreads"`
+	SlaveParallelWorkers   int    `json:"slaveParallelWorkers"`
+	SlaveTypeConversions   string `json:"slaveTypeConversions"`
 }
 
 type serverList []*ServerMonitor
@@ -687,6 +696,7 @@ func (server *ServerMonitor) Refresh() error {
 			}
 			server.HaveMySQLGTID = server.HasMySQLGTID()
 			server.RelayLogSize, _ = strconv.ParseUint(server.Variables["RELAY_LOG_SPACE_LIMIT"], 10, 64)
+			server.SlaveVariables = server.GetSlaveVariables()
 
 			if server.DBVersion.IsMariaDB() {
 				server.GTIDBinlogPos = gtid.NewList(server.Variables["GTID_BINLOG_POS"])
