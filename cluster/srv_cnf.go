@@ -7,6 +7,8 @@
 package cluster
 
 import (
+	"strconv"
+
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 )
@@ -162,4 +164,42 @@ func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string, cmd string)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
 	}
 	return mydynamicconf
+}
+
+func (server *ServerMonitor) GetSlaveVariables() SlaveVariables {
+	svar := SlaveVariables{}
+	if server.Variables == nil {
+		return svar
+	}
+
+	if v, ok := server.Variables["SLAVE_PARALLEL_MODE"]; ok {
+		svar.SlaveParallelMode = v
+	}
+
+	if v, ok := server.Variables["SLAVE_TYPE_CONVERSIONS"]; ok {
+		svar.SlaveTypeConversions = v
+	}
+
+	if v, ok := server.Variables["SLAVE_PARALLEL_MAX_QUEUED"]; ok {
+		mq, err := strconv.Atoi(v)
+		if err == nil {
+			svar.SlaveParallelMaxQueued = mq
+		}
+	}
+
+	if v, ok := server.Variables["SLAVE_PARALLEL_THREADS"]; ok {
+		pt, err := strconv.Atoi(v)
+		if err == nil {
+			svar.SlaveParallelThreads = pt
+		}
+	}
+
+	if v, ok := server.Variables["SLAVE_PARALLEL_WORKERS"]; ok {
+		pw, err := strconv.Atoi(v)
+		if err == nil {
+			svar.SlaveParallelWorkers = pw
+		}
+	}
+
+	return svar
 }
