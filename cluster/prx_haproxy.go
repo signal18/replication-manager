@@ -160,7 +160,7 @@ func (proxy *HaproxyProxy) Init() {
 	}
 	/* End add front end */
 
-	ber := HAProxy.Backend{Name: cluster.Conf.HaproxyAPIReadBackend, Mode: "tcp"}
+	ber := haproxy.Backend{Name: cluster.Conf.HaproxyAPIReadBackend, Mode: "tcp"}
 	if err := haConfig.AddBackend(&ber); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, LvlErr, "HAProxy failed to add backend for "+cluster.Conf.HaproxyAPIReadBackend)
 	}
