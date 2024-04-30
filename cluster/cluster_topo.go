@@ -77,8 +77,6 @@ func (cluster *Cluster) newServerList() error {
 func (cluster *Cluster) AddChildServers() error {
 
 	mychilds := cluster.GetChildClusters()
-	cluster.Lock()
-	defer cluster.Unlock()
 	for _, c := range mychilds {
 		for _, sv := range c.Servers {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlDbg, "AddChildServers checking %s of %s ", sv.URL, c.Name)
