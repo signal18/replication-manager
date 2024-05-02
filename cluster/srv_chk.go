@@ -178,10 +178,10 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		//galera or binlog flashback need row based binlog
 		cluster.StateMachine.AddState("WARN0049", state.State{ErrType: LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0049"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if cluster.Conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" && !cluster.IsInIgnoredReadonly(server) && !cluster.IsMultiMaster() {
+	if cluster.Conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" && !server.IsIgnoredReadonly() && !cluster.IsMultiMaster() {
 		// In non-multimaster mode, enforce read-only flag if the option is set
 		sl.SetReadOnly()
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce read only on slave %s, ReadOnly:%s, InIgnored:%t MultiMaster:%t", sl.URL, sl.ReadOnly, cluster.IsInIgnoredReadonly(server), cluster.IsMultiMaster())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce read only on slave %s, ReadOnly:%s, InIgnored:%t MultiMaster:%t", sl.URL, sl.ReadOnly, server.IsIgnoredReadonly(), cluster.IsMultiMaster())
 	}
 	if cluster.Conf.ForceSlaveHeartbeat && sl.GetReplicationHearbeatPeriod() > 1 {
 		dbhelper.SetSlaveHeartbeat(sl.Conn, "1", cluster.Conf.MasterConn, server.DBVersion)

@@ -379,6 +379,16 @@ func (cluster *Cluster) GetIgnoredHostList() string {
 	return strings.Join(prevIgnored, ",")
 }
 
+func (cluster *Cluster) GetIgnoredROList() string {
+	var prevIgnoredRO []string
+	for _, server := range cluster.Servers {
+		if server.IgnoredRO {
+			prevIgnoredRO = append(prevIgnoredRO, server.URL)
+		}
+	}
+	return strings.Join(prevIgnoredRO, ",")
+}
+
 func (cluster *Cluster) GetGComm() string {
 	var gcomms []string
 	for _, server := range cluster.Servers {

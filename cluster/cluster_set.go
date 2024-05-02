@@ -456,7 +456,7 @@ func (cluster *Cluster) SetPrefMaster(PrefMasterURL string) {
 	// fmt.Printf("Update config prefered Master: " + cluster.Conf.PrefMaster + "\n")
 }
 
-// SetIgnoredHost
+// Set Ignored Host for Election
 func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
 	var ignoresrvlist []string
 	for _, srv := range cluster.Servers {
@@ -468,6 +468,21 @@ func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
 		}
 	}
 	cluster.Conf.IgnoreSrv = strings.Join(ignoresrvlist, ",")
+	// fmt.Printf("Update config ignored server: " + cluster.Conf.IgnoreSrv + "\n")
+}
+
+// Set Ignored for ReadOnly Check
+func (cluster *Cluster) SetIgnoreRO(IgnoredReadOnlyHostURL string) {
+	var ignoreROList []string
+	for _, srv := range cluster.Servers {
+		if strings.Contains(IgnoredReadOnlyHostURL, srv.URL) {
+			srv.SetIgnoredReadonly(true)
+			ignoreROList = append(ignoreROList, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
+		} else {
+			srv.SetIgnoredReadonly(false)
+		}
+	}
+	cluster.Conf.IgnoreSrvRO = strings.Join(ignoreROList, ",")
 	// fmt.Printf("Update config ignored server: " + cluster.Conf.IgnoreSrv + "\n")
 }
 

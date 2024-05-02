@@ -127,6 +127,7 @@ type ServerMonitor struct {
 	IsFull                      bool                         `json:"isFull"`
 	IsConfigGen                 bool                         `json:"isConfigGen"`
 	Ignored                     bool                         `json:"ignored"`
+	IgnoredRO                   bool                         `json:"ignoredRO"`
 	Prefered                    bool                         `json:"prefered"`
 	PreferedBackup              bool                         `json:"preferedBackup"`
 	InCaptureMode               bool                         `json:"inCaptureMode"`
@@ -312,6 +313,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	go server.ErrorLogWatcher()
 	go server.SlowLogWatcher()
 	server.SetIgnored(cluster.IsInIgnoredHosts(server))
+	server.SetIgnoredReadonly(cluster.IsInIgnoredReadonly(server))
 	server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
 	server.SetPrefered(cluster.IsInPreferedHosts(server))
 	server.ReloadSaveInfosVariables()
@@ -506,10 +508,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			if cluster.Conf.ReadOnly && !server.HaveWsrep && cluster.IsDiscovered() {
 				//GetMaster abstract master for galera multi master and master slave
 				if server.GetCluster().GetMaster() != nil {
-					if cluster.Status == ConstMonitorActif && server.GetCluster().GetMaster().Id != server.Id && !cluster.IsInIgnoredReadonly(server) && !cluster.IsInFailover() {
+					if cluster.Status == ConstMonitorActif && server.GetCluster().GetMaster().Id != server.Id && !server.IsIgnoredReadonly() && !cluster.IsInFailover() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Setting Read Only on unconnected server %s as active monitor and other master is discovered", server.URL)
 						server.SetReadOnly()
-					} else if cluster.Status == ConstMonitorStandby && cluster.Conf.Arbitration && !cluster.IsInIgnoredReadonly(server) && !cluster.IsInFailover() {
+					} else if cluster.Status == ConstMonitorStandby && cluster.Conf.Arbitration && !server.IsIgnoredReadonly() && !cluster.IsInFailover() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Setting Read Only on unconnected server %s as a standby monitor ", server.URL)
 						server.SetReadOnly()
 					}
@@ -542,7 +544,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "From state %s to unconnected and non leader on server %s", server.PrevState, server.URL)
 			//	}
-			if cluster.Conf.ReadOnly && !server.HaveWsrep && cluster.IsDiscovered() && !cluster.IsInIgnoredReadonly(server) && !cluster.IsInFailover() {
+			if cluster.Conf.ReadOnly && !server.HaveWsrep && cluster.IsDiscovered() && !server.IsIgnoredReadonly() && !cluster.IsInFailover() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Setting Read Only on unconnected server: %s no master state and replication found", server.URL)
 				server.SetReadOnly()
 			}
