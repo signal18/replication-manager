@@ -390,7 +390,7 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoin master incremental %s", server.URL)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Crash info %s", crash)
 	server.Refresh()
-	if cluster.Conf.ReadOnly && !cluster.IsInIgnoredReadonly(server) {
+	if cluster.Conf.ReadOnly && !server.IsIgnoredReadonly() {
 		logs, err := server.SetReadOnly()
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
 	}

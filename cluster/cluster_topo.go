@@ -94,6 +94,7 @@ func (cluster *Cluster) AddChildServers() error {
 
 					srv.SetSourceClusterName(c.Name)
 					srv.SetIgnored(true)
+					srv.SetIgnoredReadonly(true)
 					cluster.Servers = append(cluster.Servers, srv)
 					wg := new(sync.WaitGroup)
 					wg.Add(1)

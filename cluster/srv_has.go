@@ -503,6 +503,10 @@ func (server *ServerMonitor) IsIgnored() bool {
 	return server.Ignored
 }
 
+func (server *ServerMonitor) IsIgnoredReadonly() bool {
+	return server.IgnoredRO
+}
+
 func (server *ServerMonitor) IsReadOnly() bool {
 	return server.HaveReadOnly
 }
