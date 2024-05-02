@@ -26,6 +26,7 @@
         <th class="rowicon">IO Thr</th>
         <th class="rowicon">SQL Thr</th>
         <th class="rowicon">Ro Sts</th>
+        <th class="rowicon">Ign RO</th>
         <th class="rowicon">Evt Sch</th>
         <th class="rowicon">Mst Syn</th>
         <th class="rowicon">Rep Syn</th>
@@ -95,6 +96,7 @@
             class="fa fa-1x fa-times-circle text-danger"></i></td>
     <td class="state"><i ng-if="server.readOnly=='ON'" class="fa fa-1x fa-check-circle text-success"></i><i
             ng-if="server.readOnly!='ON'" class="fa fa-1x fa-times-circle text-danger"></i></td>
+    <td class="state"><i ng-if="server.ignoredRO==true" class="fa fa-1x fa-thumbs-down text-danger"></i></td>
     <td class="state"><i ng-if="server.eventScheduler==true" class="fa fa-1x fa-check-circle text-success"></i><i
             ng-if="server.eventScheduler==false" class="fa fa-1x fa-times-circle text-danger"></i></td>
     <td class="state"><i ng-if="server.semiSyncMasterStatus==true" class="fa fa-1x fa-check-circle text-success"></i><i

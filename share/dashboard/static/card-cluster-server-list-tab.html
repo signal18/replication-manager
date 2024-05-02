@@ -48,6 +48,7 @@
                   <th class="tabicon">Status</th>
                   <th class="tabicon">Prefered/Ignored</th>
                   <th class="tabicon">Read Only</th>
+                  <th class="tabicon">Ignore Read Only</th>
                   <th class="tabicon">Event Scheduler</th>
                 </tr>
                 <tr>
@@ -71,6 +72,8 @@
                   <td align="center" class="tabicon"><i ng-if="server.readOnly=='ON'"
                       class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.readOnly!='ON'"
                       class="fa fa-1x fa-times-circle text-danger"></i></td>
+                  <td align="center" class="tabicon"><i ng-if="server.ignoredRO==true"
+                        class="fa fa-1x fa-thumbs-down text-danger"></i></td>
                   <td align="center" class="tabicon"><i ng-if="server.eventScheduler==true"
                       class="fa fa-1x fa-check-circle text-success"></i><i ng-if="server.eventScheduler==false"
                       class="fa fa-1x fa-times-circle text-danger"></i></td>
