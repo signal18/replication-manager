@@ -236,14 +236,20 @@ func (psql *ProxySQL) ReloadTLS() error {
 	return err
 }
 
-func (psql *ProxySQL) ReplaceWriter(host string, port string, oldhost string, oldport string, masterasreader bool, use_ssl string) error {
+func (psql *ProxySQL) CopyReaderToWriter(host string, port string) error {
+	sql := fmt.Sprintf("REPLACE INTO mysql_servers (hostgroup_id, hostname, port, gtid_port, status, weight, compression, max_connections, max_replication_lag, use_ssl, max_latency_ms) SELECT '%s', hostname, port, gtid_port, status, weight, compression, max_connections, max_replication_lag, use_ssl, max_latency_ms FROM mysql_servers WHERE  hostgroup_id = '%s' AND hostname = '%s' AND port = '%s'", psql.WriterHG, psql.ReaderHG, host, port)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
+func (psql *ProxySQL) ReplaceWriter(host string, port string, oldhost string, oldport string, masterasreader bool) error {
 
 	if masterasreader {
 		err := psql.DeleteAllWriters()
 		if err != nil {
 			return err
 		}
-		err = psql.AddServerAsWriter(host, port, use_ssl)
+		err = psql.CopyReaderToWriter(host, port)
 		return err
 	} else {
 		err := psql.SetReader(oldhost, oldport)
@@ -383,7 +389,7 @@ func (psql *ProxySQL) LoadServersToRuntime() error {
 }
 
 func (psql *ProxySQL) SaveServersToDisk() error {
-	_, err := psql.Connection.Exec("SAVE PROXYSQL SERVERS TO DISK")
+	_, err := psql.Connection.Exec("SAVE MYSQL SERVERS TO DISK")
 	return err
 }
 
@@ -414,5 +420,15 @@ func (psql *ProxySQL) SaveMySQLUsersToDisk() error {
 
 func (psql *ProxySQL) Shutdown() error {
 	_, err := psql.Connection.Exec("PROXYSQL KILL")
+	return err
+}
+
+func (psql *ProxySQL) LoadProxiesToRuntime() error {
+	_, err := psql.Connection.Exec("LOAD PROXYSQL SERVERS TO RUNTIME")
+	return err
+}
+
+func (psql *ProxySQL) SaveProxiesToDisk() error {
+	_, err := psql.Connection.Exec("SAVE PROXYSQL SERVERS TO DISK")
 	return err
 }
