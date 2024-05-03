@@ -407,7 +407,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			} else if s.IsSlaveOrSync() && !s.IsIgnored() && (s.PrevState == stateUnconn || s.PrevState == stateFailed) {
 				err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
 				if cluster.Conf.ProxysqlDebug {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Monitor ProxySQL setting reader standalone server %s", s.URL)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlDbg, "Monitor ProxySQL setting reader standalone server %s", s.URL)
 				}
 				if err != nil {
 					cluster.StateMachine.AddState("ERR00072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00072"], proxy.Name, s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
