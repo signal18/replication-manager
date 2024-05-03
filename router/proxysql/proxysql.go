@@ -383,7 +383,7 @@ func (psql *ProxySQL) LoadServersToRuntime() error {
 }
 
 func (psql *ProxySQL) SaveServersToDisk() error {
-	_, err := psql.Connection.Exec("SAVE PROXYSQL SERVERS TO DISK")
+	_, err := psql.Connection.Exec("SAVE MYSQL SERVERS TO DISK")
 	return err
 }
 
@@ -414,5 +414,15 @@ func (psql *ProxySQL) SaveMySQLUsersToDisk() error {
 
 func (psql *ProxySQL) Shutdown() error {
 	_, err := psql.Connection.Exec("PROXYSQL KILL")
+	return err
+}
+
+func (psql *ProxySQL) LoadProxiesToRuntime() error {
+	_, err := psql.Connection.Exec("LOAD PROXYSQL SERVERS TO RUNTIME")
+	return err
+}
+
+func (psql *ProxySQL) SaveProxiesToDisk() error {
+	_, err := psql.Connection.Exec("SAVE PROXYSQL SERVERS TO DISK")
 	return err
 }
