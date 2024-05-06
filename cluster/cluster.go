@@ -1402,21 +1402,28 @@ func (cluster *Cluster) MonitorSchema() {
 	if !cluster.Conf.MonitorSchemaChange {
 		return
 	}
-	if cluster.GetMaster() == nil {
-		return
-	}
-	if cluster.GetMaster().State == stateFailed || cluster.GetMaster().State == stateMaintenance || cluster.GetMaster().State == stateUnconn {
-		return
-	}
-	if cluster.GetMaster().Conn == nil {
-		return
-	}
-	cluster.StateMachine.SetMonitorSchemaState()
-	cluster.GetMaster().Conn.SetConnMaxLifetime(3595 * time.Second)
 
-	tables, tablelist, logs, err := dbhelper.GetTables(cluster.GetMaster().Conn, cluster.GetMaster().DBVersion)
-	cluster.LogSQL(logs, err, cluster.GetMaster().URL, "Monitor", LvlErr, "Could not fetch master tables %s", err)
-	cluster.GetMaster().Tables = tablelist
+	cmaster := cluster.GetMaster()
+
+	if cmaster == nil {
+		return
+	}
+	if cmaster.State == stateFailed || cmaster.State == stateMaintenance || cmaster.State == stateUnconn {
+		return
+	}
+	if cmaster.Conn == nil {
+		return
+	}
+
+	cmaster.Lock()
+	defer cmaster.Unlock()
+
+	cluster.StateMachine.SetMonitorSchemaState()
+	cmaster.Conn.SetConnMaxLifetime(3595 * time.Second)
+
+	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion)
+	cluster.LogSQL(logs, err, cmaster.URL, "Monitor", LvlErr, "Could not fetch master tables %s", err)
+	cmaster.Tables = tablelist
 
 	var tableCluster []string
 	var duplicates []*ServerMonitor
@@ -1428,9 +1435,9 @@ func (cluster *Cluster) MonitorSchema() {
 		totindexsize += t.IndexLength
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Lookup for table %s", t.TableSchema+"."+t.TableName)
 
-		duplicates = append(duplicates, cluster.GetMaster())
+		duplicates = append(duplicates, cmaster)
 		tableCluster = append(tableCluster, cluster.GetName())
-		oldtable, err := cluster.GetMaster().GetTableFromDict(t.TableSchema + "." + t.TableName)
+		oldtable, err := cmaster.GetTableFromDict(t.TableSchema + "." + t.TableName)
 		haschanged := false
 		if err != nil {
 			if err.Error() == "Empty" {
@@ -1479,7 +1486,7 @@ func (cluster *Cluster) MonitorSchema() {
 
 	cluster.WorkLoad.DBIndexSize = totindexsize
 	cluster.WorkLoad.DBTableSize = tottablesize
-	cluster.GetMaster().DictTables = tables
+	cmaster.DictTables = tables
 	cluster.StateMachine.RemoveMonitorSchemaState()
 }
 

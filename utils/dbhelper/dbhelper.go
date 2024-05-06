@@ -1698,7 +1698,7 @@ func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var v chunk
-		err = rows.Scan(&v.ChunkId, &v.ChunkMinKey, &v.ChunkMaxKey, v.ChunkCheckSum)
+		err = rows.Scan(&v.ChunkId, &v.ChunkMinKey, &v.ChunkMaxKey, &v.ChunkCheckSum)
 		if err != nil {
 			return vars, query, err
 		}

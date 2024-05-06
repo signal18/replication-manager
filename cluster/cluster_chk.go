@@ -556,7 +556,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	Conn.Exec("SET SESSION group_concat_max_len = 1000000")
 
 	Conn.Exec("CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT,chunkMinKey VARCHAR(254),chunkMaxKey VARCHAR(254),chunkCheckSum BIGINT UNSIGNED ) ENGINE=MYISAM")
-	query := "CREATE TEMPORARY TABLE replication_manager_schema.table_chunck ENGINE=MYISAM SELECT FLOOR((@rows:=@rows+1/2000)) as chunkId, MIN(CONCAT_WS('/*;*/'," + pk + ")) as chunkMinKey, MAX(CONCAT_WS('/*;*/'," + pk + ")) as chunkMaxKey from " + schema + "." + table + " , (SELECT @rows:=0 FROM DUAL) A group by chunkId"
+	query := "CREATE TEMPORARY TABLE replication_manager_schema.table_chunk ENGINE=MYISAM SELECT FLOOR((@rows:=@rows+1/2000)) as chunkId, MIN(CONCAT_WS('/*;*/'," + pk + ")) as chunkMinKey, MAX(CONCAT_WS('/*;*/'," + pk + ")) as chunkMaxKey from " + schema + "." + table + " , (SELECT @rows:=0 FROM DUAL) A group by chunkId"
 	_, err = Conn.Exec(query)
 	Conn.Exec("SET SESSION binlog_format = 'STATEMENT'")
 	if err != nil {
@@ -589,24 +589,26 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	}
 
 	for true {
-		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, chunkMinKey , chunkMaxKey," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunck limit 1) B on " + predicate
+		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, chunkMinKey , chunkMaxKey," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk limit 1) B on " + predicate
 		_, err := Conn.Exec(query)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "ERROR: Could not process chunck %s %s", query, err)
 			return
 		}
-		res, err2 := Conn.Exec("DELETE FROM replication_manager_schema.table_chunck limit 1")
+
+		_, err2 := Conn.Exec("DELETE FROM replication_manager_schema.table_chunk limit 1")
 		if err2 != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Checksum error deleting chunck %s", err)
 			return
 		}
 
-		i, err3 := res.RowsAffected()
+		var count int
+		err3 := Conn.QueryRowx("SELECT count(*) FROM replication_manager_schema.table_chunk").Scan(&count)
 		if err3 != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Checksum can't fetch rows affected ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Checksum can't fetch rows remaining", err)
 			return
 		}
-		if i == 0 {
+		if count == 0 {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Finished checksum table %s.%s", schema, table)
 			break
 		}
@@ -643,6 +645,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		slaveChecksums, logs, err := dbhelper.GetTableChecksumResult(s.Conn)
 		cluster.LogSQL(logs, err, s.URL, "CheckTableChecksum", LvlDbg, "GetTableChecksumResult")
 		checkok := true
+
 		for _, chunk := range masterChecksums {
 			if chunk.ChunkCheckSum != slaveChecksums[chunk.ChunkId].ChunkCheckSum {
 				checkok = false
