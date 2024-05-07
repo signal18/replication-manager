@@ -41,7 +41,7 @@ type Proxy struct {
 	TunnelPort      int                  `json:"tunnelPort"`
 	TunnelWritePort int                  `json:"tunnelWritePort"`
 	Tunnel          bool                 `json:"tunnel"`
-	User            string               `json:"user"`
+	User            string               `json:"-"`
 	Pass            string               `json:"-"`
 	WritePort       int                  `json:"writePort"`
 	ReadPort        int                  `json:"readPort"`
