@@ -50,7 +50,7 @@ type ServerMonitor struct {
 	User                        string                       `json:"user"`
 	Pass                        string                       `json:"-"`
 	URL                         string                       `json:"url"`
-	DSN                         string                       `json:"dsn"`
+	DSN                         string                       `json:"-"`
 	Host                        string                       `json:"host"`
 	Port                        string                       `json:"port"`
 	TunnelPort                  string                       `json:"tunnelPort"`
