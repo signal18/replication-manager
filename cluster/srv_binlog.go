@@ -411,7 +411,7 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 		}
 
 		//Purge slaves to oldest master binlog timestamp and skip if slave only has 1 binary logs file left
-		if master.OldestBinaryLogTimestamp > server.OldestBinaryLogTimestamp && len(server.BinaryLogFiles) > 1 {
+		if server.OldestBinaryLogTimestamp > 0 && master.OldestBinaryLogTimestamp > server.OldestBinaryLogTimestamp && len(server.BinaryLogFiles) > 1 {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Purging slave binlog of %s from %s until oldest timestamp on master: %s", server.URL, time.Unix(server.OldestBinaryLogTimestamp, 0).String(), time.Unix(master.OldestBinaryLogTimestamp, 0).String())
 			q, err := dbhelper.PurgeBinlogBefore(server.Conn, master.OldestBinaryLogTimestamp)
 			if err != nil {
