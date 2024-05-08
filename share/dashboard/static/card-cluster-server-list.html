@@ -8,6 +8,7 @@
         <th class="rowicon"><!-- Version --></th>
         <th class="servers">Database Servers</th>
         <th class="status">Status</th>
+        <th class="status">Is Mnt</th>
         <th>
             <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Using GTID</span>
             <span ng-if="servers[0].dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">Executed GTID Set</span>
@@ -68,7 +69,8 @@
         <span ng-switch-default class="label label-default">{{server.state}}
             <label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
     </td>
-
+    <td align="center" class="tabicon"><i ng-if="server.isMaintenance==true"
+        class="fa fa-1x fa-cogs text-success"></i></td>
 <td class="gtid"><span
         ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{server.replications[0].usingGtid.String}}</span>
 <span ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">{{server.gtidExecuted}}</span></td>
