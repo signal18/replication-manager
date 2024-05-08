@@ -191,7 +191,7 @@ func (psql *ProxySQL) SetOnline(host string, port string) error {
 }
 
 func (psql *ProxySQL) SetOfflineSoft(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE mysql_servers SET status='OFFLINE_SOFT', hostgroup_id='%s' WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s','%s')", psql.ReaderHG, host, port, psql.ReaderHG, psql.WriterHG)
+	sql := fmt.Sprintf("UPDATE mysql_servers SET status='OFFLINE_SOFT' WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s','%s')", host, port, psql.ReaderHG, psql.WriterHG)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
