@@ -46,6 +46,7 @@
               <Table class="table fixed" style="border: 1px">
                 <tr>
                   <th class="tabicon">Status</th>
+                  <th class="tabicon">In Maintenance</th>
                   <th class="tabicon">Prefered/Ignored</th>
                   <th class="tabicon">Read Only</th>
                   <th class="tabicon">Ignore Read Only</th>
@@ -66,6 +67,8 @@
                     <span ng-switch-default class="label label-default">{{server.state}}
                       <label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
                   </td>
+                  <td align="center" class="tabicon"><i ng-if="server.isMaintenance==true"
+                    class="fa fa-1x fa-cogs text-success"></i></td>
                   <td align="center" class="tabicon"><i ng-if="server.ignored==true"
                       class="fa fa-1x fa-thumbs-down text-danger"></i><i ng-if="server.prefered==true"
                       class="fa fa-1x fa-thumbs-up text-success"></i></td>
