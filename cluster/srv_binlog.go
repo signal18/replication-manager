@@ -237,14 +237,12 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 		lastfile := 0
 
 		//Accumulating newest binlog size and shifting to oldest
-		for totalSize < uint(cluster.Conf.ForceBinlogPurgeTotalSize*(1024*1024*1024)) {
+		for latestbinlog > 0 && totalSize < uint(cluster.Conf.ForceBinlogPurgeTotalSize*(1024*1024*1024)) {
 			filename := prefix + "." + fmt.Sprintf("%06d", latestbinlog)
 			if size, ok := server.BinaryLogFiles[filename]; ok {
 				//accumulating size
 				totalSize += size
 				lastfile = latestbinlog //last file based on total size
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Filename not found on %s: %s", server.URL, filename)
 			}
 			//Descending
 			latestbinlog--
@@ -255,8 +253,8 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 			for oldestbinlog <= lastfile {
 				//Halt and return if last binlogfile is same with slave master pos
 				if oldestbinlog == cluster.SlavesOldestMasterFile.Suffix {
-					if cluster.StateMachine.CurState.Search("WARN0105") == false {
-						cluster.StateMachine.AddState("WARN0105", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0105"], ErrFrom: "CHECK", ServerUrl: server.URL})
+					if cluster.StateMachine.CurState.Search("WARN0107") == false {
+						cluster.StateMachine.AddState("WARN0107", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0107"], cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix), ErrFrom: "CHECK", ServerUrl: server.URL})
 					}
 					return
 				}
@@ -439,7 +437,7 @@ func (server *ServerMonitor) CheckAndPurgeBinlogMaster() {
 			}
 		} else {
 			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Purging check")
-			if !server.IsPurgingBinlog() {
+			if !server.IsPurgingBinlog() && len(server.BinaryLogFiles) > 1 {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "MariaDB Version is not compatible for max_binlog_total_size, using manual purging")
 				go server.JobBinlogPurgeMaster()
 			}
@@ -467,9 +465,9 @@ func (server *ServerMonitor) CheckAndPurgeBinlogSlave() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, err.Error())
 			}
 		} else {
-			if !server.IsPurgingBinlog() {
+			if !server.IsPurgingBinlog() && len(server.BinaryLogFiles) > 1 {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "MariaDB Version is not compatible for max_binlog_total_size, using manual purging")
-				if cluster.StateMachine.CurState.Search("WARN0105") == false {
+				if cluster.StateMachine.CurState.Search("WARN0107") == false {
 					go server.JobBinlogPurgeSlave()
 				}
 			}
