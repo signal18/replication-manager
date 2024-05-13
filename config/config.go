@@ -215,6 +215,7 @@ type Config struct {
 	CheckType                                 string                 `mapstructure:"check-type" toml:"check-type" json:"checkType"`
 	CheckReplFilter                           bool                   `mapstructure:"check-replication-filters" toml:"check-replication-filters" json:"checkReplicationFilters"`
 	CheckBinFilter                            bool                   `mapstructure:"check-binlog-filters" toml:"check-binlog-filters" json:"checkBinlogFilters"`
+	CheckBinServerId                          int                    `mapstructure:"check-binlog-server-id" toml:"check-binlog-server-id" json:"checkBinlogServerId"`
 	CheckGrants                               bool                   `mapstructure:"check-grants" toml:"check-grants" json:"checkGrants"`
 	RplChecks                                 bool                   `mapstructure:"check-replication-state" toml:"check-replication-state" json:"checkReplicationState"`
 	RplCheckErrantTrx                         bool                   `mapstructure:"check-replication-errant-trx" toml:"check-replication-errant-trx" json:"checkReplicationErrantTrx"`

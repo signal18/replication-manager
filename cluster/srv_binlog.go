@@ -101,7 +101,7 @@ func (server *ServerMonitor) RefreshBinlogOldestTimestamp() error {
 		port, _ := strconv.Atoi(server.Port)
 
 		cfg := replication.BinlogSyncerConfig{
-			ServerID: 100,
+			ServerID: uint32(cluster.Conf.CheckBinServerId),
 			Flavor:   server.DBVersion.Flavor,
 			Host:     server.Host,
 			Port:     uint16(port),
