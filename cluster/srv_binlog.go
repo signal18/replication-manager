@@ -10,16 +10,17 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/go-mysql-org/go-mysql/replication"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
-	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -92,41 +93,45 @@ func (server *ServerMonitor) SetBinlogOldestTimestamp(str string) error {
 	return nil
 }
 
-func (server *ServerMonitor) RefreshBinlogOldestTimestamp() {
+func (server *ServerMonitor) RefreshBinlogOldestTimestamp() error {
 	cluster := server.ClusterGroup
-	// var err error
+	var err error
+
 	if server.BinaryLogOldestFile != "" {
-		mysqlbinlogcmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--stop-position=512", server.BinaryLogOldestFile)
-		grepcmd := exec.Command("grep", "-Eo", "-m 1", "#[0-9]{6}[ ]{1,2}[0-9:]{8}")
+		port, _ := strconv.Atoi(server.Port)
 
-		// out, _ := mysqlbinlogcmd.Output()
-		pipe, err := mysqlbinlogcmd.StdoutPipe()
-		defer pipe.Close()
-		grepcmd.Stdin = pipe
-
-		mysqlbinlogcmd.Start()
-
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error while extracting timestamp from oldest master binlog: %s. Err: %s", server.BinaryLogOldestFile, err.Error())
-			return
+		cfg := replication.BinlogSyncerConfig{
+			ServerID: 100,
+			Flavor:   server.DBVersion.Flavor,
+			Host:     server.Host,
+			Port:     uint16(port),
+			User:     server.User,
+			Password: server.Pass,
 		}
 
-		out, _ := grepcmd.Output()
+		syncer := replication.NewBinlogSyncer(cfg)
+
+		streamer, err := syncer.StartSync(mysql.Position{Name: server.BinaryLogOldestFile, Pos: 0})
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error while extracting timestamp from oldest master binlog: %s. Err: ", server.BinaryLogOldestFile, err.Error())
-			return
+			return err
 		}
 
-		err = server.SetBinlogOldestTimestamp(string(out))
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s. Str: %s. Host: %s - %s", err.Error(), string(out), server.Host+":"+server.Port, server.BinaryLogOldestFile)
-			return
+		for {
+			ev, _ := streamer.GetEvent(context.Background())
+			if ev.Header.EventType == replication.FORMAT_DESCRIPTION_EVENT {
+				server.OldestBinaryLogTimestamp = int64(ev.Header.Timestamp)
+				ts := time.Unix(server.OldestBinaryLogTimestamp, 0)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Refreshed oldest timestamp on %s. oldest: %s", server.Host+":"+server.Port, ts.String())
+				//Only update once for oldest binlog timestamp
+				break
+			}
 		}
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Refreshed binary logs on %s. oldest timestamp: %s", server.Host+":"+server.Port, time.Unix(server.OldestBinaryLogTimestamp, 0).String())
+		syncer.Close()
 
-		return
 	}
+
+	return err
 }
 
 func (server *ServerMonitor) SetMaxBinlogTotalSize() error {
@@ -159,9 +164,11 @@ func (server *ServerMonitor) SetBinaryLogOldestFile() {
 	if files > 0 {
 		//If no other binlog is exist
 		if files == 1 && server.BinaryLogOldestFile != server.BinaryLogFile {
-			server.BinaryLogOldestFile = server.BinaryLogFile
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogOldestFile)
-			server.RefreshBinlogOldestTimestamp()
+			if server.BinaryLogOldestFile != server.BinaryLogFile {
+				server.BinaryLogOldestFile = server.BinaryLogFile
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogOldestFile)
+				server.RefreshBinlogOldestTimestamp()
+			}
 			return
 		}
 
@@ -174,9 +181,11 @@ func (server *ServerMonitor) SetBinaryLogOldestFile() {
 		oldest := prefix + "." + fmt.Sprintf("%06d", oldestbinlog)
 
 		if _, ok := server.BinaryLogFiles[oldest]; ok && server.BinaryLogOldestFile != server.BinaryLogFile {
-			server.BinaryLogOldestFile = oldest
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogOldestFile)
-			server.RefreshBinlogOldestTimestamp()
+			if server.BinaryLogOldestFile != oldest {
+				server.BinaryLogOldestFile = oldest
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogOldestFile)
+				server.RefreshBinlogOldestTimestamp()
+			}
 			return
 		}
 	}
