@@ -1279,8 +1279,8 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string) error {
 
 func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string) error {
 	cluster := server.ClusterGroup
-	switch cluster.Conf.BackupBinlogsMethod {
-	case "client":
+	switch cluster.Conf.BinlogCopyMode {
+	case "client", "mysqlbinlog":
 		return server.JobBackupBinlog(binlogfile)
 	case "ssh":
 		return server.JobBackupBinlogSSH(binlogfile)
