@@ -4,7 +4,7 @@ go 1.16
 
 replace github.com/kahing/goofys => github.com/georgyo/goofys v0.21.0
 
-replace github.com/siddontang/go-mysql-org/go-mysql => github.com/go-mysql-org/go-mysql v1.6.0
+replace github.com/siddontang/go-mysql-org/go-mysql => github.com/go-mysql-org/go-mysql v1.7.0
 
 require (
 	github.com/Azure/azure-pipeline-go v0.2.2

@@ -380,6 +380,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.CheckGrants, "check-grants", true, "Check that possible master have equal grants")
 	flags.BoolVar(&conf.RplChecks, "check-replication-state", true, "Check replication status when electing master server")
 	flags.BoolVar(&conf.RplCheckErrantTrx, "check-replication-errant-trx", true, "Check replication have no errant transaction in MySQL GTID")
+	flags.IntVar(&conf.CheckBinServerId, "check-binlog-server-id", 10000, "Server ID for checking binlogs timestamps")
 
 	flags.StringVar(&conf.APIPort, "api-port", "10005", "Rest API listen port")
 	flags.StringVar(&conf.APIUsers, "api-credentials", "admin:repman", "Rest API user list user:password,..")
@@ -620,8 +621,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.BoolVar(&conf.BackupBinlogs, "backup-binlogs", false, "Archive binlogs")
 	flags.IntVar(&conf.BackupBinlogsKeep, "backup-binlogs-keep", 10, "Number of master binlog to keep")
-	flags.StringVar(&conf.BackupBinlogsMethod, "backup-binlogs-method", "client", "Method for backing up binlogs: client|ssh|gomysql|script")
-	flags.StringVar(&conf.BackupBinlogsScript, "backup-binlogs-script", "", "Script filename for backing up binlogs")
+	flags.StringVar(&conf.BinlogCopyMode, "binlog-copy-mode", "mysqlbinlog", "Method for backing up binlogs: mysqlbinlog|ssh|gomysql|script (old value 'client' will be treated same as 'mysqlbinlog')")
+	flags.StringVar(&conf.BinlogCopyScript, "binlog-copy-script", "", "Script filename for backing up binlogs")
+	flags.StringVar(&conf.BinlogParseMode, "binlog-parse-mode", "gomysql", "Method for parsing binlogs: mysqlbinlog|gomysql")
 
 	flags.BoolVar(&conf.ProvBinaryInTarball, "prov-db-binary-in-tarball", false, "Add prov-db-binary-tarball-name binaries to init tarball")
 	flags.StringVar(&conf.ProvBinaryTarballName, "prov-db-binary-tarball-name", "mysql-8.0.17-macos10.14-x86_64.tar.gz", "Name of binary tarball to put in tarball")
@@ -1345,6 +1347,8 @@ func (repman *ReplicationManager) initAlias(v *viper.Viper) {
 	v.RegisterAlias("maxscale-host", "maxscale-servers")
 	v.RegisterAlias("maxscale-pass", "maxscale-password")
 	v.RegisterAlias("api-credential", "api-credentials")
+	v.RegisterAlias("backup-binlogs-method", "binlog-copy-mode")
+	v.RegisterAlias("backup-binlogs-script", "binlog-copy-script")
 }
 
 func (repman *ReplicationManager) InitRestic() error {

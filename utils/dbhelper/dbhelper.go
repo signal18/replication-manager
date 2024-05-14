@@ -2990,3 +2990,24 @@ func SetSlaveConnectionsNeededForPurge(db *sqlx.DB, size int) (string, error) {
 	}
 	return query, err
 }
+
+func GetBinlogFormatDesc(db *sqlx.DB, binlogfile string) ([]BinlogEvents, string, error) {
+	logs := ""
+	logpos := "0"
+	events := []BinlogEvents{}
+
+	sql := fmt.Sprintf("show binlog events IN '%s' from %s LIMIT 3", binlogfile, logpos)
+	logs += sql + "\n"
+	err := db.Select(&events, sql)
+	if err != nil {
+		return nil, logs, err
+	}
+
+	for _, row := range events {
+		if strings.ToUpper(row.Event_type) == "FORMAT_DESC" {
+			return []BinlogEvents{row}, logs, nil
+		}
+	}
+
+	return nil, logs, errors.New("Binlog Format Desc Not Found")
+}
