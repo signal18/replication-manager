@@ -62,7 +62,7 @@ require (
 	github.com/micro/go-micro v0.27.1
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mjibson/go-dsp v0.0.0-20170104183934-49dba8372707
-	github.com/nsf/termbox-go v0.0.0-20180129072728-88b7b944be8b
+	github.com/nsf/termbox-go v1.1.1
 	github.com/percona/go-mysql v0.0.0-20190307200310-f5cfaf6a5e55
 	github.com/peterbourgon/g2g v0.0.0-20161124161852-0c2bab2b173d
 	github.com/pingcap/dumpling v0.0.0-20200319081211-255ce0d25719
@@ -135,11 +135,12 @@ require (
 	github.com/juju/testing v0.0.0-20220203020004-a0ff61f03494 // indirect
 	github.com/klauspost/pgzip v1.2.6
 	github.com/lestrrat/go-envload v0.0.0-20180220120943-6ed08b54a570 // indirect
-	github.com/mattn/go-runewidth v0.0.13 // indirect
+	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/mcuadros/go-version v0.0.0-20190830083331-035f6764e8d2 // indirect
 	github.com/miekg/dns v1.1.43 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pkg/xattr v0.4.6
+	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/cors v1.7.0 // indirect
 	github.com/siddontang/go-log v0.0.0-20190221022429-1e957dd83bed // indirect
 	github.com/smartystreets/goconvey v1.7.2 // indirect
