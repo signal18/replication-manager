@@ -132,6 +132,8 @@ func (server *ServerMonitor) RefreshBinlogOldestTimestamp() error {
 
 			syncer.Close()
 		} else {
+			binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
+
 			events, _, err := dbhelper.GetBinlogFormatDesc(server.Conn, server.BinaryLogOldestFile)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error while getting binlog events from oldest master binlog: %s. Err: %s", server.BinaryLogOldestFile, err.Error())
@@ -142,7 +144,7 @@ func (server *ServerMonitor) RefreshBinlogOldestTimestamp() error {
 				startpos := fmt.Sprintf("%d", ev.Pos)
 				endpos := fmt.Sprintf("%d", ev.End_log_pos)
 
-				mysqlbinlogcmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-position="+startpos, "--stop-position="+endpos, ev.Log_name)
+				mysqlbinlogcmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-position="+startpos, "--stop-position="+endpos, ev.Log_name)
 				grepcmd := exec.Command("grep", "-Eo", "-m 1", "#[0-9]{6}[ ]{1,2}[0-9:]{7,8}")
 
 				pipe, err := mysqlbinlogcmd.StdoutPipe()
