@@ -43,5 +43,18 @@
             </md-switch>
             </td>
         </tr>
+        <tr>
+            <th>Enforce Binlog Purge On Replicas</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceBinlogPurgeOnReplicas"
+                           ng-click="switchsettings('force-binlog-purge-replicas')" aria-label="forceBinlogPurgeOnReplicas Mode Change">
+                    <span ng-if="selectedCluster.config.forceBinlogPurgeOnReplicas" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.forceBinlogPurgeOnReplicas" class="label label-warning">Off</span>
+
+            </md-switch>
+            </td>
+        </tr>
     </table>
 </md-card>

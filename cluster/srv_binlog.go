@@ -384,7 +384,7 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 		}
 
 		if server.IsPurgingBinlog() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Master is waiting for previous binlog purge to finish")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Server is waiting for previous binlog purge to finish")
 			return
 		}
 
@@ -400,7 +400,11 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 			return
 		}
 
-		//Block multiple purge
+		//Only purge if slave not ignored
+		if server.IsIgnored() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Slave %s is in ignored list. Skipping", server.Host+":"+server.Port)
+			return
+		}
 
 		//Only purge if slave connected and status is slave or slave late
 		if server.State != stateSlave && server.State != stateSlaveLate {
