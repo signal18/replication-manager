@@ -615,8 +615,9 @@ type Config struct {
 	BackupMysqlclientPath                     string                 `mapstructure:"backup-mysqlclient-path" toml:"backup-mysqlclient-path" json:"backupMysqlclientgPath"`
 	BackupBinlogs                             bool                   `mapstructure:"backup-binlogs" toml:"backup-binlogs" json:"backupBinlogs"`
 	BackupBinlogsKeep                         int                    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
-	BackupBinlogsMethod                       string                 `mapstructure:"backup-binlogs-method" toml:"backup-binlogs-method" json:"backupBinlogsMethod"`
-	BackupBinlogsScript                       string                 `mapstructure:"backup-binlogs-script" toml:"backup-binlogs-script" json:"backupBinlogsScript"`
+	BinlogCopyMode                            string                 `mapstructure:"binlog-copy-mode" toml:"binlog-copy-mode" json:"binlogCopyMode"`
+	BinlogCopyScript                          string                 `mapstructure:"binlog-copy-script" toml:"binlog-copy-script" json:"binlogCopyScript"`
+	BinlogParseMode                           string                 `mapstructure:"binlog-parse-mode" toml:"binlog-parse-mode" json:"binlogParseMode"`
 	BackupLockDDL                             bool                   `mapstructure:"backup-lockddl" toml:"backup-lockddl" json:"backupLockDDL"`
 	ClusterConfigPath                         string                 `mapstructure:"cluster-config-file" toml:"-" json:"-"`
 	VaultServerAddr                           string                 `mapstructure:"vault-server-addr" toml:"vault-server-addr" json:"vaultServerAddr"`

@@ -109,7 +109,7 @@ func (server *ServerMonitor) RefreshBinlogOldestTimestamp() error {
 	var err error
 
 	if server.BinaryLogOldestFile != "" {
-		if cluster.Conf.BackupBinlogsMethod == "gomysql" {
+		if cluster.Conf.BinlogParseMode == "gomysql" {
 			port, _ := strconv.Atoi(server.Port)
 
 			cfg := replication.BinlogSyncerConfig{
