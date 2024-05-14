@@ -574,3 +574,7 @@ func (cluster *Cluster) SwitchForceBinlogPurge() {
 func (cluster *Cluster) SwitchForceBinlogPurgeOnRestore() {
 	cluster.Conf.ForceBinlogPurgeOnRestore = !cluster.Conf.ForceBinlogPurgeOnRestore
 }
+
+func (cluster *Cluster) SwitchForceBinlogPurgeReplicas() {
+	cluster.Conf.ForceBinlogPurgeReplicas = !cluster.Conf.ForceBinlogPurgeReplicas
+}

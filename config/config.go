@@ -236,6 +236,7 @@ type Config struct {
 	ForceBinlogSlowqueries                    bool                   `mapstructure:"force-binlog-slowqueries" toml:"force-binlog-slowqueries" json:"forceBinlogSlowqueries"`
 	ForceBinlogChecksum                       bool                   `mapstructure:"force-binlog-checksum" toml:"force-binlog-checksum" json:"forceBinlogChecksum"`
 	ForceBinlogPurge                          bool                   `mapstructure:"force-binlog-purge" toml:"force-binlog-purge" json:"forceBinlogPurge"`
+	ForceBinlogPurgeReplicas                  bool                   `mapstructure:"force-binlog-purge-replicas" toml:"force-binlog-purge-replicas" json:"forceBinlogPurgeReplicas"`
 	ForceBinlogPurgeOnRestore                 bool                   `mapstructure:"force-binlog-purge-on-restore" toml:"force-binlog-purge-on-restore" json:"forceBinlogPurgeOnRestore"`
 	ForceBinlogPurgeTotalSize                 int                    `mapstructure:"force-binlog-purge-total-size" toml:"force-binlog-purge-total-size" json:"forceBinlogPurgeTotalSize"`
 	ForceBinlogPurgeMinReplica                int                    `mapstructure:"force-binlog-purge-min-replica" toml:"force-binlog-purge-min-replica" json:"forceBinlogPurgeMinReplica"`

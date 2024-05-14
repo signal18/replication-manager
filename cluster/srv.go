@@ -816,7 +816,9 @@ func (server *ServerMonitor) Refresh() error {
 					}
 				}
 			} else {
-				go server.CheckAndPurgeBinlogSlave()
+				if cluster.Conf.ForceBinlogPurgeReplicas && server.HaveBinlogSlaveUpdates && !server.IsIgnored() {
+					go server.CheckAndPurgeBinlogSlave()
+				}
 			}
 		}
 	}

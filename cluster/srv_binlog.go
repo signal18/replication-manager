@@ -314,16 +314,16 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 				//Increment for purging use
 				oldestbinlog++
 
-				if oldestbinlog > 0 {
+				if oldestbinlog > 0 && oldestbinlog < cluster.SlavesOldestMasterFile.Suffix-1 {
 					filename := prefix + "." + fmt.Sprintf("%06d", oldestbinlog)
 					if _, ok := server.BinaryLogFiles[filename]; ok {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Purging binlog of %s: %s. ", server.URL, filename)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Purging binlog of %s: %s. ", server.URL, filename)
 						_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)
 						if err != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
 						}
 					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Binlog filename not found on %s: %s", server.URL, filename)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Binlog filename not found on %s: %s", server.URL, filename)
 					}
 				}
 			}
@@ -436,7 +436,7 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 		}
 
 		if server.IsPurgingBinlog() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Master is waiting for previous binlog purge to finish")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Server is waiting for previous binlog purge to finish")
 			return
 		}
 
@@ -452,7 +452,11 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 			return
 		}
 
-		//Block multiple purge
+		//Only purge if slave not ignored
+		if server.IsIgnored() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Slave %s is in ignored list. Skipping", server.Host+":"+server.Port)
+			return
+		}
 
 		//Only purge if slave connected and status is slave or slave late
 		if server.State != stateSlave && server.State != stateSlaveLate {
