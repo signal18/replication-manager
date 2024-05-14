@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -48,37 +49,45 @@ func (server *ServerMonitor) SetIsPurgingBinlog(value bool) {
 }
 
 func (server *ServerMonitor) SetBinlogOldestTimestamp(str string) error {
-	strout := strings.Split(strings.Replace(strings.Replace(strings.Replace(strings.Replace(string(str), "  ", " ", -1), "#", "", -1), "\n", "", -1), "\r", "", -1), " ")
-	if strout[0] == "" {
-		return errors.New("Failed to parse binary log datetime string. ")
+	var regex, err = regexp.Compile(`[0-9]{6}[ ]{1,2}[0-9:]{7,8}`)
+	if err != nil {
+		return errors.New("Incorrect regexp.")
 	}
+
+	//Get First Timestamp From Binlog Format Desc and remove multiple space
+	strin := strings.Replace(regex.FindString(str), "  ", " ", -1)
+	if strin == "" {
+		return errors.New("Timestamp not found on binlog")
+	}
+
+	strout := strings.Split(strin, " ")
 
 	dt := strout[0]
 	yy, err := strconv.Atoi(dt[:2])
 	if err != nil {
-		return errors.New("Failed to parse binary log datetime string. Part: year ")
+		return errors.New("Failed to parse year")
 	}
 	mm, err := strconv.Atoi(dt[2:4])
 	if err != nil {
-		return errors.New("Failed to parse binary log datetime string. Part: month ")
+		return errors.New("Failed to parse month")
 	}
 	dd, err := strconv.Atoi(dt[4:])
 	if err != nil {
-		return errors.New("Failed to parse binary log datetime string. Part: date ")
+		return errors.New("Failed to parse date of month")
 	}
 
 	tm := strings.Split(strout[1], ":")
 	hr, err := strconv.Atoi(tm[0])
 	if err != nil {
-		return errors.New("Failed to parse binary log datetime string. Part: hour ")
+		return errors.New("Failed to parse hour")
 	}
 	min, err := strconv.Atoi(tm[1])
 	if err != nil {
-		return errors.New("Failed to parse binary log datetime string. Part: minute ")
+		return errors.New("Failed to parse minute")
 	}
 	sec, err := strconv.Atoi(tm[2])
 	if err != nil {
-		return errors.New("Failed to parse binary log datetime string. Part: second ")
+		return errors.New("Failed to parse second")
 	}
 
 	//4 digit hack
@@ -145,32 +154,20 @@ func (server *ServerMonitor) RefreshBinlogOldestTimestamp() error {
 				endpos := fmt.Sprintf("%d", ev.End_log_pos)
 
 				mysqlbinlogcmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-position="+startpos, "--stop-position="+endpos, ev.Log_name)
-				grepcmd := exec.Command("grep", "-Eo", "-m 1", "#[0-9]{6}[ ]{1,2}[0-9:]{7,8}")
 
-				pipe, err := mysqlbinlogcmd.StdoutPipe()
-				defer pipe.Close()
-				grepcmd.Stdin = pipe
-
-				mysqlbinlogcmd.Start()
-
+				result, err := mysqlbinlogcmd.Output()
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error while extracting timestamp from oldest master binlog: %s. Err: %s", server.BinaryLogOldestFile, err.Error())
 					return err
 				}
 
-				out, _ := grepcmd.Output()
+				err = server.SetBinlogOldestTimestamp(string(result))
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error while extracting timestamp from oldest master binlog: %s. Err: ", server.BinaryLogOldestFile, err.Error())
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s. Host: %s - %s", err.Error(), server.Host+":"+server.Port, server.BinaryLogOldestFile)
 					return err
 				}
 
-				err = server.SetBinlogOldestTimestamp(string(out))
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s. Str: %s. Host: %s - %s", err.Error(), string(out), server.Host+":"+server.Port, server.BinaryLogOldestFile)
-					return err
-				}
-
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Refreshed binary logs on %s. oldest timestamp: %s", server.Host+":"+server.Port, time.Unix(server.OldestBinaryLogTimestamp, 0).String())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Refreshed binary logs on %s - %s. oldest timestamp: %s", server.Host+":"+server.Port, ev.Log_name, time.Unix(server.OldestBinaryLogTimestamp, 0).String())
 
 				return err
 			}
