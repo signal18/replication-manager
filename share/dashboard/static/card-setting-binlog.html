@@ -48,10 +48,10 @@
         </tr>
         <tr>
             <td>
-                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceBinlogPurgeOnReplicas"
-                           ng-click="switchsettings('force-binlog-purge-replicas')" aria-label="forceBinlogPurgeOnReplicas Mode Change">
-                    <span ng-if="selectedCluster.config.forceBinlogPurgeOnReplicas" class="label label-primary">On</span><span
-                        ng-if="!selectedCluster.config.forceBinlogPurgeOnReplicas" class="label label-warning">Off</span>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.forceBinlogPurgeReplicas"
+                           ng-click="switchsettings('force-binlog-purge-replicas')" aria-label="forceBinlogPurgeReplicas Mode Change">
+                    <span ng-if="selectedCluster.config.forceBinlogPurgeReplicas" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.forceBinlogPurgeReplicas" class="label label-warning">Off</span>
 
             </md-switch>
             </td>

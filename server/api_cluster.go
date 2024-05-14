@@ -1185,8 +1185,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchForceBinlogPurge()
 	case "force-binlog-purge-on-restore":
 		mycluster.SwitchForceBinlogPurgeOnRestore()
-	case "force-binlog-purge-on-replicas":
-		mycluster.SwitchForceBinlogPurgeOnReplicas()
+	case "force-binlog-purge-replicas":
+		mycluster.SwitchForceBinlogPurgeReplicas()
 	}
 }
 

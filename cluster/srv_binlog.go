@@ -262,16 +262,16 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 				//Increment for purging use
 				oldestbinlog++
 
-				if oldestbinlog > 0 {
+				if oldestbinlog > 0 && oldestbinlog < cluster.SlavesOldestMasterFile.Suffix-1 {
 					filename := prefix + "." + fmt.Sprintf("%06d", oldestbinlog)
 					if _, ok := server.BinaryLogFiles[filename]; ok {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Purging binlog of %s: %s. ", server.URL, filename)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Purging binlog of %s: %s. ", server.URL, filename)
 						_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)
 						if err != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
 						}
 					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Binlog filename not found on %s: %s", server.URL, filename)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Binlog filename not found on %s: %s", server.URL, filename)
 					}
 				}
 			}
