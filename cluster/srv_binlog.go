@@ -100,7 +100,7 @@ func (server *ServerMonitor) SetBinlogOldestTimestamp(str string) error {
 		yy = yy - 100
 	}
 
-	server.OldestBinaryLogTimestamp = time.Date(yy, time.Month(mm), dd, hr, min, sec, 0, time.UTC).Unix()
+	server.OldestBinaryLogTimestamp = time.Date(yy, time.Month(mm), dd, hr, min, sec, 0, time.Local).Unix()
 	return nil
 }
 
