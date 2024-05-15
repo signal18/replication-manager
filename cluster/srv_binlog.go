@@ -210,7 +210,10 @@ func (server *ServerMonitor) SetBinaryLogOldestFile() {
 			if server.BinaryLogOldestFile != server.BinaryLogFile {
 				server.BinaryLogOldestFile = server.BinaryLogFile
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogOldestFile)
-				server.RefreshBinlogOldestTimestamp()
+				//Only get timestamp when needed
+				if cluster.Conf.ForceBinlogPurge {
+					server.RefreshBinlogOldestTimestamp()
+				}
 			}
 			return
 		}
@@ -227,7 +230,10 @@ func (server *ServerMonitor) SetBinaryLogOldestFile() {
 			if server.BinaryLogOldestFile != oldest {
 				server.BinaryLogOldestFile = oldest
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogOldestFile)
-				server.RefreshBinlogOldestTimestamp()
+				//Only get timestamp when needed
+				if cluster.Conf.ForceBinlogPurge {
+					server.RefreshBinlogOldestTimestamp()
+				}
 			}
 			return
 		}
