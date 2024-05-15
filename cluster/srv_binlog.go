@@ -32,6 +32,11 @@ func (server *ServerMonitor) RefreshBinaryLogs() {
 	var err error
 	cluster := server.ClusterGroup
 
+	//Don't check binlog of the ignored servers
+	if server.IsIgnored() {
+		return
+	}
+
 	server.BinaryLogFiles, logs, err = dbhelper.GetBinaryLogs(server.Conn, server.DBVersion)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get binary log files %s %s", server.URL, err)
