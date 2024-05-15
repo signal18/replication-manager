@@ -89,6 +89,7 @@ type Config struct {
 	MonitorIgnoreError                        string                 `mapstructure:"monitoring-ignore-errors" toml:"monitoring-ignore-errors" json:"monitoringIgnoreErrors"`
 	MonitorTenant                             string                 `mapstructure:"monitoring-tenant" toml:"monitoring-tenant" json:"monitoringTenant"`
 	MonitoringAlertTrigger                    string                 `mapstructure:"monitoring-alert-trigger" toml:"monitoring-alert-trigger" json:"monitoringAlertTrigger"`
+	MonitoringQueryTimeout                    int                    `mapstructure:"monitoring-query-timeout" toml:"monitoring-query-timeout" json:"monitoringQueryTimeout"`
 	Interactive                               bool                   `mapstructure:"interactive" toml:"-" json:"interactive"`
 	Verbose                                   bool                   `mapstructure:"verbose" toml:"verbose" json:"verbose"`
 	LogFile                                   string                 `mapstructure:"log-file" toml:"log-file" json:"logFile"`
@@ -216,7 +217,6 @@ type Config struct {
 	CheckReplFilter                           bool                   `mapstructure:"check-replication-filters" toml:"check-replication-filters" json:"checkReplicationFilters"`
 	CheckBinFilter                            bool                   `mapstructure:"check-binlog-filters" toml:"check-binlog-filters" json:"checkBinlogFilters"`
 	CheckBinServerId                          int                    `mapstructure:"check-binlog-server-id" toml:"check-binlog-server-id" json:"checkBinlogServerId"`
-	CheckBinTimeout                           int                    `mapstructure:"check-binlog-timeout-ms" toml:"check-binlog-timeout-ms" json:"checkBinlogTimeoutMs"`
 	CheckGrants                               bool                   `mapstructure:"check-grants" toml:"check-grants" json:"checkGrants"`
 	RplChecks                                 bool                   `mapstructure:"check-replication-state" toml:"check-replication-state" json:"checkReplicationState"`
 	RplCheckErrantTrx                         bool                   `mapstructure:"check-replication-errant-trx" toml:"check-replication-errant-trx" json:"checkReplicationErrantTrx"`

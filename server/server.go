@@ -258,6 +258,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitorAddress, "monitoring-address", "localhost", "How to contact this monitoring")
 	flags.StringVar(&conf.MonitorTenant, "monitoring-tenant", "default", "Can be use to store multi tenant identifier")
 	flags.Int64Var(&conf.MonitorWaitRetry, "monitoring-wait-retry", 60, "Retry this number of time before giving up state transition <999999")
+	flags.IntVar(&conf.MonitoringQueryTimeout, "monitoring-query-timeout", 2000, "Timeout for querying monitor in ms")
 	flags.BoolVar(&conf.LogSST, "log-sst", true, "Log open and close SST transfert")
 	flags.IntVar(&conf.LogSSTLevel, "log-sst-level", 1, "Log SST Level")
 	flags.IntVar(&conf.SSTSendBuffer, "sst-send-buffer", 16384, "SST send buffer size")
@@ -381,7 +382,6 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.RplChecks, "check-replication-state", true, "Check replication status when electing master server")
 	flags.BoolVar(&conf.RplCheckErrantTrx, "check-replication-errant-trx", true, "Check replication have no errant transaction in MySQL GTID")
 	flags.IntVar(&conf.CheckBinServerId, "check-binlog-server-id", 10000, "Server ID for checking binlogs timestamps")
-	flags.IntVar(&conf.CheckBinTimeout, "check-binlog-timeout-ms", 2000, "Timeout for checking binlogs in ms")
 
 	flags.StringVar(&conf.APIPort, "api-port", "10005", "Rest API listen port")
 	flags.StringVar(&conf.APIUsers, "api-credentials", "admin:repman", "Rest API user list user:password,..")

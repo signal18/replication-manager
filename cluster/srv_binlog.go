@@ -134,7 +134,7 @@ func (server *ServerMonitor) RefreshBinlogOldestTimestamp() error {
 			}
 
 			for {
-				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.CheckBinTimeout)*time.Millisecond)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.MonitoringQueryTimeout)*time.Millisecond)
 				ev, err := streamer.GetEvent(ctx)
 				cancel()
 
