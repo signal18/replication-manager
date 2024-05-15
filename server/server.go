@@ -381,6 +381,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.RplChecks, "check-replication-state", true, "Check replication status when electing master server")
 	flags.BoolVar(&conf.RplCheckErrantTrx, "check-replication-errant-trx", true, "Check replication have no errant transaction in MySQL GTID")
 	flags.IntVar(&conf.CheckBinServerId, "check-binlog-server-id", 10000, "Server ID for checking binlogs timestamps")
+	flags.IntVar(&conf.CheckBinTimeout, "check-binlog-timeout-ms", 2000, "Timeout for checking binlogs in ms")
 
 	flags.StringVar(&conf.APIPort, "api-port", "10005", "Rest API listen port")
 	flags.StringVar(&conf.APIUsers, "api-credentials", "admin:repman", "Rest API user list user:password,..")
