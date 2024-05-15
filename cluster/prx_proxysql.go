@@ -419,6 +419,12 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			}
 		} //if bootstrap
 
+		//Set the GUI flag to maintenance if proxysql status is OFFLINE_SOFT
+		if (bke.PrxStatus == "OFFLINE_SOFT" || bkeread.PrxStatus == "OFFLINE_SOFT") && !s.IsMaintenance {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, LvlInfo, "Found DB server %s in OFFLINE_SOFT, flag as maintenance. ", s.Host+":"+s.Port)
+			s.SwitchMaintenance()
+		}
+
 		// load the grants
 		if s.IsMaster() && cluster.Conf.ProxysqlCopyGrants {
 			myprxusermap, _, err := dbhelper.GetProxySQLUsers(psql.Connection)
@@ -460,6 +466,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				psql.SaveMySQLUsersToDisk()
 			}
 		}
+
 	} //end for each server
 
 	if updated {
