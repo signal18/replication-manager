@@ -32,6 +32,11 @@ func (server *ServerMonitor) RefreshBinaryLogs() {
 	var err error
 	cluster := server.ClusterGroup
 
+	//Don't check binlog of the ignored servers
+	if server.IsIgnored() {
+		return
+	}
+
 	server.BinaryLogFiles, logs, err = dbhelper.GetBinaryLogs(server.Conn, server.DBVersion)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get binary log files %s %s", server.URL, err)
@@ -210,7 +215,10 @@ func (server *ServerMonitor) SetBinaryLogOldestFile() {
 			if server.BinaryLogOldestFile != server.BinaryLogFile {
 				server.BinaryLogOldestFile = server.BinaryLogFile
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogOldestFile)
-				server.RefreshBinlogOldestTimestamp()
+				//Only get timestamp when needed
+				if cluster.Conf.ForceBinlogPurge {
+					server.RefreshBinlogOldestTimestamp()
+				}
 			}
 			return
 		}
@@ -227,7 +235,10 @@ func (server *ServerMonitor) SetBinaryLogOldestFile() {
 			if server.BinaryLogOldestFile != oldest {
 				server.BinaryLogOldestFile = oldest
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogOldestFile)
-				server.RefreshBinlogOldestTimestamp()
+				//Only get timestamp when needed
+				if cluster.Conf.ForceBinlogPurge {
+					server.RefreshBinlogOldestTimestamp()
+				}
 			}
 			return
 		}
