@@ -134,7 +134,15 @@ func (server *ServerMonitor) RefreshBinlogOldestTimestamp() error {
 			}
 
 			for {
-				ev, _ := streamer.GetEvent(context.Background())
+				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.MonitoringQueryTimeout)*time.Millisecond)
+				ev, err := streamer.GetEvent(ctx)
+				cancel()
+
+				if err == context.DeadlineExceeded {
+					// meet timeout
+					break
+				}
+
 				if ev.Header.EventType == replication.FORMAT_DESCRIPTION_EVENT {
 					server.OldestBinaryLogTimestamp = int64(ev.Header.Timestamp)
 					ts := time.Unix(server.OldestBinaryLogTimestamp, 0)
