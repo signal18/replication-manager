@@ -107,10 +107,10 @@
               <td colspan=2 style="padding: 0px;">
                 <Table class="table table-condensed fixed" style="border: 1px">
                   <tr>
-                    <th class="tabicon">IO Thread</th>
-                    <th class="tabicon">SQL Thread</th>
-                    <th class="tabicon">Master Sync</th>
-                    <th class="tabicon">Slave Sync</th>
+                    <th class="tabicon" style="white-space: normal;">IO Thread</th>
+                    <th class="tabicon" style="white-space: normal;">SQL Thread</th>
+                    <th class="tabicon" style="white-space: normal;">Master Sync</th>
+                    <th class="tabicon" style="white-space: normal;">Slave Sync</th>
                   </tr>
                   <tr>
 
@@ -141,13 +141,13 @@
             <tr>
 
 
-              <td>
+              <td style="white-space: normal;">
                 <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Using
                   GTID</span>
                 <span ng-if="servers[0].dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">Executed GTID
                   Set</span>
               </td>
-              <td class="gtid"><span
+              <td class="gtid" style="white-space: normal;"><span
                   ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">{{replication.usingGtid.String}}</span>
                 <span
                   ng-if="server.dbVersion.flavor!='MariaDB' && slaves[0].haveMysqlGtid==true">{{server.gtidExecuted}}</span>
@@ -155,12 +155,12 @@
 
             </tr>
             <tr>
-              <td class="gtid">
+              <td class="gtid" style="white-space: normal;">
                 <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Current
                   GTID</span>
                 <span ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">File</span>
               </td>
-              <td class="gtid"><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true"
+              <td class="gtid" style="white-space: normal;"><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true"
                   title="{{gtidstring(server.currentGtid)}}">{{gtidstring(server.currentGtid)}}</span>
                 <span
                   ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{replication.masterLogFile.String}}</span>
@@ -169,12 +169,12 @@
               </td>
             </tr>
             <tr>
-              <td class="gtid">
+              <td class="gtid" style="white-space: normal;">
                 <span ng-if="servers[0].dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true">Slave
                   GTID</span>
                 <span ng-if="slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">Pos</span>
               </td>
-              <td class="gtid"><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true"
+              <td class="gtid" style="white-space: normal;"><span ng-if="server.dbVersion.flavor=='MariaDB' && slaves[0].haveMariadbGtid==true"
                   title="{{gtidstring(server.slaveGtid)}}">{{gtidstring(server.slaveGtid)}}</span>
                 <span
                   ng-if="server.isSlave==true &&  slaves[0].haveMariadbGtid==false && slaves[0].haveMysqlGtid==false">{{replication.execMasterLogPos.String}}</span>
@@ -194,11 +194,11 @@
             </tr>
             <tr>
               <td>SQL error</td>
-              <td style="word-break:break-all;">{{replication.lastSqlError.String}}</td>
+              <td style="word-break:break-all; white-space: normal;">{{replication.lastSqlError.String}}</td>
             </tr>
             <tr>
               <td>IO error</td>
-              <td style="word-break:break-all;">{{replication.lastIoError.String}}</td>
+              <td style="word-break:break-all; white-space: normal;">{{replication.lastIoError.String}}</td>
             </tr>
             <tr>
               <td>Slave parallel max queued</td>
