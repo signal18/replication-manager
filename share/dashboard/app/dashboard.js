@@ -1280,7 +1280,7 @@ function (
       value += ' ' + selectedDbServersPhysicalBackupWeek;
       if (selectedDbServersPhysicalBackupWeekTo)   value += '-' + selectedDbServersPhysicalBackupWeekTo;
 
-      if (confirm("Confirm save Physical backup scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-physical-backups-cron/'+value);
+      if (confirm("Confirm save Physical backup scheduler  "+value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-physical-backup-cron/'+value);
     };
 
     $scope.saveAlertDisableCron = function (selectedDbServersAlertDisableHour,selectedDbServersAlertDisableMin,selectedDbServersAlertDisableSec,selectedDbServersAlertDisableDay,selectedDbServersAlertDisableMonth,selectedDbServersAlertDisableWeek,selectedDbServersAlertDisableHourTo,selectedDbServersAlertDisableMinTo,selectedDbServersAlertDisableSecTo,selectedDbServersAlertDisableDayTo,selectedDbServersAlertDisableMonthTo,selectedDbServersAlertDisableWeekTo,selectedDbServersAlertDisableHourPer,selectedDbServersAlertDisableMinPer,selectedDbServersAlertDisableSecPer) {
