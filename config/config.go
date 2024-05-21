@@ -90,6 +90,8 @@ type Config struct {
 	MonitorTenant                             string                 `mapstructure:"monitoring-tenant" toml:"monitoring-tenant" json:"monitoringTenant"`
 	MonitoringAlertTrigger                    string                 `mapstructure:"monitoring-alert-trigger" toml:"monitoring-alert-trigger" json:"monitoringAlertTrigger"`
 	MonitoringQueryTimeout                    int                    `mapstructure:"monitoring-query-timeout" toml:"monitoring-query-timeout" json:"monitoringQueryTimeout"`
+	MonitoringOpenStateScript                 string                 `mapstructure:"monitoring-open-state-script" toml:"monitoring-open-state-script" json:"monitoringOpenStateScript"`
+	MonitoringCloseStateScript                string                 `mapstructure:"monitoring-close-state-script" toml:"monitoring-close-state-script" json:"monitoringCloseStateScript"`
 	Interactive                               bool                   `mapstructure:"interactive" toml:"-" json:"interactive"`
 	Verbose                                   bool                   `mapstructure:"verbose" toml:"verbose" json:"verbose"`
 	LogFile                                   string                 `mapstructure:"log-file" toml:"log-file" json:"logFile"`

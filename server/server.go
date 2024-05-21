@@ -259,6 +259,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitorTenant, "monitoring-tenant", "default", "Can be use to store multi tenant identifier")
 	flags.Int64Var(&conf.MonitorWaitRetry, "monitoring-wait-retry", 60, "Retry this number of time before giving up state transition <999999")
 	flags.IntVar(&conf.MonitoringQueryTimeout, "monitoring-query-timeout", 2000, "Timeout for querying monitor in ms")
+	flags.StringVar(&conf.MonitoringOpenStateScript, "monitoring-open-state-script", "", "Script trigger on open state")
+	flags.StringVar(&conf.MonitoringCloseStateScript, "monitoring-close-state-script", "", "Script trigger on close state")
 	flags.BoolVar(&conf.LogSST, "log-sst", true, "Log open and close SST transfert")
 	flags.IntVar(&conf.LogSSTLevel, "log-sst-level", 1, "Log SST Level")
 	flags.IntVar(&conf.SSTSendBuffer, "sst-send-buffer", 16384, "SST send buffer size")

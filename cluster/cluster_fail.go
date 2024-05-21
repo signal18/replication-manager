@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -547,44 +546,6 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	}*/
 
 	return true
-}
-
-func (cluster *Cluster) failoverPostScript(fail bool) {
-	if cluster.Conf.PostScript != "" {
-
-		var out []byte
-		var err error
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Calling post-failover script")
-		failtype := "failover"
-		if !fail {
-			failtype = "switchover"
-		}
-		out, err = exec.Command(cluster.Conf.PostScript, cluster.oldMaster.Host, cluster.GetMaster().Host, cluster.oldMaster.Port, cluster.GetMaster().Port, cluster.oldMaster.MxsServerName, cluster.GetMaster().MxsServerName, failtype).CombinedOutput()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Post-failover script complete %s", string(out))
-	}
-}
-
-func (cluster *Cluster) failoverPreScript(fail bool) {
-	// Call pre-failover script
-	if cluster.Conf.PreScript != "" {
-		failtype := "failover"
-		if !fail {
-			failtype = "switchover"
-		}
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Calling pre-failover script")
-		var out []byte
-		var err error
-		out, err = exec.Command(cluster.Conf.PreScript, cluster.oldMaster.Host, cluster.GetMaster().Host, cluster.oldMaster.Port, cluster.GetMaster().Port, cluster.oldMaster.MxsServerName, cluster.GetMaster().MxsServerName, failtype).CombinedOutput()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Pre-failover script complete:", string(out))
-	}
 }
 
 func (cluster *Cluster) failoverProxiesWaitMonitor() {

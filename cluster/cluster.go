@@ -752,7 +752,9 @@ func (cluster *Cluster) StateProcessing() {
 				}
 
 			}
+
 			//		cluster.statecloseChan <- s
+			cluster.BashScriptCloseSate(s)
 		}
 		var states []string
 		if cluster.runOnceAfterTopology {
@@ -773,6 +775,7 @@ func (cluster *Cluster) StateProcessing() {
 		for _, s := range cluster.StateMachine.GetLastOpenedStates() {
 
 			cluster.CheckAlert(s)
+			cluster.BashScriptOpenSate(s)
 
 		}
 

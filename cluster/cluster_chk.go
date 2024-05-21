@@ -14,7 +14,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -507,17 +506,7 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 	if cluster.Conf.MailTo != "" {
 		go alert.EmailMessage("", "", cluster.Conf)
 	}
-
-	if cluster.Conf.AlertScript != "" {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling alert script")
-		var out []byte
-		out, err := exec.Command(cluster.Conf.AlertScript, alert.Cluster, alert.Host, alert.PrevState, alert.State).CombinedOutput()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
-		}
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Alert script complete:", string(out))
-	}
+	cluster.BashScriptAlert(alert)
 
 	return nil
 }
