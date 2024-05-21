@@ -26,7 +26,7 @@ pipeline {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
                         def Image = docker.build('signal18/replication-manager:2.3-pro', '-f docker/Dockerfile.pro .')
                         Image.push()
-                        Image.push(env.TAG_NAME+"-pro")                        
+                        Image.push(env.TAG_NAME+'-pro')
                     }
                 }
             }
@@ -38,7 +38,7 @@ pipeline {
                         def Image = docker.build('signal18/replication-manager:2.3-dev', '-f docker/Dockerfile.dev .')
                         Image.push()
                         Image.push('dev')
-                        Image.push(env.TAG_NAME+"-dev")                                                
+                        Image.push(env.TAG_NAME+'-dev')
                     }
                 }
             }
@@ -49,7 +49,13 @@ pipeline {
             script {
                 mattermostSend(
                     color: '#FF0000',
-                    message: "Build failed! Job: `${JOB_NAME}` Build: `${BUILD_NUMBER}` (<${env.BUILD_URL}|Open>)"                )
+                    message: "Build failed! Job: `${JOB_NAME}` Build: `${BUILD_NUMBER}` (<${env.BUILD_URL}|Open>)"
+                )
+            }
+        }
+        success {
+            script {
+                sh 'docker system prune --force'
             }
         }
     }
