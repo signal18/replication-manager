@@ -23,7 +23,7 @@ func (cluster *Cluster) BashScriptAlert(alert alert.Alert) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 		}
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Alert script complete:", string(out))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Alert script complete: %s", string(out))
 	}
 	return nil
 }
@@ -37,7 +37,7 @@ func (cluster *Cluster) BashScriptOpenSate(state state.State) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 		}
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Opee state script complete:", string(out))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Open state script complete: %s", string(out))
 	}
 	return nil
 }
@@ -50,7 +50,7 @@ func (cluster *Cluster) BashScriptCloseSate(state state.State) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 		}
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Close state script complete:", string(out))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Close state script complete %s:", string(out))
 	}
 	return nil
 }
