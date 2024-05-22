@@ -507,17 +507,26 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 			cl = append(cl, cluster.Name)
 		}
 	}
-	mycopy.ClusterList = cl
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(mycopy)
 
-	//err := e.Encode(repman)
+	mycopy.ClusterList = cl
+
+	res, err := json.Marshal(mycopy)
+	if err != nil {
+		http.Error(w, "Error Marshal", 500)
+		return
+	}
+
+	for crkey, _ := range mycopy.Conf.Secrets {
+		res, err = jsonparser.Set(res, []byte(`"*:*" `), "config", strcase.ToLowerCamel(crkey))
+	}
+
 	if err != nil {
 		http.Error(w, "Encoding error", 500)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(res)
 }
 
 func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *http.Request) {
