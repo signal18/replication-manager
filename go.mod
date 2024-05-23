@@ -24,7 +24,6 @@ require (
 	github.com/bradfitz/gomemcache v0.0.0-20170208213004-1952afaa557d
 	github.com/codegangsta/negroni v0.3.0
 	github.com/davecgh/go-spew v1.1.1
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/dgryski/carbonzipper v0.0.0-20170426152955-d1a3cec4169b
 	github.com/dgryski/go-expirecache v0.0.0-20170314133854-743ef98b2adb
 	github.com/dgryski/go-onlinestats v0.0.0-20170612111826-1c7d19468768
@@ -58,7 +57,6 @@ require (
 	github.com/lestrrat/go-strftime v0.0.0-20170113112000-04ef93e28531
 	github.com/lib/pq v1.3.0
 	github.com/magneticio/vamp-router v0.0.0-20151116102511-29379b621548
-	github.com/mattn/go-sqlite3 v1.14.6
 	github.com/micro/go-micro v0.27.1
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mjibson/go-dsp v0.0.0-20170104183934-49dba8372707
@@ -86,7 +84,7 @@ require (
 	google.golang.org/genproto v0.0.0-20210617175327-b9e0b3197ced
 	google.golang.org/grpc v1.38.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0
-	google.golang.org/protobuf v1.29.1
+	google.golang.org/protobuf v1.30.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/ini.v1 v1.55.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
@@ -102,9 +100,8 @@ require (
 	github.com/aclements/go-moremath v0.0.0-20170210193428-033754ab1fee // indirect
 	github.com/atc0005/go-teams-notify/v2 v2.8.0
 	github.com/bluele/slack v0.0.0-20180528010058-b4b4d354a079 // indirect
-	github.com/buger/jsonparser v1.1.1 // indirect
+	github.com/buger/jsonparser v1.1.1
 	github.com/coreos/go-oidc/v3 v3.6.0
-	github.com/dasrick/go-teams-notify/v2 v2.1.0 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
 	github.com/facebookgo/atomicfile v0.0.0-20151019160806-2de1f203e7d5 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
@@ -116,8 +113,7 @@ require (
 	github.com/facebookgo/subset v0.0.0-20200203212716-c811ad88dec4 // indirect
 	github.com/fastly/go-utils v0.0.0-20180712184237-d95a45783239 // indirect
 	github.com/ggwhite/go-masker v1.0.9
-	github.com/gin-gonic/gin v1.7.2 // indirect
-	github.com/go-git/go-git v4.7.0+incompatible // indirect
+	github.com/gin-gonic/gin v1.9.1 // indirect
 	github.com/go-git/go-git/v5 v5.6.1
 	github.com/go-mysql-org/go-mysql v1.7.0
 	github.com/go-ole/go-ole v1.2.5 // indirect
@@ -134,13 +130,12 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.2 // indirect
 	github.com/hashicorp/vault/api v1.9.0
 	github.com/hashicorp/vault/api/auth/approle v0.4.0
-	github.com/iancoleman/strcase v0.3.0 // indirect
+	github.com/iancoleman/strcase v0.3.0
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
 	github.com/juju/testing v0.0.0-20220203020004-a0ff61f03494 // indirect
 	github.com/klauspost/pgzip v1.2.6
 	github.com/lestrrat/go-envload v0.0.0-20180220120943-6ed08b54a570 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
-	github.com/mcuadros/go-version v0.0.0-20190830083331-035f6764e8d2 // indirect
 	github.com/miekg/dns v1.1.43 // indirect
 	github.com/pelletier/go-toml v1.9.5
 	github.com/pkg/xattr v0.4.6
@@ -148,11 +143,9 @@ require (
 	github.com/rs/cors v1.7.0 // indirect
 	github.com/siddontang/go-log v0.0.0-20190221022429-1e957dd83bed // indirect
 	github.com/smartystreets/goconvey v1.7.2 // indirect
-	github.com/xanzy/go-gitlab v0.85.0 // indirect
 	golang.org/x/oauth2 v0.6.0
 	golang.org/x/time v0.3.0 // indirect
 	google.golang.org/grpc/examples v0.0.0-20220316190256-c4cabf78f4a2 // indirect
-	gopkg.in/src-d/go-git.v4 v4.13.1 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 	software.sslmate.com/src/go-pkcs12 v0.4.0
 )
