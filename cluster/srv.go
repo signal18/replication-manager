@@ -48,7 +48,7 @@ type ServerMonitor struct {
 	SourceClusterName           string                       `json:"sourceClusterName"` //Used to idenfied server added from other clusters linked with multi source
 	Conn                        *sqlx.DB                     `json:"-"`
 	User                        string                       `json:"user"`
-	Pass                        string                       `json:"-"`
+	Pass                        string                       `json:"pass"`
 	URL                         string                       `json:"url"`
 	DSN                         string                       `json:"-"`
 	Host                        string                       `json:"host"`
@@ -331,6 +331,13 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		server.Conn, err = sqlx.Open("mysql", server.DSN)
 	}*/
 	return server, err
+}
+
+func (server *ServerMonitor) GetSecretList() []string {
+	var sl []string = make([]string, 0)
+	sl = append(sl, "pass")
+
+	return sl
 }
 
 func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
