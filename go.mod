@@ -19,7 +19,7 @@ require (
 	github.com/NYTimes/gziphandler v1.0.1
 	github.com/alyu/configparser v0.0.0-20151125021232-26b2fe18bee1
 	github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a
-	github.com/aws/aws-sdk-go v1.29.24
+	github.com/aws/aws-sdk-go v1.34.0
 	github.com/bluele/logrus_slack v0.0.0-20170812021752-74aa3c9b7cc3
 	github.com/bradfitz/gomemcache v0.0.0-20170208213004-1952afaa557d
 	github.com/codegangsta/negroni v0.3.0
