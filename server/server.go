@@ -418,6 +418,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	//flags.BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	conf.Daemon = true
+	flags.IntVar(&conf.CacheStaticMaxAge, "cache-static-max-age", 18000, "Cache Max Age Duration for static files")
 
 	if WithEnforce == "ON" {
 		flags.BoolVar(&conf.ForceSlaveReadOnly, "force-slave-readonly", true, "Automatically activate read only on slave")
