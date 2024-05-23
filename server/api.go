@@ -149,7 +149,7 @@ func (repman *ReplicationManager) apiserver() {
 		router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 	} else {
 		router.HandleFunc("/", repman.rootHandler)
-		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler())
+		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
 	}
 
@@ -741,4 +741,14 @@ func (repman *ReplicationManager) handlerMuxMonitorHeartbeat(w http.ResponseWrit
 	if err := json.NewEncoder(w).Encode(send); err != nil {
 		panic(err)
 	}
+}
+
+func (repman *ReplicationManager) handlerStatic(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", repman.Conf.CacheStaticMaxAge))
+		w.Header().Set("Etag", repman.Version)
+
+		h.ServeHTTP(w, r)
+	})
 }
