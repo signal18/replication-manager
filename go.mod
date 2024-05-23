@@ -102,6 +102,7 @@ require (
 	github.com/aclements/go-moremath v0.0.0-20170210193428-033754ab1fee // indirect
 	github.com/atc0005/go-teams-notify/v2 v2.8.0
 	github.com/bluele/slack v0.0.0-20180528010058-b4b4d354a079 // indirect
+	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/coreos/go-oidc/v3 v3.6.0
 	github.com/dasrick/go-teams-notify/v2 v2.1.0 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
@@ -133,6 +134,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.2 // indirect
 	github.com/hashicorp/vault/api v1.9.0
 	github.com/hashicorp/vault/api/auth/approle v0.4.0
+	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
 	github.com/juju/testing v0.0.0-20220203020004-a0ff61f03494 // indirect
 	github.com/klauspost/pgzip v1.2.6

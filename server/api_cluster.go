@@ -14,7 +14,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
+	"github.com/iancoleman/strcase"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gorilla/mux"
@@ -1856,13 +1858,23 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		e := json.NewEncoder(w)
-		e.SetIndent("", "\t")
-		err := e.Encode(mycluster)
+		cl, err := json.Marshal(mycluster)
+		if err != nil {
+			http.Error(w, "Error Marshal", 500)
+			return
+		}
+
+		for crkey, _ := range mycluster.Conf.Secrets {
+			cl, err = jsonparser.Set(cl, []byte(`"*:*" `), "config", strcase.ToLowerCamel(crkey))
+		}
+
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
 		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(cl)
 	} else {
 
 		http.Error(w, "No cluster", 500)

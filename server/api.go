@@ -23,7 +23,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/buger/jsonparser"
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/iancoleman/strcase"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 
@@ -505,17 +507,26 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 			cl = append(cl, cluster.Name)
 		}
 	}
-	mycopy.ClusterList = cl
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(mycopy)
 
-	//err := e.Encode(repman)
+	mycopy.ClusterList = cl
+
+	res, err := json.Marshal(mycopy)
+	if err != nil {
+		http.Error(w, "Error Marshal", 500)
+		return
+	}
+
+	for crkey, _ := range mycopy.Conf.Secrets {
+		res, err = jsonparser.Set(res, []byte(`"*:*" `), "config", strcase.ToLowerCamel(crkey))
+	}
+
 	if err != nil {
 		http.Error(w, "Encoding error", 500)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(res)
 }
 
 func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *http.Request) {
@@ -549,13 +560,24 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 
 		sort.Sort(cluster.ClusterSorter(clusters))
 
-		e := json.NewEncoder(w)
-		e.SetIndent("", "\t")
-		err := e.Encode(clusters)
+		cl, err := json.MarshalIndent(clusters, "", "\t")
 		if err != nil {
-			http.Error(w, "Encoding error", 500)
+			http.Error(w, "Error Marshal", 500)
 			return
 		}
+
+		for i, cluster := range clusters {
+			for crkey, _ := range cluster.Conf.Secrets {
+				cl, err = jsonparser.Set(cl, []byte(`"*:*" `), fmt.Sprintf("[%d]", i), "config", strcase.ToLowerCamel(crkey))
+				if err != nil {
+					http.Error(w, "Encoding error", 500)
+					return
+				}
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(cl)
+
 	} else {
 		http.Error(w, "Unauthenticated", 401)
 		return
