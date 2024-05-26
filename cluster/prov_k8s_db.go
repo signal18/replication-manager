@@ -85,7 +85,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 			AccessModes: []apiv1.PersistentVolumeAccessMode{
 				apiv1.ReadWriteOnce,
 			},
-			Resources: apiv1.ResourceRequirements{
+			Resources: apiv1.VolumeResourceRequirements{
 				Requests: apiv1.ResourceList{
 					apiv1.ResourceName(apiv1.ResourceStorage): resource.MustParse("1Gi"),
 				},
