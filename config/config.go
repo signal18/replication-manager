@@ -645,6 +645,7 @@ type Config struct {
 	Cloud18GitUser                            string                 `mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword                        string                 `mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
 	Cloud18PlatformDescription                string                 `mapstructure:"cloud18-platform-description"  toml:"cloud18-platform-description" json:"cloud18PlatformDescription"`
+	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Secrets                                   map[string]Secret      `json:"-"`
 	SecretKey                                 []byte                 `json:"-"`
 	ImmuableFlagMap                           map[string]interface{} `json:"-"`
@@ -946,9 +947,12 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		}
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
-		if conf.IsEligibleForPrinting(ConstLogModConfigLoad, "INFO") {
+
+		/* Decrypt feature not managed within log modules config due to risk of credentials leak */
+		if conf.LogSecrets {
 			log.WithField("cluster", "config").Infof("DecryptSecretsFromConfig: %s", secret.Value)
 		}
+
 		lst_cred := strings.Split(secret.Value, ",")
 		var tab_cred []string
 		for _, cred := range lst_cred {
@@ -959,7 +963,10 @@ func (conf *Config) DecryptSecretsFromConfig() {
 				if len(cred) > 1 {
 					tab_cred = append(tab_cred, conf.GetDecryptedPassword(k, cred))
 				} else {
-					log.WithField("cluster", "config").Debugf("Empty credential do not decrypt key: %s", k)
+					//Show warnings on empty credentials
+					if conf.IsEligibleForPrinting(ConstLogModConfigLoad, LvlWarn) {
+						log.WithField("cluster", "config").Warnf("Empty credential do not decrypt key: %s", k)
+					}
 				}
 			}
 		}
