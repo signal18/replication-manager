@@ -19,19 +19,19 @@ func (cluster *Cluster) JobAnalyzeSQL() error {
 	server := cluster.master
 
 	if server == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Analyze tables cancel as no leader ")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Analyze tables cancel as no leader ")
 		return errors.New("Analyze tables cancel as no leader")
 	}
 	if !cluster.Conf.MonitorSchemaChange {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Analyze tables cancel no schema monitor in config")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Analyze tables cancel no schema monitor in config")
 		return errors.New("Analyze tables cancel no schema monitor in config")
 	}
 	if cluster.inAnalyzeTables {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Analyze tables cancel already running")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Analyze tables cancel already running")
 		return errors.New("Analyze tables cancel already running")
 	}
 	if cluster.master.Tables == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Analyze tables cancel no table list")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Analyze tables cancel no table list")
 		return errors.New("Analyze tables cancel no table list")
 	}
 	cluster.inAnalyzeTables = true
@@ -42,7 +42,7 @@ func (cluster *Cluster) JobAnalyzeSQL() error {
 
 		//	for _, s := range cluster.slaves {
 		logs, err = dbhelper.AnalyzeTable(server.Conn, server.DBVersion, t.TableSchema+"."+t.TableName)
-		cluster.LogSQL(logs, err, server.URL, "Monitor", LvlErr, "Could not get database variables %s %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Could not get database variables %s %s", server.URL, err)
 
 		//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Analyse table %s on %s", t, s.URL)
 		//	}

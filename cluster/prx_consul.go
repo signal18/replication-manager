@@ -93,13 +93,13 @@ func (proxy *ConsulProxy) Init() {
 			},
 		}
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlInfo, "Register consul master ID %s with host %s", "write_"+cluster.GetName(), cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Register consul master ID %s with host %s", "write_"+cluster.GetName(), cluster.GetMaster().URL)
 		delservice, err := reg.GetService("write_" + cluster.GetName())
 		if err != nil {
 			for _, service := range delservice {
 
 				if err := reg.Deregister(service); err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlErr, "Unexpected deregister error: %v", err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Unexpected deregister error: %v", err)
 				}
 			}
 		}
@@ -108,7 +108,7 @@ func (proxy *ConsulProxy) Init() {
 			for _, service := range v {
 
 				if err := reg.Register(service); err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlErr, "Unexpected register error: %v", err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Unexpected register error: %v", err)
 				}
 
 			}
@@ -130,13 +130,13 @@ func (proxy *ConsulProxy) Init() {
 		readsrv.Nodes = readnodes
 
 		if err := reg.Deregister(&readsrv); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlErr, "Unexpected consul deregister error for server %s: %v", srv.URL, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Unexpected consul deregister error for server %s: %v", srv.URL, err)
 		}
 		if srv.State != stateFailed && srv.State != stateMaintenance && srv.State != stateUnconn {
 			if (srv.IsSlave && srv.HasReplicationIssue() == false) || (srv.IsMaster() && cluster.Conf.PRXServersReadOnMaster) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlInfo, "Register consul read service  %s %s", srv.Id, srv.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Register consul read service  %s %s", srv.Id, srv.URL)
 				if err := reg.Register(&readsrv); err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlErr, "Unexpected consul register error for server %s: %v", srv.URL, err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Unexpected consul register error for server %s: %v", srv.URL, err)
 				}
 			}
 		}

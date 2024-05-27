@@ -26,12 +26,12 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx DatabaseProxy) {
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 		err := opensvc.PurgeServiceV2(cluster.GetName(), prx.GetServiceName(), prx.GetAgent())
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not unprovision proxy service:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision proxy service:  %s ", err)
 			cluster.errorChan <- err
 		}
 		err = opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+prx.GetName(), prx.GetAgent())
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not unprovision proxy volume:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision proxy volume:  %s ", err)
 			cluster.errorChan <- err
 		}
 	} else {
@@ -41,7 +41,7 @@ func (cluster *Cluster) OpenSVCUnprovisionProxyService(prx DatabaseProxy) {
 				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 				err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't unprovision proxy %s, %s", prx.GetId(), err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision proxy %s, %s", prx.GetId(), err)
 				}
 			}
 		}
@@ -64,7 +64,7 @@ func (cluster *Cluster) OpenSVCStopProxyService(server DatabaseProxy) error {
 	} else {
 		err := svc.StopServiceV2(cluster.Name, server.GetServiceName(), server.GetAgent())
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not stop proxy:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop proxy:  %s ", err)
 			return err
 		}
 	}
@@ -86,7 +86,7 @@ func (cluster *Cluster) OpenSVCStartProxyService(server DatabaseProxy) error {
 	} else {
 		err := svc.StartServiceV2(cluster.Name, server.GetServiceName(), server.GetAgent())
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not stop proxy:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop proxy:  %s ", err)
 			return err
 		}
 	}
@@ -106,21 +106,21 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 		mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + pri.GetName())
 		if err == nil {
 			idsrv = mysrv.Svc_id
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Found existing service %s service %s", cluster.Name+"/"+pri.GetName(), idsrv)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Found existing service %s service %s", cluster.Name+"/"+pri.GetName(), idsrv)
 
 		} else {
 			idsrv, err = svc.CreateService(cluster.Name+"/svc/"+pri.GetName(), "MariaDB")
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't create OpenSVC proxy service")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't create OpenSVC proxy service")
 				cluster.errorChan <- err
 				return err
 			}
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Attaching internal id  %s to opensvc service id %s", cluster.Name+"/"+pri.GetName(), idsrv)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Attaching internal id  %s to opensvc service id %s", cluster.Name+"/"+pri.GetName(), idsrv)
 
 		err = svc.DeteteServiceTags(idsrv)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't delete service tags")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't delete service tags")
 			cluster.errorChan <- err
 			return err
 		}
@@ -168,9 +168,9 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", task.Stderr)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", task.Stderr)
 				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't fetch task")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
 				}
 			}
 		}
@@ -180,7 +180,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 			srv, _ := cluster.newServerMonitor(prx.GetHost()+":"+prx.GetPort(), prx.User, prx.Pass, true, cluster.GetDomain())
 			err := srv.Refresh()
 			if err == nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlWarn, "Can connect to requested signal18 sharding proxy")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can connect to requested signal18 sharding proxy")
 				//that's ok a sharding proxy can be decalre in multiple cluster , should not block provisionning
 				cluster.errorChan <- nil
 				return nil
@@ -213,9 +213,9 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", task.Stderr)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", task.Stderr)
 				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't fetch task")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
 				}
 			}
 		}
@@ -249,9 +249,9 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", task.Stderr)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", task.Stderr)
 				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't fetch task")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
 				}
 			}
 		}
@@ -285,9 +285,9 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", task.Stderr)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", task.Stderr)
 				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't fetch task")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
 				}
 			}
 		}
@@ -321,9 +321,9 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 				cluster.OpenSVCWaitDequeue(svc, idaction)
 				task := svc.GetAction(strconv.Itoa(idaction))
 				if task != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", task.Stderr)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", task.Stderr)
 				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't fetch task")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
 				}
 			}
 		}

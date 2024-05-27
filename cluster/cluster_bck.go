@@ -86,7 +86,7 @@ func (cluster *Cluster) ResticGetEnv() []string {
 		if _, err := os.Stat(resticdir); os.IsNotExist(err) {
 			err := os.MkdirAll(resticdir, os.ModePerm)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Create archive directory failed: %s,%s", resticdir, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", resticdir, err)
 			}
 		}
 		newEnv = append(newEnv, "RESTIC_REPOSITORY="+resticdir)
@@ -173,7 +173,7 @@ func (cluster *Cluster) ResticFetchRepo() error {
 		var repo []v3.Backup
 		err = json.Unmarshal(stdoutBuf.Bytes(), &repo)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Error unmaeshal backups %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error unmaeshal backups %s", err)
 			return err
 		}
 		var filterRepo []v3.Backup

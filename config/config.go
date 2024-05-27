@@ -721,6 +721,14 @@ type ConfVersion struct {
 	ConfImmuable Config `json:"-"`
 }
 
+// Log levels
+const (
+	LvlInfo = "INFO"
+	LvlWarn = "WARN"
+	LvlErr  = "ERROR"
+	LvlDbg  = "DEBUG"
+)
+
 const (
 	ConstStreamingSubDir string = "backups"
 )

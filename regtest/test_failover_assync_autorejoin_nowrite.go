@@ -48,13 +48,13 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinNowrites(cluster *cluster.Cl
 	//Wait for replication recovery
 	time.Sleep(2 * time.Second)
 	if cluster.CheckTableConsistency("test.sbtest") != true {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Inconsitant slave")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
 
 		return false
 	}
 
 	if cluster.CheckSlavesRunning() == false {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Replication issue")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replication issue")
 
 		return false
 	}

@@ -18,7 +18,7 @@ func (regtest *RegTest) TestSlaReplAllSlavesDelayNoSemiSync(cluster *cluster.Clu
 	cluster.SetRplMaxDelay(2)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		return false
 	}
 	cluster.GetStateMachine().ResetUptime()
@@ -28,7 +28,7 @@ func (regtest *RegTest) TestSlaReplAllSlavesDelayNoSemiSync(cluster *cluster.Clu
 	sla2 := cluster.GetStateMachine().GetUptimeFailable()
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		return false
 	}
 	if sla2 == sla1 {

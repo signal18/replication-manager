@@ -15,13 +15,13 @@ func (regtest *RegTest) TestFailoverNoRplChecksNoSemiSyncMasterHeartbeat(cluster
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 
 		return false
 	}
 	SaveMasterURL := cluster.GetMaster().URL
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Master is %s", cluster.GetMaster().URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Master is %s", cluster.GetMaster().URL)
 	cluster.SetInteractive(false)
 	cluster.SetFailLimit(5)
 	cluster.SetFailTime(0)

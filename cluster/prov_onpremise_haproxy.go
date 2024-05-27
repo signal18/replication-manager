@@ -19,7 +19,7 @@ func (cluster *Cluster) OnPremiseProvisionHaProxyService(prx *HaproxyProxy) erro
 		cluster.errorChan <- err
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise Provisioning  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise Provisioning  : %s", string(out))
 	cluster.errorChan <- nil
 	return nil
 }
@@ -41,7 +41,7 @@ func (cluster *Cluster) OnPremiseStopHaproxyService(server DatabaseProxy) error 
 	if err != nil {
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise Stop Haproxy  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise Stop Haproxy  : %s", string(out))
 	return nil
 }
 
@@ -62,6 +62,6 @@ func (cluster *Cluster) OnPremiseStartHaProxyService(server DatabaseProxy) error
 	if err != nil {
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise start HaProxy  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise start HaProxy  : %s", string(out))
 	return nil
 }

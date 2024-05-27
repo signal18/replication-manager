@@ -100,7 +100,7 @@ func (server *ServerMonitor) IsSlaveOfReplicationSource(name string) bool {
 	if server.Replications != nil {
 
 		for _, ss := range server.Replications {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "IsSlaveOfReplicationSource check %s drop unlinked server %s ", ss.ConnectionName.String, name)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "IsSlaveOfReplicationSource check %s drop unlinked server %s ", ss.ConnectionName.String, name)
 			if ss.ConnectionName.String == name {
 				return true
 			}
@@ -245,7 +245,7 @@ func (server *ServerMonitor) HasLogsInSystemTables() bool {
 
 func (server *ServerMonitor) HasLogPFSSlowQuery() bool {
 	ConsumerVariables, logs, err := dbhelper.GetPFSVariablesConsumer(server.Conn)
-	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlErr, "Could not get PFS consumer %s %s", server.URL, err)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Could not get PFS consumer %s %s", server.URL, err)
 	return ConsumerVariables["SLOW_QUERY_PFS"] == "ON"
 }
 
@@ -433,7 +433,7 @@ func (server *ServerMonitor) IsRunning() bool {
 
 func (server *ServerMonitor) IsConnected() bool {
 	cluster := server.ClusterGroup
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Waiting state running state is %s  with topology %s and pool %s ", server.State, server.GetCluster().GetTopology(), server.Conn)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state running state is %s  with topology %s and pool %s ", server.State, server.GetCluster().GetTopology(), server.Conn)
 
 	if server.State == stateFailed /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
 		return false

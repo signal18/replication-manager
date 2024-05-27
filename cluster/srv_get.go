@@ -270,7 +270,7 @@ func (server *ServerMonitor) GetQueryResponseTime() []dbhelper.ResponseTime {
 	logs := ""
 	var err error
 	qrt, logs, err = dbhelper.GetQueryResponseTime(server.Conn, server.DBVersion)
-	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Can't fetch Query Response Time ")
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Can't fetch Query Response Time ")
 	return qrt
 }
 
@@ -312,7 +312,7 @@ func (server *ServerMonitor) GetQueryFromSlowLogDigest(digest string) (string, s
 
 func (server *ServerMonitor) GetQueryExplain(schema string, query string) ([]dbhelper.Explain, error) {
 	explainPlan, logs, err := dbhelper.GetQueryExplain(server.Conn, server.DBVersion, schema, query)
-	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Can't get Explain %s %s ", server.URL, err)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Can't get Explain %s %s ", server.URL, err)
 	return explainPlan, err
 }
 
@@ -408,7 +408,7 @@ func (server *ServerMonitor) GetPFSQueries() {
 	logs := ""
 	// GET PFS query digest
 	server.PFSQueries, logs, err = dbhelper.GetQueries(server.Conn)
-	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", LvlDbg, "Could not get queries %s %s", server.URL, err)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get queries %s %s", server.URL, err)
 }
 
 func (server *ServerMonitor) GetPFSStatements() []dbhelper.PFSQuery {
@@ -516,14 +516,14 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 		server.SetDSN()
 		conn, err := sqlx.Connect("mysql", server.DSN)
 		if err == nil {
-			server.ClusterGroup.SetState("ERR00080", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00080"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
+			server.ClusterGroup.SetState("ERR00080", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00080"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 		} else {
 			server.TLSConfigUsed = ConstTLSNoConfig
 			server.SetDSN()
 			conn, err := sqlx.Connect("mysql", server.DSN)
 			if err == nil {
 				// if not –require_secure_transport can still connect with no certificate MDEV-13362
-				//server.ClusterGroup.SetState("ERR00081", state.State{ErrType: LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00081"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
+				//server.ClusterGroup.SetState("ERR00081", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00081"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 			}
 			server.TLSConfigUsed = ConstTLSCurrentConfig
 			server.SetDSN()
@@ -563,7 +563,7 @@ func (server *ServerMonitor) GetSlowLogTable() {
 
 	f, err := os.OpenFile(server.Datadir+"/log/log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error writing slow queries %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing slow queries %s", err)
 		return
 	}
 	fi, _ := f.Stat()
@@ -581,7 +581,7 @@ func (server *ServerMonitor) GetSlowLogTable() {
 		err = server.Conn.Select(&slowqueries, "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id,0 as rows_affected FROM  mysql.slow_log WHERE start_time > FROM_UNIXTIME("+strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10)+")")
 	}
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could not get slow queries from table %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not get slow queries from table %s", err)
 	}
 	for _, s := range slowqueries {
 
@@ -643,7 +643,7 @@ func (server *ServerMonitor) GetTableDefinition(schema string, table string) (st
 
 	err := server.Conn.QueryRowx(query).Scan(&tbl, &ddl)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Failed query %s %s", query, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed query %s %s", query, err)
 		return "", err
 	}
 	return ddl, nil
@@ -666,7 +666,7 @@ func (server *ServerMonitor) GetTablePK(schema string, table string) (string, er
 	var pk string
 	err := server.Conn.QueryRowx(query).Scan(&pk)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Failed query %s %s", query, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed query %s %s", query, err)
 		return "", nil
 	}
 	return pk, nil

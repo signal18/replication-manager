@@ -20,7 +20,7 @@ func (regtest *RegTest) TestSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck(cl
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		return false
 	}
 
@@ -29,7 +29,7 @@ func (regtest *RegTest) TestSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck(cl
 	for i := 0; i < 2; i++ {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s %s", err.Error(), result)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s %s", err.Error(), result)
 			return false
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Master  %s ", cluster.GetMaster().URL)
@@ -38,7 +38,7 @@ func (regtest *RegTest) TestSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck(cl
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s ", cluster.GetMaster().URL)
 
 		if SaveMasterURL == cluster.GetMaster().URL {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Same server URL after switchover")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Same server URL after switchover")
 			return false
 		}
 	}

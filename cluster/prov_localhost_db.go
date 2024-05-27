@@ -27,11 +27,11 @@ func (cluster *Cluster) LocalhostUnprovisionDatabaseService(server *ServerMonito
 	cmd.Stdout = out
 	err := cmd.Run()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
 		cluster.errorChan <- err
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Remove datadir done: %s", out.Bytes())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Remove datadir done: %s", out.Bytes())
 	cluster.master = nil
 	cluster.errorChan <- nil
 	return nil
@@ -44,8 +44,8 @@ func (cluster *Cluster) LocalhostProvisionGetVersionFromMysqld(server *ServerMon
 
 	err := versionCmd.Run()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "mysqld version err: %s", out.Bytes())
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "mysqld version err: %s", out.Bytes())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
 		return ""
 	}
 	return strings.ToLower(string(out.Bytes()))
@@ -68,7 +68,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 		cmd.Stdout = out
 		err := cmd.Run()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlErr, "%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", err)
 			cluster.errorChan <- err
 			return err
 		}
@@ -82,7 +82,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	cmd.Stdout = out
 	err = cmd.Run()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", err)
 		return err
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlInfo, "Copy fresh datadir done: %s", out.Bytes())
@@ -91,11 +91,11 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	cmd.Stdout = out
 	err := cmd.Run()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "cp -rp %s %s failed %s ", server.Datadir+"/init/data/.system", path, err)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "init fresh datadir err: %s", out.Bytes())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "cp -rp %s %s failed %s ", server.Datadir+"/init/data/.system", path, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "init fresh datadir err: %s", out.Bytes())
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "copy datadir done: %s", out.Bytes())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "copy datadir done: %s", out.Bytes())
 
 	var sysCmd *exec.Cmd
 	err = errors.New("No database version found")
@@ -109,17 +109,17 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 	} else {
 		sysCmd = exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--datadir="+server.Datadir+"/var", "--basedir="+cluster.Conf.ProvDBBinaryBasedir+"/../", "--initialize", "--initialize-insecure")
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", sysCmd.String())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", sysCmd.String())
 	sysCmd.Stdout = out
 	err = sysCmd.Run()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "init fresh datadir err: %s", out.Bytes())
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "init fresh datadir err: %s", out.Bytes())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
 		cluster.errorChan <- err
 		return err
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "init fresh datadir done: %s", out.Bytes())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "init fresh datadir done: %s", out.Bytes())
 	if server.Id == "" {
 		_, err := os.Stat(server.Id)
 		if err != nil {
@@ -130,7 +130,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 
 	/*	err := os.RemoveAll(path + "/" + server.Id + ".pid")
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlErr, "%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", err)
 			return err
 		}*/
 
@@ -161,12 +161,12 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 	path := server.Datadir + "/var"
 	/*	err := os.RemoveAll(path + "/" + server.Id + ".pid")
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlErr, "%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", err)
 			return err
 		}*/
 	usr, err := user.Current()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
 		return err
 	}
 	user := usr.Username
@@ -180,7 +180,7 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 	}
 	mariadbdCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.GetDatabaseSocket(), "--user="+user, "--bind-address=0.0.0.0", "--pid_file="+path+"/"+server.Id+".pid")
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 
 	var out bytes.Buffer
 	mariadbdCmd.Stdout = &out
@@ -188,7 +188,7 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 	go func() {
 		err = mariadbdCmd.Run()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "%s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s ", err)
 		}
 		fmt.Printf("Command finished with error: %v", err)
 	}()
@@ -198,20 +198,20 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 		haveerror := false
 		time.Sleep(time.Millisecond * 2000)
 		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlInfo, "Waiting database startup ")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Waiting database first start   .. %s", out)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Waiting database first start   .. %s", out)
 
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't get replication-manager process user: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't get replication-manager process user: %s", err)
 		}
 		dsn := user + ":@unix(" + server.GetDatabaseSocket() + ")/?timeout=15s"
 		conn, err2 := sqlx.Open("mysql", dsn)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlDbg, "DNS start prov localhost first time : %s\n", dsn)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "DNS start prov localhost first time : %s\n", dsn)
 		if err2 == nil {
 			defer conn.Close()
 			_, err := conn.Exec("set sql_log_bin=0")
 			if err != nil {
 				haveerror = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s %s ", "set sql_log_bin=0", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", "set sql_log_bin=0", err)
 			}
 
 			_, err = conn.Exec("delete from mysql.user where password='' and user!='mariadb.sys'")
@@ -219,56 +219,56 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 				//	haveerror = true
 				// don't trigger error for mysql 5.7 and mariadb 10.4 that does not have password column
 
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlWarn, " %s %s ", "delete from mysql.user where password=''", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, " %s %s ", "delete from mysql.user where password=''", err)
 			}
 			grants := "grant all on *.* to '" + server.User + "'@'localhost' identified by '" + server.Pass + "' WITH GRANT OPTION"
 			_, err = conn.Exec(grants)
 			if err != nil {
 				haveerror = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s %s ", grants, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", grants, err)
 			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", grants)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", grants)
 			grants = "grant all on *.* to '" + server.User + "'@'%' identified by '" + server.Pass + "'"
 			_, err = conn.Exec(grants)
 			if err != nil {
 				haveerror = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s %s ", grants, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", grants, err)
 			}
 			grants = "grant all on *.* to '" + server.User + "'@'127.0.0.1' identified by '" + server.Pass + "'"
 			_, err = conn.Exec(grants)
 			if err != nil {
 				haveerror = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s %s ", grants, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", grants, err)
 			}
 			grants = "grant all on *.* to '" + server.ClusterGroup.GetRplUser() + "'@'localhost' identified by '" + server.ClusterGroup.GetRplPass() + "'"
 			_, err = conn.Exec(grants)
 			if err != nil {
 				haveerror = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s %s ", grants, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", grants, err)
 			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", grants)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", grants)
 			grants = "grant all on *.* to '" + server.ClusterGroup.GetRplUser() + "'@'%' identified by '" + server.ClusterGroup.GetRplPass() + "'"
 			_, err = conn.Exec(grants)
 			if err != nil {
 				haveerror = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s %s ", grants, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", grants, err)
 			}
 			grants = "grant all on *.* to '" + server.ClusterGroup.GetRplUser() + "'@'127.0.0.1' identified by '" + server.ClusterGroup.GetRplPass() + "'"
 			_, err = conn.Exec(grants)
 			if err != nil {
 				haveerror = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s %s ", grants, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", grants, err)
 			}
 			_, err = conn.Exec("flush privileges")
 			if err != nil {
 				haveerror = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s %s ", "flush privileges", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", "flush privileges", err)
 			}
 
 			_, err = conn.Exec("reset master")
 			if err != nil {
 				haveerror = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, " %s %s ", "reset master", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", "reset master", err)
 			}
 
 			if !haveerror {
@@ -276,16 +276,16 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 			}
 
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Database connection to init user  %s ", err2)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Database connection to init user  %s ", err2)
 		}
 		exitloop++
 
 	}
 	if exitloop == 101 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Database started.")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Database started.")
 
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Database timeout.")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Database timeout.")
 		return errors.New("Failed to start")
 	}
 
@@ -306,18 +306,18 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 	path := server.Datadir + "/var"
 	/*	err := os.RemoveAll(path + "/" + server.Id + ".pid")
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlErr, "%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", err)
 			return err
 		}*/
 	usr, err := user.Current()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
 		return err
 	}
 	//	mariadbdCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf --port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.Datadir+"/"+server.Id+".sock", "--user="+usr.Username, "--bind-address=0.0.0.0", "--general_log=1", "--general_log_file="+path+"/"+server.Id+".log", "--pid_file="+path+"/"+server.Id+".pid", "--log-error="+path+"/"+server.Id+".err")
 	time.Sleep(time.Millisecond * 2000)
 	mariadbdCmd := exec.Command(cluster.Conf.ProvDBBinaryBasedir+"/mysqld", "--defaults-file="+server.Datadir+"/init/etc/mysql/my.cnf", "--port="+server.Port, "--server-id="+server.Port, "--datadir="+path, "--socket="+server.GetDatabaseSocket(), "--user="+usr.Username, "--bind-address=0.0.0.0", "--pid_file="+path+"/"+server.Id+".pid")
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s %s", mariadbdCmd.Path, mariadbdCmd.Args)
 
 	var out bytes.Buffer
 	mariadbdCmd.Stdout = &out
@@ -325,7 +325,7 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 	go func() {
 		err = mariadbdCmd.Run()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "%s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s ", err)
 		}
 		fmt.Printf("Command finished with error: %v", err)
 	}()
@@ -336,23 +336,23 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 
 		time.Sleep(time.Millisecond * 2000)
 		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlInfo, "Waiting database startup ")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Waiting database startup %d: %s", exitloop, out.String())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Waiting database startup %d: %s", exitloop, out.String())
 		conn, err2 := sqlx.Open("mysql", server.DSN)
 		if err2 == nil {
 			defer conn.Close()
 			exitloop = 100
 
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Database connection to init user  %s ", err2)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Database connection to init user  %s ", err2)
 		}
 		exitloop++
 
 	}
 	if exitloop == 101 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Database started.")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Database started.")
 
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Database timeout.")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Database timeout.")
 		return errors.New("Failed to start")
 	}
 	server.Process = mariadbdCmd.Process

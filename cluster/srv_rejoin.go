@@ -73,7 +73,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 				if cluster.Conf.FailoverSemiSyncState {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Set semisync replica and disable semisync leader %s", server.URL)
 					logs, err := server.SetSemiSyncReplica()
-					cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set semisync replica and disable semisync  %s, %s", server.URL, err)
+					cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed Set semisync replica and disable semisync  %s, %s", server.URL, err)
 				}
 				crash := cluster.getCrashFromJoiner(server.URL)
 				if crash == nil {
@@ -185,9 +185,9 @@ func (server *ServerMonitor) RejoinScript() {
 		var err error
 		out, err = exec.Command(cluster.Conf.RejoinScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port).CombinedOutput()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Rejoin script complete:", string(out))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin script complete:", string(out))
 	}
 }
 
@@ -231,7 +231,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 	}
 	if server.HasGTIDReplication() || (realmaster.MxsHaveGtid && realmaster.IsMaxscale) {
 		logs, err := server.SetReplicationGTIDCurrentPosFromServer(realmaster)
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed in GTID rejoin old master in sync %s, %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed in GTID rejoin old master in sync %s, %s", server.URL, err)
 		if err != nil {
 			return err
 		}
@@ -248,7 +248,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			Logpos:    crash.FailoverMasterLogPos,
 			SSL:       cluster.Conf.ReplicationSSL,
 		}, server.DBVersion)
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Change master positional failed in Rejoin old Master in sync to maxscale %s", err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Change master positional failed in Rejoin old Master in sync to maxscale %s", err)
 		if err != nil {
 			return err
 		}
@@ -271,7 +271,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			Delay:       strconv.Itoa(cluster.Conf.HostsDelayedTime),
 			PostgressDB: server.PostgressDB,
 		}, server.DBVersion)
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Change master positional failed in Rejoin old Master in sync %s", err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Change master positional failed in Rejoin old Master in sync %s", err)
 		if err != nil {
 			return err
 		}
@@ -315,7 +315,7 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 		return err
 	}
 	logs, err := dbhelper.SetGTIDSlavePos(server.Conn, crash.FailoverIOGtid.Sprint())
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlInfo, "SET GLOBAL gtid_slave_pos = \"%s\"", crash.FailoverIOGtid.Sprint())
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlInfo, "SET GLOBAL gtid_slave_pos = \"%s\"", crash.FailoverIOGtid.Sprint())
 	if err != nil {
 		return err
 	}
@@ -325,12 +325,12 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	} else {
 		logs, err2 = server.SetReplicationFromMaxsaleServer(realmaster)
 	}
-	cluster.LogSQL(logs, err2, server.URL, "Rejoin", LvlInfo, "Failed SetReplicationGTIDSlavePosFromServer on %s: %s", server.URL, err2)
+	cluster.LogSQL(logs, err2, server.URL, "Rejoin", config.LvlInfo, "Failed SetReplicationGTIDSlavePosFromServer on %s: %s", server.URL, err2)
 	if err2 != nil {
 		return err2
 	}
 	logs, err = server.StartSlave()
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlInfo, "Failed stop slave on %s: %s", server.URL, err)
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlInfo, "Failed stop slave on %s: %s", server.URL, err)
 
 	return nil
 }
@@ -350,7 +350,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 	// done change master just to set the host and port before dump
 	if server.MxsHaveGtid || server.IsMaxscale == false {
 		logs, err3 := server.SetReplicationGTIDSlavePosFromServer(realmaster)
-		cluster.LogSQL(logs, err3, server.URL, "Rejoin", LvlInfo, "Failed SetReplicationGTIDSlavePosFromServer on %s: %s", server.URL, err3)
+		cluster.LogSQL(logs, err3, server.URL, "Rejoin", config.LvlInfo, "Failed SetReplicationGTIDSlavePosFromServer on %s: %s", server.URL, err3)
 
 	} else {
 		logs, err3 := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
@@ -365,7 +365,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 			Logpos:    realmaster.FailoverMasterLogPos,
 			SSL:       cluster.Conf.ReplicationSSL,
 		}, server.DBVersion)
-		cluster.LogSQL(logs, err3, server.URL, "Rejoin", LvlErr, "Failed change master maxscale on %s: %s", server.URL, err3)
+		cluster.LogSQL(logs, err3, server.URL, "Rejoin", config.LvlErr, "Failed change master maxscale on %s: %s", server.URL, err3)
 	}
 	if err3 != nil {
 		return err3
@@ -392,7 +392,7 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	server.Refresh()
 	if cluster.Conf.ReadOnly && !server.IsIgnoredReadonly() {
 		logs, err := server.SetReadOnly()
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
 	}
 
 	if crash.FailoverIOGtid != nil {
@@ -440,13 +440,13 @@ func (server *ServerMonitor) rejoinMasterAsSlave() error {
 	realmaster := cluster.lastmaster
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoining old master server %s to saved master %s", server.URL, realmaster.URL)
 	logs, err := server.SetReadOnly()
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
 	if err == nil {
 		logs, err = server.SetReplicationGTIDCurrentPosFromServer(realmaster)
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to autojoin indirect master server %s, stopping slave as a precaution %s ", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to autojoin indirect master server %s, stopping slave as a precaution %s ", server.URL, err)
 		if err == nil {
 			logs, err = server.StartSlave()
-			cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to stop slave on erver %s, %s ", server.URL, err)
+			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to stop slave on erver %s, %s ", server.URL, err)
 		} else {
 
 			return err
@@ -465,7 +465,7 @@ func (server *ServerMonitor) rejoinSlaveChangePassword(ss *dbhelper.SlaveStatus)
 		Password: cluster.GetRplPass(),
 		Channel:  cluster.Conf.MasterConn,
 	}, server.DBVersion)
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Change master for password rotation : %s", err)
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Change master for password rotation : %s", err)
 	if err != nil {
 		return err
 	}
@@ -492,7 +492,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	}
 	mycurrentmaster, _ := cluster.GetMasterFromReplication(server)
 	if mycurrentmaster == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No master found from replication")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master found from replication")
 		return errors.New("No master found from replication")
 	}
 	if cluster.master != nil && mycurrentmaster != nil {
@@ -523,28 +523,28 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				//	if slave_gtid < master_gtid {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoining slave %s via GTID", server.URL)
 				logs, err := server.StopSlave()
-				cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to stop slave server %s, stopping slave as a precaution %s", server.URL, err)
+				cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to stop slave server %s, stopping slave as a precaution %s", server.URL, err)
 				if err == nil {
 					logs, err := server.SetReplicationGTIDSlavePosFromServer(realmaster)
-					cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to autojoin indirect slave server %s, stopping slave as a precaution %s", server.URL, err)
+					cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to autojoin indirect slave server %s, stopping slave as a precaution %s", server.URL, err)
 					if err == nil {
 						logs, err := server.StartSlave()
-						cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to start  slave server %s, stopping slave as a precaution %s", server.URL, err)
+						cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to start  slave server %s, stopping slave as a precaution %s", server.URL, err)
 					}
 				}
 			} else {
 				if mycurrentmaster.State != stateFailed && mycurrentmaster.IsRelay {
 					// No GTID compatible solution stop relay master wait apply relay and move to real master
 					logs, err := mycurrentmaster.StopSlave()
-					cluster.LogSQL(logs, err, mycurrentmaster.URL, "Rejoin", LvlErr, "Failed to stop slave on relay server  %s: %s", mycurrentmaster.URL, err)
+					cluster.LogSQL(logs, err, mycurrentmaster.URL, "Rejoin", config.LvlErr, "Failed to stop slave on relay server  %s: %s", mycurrentmaster.URL, err)
 					if err == nil {
 						logs, err2 := dbhelper.MasterPosWait(server.Conn, server.DBVersion, mycurrentmaster.BinaryLogFile, mycurrentmaster.BinaryLogPos, 3600, cluster.Conf.MasterConn)
-						cluster.LogSQL(logs, err2, server.URL, "Rejoin", LvlErr, "Failed positional rejoin wait pos %s %s", server.URL, err2)
+						cluster.LogSQL(logs, err2, server.URL, "Rejoin", config.LvlErr, "Failed positional rejoin wait pos %s %s", server.URL, err2)
 						if err2 == nil {
 							myparentss, _ := mycurrentmaster.GetSlaveStatus(mycurrentmaster.ReplicationSourceName)
 
 							logs, err := server.StopSlave()
-							cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to stop slave on server %s: %s", server.URL, err)
+							cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to stop slave on server %s: %s", server.URL, err)
 							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Doing Positional switch of slave %s", server.URL)
 							logs, changeMasterErr := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 								Host:        cluster.master.Host,
@@ -562,15 +562,15 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 								PostgressDB: server.PostgressDB,
 							}, server.DBVersion)
 
-							cluster.LogSQL(logs, changeMasterErr, server.URL, "Rejoin", LvlErr, "Rejoin Failed doing Positional switch of slave %s: %s", server.URL, changeMasterErr)
+							cluster.LogSQL(logs, changeMasterErr, server.URL, "Rejoin", config.LvlErr, "Rejoin Failed doing Positional switch of slave %s: %s", server.URL, changeMasterErr)
 
 						}
 						logs, err = server.StartSlave()
-						cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to start slave on %s: %s", server.URL, err)
+						cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to start slave on %s: %s", server.URL, err)
 
 					}
 					mycurrentmaster.StartSlave()
-					cluster.LogSQL(logs, err, mycurrentmaster.URL, "Rejoin", LvlErr, "Failed to start slave on %s: %s", mycurrentmaster.URL, err)
+					cluster.LogSQL(logs, err, mycurrentmaster.URL, "Rejoin", config.LvlErr, "Failed to start slave on %s: %s", mycurrentmaster.URL, err)
 
 					if server.IsMaintenance {
 						server.SwitchMaintenance()
@@ -588,7 +588,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 	}
 	// In case of state change, reintroduce the server in the slave list
 	if server.PrevState == stateFailed || server.PrevState == stateUnconn || server.PrevState == stateSuspect {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Set stateSlave from rejoin slave %s", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set stateSlave from rejoin slave %s", server.URL)
 		server.SetState(stateSlave)
 		server.FailCount = 0
 		if server.PrevState != stateSuspect {
@@ -596,7 +596,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		}
 		if cluster.Conf.ReadOnly {
 			logs, err := dbhelper.SetReadOnly(server.Conn, true)
-			cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
+			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to set read only on server %s, %s ", server.URL, err)
 			if err != nil {
 
 				return err
@@ -629,7 +629,7 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 		 return	false
 		}*/
 		valid, logs, err := dbhelper.HaveExtraEvents(server.Conn, crash.FailoverMasterLogFile, crash.FailoverMasterLogPos)
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlDbg, "Failed to  get extra bin log events server %s, %s ", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlDbg, "Failed to  get extra bin log events server %s, %s ", server.URL, err)
 		if err != nil {
 			return false
 		}
@@ -695,15 +695,15 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 }
 
 func (cluster *Cluster) RejoinClone(source *ServerMonitor, dest *ServerMonitor) error {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Rejoining via master clone ")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoining via master clone ")
 	if dest.DBVersion.IsMySQL() && dest.DBVersion.Major >= 8 {
 		if !dest.HasInstallPlugin("CLONE") {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Installing Clone plugin")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Installing Clone plugin")
 			dest.InstallPlugin("CLONE")
 		}
 		dest.ExecQueryNoBinLog("set global clone_valid_donor_list = '" + source.Host + ":" + source.Port + "'")
 		dest.ExecQueryNoBinLog("CLONE INSTANCE FROM " + dest.User + "@" + source.Host + ":" + source.Port + " identified by '" + dest.Pass + "'")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Start slave after dump")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Start slave after dump")
 		dest.SetReplicationGTIDSlavePosFromServer(source)
 		dest.StartSlave()
 	} else {
@@ -745,14 +745,14 @@ func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Rejoin server using GTID %s", ss.UsingGtid.String)
 	*/
 	if crash.FailoverIOGtid == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Rejoin server cannot find a saved master election GTID")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin server cannot find a saved master election GTID")
 		return false
 	}
 	if len(crash.FailoverIOGtid.GetSeqNos()) > 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Rejoin server found a crash GTID greater than 0 ")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin server found a crash GTID greater than 0 ")
 		return true
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Rejoin server can not found a GTID greater than 0 ")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin server can not found a GTID greater than 0 ")
 	return false
 
 }

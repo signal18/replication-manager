@@ -59,8 +59,6 @@ var tests = []string{
 }
 
 const recoverTime = 8
-const LvlErr = "ERROR"
-const LvlInfo = "INFO"
 
 type RegTest struct {
 }
@@ -83,7 +81,7 @@ func (regtest *RegTest) CreateTestsFromShare(cl *cluster.Cluster) map[string]clu
 	var allTests = map[string]cluster.Test{}
 	err := filepath.Walk(Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "TEST : %s", err)
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "TEST : %s", err)
 			return err
 		}
 		if !info.IsDir() {

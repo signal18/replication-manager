@@ -14,7 +14,7 @@ import (
 func (cluster *Cluster) K8SProvisionProxyService(prx DatabaseProxy) {
 	clientset, err := cluster.K8SConnectAPI()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot init Kubernetes client API %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
 		cluster.errorChan <- err
 		return
 	}
@@ -58,14 +58,14 @@ func (cluster *Cluster) K8SProvisionProxyService(prx DatabaseProxy) {
 	}
 
 	// Create Deployment
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Creating deployment...")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating deployment...")
 	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
 
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot deploy Kubernetes service %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes service %s ", err)
 		cluster.errorChan <- err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Created deployment %q.\n", result.GetObjectMeta().GetName())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created deployment %q.\n", result.GetObjectMeta().GetName())
 	cluster.errorChan <- nil
 	return
 }

@@ -49,7 +49,7 @@ func (regtest *RegTest) TestFailoverSemisyncSlavekilledAutoRejoin(cluster *clust
 	SaveMaster.ReadAllRelayLogs()
 
 	if killedSlave.HasSiblings(cluster.GetSlaves()) == false {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Not all slaves pointing to master")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Not all slaves pointing to master")
 
 		return false
 	}

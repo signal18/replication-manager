@@ -15,7 +15,7 @@ func (regtest *RegTest) TestSwitchoverNoReadOnlyNoRplCheck(cluster *cluster.Clus
 
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		return false
 	}
 	cluster.SetRplMaxDelay(0)
@@ -26,21 +26,21 @@ func (regtest *RegTest) TestSwitchoverNoReadOnlyNoRplCheck(cluster *cluster.Clus
 	for _, s := range cluster.GetServers() {
 		_, err := s.Conn.Exec("set global read_only=0")
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err.Error())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err.Error())
 		}
 	}
 	SaveMasterURL := cluster.GetMaster().URL
 	cluster.SwitchoverWaitTest()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master is %s ", cluster.GetMaster().URL)
 	if SaveMasterURL == cluster.GetMaster().URL {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "same server URL after switchover")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "same server URL after switchover")
 		return false
 	}
 	for _, s := range cluster.GetSlaves() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Server  %s is %s", s.URL, s.ReadOnly)
 		s.Refresh()
 		if s.ReadOnly != "OFF" {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "READ ONLY on slave was set by switchover")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "READ ONLY on slave was set by switchover")
 			return false
 		}
 	}
