@@ -22,7 +22,6 @@ import (
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
-	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -824,19 +823,18 @@ func (cluster *Cluster) CheckInjectConfig() {
 }
 
 func (cluster *Cluster) CheckDefaultUser(i bool) {
-	credentials := strings.Split(cluster.Conf.Secrets["api-credentials"].Value+","+cluster.Conf.Secrets["api-credentials-external"].Value, ",")
-	found := false
-	for _, cred := range credentials {
-		user, pass := misc.SplitPair(cred)
-		pass = cluster.Conf.GetDecryptedPassword("api-credentials", pass)
-		if user == "admin" && pass == "repman" {
-			found = true
-		}
+	creds := make([]string, 0)
+	if cluster.APIUsers["admin"].Password == "repman" {
+		creds = append(creds, "admin")
 	}
-	if found {
+	if cluster.APIUsers["dba"].Password == "repman" {
+		creds = append(creds, "dba")
+	}
+	out := strings.Join(creds, ",")
+	if out != "" {
 		if i {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, fmt.Sprintf(clusterError["WARN0108"]))
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, fmt.Sprintf(clusterError["WARN0108"], out))
 		}
-		cluster.StateMachine.AddState("WARN0108", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0108"]), ErrFrom: "CLUSTER"})
+		cluster.StateMachine.AddState("WARN0108", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0108"], out), ErrFrom: "CLUSTER"})
 	}
 }
