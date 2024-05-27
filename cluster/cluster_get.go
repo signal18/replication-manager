@@ -120,16 +120,16 @@ func (cluster *Cluster) GetPersitentState() error {
 	var clsave Save
 	file, err := ioutil.ReadFile(cluster.WorkingDir + "/clusterstate.json")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "No file found: %v\n", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No file found: %v\n", err)
 		return err
 	}
 	err = json.Unmarshal(file, &clsave)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "File error: %v\n", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "File error: %v\n", err)
 		return err
 	}
 	if len(clsave.Crashes) > 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Restoring %d crashes from file: %s\n", len(clsave.Crashes), cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json")
 	}
 	cluster.SLAHistory = clsave.SLAHistory
 	cluster.Crashes = clsave.Crashes
@@ -247,7 +247,7 @@ func (cluster *Cluster) GetConnections() int {
 	for _, server := range cluster.Servers {
 		if server != nil {
 			if conns, ok := server.Status["THREADS_RUNNING"]; ok {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Reading connections on server: %s ,%s", server.URL, server.Status["THREADS_RUNNING"])
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Reading connections on server: %s ,%s", server.URL, server.Status["THREADS_RUNNING"])
 				numconns, _ := strconv.Atoi(conns)
 				allconns += numconns
 			}
@@ -415,7 +415,7 @@ func (cluster *Cluster) getOnePreferedMaster() *ServerMonitor {
 	}
 	for _, server := range cluster.Servers {
 		// if cluster.Conf.LogLevel > 2 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Lookup if server: %s is preferred master: %s", server.URL, cluster.Conf.PrefMaster)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Lookup if server: %s is preferred master: %s", server.URL, cluster.Conf.PrefMaster)
 		// }
 		if server.IsPrefered() {
 			return server
@@ -430,7 +430,7 @@ func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 	}
 	for _, server := range cluster.Servers {
 		// if cluster.Conf.LogLevel > 2 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Check for relay server %s: relay: %t", server.URL, server.IsRelay)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Check for relay server %s: relay: %t", server.URL, server.IsRelay)
 		// }
 		if server.IsRelay {
 			return server
@@ -519,7 +519,7 @@ func (cluster *Cluster) GetMasterFromReplication(slave *ServerMonitor) (*ServerM
 		if len(slave.Replications) > 0 {
 
 			// if cluster.Conf.LogLevel > 2 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "GetMasterFromReplication server  %d  lookup if server %s is the one : %d", slave.GetReplicationServerID(), server.URL, server.ServerID)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "GetMasterFromReplication server  %d  lookup if server %s is the one : %d", slave.GetReplicationServerID(), server.URL, server.ServerID)
 			// }
 			if slave.IsIOThreadRunning() && slave.IsSQLThreadRunning() {
 				if slave.GetReplicationServerID() == server.ServerID {
@@ -527,7 +527,7 @@ func (cluster *Cluster) GetMasterFromReplication(slave *ServerMonitor) (*ServerM
 				}
 			} else {
 				// if cluster.Conf.LogLevel > 2 {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "GetMasterFromReplication slave host  %s:%s if  equal server  %s:%s", slave.GetReplicationMasterHost(), slave.GetReplicationMasterPort(), server.Host, server.Port)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "GetMasterFromReplication slave host  %s:%s if  equal server  %s:%s", slave.GetReplicationMasterHost(), slave.GetReplicationMasterPort(), server.Host, server.Port)
 				// }
 				if slave.GetReplicationMasterHost() == server.Host && slave.GetReplicationMasterPort() == server.Port {
 					return server, nil
@@ -704,9 +704,9 @@ func (cluster *Cluster) GetChildClusters() map[string]*Cluster {
 	cluster.Lock()
 	defer cluster.Unlock()
 	for _, c := range cluster.clusterList {
-		//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlErr, "GetChildClusters %s %s ", cluster.Name, c.Conf.ClusterHead)
+		//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,config.LvlErr, "GetChildClusters %s %s ", cluster.Name, c.Conf.ClusterHead)
 		if cluster.Name == c.Conf.ClusterHead {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Discovering of a child cluster via ClusterHead %s replication source %s", c.Name, c.Conf.ClusterHead)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Discovering of a child cluster via ClusterHead %s replication source %s", c.Name, c.Conf.ClusterHead)
 			clusters[c.Name] = c
 		}
 		condidateclustermaster := c.GetMaster()
@@ -714,7 +714,7 @@ func (cluster *Cluster) GetChildClusters() map[string]*Cluster {
 			for _, rep := range condidateclustermaster.Replications {
 				// is a source name has my cluster name or is any child cluster master point to my master
 				if rep.ConnectionName.String == cluster.Name || (cluster.GetMaster() != nil && cluster.master.Host == rep.MasterHost.String && cluster.master.Port == rep.MasterPort.String) {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Discovering of a child cluster via multi source %s replication source %s", c.Name, rep.ConnectionName.String)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Discovering of a child cluster via multi source %s replication source %s", c.Name, rep.ConnectionName.String)
 					clusters[c.Name] = c
 				}
 			}
@@ -795,7 +795,7 @@ func (cluster *Cluster) GetTableDLLNoFK(schema string, table string, srv *Server
 	query := "SELECT CONSTRAINT_NAME from information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA='" + schema + "' AND TABLE_NAME='" + table + "' AND CONSTRAINT_TYPE='FOREIGN KEY'"
 	rows, err := srv.Conn.Query(query)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Contraint fetch failed %s %s", query, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Contraint fetch failed %s %s", query, err)
 		return "", err
 	}
 	defer rows.Close()
@@ -849,7 +849,7 @@ func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 
 	err = json.Unmarshal([]byte(file), &m.Rows)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "GetServicePlans  %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "GetServicePlans  %s", err)
 		return nil
 	}
 
@@ -860,17 +860,17 @@ func (cluster *Cluster) GetClientCertificates() (map[string]string, error) {
 	certs := make(map[string]string)
 	clientCert, err := misc.ReadFile(cluster.WorkingDir + "/client-cert.pem")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Can't load certificate: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Can't load certificate: %s", err)
 		return certs, fmt.Errorf("Can't load certificate: %w", err)
 	}
 	clientkey, err := misc.ReadFile(cluster.WorkingDir + "/client-key.pem")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Can't load certificate: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Can't load certificate: %s", err)
 		return certs, fmt.Errorf("Can't load certificate: %w", err)
 	}
 	caCert, err := misc.ReadFile(cluster.WorkingDir + "/ca-cert.pem")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Can't load certificate: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Can't load certificate: %s", err)
 		return certs, fmt.Errorf("Can't load certificate: %w", err)
 	}
 	certs["clientCert"] = clientCert
@@ -971,7 +971,7 @@ func (cluster *Cluster) GetVaultReplicationCredentials(client *vault.Client) (st
 func (cluster *Cluster) GetVaultConnection() (*vault.Client, error) {
 	if cluster.Conf.IsVaultUsed() {
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlDbg, "Vault AppRole Authentification")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlDbg, "Vault AppRole Authentification")
 		vconfig := vault.DefaultConfig()
 
 		vconfig.Address = cluster.Conf.VaultServerAddr
@@ -1037,7 +1037,7 @@ func (cluster *Cluster) GetUniqueId() uint64 {
 func (cluster *Cluster) GetVaultToken() {
 	if cluster.Conf.IsVaultUsed() {
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlDbg, "Vault AppRole Authentification")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlDbg, "Vault AppRole Authentification")
 		vconfig := vault.DefaultConfig()
 
 		vconfig.Address = cluster.Conf.VaultServerAddr

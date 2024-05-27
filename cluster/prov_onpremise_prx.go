@@ -27,7 +27,7 @@ func (cluster *Cluster) OnPremiseProvisionBootsrapProxy(server DatabaseProxy, cl
 	if err != nil {
 		return errors.New("OnPremise Bootsrap via SSH %s" + err.Error())
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise Provisioning  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise Provisioning  : %s", string(out))
 	cmd := "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + server.GetType() + "/bootstrap | sh"
 	if cluster.Configurator.HaveDBTag("rpm") {
 		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + server.GetType() + "/bootstrap | sh"
@@ -40,7 +40,7 @@ func (cluster *Cluster) OnPremiseProvisionBootsrapProxy(server DatabaseProxy, cl
 	if err != nil {
 		return errors.New("OnPremise Bootsrap via SSH %s" + err.Error())
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise Bootsrap  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise Bootsrap  : %s", string(out))
 	return nil
 }
 
@@ -66,11 +66,11 @@ func (cluster *Cluster) OnPremiseProvisionProxyService(pri DatabaseProxy) error 
 	pri.GetProxyConfig()
 
 	if prx, ok := pri.(*MariadbShardProxy); ok {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Bootstrap MariaDB Sharding Cluster")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Bootstrap MariaDB Sharding Cluster")
 		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.GetPort(), prx.User, prx.Pass, true, "")
 		err := srv.Refresh()
 		if err == nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlWarn, "Can connect to requested signal18 sharding proxy")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can connect to requested signal18 sharding proxy")
 			//that's ok a sharding proxy can be decalre in multiple cluster , should not block provisionning
 			cluster.errorChan <- err
 			return nil
@@ -78,7 +78,7 @@ func (cluster *Cluster) OnPremiseProvisionProxyService(pri DatabaseProxy) error 
 		srv.ClusterGroup = cluster
 		cluster.OnPremiseProvisionDatabaseService(srv)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Bootstrap MariaDB Sharding Cluster Failed")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Bootstrap MariaDB Sharding Cluster Failed")
 			cluster.errorChan <- err
 			return err
 		}
@@ -89,7 +89,7 @@ func (cluster *Cluster) OnPremiseProvisionProxyService(pri DatabaseProxy) error 
 	if prx, ok := pri.(*ProxySQLProxy); ok {
 		err := cluster.OnPremiseProvisionProxySQLService(prx)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Bootstrap Proxysql Failed")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Bootstrap Proxysql Failed")
 			cluster.errorChan <- err
 			return err
 		}

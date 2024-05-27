@@ -160,7 +160,7 @@ func (proxy *MaxscaleProxy) Init() {
 	}
 	err := m.Connect()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "Could not connect to MaxScale:%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "Could not connect to MaxScale:%s", err)
 		return
 	}
 	defer m.Close()
@@ -174,28 +174,28 @@ func (proxy *MaxscaleProxy) Init() {
 
 	var monitor string
 	if cluster.Conf.MxsGetInfoMethod == "maxinfo" {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlDbg, "Getting Maxscale monitor via maxinfo")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlDbg, "Getting Maxscale monitor via maxinfo")
 		m.GetMaxInfoMonitors("http://" + cluster.Conf.MxsHost + ":" + strconv.Itoa(cluster.Conf.MxsMaxinfoPort) + "/monitors")
 		monitor = m.GetMaxInfoMonitor()
 
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlDbg, "Getting Maxscale monitor via maxadmin")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlDbg, "Getting Maxscale monitor via maxadmin")
 		_, err := m.ListMonitors()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "MaxScale client could not list monitors %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not list monitors %s", err)
 		}
 		monitor = m.GetMonitor()
 	}
 	if monitor != "" && cluster.Conf.MxsDisableMonitor == true {
 		cmd := "shutdown monitor \"" + monitor + "\""
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlInfo, "Maxscale shutdown monitor: %s", cmd)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlInfo, "Maxscale shutdown monitor: %s", cmd)
 		err = m.ShutdownMonitor(monitor)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "MaxScale client could not shutdown monitor:%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not shutdown monitor:%s", err)
 		}
 		m.Response()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "MaxScale client could not shutdown monitor:%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not shutdown monitor:%s", err)
 		}
 	} else {
 		cluster.StateMachine.AddState("ERR00017", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00017"], ErrFrom: "TOPO", ServerUrl: proxy.Name})
@@ -203,15 +203,15 @@ func (proxy *MaxscaleProxy) Init() {
 
 	err = m.SetServer(cluster.GetMaster().MxsServerName, "master")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "MaxScale client could not send command:%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not send command:%s", err)
 	}
 	err = m.SetServer(cluster.GetMaster().MxsServerName, "running")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "MaxScale client could not send command:%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not send command:%s", err)
 	}
 	err = m.ClearServer(cluster.GetMaster().MxsServerName, "slave")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "MaxScale client could not send command:%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not send command:%s", err)
 	}
 
 	if cluster.Conf.MxsBinlogOn == false {
@@ -220,27 +220,27 @@ func (proxy *MaxscaleProxy) Init() {
 
 				err = m.ClearServer(s.MxsServerName, "master")
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "MaxScale client could not send command:%s", err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not send command:%s", err)
 				}
 
 				if s.State != stateSlave {
 					err = m.ClearServer(s.MxsServerName, "slave")
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "MaxScale client could not send command:%s", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not send command:%s", err)
 					}
 					err = m.ClearServer(s.MxsServerName, "running")
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "MaxScale client could not send command:%s", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not send command:%s", err)
 					}
 
 				} else {
 					err = m.SetServer(s.MxsServerName, "slave")
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "MaxScale client could not send command:%s", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not send command:%s", err)
 					}
 					err = m.SetServer(s.MxsServerName, "running")
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "MaxScale client could not send command:%s", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not send command:%s", err)
 					}
 
 				}
@@ -276,7 +276,7 @@ func (pr *MaxscaleProxy) SetMaintenance(server *ServerMonitor) {
 		err = m.ClearServer(server.MxsServerName, "maintenance")
 	}
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, LvlErr, "Could not set server %s in maintenance", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "Could not set server %s in maintenance", err)
 		m.Close()
 	}
 	m.Close()

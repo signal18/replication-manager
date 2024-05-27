@@ -28,10 +28,10 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 		svc.CertsDERSecret = cluster.Conf.GetDecryptedValue("opensvc-p12-secret")
 		err := svc.LoadCert(cluster.Conf.ProvOpensvcP12Certificate)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
 		} else {
 			// if cluster.GetLogLevel() > 2 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
 			// }
 		}
 	}
@@ -112,35 +112,35 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	svc := cluster.OpenSVCConnect()
 	err := svc.CreateSecretV2(cluster.Name, "env", agent)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not create secret: %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s ", err)
 	}
 	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not add key to secret: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
 	}
 	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
 	}
 	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not add key to secret: %s %s ", "SHARDPROXY_ROOT_PASSWORD", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "SHARDPROXY_ROOT_PASSWORD", err)
 	}
 	err = svc.CreateConfigV2(cluster.Name, "env", agent)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not create config: %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s ", err)
 	}
 	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_USER", "admin")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_USER", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_USER", err)
 	}
 	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_URL", "https://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.APIPort)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_URL", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_URL", err)
 	}
 	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_CLUSTER_NAME", cluster.GetClusterName())
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_CLUSTER_NAME", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_CLUSTER_NAME", err)
 	}
 
 	return err
@@ -248,8 +248,8 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 	var fs string
 	fs = ""
 	disk = ""
-	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlErr, "%s", collector.ProvFSMode)
-	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlErr, "%s", collector.ProvFSPool)
+	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", collector.ProvFSMode)
+	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", collector.ProvFSPool)
 	if collector.ProvFSMode == "loopback" {
 
 		disk = disk + "\n"
@@ -321,7 +321,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		fs = fs + "mnt = {env.base_dir}\n"
 		fs = fs + "standby = true\n"
 	} // not a directory
-	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlErr, "%s", disk+fs)
+	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", disk+fs)
 	return disk + fs
 }
 

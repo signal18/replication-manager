@@ -73,7 +73,7 @@ func (proxy *Proxy) createCookie(key string) error {
 	cluster := proxy.ClusterGroup
 	defer newFile.Close()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlDbg, "Create cookie (%s) %s", key, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Create cookie (%s) %s", key, err)
 	}
 	return err
 }

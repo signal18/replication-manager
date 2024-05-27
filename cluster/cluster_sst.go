@@ -53,7 +53,7 @@ func (cluster *Cluster) SSTWatchRestic(r io.Reader) error {
 		if n > 0 {
 			d := buf[:n]
 			out = append(out, d...)
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, string(out))
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, string(out))
 		}
 		if err != nil {
 			// Read returns io.EOF at the end of file, which is not an error for us
@@ -80,31 +80,31 @@ func (cluster *Cluster) SSTRunReceiverToRestic(filename string) (string, error) 
 
 	stdout, err := resticcmd.StdoutPipe()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Exiting SST on restic StdoutPipe %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Exiting SST on restic StdoutPipe %s", err)
 		return "", err
 	}
 	go cluster.SSTWatchRestic(stdout)
 	sst.outresticreader, err = resticcmd.StdinPipe()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Exiting SST on restic StdinPipe %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Exiting SST on restic StdinPipe %s", err)
 		return "", err
 	}
 	err = resticcmd.Start()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Error restic command: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Error restic command: %s", err)
 		return "", err
 	}
 
 	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":"+cluster.SSTGetSenderPort())
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Exiting SST on socket listen %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Exiting SST on socket listen %s", err)
 		return "", err
 	}
 	sst.tcplistener = sst.listener.(*net.TCPListener)
 	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 120))
 	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
 	if sst.cluster.Conf.LogSST {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "Listening for SST on port %d", destinationPort)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Listening for SST on port %d", destinationPort)
 	}
 	SSTs.Lock()
 	SSTs.SSTconnections[destinationPort] = sst
@@ -127,7 +127,7 @@ func (cluster *Cluster) SSTRunReceiverToFile(filename string, openfile string) (
 	}
 
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Open file failed for job %s %s", filename, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Open file failed for job %s %s", filename, err)
 		return "", err
 	}
 	writers = append(writers, sst.file)
@@ -136,14 +136,14 @@ func (cluster *Cluster) SSTRunReceiverToFile(filename string, openfile string) (
 
 	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":"+cluster.SSTGetSenderPort())
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Exiting SST on socket listen %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Exiting SST on socket listen %s", err)
 		return "", err
 	}
 	sst.tcplistener = sst.listener.(*net.TCPListener)
 	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 3600))
 	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
 	if sst.cluster.Conf.LogSST {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "Listening for SST on port to file %d", destinationPort)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Listening for SST on port to file %d", destinationPort)
 	}
 	SSTs.Lock()
 	SSTs.SSTconnections[destinationPort] = sst
@@ -157,7 +157,7 @@ func (cluster *Cluster) SSTRunReceiverToGZip(filename string, openfile string) (
 	sst := new(SST)
 	sst.cluster = cluster
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "Compressing mariadb backup")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Compressing mariadb backup")
 
 	var err error
 	if openfile == ConstJobCreateFile {
@@ -171,20 +171,20 @@ func (cluster *Cluster) SSTRunReceiverToGZip(filename string, openfile string) (
 	sst.outfilegzipwriter = gw
 
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Open file failed for job %s %s", filename, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Open file failed for job %s %s", filename, err)
 		return "", err
 	}
 
 	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":"+cluster.SSTGetSenderPort())
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Exiting SST on socket listen %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Exiting SST on socket listen %s", err)
 		return "", err
 	}
 	sst.tcplistener = sst.listener.(*net.TCPListener)
 	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 3600))
 	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
 	if sst.cluster.Conf.LogSST {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "Listening for SST on port to file %d", destinationPort)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Listening for SST on port to file %d", destinationPort)
 	}
 	SSTs.Lock()
 	SSTs.SSTconnections[destinationPort] = sst
@@ -200,7 +200,7 @@ func (sst *SST) tcp_con_handle_to_gzip() {
 
 	defer func() {
 		if sst.cluster.Conf.LogSST {
-			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
+			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
 		port := sst.listener.Addr().(*net.TCPAddr).Port
 		sst.tcplistener.Close()
@@ -226,7 +226,7 @@ func (sst *SST) tcp_con_handle_to_gzip() {
 
 	case <-chan_to_stdout:
 		if sst.cluster.Conf.LogSST {
-			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
+			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
 	}
 }
@@ -237,7 +237,7 @@ func (sst *SST) tcp_con_handle_to_file() {
 
 	defer func() {
 		if sst.cluster.Conf.LogSST {
-			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
+			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
 		port := sst.listener.Addr().(*net.TCPAddr).Port
 		sst.tcplistener.Close()
@@ -262,7 +262,7 @@ func (sst *SST) tcp_con_handle_to_file() {
 
 	case <-chan_to_stdout:
 		if sst.cluster.Conf.LogSST {
-			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
+			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
 	}
 }
@@ -273,7 +273,7 @@ func (sst *SST) tcp_con_handle_to_restic() {
 
 	defer func() {
 		if sst.cluster.Conf.LogSST {
-			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
+			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
 		port := sst.listener.Addr().(*net.TCPAddr).Port
 		sst.tcplistener.Close()
@@ -298,7 +298,7 @@ func (sst *SST) tcp_con_handle_to_restic() {
 
 	case <-chan_to_stdout:
 		if sst.cluster.Conf.LogSST {
-			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
+			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
 	}
 }
@@ -315,7 +315,7 @@ func (sst *SST) stream_copy_to_file() <-chan int {
 			if con, ok := sst.in.(net.Conn); ok {
 
 				if sst.cluster.Conf.LogSST {
-					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "SST closing connection from stream_copy %v ", con.RemoteAddr())
+					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST closing connection from stream_copy %v ", con.RemoteAddr())
 				}
 				sst.in.(net.Conn).Close()
 			}
@@ -329,13 +329,13 @@ func (sst *SST) stream_copy_to_file() <-chan int {
 
 			if err != nil {
 				if err != io.EOF {
-					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Read error: %s", err)
+					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Read error: %s", err)
 				}
 				break
 			}
 			_, err = sst.outfilewriter.Write(buf[0:nBytes])
 			if err != nil {
-				sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Write error: %s", err)
+				sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Write error: %s", err)
 			}
 		}
 	}()
@@ -353,7 +353,7 @@ func (sst *SST) stream_copy_to_gzip() <-chan int {
 			if con, ok := sst.in.(net.Conn); ok {
 
 				if sst.cluster.Conf.LogSST {
-					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "SST closing connection from stream_copy %v ", con.RemoteAddr())
+					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST closing connection from stream_copy %v ", con.RemoteAddr())
 				}
 				sst.in.(net.Conn).Close()
 			}
@@ -368,14 +368,14 @@ func (sst *SST) stream_copy_to_gzip() <-chan int {
 
 			if err != nil {
 				if err != io.EOF {
-					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Read error: %s", err)
+					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Read error: %s", err)
 				}
 				break
 			}
 
 			_, err = sst.outfilegzipwriter.Write(buf[0:nBytes])
 			if err != nil {
-				sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Write error: %s", err)
+				sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Write error: %s", err)
 			}
 		}
 
@@ -392,7 +392,7 @@ func (sst *SST) stream_copy_to_restic() <-chan int {
 			if con, ok := sst.in.(net.Conn); ok {
 
 				if sst.cluster.Conf.LogSST {
-					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "SST closing connection from stream_copy %v ", con.RemoteAddr())
+					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST closing connection from stream_copy %v ", con.RemoteAddr())
 				}
 				sst.in.(net.Conn).Close()
 			}
@@ -406,13 +406,13 @@ func (sst *SST) stream_copy_to_restic() <-chan int {
 
 			if err != nil {
 				if err != io.EOF {
-					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Read error: %s", err)
+					sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Read error: %s", err)
 				}
 				break
 			}
 			_, err = sst.outresticreader.Write(buf[0:nBytes])
 			if err != nil {
-				sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "Write error: %s", err)
+				sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Write error: %s", err)
 			}
 		}
 	}()
@@ -429,19 +429,19 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 
 	client, err := net.Dial("tcp", fmt.Sprintf("%s:%d", sv.Host, port))
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "SST Reseed failed connection to port %s server %s %s ", sv.SSTPort, sv.Host, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST Reseed failed connection to port %s server %s %s ", sv.SSTPort, sv.Host, err)
 		return
 	}
 
 	defer client.Close()
 	file, err := os.Open(backupfile)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "SST sending file: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST sending file: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
 	if os.IsNotExist(err) && cluster.Conf.CompressBackups {
 		backupfile = strings.Replace(backupfile, "xbtream", "gz", 1)
 		file, err = os.Open(backupfile)
 	}
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
 		return
 	}
 
@@ -465,11 +465,11 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 
 		bts, err := client.Write(sendBuffer)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "SST failed to write chunk %s at position %d", err, total)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to write chunk %s at position %d", err, total)
 		}
 		total = total + uint64(bts)
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "Backup has been sent, closing connection!")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup has been sent, closing connection!")
 
 	defer file.Close()
 
@@ -484,14 +484,14 @@ func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor) {
 
 	tlsconfig := &tls.Config{InsecureSkipVerify: true}
 	if client, err = tls.Dial("tcp", fmt.Sprintf("%s:%d", sv.Host, port), tlsconfig); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "SST Reseed failed connection via SSL to port %s server %s %s ", sv.SSTPort, sv.Host, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST Reseed failed connection via SSL to port %s server %s %s ", sv.SSTPort, sv.Host, err)
 		return
 	}
 	defer client.Close()
 	file, err := os.Open(backupfile)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "SST sending file via SSL: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST sending file via SSL: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
 		return
 	}
 	sendBuffer := make([]byte, 16384)
@@ -503,11 +503,11 @@ func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor) {
 		}
 		bts, err := client.Write(sendBuffer)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlErr, "SST failed to write chunk %s at position %d", err, total)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to write chunk %s at position %d", err, total)
 		}
 		total = total + uint64(bts)
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, LvlInfo, "Backup has been sent via SSL , closing connection!")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup has been sent via SSL , closing connection!")
 }
 
 func (cluster *Cluster) SSTGetSenderPort() string {

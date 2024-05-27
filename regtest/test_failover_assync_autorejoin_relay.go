@@ -48,7 +48,7 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinRelay(cluster *cluster.Clust
 	wg2.Wait()
 
 	if cluster.CheckTableConsistency("test.sbtest") != true {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Inconsitant slave")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
 
 		return false
 	}

@@ -56,17 +56,17 @@ func (server *ServerMonitor) SetEventScheduler(value bool) (string, error) {
 
 func (server *ServerMonitor) SetGroupReplicationPrimary() (string, error) {
 	logs, err := dbhelper.SetGroupReplicationPrimary(server.Conn, server.DBVersion)
-	server.GetCluster().LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Could not set server a primary")
+	server.GetCluster().LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Could not set server a primary")
 	return logs, err
 }
 
 func (server *ServerMonitor) SetState(state string) {
 	cluster := server.ClusterGroup
 	if server.PrevState != state {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Server %s state transition from %s changed to: %s", server.URL, server.PrevState, state)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s state transition from %s changed to: %s", server.URL, server.PrevState, state)
 		_, file, no, ok := runtime.Caller(1)
 		if ok {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Set state called from %s#%d\n", file, no)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set state called from %s#%d\n", file, no)
 		}
 	}
 	server.State = state
@@ -77,7 +77,7 @@ func (server *ServerMonitor) SetPrevState(state string) {
 	if state == "" {
 		return
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Server %s previous state set to: %s", server.URL, state)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s previous state set to: %s", server.URL, state)
 	server.PrevState = state
 }
 
@@ -91,7 +91,7 @@ func (server *ServerMonitor) SetMaster() {
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Server %s state transition from %s changed to: %s in SetMaster", server.URL, server.PrevState, stateMaster)
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "SetMaster called from %s#%d\n", file, no)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "SetMaster called from %s#%d\n", file, no)
 	}
 	for _, s := range cluster.Servers {
 		s.HaveNoMasterOnStart = false
@@ -161,19 +161,19 @@ func (server *ServerMonitor) SetLongQueryTime(queryTime string) (string, error) 
 func (server *ServerMonitor) SetReadWrite() error {
 	cluster := server.ClusterGroup
 	if cluster.Conf.Arbitration && cluster.IsFailedArbitrator {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cancel ReadWrite on %s caused by arbitration failed ", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel ReadWrite on %s caused by arbitration failed ", server.URL)
 		return errors.New("Arbitration is Failed")
 	}
 	if server.IsReadOnly() {
 		logs, err := dbhelper.SetReadOnly(server.Conn, false)
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set Read Write on %s : %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed Set Read Write on %s : %s", server.URL, err)
 		if err != nil {
 			return err
 		}
 	}
 	if server.HasSuperReadOnlyCapability() {
 		logs, err := dbhelper.SetSuperReadOnly(server.Conn, false)
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", LvlErr, "Failed Set Super Read Write on %s : %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed Set Super Read Write on %s : %s", server.URL, err)
 		if err != nil {
 			return err
 		}
@@ -246,7 +246,7 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 	server.IP, err = dbhelper.CheckHostAddr(server.Host)
 	cluster := server.ClusterGroup
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cannot resolved DNS for host %s, error: %s", server.Host, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot resolved DNS for host %s, error: %s", server.Host, err.Error())
 	}
 	if server.PostgressDB == "" {
 		server.PostgressDB = "test"
@@ -294,7 +294,7 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 	}
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
 		// We can do MySQL 5.7 style failover
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Doing MySQL GTID switch of the old master")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Doing MySQL GTID switch of the old master")
 		changeOpt.Host = cluster.master.Host
 		changeOpt.Port = cluster.master.Port
 		changeOpt.User = cluster.GetRplUser()
@@ -350,7 +350,7 @@ func (server *ServerMonitor) createCookie(key string) error {
 	newFile, err := os.Create(server.Datadir + "/@" + key)
 	defer newFile.Close()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Create cookie (%s) %s", key, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Create cookie (%s) %s", key, err)
 	}
 	return err
 }
@@ -394,16 +394,16 @@ func (server *ServerMonitor) SetReplicationCredentialsRotation(ss *dbhelper.Slav
 	cluster := server.ClusterGroup
 	if server.GetCluster().Conf.IsVaultUsed() {
 		server.GetCluster().SetClusterReplicationCredentialsFromConfig()
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Vault replication user password rotation")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Vault replication user password rotation")
 		err := server.rejoinSlaveChangePassword(ss)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Rejoin slave change password error: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rejoin slave change password error: %s", err)
 		}
 		if server.GetCluster().Conf.VaultMode == VaultConfigStoreV2 {
 			for _, u := range server.GetCluster().master.Users {
 				if u.User == server.GetCluster().GetRplUser() {
 					logs, err := dbhelper.SetUserPassword(server.GetCluster().master.Conn, server.GetCluster().master.DBVersion, u.Host, u.User, server.GetCluster().GetRplPass())
-					cluster.LogSQL(logs, err, server.URL, "Security", LvlErr, "Alter user : %s", err)
+					cluster.LogSQL(logs, err, server.URL, "Security", config.LvlErr, "Alter user : %s", err)
 
 				}
 

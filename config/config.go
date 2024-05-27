@@ -621,6 +621,7 @@ type Config struct {
 	BackupBinlogsKeep                         int                    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
 	BinlogCopyMode                            string                 `mapstructure:"binlog-copy-mode" toml:"binlog-copy-mode" json:"binlogCopyMode"`
 	BinlogCopyScript                          string                 `mapstructure:"binlog-copy-script" toml:"binlog-copy-script" json:"binlogCopyScript"`
+	BinlogRotationScript                      string                 `mapstructure:"binlog-rotation-script" toml:"binlog-rotation-script" json:"binlogRotationScript"`
 	BinlogParseMode                           string                 `mapstructure:"binlog-parse-mode" toml:"binlog-parse-mode" json:"binlogParseMode"`
 	BackupLockDDL                             bool                   `mapstructure:"backup-lockddl" toml:"backup-lockddl" json:"backupLockDDL"`
 	ClusterConfigPath                         string                 `mapstructure:"cluster-config-file" toml:"-" json:"-"`
@@ -645,6 +646,7 @@ type Config struct {
 	Cloud18GitUser                            string                 `mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword                        string                 `mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
 	Cloud18PlatformDescription                string                 `mapstructure:"cloud18-platform-description"  toml:"cloud18-platform-description" json:"cloud18PlatformDescription"`
+	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Secrets                                   map[string]Secret      `json:"-"`
 	SecretKey                                 []byte                 `json:"-"`
 	ImmuableFlagMap                           map[string]interface{} `json:"-"`
@@ -720,6 +722,14 @@ type ConfVersion struct {
 	ConfDynamic  Config `json:"-"`
 	ConfImmuable Config `json:"-"`
 }
+
+// Log levels
+const (
+	LvlInfo = "INFO"
+	LvlWarn = "WARN"
+	LvlErr  = "ERROR"
+	LvlDbg  = "DEBUG"
+)
 
 const (
 	ConstStreamingSubDir string = "backups"
@@ -938,9 +948,12 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		}
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
-		if conf.IsEligibleForPrinting(ConstLogModConfigLoad, "INFO") {
+
+		/* Decrypt feature not managed within log modules config due to risk of credentials leak */
+		if conf.LogSecrets {
 			log.WithField("cluster", "config").Infof("DecryptSecretsFromConfig: %s", secret.Value)
 		}
+
 		lst_cred := strings.Split(secret.Value, ",")
 		var tab_cred []string
 		for _, cred := range lst_cred {
@@ -951,7 +964,10 @@ func (conf *Config) DecryptSecretsFromConfig() {
 				if len(cred) > 1 {
 					tab_cred = append(tab_cred, conf.GetDecryptedPassword(k, cred))
 				} else {
-					log.WithField("cluster", "config").Debugf("Empty credential do not decrypt key: %s", k)
+					//Show warnings on empty credentials
+					if conf.IsEligibleForPrinting(ConstLogModConfigLoad, LvlWarn) {
+						log.WithField("cluster", "config").Warnf("Empty credential do not decrypt key: %s", k)
+					}
 				}
 			}
 		}

@@ -159,10 +159,10 @@ func (cluster *Cluster) PrintTotalDelayStat() {
 
 	jtext, err := json.MarshalIndent(allStat, " ", "\t")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Average delay for cluster %s : %s", cluster.Name, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Average delay for cluster %s : %s", cluster.Name, err)
 		return
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Average delay for cluster %s : %s", cluster.Name, jtext)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Average delay for cluster %s : %s", cluster.Name, jtext)
 }
 
 func (cluster *Cluster) PrintDelayStatHistory() {
@@ -173,10 +173,10 @@ func (cluster *Cluster) PrintDelayStatHistory() {
 
 	jtext, err := json.MarshalIndent(allStat, " ", "\t")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Delay history for cluster %s : %s", cluster.Name, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Delay history for cluster %s : %s", cluster.Name, err)
 		return
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Delay history for cluster %s : %s", cluster.Name, jtext)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Delay history for cluster %s : %s", cluster.Name, jtext)
 }
 
 func (cluster *Cluster) PrintDelayStat() {

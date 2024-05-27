@@ -35,11 +35,11 @@ func (cluster *Cluster) LocalhostProvisionHaProxyService(prx *HaproxyProxy) erro
 	cmd.Stdout = out
 	err := cmd.Run()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
 		cluster.errorChan <- err
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Remove datadir done: %s", out.Bytes())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Remove datadir done: %s", out.Bytes())
 	prx.GetProxyConfig()
 	os.Symlink(prx.Datadir+"/init/data", path)
 
@@ -79,7 +79,7 @@ func (cluster *Cluster) LocalhostStartHaProxyService(prx *HaproxyProxy) error {
 	go func() {
 		err := mariadbdCmd.Run()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlErr, "%s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s ", err)
 			fmt.Printf("Command finished with error: %v", err)
 		}
 	}()

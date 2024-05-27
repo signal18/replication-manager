@@ -67,7 +67,7 @@ func (proxy *MyProxyProxy) Init() {
 	cluster := proxy.ClusterGroup
 	db, err := sql.Open("mysql", cluster.master.DSN)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlErr, "Could not connect to Master for MyProxy %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Could not connect to Master for MyProxy %s", err)
 		return
 	}
 	proxy.InternalProxy, _ = myproxy.NewProxyServer("0.0.0.0:"+proxy.GetPort(), proxy.GetUser(), proxy.GetPass(), db)

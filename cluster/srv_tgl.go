@@ -97,7 +97,7 @@ func (server *ServerMonitor) SwitchSlowQueryCapture() {
 func (server *ServerMonitor) SwitchSlowQueryCapturePFS() {
 	cluster := server.ClusterGroup
 	if !server.HavePFS {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Could not capture queries with performance schema disable")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Could not capture queries with performance schema disable")
 		return
 	}
 	if !server.HavePFSSlowQueryLog {

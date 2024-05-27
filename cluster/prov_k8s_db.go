@@ -17,14 +17,14 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 
 	client, err := cluster.K8SConnectAPI()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot init Kubernetes client API %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
 		cluster.errorChan <- err
 		return
 	}
 	namespace := &apiv1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: cluster.Name}}
 	_, err = client.CoreV1().Namespaces().Create(context.TODO(), namespace, metav1.CreateOptions{})
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot create namespace %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot create namespace %s ", err)
 	}
 
 	/*
@@ -72,7 +72,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 		}
 		pvresult, pverr := persistentVolumes.Create(pv)
 		if pverr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlErr, "Cannot deploy Kubernetes pv %s ", pverr)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "Cannot deploy Kubernetes pv %s ", pverr)
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlInfo, "Created Kubernetes physical volume %q.\n", pvresult.GetObjectMeta().GetName())
 	*/
@@ -94,14 +94,14 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	}
 	pvcresult, pvcerr := persistentVolumeClaims.Create(context.TODO(), pvc, metav1.CreateOptions{})
 	if pvcerr != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot deploy Kubernetes pvc %s ", pvcerr)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes pvc %s ", pvcerr)
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Created Kubernetes physical volume claim %q.\n", pvcresult.GetObjectMeta().GetName())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes physical volume claim %q.\n", pvcresult.GetObjectMeta().GetName())
 
 	s.GetDatabaseConfig()
 	data, err := ioutil.ReadFile(s.Datadir + "/config.tar.gz")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Provision can not found file %s ", s.Datadir+"/config.tar.gz")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Provision can not found file %s ", s.Datadir+"/config.tar.gz")
 	}
 
 	configMapName := s.Name + "-config-map"
@@ -122,14 +122,14 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	//var cm *apiv1.ConfigMap
 	_, err = client.CoreV1().ConfigMaps(cluster.Name).Create(context.TODO(), &configMap, metav1.CreateOptions{})
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not provision config map  %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision config map  %s ", err)
 	}
 	deploymentsClient := client.AppsV1().Deployments(cluster.Name)
 
 	port, _ := strconv.Atoi(s.Port)
 	agent, err := cluster.GetDatabaseAgent(s)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not provision database  %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database  %s ", err)
 		cluster.errorChan <- err
 		return
 	}
@@ -211,12 +211,12 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	}
 
 	// Create Deployment
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Creating Kubernetes deployment...")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating Kubernetes deployment...")
 	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot deploy Kubernetes deployment %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes deployment %s ", err)
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Created Kubernetes deployment %q.\n", result.GetObjectMeta().GetName())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes deployment %q.\n", result.GetObjectMeta().GetName())
 	servicesClient := client.CoreV1().Services(cluster.Name)
 
 	service := &apiv1.Service{
@@ -238,14 +238,14 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 			},
 		},
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Creating service...")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating service...")
 	result2, err2 := servicesClient.Create(context.TODO(), service, metav1.CreateOptions{})
 	if err2 != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot deploy Kubernetes service %s ", err2)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes service %s ", err2)
 		cluster.errorChan <- err2
 		return
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Created Kubernetes service %s.\n", result2.GetObjectMeta().GetName())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes service %s.\n", result2.GetObjectMeta().GetName())
 	cluster.errorChan <- nil
 }
 
@@ -262,7 +262,7 @@ func (cluster *Cluster) K8SUnprovisionDatabaseService(s *ServerMonitor) {
 	deploymentsClient := client.AppsV1().Deployments(cluster.Name)
 
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot init Kubernetes client API %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
 		cluster.errorChan <- err
 		return
 	}
@@ -271,19 +271,19 @@ func (cluster *Cluster) K8SUnprovisionDatabaseService(s *ServerMonitor) {
 	if err := deploymentsClient.Delete(context.TODO(), s.Name, metav1.DeleteOptions{
 		PropagationPolicy: &deletePolicy,
 	}); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot delete Kubernetes deployment %s %s ", s.Name, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot delete Kubernetes deployment %s %s ", s.Name, err)
 		cluster.errorChan <- err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Deleted Kubernetes deployment %s.", s.Name)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Deleted Kubernetes deployment %s.", s.Name)
 	servicesClient := client.CoreV1().Services(cluster.Name)
 	if err := servicesClient.Delete(context.TODO(), s.Name, metav1.DeleteOptions{
 		PropagationPolicy: &deletePolicy,
 	}); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot delete Kubernetes service %s %s ", s.Name, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot delete Kubernetes service %s %s ", s.Name, err)
 		cluster.errorChan <- err
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Deleted Kubernetes service %s.", s.Name)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Deleted Kubernetes service %s.", s.Name)
 	cluster.errorChan <- nil
 
 }

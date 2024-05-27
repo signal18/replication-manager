@@ -82,7 +82,7 @@ func (cluster *Cluster) SetGrant(user string, grant string, enable bool) {
 	if _, ok := cluster.APIUsers[user].Grants[grant]; ok {
 		cluster.APIUsers[user].Grants[grant] = enable
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Failed grant not found for user %s, grant %s ", user, grant)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed grant not found for user %s, grant %s ", user, grant)
 	}
 
 	cluster.SaveAcls()
@@ -384,7 +384,7 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "ACL check failed for user %s : %s ", strUser, URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL check failed for user %s : %s ", strUser, URL)
 	return false
 }
 
@@ -410,7 +410,7 @@ func (cluster *Cluster) IsURLPassProxiesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "ACL proxy check failed for user %s : %s ", strUser, URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL proxy check failed for user %s : %s ", strUser, URL)
 
 	return false
 }
@@ -625,6 +625,6 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return false
 	*/
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "ACL check failed for user %s : %s ", strUser, URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL check failed for user %s : %s ", strUser, URL)
 	return false
 }

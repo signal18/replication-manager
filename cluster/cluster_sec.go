@@ -25,12 +25,12 @@ var logger = logrus.New()
 
 func (cluster *Cluster) RotatePasswords() error {
 	if !cluster.HasAllDbUp() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No password rotation because databases are down (or one of them).")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No password rotation because databases are down (or one of them).")
 		return nil
 	}
 	if cluster.Conf.IsVaultUsed() {
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlInfo, "Start password rotation using Vault.")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Start password rotation using Vault.")
 		vconfig := vault.DefaultConfig()
 
 		vconfig.Address = cluster.Conf.VaultServerAddr
@@ -38,35 +38,35 @@ func (cluster *Cluster) RotatePasswords() error {
 		client, err := cluster.GetVaultConnection()
 
 		if err != nil {
-			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "unable to initialize AppRole auth method: %v", err)
+			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "unable to initialize AppRole auth method: %v", err)
 			return err
 		}
 
 		if cluster.GetConf().VaultMode == VaultDbEngine {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlInfo, "Vault Database Engine mode activated")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Vault Database Engine mode activated")
 			if cluster.GetDbUser() == cluster.GetRplUser() {
 
 				err := client.KVv1("").Put(context.Background(), "database/rotate-role/"+cluster.GetDbUser(), nil)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetDbUser(), err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetDbUser(), err)
 				}
 			} else {
 
 				err := client.KVv1("").Put(context.Background(), "database/rotate-role/"+cluster.GetDbUser(), nil)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetDbUser(), err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetDbUser(), err)
 				}
 
 				err = client.KVv1("").Put(context.Background(), "database/rotate-role/"+cluster.GetRplUser(), nil)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetRplUser(), err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetRplUser(), err)
 				}
 			}
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlInfo, "Vault config store v2 mode activated")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Vault config store v2 mode activated")
 			if len(cluster.slaves) > 0 {
 				if !cluster.slaves.HasAllSlavesRunning() {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Cluster replication is not all up, passwords can't be rotated! : %s", err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Cluster replication is not all up, passwords can't be rotated! : %s", err)
 					return nil
 				}
 			}
@@ -90,17 +90,17 @@ func (cluster *Cluster) RotatePasswords() error {
 				"replication-credential": cluster.GetRplUser() + ":" + new_password_rpl,
 			}
 
-			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault,LvlErr, "TEST password Rotation new mdp : %s, %s, decrypt val %s", new_password_db, new_password_proxysql, cluster.GetDecryptedValue("proxysql-password"))
+			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault,config.LvlErr, "TEST password Rotation new mdp : %s, %s, decrypt val %s", new_password_db, new_password_proxysql, cluster.GetDecryptedValue("proxysql-password"))
 
 			_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.GetConf().User, secretData_db)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Database Password rotation cancel, unable to write secret: %v", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Database Password rotation cancel, unable to write secret: %v", err)
 				new_password_db = cluster.GetDbPass()
 			}
 
 			_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.GetConf().RplUser, secretData_rpl)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Replication Password rotation cancel, unable to write secret: %v", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Replication Password rotation cancel, unable to write secret: %v", err)
 				new_password_rpl = cluster.GetRplPass()
 			}
 
@@ -111,7 +111,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				}
 				_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.Conf.ProxysqlPassword, secretData_proxysql)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "ProxySQL Password rotation cancel, unable to write secret: %v", err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "ProxySQL Password rotation cancel, unable to write secret: %v", err)
 					new_password_proxysql = cluster.Conf.Secrets["proxysql-password"].Value
 				}
 				cluster.SetClusterProxyCredentialsFromConfig()
@@ -124,15 +124,15 @@ func (cluster *Cluster) RotatePasswords() error {
 				}
 				_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.Conf.MdbsProxyCredential, secretData_shardproxy)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Shard Proxy Password rotation cancel, unable to write secret: %v", err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Shard Proxy Password rotation cancel, unable to write secret: %v", err)
 					new_password_shard = cluster.GetShardPass()
 				}
 				cluster.SetClusterProxyCredentialsFromConfig()
 
 			}
 
-			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault,LvlErr, "TEST password Rotation new mdp : %s, %s, decrypt val %s", new_password_db, new_password_proxysql, cluster.GetDecryptedValue("proxysql-password"))
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlInfo, "Secret written successfully. New password generated: db-servers-credential %s, replication-credential %s", cluster.Conf.PrintSecret(new_password_db), cluster.Conf.PrintSecret(new_password_rpl))
+			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault,config.LvlErr, "TEST password Rotation new mdp : %s, %s, decrypt val %s", new_password_db, new_password_proxysql, cluster.GetDecryptedValue("proxysql-password"))
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Secret written successfully. New password generated: db-servers-credential %s, replication-credential %s", cluster.Conf.PrintSecret(new_password_db), cluster.Conf.PrintSecret(new_password_rpl))
 
 			cluster.SetClusterMonitorCredentialsFromConfig()
 
@@ -155,7 +155,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				for _, ss := range s.Replications {
 					err = s.rejoinSlaveChangePassword(&ss)
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Fail of rejoinSlaveChangePassword during rotation password ", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Fail of rejoinSlaveChangePassword during rotation password ", err)
 					}
 				}
 
@@ -188,7 +188,7 @@ func (cluster *Cluster) RotatePasswords() error {
 			}
 			err = cluster.ProvisionRotatePasswords(new_password_db)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
 			}
 
 			if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {
@@ -206,10 +206,10 @@ func (cluster *Cluster) RotatePasswords() error {
 		}
 	} else {
 		if cluster.Conf.SecretKey != nil && cluster.GetConf().ConfRewrite {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlInfo, "Start Password rotation")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Start Password rotation")
 			if len(cluster.slaves) > 0 {
 				if !cluster.slaves.HasAllSlavesRunning() {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Cluster replication is not all up, passwords can't be rotated!")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Cluster replication is not all up, passwords can't be rotated!")
 					return nil
 				}
 			}
@@ -268,7 +268,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				for _, ss := range s.Replications {
 					err := s.rejoinSlaveChangePassword(&ss)
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Fail of rejoinSlaveChangePassword during rotation password ", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Fail of rejoinSlaveChangePassword during rotation password ", err)
 					}
 				}
 
@@ -301,7 +301,7 @@ func (cluster *Cluster) RotatePasswords() error {
 			}
 			err := cluster.ProvisionRotatePasswords(new_password_db)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
 			}
 
 			if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {
@@ -316,7 +316,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				go alert.EmailMessage(msg, subj, cluster.Conf)
 			}
 
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlInfo, "Password rotation is done.")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Password rotation is done.")
 			cluster.Save()
 		}
 		return nil

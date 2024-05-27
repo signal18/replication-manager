@@ -22,16 +22,9 @@ import (
 	"github.com/atc0005/go-teams-notify/v2/messagecard"
 
 	"github.com/nsf/termbox-go"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/s18log"
 	log "github.com/sirupsen/logrus"
-)
-
-// Log levels
-const (
-	LvlInfo = "INFO"
-	LvlWarn = "WARN"
-	LvlErr  = "ERROR"
-	LvlDbg  = "DEBUG"
 )
 
 // State Levels
@@ -55,12 +48,12 @@ func (cluster *Cluster) LogSQL(logs string, err error, url string, from string, 
 	}
 	if logs != "" {
 		if err != nil {
-			cluster.LogSqlErrorPrintf(LvlInfo, url, err, from, logs, fmt.Sprintf(format, args...))
+			cluster.LogSqlErrorPrintf(config.LvlInfo, url, err, from, logs, fmt.Sprintf(format, args...))
 		}
 		if from != "Monitor" {
-			cluster.LogSqlGeneralPrintf(LvlInfo, url, from, logs)
+			cluster.LogSqlGeneralPrintf(config.LvlInfo, url, from, logs)
 		} else if cluster.Conf.LogSQLInMonitoring {
-			cluster.LogSqlGeneralPrintf(LvlInfo, url, from, logs)
+			cluster.LogSqlGeneralPrintf(config.LvlInfo, url, from, logs)
 		}
 	}
 }

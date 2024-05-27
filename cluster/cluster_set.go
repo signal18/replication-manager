@@ -63,27 +63,27 @@ func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 	if cluster.Conf.ProvSSLCa != "" {
 		cluster.Conf.ProvSSLCaUUID, err = svc.PostSafe(cluster.Conf.ProvSSLCa)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Can't upload root CA to Collector Safe %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Can't upload root CA to Collector Safe %s", err)
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "Upload root Certificate to Safe %s", cluster.Conf.ProvSSLCaUUID)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Upload root Certificate to Safe %s", cluster.Conf.ProvSSLCaUUID)
 		}
 		svc.PublishSafe(cluster.Conf.ProvSSLCaUUID, "replication-manager")
 	}
 	if cluster.Conf.ProvSSLCert != "" {
 		cluster.Conf.ProvSSLCertUUID, err = svc.PostSafe(cluster.Conf.ProvSSLCert)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Can't upload Server TLS Certificate to Collector Safe %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Can't upload Server TLS Certificate to Collector Safe %s", err)
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "Upload Server TLS Certificate to Safe %s", cluster.Conf.ProvSSLCertUUID)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Upload Server TLS Certificate to Safe %s", cluster.Conf.ProvSSLCertUUID)
 		}
 		svc.PublishSafe(cluster.Conf.ProvSSLCertUUID, "replication-manager")
 	}
 	if cluster.Conf.ProvSSLKey != "" {
 		cluster.Conf.ProvSSLKeyUUID, err = svc.PostSafe(cluster.Conf.ProvSSLKey)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Can't upload Server TLS Private Key to Collector Safe %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Can't upload Server TLS Private Key to Collector Safe %s", err)
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "Upload Server TLS Private Key to Safe %s", cluster.Conf.ProvSSLKeyUUID)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Upload Server TLS Private Key to Safe %s", cluster.Conf.ProvSSLKeyUUID)
 		}
 		svc.PublishSafe(cluster.Conf.ProvSSLKeyUUID, "replication-manager")
 	}
@@ -91,17 +91,17 @@ func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 
 func (cluster *Cluster) SetSchedulerBackupLogical() {
 	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Scheduler is disable cancel")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
 		return
 	}
 	if cluster.HasSchedulerEntry("backuplogical") {
 		cluster.scheduler.Remove(cluster.idSchedulerLogicalBackup)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Disable database logical backup ")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable database logical backup ")
 		delete(cluster.Schedule, "backuplogical")
 	}
 	if cluster.Conf.SchedulerBackupLogical {
 		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Schedule logical backup time at: %s", cluster.Conf.BackupLogicalCron)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule logical backup time at: %s", cluster.Conf.BackupLogicalCron)
 		cluster.idSchedulerLogicalBackup, err = cluster.scheduler.AddFunc(cluster.Conf.BackupLogicalCron, func() {
 			mysrv := cluster.GetBackupServer()
 			if mysrv != nil {
@@ -118,17 +118,17 @@ func (cluster *Cluster) SetSchedulerBackupLogical() {
 
 func (cluster *Cluster) SetSchedulerBackupPhysical() {
 	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Scheduler is disable cancel")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
 		return
 	}
 	if cluster.HasSchedulerEntry("backupphysical") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Disable database physical backup")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable database physical backup")
 		cluster.scheduler.Remove(cluster.idSchedulerPhysicalBackup)
 		delete(cluster.Schedule, "backupphysical")
 	}
 	if cluster.Conf.SchedulerBackupPhysical {
 		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Schedule Physical backup time at: %s", cluster.Conf.BackupPhysicalCron)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule Physical backup time at: %s", cluster.Conf.BackupPhysicalCron)
 		cluster.idSchedulerPhysicalBackup, err = cluster.scheduler.AddFunc(cluster.Conf.BackupPhysicalCron, func() {
 			cluster.master.JobBackupPhysical()
 		})
@@ -140,17 +140,17 @@ func (cluster *Cluster) SetSchedulerBackupPhysical() {
 
 func (cluster *Cluster) SetSchedulerLogsTableRotate() {
 	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Scheduler is disable cancel")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
 		return
 	}
 	if cluster.HasSchedulerEntry("logstablerotate") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Disable database logs table rotate")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable database logs table rotate")
 		cluster.scheduler.Remove(cluster.idSchedulerLogRotateTable)
 		delete(cluster.Schedule, "logstablerotate")
 	}
 	if cluster.Conf.SchedulerDatabaseLogsTableRotate {
 		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Schedule database logs table rotate time at: %s", cluster.Conf.SchedulerDatabaseLogsTableRotateCron)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule database logs table rotate time at: %s", cluster.Conf.SchedulerDatabaseLogsTableRotateCron)
 		cluster.idSchedulerLogRotateTable, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerDatabaseLogsTableRotateCron, func() {
 			cluster.RotateLogs()
 		})
@@ -162,17 +162,17 @@ func (cluster *Cluster) SetSchedulerLogsTableRotate() {
 
 func (cluster *Cluster) SetSchedulerBackupLogs() {
 	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Scheduler is disable cancel")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
 		return
 	}
 	if cluster.HasSchedulerEntry("errorlogs") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Disable database logs error fetching")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable database logs error fetching")
 		cluster.scheduler.Remove(cluster.idSchedulerErrorLogs)
 		delete(cluster.Schedule, "errorlogs")
 	}
 	if cluster.Conf.SchedulerDatabaseLogs && cluster.scheduler != nil {
 		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Schedule database logs error fetching at: %s", cluster.Conf.BackupDatabaseLogCron)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule database logs error fetching at: %s", cluster.Conf.BackupDatabaseLogCron)
 		cluster.idSchedulerErrorLogs, err = cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseLogCron, func() {
 			cluster.BackupLogs()
 		})
@@ -184,17 +184,17 @@ func (cluster *Cluster) SetSchedulerBackupLogs() {
 
 func (cluster *Cluster) SetSchedulerOptimize() {
 	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Scheduler is disable cancel")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
 		return
 	}
 	if cluster.HasSchedulerEntry("optimize") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Disable database optimize")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable database optimize")
 		cluster.scheduler.Remove(cluster.idSchedulerOptimize)
 		delete(cluster.Schedule, "optimize")
 	}
 	if cluster.Conf.SchedulerDatabaseOptimize {
 		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Schedule database optimize at: %s", cluster.Conf.BackupDatabaseOptimizeCron)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule database optimize at: %s", cluster.Conf.BackupDatabaseOptimizeCron)
 		cluster.idSchedulerOptimize, err = cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseOptimizeCron, func() {
 			cluster.RollingOptimize()
 		})
@@ -206,17 +206,17 @@ func (cluster *Cluster) SetSchedulerOptimize() {
 
 func (cluster *Cluster) SetSchedulerAnalyze() {
 	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Scheduler is disable cancel")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
 		return
 	}
 	if cluster.HasSchedulerEntry("analyze") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Disable database analyze")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable database analyze")
 		cluster.scheduler.Remove(cluster.idSchedulerAnalyze)
 		delete(cluster.Schedule, "analyze")
 	}
 	if cluster.Conf.SchedulerDatabaseAnalyze {
 		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Schedule database analyze at: %s", cluster.Conf.BackupDatabaseAnalyzeCron)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule database analyze at: %s", cluster.Conf.BackupDatabaseAnalyzeCron)
 		cluster.idSchedulerAnalyze, err = cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseAnalyzeCron, func() {
 			cluster.JobAnalyzeSQL()
 		})
@@ -228,17 +228,17 @@ func (cluster *Cluster) SetSchedulerAnalyze() {
 
 func (cluster *Cluster) SetSchedulerRollingRestart() {
 	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Scheduler is disable cancel")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
 		return
 	}
 	if cluster.HasSchedulerEntry("rollingrestart") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Disable rolling restart")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable rolling restart")
 		cluster.scheduler.Remove(cluster.idSchedulerRollingRestart)
 		delete(cluster.Schedule, "rollingrestart")
 	}
 	if cluster.Conf.SchedulerRollingRestart {
 		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Schedule rolling restart at: %s", cluster.Conf.SchedulerRollingRestartCron)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule rolling restart at: %s", cluster.Conf.SchedulerRollingRestartCron)
 		cluster.idSchedulerRollingRestart, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerRollingRestartCron, func() {
 			cluster.RollingRestart()
 		})
@@ -250,17 +250,17 @@ func (cluster *Cluster) SetSchedulerRollingRestart() {
 
 func (cluster *Cluster) SetSchedulerRollingReprov() {
 	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Scheduler is disable cancel")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
 		return
 	}
 	if cluster.HasSchedulerEntry("rollingreprov") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Disable rolling reprov")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable rolling reprov")
 		cluster.scheduler.Remove(cluster.idSchedulerRollingReprov)
 		delete(cluster.Schedule, "rollingreprov")
 	}
 	if cluster.Conf.SchedulerRollingReprov {
 		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Schedule rolling reprov at: %s", cluster.Conf.SchedulerRollingReprovCron)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule rolling reprov at: %s", cluster.Conf.SchedulerRollingReprovCron)
 		cluster.idSchedulerRollingReprov, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerRollingReprovCron, func() {
 			cluster.RollingReprov()
 		})
@@ -272,17 +272,17 @@ func (cluster *Cluster) SetSchedulerRollingReprov() {
 
 func (cluster *Cluster) SetSchedulerSlaRotate() {
 	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Scheduler is disable cancel")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
 		return
 	}
 	if cluster.HasSchedulerEntry("slarotate") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Disable rotate Sla ")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable rotate Sla ")
 		cluster.scheduler.Remove(cluster.idSchedulerSLARotate)
 		delete(cluster.Schedule, "slarotate")
 	}
 
 	var err error
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Schedule Sla rotate at: %s", cluster.Conf.SchedulerSLARotateCron)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule Sla rotate at: %s", cluster.Conf.SchedulerSLARotateCron)
 	cluster.idSchedulerSLARotate, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerSLARotateCron, func() {
 		cluster.SetEmptySla()
 	})
@@ -293,17 +293,17 @@ func (cluster *Cluster) SetSchedulerSlaRotate() {
 
 func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Scheduler is disable cancel")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
 		return
 	}
 	if cluster.HasSchedulerEntry("dbjobsssh") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Disable Db Jobs SSH Execution ")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable Db Jobs SSH Execution ")
 		cluster.scheduler.Remove(cluster.idSchedulerDbsjobsSsh)
 		delete(cluster.Schedule, "dbjobsssh")
 	}
 	if cluster.Conf.SchedulerJobsSSH {
 		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Schedule SshDbJob rotate at: %s", cluster.Conf.SchedulerJobsSSHCron)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule SshDbJob rotate at: %s", cluster.Conf.SchedulerJobsSSHCron)
 		cluster.idSchedulerDbsjobsSsh, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerJobsSSHCron, func() {
 			for _, s := range cluster.Servers {
 				if s != nil {
@@ -320,19 +320,19 @@ func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 
 func (cluster *Cluster) SetSchedulerAlertDisable() {
 	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Scheduler is disable cancel")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
 		return
 	}
 	if cluster.HasSchedulerEntry("alertdisable") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Stopping scheduler to disable alert")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping scheduler to disable alert")
 		cluster.scheduler.Remove(cluster.idSchedulerAlertDisable)
 		delete(cluster.Schedule, "alertdisable")
 	}
 	if cluster.Conf.SchedulerAlertDisable {
 		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Schedule disable alert at: %s", cluster.Conf.SchedulerAlertDisableCron)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule disable alert at: %s", cluster.Conf.SchedulerAlertDisableCron)
 		cluster.idSchedulerAlertDisable, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerAlertDisableCron, func() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Alerting is disabled from scheduler")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Alerting is disabled from scheduler")
 			cluster.IsAlertDisable = true
 			go cluster.WaitAlertDisable()
 		})
@@ -582,7 +582,7 @@ func (cluster *Cluster) SetBackupRestic(check bool) error {
 func (cluster *Cluster) SetMasterReadOnly() {
 	if cluster.GetMaster() != nil {
 		logs, err := cluster.GetMaster().SetReadOnly()
-		cluster.LogSQL(logs, err, cluster.GetMaster().URL, "MasterFailover", LvlErr, "Could not set  master as read-only, %s", err)
+		cluster.LogSQL(logs, err, cluster.GetMaster().URL, "MasterFailover", config.LvlErr, "Could not set  master as read-only, %s", err)
 
 	}
 }
@@ -613,7 +613,7 @@ func (cluster *Cluster) SetClusterCredentialsFromConfig() {
 	cluster.SetClusterMonitorCredentialsFromConfig()
 	cluster.SetClusterReplicationCredentialsFromConfig()
 	cluster.SetClusterProxyCredentialsFromConfig()
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlDbg, "Reveal Secrets %v", cluster.Conf.Secrets)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Reveal Secrets %v", cluster.Conf.Secrets)
 }
 
 func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
@@ -621,7 +621,7 @@ func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
 	if cluster.Conf.IsVaultUsed() {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
 		if cluster.Conf.ProxysqlOn && cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) {
@@ -662,24 +662,24 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 	err = cluster.loadDBCertificates(cluster.WorkingDir)
 	if err != nil {
 		cluster.HaveDBTLSCert = false
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "No database TLS certificates")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No database TLS certificates")
 	} else {
 		cluster.HaveDBTLSCert = true
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "Database TLS certificates correctly loaded")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Database TLS certificates correctly loaded")
 	}
 	err = cluster.loadDBOldCertificates(cluster.WorkingDir + "/old_certs")
 	if err != nil {
 		cluster.HaveDBTLSOldCert = false
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "No database previous TLS certificates")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No database previous TLS certificates")
 	} else {
 		cluster.HaveDBTLSOldCert = true
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "Database TLS previous certificates correctly loaded")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
 
 	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(cluster.Conf.User) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
 		user, pass, _ := cluster.GetVaultMonitorCredentials(client)
@@ -708,23 +708,23 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 	err = cluster.loadDBCertificates(cluster.WorkingDir)
 	if err != nil {
 		cluster.HaveDBTLSCert = false
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "No database TLS certificates")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No database TLS certificates")
 	} else {
 		cluster.HaveDBTLSCert = true
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "Database TLS certificates correctly loaded")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Database TLS certificates correctly loaded")
 	}
 	err = cluster.loadDBOldCertificates(cluster.WorkingDir + "/old_certs")
 	if err != nil {
 		cluster.HaveDBTLSOldCert = false
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "No database previous TLS certificates")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No database previous TLS certificates")
 	} else {
 		cluster.HaveDBTLSOldCert = true
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "Database TLS previous certificates correctly loaded")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
 	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(cluster.Conf.RplUser) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
 		user, pass, _ := cluster.GetVaultReplicationCredentials(client)
@@ -806,7 +806,7 @@ func (cluster *Cluster) SetBackupPhysicalType(backup string) {
 }
 
 func (cluster *Cluster) SetEmptySla() {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Rotate SLA")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate SLA")
 	cluster.SLAHistory = append(cluster.SLAHistory, cluster.StateMachine.GetSla())
 	cluster.StateMachine.ResetUptime()
 }
@@ -824,7 +824,7 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 			if u.User == cluster.GetDbUser() {
 				found_user = true
 				logs, err := dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, cluster.GetDbPass())
-				cluster.LogSQL(logs, err, cluster.master.URL, "Security", LvlErr, "Alter user : %s", err)
+				cluster.LogSQL(logs, err, cluster.master.URL, "Security", config.LvlErr, "Alter user : %s", err)
 
 			}
 
@@ -837,9 +837,9 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 				for _, u := range cluster.master.Users {
 					if u.User == oldDbUser {
 						logs, err := dbhelper.RenameUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, cluster.GetDbPass(), cluster.GetDbUser())
-						cluster.LogSQL(logs, err, cluster.master.URL, "Security", LvlErr, "Alter user : %s", err)
+						cluster.LogSQL(logs, err, cluster.master.URL, "Security", config.LvlErr, "Alter user : %s", err)
 						logs, err = dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, cluster.GetDbUser(), cluster.GetDbPass())
-						cluster.LogSQL(logs, err, cluster.master.URL, "Security", LvlErr, "Alter user : %s", err)
+						cluster.LogSQL(logs, err, cluster.master.URL, "Security", config.LvlErr, "Alter user : %s", err)
 
 					}
 
@@ -848,7 +848,7 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 			} else {
 				//si on est en dynamique config:
 				//créer un nouveau user diff de root qui possède les mêmes droits
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Changing root user is not allowed")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Changing root user is not allowed")
 			}
 		}
 		for _, pri := range cluster.Proxies {
@@ -858,7 +858,7 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 		}
 		err := cluster.ProvisionRotatePasswords(cluster.GetDbPass())
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
 		}
 	}
 }
@@ -1034,7 +1034,7 @@ func (cl *Cluster) SetArbitratorReport() error {
 	defer client.CloseIdleConnections()
 	stopConnect := time.Now()
 	// if cl.GetLogLevel() > 2 {
-	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, LvlInfo, " Report abitrator connect took: %s\n", stopConnect.Sub(startConnect))
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, " Report abitrator connect took: %s\n", stopConnect.Sub(startConnect))
 	// }
 	ioutil.ReadAll(resp.Body)
 	defer resp.Body.Close()
@@ -1052,7 +1052,7 @@ func (cluster *Cluster) SetSysbenchThreads(Threads string) {
 	if err == nil {
 		cluster.Conf.SysbenchThreads = i
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Error converting threads to int %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error converting threads to int %s", err)
 	}
 }
 
@@ -1063,18 +1063,18 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 	plans := cluster.GetServicePlans()
 	for _, plan := range plans {
 		if plan.Plan == theplan {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Attaching service plan %s", theplan)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Attaching service plan %s", theplan)
 			cluster.Conf.ProvServicePlan = theplan
 
 			if cluster.Conf.User == "" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Settting database root credential to admin:repman ")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Settting database root credential to admin:repman ")
 				cluster.Conf.User = "admin:repman"
 			}
 			if cluster.Conf.RplUser == "" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Settting database replication credential to repl:repman ")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Settting database replication credential to repl:repman ")
 				cluster.Conf.RplUser = "repl:repman"
 			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Adding %s database monitor on %s", string(strings.TrimPrefix(theplan, "x")[0]), cluster.Conf.ProvOrchestrator)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Adding %s database monitor on %s", string(strings.TrimPrefix(theplan, "x")[0]), cluster.Conf.ProvOrchestrator)
 			if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost || cluster.GetOrchestrator() == config.ConstOrchestratorOnPremise {
 				cluster.DropDBTag("docker")
 				cluster.DropDBTag("threadpool")
@@ -1083,32 +1083,32 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			}
 			srvcount, err := strconv.Atoi(string(strings.TrimPrefix(theplan, "x")[0]))
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Can't add database monitor error %s ", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Can't add database monitor error %s ", err)
 			}
 			hosts := []string{}
 			for i := 1; i <= srvcount; i++ {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "'%s' '%s'", cluster.Conf.ProvOrchestrator, config.ConstOrchestratorLocalhost)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "'%s' '%s'", cluster.Conf.ProvOrchestrator, config.ConstOrchestratorLocalhost)
 				if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost {
 					port, err := cluster.LocalhostGetFreePort()
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "Adding DB monitor on 127.0.0.1 %s", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Adding DB monitor on 127.0.0.1 %s", err)
 					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Adding DB monitor 127.0.0.1:%s", port)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Adding DB monitor 127.0.0.1:%s", port)
 					}
 					hosts = append(hosts, "127.0.0.1:"+port)
 				} else if cluster.GetOrchestrator() != config.ConstOrchestratorOnPremise {
 					hosts = append(hosts, "db"+strconv.Itoa(i))
 				}
 			}
-			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology,LvlErr, strings.Join(hosts, ","))
+			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology,config.LvlErr, strings.Join(hosts, ","))
 			err = cluster.SetDbServerHosts(strings.Join(hosts, ","))
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "SetServicePlan : Fail SetDbServerHosts : %s, for hosts : %s", err, strings.Join(hosts, ","))
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "SetServicePlan : Fail SetDbServerHosts : %s, for hosts : %s", err, strings.Join(hosts, ","))
 			}
 			cluster.StateMachine.SetFailoverState()
 			err = cluster.newServerList()
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "SetServicePlan : Fail newServerList : %s", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "SetServicePlan : Fail newServerList : %s", err)
 			}
 			wg := new(sync.WaitGroup)
 			wg.Add(1)
@@ -1124,42 +1124,42 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 				if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost {
 					portproxysql, err := cluster.LocalhostGetFreePort()
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "Adding proxysql monitor on 127.0.0.1 %s", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Adding proxysql monitor on 127.0.0.1 %s", err)
 					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Adding proxysql monitor 127.0.0.1:%s", portproxysql)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Adding proxysql monitor 127.0.0.1:%s", portproxysql)
 					}
 					portshardproxy, err := cluster.LocalhostGetFreePort()
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "Adding shard proxy monitor on 127.0.0.1 %s", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Adding shard proxy monitor on 127.0.0.1 %s", err)
 					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Adding shard proxy monitor 127.0.0.1:%s", portshardproxy)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Adding shard proxy monitor 127.0.0.1:%s", portshardproxy)
 					}
 					err = cluster.AddSeededProxy(config.ConstProxySqlproxy, "127.0.0.1", portproxysql, "", "")
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "Fail adding proxysql monitor on 127.0.0.1 %s", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Fail adding proxysql monitor on 127.0.0.1 %s", err)
 					}
 					err = cluster.AddSeededProxy(config.ConstProxySpider, "127.0.0.1", portshardproxy, "", "")
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "Fail adding shard proxy monitor on 127.0.0.1 %s", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Fail adding shard proxy monitor on 127.0.0.1 %s", err)
 					}
 				} else {
 					err = cluster.AddSeededProxy(config.ConstProxySpider, "shardproxy1", "3306", "", "")
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "Fail adding shard proxy monitor on 3306 %s", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Fail adding shard proxy monitor on 3306 %s", err)
 					}
 					//cluster.Conf.ProxysqlUser = "external"
 					err = cluster.AddSeededProxy(config.ConstProxySqlproxy, "proxysql1", cluster.Conf.ProxysqlPort, "external", cluster.Conf.Secrets["proxysql-password"].Value)
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "Fail adding proxysql monitor on %s %s", cluster.Conf.ProxysqlPort, err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Fail adding proxysql monitor on %s %s", cluster.Conf.ProxysqlPort, err)
 					}
 				}
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Copy proxy list from cluster head %s", cluster.Conf.ClusterHead)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Copy proxy list from cluster head %s", cluster.Conf.ClusterHead)
 
 				oriClusters, err := cluster.GetClusterFromName(cluster.Conf.ClusterHead)
 				if err == nil {
 					for _, oriProxy := range oriClusters.Proxies {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Adding new proxy %s copy %s:%s", oriProxy.GetType(), oriProxy.GetHost(), oriProxy.GetPort())
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Adding new proxy %s copy %s:%s", oriProxy.GetType(), oriProxy.GetHost(), oriProxy.GetPort())
 						if oriProxy.GetType() == config.ConstProxySpider {
 							cluster.AddSeededProxy(oriProxy.GetType(), oriProxy.GetHost(), oriProxy.GetPort(), oriProxy.GetUser(), oriProxy.GetPass())
 						}
@@ -1167,9 +1167,9 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 					if cluster.GetOrchestrator() == config.ConstOrchestratorLocalhost {
 						portproxysql, err := cluster.LocalhostGetFreePort()
 						if err != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "Adding proxysql monitor on 127.0.0.1 %s", err)
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Adding proxysql monitor on 127.0.0.1 %s", err)
 						} else {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlInfo, "Adding proxysql monitor 127.0.0.1:%s", portproxysql)
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Adding proxysql monitor 127.0.0.1:%s", portproxysql)
 						}
 						cluster.AddSeededProxy(config.ConstProxySqlproxy, "127.0.0.1", portproxysql, "", "")
 
@@ -1188,7 +1188,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 			return nil
 		}
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, LvlErr, "Service plan not found %s", theplan)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Service plan not found %s", theplan)
 	return errors.New("Plan not found in repository")
 }
 
@@ -1334,13 +1334,13 @@ func (cluster *Cluster) SetProvOrchestrator(value string) error {
 	orchetrators := cluster.Conf.GetOrchestratorsProv()
 	for _, orch := range orchetrators {
 		if orch.Name == value {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Cluster orchestrator set to %s", orch.Name)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Cluster orchestrator set to %s", orch.Name)
 			cluster.Conf.ProvOrchestrator = value
 			return nil
 		}
 	}
 	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorOnPremise
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cluster orchestrator set to default %s", config.ConstOrchestratorOnPremise)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cluster orchestrator set to default %s", config.ConstOrchestratorOnPremise)
 	return nil
 }
 
@@ -1470,7 +1470,7 @@ func (cluster *Cluster) SetSecretsToVault() {
 		cluster.Conf.VaultServerAddr = "http://vault.infra.svc.cloud18:8200"
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
 		secrets_map := make(map[string]interface{})
@@ -1483,9 +1483,9 @@ func (cluster *Cluster) SetSecretsToVault() {
 		secret_path := cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone + "/" + cluster.Name
 		_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), secret_path, secrets_map)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Failed to write secrets to Vault: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Failed to write secrets to Vault: %v", err)
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlInfo, "Success of writing secrets to Vault: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Success of writing secrets to Vault: %v", err)
 		}
 	}
 }
@@ -1496,10 +1496,10 @@ func (cluster *Cluster) SetDelayStatRotate(keep string) error {
 		return err
 	}
 	if numkeep > 72 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cannot set delaystat more than 72 hours (3 days). Adjusting value from %s to 72 hours", keep)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot set delaystat more than 72 hours (3 days). Adjusting value from %s to 72 hours", keep)
 		numkeep = 72
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Delay Stat Rotate set to %s", strconv.Itoa(numkeep))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Delay Stat Rotate set to %s", strconv.Itoa(numkeep))
 	cluster.Conf.DelayStatRotate = numkeep
 	return nil
 }
@@ -1509,7 +1509,7 @@ func (cluster *Cluster) SetPrintDelayStatInterval(keep string) error {
 	if err != nil {
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Print delay statistic interval set to %s", strconv.Itoa(numkeep))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Print delay statistic interval set to %s", strconv.Itoa(numkeep))
 	cluster.Conf.PrintDelayStatInterval = numkeep
 	return nil
 }
