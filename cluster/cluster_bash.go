@@ -92,3 +92,17 @@ func (cluster *Cluster) failoverPreScript(fail bool) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Pre-failover script complete:", string(out))
 	}
 }
+
+func (cluster *Cluster) BinlogRotationScript(srv *ServerMonitor) error {
+	if cluster.Conf.BinlogRotationScript != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling binlog rotation script")
+		var out []byte
+		out, err := exec.Command(cluster.Conf.BinlogRotationScript, cluster.Name, srv.Host, srv.Port, srv.BinaryLogFile, srv.BinaryLogFilePrevious, srv.BinaryLogOldestFile).CombinedOutput()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Binlog rotation script complete: %s", string(out))
+	}
+	return nil
+}
