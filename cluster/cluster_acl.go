@@ -13,6 +13,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/state"
 	"google.golang.org/grpc/codes"
 )
 
@@ -96,6 +97,10 @@ func (cluster *Cluster) LoadAPIUsers() error {
 
 		newapiuser.User, newapiuser.Password = misc.SplitPair(credential)
 		newapiuser.Password = cluster.Conf.GetDecryptedPassword("api-credentials", newapiuser.Password)
+		if newapiuser.User == "admin" && newapiuser.Password == "repman" {
+			cluster.SetState("WARN0108", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0108"]), ErrFrom: "CONFIG"})
+		}
+
 		usersAllowACL := strings.Split(cluster.Conf.APIUsersACLAllow, ",")
 		newapiuser.Grants = make(map[string]bool)
 		for _, userACL := range usersAllowACL {

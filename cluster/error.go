@@ -164,4 +164,5 @@ var clusterError = map[string]string{
 	"WARN0105": "Force Binlog Purge is not yet available in multi master. Skipping",
 	"WARN0106": "Minimum number of connected replica(s) is not enough to initiate force purging. Minimum replicas: %d. Skipping",
 	"WARN0107": "Force Binlog Purge can not continue. Oldest binlog is still used by slaves: %s.%d. Skipping",
+	"WARN0108": "Admin user still use default password. Please change the credentials",
 }
