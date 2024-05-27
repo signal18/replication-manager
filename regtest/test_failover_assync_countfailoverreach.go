@@ -15,7 +15,7 @@ func (regtest *RegTest) TestFailoverNumberFailureLimitReach(cluster *cluster.Clu
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 
 		return false
 	}
@@ -38,7 +38,7 @@ func (regtest *RegTest) TestFailoverNumberFailureLimitReach(cluster *cluster.Clu
 	cluster.WaitFailoverEnd()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s ", cluster.GetMaster().URL)
 	if cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 
 		SaveMaster.FailCount = 0
 		return false

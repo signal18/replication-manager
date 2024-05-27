@@ -18,7 +18,7 @@ func (regtest *RegTest) TestSlaReplAllSlavesStopNoSemiSync(cluster *cluster.Clus
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 
 		return false
 	}
@@ -28,7 +28,7 @@ func (regtest *RegTest) TestSlaReplAllSlavesStopNoSemiSync(cluster *cluster.Clus
 	sla1 := cluster.GetStateMachine().GetUptimeFailable()
 	err = cluster.StopSlaves()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 
 		return false
 	}
@@ -36,13 +36,13 @@ func (regtest *RegTest) TestSlaReplAllSlavesStopNoSemiSync(cluster *cluster.Clus
 	sla2 := cluster.GetStateMachine().GetUptimeFailable()
 	err = cluster.StartSlaves()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 
 		return false
 	}
 	err = cluster.EnableSemisync()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 
 		return false
 	}

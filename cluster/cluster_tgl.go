@@ -144,10 +144,10 @@ func (cluster *Cluster) SwitchCompressBackups() {
 func (cluster *Cluster) SwitchInteractive() {
 	if cluster.Conf.Interactive == true {
 		cluster.Conf.Interactive = false
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Failover monitor switched to automatic mode")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover monitor switched to automatic mode")
 	} else {
 		cluster.Conf.Interactive = true
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Failover monitor switched to manual mode")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover monitor switched to manual mode")
 	}
 }
 
@@ -400,10 +400,10 @@ func (cluster *Cluster) SwitchCloud18() {
 func (cluster *Cluster) SwitchMonitoringScheduler() {
 	cluster.Conf.MonitorScheduler = !cluster.Conf.MonitorScheduler
 	if !cluster.Conf.MonitorScheduler {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Stopping scheduler")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping scheduler")
 		cluster.scheduler.Stop()
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Starting scheduler")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting scheduler")
 		cluster.initScheduler()
 	}
 }

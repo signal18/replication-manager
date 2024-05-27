@@ -20,7 +20,7 @@ func (cluster *Cluster) RemoveServerFromIndex(index int) {
 }
 
 func (cluster *Cluster) CancelRollingRestart() error {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "API receive cancel rolling restart")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "API receive cancel rolling restart")
 	for _, pr := range cluster.Proxies {
 		pr.DelRestartCookie()
 	}
@@ -31,7 +31,7 @@ func (cluster *Cluster) CancelRollingRestart() error {
 }
 
 func (cluster *Cluster) CancelRollingReprov() error {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "API receive cancel rolling re-provision")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "API receive cancel rolling re-provision")
 	for _, pr := range cluster.Proxies {
 		pr.DelReprovisionCookie()
 	}
@@ -43,7 +43,7 @@ func (cluster *Cluster) CancelRollingReprov() error {
 
 func (cluster *Cluster) DropDBTag(dtag string) {
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Dropping database tag %s ", dtag)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Dropping database tag %s ", dtag)
 	if cluster.Conf.ProvDBApplyDynamicConfig {
 
 		for _, srv := range cluster.Servers {

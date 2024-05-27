@@ -24,7 +24,7 @@ func (proxy *Proxy) delCookie(key string) error {
 	err := os.Remove(proxy.Datadir + "/@" + key)
 	cluster := proxy.ClusterGroup
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, LvlDbg, "Remove cookie (%s) %s", key, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Remove cookie (%s) %s", key, err)
 	}
 
 	return err

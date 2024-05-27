@@ -46,7 +46,7 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster
 	wg2.Wait()
 	SaveMaster.ReadAllRelayLogs()
 	if cluster.CheckTableConsistency("test.sbtest") != true {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Inconsitant slave")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
 
 		return false
 	}

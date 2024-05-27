@@ -132,10 +132,10 @@ func (proxy *ProxyJanitor) Init() {
 	for _, s := range cluster.Proxies {
 		if s.GetType() != config.ConstProxyJanitor {
 			if s.GetState() == stateUnconn || s.IsIgnored() {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor add backend %s as offline (%s)", s.GetURL(), err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor add backend %s as offline (%s)", s.GetURL(), err)
 				err = psql.AddOfflineServer(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor could not add backend %s as offline (%s)", s.GetURL(), err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not add backend %s as offline (%s)", s.GetURL(), err)
 				}
 			} else {
 				//weight string, max_replication_lag string, max_connections string, compression string
@@ -143,14 +143,14 @@ func (proxy *ProxyJanitor) Init() {
 				err = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
 
 				// if cluster.Conf.LogLevel > 2 || cluster.Conf.ProxysqlDebug {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlWarn, "ProxyJanitor init backend  %s with state %s ", s.GetURL(), s.GetState())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlWarn, "ProxyJanitor init backend  %s with state %s ", s.GetURL(), s.GetState())
 				// }
 			}
 		}
 	}
 	err = psql.LoadServersToRuntime()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor could not load servers to runtime (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not load servers to runtime (%s)", err)
 	}
 	psql.SaveServersToDisk()
 
@@ -166,7 +166,7 @@ func (proxy *ProxyJanitor) CertificatesReload() error {
 	defer psql.Connection.Close()
 	err = psql.ReloadTLS()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "Reload TLS failed %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "Reload TLS failed %s", err)
 		return err
 	}
 	return nil
@@ -189,7 +189,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 	}
 
 	// if cluster.Conf.LogLevel > 9 {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlDbg, "ProxyJanitor port : %s, user %s, pass %s\n", proxy.Port, proxy.User, proxy.Pass)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlDbg, "ProxyJanitor port : %s, user %s, pass %s\n", proxy.Port, proxy.User, proxy.Pass)
 	// }
 
 	psql, err := proxy.Connect()
@@ -223,7 +223,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 			}
 
 			if err != nil {
-				//	cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxyJanitor,LvlErr, "Backend %s:%s not found error:%s ", misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), err)
+				//	cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxyJanitor,config.LvlErr, "Backend %s:%s not found error:%s ", misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), err)
 				isFoundBackendWrite = false
 			} else {
 				proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
@@ -246,7 +246,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 					if psql.ExistAsWriterOrOffline(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort())) {
 						err = psql.SetOnline(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()))
 						if err != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "Monitor ProxyJanitor setting online failed proxy %s", s.GetURL())
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "Monitor ProxyJanitor setting online failed proxy %s", s.GetURL())
 						}
 					} else {
 						//scenario restart with failed leader
@@ -277,10 +277,10 @@ func (proxy *ProxyJanitor) Refresh() error {
 
 				user, ok := s.Users["'"+u.User+"@"+proxy.GetJanitorDomain()+"'@'"+u.Host+"'"]
 				if !ok {
-					//		cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxyJanitor,LvlErr, "lookup %s %s%v", u.User, proxy.GetJanitorDomain(), s.Users)
+					//		cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxyJanitor,config.LvlErr, "lookup %s %s%v", u.User, proxy.GetJanitorDomain(), s.Users)
 					// create domain user in master
 					logs, err := dbhelper.DuplicateUserPassword(s.Conn, s.DBVersion, u.User, u.Host, u.User+"@"+proxy.GetJanitorDomain())
-					cluster.LogSQL(logs, err, cluster.master.URL, "Add Janitor user to leader", LvlDbg, "Refresh ProxyJanitor")
+					cluster.LogSQL(logs, err, cluster.master.URL, "Add Janitor user to leader", config.LvlDbg, "Refresh ProxyJanitor")
 
 				}
 				user, ok = uniUsers[u.User+":"+u.Password]
@@ -302,7 +302,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 		changedUser := false
 		for _, user := range uniUsers {
 			if _, ok := myprxusermap[user.User+"@"+proxy.GetJanitorDomain()+":"+user.Password]; !ok {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlInfo, "Add ProxyJanitor user %s ", user.User+"@"+proxy.GetJanitorDomain())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlInfo, "Add ProxyJanitor user %s ", user.User+"@"+proxy.GetJanitorDomain())
 				err := psql.AddUser(user.User+"@"+proxy.GetJanitorDomain(), user.Password)
 				psql.AddFastRouting(user.User+"@"+proxy.GetJanitorDomain(), "replication_manager_schema", strconv.FormatUint(proxy.GetCluster().GetUniqueId(), 10))
 
@@ -321,7 +321,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 	if updated {
 		err = psql.LoadServersToRuntime()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor could not load servers to runtime (%s)", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not load servers to runtime (%s)", err)
 		} else {
 			err = psql.SaveServersToDisk()
 		}
@@ -382,33 +382,33 @@ func (proxy *ProxyJanitor) RotateMonitoringPasswords(password string) {
 
 	vars, err := psql.GetVariables()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor could not get mysql variables (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not get mysql variables (%s)", err)
 	}
 	mon_user := vars["MYSQL-MONITOR_USERNAME"]
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxyJanitor,LvlInfo, "RotationMonitorPasswords user %s", user)
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxyJanitor,LvlInfo, "RotationMonitorPasswords dbUser %s", cluster.dbUser)
 	err = psql.SetMySQLVariable("mysql-monitor_password", password)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor could not set mysql variables (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not set mysql variables (%s)", err)
 	}
 
 	if mon_user != strings.ToUpper(cluster.GetDbUser()) {
 		err = psql.SetMySQLVariable("mysql-monitor_username", cluster.GetDbUser())
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor could not set mysql variables (%s)", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not set mysql variables (%s)", err)
 		}
 	}
 	err = psql.LoadMySQLVariablesToRuntime()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor could not load varibles to runtime (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not load varibles to runtime (%s)", err)
 	}
 
 	err = psql.SaveMySQLVariablesToDisk()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor could not save admin variables to disk (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not save admin variables to disk (%s)", err)
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlInfo, "Password rotation is done for the proxySQL monitor")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlInfo, "Password rotation is done for the proxySQL monitor")
 }
 
 func (proxy *ProxyJanitor) RotateProxyPasswords(password string) {
@@ -422,17 +422,17 @@ func (proxy *ProxyJanitor) RotateProxyPasswords(password string) {
 
 	err = psql.SetMySQLVariable("admin-admin_credentials", proxy.User+":"+password)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor could not set mysql variables (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not set mysql variables (%s)", err)
 	}
 
 	err = psql.LoadAdminVariablesToRuntime()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor could not load admin variables to runtime (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not load admin variables to runtime (%s)", err)
 	}
 
 	err = psql.SaveAdminVariablesToDisk()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor could not save admin variables to disk (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not save admin variables to disk (%s)", err)
 	}
 
 }
@@ -448,6 +448,6 @@ func (proxy *ProxyJanitor) Shutdown() {
 
 	err = psql.Shutdown()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, LvlErr, "ProxyJanitor could not shutdown (%s)", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not shutdown (%s)", err)
 	}
 }

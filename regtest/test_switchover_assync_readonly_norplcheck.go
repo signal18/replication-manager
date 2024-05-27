@@ -21,7 +21,7 @@ func (regtest *RegTest) TestSwitchoverReadOnlyNoRplCheck(cluster *cluster.Cluste
 	for _, s := range cluster.GetSlaves() {
 		_, err := s.Conn.Exec("set global read_only=1")
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 			return false
 		}
 	}

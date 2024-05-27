@@ -378,14 +378,14 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.StateMachine.Init()
 	k, _ := cluster.Conf.LoadEncrytionKey()
 	if k == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "No existing password encryption key")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key")
 		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
 	}
 
 	if cluster.Conf.Interactive {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Failover in interactive mode")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover in interactive mode")
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Failover in automatic mode")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover in automatic mode")
 	}
 	log.Infof("Creating direcrory  %s", cluster.WorkingDir)
 	//working directory of the cluster is working directory of server and cluster name
@@ -466,16 +466,16 @@ func (cluster *Cluster) InitFromConf() {
 
 	err = cluster.newServerList()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could not set server list %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set server list %s", err)
 	}
 	err = cluster.newProxyList()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could not set proxy list %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set proxy list %s", err)
 	}
 	//Loading configuration compliances
 	err = cluster.Configurator.Init(cluster.Conf)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could not initialize configurator %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not initialize configurator %s", err)
 		log.Fatal("missing important file, giving up")
 	}
 
@@ -521,7 +521,7 @@ func (cluster *Cluster) initOrchetratorNodes() {
 
 func (cluster *Cluster) initScheduler() {
 	if cluster.Conf.MonitorScheduler {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Starting cluster scheduler")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting cluster scheduler")
 		if cluster.scheduler != nil {
 			cluster.scheduler.Stop()
 		}
@@ -564,27 +564,27 @@ func (cluster *Cluster) Run() {
 			case sig := <-cluster.switchoverChan:
 				if sig {
 					if cluster.Status == "A" {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Signaling Switchover...")
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Signaling Switchover...")
 						cluster.MasterFailover(false)
 						cluster.switchoverCond.Send <- true
 					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Not in active mode, cancel switchover %s", cluster.Status)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Not in active mode, cancel switchover %s", cluster.Status)
 					}
 				}
 
 			default:
 				if cluster.Conf.LogLevel > 2 {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Monitoring server loop")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Monitoring server loop")
 					if cluster.Servers[0] != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Servers not nil : %v\n", cluster.Servers)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Servers not nil : %v\n", cluster.Servers)
 						for k, v := range cluster.Servers {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Servers loops k : %d, url : %s, state : %s, prevstate %s", k, v.URL, v.State, v.PrevState)
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Servers loops k : %d, url : %s, state : %s, prevstate %s", k, v.URL, v.State, v.PrevState)
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Server [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 						}
 						if cluster.GetMaster() != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.GetMaster().State, cluster.GetMaster().PrevState)
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Master [ ]: URL: %-15s State: %6s PrevState: %6s", cluster.master.URL, cluster.GetMaster().State, cluster.GetMaster().PrevState)
 							for k, v := range cluster.slaves {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Slave  [%d]: URL: %-15s State: %6s PrevState: %6s", k, v.URL, v.State, v.PrevState)
 							}
 						}
 					}
@@ -659,7 +659,7 @@ func (cluster *Cluster) Run() {
 				err := cluster.AddChildServers()
 
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Fail of AddChildServers %s", err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Fail of AddChildServers %s", err)
 				}
 
 				cluster.IsFailable = cluster.GetStatus()
@@ -696,7 +696,7 @@ func (cluster *Cluster) StateProcessing() {
 				}
 			}
 			if s.ErrKey == "WARN0074" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
 				if master != nil {
 					backupext := ".xbtream"
 
@@ -710,11 +710,11 @@ func (cluster *Cluster) StateProcessing() {
 						go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed)
 					}
 				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
 				}
 			}
 			if s.ErrKey == "WARN0075" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Sending master logical backup to reseed %s", s.ServerUrl)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master logical backup to reseed %s", s.ServerUrl)
 				if master != nil {
 					if mybcksrv != nil {
 						go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed)
@@ -722,11 +722,11 @@ func (cluster *Cluster) StateProcessing() {
 						go cluster.SSTRunSender(master.GetMasterBackupDirectory()+"mysqldump.sql.gz", servertoreseed)
 					}
 				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
 				}
 			}
 			if s.ErrKey == "WARN0076" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Sending server physical backup to flashback reseed %s", s.ServerUrl)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending server physical backup to flashback reseed %s", s.ServerUrl)
 				if mybcksrv != nil {
 					go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed)
 				} else {
@@ -735,7 +735,7 @@ func (cluster *Cluster) StateProcessing() {
 			}
 			if s.ErrKey == "WARN0077" {
 
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
 				if mybcksrv != nil {
 					go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed)
 				} else {
@@ -743,10 +743,10 @@ func (cluster *Cluster) StateProcessing() {
 				}
 			}
 			if s.ErrKey == "WARN0101" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Cluster have backup")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have backup")
 				for _, srv := range cluster.Servers {
 					if srv.HasWaitBackupCookie() {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Server %s was waiting for backup", srv.URL)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for backup", srv.URL)
 						go srv.ReseedMasterSST()
 					}
 				}
@@ -807,7 +807,7 @@ func (cluster *Cluster) Save() error {
 	_, file, no, ok := runtime.Caller(1)
 	// if ok && cluster.GetLogLevel() > 3 {
 	if ok {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "Saved called from %s#%d\n", file, no)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Saved called from %s#%d\n", file, no)
 	}
 	type Save struct {
 		Servers    string      `json:"servers"`
@@ -856,7 +856,7 @@ func (cluster *Cluster) Save() error {
 		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/"+cluster.Name+".toml")
 			}
 			return err
 		}
@@ -892,7 +892,7 @@ func (cluster *Cluster) Save() error {
 		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", cluster.Conf.DynamicFlagMap)
 		new_h := md5.New()
 		if _, err := io.Copy(new_h, file); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "Error during Overwriting: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
 		}
 
 		h, ok := cluster.CheckSumConfig["saved"]
@@ -908,7 +908,7 @@ func (cluster *Cluster) Save() error {
 		file2, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/immutable.toml")
 			}
 			return err
 		}
@@ -929,7 +929,7 @@ func (cluster *Cluster) Save() error {
 
 		new_h = md5.New()
 		if _, err := io.Copy(new_h, file2); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "Error during Overwriting: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
 		}
 
 		h, ok = cluster.CheckSumConfig["immutable"]
@@ -945,7 +945,7 @@ func (cluster *Cluster) Save() error {
 		file3, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/cache.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/cache.toml")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/cache.toml")
 			}
 			return err
 		}
@@ -962,7 +962,7 @@ func (cluster *Cluster) Save() error {
 
 		err = cluster.Overwrite(has_changed)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "Error during Overwriting: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
 		}
 	}
 
@@ -972,7 +972,7 @@ func (cluster *Cluster) Save() error {
 func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, name string) {
 
 	if cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlInfo, "Push to git : tok %s, dir %s, user %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, user, name)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Push to git : tok %s, dir %s, user %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, user, name)
 	}
 	auth := &git_https.BasicAuth{
 		Username: user, // yes, this can be anything except an empty string
@@ -981,13 +981,13 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	path := dir
 	r, err := git.PlainOpen(path)
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot PlainOpen : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot PlainOpen : %s", err)
 		return
 	}
 
 	w, err := r.Worktree()
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot Worktree : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Worktree : %s", err)
 		return
 	}
 
@@ -996,16 +996,16 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	// Adds the new file to the staging area.
 	err = w.AddGlob(name + "/*.toml")
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot Add %s : %s", name+"/*.toml", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add %s : %s", name+"/*.toml", err)
 	}
 
 	_, err = w.Add(name + "/agents.json")
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot Add %s : %s", name+"/*.json", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add %s : %s", name+"/*.json", err)
 	}
 	_, err = w.Add(name + "/queryrules.json")
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot Add %s : %s", name+"/*.json", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add %s : %s", name+"/*.json", err)
 	}
 
 	_, err = w.Commit(msg, &git.CommitOptions{
@@ -1016,13 +1016,13 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	})
 
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot Commit : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Commit : %s", err)
 	}
 
 	// push using default options
 	err = r.Push(&git.PushOptions{Auth: auth})
 	if err != nil && cluster.Conf.LogGit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, LvlErr, "Git error : cannot Push : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Push : %s", err)
 
 	}
 }
@@ -1037,7 +1037,7 @@ func (cluster *Cluster) Overwrite(has_changed bool) error {
 		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml")
 			}
 			return err
 		}
@@ -1074,7 +1074,7 @@ func (cluster *Cluster) Overwrite(has_changed bool) error {
 
 		new_h := md5.New()
 		if _, err := io.Copy(new_h, file); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlWarn, "Error during Overwriting: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
 		}
 
 		h, ok := cluster.CheckSumConfig["overwrite"]
@@ -1210,11 +1210,11 @@ func (cluster *Cluster) FailoverForce() error {
 	sf := stateFile{Name: "/tmp/mrm" + cluster.Name + ".state"}
 	err := sf.access()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Could not create state file")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not create state file")
 	}
 	err = sf.read()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Could not read values from state file:", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not read values from state file:", err)
 	} else {
 		cluster.FailoverCtr = int(sf.Count)
 		cluster.FailoverTs = sf.Timestamp
@@ -1239,7 +1239,7 @@ func (cluster *Cluster) FailoverForce() error {
 				if s.State == "" {
 					s.SetState(stateFailed)
 					// if cluster.Conf.LogLevel > 2 {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "State failed set by state detection ERR00012")
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "State failed set by state detection ERR00012")
 					// }
 					cluster.master = s
 				}
@@ -1250,16 +1250,16 @@ func (cluster *Cluster) FailoverForce() error {
 		}
 	}
 	if cluster.GetMaster() == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Could not find a failed server in the hosts list")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not find a failed server in the hosts list")
 		return errors.New("ERROR: Could not find a failed server in the hosts list")
 	}
 	if cluster.Conf.FailLimit > 0 && cluster.FailoverCtr >= cluster.Conf.FailLimit {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", cluster.Conf.FailLimit)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failover has exceeded its configured limit of %d. Remove /tmp/mrm.state file to reinitialize the failover counter", cluster.Conf.FailLimit)
 		return errors.New("ERROR: Failover has exceeded its configured limit")
 	}
 	rem := (cluster.FailoverTs + cluster.Conf.FailTime) - time.Now().Unix()
 	if cluster.Conf.FailTime > 0 && rem > 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Failover time limit enforced. Next failover available in %d seconds", rem)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failover time limit enforced. Next failover available in %d seconds", rem)
 		return errors.New("ERROR: Failover time limit enforced")
 	}
 	if cluster.MasterFailover(true) {
@@ -1267,7 +1267,7 @@ func (cluster *Cluster) FailoverForce() error {
 		sf.Timestamp = cluster.FailoverTs
 		err := sf.write()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlWarn, "Could not write values to state file:%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not write values to state file:%s", err)
 		}
 	}
 	return nil
@@ -1394,7 +1394,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		cluster.DiffVariables = alldiff
 		jtext, err := json.MarshalIndent(alldiff, " ", "\t")
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Encoding variables diff %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Encoding variables diff %s", err)
 			return
 		}
 		cluster.SetState("WARN0084", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0084"], string(jtext)), ErrFrom: "MON", ServerUrl: cluster.GetMaster().URL})
@@ -1425,7 +1425,7 @@ func (cluster *Cluster) MonitorSchema() {
 	cmaster.Conn.SetConnMaxLifetime(3595 * time.Second)
 
 	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion)
-	cluster.LogSQL(logs, err, cmaster.URL, "Monitor", LvlErr, "Could not fetch master tables %s", err)
+	cluster.LogSQL(logs, err, cmaster.URL, "Monitor", config.LvlErr, "Could not fetch master tables %s", err)
 	cmaster.Tables = tablelist
 
 	var tableCluster []string
@@ -1436,7 +1436,7 @@ func (cluster *Cluster) MonitorSchema() {
 		tableCluster = nil
 		tottablesize += t.DataLength
 		totindexsize += t.IndexLength
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Lookup for table %s", t.TableSchema+"."+t.TableName)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Lookup for table %s", t.TableSchema+"."+t.TableName)
 
 		duplicates = append(duplicates, cmaster)
 		tableCluster = append(tableCluster, cluster.GetName())
@@ -1444,16 +1444,16 @@ func (cluster *Cluster) MonitorSchema() {
 		haschanged := false
 		if err != nil {
 			if err.Error() == "Empty" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Init table %s", t.TableSchema+"."+t.TableName)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Init table %s", t.TableSchema+"."+t.TableName)
 				haschanged = true
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "New table %s", t.TableSchema+"."+t.TableName)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "New table %s", t.TableSchema+"."+t.TableName)
 				haschanged = true
 			}
 		} else {
 			if oldtable.TableCrc != t.TableCrc {
 				haschanged = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Change table %s", t.TableSchema+"."+t.TableName)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Change table %s", t.TableSchema+"."+t.TableName)
 			}
 			t.TableSync = oldtable.TableSync
 		}
@@ -1468,7 +1468,7 @@ func (cluster *Cluster) MonitorSchema() {
 					if cltbldef.TableName == t.TableName {
 						duplicates = append(duplicates, cl.GetMaster())
 						tableCluster = append(tableCluster, cl.GetName())
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, cl.GetMaster().URL)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, cl.GetMaster().URL)
 					}
 				}
 			}
@@ -1479,7 +1479,7 @@ func (cluster *Cluster) MonitorSchema() {
 			for _, pri := range cluster.Proxies {
 				if prx, ok := pri.(*MariadbShardProxy); ok {
 					if !(t.TableSchema == "replication_manager_schema" || strings.Contains(t.TableName, "_copy") == true || strings.Contains(t.TableName, "_back") == true || strings.Contains(t.TableName, "_old") == true || strings.Contains(t.TableName, "_reshard") == true) {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlDbg, "blabla table %s %s %s", duplicates, t.TableSchema, t.TableName)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "blabla table %s %s %s", duplicates, t.TableSchema, t.TableName)
 						cluster.ShardProxyCreateVTable(prx, t.TableSchema, t.TableName, duplicates, false)
 					}
 				}
@@ -1545,16 +1545,16 @@ func (cluster *Cluster) LostArbitration(realmasterurl string) {
 		return
 	}
 	if cluster.Conf.ArbitrationFailedMasterScript != "" {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Calling abitration failed for master script")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Calling abitration failed for master script")
 		out, err := exec.Command(cluster.Conf.ArbitrationFailedMasterScript, cluster.GetMaster().Host, cluster.GetMaster().Port).CombinedOutput()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Arbitration failed master script complete: %s", string(out))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed master script complete: %s", string(out))
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", cluster.GetMaster().URL, realmaster.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitration failed attaching failed master %s to electected master :%s", cluster.GetMaster().URL, realmaster.URL)
 		logs, err := cluster.GetMaster().SetReplicationGTIDCurrentPosFromServer(realmaster)
-		cluster.LogSQL(logs, err, realmaster.URL, "Arbitration", LvlErr, "Failed in GTID rejoin lost master to winner master %s", err)
+		cluster.LogSQL(logs, err, realmaster.URL, "Arbitration", config.LvlErr, "Failed in GTID rejoin lost master to winner master %s", err)
 
 	}
 }
@@ -1564,7 +1564,7 @@ func (c *Cluster) AddProxy(prx DatabaseProxy) {
 	prx.SetID()
 	prx.SetDataDir()
 	prx.SetServiceName(c.Name)
-	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "New proxy monitored %s: %s:%s", prx.GetType(), prx.GetHost(), prx.GetPort())
+	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New proxy monitored %s: %s:%s", prx.GetType(), prx.GetHost(), prx.GetPort())
 	prx.SetState(stateSuspect)
 	c.Proxies = append(c.Proxies, prx)
 }
@@ -1572,7 +1572,7 @@ func (c *Cluster) AddProxy(prx DatabaseProxy) {
 func (cluster *Cluster) ConfigDiscovery() error {
 	server := cluster.GetMaster()
 	if server != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Cluster configurartion discovery can ony be done on a valid leader")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cluster configurartion discovery can ony be done on a valid leader")
 		return errors.New("Cluster configurartion discovery can ony be done on a valid leader")
 	}
 	cluster.Configurator.ConfigDiscovery(server.Variables, server.Plugins)
@@ -1584,7 +1584,7 @@ func (cluster *Cluster) ConfigDiscovery() error {
 }
 
 func (cluster *Cluster) ReloadCertificates() {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Reload cluster TLS certificates")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reload cluster TLS certificates")
 	for _, srv := range cluster.Servers {
 		srv.CertificatesReload()
 	}
@@ -1594,7 +1594,7 @@ func (cluster *Cluster) ReloadCertificates() {
 }
 
 func (cluster *Cluster) ResetStates() {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Reload cluster TLS certificates")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reload cluster TLS certificates")
 	cluster.SetUnDiscovered()
 	cluster.slaves = nil
 	cluster.master = nil
@@ -1649,13 +1649,13 @@ func (cluster *Cluster) DecryptSecretsFromVault() {
 				if cluster.Conf.VaultMode == VaultConfigStoreV2 {
 					vault_value, err := cluster.Conf.GetVaultCredentials(client, secret.Value, k)
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlWarn, "Unable to get %s Vault secret: %v", k, err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlWarn, "Unable to get %s Vault secret: %v", k, err)
 					} else if vault_value != "" {
 						secret.Value = vault_value
 					}
 				}
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, LvlErr, "Unable to initialize AppRole auth method: %v", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			}
 			cluster.Conf.Secrets[k] = secret
 		}

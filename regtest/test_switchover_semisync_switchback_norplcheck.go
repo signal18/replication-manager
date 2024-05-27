@@ -20,7 +20,7 @@ func (regtest *RegTest) TestSwitchover2TimesReplicationOkSemiSyncNoRplCheck(clus
 	cluster.SetRplMaxDelay(0)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		return false
 	}
 	time.Sleep(2 * time.Second)
@@ -28,25 +28,25 @@ func (regtest *RegTest) TestSwitchover2TimesReplicationOkSemiSyncNoRplCheck(clus
 	for i := 0; i < 2; i++ {
 		result, err := dbhelper.WriteConcurrent2(cluster.GetMaster().DSN, 10)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s %s", err.Error(), result)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s %s", err.Error(), result)
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s ", cluster.GetMaster().URL)
 		SaveMasterURL := cluster.GetMaster().URL
 		cluster.SwitchoverWaitTest()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s ", cluster.GetMaster().URL)
 		if SaveMasterURL == cluster.GetMaster().URL {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "same server URL after switchover")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "same server URL after switchover")
 			return false
 		}
 	}
 	time.Sleep(2 * time.Second)
 	for _, s := range cluster.GetSlaves() {
 		if s.IsReplicationBroken() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Slave  %s issue on replication", s.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Slave  %s issue on replication", s.URL)
 			return false
 		}
 		if s.GetReplicationServerID() != cluster.GetMaster().ServerID {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Replication is  pointing to wrong master %s ", cluster.GetMaster().ServerID)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replication is  pointing to wrong master %s ", cluster.GetMaster().ServerID)
 			return false
 		}
 	}

@@ -19,12 +19,12 @@ func (regtest *RegTest) TestSwitchoverAllSlavesStopNoSemiSyncNoRplCheck(cluster 
 	cluster.SetRplChecks(false)
 	err := cluster.DisableSemisync()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		return false
 	}
 	err = cluster.StopSlaves()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		return false
 	}
 	time.Sleep(4 * time.Second)
@@ -35,7 +35,7 @@ func (regtest *RegTest) TestSwitchoverAllSlavesStopNoSemiSyncNoRplCheck(cluster 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s ", cluster.GetMaster().URL)
 	time.Sleep(2 * time.Second)
 	if cluster.GetMaster().URL == SaveMasterURL {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
 	return true

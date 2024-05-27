@@ -19,7 +19,7 @@ func (cluster *Cluster) OnPremiseProvisionProxySQLService(prx *ProxySQLProxy) er
 		cluster.errorChan <- err
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise Provisioning  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise Provisioning  : %s", string(out))
 	cluster.errorChan <- nil
 	return nil
 }
@@ -41,7 +41,7 @@ func (cluster *Cluster) OnPremiseStopProxySQLService(server DatabaseProxy) error
 	if err != nil {
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise stop ProxySQL  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise stop ProxySQL  : %s", string(out))
 	return nil
 }
 
@@ -57,6 +57,6 @@ func (cluster *Cluster) OnPremiseStartProxySQLService(server DatabaseProxy) erro
 	if err != nil {
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "OnPremise start ProxySQL  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise start ProxySQL  : %s", string(out))
 	return nil
 }

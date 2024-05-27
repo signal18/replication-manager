@@ -20,14 +20,14 @@ import (
 
 func (server *ServerMonitor) WaitSyncToMaster(master *ServerMonitor) {
 	cluster := server.ClusterGroup
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Waiting for slave %s to sync", server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for slave %s to sync", server.URL)
 	if server.DBVersion.Flavor == "MariaDB" {
 		logs, err := dbhelper.MasterWaitGTID(server.Conn, master.GTIDBinlogPos.Sprint(), 30)
-		cluster.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Failed MasterWaitGTID, %s", err)
+		cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Failed MasterWaitGTID, %s", err)
 
 	} else {
 		logs, err := dbhelper.MasterPosWait(server.Conn, server.DBVersion, master.BinaryLogFile, master.BinaryLogPos, 30, cluster.Conf.MasterConn)
-		cluster.LogSQL(logs, err, server.URL, "MasterFailover", LvlErr, "Failed MasterPosWait, %s", err)
+		cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Failed MasterPosWait, %s", err)
 	}
 
 	// if cluster.Conf.LogLevel > 2 {
@@ -38,7 +38,7 @@ func (server *ServerMonitor) WaitSyncToMaster(master *ServerMonitor) {
 func (server *ServerMonitor) WaitDatabaseStart() error {
 	cluster := server.ClusterGroup
 	exitloop := 0
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Waiting database start on %s", server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting database start on %s", server.URL)
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.GetConf().MonitoringTicker*1000))
 	for int64(exitloop) < cluster.GetConf().MonitorWaitRetry {
 		select {
@@ -52,7 +52,7 @@ func (server *ServerMonitor) WaitDatabaseStart() error {
 			go server.Ping(wg)
 			wg.Wait()
 			err = server.Refresh()
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Waiting state refresh on %s failed with error %s ", server.URL, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state refresh on %s failed with error %s ", server.URL, err)
 
 			if cluster.GetTopology() == topoMultiMasterWsrep {
 				if !server.IsConnected() {
@@ -65,14 +65,14 @@ func (server *ServerMonitor) WaitDatabaseStart() error {
 
 				exitloop = 9999999
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Waiting state running on %s failed with error %s ", server.URL, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state running on %s failed with error %s ", server.URL, err)
 			}
 		}
 	}
 	if exitloop == 9999999 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Waiting state running reach on %s", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state running reach on %s", server.URL)
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Wait state running on %s", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Wait state running on %s", server.URL)
 		return errors.New("Failed to wait running database server")
 	}
 	return nil

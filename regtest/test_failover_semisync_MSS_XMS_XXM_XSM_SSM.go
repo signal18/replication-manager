@@ -49,13 +49,13 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM(cluster *c
 
 	for _, s := range cluster.GetSlaves() {
 		if s.IsReplicationBroken() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Slave  %s issue on replication", s.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Slave  %s issue on replication", s.URL)
 			return false
 		}
 	}
 	time.Sleep(5 * time.Second)
 	if cluster.ChecksumBench() != true {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Inconsitant slave")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
 		return false
 	}
 

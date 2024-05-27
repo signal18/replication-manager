@@ -318,7 +318,7 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 
 		err := json.Unmarshal(data, &srvs)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -332,7 +332,7 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 		e.SetIndent("", "\t")
 		err = e.Encode(srvs)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -354,7 +354,7 @@ func (repman *ReplicationManager) handlerMuxSlaves(w http.ResponseWriter, r *htt
 
 		err := json.Unmarshal(data, &srvs)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -365,7 +365,7 @@ func (repman *ReplicationManager) handlerMuxSlaves(w http.ResponseWriter, r *htt
 		e.SetIndent("", "\t")
 		err = e.Encode(srvs)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -386,7 +386,7 @@ func (repman *ReplicationManager) handlerMuxProxies(w http.ResponseWriter, r *ht
 		var prxs []*cluster.Proxy
 		err := json.Unmarshal(data, &prxs)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -394,7 +394,7 @@ func (repman *ReplicationManager) handlerMuxProxies(w http.ResponseWriter, r *ht
 		e.SetIndent("", "\t")
 		err = e.Encode(prxs)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -417,7 +417,7 @@ func (repman *ReplicationManager) handlerMuxAlerts(w http.ResponseWriter, r *htt
 		e.SetIndent("", "\t")
 		err := e.Encode(a)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -567,7 +567,7 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplicationCleanup(w http.R
 		}
 		err := mycluster.BootstrapReplicationCleanup()
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error Cleanup Replication: %s", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error Cleanup Replication: %s", err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -661,7 +661,7 @@ func (repman *ReplicationManager) handlerMuxServicesBootstrap(w http.ResponseWri
 		}
 		err := mycluster.ProvisionServices()
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error Bootstrap Micro Services: %s", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error Bootstrap Micro Services: %s", err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -683,7 +683,7 @@ func (repman *ReplicationManager) handlerMuxServicesProvision(w http.ResponseWri
 		}
 		err := mycluster.Bootstrap()
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error Bootstrap Micro Services + replication: %s", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error Bootstrap Micro Services + replication: %s", err)
 			http.Error(w, err.Error(), 500)
 			return
 		}
@@ -793,21 +793,21 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlInfo, "Rest API receive switchover request")
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive switchover request")
 		savedPrefMaster := mycluster.GetPreferedMasterList()
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		if mycluster.IsMasterFailed() {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "Master failed, cannot initiate switchover")
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Master failed, cannot initiate switchover")
 			http.Error(w, "Master failed", http.StatusBadRequest)
 			return
 		}
 		r.ParseForm() // Parses the request body
 		newPrefMaster := r.Form.Get("prefmaster")
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlInfo, "API force for prefered master: %s", newPrefMaster)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "API force for prefered master: %s", newPrefMaster)
 		if mycluster.IsInHostList(newPrefMaster) {
 			mycluster.SetPrefMaster(newPrefMaster)
 		} else {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlInfo, "Prefered master: not found in database servers %s", newPrefMaster)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Prefered master: not found in database servers %s", newPrefMaster)
 		}
 		mycluster.MasterFailover(false)
 		mycluster.SetPrefMaster(savedPrefMaster)
@@ -832,7 +832,7 @@ func (repman *ReplicationManager) handlerMuxMaster(w http.ResponseWriter, r *htt
 
 			err := json.Unmarshal(data, &srvs)
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error decoding JSON: ", err)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error decoding JSON: ", err)
 				http.Error(w, "Encoding error", 500)
 				return
 			}
@@ -1207,7 +1207,7 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", setting)
 			repman.setSetting(mycluster, setting, vars["settingValue"])
 		} else {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlWarn, "Overwriting an immuable parameter defined in config , please use config-merge command to preserve them between restart")
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Overwriting an immuable parameter defined in config , please use config-merge command to preserve them between restart")
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", setting)
 			repman.setSetting(mycluster, setting, vars["settingValue"])
 		}
@@ -1551,7 +1551,7 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 		if len(res) > 0 {
 			err := e.Encode(res[0])
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error encoding JSON: ", err)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 				http.Error(w, "Encoding error", 500)
 				mycluster.SetTestStartCluster(false)
 				mycluster.SetTestStopCluster(false)
@@ -1563,7 +1563,7 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 			test.Name = vars["testName"]
 			err := e.Encode(test)
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error encoding JSON: ", err)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 				http.Error(w, "Encoding error", 500)
 				mycluster.SetTestStartCluster(false)
 				mycluster.SetTestStopCluster(false)
@@ -1597,7 +1597,7 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 		e.SetIndent("", "\t")
 		err := e.Encode(res)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
@@ -1633,7 +1633,7 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlInfo, "Rest API receive new %s monitor to be added %s", vars["type"], vars["host"]+":"+vars["port"])
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive new %s monitor to be added %s", vars["type"], vars["host"]+":"+vars["port"])
 		if vars["type"] == "" {
 			mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 		} else {
@@ -1794,7 +1794,7 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			return
 		}
 		if r.URL.Query().Get("threads") != "" {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, cluster.LvlInfo, "Setting Sysbench threads to %s", r.URL.Query().Get("threads"))
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench threads to %s", r.URL.Query().Get("threads"))
 			mycluster.SetSysbenchThreads(r.URL.Query().Get("threads"))
 		}
 		go mycluster.RunSysbench()

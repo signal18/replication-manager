@@ -224,14 +224,17 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	} else {
 		flags.StringVar(&conf.ShareDir, "monitoring-sharedir", "/usr/share/replication-manager", "Path to share files")
 	}
+
+	// Important flags for monitoring
+	flags.BoolVar(&conf.ConfRewrite, "monitoring-save-config", false, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	flags.StringVar(&conf.WorkingDir, "monitoring-datadir", "/var/lib/replication-manager", "Path to write temporary and persistent files")
 	flags.Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in seconds")
+
 	//not working so far
 	//flags.StringVar(&conf.TunnelHost, "monitoring-tunnel-host", "", "Bastion host to access to monitor topology via SSH tunnel host:22")
 	//flags.StringVar(&conf.TunnelCredential, "monitoring-tunnel-credential", "root:", "Credential Access to bastion host topology via SSH tunnel")
 	//flags.StringVar(&conf.TunnelKeyPath, "monitoring-tunnel-key-path", "/Users/apple/.ssh/id_rsa", "Tunnel private key path")
 	flags.BoolVar(&conf.MonitorWriteHeartbeat, "monitoring-write-heartbeat", false, "Inject heartbeat into proxy or via external vip")
-	flags.BoolVar(&conf.ConfRewrite, "monitoring-save-config", false, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
 	flags.StringVar(&conf.MonitorWriteHeartbeatCredential, "monitoring-write-heartbeat-credential", "", "Database user:password to inject traffic into proxy or via external vip")
 	flags.BoolVar(&conf.MonitorVariableDiff, "monitoring-variable-diff", true, "Monitor variable difference beetween nodes")
 	flags.BoolVar(&conf.MonitorPFS, "monitoring-performance-schema", true, "Monitor performance schema")
@@ -261,20 +264,25 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.MonitoringQueryTimeout, "monitoring-query-timeout", 2000, "Timeout for querying monitor in ms")
 	flags.StringVar(&conf.MonitoringOpenStateScript, "monitoring-open-state-script", "", "Script trigger on open state")
 	flags.StringVar(&conf.MonitoringCloseStateScript, "monitoring-close-state-script", "", "Script trigger on close state")
-	flags.BoolVar(&conf.LogSST, "log-sst", true, "Log open and close SST transfert")
-	flags.IntVar(&conf.LogSSTLevel, "log-sst-level", 1, "Log SST Level")
-	flags.IntVar(&conf.SSTSendBuffer, "sst-send-buffer", 16384, "SST send buffer size")
-	flags.BoolVar(&conf.LogConfigLoad, "log-config-load", true, "Log config decryption")
-	flags.BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
-	flags.IntVar(&conf.LogConfigLoadLevel, "log-config-load-level", 1, "Log Config Load Level")
-	flags.IntVar(&conf.LogHeartbeatLevel, "log-heartbeat-level", 1, "Log Hearbeat Level")
-	flags.BoolVar(&conf.LogFailedElection, "log-failed-election", true, "Log failed election")
-	flags.IntVar(&conf.LogFailedElectionLevel, "log-failed-election-level", 1, "Log failed election Level")
-	flags.BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
 	flags.BoolVar(&conf.MonitorCapture, "monitoring-capture", true, "Enable capture on error for 5 monitor loops")
 	flags.StringVar(&conf.MonitorCaptureTrigger, "monitoring-capture-trigger", "ERR00076,ERR00041", "List of errno triggering capture mode")
 	flags.IntVar(&conf.MonitorCaptureFileKeep, "monitoring-capture-file-keep", 5, "Purge capture file keep that number of them")
 	flags.StringVar(&conf.MonitoringAlertTrigger, "monitoring-alert-trigger", "ERR00027,ERR00042,ERR00087", "List of errno triggering an alert to be send")
+
+	flags.BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
+
+	flags.BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
+	flags.IntVar(&conf.LogHeartbeatLevel, "log-heartbeat-level", 1, "Log Hearbeat Level")
+
+	flags.BoolVar(&conf.LogFailedElection, "log-failed-election", true, "Log failed election")
+	flags.IntVar(&conf.LogFailedElectionLevel, "log-failed-election-level", 1, "Log failed election Level")
+
+	// SST
+	flags.IntVar(&conf.SSTSendBuffer, "sst-send-buffer", 16384, "SST send buffer size")
+	flags.BoolVar(&conf.LogSST, "log-sst", true, "Log open and close SST transfert")
+	flags.IntVar(&conf.LogSSTLevel, "log-sst-level", 1, "Log SST Level")
+
+	// DB Credentials
 	flags.StringVar(&conf.User, "db-servers-credential", "root:mariadb", "Database login, specified in the [user]:[password] format")
 	flags.StringVar(&conf.Hosts, "db-servers-hosts", "", "Database hosts list to monitor, IP and port (optional), specified in the host:[port] format and separated by commas")
 	flags.BoolVar(&conf.DBServersTLSUseGeneratedCertificate, "db-servers-tls-use-generated-cert", false, "Use the auto generated certificates to connect to database backend")
@@ -283,13 +291,13 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.HostsTlsCliCert, "db-servers-tls-client-cert", "", "Database TLS client certificate")
 	flags.StringVar(&conf.HostsTlsSrvKey, "db-servers-tls-server-key", "", "Database TLS server key to push in config")
 	flags.StringVar(&conf.HostsTlsSrvCert, "db-servers-tls-server-cert", "", "Database TLS server certificate to push in config")
-
 	flags.IntVar(&conf.Timeout, "db-servers-connect-timeout", 5, "Database connection timeout in seconds")
 	flags.IntVar(&conf.ReadTimeout, "db-servers-read-timeout", 3600, "Database read timeout in seconds")
 	flags.StringVar(&conf.PrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 	flags.StringVar(&conf.IgnoreSrv, "db-servers-ignored-hosts", "", "Database list of hosts to ignore in election")
 	flags.StringVar(&conf.IgnoreSrvRO, "db-servers-ignored-readonly", "", "Database list of hosts not changing read only status")
 	flags.StringVar(&conf.BackupServers, "db-servers-backup-hosts", "", "Database list of hosts to backup when set can backup a slave")
+
 	flags.Int64Var(&conf.SwitchWaitKill, "switchover-wait-kill", 5000, "Switchover wait this many milliseconds before killing threads on demoted master")
 	flags.IntVar(&conf.SwitchWaitWrite, "switchover-wait-write-query", 10, "Switchover is canceled if a write query is running for this time")
 	flags.Int64Var(&conf.SwitchWaitTrx, "switchover-wait-trx", 10, "Switchover is cancel after this timeout in second if can't aquire FTWRL")
@@ -301,11 +309,11 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.Int64Var(&conf.SwitchDecreaseMaxConnValue, "switchover-decrease-max-conn-value", 10, "Switchover decrease max connection to this value different according to flavor")
 	flags.IntVar(&conf.SwitchSlaveWaitRouteChange, "switchover-wait-route-change", 2, "Switchover wait for unmanged proxy monitor to dicoverd new state")
 	flags.BoolVar(&conf.SwitchLowerRelease, "switchover-lower-release", false, "Allow switchover to lower release")
+
 	flags.StringVar(&conf.MasterConn, "replication-source-name", "", "Replication channel name to use for multisource")
 	flags.StringVar(&conf.ReplicationMultisourceHeadClusters, "replication-multisource-head-clusters", "", "Multi source link to parent cluster, autodiscoverd but can be materialized for bootstraping replication")
 	flags.StringVar(&conf.HostsDelayed, "replication-delayed-hosts", "", "Database hosts list that need delayed replication separated by commas")
 	flags.IntVar(&conf.HostsDelayedTime, "replication-delayed-time", 3600, "Delayed replication time")
-
 	flags.IntVar(&conf.MasterConnectRetry, "replication-master-connect-retry", 10, "Replication is define using this connection retry timeout")
 	flags.StringVar(&conf.RplUser, "replication-credential", "root:mariadb", "Replication user in the [user]:[password] format")
 	flags.BoolVar(&conf.ReplicationSSL, "replication-use-ssl", false, "Replication use SSL encryption to replicate from master")
@@ -323,6 +331,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ReplicationNoRelay, "replication-master-slave-never-relay", true, "Do not allow relay server MSS MXS XXM RSM")
 	flags.StringVar(&conf.ReplicationErrorScript, "replication-error-script", "", "Replication error script")
 	flags.StringVar(&conf.ReplicationRestartOnSQLErrorMatch, "replication-restart-on-sqlerror-match", "", "Auto restart replication on SQL Error regexep")
+
 	flags.StringVar(&conf.PreScript, "failover-pre-script", "", "Path of pre-failover script")
 	flags.StringVar(&conf.PostScript, "failover-post-script", "", "Path of post-failover script")
 	flags.BoolVar(&conf.ReadOnly, "failover-readonly-state", true, "Failover Switchover set slaves as read-only")
@@ -343,12 +352,13 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.CheckFalsePositiveExternalPort, "failover-falsepositive-external-port", 80, "Failover checks external port")
 	flags.IntVar(&conf.MaxFail, "failover-falsepositive-ping-counter", 5, "Failover after this number of ping failures (interval 1s)")
 	flags.IntVar(&conf.FailoverLogFileKeep, "failover-log-file-keep", 5, "Purge log files taken during failover")
+	flags.BoolVar(&conf.FailoverCheckDelayStat, "failover-check-delay-stat", false, "Use delay avg statistic for failover decision")
 	flags.BoolVar(&conf.DelayStatCapture, "delay-stat-capture", false, "Capture hourly statistic for delay average")
 	flags.BoolVar(&conf.PrintDelayStat, "print-delay-stat", false, "Print captured delay statistic")
 	flags.BoolVar(&conf.PrintDelayStatHistory, "print-delay-stat-history", false, "Print captured delay statistic history")
 	flags.IntVar(&conf.PrintDelayStatInterval, "print-delay-stat-interval", 1, "Interval for printing delay stat (in minutes)")
 	flags.IntVar(&conf.DelayStatRotate, "delay-stat-rotate", 72, "Number of hours before rotating the delay stat")
-	flags.BoolVar(&conf.FailoverCheckDelayStat, "failover-check-delay-stat", false, "Use delay avg statistic for failover decision")
+
 	flags.BoolVar(&conf.Autoseed, "autoseed", false, "Automatic join a standalone node")
 	flags.BoolVar(&conf.Autorejoin, "autorejoin", true, "Automatic rejoin a failed master")
 	flags.BoolVar(&conf.AutorejoinBackupBinlog, "autorejoin-backup-binlog", true, "backup ahead binlogs events when old master rejoin")
@@ -582,6 +592,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.SchedulerAlertDisable, "scheduler-alert-disable", false, "Schedule to disable alerting")
 	flags.StringVar(&conf.SchedulerAlertDisableCron, "scheduler-alert-disable-cron", "0 0 0 * * 0-4", "Disabling alert cron expression represents a set of times, using 6 space-separated fields.")
 	flags.IntVar(&conf.SchedulerAlertDisableTime, "scheduler-alert-disable-time", 3600, "Time in seconds to disable alerting")
+
 	flags.BoolVar(&conf.Backup, "backup", false, "Turn on Backup")
 	flags.BoolVar(&conf.BackupLockDDL, "backup-lockddl", true, "Use mariadb backup stage")
 	flags.IntVar(&conf.BackupLogicalLoadThreads, "backup-logical-load-threads", 2, "Number of threads to load database")
@@ -657,6 +668,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "https://docs.google.com/spreadsheets/d/e/2PACX-1vQClXknRapJZ4bRSId_aa5zUrbFDZmmc6GiV3n7-tPyQJispqqnSJj6lMaJxoJv5pOC9Ktj8ywWdGX6/pub?gid=0&single=true&output=csv", "URL to csv service plan list")
 	//	flags.StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "http://gsx2json.com/api?id=130326CF_SPaz-flQzCRPE-w7FjzqU1NqbsM7MpIQ_oU&sheet=1&columns=false", "URL to json service plan list")
 	flags.StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
+	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
+	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
+	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")
+
 	flags.BoolVar(&conf.Test, "test", false, "Enable non regression tests")
 	flags.BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")
 	flags.IntVar(&conf.SysbenchTime, "sysbench-time", 100, "Time to run benchmark")
@@ -666,9 +681,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.SysbenchTables, "sysbench-tables", 1, "Number of tables")
 	flags.BoolVar(&conf.SysbenchV1, "sysbench-v1", false, "v1 get different syntax")
 	flags.StringVar(&conf.SysbenchBinaryPath, "sysbench-binary-path", "/usr/bin/sysbench", "Sysbench Wrapper in test mode")
-	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")
-	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
-	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
+
 	if WithOpenSVC == "ON" {
 		flags.StringVar(&conf.ProvOrchestratorEnable, "prov-orchestrator-enable", "opensvc,kube,onpremise,local", "seprated list of orchestrator ")
 		flags.StringVar(&conf.ProvOrchestrator, "prov-orchestrator", "opensvc", "onpremise|opensvc|kube|slapos|local")

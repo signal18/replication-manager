@@ -145,13 +145,13 @@ func (server *ServerMonitor) GetConfigVariable(variable string) string {
 
 func (server *ServerMonitor) GetDatabaseConfig() string {
 	cluster := server.ClusterGroup
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	if server.IsCompute {
 		cluster.Configurator.AddDBTag("spider")
 	}
 	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv())
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Database Config generation "+server.Datadir+"/config.tar.gz error: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database Config generation "+server.Datadir+"/config.tar.gz error: %s", err)
 	}
 	server.IsConfigGen = true
 	return ""
@@ -161,7 +161,7 @@ func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string, cmd string)
 	cluster := server.ClusterGroup
 	mydynamicconf, err := cluster.Configurator.GetDatabaseDynamicConfig(filter, cmd, server.Datadir)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "%s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 	}
 	return mydynamicconf
 }

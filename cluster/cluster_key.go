@@ -123,7 +123,7 @@ func (cluster *Cluster) createKeys() error {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "failed to generate serial number: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "failed to generate serial number: %s", err)
 	}
 
 	//	rootKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -157,7 +157,7 @@ func (cluster *Cluster) createKeys() error {
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &rootTemplate, &rootTemplate, &rootKey.PublicKey, rootKey)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Failed to create certificate: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Failed to create certificate: %s", err)
 	}
 	cluster.certToFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/ca-cert.pem", derBytes)
 
@@ -168,7 +168,7 @@ func (cluster *Cluster) createKeys() error {
 	cluster.keyToFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/server-key.pem", leafKey)
 	serialNumber, err = rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "failed to generate serial number: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "failed to generate serial number: %s", err)
 	}
 	leafTemplate := x509.Certificate{
 		SerialNumber: serialNumber,
@@ -200,13 +200,13 @@ func (cluster *Cluster) createKeys() error {
 	}
 	derBytes, err = x509.CreateCertificate(rand.Reader, &leafTemplate, &rootTemplate, &leafKey.PublicKey, rootKey)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "failed to generate cert: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "failed to generate cert: %s", err)
 	}
 	cluster.certToFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/server-cert.pem", derBytes)
 
 	clientKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "failed to generate client key: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "failed to generate client key: %s", err)
 	}
 	cluster.keyToFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/client-key.pem", clientKey)
 
@@ -231,7 +231,7 @@ func (cluster *Cluster) createKeys() error {
 
 	derBytes, err = x509.CreateCertificate(rand.Reader, &clientTemplate, &rootTemplate, &clientKey.PublicKey, rootKey)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "failed to generate client cert: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "failed to generate client cert: %s", err)
 	}
 
 	cluster.certToFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/client-cert.pem", derBytes)
@@ -244,16 +244,16 @@ func (cluster *Cluster) keyToFile(filename string, key *rsa.PrivateKey) {
 
 		file, err := os.Create(filename)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "Failed to generate file: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Failed to generate file: %s", err)
 		}
 		defer file.Close()
 		b := x509.MarshalPKCS1PrivateKey(key)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Unable to marshal ECDSA private key: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Unable to marshal ECDSA private key: %v", err)
 
 		}
 		if err := pem.Encode(file, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: b}); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Failed pem.Encode  %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Failed pem.Encode  %s", err)
 		}
 	}
 }
@@ -263,13 +263,13 @@ func (cluster *Cluster) certToFile(filename string, derBytes []byte) {
 
 		certOut, err := os.Create(filename)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Failed to open cert.pem for writing: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Failed to open cert.pem for writing: %s", err)
 		}
 		if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Failed to write data to cert.pem: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Failed to write data to cert.pem: %s", err)
 		}
 		if err := certOut.Close(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlErr, "Error closing cert.pem: %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error closing cert.pem: %s", err)
 		}
 		return
 	}
@@ -277,7 +277,7 @@ func (cluster *Cluster) certToFile(filename string, derBytes []byte) {
 
 func (cluster *Cluster) KeyRotation() {
 	//os.RemoveAll(cluster.WorkingDir + "/old_certs")
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, LvlInfo, "Cluster rotate certificats")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Cluster rotate certificats")
 	if _, err := os.Stat(cluster.WorkingDir + "/old_certs"); os.IsNotExist(err) {
 		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name+"/old_certs", os.ModePerm)
 	}

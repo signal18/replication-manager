@@ -24,21 +24,21 @@ func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
 	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
 	if err != nil {
 		cluster.errorChan <- err
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't OpenSVCFoundDatabaseAgent in service config %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't OpenSVCFoundDatabaseAgent in service config %s", err)
 		return ""
 	}
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		svc := cluster.OpenSVCConnect()
 		res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't create OpenSVC config template %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't create OpenSVC config template %s", err)
 			return ""
 		}
 		return res
 	} else {
 		res, err := s.GenerateDBTemplateV2()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't create OpenSVC config template  %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't create OpenSVC config template  %s", err)
 			return ""
 		}
 		return res
@@ -60,19 +60,19 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 		var idsrv string
 		mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + s.Name)
 		if err == nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "Found opensvc database service %s service %s", cluster.Name+"/svc/"+s.Name, mysrv.Svc_id)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Found opensvc database service %s service %s", cluster.Name+"/svc/"+s.Name, mysrv.Svc_id)
 			idsrv = mysrv.Svc_id
 		} else {
 			idsrv, err = svc.CreateService(cluster.Name+"/svc/"+s.Name, "MariaDB")
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't create OpenSVC service %s", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't create OpenSVC service %s", err)
 				cluster.errorChan <- err
 				return
 			}
 		}
 		err = svc.DeteteServiceTags(idsrv)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't delete service tags")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't delete service tags")
 			cluster.errorChan <- err
 			return
 		}
@@ -96,15 +96,15 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 		idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+s.Name)
 		err = cluster.OpenSVCWaitDequeue(svc, idaction)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "%s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
 			cluster.errorChan <- err
 			return
 		}
 		task := svc.GetAction(strconv.Itoa(idaction))
 		if task != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", task.Stderr)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", task.Stderr)
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't fetch task")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
 		}
 	} else {
 		cluster.OpenSVCCreateMaps(s.Agent)
@@ -114,10 +114,10 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 			return
 		}
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s", res)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
 		err = svc.CreateTemplateV2(cluster.Name, s.ServiceName, s.Agent, res)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not provision database:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database:  %s ", err)
 		}
 
 	}
@@ -143,7 +143,7 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 
 		err := svc.StopServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not stop database:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database:  %s ", err)
 			return err
 		}
 	}
@@ -166,7 +166,7 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 
 		err := svc.StartServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not stop database:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database:  %s ", err)
 			return err
 		}
 	}
@@ -183,7 +183,7 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 				err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can't unprovision database %s, %s", cluster.Name+"/svc/"+server.Name, err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision database %s, %s", cluster.Name+"/svc/"+server.Name, err)
 					cluster.errorChan <- err
 				}
 			}
@@ -192,12 +192,12 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 
 		err := opensvc.PurgeServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not unprovision database service:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service:  %s ", err)
 			cluster.errorChan <- err
 		}
 		err = opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+server.Name, server.Agent)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not unprovision database volume:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database volume:  %s ", err)
 			cluster.errorChan <- err
 		}
 	}
@@ -312,7 +312,7 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 	svcenv := make(map[string]string)
 	agent, err := server.ClusterGroup.GetDatabaseAgent(server)
 	if err != nil {
-		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Can not provision database:  %s ", err)
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database:  %s ", err)
 		server.ClusterGroup.errorChan <- err
 		return svcenv
 	}

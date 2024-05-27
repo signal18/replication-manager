@@ -58,7 +58,7 @@ func (repman *ReplicationManager) MountS3() {
 	log.Infof("Mount S3 to %s", config.MountPoint)
 	/*	s3, err := internal.NewS3("", config, conf)
 		if err != nil {
-			cluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral,LvlErr, "Unable to connect s3 %v: %v", config.MountPoint, err)
+			cluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral,config.LvlErr, "Unable to connect s3 %v: %v", config.MountPoint, err)
 		}
 		_, err := s3.CreateBucket(&s3.CreateBucketInput{
 			Bucket: &bucket,

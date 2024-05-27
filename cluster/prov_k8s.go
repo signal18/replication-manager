@@ -18,12 +18,12 @@ func (cluster *Cluster) K8SConnectAPI() (*kubernetes.Clientset, error) {
 	kconfig, err := clientcmd.BuildConfigFromFlags("", cluster.Conf.KubeConfig)
 
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot load Kubernetes cluster config %s %s ", cluster.Conf.KubeConfig, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot load Kubernetes cluster config %s %s ", cluster.Conf.KubeConfig, err)
 		return nil, err
 	}
 	clientset, err := kubernetes.NewForConfig(kconfig)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot init Kubernetes client API %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
 		return nil, err
 	}
 	return clientset, err
@@ -33,7 +33,7 @@ func (cluster *Cluster) K8SGetNodes() ([]Agent, error) {
 
 	client, err := cluster.K8SConnectAPI()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlErr, "Cannot init Kubernetes client API %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
 		return nil, err
 	}
 	nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
@@ -41,9 +41,9 @@ func (cluster *Cluster) K8SGetNodes() ([]Agent, error) {
 	for _, n := range nodes.Items {
 		var agent Agent
 		data, _ := json.Marshal(n)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "%s\n", data)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s\n", data)
 		nodeip := n.Status.Addresses
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, LvlInfo, "IP %s ", nodeip[0].Address)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "IP %s ", nodeip[0].Address)
 		agent.Id = n.Status.NodeInfo.MachineID
 		agent.OsName = n.Status.NodeInfo.OperatingSystem
 		agent.OsKernel = n.Status.NodeInfo.KernelVersion

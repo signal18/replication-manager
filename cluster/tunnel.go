@@ -32,7 +32,7 @@ func (server *ServerMonitor) GetTunnelLocalPort() int {
 
 		listen, err := net.ListenTCP("tcp", addr)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlErr, "Can't get tunnel port %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't get tunnel port %s", err)
 			continue
 		}
 
@@ -105,7 +105,7 @@ func (server *ServerMonitor) Tunnel() {
 	server.TunnelPort = strconv.Itoa(server.GetTunnelLocalPort())
 	localAddr := "127.0.0.1:" + server.TunnelPort
 	remoteAddr := server.Host + ":" + server.Port
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, LvlInfo, "Opening tunnel from %s to %s", localAddr, remoteAddr)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Opening tunnel from %s to %s", localAddr, remoteAddr)
 	// Build SSH client configuration
 	user, pwd := misc.SplitPair(server.ClusterGroup.Conf.TunnelCredential)
 	cfg, err := server.makeSshConfig(user, pwd)
