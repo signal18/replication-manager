@@ -488,6 +488,7 @@ func (cluster *Cluster) InitFromConf() {
 	//fmt.Printf("INIT CLUSTER CONF :\n")
 	//cluster.Conf.PrintConf()
 	cluster.initScheduler()
+	cluster.CheckDefaultUser(true)
 
 }
 
@@ -596,6 +597,8 @@ func (cluster *Cluster) Run() {
 				go cluster.Heartbeat(wg)
 				wg.Wait()
 				// Heartbeat switchover or failover controller runs only on active repman
+
+				go cluster.CheckDefaultUser(false)
 
 				if cluster.runOnceAfterTopology {
 					// Preserved server state in proxy during reload config
