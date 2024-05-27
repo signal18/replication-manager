@@ -796,10 +796,16 @@ func (server *ServerMonitor) Refresh() error {
 		}
 
 		if server.BinaryLogFilePrevious != "" && server.BinaryLogFilePrevious != server.BinaryLogFile {
-			if server.BinaryLogFilePrevious != "" {
+			// Always running, triggered by binlog rotation
+			if cluster.Conf.BinlogRotationScript != "" && server.IsMaster() {
+				cluster.BinlogRotationScript(server)
+			}
+
+			if cluster.Conf.BackupBinlogs {
 				server.InitiateJobBackupBinlog(server.BinaryLogFilePrevious)
 				go server.JobBackupBinlogPurge(server.BinaryLogFilePrevious)
 			}
+
 			server.RefreshBinaryLogs()
 		}
 
