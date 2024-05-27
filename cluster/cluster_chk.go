@@ -821,3 +821,20 @@ func (cluster *Cluster) CheckInjectConfig() {
 	}
 
 }
+
+func (cluster *Cluster) CheckDefaultUser(i bool) {
+	creds := make([]string, 0)
+	if cluster.APIUsers["admin"].Password == "repman" {
+		creds = append(creds, "admin")
+	}
+	if cluster.APIUsers["dba"].Password == "repman" {
+		creds = append(creds, "dba")
+	}
+	out := strings.Join(creds, ",")
+	if out != "" {
+		if i {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, fmt.Sprintf(clusterError["WARN0108"], out))
+		}
+		cluster.StateMachine.AddState("WARN0108", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0108"], out), ErrFrom: "CLUSTER"})
+	}
+}
