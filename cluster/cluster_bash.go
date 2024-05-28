@@ -106,3 +106,17 @@ func (cluster *Cluster) BinlogRotationScript(srv *ServerMonitor) error {
 	}
 	return nil
 }
+
+func (cluster *Cluster) BinlogCopyScript(srv *ServerMonitor, binlog string) error {
+	if cluster.Conf.BinlogCopyScript != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling binlog copy script on %s. Binlog: %s", srv.URL, binlog)
+		var out []byte
+		out, err := exec.Command(cluster.Conf.BinlogCopyScript, cluster.Name, srv.Host, srv.Port, srv.GetMyBackupDirectory(), binlog).CombinedOutput()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Binlog copy script complete: %s", string(out))
+	}
+	return nil
+}

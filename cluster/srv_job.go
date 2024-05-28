@@ -1284,6 +1284,8 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string) error {
 		return server.JobBackupBinlog(binlogfile)
 	case "ssh":
 		return server.JobBackupBinlogSSH(binlogfile)
+	case "script":
+		return cluster.BinlogCopyScript(server, binlogfile)
 	}
 
 	return errors.New("Wrong configuration for Backup Binlog Method!")

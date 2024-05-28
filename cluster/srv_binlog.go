@@ -422,7 +422,7 @@ func (server *ServerMonitor) JobBinlogPurgeMasterOnRestore() {
 	}
 
 	//Only purge if oldest master binlog has more than 2 files
-	if oldestbinlog < cluster.SlavesOldestMasterFile.Suffix-1 {
+	if oldestbinlog > 0 && oldestbinlog < cluster.SlavesOldestMasterFile.Suffix-1 {
 
 		//Retain previous binlog
 		filename := cluster.SlavesOldestMasterFile.Prefix + "." + fmt.Sprintf("%06d", cluster.SlavesOldestMasterFile.Suffix-1)
