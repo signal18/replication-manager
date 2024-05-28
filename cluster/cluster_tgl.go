@@ -121,7 +121,7 @@ func (cluster *Cluster) SwitchForceBinlogSlowqueries() {
 
 func (cluster *Cluster) SwitchServerMaintenance(serverid uint64) {
 	server := cluster.GetServerFromId(serverid)
-	server.SwitchMaintenance()
+	server.IsMaintenance = !server.IsMaintenance
 	cluster.SetProxyServerMaintenance(server.ServerID)
 }
 func (cluster *Cluster) SwitchProvNetCNI() {
