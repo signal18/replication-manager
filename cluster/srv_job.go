@@ -1234,19 +1234,6 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string) error {
 	}
 	defer client.Close()
 
-	if server.BinaryLogDir == "" {
-		basename, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_BIN_BASENAME", server.DBVersion)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Variable log_bin_basename not found!")
-			return err
-		}
-
-		parts := strings.Split(basename, "/")
-		binlogpath := strings.Join(parts[:len(parts)-1], "/")
-
-		server.SetBinaryLogDir(binlogpath)
-	}
-
 	remotefile := server.BinaryLogDir + "/" + binlogfile
 	localfile := server.GetMyBackupDirectory() + "/" + binlogfile
 
@@ -1279,6 +1266,21 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string) error {
 
 func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string) error {
 	cluster := server.ClusterGroup
+
+	if server.BinaryLogDir == "" {
+		//Not using Variables[] due to uppercase values
+		basename, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_BIN_BASENAME", server.DBVersion)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Variable log_bin_basename not found!")
+			return err
+		}
+
+		parts := strings.Split(basename, "/")
+		binlogpath := strings.Join(parts[:len(parts)-1], "/")
+
+		server.SetBinaryLogDir(binlogpath)
+	}
+
 	switch cluster.Conf.BinlogCopyMode {
 	case "client", "mysqlbinlog":
 		return server.JobBackupBinlog(binlogfile)
