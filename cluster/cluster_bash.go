@@ -111,7 +111,7 @@ func (cluster *Cluster) BinlogCopyScript(srv *ServerMonitor, binlog string) erro
 	if cluster.Conf.BinlogCopyScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling binlog copy script on %s. Binlog: %s", srv.URL, binlog)
 		var out []byte
-		out, err := exec.Command(cluster.Conf.BinlogCopyScript, cluster.Name, srv.Host, srv.Port, srv.GetMyBackupDirectory(), binlog).CombinedOutput()
+		out, err := exec.Command(cluster.Conf.BinlogCopyScript, cluster.Name, srv.Host, srv.Port, binlog).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 		}
