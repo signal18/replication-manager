@@ -101,12 +101,12 @@ type ReplicationManager struct {
 	exit                                             bool
 	isStarted                                        bool
 	Confs                                            map[string]config.Config
-	VersionConfs                                     map[string]*config.ConfVersion
-	grpcServer                                       *grpc.Server               `json:"-"`
-	grpcWrapped                                      *grpcweb.WrappedGrpcServer `json:"-"`
-	V3Up                                             chan bool                  `json:"-"`
-	v3Config                                         Repmanv3Config             `json:"-"`
-	cloud18CheckSum                                  hash.Hash                  `json:"-"`
+	VersionConfs                                     map[string]*config.ConfVersion `json:"-"`
+	grpcServer                                       *grpc.Server                   `json:"-"`
+	grpcWrapped                                      *grpcweb.WrappedGrpcServer     `json:"-"`
+	V3Up                                             chan bool                      `json:"-"`
+	v3Config                                         Repmanv3Config                 `json:"-"`
+	cloud18CheckSum                                  hash.Hash                      `json:"-"`
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
