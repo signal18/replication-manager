@@ -35,6 +35,7 @@ app.controller('DashboardController', function (
 
 ) {
 
+  $scope.yearNow = new Date().getFullYear();
   $scope.selectedClusterName = undefined;
   $scope.selectedPlan = undefined;
   $scope.selectedOrchestrator = undefined;
