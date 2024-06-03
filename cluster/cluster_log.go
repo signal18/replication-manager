@@ -339,7 +339,7 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack"}).Errorf(cliformat, args...)
 				}
 				if cluster.Conf.TeamsUrl != "" {
-					go cluster.sendMsTeams(level, format, args)
+					go cluster.sendMsTeams(level, format, args...)
 				}
 			case "INFO":
 				log.WithField("cluster", cluster.Name).Infof(cliformat, args...)
