@@ -183,7 +183,60 @@ func (cluster *Cluster) ResticFetchRepo() error {
 			}
 		}
 		cluster.Backups = filterRepo
+
+		cluster.ResticFetchRepoStat()
 	}
+
+	return nil
+}
+
+func (cluster *Cluster) ResticFetchRepoStat() error {
+
+	// defer func() { cluster.canResticFetchRepo = true }()
+	// if cluster.Conf.BackupRestic && cluster.canResticFetchRepo {
+	cluster.canResticFetchRepo = false
+	//		var stdout, stderr []byte
+	var stdoutBuf, stderrBuf bytes.Buffer
+	var errStdout, errStderr error
+	resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, "stats", "--mode", "raw-data", "--json")
+	stdoutIn, _ := resticcmd.StdoutPipe()
+	stderrIn, _ := resticcmd.StderrPipe()
+	stdout := io.MultiWriter(os.Stdout, &stdoutBuf)
+	stderr := io.MultiWriter(os.Stderr, &stderrBuf)
+
+	resticcmd.Env = cluster.ResticGetEnv()
+	if err := resticcmd.Start(); err != nil {
+		cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
+		return err
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		_, errStdout = io.Copy(stdout, stdoutIn)
+		wg.Done()
+	}()
+
+	_, errStderr = io.Copy(stderr, stderrIn)
+	wg.Wait()
+
+	err := resticcmd.Wait()
+	if err != nil {
+		cluster.StateMachine.AddState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
+		cluster.ResticInitRepo()
+		return err
+	}
+	if errStdout != nil || errStderr != nil {
+		return errors.New("failed to capture stdout or stderr\n")
+	}
+
+	var repostat v3.BackupStat
+	err = json.Unmarshal(stdoutBuf.Bytes(), &repostat)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error unmarshal backups %s", err)
+		return err
+	}
+	cluster.BackupStat = repostat
+	// }
 
 	return nil
 }

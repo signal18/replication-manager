@@ -1461,6 +1461,12 @@ func (x *Certificate) GetAuthority() string {
 	return ""
 }
 
+type BackupStat struct {
+	TotalSize       int64   `protobuf:"varint,1,opt,name=total_size,proto3" json:"total_size"`
+	TotalFileCount  int64   `protobuf:"varint,2,opt,name=total_file_count,proto3" json:"total_file_count"`
+	TotalBlobCount  int64   `protobuf:"varint,3,opt,name=total_blob_count,proto3" json:"total_blob_count"`
+}
+
 type Backup struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
