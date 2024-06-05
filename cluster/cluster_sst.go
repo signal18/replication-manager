@@ -114,7 +114,7 @@ func (cluster *Cluster) SSTRunReceiverToRestic(filename string) (string, error) 
 	return strconv.Itoa(destinationPort), nil
 }
 
-func (cluster *Cluster) SSTRunReceiverToFile(filename string, openfile string) (string, error) {
+func (cluster *Cluster) SSTRunReceiverToFile(server *ServerMonitor, filename string, openfile string) (string, error) {
 	sst := new(SST)
 	sst.cluster = cluster
 	var writers []io.Writer
@@ -148,12 +148,12 @@ func (cluster *Cluster) SSTRunReceiverToFile(filename string, openfile string) (
 	SSTs.Lock()
 	SSTs.SSTconnections[destinationPort] = sst
 	SSTs.Unlock()
-	go sst.tcp_con_handle_to_file()
+	go sst.tcp_con_handle_to_file(server)
 
 	return strconv.Itoa(destinationPort), nil
 }
 
-func (cluster *Cluster) SSTRunReceiverToGZip(filename string, openfile string) (string, error) {
+func (cluster *Cluster) SSTRunReceiverToGZip(server *ServerMonitor, filename string, openfile string) (string, error) {
 	sst := new(SST)
 	sst.cluster = cluster
 
@@ -189,12 +189,12 @@ func (cluster *Cluster) SSTRunReceiverToGZip(filename string, openfile string) (
 	SSTs.Lock()
 	SSTs.SSTconnections[destinationPort] = sst
 	SSTs.Unlock()
-	go sst.tcp_con_handle_to_gzip()
+	go sst.tcp_con_handle_to_gzip(server)
 
 	return strconv.Itoa(destinationPort), nil
 }
 
-func (sst *SST) tcp_con_handle_to_gzip() {
+func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor) {
 
 	var err error
 
@@ -211,6 +211,8 @@ func (sst *SST) tcp_con_handle_to_gzip() {
 		delete(SSTs.SSTconnections, port)
 		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
+
+		server.BackupRestic()
 	}()
 
 	sst.in, err = sst.listener.Accept()
@@ -231,7 +233,7 @@ func (sst *SST) tcp_con_handle_to_gzip() {
 	}
 }
 
-func (sst *SST) tcp_con_handle_to_file() {
+func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor) {
 
 	var err error
 
@@ -247,6 +249,8 @@ func (sst *SST) tcp_con_handle_to_file() {
 		delete(SSTs.SSTconnections, port)
 		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
+
+		server.BackupRestic()
 	}()
 
 	sst.in, err = sst.listener.Accept()

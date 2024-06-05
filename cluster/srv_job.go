@@ -118,12 +118,12 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	var backupext string = ".xbtream"
 	if cluster.Conf.CompressBackups {
 		backupext = backupext + ".gz"
-		port, err = cluster.SSTRunReceiverToGZip(server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, ConstJobCreateFile)
+		port, err = cluster.SSTRunReceiverToGZip(server, server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, ConstJobCreateFile)
 		if err != nil {
 			return 0, nil
 		}
 	} else {
-		port, err = cluster.SSTRunReceiverToFile(server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, ConstJobCreateFile)
+		port, err = cluster.SSTRunReceiverToFile(server, server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, ConstJobCreateFile)
 		if err != nil {
 			return 0, nil
 		}
@@ -311,7 +311,7 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := cluster.SSTRunReceiverToFile(server.Datadir+"/log/log_error.log", ConstJobAppendFile)
+	port, err := cluster.SSTRunReceiverToFile(server, server.Datadir+"/log/log_error.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}
@@ -378,7 +378,7 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := cluster.SSTRunReceiverToFile(server.Datadir+"/log/log_slow_query.log", ConstJobAppendFile)
+	port, err := cluster.SSTRunReceiverToFile(server, server.Datadir+"/log/log_slow_query.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}
@@ -1006,7 +1006,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	return nil
 }
 
-func (server *ServerMonitor) JobBackupBinlog(binlogfile string) error {
+func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) error {
 	cluster := server.ClusterGroup
 	if !server.IsMaster() {
 		return errors.New("Copy only master binlog")
@@ -1037,7 +1037,11 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string) error {
 		return cmdrunErr
 	}
 
-	// Get
+	//Skip copying to resting when purge due to batching
+	if !isPurge {
+		// Backup to restic when no error (defer to prevent unfinished physical copy)
+		defer server.BackupRestic()
+	}
 
 	return nil
 }
@@ -1060,7 +1064,8 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 			if _, err := os.Stat(server.GetMyBackupDirectory() + "/" + filename); os.IsNotExist(err) {
 				if _, ok := server.BinaryLogFiles[filename]; ok {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backup master missing binlog of %s,%s", server.URL, filename)
-					server.InitiateJobBackupBinlog(filename)
+					//Set true to skip sending to resting multiple times
+					server.InitiateJobBackupBinlog(filename, true)
 				}
 			}
 			keeping[filename] = binlogfilestop
@@ -1212,7 +1217,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	return nil
 }
 
-func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string) error {
+func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool) error {
 	cluster := server.ClusterGroup
 	if !server.IsMaster() {
 		return errors.New("Copy only master binlog")
@@ -1261,10 +1266,15 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string) error {
 		return err
 	}
 
+	//Skip copying to resting when purge due to batching
+	if !isPurge {
+		// Backup to restic when no error (defer to prevent unfinished physical copy)
+		defer server.BackupRestic()
+	}
 	return nil
 }
 
-func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string) error {
+func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge bool) error {
 	cluster := server.ClusterGroup
 
 	if server.BinaryLogDir == "" {
@@ -1283,11 +1293,11 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string) error {
 
 	switch cluster.Conf.BinlogCopyMode {
 	case "client", "mysqlbinlog":
-		return server.JobBackupBinlog(binlogfile)
+		return server.JobBackupBinlog(binlogfile, isPurge)
 	case "ssh":
-		return server.JobBackupBinlogSSH(binlogfile)
+		return server.JobBackupBinlogSSH(binlogfile, isPurge)
 	case "script":
-		return cluster.BinlogCopyScript(server, binlogfile)
+		return cluster.BinlogCopyScript(server, binlogfile, isPurge)
 	}
 
 	return errors.New("Wrong configuration for Backup Binlog Method!")
