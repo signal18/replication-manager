@@ -119,7 +119,8 @@ func (cluster *Cluster) BinlogCopyScript(srv *ServerMonitor, binlog string, isPu
 			// Skip backup to restic if in purge binlog
 			if !isPurge {
 				// Backup to restic when no error (defer to prevent unfinished physical copy)
-				srv.BackupRestic()
+				backtype := "binlog"
+				defer srv.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, srv.DBVersion.Flavor, srv.DBVersion.ToString(), backtype)
 			}
 		}
 

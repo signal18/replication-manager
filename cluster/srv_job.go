@@ -850,7 +850,8 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
-	server.BackupRestic()
+	backtype := "logical"
+	server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupLogicalType)
 	return nil
 }
 
@@ -867,13 +868,24 @@ func (server *ServerMonitor) copyLogs(r io.Reader) {
 	}
 }
 
-func (server *ServerMonitor) BackupRestic() error {
+func (server *ServerMonitor) BackupRestic(tags ...string) error {
 	cluster := server.ClusterGroup
 	var stdout, stderr []byte
 	var errStdout, errStderr error
 
 	if cluster.Conf.BackupRestic {
-		resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, "backup", server.GetMyBackupDirectory())
+		args := make([]string, 0)
+
+		args = append(args, "backup")
+		for _, tag := range tags {
+			if tag != "" {
+				args = append(args, "--tag")
+				args = append(args, tag)
+			}
+		}
+		args = append(args, server.GetMyBackupDirectory())
+
+		resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, args...)
 
 		stdoutIn, _ := resticcmd.StdoutPipe()
 		stderrIn, _ := resticcmd.StderrPipe()
@@ -1040,7 +1052,8 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	//Skip copying to resting when purge due to batching
 	if !isPurge {
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
-		defer server.BackupRestic()
+		backtype := "binlog"
+		defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
 	}
 
 	return nil
@@ -1269,7 +1282,8 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 	//Skip copying to resting when purge due to batching
 	if !isPurge {
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
-		defer server.BackupRestic()
+		backtype := "binlog"
+		defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
 	}
 	return nil
 }
