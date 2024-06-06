@@ -303,7 +303,7 @@ func (app *App) Start() (err error) {
 			return
 		}
 
-		carbonserver.Log = Log
+		carbonserver.Log = app.Logger
 		carbonserver := carbonserver.NewCarbonserverListener(core.Get)
 		carbonserver.SetWhisperData(conf.Whisper.DataDir)
 		carbonserver.SetMaxGlobs(conf.Carbonserver.MaxGlobs)
