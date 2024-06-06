@@ -35,10 +35,10 @@ func (q *WriteoutQueue) makeRebuildCallback(nextRebuildTime time.Time) func(chan
 		// next rebuild
 		nextRebuildOnce.Do(func() {
 			now := time.Now()
-			q.cache.logger.Debugf("nextRebuildOnce.Do: %#v %#v", now.String(), nextRebuildTime.String())
+			Log.Debugf("nextRebuildOnce.Do: %#v %#v", now.String(), nextRebuildTime.String())
 			if now.Before(nextRebuildTime) {
 				sleepTime := nextRebuildTime.Sub(now)
-				q.cache.logger.Debugf("sleep %s before rebuild", sleepTime.String())
+				Log.Debugf("sleep %s before rebuild", sleepTime.String())
 
 				select {
 				case <-time.After(sleepTime):

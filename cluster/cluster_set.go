@@ -23,6 +23,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/sirupsen/logrus"
 )
 
 func (cluster *Cluster) SetStatus() {
@@ -1653,4 +1654,21 @@ func (cluster *Cluster) SetForceBinlogPurgeTotalSize(value int) {
 
 func (cluster *Cluster) SetForceBinlogPurgeMinReplica(value int) {
 	cluster.Conf.ForceBinlogPurgeMinReplica = value
+}
+
+func (cluster *Cluster) SetCarbonLogger(value *logrus.Logger) {
+	cluster.Lock()
+	cluster.clog = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetLogGraphiteLevel(value int) {
+	cluster.Conf.LogGraphiteLevel = value
+	if value > 0 {
+		cluster.Conf.LogGraphite = true
+	} else {
+		cluster.Conf.LogGraphite = false
+	}
+
+	cluster.clog.SetLevel(cluster.Conf.ToLogrusLevel(value))
 }

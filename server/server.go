@@ -35,6 +35,7 @@ import (
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 
+	clog "github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
 
@@ -107,6 +108,7 @@ type ReplicationManager struct {
 	V3Up                                             chan bool                      `json:"-"`
 	v3Config                                         Repmanv3Config                 `json:"-"`
 	cloud18CheckSum                                  hash.Hash                      `json:"-"`
+	clog                                             *clog.Logger                   `json:"-"`
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -1392,6 +1394,9 @@ func (repman *ReplicationManager) Run() error {
 	repman.Os = GoOS
 	repman.MemProfile = memprofile
 	repman.CpuProfile = cpuprofile
+	repman.clog = clog.New()
+
+	repman.clog.SetLevel(repman.Conf.ToLogrusLevel(repman.Conf.LogGraphiteLevel))
 	if repman.CpuProfile != "" {
 		fcpupprof, err := os.Create(repman.CpuProfile)
 		if err != nil {
@@ -1423,9 +1428,9 @@ func (repman *ReplicationManager) Run() error {
 		}
 	}
 
-	// if repman.Conf.LogLevel > 1 {
-	log.SetLevel(log.DebugLevel)
-	// }
+	if repman.Conf.LogLevel > 1 {
+		log.SetLevel(log.DebugLevel)
+	}
 
 	if repman.Conf.LogFile != "" {
 		log.WithField("version", repman.Version).Info("Log to file: " + repman.Conf.LogFile)
@@ -1506,6 +1511,7 @@ func (repman *ReplicationManager) Run() error {
 
 	// Initialize go-carbon
 	if repman.Conf.GraphiteEmbedded {
+		graphite.Log = repman.clog
 		go graphite.RunCarbon(&repman.Conf)
 		log.WithFields(log.Fields{
 			"metricport": repman.Conf.GraphiteCarbonPort,
@@ -1529,6 +1535,8 @@ func (repman *ReplicationManager) Run() error {
 	}
 	for _, cluster := range repman.Clusters {
 		cluster.SetClusterList(repman.Clusters)
+
+		cluster.SetCarbonLogger(repman.clog)
 	}
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)

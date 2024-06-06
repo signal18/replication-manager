@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/siddontang/go-log/log"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite/carbon"
 	logging "github.com/signal18/replication-manager/graphite/logging"
@@ -22,7 +23,7 @@ import (
 	_ "net/http/pprof"
 )
 
-var log = logrus.New()
+var Log = logrus.New()
 
 // Graphite is a struct that defines the relevant properties of a graphite
 // connection
@@ -221,8 +222,9 @@ func RunCarbon(conf *config.Config) error {
 		loglevel = logrus.ErrorLevel
 	}
 
-	log.SetLevel(loglevel)
-	logging.Log = log
+	Log.SetLevel(loglevel)
+
+	logging.Log = Log
 
 	input, err := ioutil.ReadFile(conf.ShareDir + "/carbon.conf.template")
 	if err != nil {
@@ -244,15 +246,15 @@ func RunCarbon(conf *config.Config) error {
 		os.Exit(1)
 	}
 
-	// carbon.Log = log
-	app := carbon.New(conf.WorkingDir+"/carbon.conf", log)
+	carbon.Log = Log
+	app := carbon.New(conf.WorkingDir + "/carbon.conf")
 
 	if err = app.ParseConfig(); err != nil {
 		return err
 	}
 
 	app.Config.Common.Logfile = conf.WorkingDir + "/carbon.log"
-	//	graphite.Log.Fatal(app.Config.Whisper.SchemasFilename)
+	//	log.Fatal(app.Config.Whisper.SchemasFilename)
 	cfg := app.Config
 
 	var runAsUser *user.User
