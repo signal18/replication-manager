@@ -1,4 +1,3 @@
-
 package persister
 
 import (
@@ -8,8 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/sirupsen/logrus"
 	whisper "github.com/signal18/replication-manager/graphite/whisper"
+	"github.com/sirupsen/logrus"
 
 	"github.com/signal18/replication-manager/graphite/helper"
 	"github.com/signal18/replication-manager/graphite/points"
@@ -36,6 +35,7 @@ type Whisper struct {
 	throttleTicker      *ThrottleTicker
 	storeMutex          [storeMutexCount]sync.Mutex
 	mockStore           func() (StoreFunc, func())
+	logger              *logrus.Logger
 	// blockThrottleNs        uint64 // sum ns counter
 	// blockQueueGetNs        uint64 // sum ns counter
 	// blockAvoidConcurrentNs uint64 // sum ns counter
@@ -48,7 +48,8 @@ func NewWhisper(
 	schemas WhisperSchemas,
 	aggregation *WhisperAggregation,
 	recv func(chan bool) *points.Points,
-	confirm func(*points.Points)) *Whisper {
+	confirm func(*points.Points),
+	logger *logrus.Logger) *Whisper {
 
 	return &Whisper{
 		recv:                recv,
@@ -58,6 +59,7 @@ func NewWhisper(
 		workersCount:        1,
 		rootPath:            rootPath,
 		maxUpdatesPerSecond: 0,
+		logger:              logger,
 	}
 }
 
@@ -114,23 +116,23 @@ func store(p *Whisper, values *points.Points) {
 	if err != nil {
 		// create new whisper if file not exists
 		if !os.IsNotExist(err) {
-			logrus.Errorf("[persister] Failed to open whisper file %s: %s", path, err.Error())
+			p.logger.Errorf("[persister] Failed to open whisper file %s: %s", path, err.Error())
 			return
 		}
 
 		schema, ok := p.schemas.Match(values.Metric)
 		if !ok {
-			logrus.Errorf("[persister] No storage schema defined for %s", values.Metric)
+			p.logger.Errorf("[persister] No storage schema defined for %s", values.Metric)
 			return
 		}
 
 		aggr := p.aggregation.match(values.Metric)
 		if aggr == nil {
-			logrus.Errorf("[persister] No storage aggregation defined for %s", values.Metric)
+			p.logger.Errorf("[persister] No storage aggregation defined for %s", values.Metric)
 			return
 		}
 
-		logrus.WithFields(logrus.Fields{
+		p.logger.WithFields(logrus.Fields{
 			"retention":    schema.RetentionStr,
 			"schema":       schema.Name,
 			"aggregation":  aggr.name,
@@ -139,7 +141,7 @@ func store(p *Whisper, values *points.Points) {
 		}).Debugf("[persister] Creating %s", path)
 
 		if err = os.MkdirAll(filepath.Dir(path), os.ModeDir|os.ModePerm); err != nil {
-			logrus.Error(err)
+			p.logger.Error(err)
 			return
 		}
 
@@ -147,7 +149,7 @@ func store(p *Whisper, values *points.Points) {
 			Sparse: p.sparse,
 		})
 		if err != nil {
-			logrus.Errorf("[persister] Failed to create new whisper file %s: %s", path, err.Error())
+			p.logger.Errorf("[persister] Failed to create new whisper file %s: %s", path, err.Error())
 			return
 		}
 
@@ -166,7 +168,7 @@ func store(p *Whisper, values *points.Points) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			logrus.Errorf("[persister] UpdateMany %s recovered: %s", path, r)
+			p.logger.Errorf("[persister] UpdateMany %s recovered: %s", path, r)
 		}
 	}()
 

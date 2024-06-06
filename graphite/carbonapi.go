@@ -1,4 +1,3 @@
-
 package graphite
 
 import (
@@ -17,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	pb "github.com/signal18/replication-manager/graphite/carbonzipper/carbonzipperpb"
 	"github.com/signal18/replication-manager/graphite/carbonzipper/mlog"
 	"github.com/signal18/replication-manager/graphite/carbonzipper/mstats"
@@ -658,7 +658,16 @@ func usageHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(usageMsg)
 }
 
-func RunCarbonApi(z string, port int, l int, cacheType string, mc string, memsize int, cpus int, tz string, logdir string) {
+func RunCarbonApi(conf *config.Config) {
+	var z string = "http://0.0.0.0:" + strconv.Itoa(conf.GraphiteCarbonServerPort)
+	var port int = conf.GraphiteCarbonApiPort
+	var l int = 20
+	var cacheType string = "mem"
+	var mc string = ""
+	var memsize int = 200
+	var cpus int = 0
+	var tz string = ""
+	var logdir string = conf.WorkingDir
 
 	interval := 60 * time.Second
 	graphiteHost := ""

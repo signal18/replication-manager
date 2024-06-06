@@ -30,14 +30,16 @@ type App struct {
 	Persister      *persister.Whisper
 	Carbonserver   *carbonserver.CarbonserverListener
 	Collector      *Collector // (!!!) Should be re-created on every change config/modules
+	Logger         *logrus.Logger
 	exit           chan bool
 }
 
 // New App instance
-func New(configFilename string) *App {
+func New(configFilename string, logger *logrus.Logger) *App {
 	app := &App{
 		ConfigFilename: configFilename,
 		Config:         NewConfig(),
+		Logger:         logger,
 		exit:           make(chan bool),
 	}
 	return app
@@ -143,31 +145,31 @@ func (app *App) stopListeners() {
 	if app.TCP != nil {
 		app.TCP.Stop()
 		app.TCP = nil
-		Log.Debug("[tcp] finished")
+		app.Logger.Debug("[tcp] finished")
 	}
 
 	if app.Pickle != nil {
 		app.Pickle.Stop()
 		app.Pickle = nil
-		Log.Debug("[pickle] finished")
+		app.Logger.Debug("[pickle] finished")
 	}
 
 	if app.UDP != nil {
 		app.UDP.Stop()
 		app.UDP = nil
-		Log.Debug("[udp] finished")
+		app.Logger.Debug("[udp] finished")
 	}
 
 	if app.CarbonLink != nil {
 		app.CarbonLink.Stop()
 		app.CarbonLink = nil
-		Log.Debug("[carbonlink] finished")
+		app.Logger.Debug("[carbonlink] finished")
 	}
 
 	if app.Carbonserver != nil {
 		app.Carbonserver.Stop()
 		app.Carbonserver = nil
-		Log.Debug("[carbonserver] finished")
+		app.Logger.Debug("[carbonserver] finished")
 	}
 }
 
@@ -177,25 +179,25 @@ func (app *App) stopAll() {
 	if app.Persister != nil {
 		app.Persister.Stop()
 		app.Persister = nil
-		Log.Debug("[persister] finished")
+		app.Logger.Debug("[persister] finished")
 	}
 
 	if app.Cache != nil {
 		app.Cache.Stop()
 		app.Cache = nil
-		Log.Debug("[cache] finished")
+		app.Logger.Debug("[cache] finished")
 	}
 
 	if app.Collector != nil {
 		app.Collector.Stop()
 		app.Collector = nil
-		Log.Debug("[stat] finished")
+		app.Logger.Debug("[stat] finished")
 	}
 
 	if app.exit != nil {
 		close(app.exit)
 		app.exit = nil
-		Log.Debug("[app] close(exit)")
+		app.Logger.Debug("[app] close(exit)")
 	}
 }
 
@@ -214,6 +216,7 @@ func (app *App) startPersister() {
 			app.Config.Whisper.Aggregation,
 			app.Cache.WriteoutQueue().GetNotConfirmed,
 			app.Cache.Confirm,
+			app.Logger,
 		)
 		p.SetMaxUpdatesPerSecond(app.Config.Whisper.MaxUpdatesPerSecond)
 		p.SetSparse(app.Config.Whisper.Sparse)
@@ -240,7 +243,7 @@ func (app *App) Start() (err error) {
 
 	runtime.GOMAXPROCS(conf.Common.MaxCPU)
 
-	core := cache.New()
+	core := cache.New(app.Logger)
 	core.SetMaxSize(conf.Cache.MaxSize)
 	core.SetWriteStrategy(conf.Cache.WriteStrategy)
 
@@ -300,7 +303,7 @@ func (app *App) Start() (err error) {
 			return
 		}
 
-		carbonserver.Log = Log
+		carbonserver.Log = app.Logger
 		carbonserver := carbonserver.NewCarbonserverListener(core.Get)
 		carbonserver.SetWhisperData(conf.Whisper.DataDir)
 		carbonserver.SetMaxGlobs(conf.Carbonserver.MaxGlobs)
