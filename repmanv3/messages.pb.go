@@ -1461,6 +1461,12 @@ func (x *Certificate) GetAuthority() string {
 	return ""
 }
 
+type BackupStat struct {
+	TotalSize       int64   `protobuf:"varint,1,opt,name=total_size,proto3" json:"total_size"`
+	TotalFileCount  int64   `protobuf:"varint,2,opt,name=total_file_count,proto3" json:"total_file_count"`
+	TotalBlobCount  int64   `protobuf:"varint,3,opt,name=total_blob_count,proto3" json:"total_blob_count"`
+}
+
 type Backup struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1475,6 +1481,7 @@ type Backup struct {
 	Username string   `protobuf:"bytes,7,opt,name=username,proto3" json:"username,omitempty"`
 	Uid      int64    `protobuf:"varint,8,opt,name=uid,proto3" json:"uid,omitempty"`
 	Gid      int64    `protobuf:"varint,9,opt,name=gid,proto3" json:"gid,omitempty"`
+	Tags []string `protobuf:"bytes,10,rep,name=tags,proto3" json:"tags,omitempty"`
 }
 
 func (x *Backup) Reset() {

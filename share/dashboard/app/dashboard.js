@@ -240,6 +240,11 @@ app.controller('DashboardController', function (
     { id: '6', name: 'SAT' },
   ];
 
+  $scope.humanFileSize = function(size) {
+    var i = size == 0 ? 0 : Math.floor(Math.log(size) / Math.log(1024));
+    return +((size / Math.pow(1024, i)).toFixed(2)) * 1 + ' ' + ['B', 'kB', 'MB', 'GB', 'TB'][i];
+} 
+
   var getClusterUrl = function () {
     return AppService.getClusterUrl($scope.selectedClusterName);
   };

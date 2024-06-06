@@ -172,6 +172,7 @@ type Cluster struct {
 	tunnel                    *ssh.Client                 `json:"-"`
 	QueryRules                map[uint32]config.QueryRule `json:"-"`
 	Backups                   []v3.Backup                 `json:"-"`
+	BackupStat                v3.BackupStat               `json:"backupStat"`
 	SLAHistory                []state.Sla                 `json:"slaHistory"`
 	APIUsers                  map[string]APIUser          `json:"apiUsers"`
 	Schedule                  map[string]cron.Entry       `json:"-"`
