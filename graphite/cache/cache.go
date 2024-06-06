@@ -26,6 +26,8 @@ const (
 
 const shardCount = 1024
 
+var Log = logrus.New()
+
 // A "thread" safe map of type string:Anything.
 // To avoid lock bottlenecks this map is dived to several (shardCount) map shards.
 type Cache struct {
@@ -40,8 +42,7 @@ type Cache struct {
 
 	writeoutQueue *WriteoutQueue
 
-	xlog   atomic.Value // io.Writer
-	logger *logrus.Logger
+	xlog atomic.Value // io.Writer
 
 	stat struct {
 		size              int32  // changing via atomic
@@ -62,10 +63,9 @@ type Shard struct {
 }
 
 // Creates a new cache instance
-func New(logger *logrus.Logger) *Cache {
+func New() *Cache {
 	c := &Cache{
 		data:          make([]*Shard, shardCount),
-		logger:        logger,
 		writeStrategy: Noop,
 		maxSize:       1000000,
 	}
@@ -77,6 +77,7 @@ func New(logger *logrus.Logger) *Cache {
 		}
 	}
 
+	// fmt.Printf("Cache logger: %p", Log)
 	c.writeoutQueue = NewWriteoutQueue(c)
 	return c
 }
