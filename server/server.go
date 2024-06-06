@@ -272,10 +272,13 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
 
 	flags.BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
-	flags.IntVar(&conf.LogHeartbeatLevel, "log-heartbeat-level", 1, "Log Hearbeat Level")
+	flags.IntVar(&conf.LogHeartbeatLevel, "log-heartbeat-level", 1, "Log Heartbeat Level")
 
 	flags.BoolVar(&conf.LogFailedElection, "log-failed-election", true, "Log failed election")
 	flags.IntVar(&conf.LogFailedElectionLevel, "log-failed-election-level", 1, "Log failed election Level")
+
+	flags.BoolVar(&conf.LogGraphite, "log-graphite", true, "Log Graphite")
+	flags.IntVar(&conf.LogGraphiteLevel, "log-graphite-level", 2, "Log Graphite Level")
 
 	// SST
 	flags.IntVar(&conf.SSTSendBuffer, "sst-send-buffer", 16384, "SST send buffer size")
@@ -1420,9 +1423,9 @@ func (repman *ReplicationManager) Run() error {
 		}
 	}
 
-	if repman.Conf.LogLevel > 1 {
-		log.SetLevel(log.DebugLevel)
-	}
+	// if repman.Conf.LogLevel > 1 {
+	log.SetLevel(log.DebugLevel)
+	// }
 
 	if repman.Conf.LogFile != "" {
 		log.WithField("version", repman.Version).Info("Log to file: " + repman.Conf.LogFile)
@@ -1503,13 +1506,13 @@ func (repman *ReplicationManager) Run() error {
 
 	// Initialize go-carbon
 	if repman.Conf.GraphiteEmbedded {
-		go graphite.RunCarbon(repman.Conf.ShareDir, repman.Conf.WorkingDir, repman.Conf.GraphiteCarbonPort, repman.Conf.GraphiteCarbonLinkPort, repman.Conf.GraphiteCarbonPicklePort, repman.Conf.GraphiteCarbonPprofPort, repman.Conf.GraphiteCarbonServerPort)
+		go graphite.RunCarbon(&repman.Conf)
 		log.WithFields(log.Fields{
 			"metricport": repman.Conf.GraphiteCarbonPort,
 			"httpport":   repman.Conf.GraphiteCarbonServerPort,
 		}).Info("Carbon server started")
 		time.Sleep(2 * time.Second)
-		go graphite.RunCarbonApi("http://0.0.0.0:"+strconv.Itoa(repman.Conf.GraphiteCarbonServerPort), repman.Conf.GraphiteCarbonApiPort, 20, "mem", "", 200, 0, "", repman.Conf.WorkingDir)
+		go graphite.RunCarbonApi(&repman.Conf)
 		log.WithField("apiport", repman.Conf.GraphiteCarbonApiPort).Info("Carbon server API started")
 	}
 

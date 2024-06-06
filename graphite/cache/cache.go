@@ -1,4 +1,3 @@
-
 package cache
 
 /*
@@ -14,6 +13,7 @@ import (
 
 	"github.com/signal18/replication-manager/graphite/helper"
 	"github.com/signal18/replication-manager/graphite/points"
+	"github.com/sirupsen/logrus"
 )
 
 type WriteStrategy int
@@ -40,7 +40,8 @@ type Cache struct {
 
 	writeoutQueue *WriteoutQueue
 
-	xlog atomic.Value // io.Writer
+	xlog   atomic.Value // io.Writer
+	logger *logrus.Logger
 
 	stat struct {
 		size              int32  // changing via atomic
@@ -61,9 +62,10 @@ type Shard struct {
 }
 
 // Creates a new cache instance
-func New() *Cache {
+func New(logger *logrus.Logger) *Cache {
 	c := &Cache{
 		data:          make([]*Shard, shardCount),
+		logger:        logger,
 		writeStrategy: Noop,
 		maxSize:       1000000,
 	}

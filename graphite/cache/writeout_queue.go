@@ -1,11 +1,9 @@
-
 package cache
 
 import (
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/signal18/replication-manager/graphite/points"
 )
 
@@ -37,10 +35,10 @@ func (q *WriteoutQueue) makeRebuildCallback(nextRebuildTime time.Time) func(chan
 		// next rebuild
 		nextRebuildOnce.Do(func() {
 			now := time.Now()
-			logrus.Debugf("nextRebuildOnce.Do: %#v %#v", now.String(), nextRebuildTime.String())
+			q.cache.logger.Debugf("nextRebuildOnce.Do: %#v %#v", now.String(), nextRebuildTime.String())
 			if now.Before(nextRebuildTime) {
 				sleepTime := nextRebuildTime.Sub(now)
-				logrus.Debugf("sleep %s before rebuild", sleepTime.String())
+				q.cache.logger.Debugf("sleep %s before rebuild", sleepTime.String())
 
 				select {
 				case <-time.After(sleepTime):
