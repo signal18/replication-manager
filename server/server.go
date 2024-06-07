@@ -38,6 +38,7 @@ import (
 	clog "github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
+	"github.com/sirupsen/logrus/hooks/writer"
 
 	termbox "github.com/nsf/termbox-go"
 
@@ -1512,6 +1513,16 @@ func (repman *ReplicationManager) Run() error {
 	// Initialize go-carbon
 	if repman.Conf.GraphiteEmbedded {
 		graphite.Log = repman.clog
+		graphite.Log.AddHook(&writer.Hook{ // Send logs with level higher than warning to stderr
+			Writer: os.Stderr,
+			LogLevels: []log.Level{
+				log.PanicLevel,
+				log.FatalLevel,
+				log.ErrorLevel,
+				log.WarnLevel,
+			},
+		})
+
 		go graphite.RunCarbon(&repman.Conf)
 		log.WithFields(log.Fields{
 			"metricport": repman.Conf.GraphiteCarbonPort,

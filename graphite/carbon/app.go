@@ -209,6 +209,7 @@ func (app *App) Stop() {
 
 func (app *App) startPersister() {
 	if app.Config.Whisper.Enabled {
+		persister.Log = Log
 		p := persister.NewWhisper(
 			app.Config.Whisper.DataDir,
 			app.Config.Whisper.Schemas,
