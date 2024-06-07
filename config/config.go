@@ -122,6 +122,8 @@ type Config struct {
 	LogProxyLevel                             int                    `mapstructure:"log-proxy-level" toml:"log-proxy-level" json:"logProxyLevel"`
 	LogGraphite                               bool                   `mapstructure:"log-graphite" toml:"log-graphite" json:"logGraphite"`
 	LogGraphiteLevel                          int                    `mapstructure:"log-graphite-level" toml:"log-graphite-level" json:"logGraphiteLevel"`
+	LogBinlogPurge                            bool                   `mapstructure:"log-binlog-purge" toml:"log-binlog-purge" json:"logBinlogPurge"`
+	LogBinlogPurgeLevel                       int                    `mapstructure:"log-binlog-purge-level" toml:"log-binlog-purge-level" json:"logBinlogPurgeLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	HostsDelayed                              string                 `mapstructure:"replication-delayed-hosts" toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
@@ -904,6 +906,7 @@ const (
 	ConstLogModProxyJanitor   = 13
 	ConstLogModMaxscale       = 14
 	ConstLogModGraphite       = 15
+	ConstLogModPurge          = 16
 )
 
 func (conf *Config) GetSecrets() map[string]Secret {
@@ -1886,6 +1889,11 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 		case module == ConstLogModGraphite:
 			if conf.LogGraphite {
 				return conf.LogGraphiteLevel >= lvl
+			}
+			break
+		case module == ConstLogModPurge:
+			if conf.LogBinlogPurge {
+				return conf.LogBinlogPurgeLevel >= lvl
 			}
 			break
 		}

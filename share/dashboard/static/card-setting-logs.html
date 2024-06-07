@@ -332,5 +332,23 @@
             <span ng-if="selectedCluster.config.logGraphiteLevel >= 4" class="label label-primary"> DEBUG </span>
         </td>
     </tr>
+    <tr>
+        <td>Log Binlog Purge</td>
+    </tr>
+    <tr>
+        <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete flex
+                ng-model="selectedCluster.config.logBinlogPurgeLevel"
+                ng-change="setsettings('log-binlog-purge-level',selectedCluster.config.logBinlogPurgeLevel)" step="1" min="0"
+                max="4" round="0" aria-label="Log Binlog Purge Level"></md-slider></td>
+    </tr>
+    <tr>
+        <td>
+            <span ng-if="selectedCluster.config.logBinlogPurgeLevel == 0" class="label label-default"> NO LOGGING </span>
+            <span ng-if="selectedCluster.config.logBinlogPurgeLevel >= 1" class="label label-danger"> ERROR </span> &nbsp; &nbsp;
+            <span ng-if="selectedCluster.config.logBinlogPurgeLevel >= 2" class="label label-warning"> WARNING </span> &nbsp; &nbsp;
+            <span ng-if="selectedCluster.config.logBinlogPurgeLevel >= 3" class="label label-info"> INFO </span> &nbsp; &nbsp;
+            <span ng-if="selectedCluster.config.logBinlogPurgeLevel >= 4" class="label label-primary"> DEBUG </span>
+        </td>
+    </tr>
 </table>
 </md-card>

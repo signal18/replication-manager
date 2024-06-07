@@ -655,7 +655,7 @@ func (cluster *Cluster) Run() {
 							cluster.StateMachine.PreserveState("WARN0094")
 						}
 						if cluster.SlavesOldestMasterFile.Suffix == 0 {
-							cluster.CheckSlavesReplications()
+							cluster.CheckSlavesReplicationsPurge()
 						}
 						cluster.PrintDelayStat()
 					}
