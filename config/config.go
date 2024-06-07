@@ -120,6 +120,8 @@ type Config struct {
 	LogTopologyLevel                          int                    `mapstructure:"log-topology-level" toml:"log-topology-level" json:"logTopologyLevel"`
 	LogProxy                                  bool                   `mapstructure:"log-proxy" toml:"log-proxy" json:"logProxy"`
 	LogProxyLevel                             int                    `mapstructure:"log-proxy-level" toml:"log-proxy-level" json:"logProxyLevel"`
+	LogGraphite                               bool                   `mapstructure:"log-graphite" toml:"log-graphite" json:"logGraphite"`
+	LogGraphiteLevel                          int                    `mapstructure:"log-graphite-level" toml:"log-graphite-level" json:"logGraphiteLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	HostsDelayed                              string                 `mapstructure:"replication-delayed-hosts" toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
@@ -901,6 +903,7 @@ const (
 	ConstLogModHAProxy        = 12
 	ConstLogModProxyJanitor   = 13
 	ConstLogModMaxscale       = 14
+	ConstLogModGraphite       = 15
 )
 
 func (conf *Config) GetSecrets() map[string]Secret {
@@ -1880,6 +1883,11 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 				return conf.MxsLogLevel >= lvl
 			}
 			break
+		case module == ConstLogModGraphite:
+			if conf.LogGraphite {
+				return conf.LogGraphiteLevel >= lvl
+			}
+			break
 		}
 	}
 
@@ -1888,4 +1896,17 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 
 func (conf *Config) SetLogOutput(out io.Writer) {
 	log.SetOutput(out)
+}
+
+func (conf *Config) ToLogrusLevel(l int) log.Level {
+	switch l {
+	case 2:
+		return log.WarnLevel
+	case 3:
+		return log.InfoLevel
+	case 4:
+		return log.DebugLevel
+	}
+	//Always return at least error level to make sure Logger not exit
+	return log.ErrorLevel
 }

@@ -40,7 +40,7 @@ func cliGetTopology() {
 		headstr += " |  Mode: Manual "
 	}
 
-	headstr += fmt.Sprintf("\n%19s %15s %6s %15s %10s %12s %20s %20s %30s %6s %3s", "Id", "Host", "Port", "Status", "Failures", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO")
+	headstr += fmt.Sprintf("\n%19s %15s %6s %15s %10s %12s %20s %20s %30s %6s %3s %5s", "Id", "Host", "Port", "Status", "Failures", "Using GTID", "Current GTID", "Slave GTID", "Replication Health", "Delay", "RO", "MAINT")
 
 	for _, server := range cliServers {
 		var gtidCurr string
@@ -56,9 +56,16 @@ func cliGetTopology() {
 			gtidSlave = ""
 		}
 
-		headstr += fmt.Sprintf("\n%19s %15s %6s %15s %10d %12s %20s %20s %30s %6d %3s", server.Id, server.Host, server.Port, server.State, server.FailCount, server.GetReplicationUsingGtid(), gtidCurr, gtidSlave, "", server.GetReplicationDelay(), server.ReadOnly)
+		headstr += fmt.Sprintf("\n%19s %15s %6s %15s %10d %12s %20s %20s %30s %6d %3s %5s", server.Id, server.Host, server.Port, server.State, server.FailCount, server.GetReplicationUsingGtid(), gtidCurr, gtidSlave, "", server.GetReplicationDelay(), server.ReadOnly, boolToChar(server.IsMaintenance))
 
 	}
 	fmt.Printf(headstr)
 	fmt.Printf("\n")
+}
+
+func boolToChar(v bool) string {
+	if v {
+		return "Y"
+	}
+	return "N"
 }

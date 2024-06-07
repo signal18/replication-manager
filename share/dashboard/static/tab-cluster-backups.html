@@ -1,24 +1,49 @@
-
 <md-content class="md-padding">
-<md-card>
-   <md-card-content>
-      <p class="sectionheader">Backups</p>
-   </md-card-content>
-   <table ng-if="backups" class="table">
-      <tr>
-         <th width="8%">Id</th>
-         <th width="20%">Time</th>
-         <th>Path</th>
-         <th width="20%">Hostname</th>
+   <md-card>
+      <md-card-content>
+         <p class="sectionheader">Backups</p>
+      </md-card-content>
 
-      </tr>
-      <tr ng-repeat="bck in backups" ng-class="">
-         <td>{{bck.short_id}}</td>
-         <td>{{bck.time}}</td>
-         <td>{{bck.paths[0]}}</td>
-         <td>{{bck.hostname}}</td>
+      <md-card>
+         <table ng-if="backups" class="table">
+            <thead>
+               <tr>
+                  <th>Total Size</th>
+                  <th width="30%">Total File Count</th>
+                  <th width="30%">Total Blob Count</th>
+               </tr>
+            </thead>
+            <tbody>
+               <tr ng-class="">
+                  <td>{{humanFileSize(selectedCluster.backupStat.total_size)}}</td>
+                  <td>{{selectedCluster.backupStat.total_file_count}}</td>
+                  <td>{{selectedCluster.backupStat.total_blob_count}}</td>
+               </tr>
+            </tbody>
+         </table>
+      </md-card>
 
-      </tr>
-   </table>
-</md-card>
+      <md-card>
+         <table ng-if="backups" class="table">
+            <thead>
+               <tr>
+                  <th width="8%">Id</th>
+                  <th width="20%">Time</th>
+                  <th>Path</th>
+                  <th width="20%">Hostname</th>
+                  <th width="20%">Tags</th>
+               </tr>
+            </thead>
+            <tbody>
+               <tr ng-repeat="bck in backups" ng-class="">
+                  <td>{{bck.short_id}}</td>
+                  <td>{{bck.time}}</td>
+                  <td>{{bck.paths[0]}}</td>
+                  <td>{{bck.hostname}}</td>
+                  <td>{{bck.tags.join(', ')}}</td>
+               </tr>
+            </tbody>
+         </table>
+      </md-card>
+   </md-card>
 </md-content>

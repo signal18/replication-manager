@@ -107,13 +107,20 @@ func (cluster *Cluster) BinlogRotationScript(srv *ServerMonitor) error {
 	return nil
 }
 
-func (cluster *Cluster) BinlogCopyScript(srv *ServerMonitor, binlog string) error {
+func (cluster *Cluster) BinlogCopyScript(srv *ServerMonitor, binlog string, isPurge bool) error {
 	if cluster.Conf.BinlogCopyScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling binlog copy script on %s. Binlog: %s", srv.URL, binlog)
 		var out []byte
 		out, err := exec.Command(cluster.Conf.BinlogCopyScript, cluster.Name, srv.Host, srv.Port, binlog).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+		} else {
+			// Skip backup to restic if in purge binlog
+			if !isPurge {
+				// Backup to restic when no error (defer to prevent unfinished physical copy)
+				backtype := "binlog"
+				defer srv.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, srv.DBVersion.Flavor, srv.DBVersion.ToString(), backtype)
+			}
 		}
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Binlog copy script complete: %s", string(out))

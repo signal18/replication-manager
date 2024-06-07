@@ -1404,7 +1404,11 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "force-binlog-purge-min-replica":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetForceBinlogPurgeMinReplica(val)
+	case "log-graphite-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogGraphiteLevel(val)
 	}
+
 }
 
 func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,3 @@
-
 package cache
 
 /*
@@ -14,6 +13,7 @@ import (
 
 	"github.com/signal18/replication-manager/graphite/helper"
 	"github.com/signal18/replication-manager/graphite/points"
+	"github.com/sirupsen/logrus"
 )
 
 type WriteStrategy int
@@ -25,6 +25,8 @@ const (
 )
 
 const shardCount = 1024
+
+var Log = logrus.New()
 
 // A "thread" safe map of type string:Anything.
 // To avoid lock bottlenecks this map is dived to several (shardCount) map shards.
@@ -75,6 +77,7 @@ func New() *Cache {
 		}
 	}
 
+	// fmt.Printf("Cache logger: %p", Log)
 	c.writeoutQueue = NewWriteoutQueue(c)
 	return c
 }

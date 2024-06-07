@@ -802,7 +802,9 @@ func (server *ServerMonitor) Refresh() error {
 			}
 
 			if cluster.Conf.BackupBinlogs {
-				server.InitiateJobBackupBinlog(server.BinaryLogFilePrevious)
+				//Set second parameter to false, not part of backupbinlogpurge
+				server.InitiateJobBackupBinlog(server.BinaryLogFilePrevious, false)
+				//Initiate purging backup binlog
 				go server.JobBackupBinlogPurge(server.BinaryLogFilePrevious)
 			}
 
