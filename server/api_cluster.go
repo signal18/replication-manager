@@ -1413,6 +1413,9 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "log-graphite-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogGraphiteLevel(val)
+	case "log-binlog-purge-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogBinlogPurgeLevel(val)
 	}
 
 }

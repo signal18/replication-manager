@@ -282,6 +282,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogFailedElection, "log-failed-election", true, "Log failed election")
 	flags.IntVar(&conf.LogFailedElectionLevel, "log-failed-election-level", 1, "Log failed election Level")
 
+	flags.BoolVar(&conf.LogBinlogPurge, "log-binlog-purge", false, "Log Binlog Purge")
+	flags.IntVar(&conf.LogBinlogPurgeLevel, "log-binlog-purge-level", 1, "Log Binlog Purge Level")
+
 	flags.BoolVar(&conf.LogGraphite, "log-graphite", true, "Log Graphite")
 	flags.IntVar(&conf.LogGraphiteLevel, "log-graphite-level", 2, "Log Graphite Level")
 
