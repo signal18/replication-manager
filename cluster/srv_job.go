@@ -1292,6 +1292,7 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 	cluster := server.ClusterGroup
 
 	if server.BinaryLogDir == "" {
+		//Not using Variables[] due to uppercase values
 		basename, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_BIN_BASENAME", server.DBVersion)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Variable log_bin_basename not found!")

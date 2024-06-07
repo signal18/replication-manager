@@ -4,13 +4,11 @@
 # set exit on error
 set -e
 
-BACKUPDIR="/var/lib/replication-manager/backups/$1/$2_$3"
-
 # Binlog Copy Script only get the previous binlog to backup
 echo "Binlog copy script args"
-echo "Script:$0, Cluster:$1, Server:$2, MySQL Port:$3, Binlog:$4"
+echo "Script:$0, Cluster:$1, Server:$2, MySQL Port:$3, SSH Port: $4, Source Binlog Path: $5, Destination Path (Repman): $6, Binlog Filename: $7"
 
 #try something failing
-ls "$BACKUPDIR/nofolder"
+ls nofolder
 
 
