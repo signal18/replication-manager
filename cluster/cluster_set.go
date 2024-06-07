@@ -1672,3 +1672,12 @@ func (cluster *Cluster) SetLogGraphiteLevel(value int) {
 
 	cluster.clog.SetLevel(cluster.Conf.ToLogrusLevel(value))
 }
+
+func (cluster *Cluster) SetLogBinlogPurgeLevel(value int) {
+	cluster.Conf.LogBinlogPurgeLevel = value
+	if value > 0 {
+		cluster.Conf.LogBinlogPurge = true
+	} else {
+		cluster.Conf.LogBinlogPurge = false
+	}
+}
