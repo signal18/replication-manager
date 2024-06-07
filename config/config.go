@@ -886,6 +886,13 @@ const (
 	ConstBackupPhysicalTypeMariaBackup string = "mariabackup"
 )
 
+const (
+	ConstBackupBinlogTypeMysqlbinlog string = "mysqlbinlog"
+	ConstBackupBinlogTypeSSH         string = "ssh"
+	ConstBackupBinlogTypeScript      string = "script"
+	ConstBackupBinlogTypeGoMySQL     string = "gomysql"
+)
+
 /*
 This is the list of modules to be used in LogModulePrintF
 */
@@ -1323,38 +1330,53 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 }
 
 /*
-func (conf *Config) PullByGitCli() {
-	// Store the initial directory path
-	initialDir, err := os.Getwd()
-	if err != nil {
-		fmt.Println("Failed to get current directory:", err)
-		return
-	}
-	// Change to the desired Git repository directory
-	repoDir := conf.WorkingDir
-	if err := os.Chdir(repoDir); err != nil {
-		log.Errorf("Failed to change directory:", err)
-		return
-	}
+	func (conf *Config) PullByGitCli() {
+		// Store the initial directory path
+		initialDir, err := os.Getwd()
+		if err != nil {
+			fmt.Println("Failed to get current directory:", err)
+			return
+		}
+		// Change to the desired Git repository directory
+		repoDir := conf.WorkingDir
+		if err := os.Chdir(repoDir); err != nil {
+			log.Errorf("Failed to change directory:", err)
+			return
+		}
 
-	// Execute "git pull" command
-	cmd := exec.Command("git", "pull", "-f")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Errorf("Failed to execute 'git pull' command:", err)
-		return
+		// Execute "git pull" command
+		cmd := exec.Command("git", "pull", "-f")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Errorf("Failed to execute 'git pull' command:", err)
+			return
+		}
+
+		log.Infof("Git pull output:", string(output))
+
+		log.Infof("Merge accepted successfully. %s", output)
+
+		// Change back to the initial directory
+		if err := os.Chdir(initialDir); err != nil {
+			fmt.Println("Failed to change back to initial directory:", err)
+			return
+		}
 	}
-
-	log.Infof("Git pull output:", string(output))
-
-	log.Infof("Merge accepted successfully. %s", output)
-
-	// Change back to the initial directory
-	if err := os.Chdir(initialDir); err != nil {
-		fmt.Println("Failed to change back to initial directory:", err)
-		return
+*/
+func (conf *Config) GetBackupBinlogType() map[string]bool {
+	return map[string]bool{
+		ConstBackupBinlogTypeMysqlbinlog: true,
+		ConstBackupBinlogTypeSSH:         true,
+		ConstBackupBinlogTypeScript:      true,
 	}
-}*/
+}
+
+func (conf *Config) GetBinlogParseMode() map[string]bool {
+	return map[string]bool{
+		ConstBackupBinlogTypeMysqlbinlog: true,
+		ConstBackupBinlogTypeGoMySQL:     true,
+	}
+}
 
 func (conf *Config) GetBackupPhysicalType() map[string]bool {
 	return map[string]bool{
