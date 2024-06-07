@@ -806,6 +806,18 @@ func (cluster *Cluster) SetBackupPhysicalType(backup string) {
 	cluster.Conf.BackupPhysicalType = backup
 }
 
+func (cluster *Cluster) SetBackupBinlogType(backup string) {
+	cluster.Conf.BinlogCopyMode = backup
+}
+
+func (cluster *Cluster) SetBackupBinlogScript(filename string) {
+	cluster.Conf.BinlogCopyScript = filename
+}
+
+func (cluster *Cluster) SetBinlogParseMode(tool string) {
+	cluster.Conf.BinlogParseMode = tool
+}
+
 func (cluster *Cluster) SetEmptySla() {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate SLA")
 	cluster.SLAHistory = append(cluster.SLAHistory, cluster.StateMachine.GetSla())

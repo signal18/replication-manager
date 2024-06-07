@@ -1568,10 +1568,31 @@ app.controller('DashboardController', function (
     }
   };
 
-  $scope.saveBackupType = function (selectedLogicalBackup, selectedPhysicalBackup) {
-    if (confirm("Confirm backup types: " + selectedLogicalBackup + "/" + selectedPhysicalBackup)) {
+  $scope.saveBackupType = function (selectedLogicalBackup, selectedPhysicalBackup, selectedBinlogBackup, selectedBinlogBackupScript) {
+    if (confirm("Confirm backup types: " + selectedLogicalBackup + "/" + selectedPhysicalBackup+ "/" + selectedBinlogBackup)) {
       httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-logical-type/' + selectedLogicalBackup);
       httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-physical-type/' + selectedPhysicalBackup);
+      if(selectedBinlogBackup == "script"){
+        alert("Saved Physical and Logical Backup Type")
+        if(!selectedBinlogBackupScript){
+          alert("Backup binlog script not confirmed, cancel setting backup mode to script")
+        } else {
+          if(confirm("Confirm backup script: " + selectedBinlogBackupScript)){
+            httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-binlog-type/' + selectedBinlogBackup);
+            httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-binlog-script/' + selectedBinlogBackupScript);
+          } else {
+            alert("Backup script not confirmed, cancel setting backup mode to script")
+          }
+        }
+      } else {
+        httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-binlog-type/' + selectedBinlogBackup);
+      }
+    }
+  };
+
+  $scope.saveBinlogParseMode = function (selectedBinlogParseMode) {
+    if (confirm("Confirm binlog parse mode: " + selectedBinlogParseMode)) {
+      httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/binlog-parse-mode/' + selectedBinlogParseMode);
     }
   };
 

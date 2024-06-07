@@ -93,6 +93,8 @@ type ReplicationManager struct {
 	ServicePool                                      map[string]bool             `json:"servicePool"`
 	BackupLogicalList                                map[string]bool             `json:"backupLogicalList"`
 	BackupPhysicalList                               map[string]bool             `json:"backupPhysicalList"`
+	BackupBinlogList                                 map[string]bool             `json:"backupBinlogList"`
+	BinlogParseList                                  map[string]bool             `json:"binlogParseList"`
 	currentCluster                                   *cluster.Cluster            `json:"-"`
 	UserAuthTry                                      map[string]authTry          `json:"-"`
 	OAuthAccessToken                                 *oauth2.Token               `json:"-"`
@@ -643,7 +645,13 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.BoolVar(&conf.BackupBinlogs, "backup-binlogs", false, "Archive binlogs")
 	flags.IntVar(&conf.BackupBinlogsKeep, "backup-binlogs-keep", 10, "Number of master binlog to keep")
-	flags.StringVar(&conf.BinlogCopyMode, "binlog-copy-mode", "mysqlbinlog", "Method for backing up binlogs: mysqlbinlog|ssh|gomysql|script (old value 'client' will be treated same as 'mysqlbinlog')")
+
+	//Using mysqlbinlog for PRO since it's using opensvc and k8s
+	if WithProvisioning == "ON" {
+		flags.StringVar(&conf.BinlogCopyMode, "binlog-copy-mode", "mysqlbinlog", "Method for backing up binlogs: mysqlbinlog|ssh|gomysql|script (old value 'client' will be treated same as 'mysqlbinlog')")
+	} else {
+		flags.StringVar(&conf.BinlogCopyMode, "binlog-copy-mode", "ssh", "Method for backing up binlogs: mysqlbinlog|ssh|gomysql|script (old value 'client' will be treated same as 'mysqlbinlog')")
+	}
 	flags.StringVar(&conf.BinlogCopyScript, "binlog-copy-script", "", "Script filename for backing up binlogs")
 
 	flags.StringVar(&conf.BinlogRotationScript, "binlog-rotation-script", "", "Script filename triggered by binlogs rotation")
@@ -1482,6 +1490,8 @@ func (repman *ReplicationManager) Run() error {
 	repman.ServicePool = repman.Conf.GetPoolType()
 	repman.BackupLogicalList = repman.Conf.GetBackupLogicalType()
 	repman.BackupPhysicalList = repman.Conf.GetBackupPhysicalType()
+	repman.BackupBinlogList = repman.Conf.GetBackupBinlogType()
+	repman.BinlogParseList = repman.Conf.GetBinlogParseMode()
 
 	if repman.Conf.ProvOrchestrator == "opensvc" {
 		repman.Agents = []opensvc.Host{}
