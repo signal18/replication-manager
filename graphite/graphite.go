@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/siddontang/go-log/log"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite/carbon"
 	logging "github.com/signal18/replication-manager/graphite/logging"
 	"github.com/sirupsen/logrus"
@@ -21,7 +23,7 @@ import (
 	_ "net/http/pprof"
 )
 
-var log = logrus.New()
+var Log = logrus.New()
 
 // Graphite is a struct that defines the relevant properties of a graphite
 // connection
@@ -208,39 +210,50 @@ func httpServe(addr string) (func(), error) {
 	return func() { listener.Close() }, nil
 }
 
-func RunCarbon(ShareDir string, DataDir string, GraphiteCarbonPort int, GraphiteCarbonLinkPort int, GraphiteCarbonPicklePort int, GraphiteCarbonPprofPort int, GraphiteCarbonServerPort int) error {
+func RunCarbon(conf *config.Config) error {
 	var err error
+	var loglevel logrus.Level
 
-	logging.Log = log
+	if conf.LogGraphite {
+		//Log based on repman config
+		loglevel = conf.ToLogrusLevel(conf.LogGraphiteLevel)
+	} else {
+		//Only log errors
+		loglevel = logrus.ErrorLevel
+	}
 
-	input, err := ioutil.ReadFile(ShareDir + "/carbon.conf.template")
+	Log.SetLevel(loglevel)
+
+	logging.Log = Log
+
+	input, err := ioutil.ReadFile(conf.ShareDir + "/carbon.conf.template")
 	if err != nil {
 		return err
 	}
 
-	output := bytes.Replace(input, []byte("{{.schemas}}"), []byte(ShareDir+"/schemas.conf"), -1)
-	fullpath, err := filepath.Abs(DataDir + "/graphite")
+	output := bytes.Replace(input, []byte("{{.schemas}}"), []byte(conf.ShareDir+"/schemas.conf"), -1)
+	fullpath, err := filepath.Abs(conf.WorkingDir + "/graphite")
 
 	output2 := bytes.Replace(output, []byte("{{.datadir}}"), []byte(fullpath), -1)
-	output3 := bytes.Replace(output2, []byte("{{.graphitecarbonport}}"), []byte(strconv.Itoa(GraphiteCarbonPort)), -1)
-	output4 := bytes.Replace(output3, []byte("{{.graphitecarbonlinkport}}"), []byte(strconv.Itoa(GraphiteCarbonLinkPort)), -1)
-	output5 := bytes.Replace(output4, []byte("{{.graphitecarbonpickleport}}"), []byte(strconv.Itoa(GraphiteCarbonPicklePort)), -1)
-	output6 := bytes.Replace(output5, []byte("{{.graphitecarbonpprofport}}"), []byte(strconv.Itoa(GraphiteCarbonPprofPort)), -1)
-	output7 := bytes.Replace(output6, []byte("{{.graphitecarbonserverport}}"), []byte(strconv.Itoa(GraphiteCarbonServerPort)), -1)
+	output3 := bytes.Replace(output2, []byte("{{.graphitecarbonport}}"), []byte(strconv.Itoa(conf.GraphiteCarbonPort)), -1)
+	output4 := bytes.Replace(output3, []byte("{{.graphitecarbonlinkport}}"), []byte(strconv.Itoa(conf.GraphiteCarbonLinkPort)), -1)
+	output5 := bytes.Replace(output4, []byte("{{.graphitecarbonpickleport}}"), []byte(strconv.Itoa(conf.GraphiteCarbonPicklePort)), -1)
+	output6 := bytes.Replace(output5, []byte("{{.graphitecarbonpprofport}}"), []byte(strconv.Itoa(conf.GraphiteCarbonPprofPort)), -1)
+	output7 := bytes.Replace(output6, []byte("{{.graphitecarbonserverport}}"), []byte(strconv.Itoa(conf.GraphiteCarbonServerPort)), -1)
 
-	if err = ioutil.WriteFile(DataDir+"/carbon.conf", output7, 0666); err != nil {
+	if err = ioutil.WriteFile(conf.WorkingDir+"/carbon.conf", output7, 0666); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	carbon.Log = log
-	app := carbon.New(DataDir + "/carbon.conf")
+	carbon.Log = Log
+	app := carbon.New(conf.WorkingDir + "/carbon.conf")
 
 	if err = app.ParseConfig(); err != nil {
 		return err
 	}
 
-	app.Config.Common.Logfile = DataDir + "/carbon.log"
+	app.Config.Common.Logfile = conf.WorkingDir + "/carbon.log"
 	//	log.Fatal(app.Config.Whisper.SchemasFilename)
 	cfg := app.Config
 
@@ -248,33 +261,33 @@ func RunCarbon(ShareDir string, DataDir string, GraphiteCarbonPort int, Graphite
 	if cfg.Common.User != "" {
 		runAsUser, err = user.Lookup(cfg.Common.User)
 		if err != nil {
-			log.Fatal(err)
+			logging.Log.Fatal(err)
 		}
 	}
 
 	if err := logging.SetLevel(cfg.Common.LogLevel); err != nil {
-		log.Fatal(err)
+		logging.Log.Fatal(err)
 	}
 
 	if err := logging.PrepareFile(cfg.Common.Logfile, runAsUser); err != nil {
-		log.Fatal(err)
+		logging.Log.Fatal(err)
 	}
 
 	if err := logging.SetFile(cfg.Common.Logfile); err != nil {
-		log.Fatal(err)
+		logging.Log.Fatal(err)
 	}
 
 	if cfg.Pprof.Enabled {
 		_, err = httpServe(cfg.Pprof.Listen)
 		if err != nil {
-			log.Fatal(err)
+			logging.Log.Fatal(err)
 		}
 	}
 
 	if err = app.Start(); err != nil {
-		log.Fatal(err)
+		logging.Log.Fatal(err)
 	} else {
-		log.Info("started")
+		logging.Log.Info("started")
 	}
 
 	go func() {
@@ -291,17 +304,17 @@ func RunCarbon(ShareDir string, DataDir string, GraphiteCarbonPort int, Graphite
 		signal.Notify(c, syscall.SIGHUP)
 		for {
 			<-c
-			log.Info("HUP received. Reload config")
+			logging.Log.Info("HUP received. Reload config")
 			if err := app.ReloadConfig(); err != nil {
-				log.Errorf("Config reload failed: %s", err.Error())
+				logging.Log.Errorf("Config reload failed: %s", err.Error())
 			} else {
-				log.Info("Config successfully reloaded")
+				logging.Log.Info("Config successfully reloaded")
 			}
 		}
 	}()
 
 	app.Loop()
 
-	log.Info("stopped")
+	logging.Log.Info("stopped")
 	return nil
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/sirupsen/logrus"
 )
 
 func (cluster *Cluster) SetStatus() {
@@ -803,6 +804,18 @@ func (cluster *Cluster) SetBackupLogicalType(backup string) {
 
 func (cluster *Cluster) SetBackupPhysicalType(backup string) {
 	cluster.Conf.BackupPhysicalType = backup
+}
+
+func (cluster *Cluster) SetBackupBinlogType(backup string) {
+	cluster.Conf.BinlogCopyMode = backup
+}
+
+func (cluster *Cluster) SetBackupBinlogScript(filename string) {
+	cluster.Conf.BinlogCopyScript = filename
+}
+
+func (cluster *Cluster) SetBinlogParseMode(tool string) {
+	cluster.Conf.BinlogParseMode = tool
 }
 
 func (cluster *Cluster) SetEmptySla() {
@@ -1653,4 +1666,30 @@ func (cluster *Cluster) SetForceBinlogPurgeTotalSize(value int) {
 
 func (cluster *Cluster) SetForceBinlogPurgeMinReplica(value int) {
 	cluster.Conf.ForceBinlogPurgeMinReplica = value
+}
+
+func (cluster *Cluster) SetCarbonLogger(value *logrus.Logger) {
+	cluster.Lock()
+	cluster.clog = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetLogGraphiteLevel(value int) {
+	cluster.Conf.LogGraphiteLevel = value
+	if value > 0 {
+		cluster.Conf.LogGraphite = true
+	} else {
+		cluster.Conf.LogGraphite = false
+	}
+
+	cluster.clog.SetLevel(cluster.Conf.ToLogrusLevel(value))
+}
+
+func (cluster *Cluster) SetLogBinlogPurgeLevel(value int) {
+	cluster.Conf.LogBinlogPurgeLevel = value
+	if value > 0 {
+		cluster.Conf.LogBinlogPurge = true
+	} else {
+		cluster.Conf.LogBinlogPurge = false
+	}
 }

@@ -1,4 +1,3 @@
-
 package cache
 
 import (
@@ -9,8 +8,6 @@ import (
 	"net"
 	"strings"
 	"time"
-
-	"github.com/sirupsen/logrus"
 
 	"github.com/signal18/replication-manager/graphite/helper"
 	"github.com/signal18/replication-manager/graphite/helper/framing"
@@ -224,7 +221,7 @@ func (listener *CarbonlinkListener) HandleConnection(conn framing.Conn) {
 
 		if err != nil {
 			conn.Conn.(*net.TCPConn).SetLinger(0)
-			logrus.Debugf("[carbonlink] read carbonlink request from %s: %s", conn.RemoteAddr().String(), err.Error())
+			Log.Debugf("[carbonlink] read carbonlink request from %s: %s", conn.RemoteAddr().String(), err.Error())
 			break
 		}
 
@@ -232,12 +229,12 @@ func (listener *CarbonlinkListener) HandleConnection(conn framing.Conn) {
 
 		if err != nil {
 			conn.Conn.(*net.TCPConn).SetLinger(0)
-			logrus.Warningf("[carbonlink] parse carbonlink request from %s: %s", conn.RemoteAddr().String(), err.Error())
+			Log.Warningf("[carbonlink] parse carbonlink request from %s: %s", conn.RemoteAddr().String(), err.Error())
 			break
 		}
 		if req != nil {
 			if req.Type != "cache-query" {
-				logrus.Warningf("[carbonlink] unknown query type: %#v", req.Type)
+				Log.Warningf("[carbonlink] unknown query type: %#v", req.Type)
 				conn.Write([]byte(fmt.Sprintf("\x80\x02}q\x00U\x05errorq\x01U\x1aInvalid request type %qq\x02s.", req.Type)))
 				break
 			}
@@ -250,7 +247,7 @@ func (listener *CarbonlinkListener) HandleConnection(conn framing.Conn) {
 					break
 				}
 				if _, err := conn.Write(packed); err != nil {
-					logrus.Infof("[carbonlink] reply error: %s", err)
+					Log.Infof("[carbonlink] reply error: %s", err)
 					break
 				}
 			}
@@ -292,7 +289,7 @@ func (listener *CarbonlinkListener) Listen(addr *net.TCPAddr) error {
 					if strings.Contains(err.Error(), "use of closed network connection") {
 						break
 					}
-					logrus.Warningf("[carbonlink] Failed to accept connection: %s", err)
+					Log.Warningf("[carbonlink] Failed to accept connection: %s", err)
 					continue
 				}
 				framedConn, _ := framing.NewConn(conn, byte(4), binary.BigEndian)

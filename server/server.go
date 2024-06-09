@@ -35,8 +35,10 @@ import (
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 
+	clog "github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	lSyslog "github.com/sirupsen/logrus/hooks/syslog"
+	"github.com/sirupsen/logrus/hooks/writer"
 
 	termbox "github.com/nsf/termbox-go"
 
@@ -91,6 +93,8 @@ type ReplicationManager struct {
 	ServicePool                                      map[string]bool             `json:"servicePool"`
 	BackupLogicalList                                map[string]bool             `json:"backupLogicalList"`
 	BackupPhysicalList                               map[string]bool             `json:"backupPhysicalList"`
+	BackupBinlogList                                 map[string]bool             `json:"backupBinlogList"`
+	BinlogParseList                                  map[string]bool             `json:"binlogParseList"`
 	currentCluster                                   *cluster.Cluster            `json:"-"`
 	UserAuthTry                                      map[string]authTry          `json:"-"`
 	OAuthAccessToken                                 *oauth2.Token               `json:"-"`
@@ -101,12 +105,13 @@ type ReplicationManager struct {
 	exit                                             bool
 	isStarted                                        bool
 	Confs                                            map[string]config.Config
-	VersionConfs                                     map[string]*config.ConfVersion
-	grpcServer                                       *grpc.Server               `json:"-"`
-	grpcWrapped                                      *grpcweb.WrappedGrpcServer `json:"-"`
-	V3Up                                             chan bool                  `json:"-"`
-	v3Config                                         Repmanv3Config             `json:"-"`
-	cloud18CheckSum                                  hash.Hash                  `json:"-"`
+	VersionConfs                                     map[string]*config.ConfVersion `json:"-"`
+	grpcServer                                       *grpc.Server                   `json:"-"`
+	grpcWrapped                                      *grpcweb.WrappedGrpcServer     `json:"-"`
+	V3Up                                             chan bool                      `json:"-"`
+	v3Config                                         Repmanv3Config                 `json:"-"`
+	cloud18CheckSum                                  hash.Hash                      `json:"-"`
+	clog                                             *clog.Logger                   `json:"-"`
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -272,10 +277,16 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
 
 	flags.BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
-	flags.IntVar(&conf.LogHeartbeatLevel, "log-heartbeat-level", 1, "Log Hearbeat Level")
+	flags.IntVar(&conf.LogHeartbeatLevel, "log-heartbeat-level", 1, "Log Heartbeat Level")
 
 	flags.BoolVar(&conf.LogFailedElection, "log-failed-election", true, "Log failed election")
 	flags.IntVar(&conf.LogFailedElectionLevel, "log-failed-election-level", 1, "Log failed election Level")
+
+	flags.BoolVar(&conf.LogBinlogPurge, "log-binlog-purge", false, "Log Binlog Purge")
+	flags.IntVar(&conf.LogBinlogPurgeLevel, "log-binlog-purge-level", 1, "Log Binlog Purge Level")
+
+	flags.BoolVar(&conf.LogGraphite, "log-graphite", true, "Log Graphite")
+	flags.IntVar(&conf.LogGraphiteLevel, "log-graphite-level", 2, "Log Graphite Level")
 
 	// SST
 	flags.IntVar(&conf.SSTSendBuffer, "sst-send-buffer", 16384, "SST send buffer size")
@@ -637,7 +648,13 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.BoolVar(&conf.BackupBinlogs, "backup-binlogs", false, "Archive binlogs")
 	flags.IntVar(&conf.BackupBinlogsKeep, "backup-binlogs-keep", 10, "Number of master binlog to keep")
-	flags.StringVar(&conf.BinlogCopyMode, "binlog-copy-mode", "mysqlbinlog", "Method for backing up binlogs: mysqlbinlog|ssh|gomysql|script (old value 'client' will be treated same as 'mysqlbinlog')")
+
+	//Using mysqlbinlog for PRO since it's using opensvc and k8s
+	if WithProvisioning == "ON" {
+		flags.StringVar(&conf.BinlogCopyMode, "binlog-copy-mode", "mysqlbinlog", "Method for backing up binlogs: mysqlbinlog|ssh|gomysql|script (old value 'client' will be treated same as 'mysqlbinlog')")
+	} else {
+		flags.StringVar(&conf.BinlogCopyMode, "binlog-copy-mode", "ssh", "Method for backing up binlogs: mysqlbinlog|ssh|gomysql|script (old value 'client' will be treated same as 'mysqlbinlog')")
+	}
 	flags.StringVar(&conf.BinlogCopyScript, "binlog-copy-script", "", "Script filename for backing up binlogs")
 
 	flags.StringVar(&conf.BinlogRotationScript, "binlog-rotation-script", "", "Script filename triggered by binlogs rotation")
@@ -1389,6 +1406,9 @@ func (repman *ReplicationManager) Run() error {
 	repman.Os = GoOS
 	repman.MemProfile = memprofile
 	repman.CpuProfile = cpuprofile
+	repman.clog = clog.New()
+
+	repman.clog.SetLevel(repman.Conf.ToLogrusLevel(repman.Conf.LogGraphiteLevel))
 	if repman.CpuProfile != "" {
 		fcpupprof, err := os.Create(repman.CpuProfile)
 		if err != nil {
@@ -1473,6 +1493,8 @@ func (repman *ReplicationManager) Run() error {
 	repman.ServicePool = repman.Conf.GetPoolType()
 	repman.BackupLogicalList = repman.Conf.GetBackupLogicalType()
 	repman.BackupPhysicalList = repman.Conf.GetBackupPhysicalType()
+	repman.BackupBinlogList = repman.Conf.GetBackupBinlogType()
+	repman.BinlogParseList = repman.Conf.GetBinlogParseMode()
 
 	if repman.Conf.ProvOrchestrator == "opensvc" {
 		repman.Agents = []opensvc.Host{}
@@ -1503,13 +1525,24 @@ func (repman *ReplicationManager) Run() error {
 
 	// Initialize go-carbon
 	if repman.Conf.GraphiteEmbedded {
-		go graphite.RunCarbon(repman.Conf.ShareDir, repman.Conf.WorkingDir, repman.Conf.GraphiteCarbonPort, repman.Conf.GraphiteCarbonLinkPort, repman.Conf.GraphiteCarbonPicklePort, repman.Conf.GraphiteCarbonPprofPort, repman.Conf.GraphiteCarbonServerPort)
+		graphite.Log = repman.clog
+		graphite.Log.AddHook(&writer.Hook{ // Send logs with level higher than warning to stderr
+			Writer: os.Stderr,
+			LogLevels: []log.Level{
+				log.PanicLevel,
+				log.FatalLevel,
+				log.ErrorLevel,
+				log.WarnLevel,
+			},
+		})
+
+		go graphite.RunCarbon(&repman.Conf)
 		log.WithFields(log.Fields{
 			"metricport": repman.Conf.GraphiteCarbonPort,
 			"httpport":   repman.Conf.GraphiteCarbonServerPort,
 		}).Info("Carbon server started")
 		time.Sleep(2 * time.Second)
-		go graphite.RunCarbonApi("http://0.0.0.0:"+strconv.Itoa(repman.Conf.GraphiteCarbonServerPort), repman.Conf.GraphiteCarbonApiPort, 20, "mem", "", 200, 0, "", repman.Conf.WorkingDir)
+		go graphite.RunCarbonApi(&repman.Conf)
 		log.WithField("apiport", repman.Conf.GraphiteCarbonApiPort).Info("Carbon server API started")
 	}
 
@@ -1526,6 +1559,8 @@ func (repman *ReplicationManager) Run() error {
 	}
 	for _, cluster := range repman.Clusters {
 		cluster.SetClusterList(repman.Clusters)
+
+		cluster.SetCarbonLogger(repman.clog)
 	}
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)

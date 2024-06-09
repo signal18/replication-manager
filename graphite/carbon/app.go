@@ -40,6 +40,7 @@ func New(configFilename string) *App {
 		Config:         NewConfig(),
 		exit:           make(chan bool),
 	}
+	// fmt.Printf("Carbon App Log: %p", Log)
 	return app
 }
 
@@ -208,6 +209,7 @@ func (app *App) Stop() {
 
 func (app *App) startPersister() {
 	if app.Config.Whisper.Enabled {
+		persister.Log = Log
 		p := persister.NewWhisper(
 			app.Config.Whisper.DataDir,
 			app.Config.Whisper.Schemas,
@@ -240,6 +242,7 @@ func (app *App) Start() (err error) {
 
 	runtime.GOMAXPROCS(conf.Common.MaxCPU)
 
+	cache.Log = Log
 	core := cache.New()
 	core.SetMaxSize(conf.Cache.MaxSize)
 	core.SetWriteStrategy(conf.Cache.WriteStrategy)
