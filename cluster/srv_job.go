@@ -130,7 +130,9 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	}
 
 	jobid, err := server.JobInsertTaks(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
-
+	if err == nil {
+		go server.JobRunViaSSH()
+	}
 	return jobid, err
 	//	}
 	//return 0, nil
