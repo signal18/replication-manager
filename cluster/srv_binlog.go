@@ -503,7 +503,16 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 // Check And Purge Binlogs check mariadb binlog
 func (server *ServerMonitor) CheckAndPurgeBinlogMaster() {
 	cluster := server.ClusterGroup
-	if cluster.Conf.ForceBinlogPurge && !server.DBVersion.IsPostgreSQL() { // Only work if ForceBinlogPurge is on and MySQL/Percona/MariaDB
+	if cluster.IsInFailover() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel job purge binlog during failover")
+		return
+	}
+	if !cluster.Conf.ForceBinlogPurge {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog not enabled")
+		return
+	}
+
+	if !server.DBVersion.IsPostgreSQL() { // Only work if ForceBinlogPurge is on and MySQL/Percona/MariaDB
 
 		if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11 and up
 			err := server.SetMaxBinlogTotalSize()
@@ -513,7 +522,7 @@ func (server *ServerMonitor) CheckAndPurgeBinlogMaster() {
 		} else {
 			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purging check")
 			if !server.IsPurgingBinlog() && len(server.BinaryLogFiles) > 1 {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "[PURGE] MariaDB Version is not compatible for max_binlog_total_size, using manual purging")
+				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "[PURGE] MariaDB Version is not compatible for max_binlog_total_size, using manual purging")
 				go server.JobBinlogPurgeMaster()
 			}
 		}
@@ -533,7 +542,16 @@ func (server *ServerMonitor) CheckAndPurgeBinlogMasterOnRestore() {
 // Check And Purge Binlogs check mariadb binlog
 func (server *ServerMonitor) CheckAndPurgeBinlogSlave() {
 	cluster := server.ClusterGroup
-	if cluster.Conf.ForceBinlogPurge && !server.DBVersion.IsPostgreSQL() { // Only work if ForceBinlogPurge is on and MySQL/Percona/MariaDB
+	if cluster.IsInFailover() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel job purge binlog during failover")
+		return
+	}
+	if !cluster.Conf.ForceBinlogPurge {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog not enabled")
+		return
+	}
+
+	if !server.DBVersion.IsPostgreSQL() { // Only work if ForceBinlogPurge is on and MySQL/Percona/MariaDB
 		if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11.4 and up
 			err := server.SetMaxBinlogTotalSize()
 			if err != nil {
@@ -541,7 +559,7 @@ func (server *ServerMonitor) CheckAndPurgeBinlogSlave() {
 			}
 		} else {
 			if !server.IsPurgingBinlog() && len(server.BinaryLogFiles) > 1 {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "[PURGE] MariaDB Version is not compatible for max_binlog_total_size, using manual purging")
+				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "[PURGE] MariaDB Version is not compatible for max_binlog_total_size, using manual purging")
 				if cluster.StateMachine.CurState.Search("WARN0107") == false {
 					go server.JobBinlogPurgeSlave()
 				}
