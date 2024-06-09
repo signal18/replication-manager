@@ -166,4 +166,5 @@ var clusterError = map[string]string{
 	"WARN0107": "Force Binlog Purge can not continue. Oldest binlog is still used by slaves: %s.%d. Skipping",
 	"WARN0108": "Default users still use default password. Please change the credentials for users: (%s)",
 	"WARN0109": "Error while checking master log file for purging in slave [%s] (%s) : %s\n",
+	"WARN0110": "Pending %s backup using %s for [%s] due to another job. Waiting...",
 }

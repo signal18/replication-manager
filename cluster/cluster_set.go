@@ -1693,3 +1693,27 @@ func (cluster *Cluster) SetLogBinlogPurgeLevel(value int) {
 		cluster.Conf.LogBinlogPurge = false
 	}
 }
+
+func (cluster *Cluster) SetInPhysicalBackupState(value bool) {
+	cluster.Lock()
+	cluster.InPhysicalBackup = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetInLogicalBackupState(value bool) {
+	cluster.Lock()
+	cluster.InLogicalBackup = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetInBinlogBackupState(value bool) {
+	cluster.Lock()
+	cluster.InBinlogBackup = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetInResticBackupState(value bool) {
+	cluster.Lock()
+	cluster.InResticBackup = value
+	cluster.Unlock()
+}
