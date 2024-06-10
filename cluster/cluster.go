@@ -205,6 +205,10 @@ type Cluster struct {
 	SqlErrorLog               *logsql.Logger              `json:"-"`
 	SqlGeneralLog             *logsql.Logger              `json:"-"`
 	SstAvailablePorts         map[string]string           `json:"sstAvailablePorts"`
+	InPhysicalBackup          bool                        `json:"inPhysicalBackup"`
+	InLogicalBackup           bool                        `json:"inLogicalBackup"`
+	InBinlogBackup            bool                        `json:"inBinlogBackup"`
+	InResticBackup            bool                        `json:"inResticBackup"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table

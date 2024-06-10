@@ -214,6 +214,7 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor) {
 
 		backtype := "physical"
 		server.BackupRestic(sst.cluster.Conf.Cloud18GitUser, sst.cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, sst.cluster.Conf.BackupPhysicalType)
+		sst.cluster.SetInPhysicalBackupState(false)
 	}()
 
 	sst.in, err = sst.listener.Accept()
@@ -253,6 +254,7 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor) {
 
 		backtype := "physical"
 		server.BackupRestic(sst.cluster.Conf.Cloud18GitUser, sst.cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, sst.cluster.Conf.BackupPhysicalType)
+		sst.cluster.SetInPhysicalBackupState(false)
 	}()
 
 	sst.in, err = sst.listener.Accept()
@@ -289,6 +291,7 @@ func (sst *SST) tcp_con_handle_to_restic() {
 		delete(SSTs.SSTconnections, port)
 		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
+		sst.cluster.SetInPhysicalBackupState(false)
 	}()
 
 	sst.in, err = sst.listener.Accept()

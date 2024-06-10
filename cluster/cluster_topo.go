@@ -545,6 +545,10 @@ func (cluster *Cluster) MultipleSlavesUp(candidate *ServerMonitor) bool {
 }
 
 func (cluster *Cluster) CheckSlavesReplicationsPurge() {
+	if cluster.IsInFailover() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel checking replication, cluster is in failover")
+		return
+	}
 	if !cluster.Conf.ForceBinlogPurge {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog not enabled")
 		return
@@ -554,9 +558,18 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 	binInt := 0
 	oldest := ""
 	for _, sl := range cluster.slaves {
+		if cluster.IsInFailover() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel checking replication, cluster is in failover")
+			return
+		}
 		// Counting if slave is sync or late but not error
 		if sl.State == stateSlave || sl.State == stateSlaveLate {
 			connected++
+		}
+
+		if sl.SlaveStatus == nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel checking replication, slave status is missing due to master change")
+			return
 		}
 
 		parts := strings.Split(sl.SlaveStatus.MasterLogFile.String, ".")

@@ -98,6 +98,15 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	}
 	cluster := server.ClusterGroup
 
+	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+		cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Physical", cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		time.Sleep(1 * time.Second)
+
+		return server.JobBackupPhysical()
+	}
+
+	cluster.SetInPhysicalBackupState(true)
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Receive physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
 	if server.IsDown() {
 		return 0, nil
@@ -130,7 +139,9 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	}
 
 	jobid, err := server.JobInsertTaks(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
-
+	if err == nil {
+		go server.JobRunViaSSH()
+	}
 	return jobid, err
 	//	}
 	//return 0, nil
@@ -657,6 +668,17 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	if server.IsDown() {
 		return errors.New("Can't backup when server down")
 	}
+
+	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+		cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		time.Sleep(1 * time.Second)
+
+		return server.JobBackupLogical()
+	}
+
+	cluster.SetInLogicalBackupState(true)
+	defer cluster.SetInLogicalBackupState(false)
+
 	server.DelBackupLogicalCookie()
 	if server.IsMariaDB() && server.DBVersion.Major == 10 &&
 		server.DBVersion.Minor >= 4 &&
@@ -874,6 +896,9 @@ func (server *ServerMonitor) BackupRestic(tags ...string) error {
 	var errStdout, errStderr error
 
 	if cluster.Conf.BackupRestic {
+		cluster.SetInResticBackupState(true)
+		defer cluster.SetInResticBackupState(false)
+
 		args := make([]string, 0)
 
 		args = append(args, "backup")
@@ -1030,6 +1055,19 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		return errors.New("Copy binlog not enable")
 	}
 
+	//Skip setting in backup state due to batch purging
+	if !isPurge {
+		if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+			cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+			time.Sleep(1 * time.Second)
+
+			return server.JobBackupBinlog(binlogfile, isPurge)
+		}
+
+		cluster.SetInBinlogBackupState(true)
+		defer cluster.SetInBinlogBackupState(false)
+	}
+
 	server.SetBackingUpBinaryLog(true)
 	defer server.SetBackingUpBinaryLog(false)
 
@@ -1067,6 +1105,17 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	if !cluster.Conf.BackupBinlogs {
 		return errors.New("Copy binlog not enable")
 	}
+
+	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+		cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		time.Sleep(1 * time.Second)
+
+		return server.JobBackupBinlogPurge(binlogfile)
+	}
+
+	cluster.SetInBinlogBackupState(true)
+	defer cluster.SetInBinlogBackupState(false)
+
 	binlogfilestart, _ := strconv.Atoi(strings.Split(binlogfile, ".")[1])
 	prefix := strings.Split(binlogfile, ".")[0]
 	binlogfilestop := binlogfilestart - cluster.Conf.BackupBinlogsKeep
@@ -1240,6 +1289,19 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 	}
 	if !cluster.Conf.BackupBinlogs {
 		return errors.New("Copy binlog not enable")
+	}
+
+	//Skip setting in backup state due to batch purging
+	if !isPurge {
+		if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+			cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+			time.Sleep(1 * time.Second)
+
+			return server.JobBackupBinlogSSH(binlogfile, isPurge)
+		}
+
+		cluster.SetInBinlogBackupState(true)
+		defer cluster.SetInBinlogBackupState(false)
 	}
 
 	server.SetBackingUpBinaryLog(true)

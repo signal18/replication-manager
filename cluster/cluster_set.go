@@ -806,6 +806,18 @@ func (cluster *Cluster) SetBackupPhysicalType(backup string) {
 	cluster.Conf.BackupPhysicalType = backup
 }
 
+func (cluster *Cluster) SetBackupBinlogType(backup string) {
+	cluster.Conf.BinlogCopyMode = backup
+}
+
+func (cluster *Cluster) SetBackupBinlogScript(filename string) {
+	cluster.Conf.BinlogCopyScript = filename
+}
+
+func (cluster *Cluster) SetBinlogParseMode(tool string) {
+	cluster.Conf.BinlogParseMode = tool
+}
+
 func (cluster *Cluster) SetEmptySla() {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate SLA")
 	cluster.SLAHistory = append(cluster.SLAHistory, cluster.StateMachine.GetSla())
@@ -1680,4 +1692,28 @@ func (cluster *Cluster) SetLogBinlogPurgeLevel(value int) {
 	} else {
 		cluster.Conf.LogBinlogPurge = false
 	}
+}
+
+func (cluster *Cluster) SetInPhysicalBackupState(value bool) {
+	cluster.Lock()
+	cluster.InPhysicalBackup = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetInLogicalBackupState(value bool) {
+	cluster.Lock()
+	cluster.InLogicalBackup = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetInBinlogBackupState(value bool) {
+	cluster.Lock()
+	cluster.InBinlogBackup = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetInResticBackupState(value bool) {
+	cluster.Lock()
+	cluster.InResticBackup = value
+	cluster.Unlock()
 }
