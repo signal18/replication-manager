@@ -885,7 +885,7 @@ func (server *ServerMonitor) copyLogs(r io.Reader) {
 		if !s.Scan() {
 			break
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "%s", s.Text())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "%s", s.Text())
 		}
 	}
 }
