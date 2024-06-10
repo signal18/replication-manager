@@ -460,6 +460,6 @@ func (cluster *Cluster) IsVariableImmutable(v string) bool {
 
 }
 
-func (cluster *Cluster) HasNoBackupState() bool {
+func (cluster *Cluster) IsInBackup() bool {
 	return !cluster.InPhysicalBackup && !cluster.InLogicalBackup && !cluster.InBinlogBackup && !cluster.InResticBackup
 }
