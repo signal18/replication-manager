@@ -42,6 +42,7 @@ import (
 	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
+	clog "github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	logsql "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
@@ -172,6 +173,7 @@ type Cluster struct {
 	tunnel                    *ssh.Client                 `json:"-"`
 	QueryRules                map[uint32]config.QueryRule `json:"-"`
 	Backups                   []v3.Backup                 `json:"-"`
+	BackupStat                v3.BackupStat               `json:"backupStat"`
 	SLAHistory                []state.Sla                 `json:"slaHistory"`
 	APIUsers                  map[string]APIUser          `json:"apiUsers"`
 	Schedule                  map[string]cron.Entry       `json:"-"`
@@ -203,11 +205,16 @@ type Cluster struct {
 	SqlErrorLog               *logsql.Logger              `json:"-"`
 	SqlGeneralLog             *logsql.Logger              `json:"-"`
 	SstAvailablePorts         map[string]string           `json:"sstAvailablePorts"`
+	InPhysicalBackup          bool                        `json:"inPhysicalBackup"`
+	InLogicalBackup           bool                        `json:"inLogicalBackup"`
+	InBinlogBackup            bool                        `json:"inBinlogBackup"`
+	InResticBackup            bool                        `json:"inResticBackup"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
 	SlavesOldestMasterFile SlavesOldestMasterFile
 	SlavesConnected        int
+	clog                   *clog.Logger `json:"-"`
 }
 
 type SlavesOldestMasterFile struct {
@@ -652,7 +659,7 @@ func (cluster *Cluster) Run() {
 							cluster.StateMachine.PreserveState("WARN0094")
 						}
 						if cluster.SlavesOldestMasterFile.Suffix == 0 {
-							cluster.CheckSlavesReplications()
+							cluster.CheckSlavesReplicationsPurge()
 						}
 						cluster.PrintDelayStat()
 					}
@@ -678,6 +685,13 @@ func (cluster *Cluster) Run() {
 			cluster.Lock()
 			cluster.Topology = cluster.GetTopologyFromConf()
 			cluster.Unlock()
+		}
+
+		if cluster.clog != nil {
+			clevel := cluster.Conf.ToLogrusLevel(cluster.Conf.LogGraphiteLevel)
+			if cluster.clog.GetLevel() != clevel {
+				cluster.clog.SetLevel(clevel)
+			}
 		}
 
 		time.Sleep(interval * time.Duration(cluster.Conf.MonitoringTicker))

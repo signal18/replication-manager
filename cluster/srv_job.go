@@ -98,6 +98,15 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	}
 	cluster := server.ClusterGroup
 
+	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+		cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Physical", cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		time.Sleep(1 * time.Second)
+
+		return server.JobBackupPhysical()
+	}
+
+	cluster.SetInPhysicalBackupState(true)
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Receive physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
 	if server.IsDown() {
 		return 0, nil
@@ -118,19 +127,21 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	var backupext string = ".xbtream"
 	if cluster.Conf.CompressBackups {
 		backupext = backupext + ".gz"
-		port, err = cluster.SSTRunReceiverToGZip(server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, ConstJobCreateFile)
+		port, err = cluster.SSTRunReceiverToGZip(server, server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, ConstJobCreateFile)
 		if err != nil {
 			return 0, nil
 		}
 	} else {
-		port, err = cluster.SSTRunReceiverToFile(server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, ConstJobCreateFile)
+		port, err = cluster.SSTRunReceiverToFile(server, server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, ConstJobCreateFile)
 		if err != nil {
 			return 0, nil
 		}
 	}
 
 	jobid, err := server.JobInsertTaks(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
-
+	if err == nil {
+		go server.JobRunViaSSH()
+	}
 	return jobid, err
 	//	}
 	//return 0, nil
@@ -311,7 +322,7 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := cluster.SSTRunReceiverToFile(server.Datadir+"/log/log_error.log", ConstJobAppendFile)
+	port, err := cluster.SSTRunReceiverToFile(server, server.Datadir+"/log/log_error.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}
@@ -378,7 +389,7 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	port, err := cluster.SSTRunReceiverToFile(server.Datadir+"/log/log_slow_query.log", ConstJobAppendFile)
+	port, err := cluster.SSTRunReceiverToFile(server, server.Datadir+"/log/log_slow_query.log", ConstJobAppendFile)
 	if err != nil {
 		return 0, nil
 	}
@@ -657,6 +668,17 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	if server.IsDown() {
 		return errors.New("Can't backup when server down")
 	}
+
+	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+		cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		time.Sleep(1 * time.Second)
+
+		return server.JobBackupLogical()
+	}
+
+	cluster.SetInLogicalBackupState(true)
+	defer cluster.SetInLogicalBackupState(false)
+
 	server.DelBackupLogicalCookie()
 	if server.IsMariaDB() && server.DBVersion.Major == 10 &&
 		server.DBVersion.Minor >= 4 &&
@@ -850,7 +872,8 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
-	server.BackupRestic()
+	backtype := "logical"
+	server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupLogicalType)
 	return nil
 }
 
@@ -862,18 +885,32 @@ func (server *ServerMonitor) copyLogs(r io.Reader) {
 		if !s.Scan() {
 			break
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "%s", s.Text())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "%s", s.Text())
 		}
 	}
 }
 
-func (server *ServerMonitor) BackupRestic() error {
+func (server *ServerMonitor) BackupRestic(tags ...string) error {
 	cluster := server.ClusterGroup
 	var stdout, stderr []byte
 	var errStdout, errStderr error
 
 	if cluster.Conf.BackupRestic {
-		resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, "backup", server.GetMyBackupDirectory())
+		cluster.SetInResticBackupState(true)
+		defer cluster.SetInResticBackupState(false)
+
+		args := make([]string, 0)
+
+		args = append(args, "backup")
+		for _, tag := range tags {
+			if tag != "" {
+				args = append(args, "--tag")
+				args = append(args, tag)
+			}
+		}
+		args = append(args, server.GetMyBackupDirectory())
+
+		resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, args...)
 
 		stdoutIn, _ := resticcmd.StdoutPipe()
 		stderrIn, _ := resticcmd.StderrPipe()
@@ -1006,7 +1043,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	return nil
 }
 
-func (server *ServerMonitor) JobBackupBinlog(binlogfile string) error {
+func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) error {
 	cluster := server.ClusterGroup
 	if !server.IsMaster() {
 		return errors.New("Copy only master binlog")
@@ -1016,6 +1053,19 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string) error {
 	}
 	if !cluster.Conf.BackupBinlogs {
 		return errors.New("Copy binlog not enable")
+	}
+
+	//Skip setting in backup state due to batch purging
+	if !isPurge {
+		if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+			cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+			time.Sleep(1 * time.Second)
+
+			return server.JobBackupBinlog(binlogfile, isPurge)
+		}
+
+		cluster.SetInBinlogBackupState(true)
+		defer cluster.SetInBinlogBackupState(false)
 	}
 
 	server.SetBackingUpBinaryLog(true)
@@ -1037,7 +1087,12 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string) error {
 		return cmdrunErr
 	}
 
-	// Get
+	//Skip copying to resting when purge due to batching
+	if !isPurge {
+		// Backup to restic when no error (defer to prevent unfinished physical copy)
+		backtype := "binlog"
+		defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
+	}
 
 	return nil
 }
@@ -1050,6 +1105,17 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	if !cluster.Conf.BackupBinlogs {
 		return errors.New("Copy binlog not enable")
 	}
+
+	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+		cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		time.Sleep(1 * time.Second)
+
+		return server.JobBackupBinlogPurge(binlogfile)
+	}
+
+	cluster.SetInBinlogBackupState(true)
+	defer cluster.SetInBinlogBackupState(false)
+
 	binlogfilestart, _ := strconv.Atoi(strings.Split(binlogfile, ".")[1])
 	prefix := strings.Split(binlogfile, ".")[0]
 	binlogfilestop := binlogfilestart - cluster.Conf.BackupBinlogsKeep
@@ -1060,7 +1126,8 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 			if _, err := os.Stat(server.GetMyBackupDirectory() + "/" + filename); os.IsNotExist(err) {
 				if _, ok := server.BinaryLogFiles[filename]; ok {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backup master missing binlog of %s,%s", server.URL, filename)
-					server.InitiateJobBackupBinlog(filename)
+					//Set true to skip sending to resting multiple times
+					server.InitiateJobBackupBinlog(filename, true)
 				}
 			}
 			keeping[filename] = binlogfilestop
@@ -1212,7 +1279,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	return nil
 }
 
-func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string) error {
+func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool) error {
 	cluster := server.ClusterGroup
 	if !server.IsMaster() {
 		return errors.New("Copy only master binlog")
@@ -1224,6 +1291,19 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string) error {
 		return errors.New("Copy binlog not enable")
 	}
 
+	//Skip setting in backup state due to batch purging
+	if !isPurge {
+		if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+			cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+			time.Sleep(1 * time.Second)
+
+			return server.JobBackupBinlogSSH(binlogfile, isPurge)
+		}
+
+		cluster.SetInBinlogBackupState(true)
+		defer cluster.SetInBinlogBackupState(false)
+	}
+
 	server.SetBackingUpBinaryLog(true)
 	defer server.SetBackingUpBinaryLog(false)
 
@@ -1233,19 +1313,6 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string) error {
 		return err
 	}
 	defer client.Close()
-
-	if server.BinaryLogDir == "" {
-		basename, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_BIN_BASENAME", server.DBVersion)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Variable log_bin_basename not found!")
-			return err
-		}
-
-		parts := strings.Split(basename, "/")
-		binlogpath := strings.Join(parts[:len(parts)-1], "/")
-
-		server.SetBinaryLogDir(binlogpath)
-	}
 
 	remotefile := server.BinaryLogDir + "/" + binlogfile
 	localfile := server.GetMyBackupDirectory() + "/" + binlogfile
@@ -1274,16 +1341,39 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string) error {
 		return err
 	}
 
+	//Skip copying to resting when purge due to batching
+	if !isPurge {
+		// Backup to restic when no error (defer to prevent unfinished physical copy)
+		backtype := "binlog"
+		defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
+	}
 	return nil
 }
 
-func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string) error {
+func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge bool) error {
 	cluster := server.ClusterGroup
+
+	if server.BinaryLogDir == "" {
+		//Not using Variables[] due to uppercase values
+		basename, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_BIN_BASENAME", server.DBVersion)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Variable log_bin_basename not found!")
+			return err
+		}
+
+		parts := strings.Split(basename, "/")
+		binlogpath := strings.Join(parts[:len(parts)-1], "/")
+
+		server.SetBinaryLogDir(binlogpath)
+	}
+
 	switch cluster.Conf.BinlogCopyMode {
 	case "client", "mysqlbinlog":
-		return server.JobBackupBinlog(binlogfile)
+		return server.JobBackupBinlog(binlogfile, isPurge)
 	case "ssh":
-		return server.JobBackupBinlogSSH(binlogfile)
+		return server.JobBackupBinlogSSH(binlogfile, isPurge)
+	case "script":
+		return cluster.BinlogCopyScript(server, binlogfile, isPurge)
 	}
 
 	return errors.New("Wrong configuration for Backup Binlog Method!")

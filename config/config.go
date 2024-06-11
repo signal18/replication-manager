@@ -120,6 +120,10 @@ type Config struct {
 	LogTopologyLevel                          int                    `mapstructure:"log-topology-level" toml:"log-topology-level" json:"logTopologyLevel"`
 	LogProxy                                  bool                   `mapstructure:"log-proxy" toml:"log-proxy" json:"logProxy"`
 	LogProxyLevel                             int                    `mapstructure:"log-proxy-level" toml:"log-proxy-level" json:"logProxyLevel"`
+	LogGraphite                               bool                   `mapstructure:"log-graphite" toml:"log-graphite" json:"logGraphite"`
+	LogGraphiteLevel                          int                    `mapstructure:"log-graphite-level" toml:"log-graphite-level" json:"logGraphiteLevel"`
+	LogBinlogPurge                            bool                   `mapstructure:"log-binlog-purge" toml:"log-binlog-purge" json:"logBinlogPurge"`
+	LogBinlogPurgeLevel                       int                    `mapstructure:"log-binlog-purge-level" toml:"log-binlog-purge-level" json:"logBinlogPurgeLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	HostsDelayed                              string                 `mapstructure:"replication-delayed-hosts" toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
@@ -882,6 +886,13 @@ const (
 	ConstBackupPhysicalTypeMariaBackup string = "mariabackup"
 )
 
+const (
+	ConstBackupBinlogTypeMysqlbinlog string = "mysqlbinlog"
+	ConstBackupBinlogTypeSSH         string = "ssh"
+	ConstBackupBinlogTypeScript      string = "script"
+	ConstBackupBinlogTypeGoMySQL     string = "gomysql"
+)
+
 /*
 This is the list of modules to be used in LogModulePrintF
 */
@@ -901,6 +912,8 @@ const (
 	ConstLogModHAProxy        = 12
 	ConstLogModProxyJanitor   = 13
 	ConstLogModMaxscale       = 14
+	ConstLogModGraphite       = 15
+	ConstLogModPurge          = 16
 )
 
 func (conf *Config) GetSecrets() map[string]Secret {
@@ -1317,38 +1330,53 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 }
 
 /*
-func (conf *Config) PullByGitCli() {
-	// Store the initial directory path
-	initialDir, err := os.Getwd()
-	if err != nil {
-		fmt.Println("Failed to get current directory:", err)
-		return
-	}
-	// Change to the desired Git repository directory
-	repoDir := conf.WorkingDir
-	if err := os.Chdir(repoDir); err != nil {
-		log.Errorf("Failed to change directory:", err)
-		return
-	}
+	func (conf *Config) PullByGitCli() {
+		// Store the initial directory path
+		initialDir, err := os.Getwd()
+		if err != nil {
+			fmt.Println("Failed to get current directory:", err)
+			return
+		}
+		// Change to the desired Git repository directory
+		repoDir := conf.WorkingDir
+		if err := os.Chdir(repoDir); err != nil {
+			log.Errorf("Failed to change directory:", err)
+			return
+		}
 
-	// Execute "git pull" command
-	cmd := exec.Command("git", "pull", "-f")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Errorf("Failed to execute 'git pull' command:", err)
-		return
+		// Execute "git pull" command
+		cmd := exec.Command("git", "pull", "-f")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Errorf("Failed to execute 'git pull' command:", err)
+			return
+		}
+
+		log.Infof("Git pull output:", string(output))
+
+		log.Infof("Merge accepted successfully. %s", output)
+
+		// Change back to the initial directory
+		if err := os.Chdir(initialDir); err != nil {
+			fmt.Println("Failed to change back to initial directory:", err)
+			return
+		}
 	}
-
-	log.Infof("Git pull output:", string(output))
-
-	log.Infof("Merge accepted successfully. %s", output)
-
-	// Change back to the initial directory
-	if err := os.Chdir(initialDir); err != nil {
-		fmt.Println("Failed to change back to initial directory:", err)
-		return
+*/
+func (conf *Config) GetBackupBinlogType() map[string]bool {
+	return map[string]bool{
+		ConstBackupBinlogTypeMysqlbinlog: true,
+		ConstBackupBinlogTypeSSH:         true,
+		ConstBackupBinlogTypeScript:      true,
 	}
-}*/
+}
+
+func (conf *Config) GetBinlogParseMode() map[string]bool {
+	return map[string]bool{
+		ConstBackupBinlogTypeMysqlbinlog: true,
+		ConstBackupBinlogTypeGoMySQL:     true,
+	}
+}
 
 func (conf *Config) GetBackupPhysicalType() map[string]bool {
 	return map[string]bool{
@@ -1880,6 +1908,16 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 				return conf.MxsLogLevel >= lvl
 			}
 			break
+		case module == ConstLogModGraphite:
+			if conf.LogGraphite {
+				return conf.LogGraphiteLevel >= lvl
+			}
+			break
+		case module == ConstLogModPurge:
+			if conf.LogBinlogPurge {
+				return conf.LogBinlogPurgeLevel >= lvl
+			}
+			break
 		}
 	}
 
@@ -1888,4 +1926,17 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 
 func (conf *Config) SetLogOutput(out io.Writer) {
 	log.SetOutput(out)
+}
+
+func (conf *Config) ToLogrusLevel(l int) log.Level {
+	switch l {
+	case 2:
+		return log.WarnLevel
+	case 3:
+		return log.InfoLevel
+	case 4:
+		return log.DebugLevel
+	}
+	//Always return at least error level to make sure Logger not exit
+	return log.ErrorLevel
 }

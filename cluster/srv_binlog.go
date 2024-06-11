@@ -146,7 +146,7 @@ func (server *ServerMonitor) RefreshBinlogOldestTimestamp() error {
 				if ev.Header.EventType == replication.FORMAT_DESCRIPTION_EVENT {
 					server.OldestBinaryLogTimestamp = int64(ev.Header.Timestamp)
 					ts := time.Unix(server.OldestBinaryLogTimestamp, 0)
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Refreshed oldest timestamp on %s. oldest: %s", server.Host+":"+server.Port, ts.String())
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Refreshed oldest timestamp on %s. oldest: %s", server.Host+":"+server.Port, ts.String())
 					//Only update once for oldest binlog timestamp
 					break
 				}
@@ -158,7 +158,7 @@ func (server *ServerMonitor) RefreshBinlogOldestTimestamp() error {
 
 			events, _, err := dbhelper.GetBinlogFormatDesc(server.Conn, server.BinaryLogOldestFile)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error while getting binlog events from oldest master binlog: %s. Err: %s", server.BinaryLogOldestFile, err.Error())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error while getting binlog events from oldest master binlog: %s. Err: %s", server.BinaryLogOldestFile, err.Error())
 				return err
 			}
 
@@ -170,17 +170,17 @@ func (server *ServerMonitor) RefreshBinlogOldestTimestamp() error {
 
 				result, err := mysqlbinlogcmd.Output()
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error while extracting timestamp from oldest master binlog: %s. Err: %s", server.BinaryLogOldestFile, err.Error())
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error while extracting timestamp from oldest master binlog: %s. Err: %s", server.BinaryLogOldestFile, err.Error())
 					return err
 				}
 
 				err = server.SetBinlogOldestTimestamp(string(result))
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s. Host: %s - %s", err.Error(), server.Host+":"+server.Port, server.BinaryLogOldestFile)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s. Host: %s - %s", err.Error(), server.Host+":"+server.Port, server.BinaryLogOldestFile)
 					return err
 				}
 
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Refreshed binary logs on %s - %s. oldest timestamp: %s", server.Host+":"+server.Port, ev.Log_name, time.Unix(server.OldestBinaryLogTimestamp, 0).String())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Refreshed binary logs on %s - %s. oldest timestamp: %s", server.Host+":"+server.Port, ev.Log_name, time.Unix(server.OldestBinaryLogTimestamp, 0).String())
 
 				return err
 			}
@@ -222,7 +222,7 @@ func (server *ServerMonitor) SetBinaryLogOldestFile() {
 		if files == 1 && server.BinaryLogOldestFile != server.BinaryLogFile {
 			if server.BinaryLogOldestFile != server.BinaryLogFile {
 				server.BinaryLogOldestFile = server.BinaryLogFile
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogOldestFile)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogOldestFile)
 				//Only get timestamp when needed
 				if cluster.Conf.ForceBinlogPurge {
 					server.RefreshBinlogOldestTimestamp()
@@ -242,7 +242,7 @@ func (server *ServerMonitor) SetBinaryLogOldestFile() {
 		if _, ok := server.BinaryLogFiles[oldest]; ok && server.BinaryLogOldestFile != server.BinaryLogFile {
 			if server.BinaryLogOldestFile != oldest {
 				server.BinaryLogOldestFile = oldest
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogOldestFile)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogOldestFile)
 				//Only get timestamp when needed
 				if cluster.Conf.ForceBinlogPurge {
 					server.RefreshBinlogOldestTimestamp()
@@ -257,7 +257,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	cluster := server.GetCluster()
 
 	//Refresh slaves replication positions
-	cluster.CheckSlavesReplications()
+	cluster.CheckSlavesReplicationsPurge()
 
 	if cluster.SlavesConnected <= cluster.Conf.ForceBinlogPurgeMinReplica {
 		if cluster.StateMachine.CurState.Search("WARN0106") == false {
@@ -272,7 +272,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 
 	//Block multiple purge
 	if server.IsPurgingBinlog() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Master is waiting for previous binlog purge to finish")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Master is waiting for previous binlog purge to finish")
 		return
 	}
 
@@ -280,16 +280,16 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	defer server.SetIsPurgingBinlog(false)
 
 	if cluster.IsInFailover() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel job purge binlog during failover")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel job purge binlog during failover")
 		return
 	}
 	if !cluster.Conf.ForceBinlogPurge {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Purge binlog not enabled")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog not enabled")
 		return
 	}
 
 	if !server.IsMaster() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Purge only master binlog")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge only master binlog")
 		return
 	}
 
@@ -302,7 +302,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 
 	// If force purge binlog total size is set (default 30)
 	if cluster.Conf.ForceBinlogPurgeTotalSize > 0 {
-		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "server:%s start:%s stop:%s list: %s", server.URL, fmt.Sprintf("%06d", latestbinlog), fmt.Sprintf("%06d", oldestbinlog))
+		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "server:%s start:%s stop:%s list: %s", server.URL, fmt.Sprintf("%06d", latestbinlog), fmt.Sprintf("%06d", oldestbinlog))
 		var totalSize uint
 		totalSize = 0
 		lastfile := 0
@@ -336,20 +336,20 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 				if oldestbinlog > 0 && oldestbinlog < cluster.SlavesOldestMasterFile.Suffix-1 {
 					filename := prefix + "." + fmt.Sprintf("%06d", oldestbinlog)
 					if _, ok := server.BinaryLogFiles[filename]; ok {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Purging binlog of %s: %s. ", server.URL, filename)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purging binlog of %s: %s. ", server.URL, filename)
 						_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)
 						if err != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
 						}
 					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Binlog filename not found on %s: %s", server.URL, filename)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Binlog filename not found on %s: %s", server.URL, filename)
 					}
 				}
 			}
 			server.RefreshBinaryLogs()
 		}
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel job purge due to no total size")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel job purge due to no total size")
 	}
 
 	return
@@ -359,12 +359,12 @@ func (server *ServerMonitor) JobBinlogPurgeMasterOnRestore() {
 	cluster := server.GetCluster()
 
 	if server.DBVersion.IsPostgreSQL() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Force Binlog Purge On Restore not available in PostgreSQL")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Force Binlog Purge On Restore not available in PostgreSQL")
 		return
 	}
 
 	//Refresh slaves replication positions
-	cluster.CheckSlavesReplications()
+	cluster.CheckSlavesReplicationsPurge()
 
 	if cluster.SlavesConnected <= cluster.Conf.ForceBinlogPurgeMinReplica {
 		if cluster.StateMachine.CurState.Search("WARN0106") == false {
@@ -379,7 +379,7 @@ func (server *ServerMonitor) JobBinlogPurgeMasterOnRestore() {
 
 	//Block multiple purge
 	if server.IsPurgingBinlog() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Master is waiting for previous binlog purge to finish")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Master is waiting for previous binlog purge to finish")
 		return
 	}
 
@@ -387,21 +387,21 @@ func (server *ServerMonitor) JobBinlogPurgeMasterOnRestore() {
 	defer server.SetIsPurgingBinlog(false)
 
 	if cluster.IsInFailover() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel job purge binlog during failover")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel job purge binlog during failover")
 		return
 	}
 	if !cluster.Conf.ForceBinlogPurge {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Purge binlog not enabled")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog not enabled")
 		return
 	}
 
 	if !server.IsMaster() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Purge only master binlog")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge only master binlog")
 		return
 	}
 
 	if !cluster.Conf.ForceBinlogPurgeOnRestore {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Purge binlog on restore is not enabled")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog on restore is not enabled")
 		return
 	}
 
@@ -412,30 +412,30 @@ func (server *ServerMonitor) JobBinlogPurgeMasterOnRestore() {
 	oldestbinlog := suffix + 1 - len(server.BinaryLogFiles)
 
 	if cluster.SlavesOldestMasterFile.Prefix != prefix {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Purge cancelled, master binlog file has different prefix")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge cancelled, master binlog file has different prefix")
 		return
 	}
 
 	if suffix < cluster.SlavesOldestMasterFile.Suffix {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Purge cancelled because of inconsistency, slaves master filename is bigger than master binlog")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge cancelled because of inconsistency, slaves master filename is bigger than master binlog")
 		return
 	}
 
 	//Only purge if oldest master binlog has more than 2 files
-	if oldestbinlog < cluster.SlavesOldestMasterFile.Suffix-1 {
+	if oldestbinlog > 0 && oldestbinlog < cluster.SlavesOldestMasterFile.Suffix-1 {
 
 		//Retain previous binlog
 		filename := cluster.SlavesOldestMasterFile.Prefix + "." + fmt.Sprintf("%06d", cluster.SlavesOldestMasterFile.Suffix-1)
 
 		//Check if file exists
 		if _, ok := server.BinaryLogFiles[filename]; ok {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Purging binlog of %s: %s. ", server.URL, filename)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purging binlog of %s: %s. ", server.URL, filename)
 			_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
 			}
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Binlog filename not found on %s: %s", server.URL, filename)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Binlog filename not found on %s: %s", server.URL, filename)
 		}
 
 		server.RefreshBinaryLogs()
@@ -455,7 +455,7 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 		}
 
 		if server.IsPurgingBinlog() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Server is waiting for previous binlog purge to finish")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Server is waiting for previous binlog purge to finish")
 			return
 		}
 
@@ -463,34 +463,34 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 		defer server.SetIsPurgingBinlog(false)
 
 		if cluster.IsInFailover() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel job purge slave binlog during failover")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel job purge slave binlog during failover")
 			return
 		}
 		if !cluster.Conf.ForceBinlogPurge {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Purge binlog not enabled")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog not enabled")
 			return
 		}
 
 		//Only purge if slave not ignored
 		if server.IsIgnored() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Slave %s is in ignored list. Skipping", server.Host+":"+server.Port)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Slave %s is in ignored list. Skipping", server.Host+":"+server.Port)
 			return
 		}
 
 		//Only purge if slave connected and status is slave or slave late
 		if server.State != stateSlave && server.State != stateSlaveLate {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can not purge. Only connected slave is allowed to purge binlog")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Can not purge. Only connected slave is allowed to purge binlog")
 			return
 		}
 
 		//Purge slaves to oldest master binlog timestamp and skip if slave only has 1 binary logs file left
 		if server.OldestBinaryLogTimestamp > 0 && master.OldestBinaryLogTimestamp > server.OldestBinaryLogTimestamp && len(server.BinaryLogFiles) > 1 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Purging slave binlog of %s from %s until oldest timestamp on master: %s", server.URL, time.Unix(server.OldestBinaryLogTimestamp, 0).String(), time.Unix(master.OldestBinaryLogTimestamp, 0).String())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purging slave binlog of %s from %s until oldest timestamp on master: %s", server.URL, time.Unix(server.OldestBinaryLogTimestamp, 0).String(), time.Unix(master.OldestBinaryLogTimestamp, 0).String())
 			q, err := dbhelper.PurgeBinlogBefore(server.Conn, master.OldestBinaryLogTimestamp)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error purging binlog of %s : %s", server.URL, err.Error())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error purging binlog of %s : %s", server.URL, err.Error())
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Executed query: %s", q)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Executed query: %s", q)
 			}
 
 			server.RefreshBinaryLogs()
@@ -503,17 +503,26 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 // Check And Purge Binlogs check mariadb binlog
 func (server *ServerMonitor) CheckAndPurgeBinlogMaster() {
 	cluster := server.ClusterGroup
-	if cluster.Conf.ForceBinlogPurge && !server.DBVersion.IsPostgreSQL() { // Only work if ForceBinlogPurge is on and MySQL/Percona/MariaDB
+	if cluster.IsInFailover() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel job purge binlog during failover")
+		return
+	}
+	if !cluster.Conf.ForceBinlogPurge {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog not enabled")
+		return
+	}
+
+	if !server.DBVersion.IsPostgreSQL() { // Only work if ForceBinlogPurge is on and MySQL/Percona/MariaDB
 
 		if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11 and up
 			err := server.SetMaxBinlogTotalSize()
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, err.Error())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, err.Error())
 			}
 		} else {
-			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Purging check")
+			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purging check")
 			if !server.IsPurgingBinlog() && len(server.BinaryLogFiles) > 1 {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "MariaDB Version is not compatible for max_binlog_total_size, using manual purging")
+				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "[PURGE] MariaDB Version is not compatible for max_binlog_total_size, using manual purging")
 				go server.JobBinlogPurgeMaster()
 			}
 		}
@@ -533,15 +542,24 @@ func (server *ServerMonitor) CheckAndPurgeBinlogMasterOnRestore() {
 // Check And Purge Binlogs check mariadb binlog
 func (server *ServerMonitor) CheckAndPurgeBinlogSlave() {
 	cluster := server.ClusterGroup
-	if cluster.Conf.ForceBinlogPurge && !server.DBVersion.IsPostgreSQL() { // Only work if ForceBinlogPurge is on and MySQL/Percona/MariaDB
+	if cluster.IsInFailover() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel job purge binlog during failover")
+		return
+	}
+	if !cluster.Conf.ForceBinlogPurge {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog not enabled")
+		return
+	}
+
+	if !server.DBVersion.IsPostgreSQL() { // Only work if ForceBinlogPurge is on and MySQL/Percona/MariaDB
 		if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11.4 and up
 			err := server.SetMaxBinlogTotalSize()
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, err.Error())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, err.Error())
 			}
 		} else {
 			if !server.IsPurgingBinlog() && len(server.BinaryLogFiles) > 1 {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "MariaDB Version is not compatible for max_binlog_total_size, using manual purging")
+				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "[PURGE] MariaDB Version is not compatible for max_binlog_total_size, using manual purging")
 				if cluster.StateMachine.CurState.Search("WARN0107") == false {
 					go server.JobBinlogPurgeSlave()
 				}

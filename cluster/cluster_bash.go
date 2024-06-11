@@ -7,7 +7,11 @@
 package cluster
 
 import (
+	"errors"
+	"fmt"
 	"os/exec"
+	"strconv"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/alert"
@@ -103,6 +107,48 @@ func (cluster *Cluster) BinlogRotationScript(srv *ServerMonitor) error {
 		}
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Binlog rotation script complete: %s", string(out))
+	}
+	return nil
+}
+
+func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, isPurge bool) error {
+	if !server.IsMaster() {
+		return errors.New("Copy only master binlog")
+	}
+	if cluster.IsInFailover() {
+		return errors.New("Cancel job copy binlog during failover")
+	}
+	if !cluster.Conf.BackupBinlogs {
+		return errors.New("Copy binlog not enable")
+	}
+
+	//Skip setting in backup state due to batch purging
+	if !isPurge {
+		if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+			cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+			time.Sleep(1 * time.Second)
+			return cluster.BinlogCopyScript(server, binlog, isPurge)
+		}
+		cluster.SetInBinlogBackupState(true)
+		defer cluster.SetInBinlogBackupState(false)
+	}
+
+	if cluster.Conf.BinlogCopyScript != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Calling binlog copy script on %s. Binlog: %s", server.URL, binlog)
+		var out []byte
+		out, err := exec.Command(cluster.Conf.BinlogCopyScript, cluster.Name, server.Host, server.Port, strconv.Itoa(cluster.Conf.OnPremiseSSHPort), server.BinaryLogDir, server.GetMyBackupDirectory(), binlog).CombinedOutput()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+		} else {
+			// Skip backup to restic if in purge binlog
+			if !isPurge {
+				// Backup to restic when no error (defer to prevent unfinished physical copy)
+				backtype := "binlog"
+				defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
+			}
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Binlog copy script complete: %s", string(out))
 	}
 	return nil
 }

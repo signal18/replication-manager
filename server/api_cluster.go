@@ -1244,6 +1244,12 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetBackupLogicalType(value)
 	case "backup-physical-type":
 		mycluster.SetBackupPhysicalType(value)
+	case "backup-binlog-type":
+		mycluster.SetBackupBinlogType(value)
+	case "backup-binlog-script":
+		mycluster.SetBackupBinlogScript(value)
+	case "binlog-parse-mode":
+		mycluster.SetBinlogParseMode(value)
 	case "db-servers-hosts":
 		mycluster.SetDbServerHosts(value)
 	case "db-servers-credential":
@@ -1404,7 +1410,14 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "force-binlog-purge-min-replica":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetForceBinlogPurgeMinReplica(val)
+	case "log-graphite-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogGraphiteLevel(val)
+	case "log-binlog-purge-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogBinlogPurgeLevel(val)
 	}
+
 }
 
 func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *http.Request) {

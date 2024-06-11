@@ -544,20 +544,41 @@ func (cluster *Cluster) MultipleSlavesUp(candidate *ServerMonitor) bool {
 	return false
 }
 
-func (cluster *Cluster) CheckSlavesReplications() {
+func (cluster *Cluster) CheckSlavesReplicationsPurge() {
+	if cluster.IsInFailover() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel checking replication, cluster is in failover")
+		return
+	}
+	if !cluster.Conf.ForceBinlogPurge {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog not enabled")
+		return
+	}
+
 	connected := 0
 	binInt := 0
 	oldest := ""
 	for _, sl := range cluster.slaves {
+		if cluster.IsInFailover() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel checking replication, cluster is in failover")
+			return
+		}
 		// Counting if slave is sync or late but not error
 		if sl.State == stateSlave || sl.State == stateSlaveLate {
 			connected++
 		}
 
+		if sl.SlaveStatus == nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel checking replication, slave status is missing due to master change")
+			return
+		}
+
 		parts := strings.Split(sl.SlaveStatus.MasterLogFile.String, ".")
 		curInt, err := strconv.Atoi(parts[len(parts)-1])
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Error while checking master log file in slave %s : %s\n", sl.Host+":"+sl.Port, err.Error())
+			if err != nil {
+				// Create state when master log file is not found or incorrect
+				cluster.StateMachine.AddState("WARN0109", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0109"], sl.Host+":"+sl.Port, sl.SlaveStatus.MasterLogFile.String, err.Error()), ErrFrom: "PURGE"})
+			}
 		}
 		if curInt > 0 && (binInt == 0 || curInt < binInt) {
 			binInt = curInt
@@ -567,11 +588,11 @@ func (cluster *Cluster) CheckSlavesReplications() {
 
 	if cluster.SlavesConnected != connected {
 		cluster.SetSlavesConnected(connected)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Connected slaves : %d\n", connected)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Connected slaves : %d\n", connected)
 	}
 
 	if oldest != "" && cluster.SlavesOldestMasterFile.Suffix != binInt {
 		cluster.SetSlavesOldestMasterFile(oldest)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Oldest master log used for all slaves : %s\n", oldest)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Oldest master log used for all slaves : %s\n", oldest)
 	}
 }

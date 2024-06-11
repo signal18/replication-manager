@@ -44,7 +44,7 @@ func (cluster *Cluster) display() {
 
 func (cluster *Cluster) LogSQL(logs string, err error, url string, from string, level string, format string, args ...interface{}) {
 	if err != nil && args != nil {
-		cluster.LogPrintf(level, format, args)
+		cluster.LogPrintf(level, format, args...)
 	}
 	if logs != "" {
 		if err != nil {
@@ -174,7 +174,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack"}).Errorf(cliformat, args...)
 			}
 			if cluster.Conf.TeamsUrl != "" {
-				go cluster.sendMsTeams(level, format, args)
+				go cluster.sendMsTeams(level, format, args...)
 			}
 		case "INFO":
 			log.WithField("cluster", cluster.Name).Infof(cliformat, args...)
@@ -339,7 +339,7 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack"}).Errorf(cliformat, args...)
 				}
 				if cluster.Conf.TeamsUrl != "" {
-					go cluster.sendMsTeams(level, format, args)
+					go cluster.sendMsTeams(level, format, args...)
 				}
 			case "INFO":
 				log.WithField("cluster", cluster.Name).Infof(cliformat, args...)

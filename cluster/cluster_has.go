@@ -459,3 +459,7 @@ func (cluster *Cluster) IsVariableImmutable(v string) bool {
 	return ok
 
 }
+
+func (cluster *Cluster) IsInBackup() bool {
+	return cluster.InPhysicalBackup || cluster.InLogicalBackup || cluster.InBinlogBackup || cluster.InResticBackup
+}
