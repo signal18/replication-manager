@@ -332,7 +332,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
-		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path, "oidc") {
+		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
 			var auth_try authTry
 			auth_try.Try = 1
 			auth_try.Time = time.Now()
