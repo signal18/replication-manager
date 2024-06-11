@@ -20,6 +20,8 @@ import (
 )
 
 func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
+	cluster := server.GetCluster()
+	cg := cluster.ClusterGraphite
 
 	replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-")
 	hostname := replacer.Replace(server.Variables["HOSTNAME"])
@@ -50,21 +52,29 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 
 	for k, v := range server.Status {
 		if isNumeric(v) {
-			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_global_status_%s", hostname, strings.ToLower(k)), v, time.Now().Unix()))
+			mname := fmt.Sprintf("mysql.%s.mysql_global_status_%s", hostname, strings.ToLower(k))
+			if cg.MatchList(mname) {
+				metrics = append(metrics, graphite.NewMetric(mname, v, time.Now().Unix()))
+			}
 		}
 	}
 
 	for k, v := range server.Variables {
 		if isNumeric(v) {
-			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_global_variables_%s", hostname, strings.ToLower(k)), v, time.Now().Unix()))
+			mname := fmt.Sprintf("mysql.%s.mysql_global_variables_%s", hostname, strings.ToLower(k))
+			if cg.MatchList(mname) {
+				metrics = append(metrics, graphite.NewMetric(mname, v, time.Now().Unix()))
+			}
 		}
 
 	}
 	for k, v := range server.EngineInnoDB {
 		if isNumeric(v) {
-			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.engine_innodb_%s", hostname, strings.ToLower(k)), v, time.Now().Unix()))
+			mname := fmt.Sprintf("mysql.%s.engine_innodb_%s", hostname, strings.ToLower(k))
+			if cg.MatchList(mname) {
+				metrics = append(metrics, graphite.NewMetric(mname, v, time.Now().Unix()))
+			}
 		}
-
 	}
 
 	for _, v := range server.PFSQueries {
@@ -73,7 +83,10 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 			if len(label) > 198 {
 				label = label[0:198]
 			}
-			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.pfs.%s", hostname, label), v.Value, time.Now().Unix()))
+			mname := fmt.Sprintf("mysql.%s.pfs.%s", hostname, label)
+			if cg.MatchList(mname) {
+				metrics = append(metrics, graphite.NewMetric(mname, v.Value, time.Now().Unix()))
+			}
 		}
 	}
 	return metrics

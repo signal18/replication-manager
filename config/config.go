@@ -395,6 +395,8 @@ type Config struct {
 	Topology                                  string                 `mapstructure:"topology" toml:"-" json:"-"` // use by bootstrap
 	GraphiteMetrics                           bool                   `mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
 	GraphiteEmbedded                          bool                   `mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
+	GraphiteWhitelist                         bool                   `mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteCarbonWhitelist"`
+	GraphiteBlacklist                         bool                   `mapstructure:"graphite-blacklist" toml:"graphite-blacklist" json:"graphiteCarbonBlacklist"`
 	GraphiteCarbonHost                        string                 `mapstructure:"graphite-carbon-host" toml:"graphite-carbon-host" json:"graphiteCarbonHost"`
 	GraphiteCarbonPort                        int                    `mapstructure:"graphite-carbon-port" toml:"graphite-carbon-port" json:"graphiteCarbonPort"`
 	GraphiteCarbonApiPort                     int                    `mapstructure:"graphite-carbon-api-port" toml:"graphite-carbon-api-port" json:"graphiteCarbonApiPort"`
