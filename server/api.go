@@ -348,7 +348,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			//set claims
 			claims["iss"] = "https://api.replication-manager.signal18.io"
 			claims["iat"] = time.Now().Unix()
-			claims["exp"] = time.Now().Add(time.Hour * 48).Unix()
+			claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
 			claims["jti"] = "1" // should be user ID(?)
 			claims["CustomUserInfo"] = struct {
 				Name     string
@@ -360,6 +360,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			//sk, _ := jwt.ParseRSAPublicKeyFromPEM(signingKey)
 
 			tokenString, err := signer.SignedString(sk)
+			// log.Printf("Token expiration: %d hour\n", repman.Conf.TokenTimeout)
 
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -461,7 +462,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 			//set claims
 			claims["iss"] = "https://api.replication-manager.signal18.io"
 			claims["iat"] = time.Now().Unix()
-			claims["exp"] = time.Now().Add(time.Hour * 48).Unix()
+			claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
 			claims["jti"] = "1" // should be user ID(?)
 			claims["CustomUserInfo"] = struct {
 				Name     string

@@ -211,6 +211,7 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 }
 
 func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
+	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
 
 	if WithDeprecate == "ON" {
 		//	initDeprecated() // not needed used alias in main
