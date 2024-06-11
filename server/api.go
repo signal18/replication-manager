@@ -334,13 +334,14 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
-		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path, "oidc") {
+		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
 			var auth_try authTry = authTry{
 				User: user.Username,
 				Try:  1,
 				Time: time.Now(),
 			}
 			repman.UserAuthTry.Store(user.Username, auth_try)
+
 
 			signer := jwt.New(jwt.SigningMethodRS256)
 			claims := signer.Claims.(jwt.MapClaims)
