@@ -211,6 +211,7 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 }
 
 func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
+	flags.IntVar(&conf.AuthJwtExpire, "auth-jwt-expire", 48, "Timespan of JWT before expired in hour")
 
 	if WithDeprecate == "ON" {
 		//	initDeprecated() // not needed used alias in main
