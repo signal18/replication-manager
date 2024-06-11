@@ -305,7 +305,8 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		fmt.Fprintf(w, "Error in request")
 		return
 	}
-	if auth_try, ok := repman.UserAuthTry[user.Username]; ok {
+	if v, ok := repman.UserAuthTry.Load(user.Username); ok {
+		auth_try := v.(authTry)
 		if auth_try.Try == 3 {
 			if time.Now().Before(auth_try.Time.Add(3 * time.Minute)) {
 				fmt.Println("Time until last auth try : " + time.Until(auth_try.Time).String())
@@ -315,28 +316,31 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			} else {
 				auth_try.Try = 1
 				auth_try.Time = time.Now()
-				repman.UserAuthTry[user.Username] = auth_try
+				repman.UserAuthTry.Store(user.Username, auth_try)
 			}
 		} else {
 
 			auth_try.Try += 1
-			repman.UserAuthTry[user.Username] = auth_try
+			repman.UserAuthTry.Store(user.Username, auth_try)
 		}
 	} else {
-		var auth_try authTry
-		auth_try.User = user.Username
-		auth_try.Try = 1
-		auth_try.Time = time.Now()
-		repman.UserAuthTry[user.Username] = auth_try
+		var auth_try authTry = authTry{
+			User: user.Username,
+			Try:  1,
+			Time: time.Now(),
+		}
+		repman.UserAuthTry.Store(user.Username, auth_try)
 	}
 
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
 		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path, "oidc") {
-			var auth_try authTry
-			auth_try.Try = 1
-			auth_try.Time = time.Now()
-			repman.UserAuthTry[user.Username] = auth_try
+			var auth_try authTry = authTry{
+				User: user.Username,
+				Try:  1,
+				Time: time.Now(),
+			}
+			repman.UserAuthTry.Store(user.Username, auth_try)
 
 			signer := jwt.New(jwt.SigningMethodRS256)
 			claims := signer.Claims.(jwt.MapClaims)

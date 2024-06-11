@@ -92,7 +92,7 @@ type ReplicationManager struct {
 	BackupLogicalList                                map[string]bool             `json:"backupLogicalList"`
 	BackupPhysicalList                               map[string]bool             `json:"backupPhysicalList"`
 	currentCluster                                   *cluster.Cluster            `json:"-"`
-	UserAuthTry                                      map[string]authTry          `json:"-"`
+	UserAuthTry                                      sync.Map                    `json:"-"`
 	OAuthAccessToken                                 *oauth2.Token               `json:"-"`
 	ViperConfig                                      *viper.Viper                `json:"-"`
 	tlog                                             s18log.TermLog
@@ -895,7 +895,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	repman.DynamicFlagMaps = make(map[string]map[string]interface{})
 	ImmuableMap := make(map[string]interface{})
 	DynamicMap := make(map[string]interface{})
-	repman.UserAuthTry = make(map[string]authTry)
+	// repman.UserAuthTry = make(map[string]authTry)
 	repman.cloud18CheckSum = nil
 	// call after init if configuration file is provide
 
