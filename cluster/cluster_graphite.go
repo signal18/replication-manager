@@ -8,9 +8,15 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/signal18/replication-manager/config"
 )
+
+type GraphiteFilterList struct {
+	Whitelist string `json:"whitelist"`
+	Blacklist string `json:"blacklist"`
+}
 
 type ClusterGraphite struct {
 	cl           *Cluster `json:"-"`
@@ -30,6 +36,102 @@ func (cluster *Cluster) NewClusterGraphite() {
 	cluster.ClusterGraphite.PopulateWhitelistRegexp()
 	cluster.ClusterGraphite.PopulateBlacklistRegexp()
 
+}
+
+func (cluster *Cluster) GetGraphiteWhitelist() []string {
+	ls := make([]string, 0)
+	for _, r := range cluster.ClusterGraphite.Whitelist {
+		ls = append(ls, r.String())
+	}
+
+	return ls
+}
+
+func (cluster *Cluster) GetGraphiteBlacklist() []string {
+	ls := make([]string, 0)
+	for _, r := range cluster.ClusterGraphite.Blacklist {
+		ls = append(ls, r.String())
+	}
+
+	return ls
+}
+
+func (cluster *Cluster) GetGraphiteFilterList() GraphiteFilterList {
+	return GraphiteFilterList{
+		Whitelist: strings.Join(cluster.GetGraphiteWhitelist(), "\n"),
+		Blacklist: strings.Join(cluster.GetGraphiteBlacklist(), "\n"),
+	}
+}
+
+// Wrapper for clustergraphite write file
+func (cluster *Cluster) SetGraphiteFilterList(ft string, fl GraphiteFilterList) error {
+	return cluster.ClusterGraphite.WriteFromFilterList(ft, fl)
+}
+
+// Wrapper for clustergraphite write file
+func (cluster *Cluster) RotateGraphiteFilterList() error {
+	err := cluster.ClusterGraphite.PopulateWhitelistRegexp()
+	if err != nil {
+		return err
+	}
+	err = cluster.ClusterGraphite.PopulateBlacklistRegexp()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (cg *ClusterGraphite) WriteFromFilterList(srcfunc string, fl GraphiteFilterList) error {
+	conf := cg.cl.Conf
+	var err error
+	var ls string
+	var fname string
+	switch srcfunc {
+	case "whitelist":
+		ls = fl.Whitelist
+		fname = conf.WorkingDir + "/" + cg.cl.Name + "/whitelist.conf"
+	case "blacklist":
+		ls = fl.Blacklist
+		fname = conf.WorkingDir + "/" + cg.cl.Name + "/blacklist.conf"
+	}
+
+	cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlInfo, "[%s] reading old file : %s", srcfunc, fname)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var backup = func(wg *sync.WaitGroup) error {
+		defer wg.Done()
+		content, err := os.ReadFile(fname)
+		if err != nil {
+			cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[%s] failed reading old file content: %s", srcfunc, err.Error())
+			return err
+		}
+
+		//Backup old list
+		cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlInfo, "[%s] writing to .old file : %s.old", srcfunc, fname)
+		err = os.WriteFile(fname+".old", content, 0644)
+		if err != nil {
+			cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[%s] failed writing new file content : %s", srcfunc, err.Error())
+			return err
+		}
+
+		return nil
+	}
+
+	if err = backup(&wg); err != nil {
+		return err
+	}
+
+	wg.Wait()
+	//This will truncate the old file
+	cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlInfo, "[%s] writing new content to .conf file : %s", srcfunc, fname)
+	err = os.WriteFile(fname, []byte(ls), 0644)
+	if err != nil {
+		cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[%s] failed writing new file content : %s", srcfunc, err.Error())
+		return err
+	}
+
+	return nil
 }
 
 func (cg *ClusterGraphite) CopyFromShareDir(srcfunc string, src string, dest string) error {

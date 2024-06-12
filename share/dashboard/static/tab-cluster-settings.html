@@ -33,6 +33,10 @@
                     Proxies
                   </md-button>
                   <BR>
+                    <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;;transition: 0.3s;" ng-click="setSettingsMenu('graphs')" class="md-primary" >
+                      Graphs
+                    </md-button>
+                  <BR>
                     <md-button style="width:60%; border-radius: 10px 10px 10px 10px; background-color: lightgray;;transition: 0.3s;" ng-click="setSettingsMenu('cloud18')" class="md-primary" >
                       Cloud18
                     </md-button>
@@ -50,6 +54,7 @@
           <div ng-if="settingsMenu.proxies" ng-include src="'static/card-setting-proxy.html'"></div>
           <div ng-if="settingsMenu.cloud18" ng-include src="'static/card-setting-cloud18.html'"></div>
           <div ng-if="settingsMenu.logs" ng-include src="'static/card-setting-logs.html'"></div>
+          <div ng-if="settingsMenu.graphs" ng-include src="'static/card-setting-graphs.html'"></div>
         </div>
     </div>
 
