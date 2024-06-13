@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"regexp"
@@ -12,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/share"
 )
 
 type GraphiteFilterList struct {
@@ -81,6 +81,60 @@ func (cluster *Cluster) ReloadGraphiteFilterList() error {
 	return nil
 }
 
+func (cg *ClusterGraphite) CopyFromShareDir(filtertype string) error {
+	conf := cg.cl.Conf
+	var fname string
+	var err error
+	switch filtertype {
+	case "whitelist":
+		fname = conf.WorkingDir + "/" + cg.cl.Name + "/whitelist.conf"
+		template := fmt.Sprintf("whitelist.conf.%s", conf.GraphiteWhitelistTemplate)
+		var content []byte
+		if conf.WithEmbed == "ON" {
+			content, err = share.EmbededDbModuleFS.ReadFile(template)
+			if err != nil {
+				cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Whitelist] failed to read file in share dir : %s", err.Error())
+				return err
+			}
+		} else {
+			content, err = os.ReadFile(conf.ShareDir + "/" + template)
+			if err != nil {
+				cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Whitelist] failed to read file in share dir : %s", err.Error())
+				return err
+			}
+		}
+		err = os.WriteFile(fname, content, 0644)
+		if err != nil {
+			cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Whitelist] failed to write file in working dir : %s", err.Error())
+			return err
+		}
+	case "blacklist":
+		fname = conf.WorkingDir + "/" + cg.cl.Name + "/blacklist.conf"
+		template := "blacklist.conf.template"
+		var content []byte
+		if conf.WithEmbed == "ON" {
+			content, err = share.EmbededDbModuleFS.ReadFile(template)
+			if err != nil {
+				cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Blacklist] failed to read file in share dir : %s", err.Error())
+				return err
+			}
+		} else {
+			content, err = os.ReadFile(conf.ShareDir + "/" + template)
+			if err != nil {
+				cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Blacklist] failed to read file in share dir : %s", err.Error())
+				return err
+			}
+		}
+		err = os.WriteFile(fname, content, 0644)
+		if err != nil {
+			cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Blacklist] failed to write file in working dir : %s", err.Error())
+			return err
+		}
+	}
+
+	return err
+}
+
 func (cg *ClusterGraphite) SetWhitelist(val bool) {
 	cg.UseWhitelist = val
 	cg.cl.Conf.GraphiteWhitelist = val
@@ -143,38 +197,6 @@ func (cg *ClusterGraphite) WriteFromFilterList(srcfunc string, fl GraphiteFilter
 	return nil
 }
 
-func (cg *ClusterGraphite) CopyFromShareDir(srcfunc string, src string, dest string) error {
-	conf := cg.cl.Conf
-
-	srcFile, err := os.Open(src)
-	if err != nil {
-		cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[%s] failed to read file in share dir : %s", srcfunc, err.Error())
-		return err
-	}
-	defer srcFile.Close()
-
-	destFile, err := os.Create(dest)
-	if err != nil {
-		cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[%s] failed to read file in working dir : %s", srcfunc, err.Error())
-		return err
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, srcFile) // check first var for number of bytes copied
-	if err != nil {
-		cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[%s] failed writing file content to working dir : %s", srcfunc, err.Error())
-		return err
-	}
-
-	err = destFile.Sync()
-	if err != nil {
-		cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[%s] failed to flush file in working dir : %s", srcfunc, err.Error())
-		return err
-	}
-
-	return nil
-}
-
 func (cg *ClusterGraphite) ResetFilterListRegexp() error {
 	var err error
 	conf := cg.cl.Conf
@@ -199,18 +221,13 @@ func (cg *ClusterGraphite) ResetFilterListRegexp() error {
 		cg.SetBlacklist(true)
 
 	case config.ConstGraphiteTemplateMinimal, config.ConstGraphiteTemplateGrafana:
-		fname := conf.WorkingDir + "/" + cg.cl.Name + "/whitelist.conf"
-		template := fmt.Sprintf("%s/whitelist.conf.%s", conf.ShareDir, conf.GraphiteWhitelistTemplate)
-
-		err = cg.CopyFromShareDir("whitelist", template, fname)
+		err = cg.CopyFromShareDir("whitelist")
 		if err != nil {
 			return err
 		}
 
-		fname = conf.WorkingDir + "/" + cg.cl.Name + "/blacklist.conf"
-		err = os.WriteFile(fname, []byte(""), 0644)
+		err = cg.CopyFromShareDir("blacklist")
 		if err != nil {
-			cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Blacklist] failed to write file in working dir : %s", err.Error())
 			return err
 		}
 		cg.SetWhitelist(true)
@@ -224,10 +241,8 @@ func (cg *ClusterGraphite) ResetFilterListRegexp() error {
 			return err
 		}
 
-		fname = conf.WorkingDir + "/" + cg.cl.Name + "/blacklist.conf"
-		err = os.WriteFile(fname, []byte(""), 0644)
+		err = cg.CopyFromShareDir("whitelist")
 		if err != nil {
-			cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Blacklist] failed to write file in working dir : %s", err.Error())
 			return err
 		}
 		cg.SetWhitelist(true)
@@ -240,37 +255,19 @@ func (cg *ClusterGraphite) ResetFilterListRegexp() error {
 	return nil
 }
 
-func (cg *ClusterGraphite) ResetBlacklistRegexp() error {
-	var err error
-	conf := cg.cl.Conf
-
-	fname := conf.WorkingDir + "/" + cg.cl.Name + "/blacklist.conf"
-	template := fmt.Sprintf("%s/blacklist.conf.%s", conf.ShareDir, conf.GraphiteWhitelistTemplate)
-
-	err = cg.CopyFromShareDir("blacklist", template, fname)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func (cg *ClusterGraphite) PopulateWhitelistRegexp() error {
 	conf := cg.cl.Conf
 	cg.Whitelist = make([]*regexp.Regexp, 0)
 
 	if conf.GraphiteWhitelist {
 		fname := conf.WorkingDir + "/" + cg.cl.Name + "/whitelist.conf"
-		template := fmt.Sprintf("%s/whitelist.conf.%s", conf.ShareDir, conf.GraphiteWhitelistTemplate)
 		file, err := os.Open(fname)
 		if err != nil {
 			//Create file if not exists
 			if errors.Is(err, fs.ErrNotExist) {
-				err = cg.CopyFromShareDir("whitelist", template, fname)
-				//Create return if error
+				cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Whitelist] config file not found. Copying from shared dir")
+				err = cg.CopyFromShareDir("whitelist")
 				if err != nil {
-					return err
-				}
-				if file, err = os.Open(fname); err != nil {
 					return err
 				}
 			} else {
@@ -308,13 +305,12 @@ func (cg *ClusterGraphite) PopulateBlacklistRegexp() error {
 
 	if conf.GraphiteBlacklist {
 		fname := conf.WorkingDir + "/" + cg.cl.Name + "/blacklist.conf"
-		template := conf.ShareDir + "/blacklist.conf.template"
 		file, err := os.Open(fname)
 		if err != nil {
 			//Copy file if not exists
 			if errors.Is(err, fs.ErrNotExist) {
-				err = cg.CopyFromShareDir("blacklist", template, fname)
-				// Create return if error
+				cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Blacklist] config file not found. Copying from shared dir")
+				err = cg.CopyFromShareDir("blacklist")
 				if err != nil {
 					return err
 				}
