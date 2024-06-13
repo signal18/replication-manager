@@ -9,7 +9,7 @@
             <th>
                 <span style="display:inline-block;;margin: 2px;"
                     ng-click="saveBackupType(selectedLogicalBackup,selectedPhysicalBackup,selectedBinlogBackup,selectedBinlogBackupScript)"><i
-                        style="display:inline-block;;margin: 2px;" class="fa fa-save" /></span>
+                        style="display:inline-block;;margin: 2px;" class="fa fa-save" ></i></span>
             </th>
         </tr>
         <tr>
@@ -90,7 +90,7 @@
                 <md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
                     ng-value="selectedCluster.config.backupBinlogsKeep" md-discrete flex
                     ng-model="selectedBackupBinlogsKeep" ng-change="changebackupbinlogskeep(selectedBackupBinlogsKeep)"
-                    step="1" min="0" max="10" aria-label="<!-- WARNING:  -->ait">
+                    step="1" min="0" max="10" aria-label="Backup binlogs keep files">
                 </md-slider>
 
                 <span class="label label-primary">{{selectedCluster.config.backupBinlogsKeep}}</span>

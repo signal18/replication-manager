@@ -612,6 +612,17 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterConfigGraphs] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/set-graphite-filterlist") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/reload-graphite-filterlist") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/reset-graphite-filterlist") {
+			return true
+		}
+	}
 	/*	case cluster.APIUsers[strUser].Grants[config.GrantClusterGrant] == true:
 			return false
 		case cluster.APIUsers[strUser].Grants[config.GrantClusterDropMonitor] == true:

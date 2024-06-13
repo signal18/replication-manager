@@ -28,6 +28,10 @@ app.factory('Certificates', function ($resource) {
     return $resource('api/clusters/:clusterName/certificates', {clusterName: '@clusters'});
 });
 
+app.factory('GraphiteFilterList', function ($resource) {
+    return $resource('api/clusters/:clusterName/graphite-filterlist', {clusterName: '@clusters'});
+});
+
 app.factory('QueryRules', function ($resource) {
     return $resource('api/clusters/:clusterName/queryrules', {clusterName: '@clusters'});
 });

@@ -31,8 +31,8 @@ app.controller('DashboardController', function (
   QueryResponseTime,
   Backups,
   Certificates,
-  QueryRules
-
+  QueryRules,
+  GraphiteFilterList
 ) {
 
   $scope.yearNow = new Date().getFullYear();
@@ -50,6 +50,11 @@ app.controller('DashboardController', function (
   $scope.newUserAcls = undefined;
   $scope.refreshInterval = 4000;
   $scope.digestmode = "pfs";
+  $scope.gfilter = {
+    whitelist: "",
+    blacklist: ""
+  };
+  $scope.gfilterUpdate = true
 
   $scope.missingDBTags = undefined;
   $scope.missingProxyTags = undefined;
@@ -68,6 +73,8 @@ app.controller('DashboardController', function (
     backups: false,
     proxies: false,
     schedulers: false,
+    logs: false,
+    graphs: false,
   };
 
 
@@ -453,6 +460,19 @@ app.controller('DashboardController', function (
         QueryRules.query({ clusterName: $scope.selectedClusterName }, function (data) {
           if (!$scope.menuOpened) {
             $scope.queryrules = data;
+            $scope.reserror = false;
+          }
+        }, function () {
+          $scope.reserror = true;
+        });
+      }
+      if ($scope.selectedTab == 'Settings' && $scope.settingsMenu.graphs) {
+        GraphiteFilterList.get({ clusterName: $scope.selectedClusterName }, function (data) {
+          if (!$scope.menuOpened) {
+            if($scope.gfilterUpdate) {
+              $scope.gfilter = data;
+              $scope.gfilterUpdate = false
+            }
             $scope.reserror = false;
           }
         }, function () {
@@ -1543,6 +1563,46 @@ app.controller('DashboardController', function (
     if (confirm("Confirm change Sphinx OCI image: " + image)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/setprov-sphinx-docker-img/' + image);
   };
 
+  $scope.saveGraphiteWhitelist = function (wl) {
+    if (confirm("Confirm update graphite whitelist?")) 
+      $http.post(getClusterUrl() + '/settings/actions/set-graphite-filterlist/whitelist', {"whitelist": wl })
+                .then(function() {
+                  console.log("Graphite whitelist updated successfully")
+                },function(err){
+                  alert("Failed to update graphite whitelist. Err: "+err)
+                });
+  };
+
+  $scope.saveGraphiteBlacklist = function (bl) {
+    if (confirm("Confirm update graphite blacklist?")) 
+      $http.post(getClusterUrl() + '/settings/actions/set-graphite-filterlist/blacklist', {"blacklist": bl })
+                .then(function() {
+                  console.log("Graphite blacklist updated successfully")
+                },function(err){
+                  alert("Failed to update graphite blacklist. Err: "+err)
+                });
+  };
+
+  $scope.reloadFilterlist = function () {
+    if (confirm("This will reload graphite filterlist from file to runtime. Confirm?")) $http.get(getClusterUrl() + '/settings/actions/reload-graphite-filterlist').then(function (res) {
+      $scope.gfilterUpdate = true
+    },
+  function (err) {
+    alert("Failed to reload filterlist to runtime. Err:" + err)
+  });
+  }
+
+  $scope.resetFilterlist = function (type) {
+    if (confirm("This will reset graphite filterlist to "+type+" template. Confirm?")) {
+      $http.get(getClusterUrl() + '/settings/actions/reset-graphite-filterlist/'+type).then(function (res) {
+        $scope.gfilterUpdate = true
+      },
+    function (err) {
+      alert("Failed to reset filterlist using "+type+" template. Err:" + err)
+    });
+    }
+  }
+
   $scope.saveDBDisk = function (selectedDBDiskTyoe, selectedDBDiskFS, selectedDBDiskPool, selectedDBDiskDevice) {
     if (confirm("Confirm change DB disk: " + selectedDBDiskTyoe + "/" + selectedDBDiskFS + "/" + selectedDBDiskPool + "/" + selectedDBDiskDevice)) {
       httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-disk-type/' + selectedDBDiskTyoe);
@@ -1889,10 +1949,12 @@ app.controller('DashboardController', function (
   $scope.onTabSelected = function (tab) {
 
     $scope.selectedTab = tab;
+    $scope.gfilterUpdate = true;
   };
 
   $scope.onTabClicked = function (tab) {
     $scope.selectedTab = tab;
+    $scope.gfilterUpdate = true;
   };
 
   $scope.openServer = function (id) {
@@ -1911,6 +1973,7 @@ app.controller('DashboardController', function (
       schedulers: false,
       cloud18: false,
       logs: false,
+      graphs: false,
     };
     switch (menu) {
       case 'general':
@@ -1940,9 +2003,14 @@ app.controller('DashboardController', function (
       case 'logs':
         $scope.settingsMenu.logs = true;
         break;
+      case 'graphs':
+        $scope.settingsMenu.graphs = true;
+        break;
       default:
         console.log(`Sorry, we are out of ${expr}.`);
     }
+    //reset graphite wl and bl once
+    $scope.gfilterUpdate = true;
   };
 
 

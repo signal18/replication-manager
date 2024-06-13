@@ -1,0 +1,117 @@
+<md-card>
+    <md-card-content>
+        <p class="sectionheader">Graphite Config</p>
+    </md-card-content>
+
+    <table ng-if="settings" class="table">
+        <tr>
+            <th>Graphite Metrics</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
+                    ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.graphiteMetrics"
+                    ng-click="switchsettings('graphite-metrics')" aria-label="Graphite Metrics">
+                    <span ng-if="selectedCluster.config.graphiteMetrics" class="label label-primary">On</span>
+                    <span ng-if="!selectedCluster.config.graphiteMetrics" class="label label-warning">Off</span>
+                </md-switch>
+            </td>
+        </tr>
+        <tr>
+            <th>Graphite Embedded</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
+                    ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.graphiteEmbedded"
+                    ng-click="switchsettings('graphite-embedded')" aria-label="Graphite Embedded">
+                    <span ng-if="selectedCluster.config.graphiteEmbedded" class="label label-primary">On</span>
+                    <span ng-if="!selectedCluster.config.graphiteEmbedded" class="label label-warning">Off</span>
+                </md-switch>
+            </td>
+        </tr>
+    </table>
+</md-card>
+<md-card>
+    <md-card-content>
+        <p class="sectionheader">Metrics Configuration <span class="pull-right" style="display:inline-block;;margin: 2px;"
+            ng-click="reloadFilterlist()">
+            <i style="display:inline-block;;margin: 2px;" class="fa fa-refresh"></i>
+        </span></p>
+    </md-card-content>
+
+    <table ng-if="settings" class="table">
+        <tr>
+            <th colspan="2">Reset graphite template</th>
+            <th width="10%">
+                <span style="display:inline-block;;margin: 2px;"
+                    ng-click="resetFilterlist(selectedWhitelistTemplate)">
+                    <i style="display:inline-block;;margin: 2px;" class="fa fa-undo"></i>
+                </span>
+            </th>
+        </tr>
+        <tr>
+            <td colspan="3">
+                <span style="display:inline-block;;margin: 2px;"
+                    class="label label-success">{{selectedCluster.config.graphiteWhitelistTemplate }}</span>
+                <md-select name="selectedWhitelistTemplate" ng-model="selectedWhitelistTemplate">
+                    <md-option ng-selected="{{key ==  selectedCluster.config.graphiteWhitelistTemplate}}"
+                        ng-repeat="(key, value) in settings.graphiteTemplateList" ng-value="key">{{key}}</md-option>
+                </md-select>
+            </td>
+        </tr>
+        <tr>
+            <th colspan="2">Graphite Whitelist</th>
+            <th width="10%">
+                <span style="display:inline-block;;margin: 2px;"
+                    ng-click="saveGraphiteWhitelist(gfilter.whitelist)">
+                    <i style="display:inline-block;;margin: 2px;" class="fa fa-save"></i>
+                </span>
+            </th>
+        </tr>
+        <tr>
+            <td colspan="3">
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
+                    ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.graphiteWhitelist"
+                    ng-click="switchsettings('graphite-whitelist')" aria-label="Graphite Whitelist">
+                    <span ng-if="selectedCluster.config.graphiteWhitelist" class="label label-primary">On</span>
+                    <span ng-if="!selectedCluster.config.graphiteWhitelist" class="label label-warning">Off</span>
+                </md-switch>
+            </td>
+        </tr>
+        <tr ng-class="">
+            <td width="20%">Graphite Whitelist Regexp:</td width="100%">
+            <td colspan="2"><textarea rows="10" cols="100" name="whitelist"
+                    ng-model="gfilter.whitelist" ng-disabled="selectedCluster.config.graphiteWhitelist==false">{{gfilter.whitelist}}</textarea></td>
+        </tr>
+    </table>
+    <table ng-if="settings" class="table">
+        <tr>
+            <th colspan="2">Graphite Blacklist</th>
+            <th width="10%">
+                <span style="display:inline-block;;margin: 2px;"
+                    ng-click="saveGraphiteBlacklist(gfilter.blacklist)">
+                    <i style="display:inline-block;;margin: 2px;" class="fa fa-save"></i>
+                </span>
+            </th>
+        </tr>
+        <tr>
+            <td colspan="3">
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
+                    ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.graphiteBlacklist"
+                    ng-click="switchsettings('graphite-blacklist')" aria-label="Graphite Blacklist">
+                    <span ng-if="selectedCluster.config.graphiteBlacklist" class="label label-primary">On</span>
+                    <span ng-if="!selectedCluster.config.graphiteBlacklist" class="label label-warning">Off</span>
+
+                </md-switch>
+            </td>
+        </tr>
+        <tr ng-class="">
+            <td width="20%">Graphite Blacklist Regexp:</td width="100%">
+            <td colspan="2">
+                <textarea rows="10" cols="100" name="blacklist"
+                    ng-model="gfilter.blacklist" ng-disabled="selectedCluster.config.graphiteBlacklist==false">{{gfilter.blacklist}}</textarea>
+            </td>
+        </tr>
+    </table>
+</md-card>

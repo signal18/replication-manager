@@ -215,6 +215,7 @@ type Cluster struct {
 	SlavesOldestMasterFile SlavesOldestMasterFile
 	SlavesConnected        int
 	clog                   *clog.Logger `json:"-"`
+	*ClusterGraphite
 }
 
 type SlavesOldestMasterFile struct {
@@ -329,7 +330,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.repmgrVersion = repmgrVersion
 
 	cluster.InitFromConf()
-
+	cluster.NewClusterGraphite()
 	return nil
 }
 

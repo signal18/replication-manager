@@ -1717,3 +1717,9 @@ func (cluster *Cluster) SetInResticBackupState(value bool) {
 	cluster.InResticBackup = value
 	cluster.Unlock()
 }
+
+func (cluster *Cluster) SetGraphiteWhitelistTemplate(value string) {
+	cluster.Lock()
+	cluster.Conf.GraphiteWhitelistTemplate = value
+	cluster.Unlock()
+}

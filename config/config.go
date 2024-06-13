@@ -395,6 +395,9 @@ type Config struct {
 	Topology                                  string                 `mapstructure:"topology" toml:"-" json:"-"` // use by bootstrap
 	GraphiteMetrics                           bool                   `mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
 	GraphiteEmbedded                          bool                   `mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
+	GraphiteWhitelist                         bool                   `mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteWhitelist"`
+	GraphiteBlacklist                         bool                   `mapstructure:"graphite-blacklist" toml:"graphite-blacklist" json:"graphiteBlacklist"`
+	GraphiteWhitelistTemplate                 string                 `mapstructure:"graphite-whitelist-template" toml:"graphite-whitelist-template" json:"graphiteWhitelistTemplate"`
 	GraphiteCarbonHost                        string                 `mapstructure:"graphite-carbon-host" toml:"graphite-carbon-host" json:"graphiteCarbonHost"`
 	GraphiteCarbonPort                        int                    `mapstructure:"graphite-carbon-port" toml:"graphite-carbon-port" json:"graphiteCarbonPort"`
 	GraphiteCarbonApiPort                     int                    `mapstructure:"graphite-carbon-api-port" toml:"graphite-carbon-api-port" json:"graphiteCarbonApiPort"`
@@ -845,12 +848,13 @@ const (
 	GrantClusterShowBackups        string = "cluster-show-backups"
 	GrantClusterShowRoutes         string = "cluster-show-routes"
 	GrantClusterShowGraphs         string = "cluster-show-graphs"
+	GrantClusterConfigGraphs       string = "cluster-config-graphs"
 	GrantClusterShowAgents         string = "cluster-show-agents"
 	GrantClusterShowCertificates   string = "cluster-show-certificates"
 	GrantClusterRotatePasswords    string = "cluster-rotate-passwords"
+	GrantClusterResetSLA           string = "cluster-reset-sla"
+	GrantClusterDebug              string = "cluster-debug"
 
-	GrantClusterResetSLA        string = "cluster-reset-sla"
-	GrantClusterDebug           string = "cluster-debug"
 	GrantProxyConfigCreate      string = "proxy-config-create"
 	GrantProxyConfigGet         string = "proxy-config-get"
 	GrantProxyConfigRessource   string = "proxy-config-ressource"
@@ -915,6 +919,16 @@ const (
 	ConstLogModMaxscale       = 14
 	ConstLogModGraphite       = 15
 	ConstLogModPurge          = 16
+)
+
+/*
+This is the list of graphite template
+*/
+const (
+	ConstGraphiteTemplateNone    = "none"
+	ConstGraphiteTemplateMinimal = "minimal"
+	ConstGraphiteTemplateGrafana = "grafana"
+	ConstGraphiteTemplateAll     = "all"
 )
 
 func (conf *Config) GetSecrets() map[string]Secret {
@@ -1592,6 +1606,7 @@ func (conf *Config) GetGrantType() map[string]string {
 		GrantClusterShowBackups:        GrantClusterShowBackups,
 		GrantClusterShowAgents:         GrantClusterShowAgents,
 		GrantClusterShowGraphs:         GrantClusterShowGraphs,
+		GrantClusterConfigGraphs:       GrantClusterConfigGraphs,
 		GrantClusterShowRoutes:         GrantClusterShowRoutes,
 		GrantClusterShowCertificates:   GrantClusterShowCertificates,
 		GrantClusterResetSLA:           GrantClusterResetSLA,
@@ -1940,4 +1955,13 @@ func (conf *Config) ToLogrusLevel(l int) log.Level {
 	}
 	//Always return at least error level to make sure Logger not exit
 	return log.ErrorLevel
+}
+
+func (conf *Config) GetGraphiteTemplateList() map[string]bool {
+	return map[string]bool{
+		ConstGraphiteTemplateNone:    true,
+		ConstGraphiteTemplateMinimal: true,
+		ConstGraphiteTemplateGrafana: true,
+		ConstGraphiteTemplateAll:     true,
+	}
 }

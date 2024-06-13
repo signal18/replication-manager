@@ -95,6 +95,7 @@ type ReplicationManager struct {
 	BackupPhysicalList                               map[string]bool             `json:"backupPhysicalList"`
 	BackupBinlogList                                 map[string]bool             `json:"backupBinlogList"`
 	BinlogParseList                                  map[string]bool             `json:"binlogParseList"`
+	GraphiteTemplateList                             map[string]bool             `json:"graphiteTemplateList"`
 	currentCluster                                   *cluster.Cluster            `json:"-"`
 	UserAuthTry                                      sync.Map                    `json:"-"`
 	OAuthAccessToken                                 *oauth2.Token               `json:"-"`
@@ -564,6 +565,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.GraphiteCarbonHost, "graphite-carbon-host", "127.0.0.1", "Graphite monitoring host")
 		flags.BoolVar(&conf.GraphiteMetrics, "graphite-metrics", false, "Enable Graphite monitoring")
 		flags.BoolVar(&conf.GraphiteEmbedded, "graphite-embedded", false, "Enable Internal Graphite Carbon Server")
+		flags.BoolVar(&conf.GraphiteWhitelist, "graphite-whitelist", false, "Enable Whitelist")
+		flags.BoolVar(&conf.GraphiteBlacklist, "graphite-blacklist", false, "Enable Blacklist")
+		flags.StringVar(&conf.GraphiteWhitelistTemplate, "graphite-whitelist-template", "minimal", "Graphite default template for whitelist (none | minimal | grafana | all)")
 	}
 	//	flags.BoolVar(&conf.Heartbeat, "heartbeat-table", false, "Heartbeat for active/passive or multi mrm setup")
 	if WithArbitrationClient == "ON" {
@@ -1496,6 +1500,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.BackupPhysicalList = repman.Conf.GetBackupPhysicalType()
 	repman.BackupBinlogList = repman.Conf.GetBackupBinlogType()
 	repman.BinlogParseList = repman.Conf.GetBinlogParseMode()
+	repman.GraphiteTemplateList = repman.Conf.GetGraphiteTemplateList()
 
 	if repman.Conf.ProvOrchestrator == "opensvc" {
 		repman.Agents = []opensvc.Host{}
