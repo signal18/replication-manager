@@ -568,6 +568,7 @@ func (cluster *Cluster) Run() {
 		if !cluster.Conf.MonitorPause {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
+			go cluster.CheckDefaultUser(false)
 
 			select {
 			case sig := <-cluster.switchoverChan:
@@ -605,8 +606,6 @@ func (cluster *Cluster) Run() {
 				go cluster.Heartbeat(wg)
 				wg.Wait()
 				// Heartbeat switchover or failover controller runs only on active repman
-
-				go cluster.CheckDefaultUser(false)
 
 				if cluster.runOnceAfterTopology {
 					// Preserved server state in proxy during reload config
