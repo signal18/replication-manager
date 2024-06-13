@@ -405,7 +405,13 @@ func (proxy *Proxy) SendStats() error {
 	for _, wbackend := range proxy.BackendsWrite {
 		var metrics = make([]graphite.Metric, 4)
 
-		// TODO: clarify what this replacer does and what the purpose is
+		/*
+			This replacer is for graphite metric title, and will replace unwanted string from hostname.
+			Replace [`?] with empty string
+			Replace spaces and / with underscore _
+			Replace [.()<'":] with dash -
+			Result will be clean hostname ie from 172.18.0.2:3306 to 172-18-0-2-3306
+		*/
 		replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-", ":", "-")
 		server := "rw-" + replacer.Replace(wbackend.PrxName)
 		metrics[0] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.bytes_send", proxy.Type, proxy.Id, server), wbackend.PrxByteOut, time.Now().Unix())
