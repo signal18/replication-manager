@@ -296,6 +296,14 @@ func (cluster *Cluster) SwitchGraphiteMetrics() {
 	cluster.Conf.GraphiteMetrics = !cluster.Conf.GraphiteMetrics
 }
 
+func (cluster *Cluster) SwitchGraphiteWhitelist() {
+	cluster.Conf.GraphiteWhitelist = !cluster.Conf.GraphiteWhitelist
+}
+
+func (cluster *Cluster) SwitchGraphiteBlacklist() {
+	cluster.Conf.GraphiteBlacklist = !cluster.Conf.GraphiteBlacklist
+}
+
 func (cluster *Cluster) SwitchFailoverLowerRelease() {
 	cluster.Conf.SwitchLowerRelease = !cluster.Conf.SwitchLowerRelease
 }

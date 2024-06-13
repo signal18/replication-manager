@@ -254,7 +254,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 
 	router.Handle("/api/clusters/{clusterName}/settings/actions/reload-graphite-filterlist", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterRotateGraphiteFilterList)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterReloadGraphiteFilterList)),
 	))
 	//PROTECTED ENDPOINTS FOR CLUSTERS TOPOLOGY
 
@@ -1076,9 +1076,12 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchGraphiteMetrics()
 	case "graphite-embedded":
 		mycluster.SwitchGraphiteEmbedded()
+	case "graphite-whitelist":
+		mycluster.SwitchGraphiteMetrics()
+	case "graphite-blacklist":
+		mycluster.SwitchGraphiteBlacklist()
 	case "shardproxy-copy-grants":
 		mycluster.SwitchProxysqlCopyGrants()
-
 	case "proxysql-copy-grants":
 		mycluster.SwitchProxysqlCopyGrants()
 	case "proxysql-bootstrap-users":
@@ -1430,6 +1433,8 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "log-binlog-purge-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogBinlogPurgeLevel(val)
+	case "graphite-whitelist-template":
+		mycluster.SetGraphiteWhitelistTemplate(value)
 	}
 
 }
@@ -2229,7 +2234,7 @@ func (repman *ReplicationManager) handlerMuxClusterSetGraphiteFilterList(w http.
 	}
 }
 
-func (repman *ReplicationManager) handlerMuxClusterRotateGraphiteFilterList(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxClusterReloadGraphiteFilterList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	vars := mux.Vars(r)
@@ -2239,7 +2244,25 @@ func (repman *ReplicationManager) handlerMuxClusterRotateGraphiteFilterList(w ht
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		go mycluster.RotateGraphiteFilterList()
+		go mycluster.ReloadGraphiteFilterList()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+}
+
+func (repman *ReplicationManager) handlerMuxClusterResetGraphiteFilterList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		go mycluster.ResetFilterListRegexp()
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

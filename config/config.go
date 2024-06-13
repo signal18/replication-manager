@@ -397,6 +397,7 @@ type Config struct {
 	GraphiteEmbedded                          bool                   `mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
 	GraphiteWhitelist                         bool                   `mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteWhitelist"`
 	GraphiteBlacklist                         bool                   `mapstructure:"graphite-blacklist" toml:"graphite-blacklist" json:"graphiteBlacklist"`
+	GraphiteWhitelistTemplate                 string                 `mapstructure:"graphite-whitelist-template" toml:"graphite-whitelist-template" json:"graphiteWhitelistTemplate"`
 	GraphiteCarbonHost                        string                 `mapstructure:"graphite-carbon-host" toml:"graphite-carbon-host" json:"graphiteCarbonHost"`
 	GraphiteCarbonPort                        int                    `mapstructure:"graphite-carbon-port" toml:"graphite-carbon-port" json:"graphiteCarbonPort"`
 	GraphiteCarbonApiPort                     int                    `mapstructure:"graphite-carbon-api-port" toml:"graphite-carbon-api-port" json:"graphiteCarbonApiPort"`
@@ -917,6 +918,16 @@ const (
 	ConstLogModMaxscale       = 14
 	ConstLogModGraphite       = 15
 	ConstLogModPurge          = 16
+)
+
+/*
+This is the list of graphite template
+*/
+const (
+	ConstGraphiteTemplateNone    = "none"
+	ConstGraphiteTemplateMinimal = "minimal"
+	ConstGraphiteTemplateGrafana = "grafana"
+	ConstGraphiteTemplateAll     = "all"
 )
 
 func (conf *Config) GetSecrets() map[string]Secret {

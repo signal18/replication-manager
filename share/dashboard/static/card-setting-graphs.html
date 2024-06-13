@@ -1,5 +1,39 @@
 <md-card>
     <md-card-content>
+        <p class="sectionheader">Graphite Config</p>
+    </md-card-content>
+
+    <table ng-if="settings" class="table">
+        <tr>
+            <th>Graphite Metrics</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
+                    ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.graphiteMetrics"
+                    ng-click="switchsettings('graphite-metrics')" aria-label="Graphite Metrics">
+                    <span ng-if="selectedCluster.config.graphiteMetrics" class="label label-primary">On</span>
+                    <span ng-if="!selectedCluster.config.graphiteMetrics" class="label label-warning">Off</span>
+                </md-switch>
+            </td>
+        </tr>
+        <tr>
+            <th>Graphite Embedded</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
+                    ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.graphiteEmbedded"
+                    ng-click="switchsettings('graphite-embedded')" aria-label="Graphite Embedded">
+                    <span ng-if="selectedCluster.config.graphiteEmbedded" class="label label-primary">On</span>
+                    <span ng-if="!selectedCluster.config.graphiteEmbedded" class="label label-warning">Off</span>
+                </md-switch>
+            </td>
+        </tr>
+    </table>
+</md-card>
+<md-card>
+    <md-card-content>
         <p class="sectionheader">Metrics Configuration <span class="pull-right" style="display:inline-block;;margin: 2px;"
             ng-click="reloadFilterlist()">
             <i style="display:inline-block;;margin: 2px;" class="fa fa-refresh"></i>
@@ -8,7 +42,7 @@
 
     <table ng-if="settings" class="table">
         <tr>
-            <th colspan="2">Graphite Whitelist</th>
+            <th colspan="2">Graphite Metrics</th>
             <th width="10%">
                 <span style="display:inline-block;;margin: 2px;"
                     ng-click="saveGraphiteWhitelist(gfilter.whitelist)">
