@@ -256,6 +256,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterReloadGraphiteFilterList)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/reset-graphite-filterlist/{template}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterResetGraphiteFilterList)),
+	))
 	//PROTECTED ENDPOINTS FOR CLUSTERS TOPOLOGY
 
 	router.Handle("/api/clusters/actions/add/{clusterName}", negroni.New(
@@ -2209,10 +2213,10 @@ func (repman *ReplicationManager) handlerMuxClusterSetGraphiteFilterList(w http.
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		// if !repman.IsValidClusterACL(r, mycluster) {
-		// 	http.Error(w, "No valid ACL", http.StatusForbidden)
-		// 	return
-		// }
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
 		err := json.NewDecoder(r.Body).Decode(&gfilter)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Decode error :%s", err.Error()), http.StatusInternalServerError)
@@ -2241,7 +2245,7 @@ func (repman *ReplicationManager) handlerMuxClusterReloadGraphiteFilterList(w ht
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if !repman.IsValidClusterACL(r, mycluster) {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		go mycluster.ReloadGraphiteFilterList()
@@ -2259,10 +2263,14 @@ func (repman *ReplicationManager) handlerMuxClusterResetGraphiteFilterList(w htt
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if !repman.IsValidClusterACL(r, mycluster) {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		go mycluster.ResetFilterListRegexp()
+		mycluster.SetGraphiteWhitelistTemplate(vars["template"])
+		if err := mycluster.ResetFilterListRegexp(); err != nil {
+			http.Error(w, fmt.Sprintf("Error while reset filterlist: %s", err.Error()), 500)
+			return
+		}
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

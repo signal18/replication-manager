@@ -848,12 +848,13 @@ const (
 	GrantClusterShowBackups        string = "cluster-show-backups"
 	GrantClusterShowRoutes         string = "cluster-show-routes"
 	GrantClusterShowGraphs         string = "cluster-show-graphs"
+	GrantClusterConfigGraphs       string = "cluster-config-graphs"
 	GrantClusterShowAgents         string = "cluster-show-agents"
 	GrantClusterShowCertificates   string = "cluster-show-certificates"
 	GrantClusterRotatePasswords    string = "cluster-rotate-passwords"
+	GrantClusterResetSLA           string = "cluster-reset-sla"
+	GrantClusterDebug              string = "cluster-debug"
 
-	GrantClusterResetSLA        string = "cluster-reset-sla"
-	GrantClusterDebug           string = "cluster-debug"
 	GrantProxyConfigCreate      string = "proxy-config-create"
 	GrantProxyConfigGet         string = "proxy-config-get"
 	GrantProxyConfigRessource   string = "proxy-config-ressource"
@@ -1605,6 +1606,7 @@ func (conf *Config) GetGrantType() map[string]string {
 		GrantClusterShowBackups:        GrantClusterShowBackups,
 		GrantClusterShowAgents:         GrantClusterShowAgents,
 		GrantClusterShowGraphs:         GrantClusterShowGraphs,
+		GrantClusterConfigGraphs:       GrantClusterConfigGraphs,
 		GrantClusterShowRoutes:         GrantClusterShowRoutes,
 		GrantClusterShowCertificates:   GrantClusterShowCertificates,
 		GrantClusterResetSLA:           GrantClusterResetSLA,
@@ -1953,4 +1955,13 @@ func (conf *Config) ToLogrusLevel(l int) log.Level {
 	}
 	//Always return at least error level to make sure Logger not exit
 	return log.ErrorLevel
+}
+
+func (conf *Config) GetGraphiteTemplateList() map[string]bool {
+	return map[string]bool{
+		ConstGraphiteTemplateNone:    true,
+		ConstGraphiteTemplateMinimal: true,
+		ConstGraphiteTemplateGrafana: true,
+		ConstGraphiteTemplateAll:     true,
+	}
 }

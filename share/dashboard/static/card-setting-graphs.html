@@ -42,7 +42,26 @@
 
     <table ng-if="settings" class="table">
         <tr>
-            <th colspan="2">Graphite Metrics</th>
+            <th colspan="2">Reset graphite template</th>
+            <th width="10%">
+                <span style="display:inline-block;;margin: 2px;"
+                    ng-click="resetFilterlist(selectedWhitelistTemplate)">
+                    <i style="display:inline-block;;margin: 2px;" class="fa fa-undo"></i>
+                </span>
+            </th>
+        </tr>
+        <tr>
+            <td colspan="3">
+                <span style="display:inline-block;;margin: 2px;"
+                    class="label label-success">{{selectedCluster.config.graphiteWhitelistTemplate }}</span>
+                <md-select name="selectedWhitelistTemplate" ng-model="selectedWhitelistTemplate">
+                    <md-option ng-selected="{{key ==  selectedCluster.config.graphiteWhitelistTemplate}}"
+                        ng-repeat="(key, value) in settings.graphiteTemplateList" ng-value="key">{{key}}</md-option>
+                </md-select>
+            </td>
+        </tr>
+        <tr>
+            <th colspan="2">Graphite Whitelist</th>
             <th width="10%">
                 <span style="display:inline-block;;margin: 2px;"
                     ng-click="saveGraphiteWhitelist(gfilter.whitelist)">

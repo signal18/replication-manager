@@ -468,9 +468,7 @@ app.controller('DashboardController', function (
       }
       if ($scope.selectedTab == 'Settings' && $scope.settingsMenu.graphs) {
         GraphiteFilterList.get({ clusterName: $scope.selectedClusterName }, function (data) {
-          console.log($scope.gfilter);
           if (!$scope.menuOpened) {
-            console.log(data);
             if($scope.gfilterUpdate) {
               $scope.gfilter = data;
               $scope.gfilterUpdate = false
@@ -1564,26 +1562,45 @@ app.controller('DashboardController', function (
   $scope.saveSphinxImage = function (image) {
     if (confirm("Confirm change Sphinx OCI image: " + image)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/setprov-sphinx-docker-img/' + image);
   };
+
   $scope.saveGraphiteWhitelist = function (wl) {
     if (confirm("Confirm update graphite whitelist?")) 
       $http.post(getClusterUrl() + '/settings/actions/set-graphite-filterlist/whitelist', {"whitelist": wl })
                 .then(function() {
-                  alert("Graphite whitelist updated successfully")
-                },function(){
-                  alert("Failed to update graphite whitelist")
+                  console.log("Graphite whitelist updated successfully")
+                },function(err){
+                  alert("Failed to update graphite whitelist. Err: "+err)
                 });
   };
+
   $scope.saveGraphiteBlacklist = function (bl) {
     if (confirm("Confirm update graphite blacklist?")) 
       $http.post(getClusterUrl() + '/settings/actions/set-graphite-filterlist/blacklist', {"blacklist": bl })
                 .then(function() {
-                  alert("Graphite blacklist updated successfully")
-                },function(){
-                  alert("Failed to update graphite blacklist")
+                  console.log("Graphite blacklist updated successfully")
+                },function(err){
+                  alert("Failed to update graphite blacklist. Err: "+err)
                 });
   };
+
   $scope.reloadFilterlist = function () {
-    if (confirm("This will reload graphite filterlist from file to runtime. Confirm?")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/reload-graphite-filterlist');
+    if (confirm("This will reload graphite filterlist from file to runtime. Confirm?")) $http.get(getClusterUrl() + '/settings/actions/reload-graphite-filterlist').then(function (res) {
+      $scope.gfilterUpdate = true
+    },
+  function (err) {
+    alert("Failed to reload filterlist to runtime. Err:" + err)
+  });
+  }
+
+  $scope.resetFilterlist = function (type) {
+    if (confirm("This will reset graphite filterlist to "+type+" template. Confirm?")) {
+      $http.get(getClusterUrl() + '/settings/actions/reset-graphite-filterlist/'+type).then(function (res) {
+        $scope.gfilterUpdate = true
+      },
+    function (err) {
+      alert("Failed to reset filterlist using "+type+" template. Err:" + err)
+    });
+    }
   }
 
   $scope.saveDBDisk = function (selectedDBDiskTyoe, selectedDBDiskFS, selectedDBDiskPool, selectedDBDiskDevice) {

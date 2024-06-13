@@ -69,11 +69,11 @@ func (cluster *Cluster) SetGraphiteFilterList(ft string, fl GraphiteFilterList) 
 
 // Wrapper for clustergraphite write file
 func (cluster *Cluster) ReloadGraphiteFilterList() error {
-	err := cluster.ClusterGraphite.PopulateWhitelistRegexp(false)
+	err := cluster.ClusterGraphite.PopulateWhitelistRegexp()
 	if err != nil {
 		return err
 	}
-	err = cluster.ClusterGraphite.PopulateBlacklistRegexp(false)
+	err = cluster.ClusterGraphite.PopulateBlacklistRegexp()
 	if err != nil {
 		return err
 	}
@@ -189,7 +189,7 @@ func (cg *ClusterGraphite) ResetFilterListRegexp() error {
 		}
 
 		fname = conf.WorkingDir + "/" + cg.cl.Name + "/blacklist.conf"
-		err = os.WriteFile(fname, []byte("*"), 0644)
+		err = os.WriteFile(fname, []byte(".*"), 0644)
 		if err != nil {
 			cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Blacklist] failed to write file in working dir : %s", err.Error())
 			return err
@@ -215,9 +215,10 @@ func (cg *ClusterGraphite) ResetFilterListRegexp() error {
 		}
 		cg.SetWhitelist(true)
 		cg.SetBlacklist(false)
+
 	case config.ConstGraphiteTemplateAll:
 		fname := conf.WorkingDir + "/" + cg.cl.Name + "/whitelist.conf"
-		err = os.WriteFile(fname, []byte("*"), 0644)
+		err = os.WriteFile(fname, []byte(".*"), 0644)
 		if err != nil {
 			cg.cl.LogModulePrintf(conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Whitelist] failed to write file in working dir : %s", err.Error())
 			return err
@@ -231,10 +232,11 @@ func (cg *ClusterGraphite) ResetFilterListRegexp() error {
 		}
 		cg.SetWhitelist(true)
 		cg.SetBlacklist(false)
+
 	}
 
-	cg.PopulateWhitelistRegexp(true)
-	cg.PopulateBlacklistRegexp(true)
+	cg.PopulateWhitelistRegexp()
+	cg.PopulateBlacklistRegexp()
 	return nil
 }
 
@@ -252,9 +254,11 @@ func (cg *ClusterGraphite) ResetBlacklistRegexp() error {
 	return nil
 }
 
-func (cg *ClusterGraphite) PopulateWhitelistRegexp(force bool) error {
+func (cg *ClusterGraphite) PopulateWhitelistRegexp() error {
 	conf := cg.cl.Conf
-	if conf.GraphiteWhitelist || force {
+	cg.Whitelist = make([]*regexp.Regexp, 0)
+
+	if conf.GraphiteWhitelist {
 		fname := conf.WorkingDir + "/" + cg.cl.Name + "/whitelist.conf"
 		template := fmt.Sprintf("%s/whitelist.conf.%s", conf.ShareDir, conf.GraphiteWhitelistTemplate)
 		file, err := os.Open(fname)
@@ -298,9 +302,11 @@ func (cg *ClusterGraphite) PopulateWhitelistRegexp(force bool) error {
 	return nil
 }
 
-func (cg *ClusterGraphite) PopulateBlacklistRegexp(force bool) error {
+func (cg *ClusterGraphite) PopulateBlacklistRegexp() error {
 	conf := cg.cl.Conf
-	if conf.GraphiteBlacklist || force {
+	cg.Blacklist = make([]*regexp.Regexp, 0)
+
+	if conf.GraphiteBlacklist {
 		fname := conf.WorkingDir + "/" + cg.cl.Name + "/blacklist.conf"
 		template := conf.ShareDir + "/blacklist.conf.template"
 		file, err := os.Open(fname)
