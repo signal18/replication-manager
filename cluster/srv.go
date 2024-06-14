@@ -505,7 +505,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		// it as unconnected server.master
 		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth /*|| server.PrevState == stateSuspect*/ {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "State changed, init failed server %s as unconnected", server.URL)
-			if cluster.Conf.ReadOnly && !server.HaveWsrep && cluster.IsDiscovered() {
+			if cluster.Conf.ReadOnly && !server.HaveWsrep && cluster.IsDiscovered() && cluster.Topology != topoActivePassive {
 				//GetMaster abstract master for galera multi master and master slave
 				if server.GetCluster().GetMaster() != nil {
 					if cluster.Status == ConstMonitorActif && server.GetCluster().GetMaster().Id != server.Id && !server.IsIgnoredReadonly() && !cluster.IsInFailover() {
@@ -533,7 +533,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Auto Rejoin is disabled")
 			}
 
-		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State == stateUnconn {
+		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State == stateUnconn && cluster.Topology != topoActivePassive {
 			// Master will never get discovery in topology if it does not get unconnected first it default to suspect
 			//	if cluster.GetTopology() != topoMultiMasterWsrep {
 			if server.IsGroupReplicationSlave {
