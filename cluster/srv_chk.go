@@ -84,7 +84,7 @@ func (server *ServerMonitor) CheckReplication() string {
 	ss, err := server.GetSlaveStatus(server.ReplicationSourceName)
 	if err != nil {
 		if cluster.Topology == topoActivePassive {
-			server.SetState(stateUnconn)
+			server.SetState(stateMaster)
 		}
 		return "Not a slave"
 	}
