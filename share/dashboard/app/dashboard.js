@@ -55,6 +55,8 @@ app.controller('DashboardController', function (
     blacklist: ""
   };
   $scope.gfilterUpdate = true
+  $scope.grafanaConfigs = []
+  $scope.showGC = false
 
   $scope.missingDBTags = undefined;
   $scope.missingProxyTags = undefined;
@@ -247,10 +249,10 @@ app.controller('DashboardController', function (
     { id: '6', name: 'SAT' },
   ];
 
-  $scope.humanFileSize = function(size) {
+  $scope.humanFileSize = function (size) {
     var i = size == 0 ? 0 : Math.floor(Math.log(size) / Math.log(1024));
     return +((size / Math.pow(1024, i)).toFixed(2)) * 1 + ' ' + ['B', 'kB', 'MB', 'GB', 'TB'][i];
-} 
+  }
 
   var getClusterUrl = function () {
     return AppService.getClusterUrl($scope.selectedClusterName);
@@ -466,18 +468,28 @@ app.controller('DashboardController', function (
           $scope.reserror = true;
         });
       }
-      if ($scope.selectedTab == 'Settings' && $scope.settingsMenu.graphs) {
-        GraphiteFilterList.get({ clusterName: $scope.selectedClusterName }, function (data) {
-          if (!$scope.menuOpened) {
-            if($scope.gfilterUpdate) {
-              $scope.gfilter = data;
-              $scope.gfilterUpdate = false
-            }
-            $scope.reserror = false;
+      if ($scope.selectedTab == 'Settings') {
+        //Only change if not configured yet
+        if ($scope.grafanaConfigs.length == 0) {
+          $http.get('/api/configs/grafana').then(function (res) {
+            $scope.grafanaConfigs = res.data
+          })
+        }
+
+        if ($scope.settingsMenu.graphs) {
+          //Only change if updated
+          if ($scope.gfilterUpdate) {
+            GraphiteFilterList.get({ clusterName: $scope.selectedClusterName }, function (data) {
+              if (!$scope.menuOpened) {
+                $scope.gfilter = data;
+                $scope.gfilterUpdate = false
+                $scope.reserror = false;
+              }
+            }, function () {
+              $scope.reserror = true;
+            });
           }
-        }, function () {
-          $scope.reserror = true;
-        });
+        }
       }
     }
     if ($scope.selectedClusterName && $scope.selectedServer) {
@@ -1564,42 +1576,42 @@ app.controller('DashboardController', function (
   };
 
   $scope.saveGraphiteWhitelist = function (wl) {
-    if (confirm("Confirm update graphite whitelist?")) 
-      $http.post(getClusterUrl() + '/settings/actions/set-graphite-filterlist/whitelist', {"whitelist": wl })
-                .then(function() {
-                  console.log("Graphite whitelist updated successfully")
-                },function(err){
-                  alert("Failed to update graphite whitelist. Err: "+err)
-                });
+    if (confirm("Confirm update graphite whitelist?"))
+      $http.post(getClusterUrl() + '/settings/actions/set-graphite-filterlist/whitelist', { "whitelist": wl })
+        .then(function () {
+          console.log("Graphite whitelist updated successfully")
+        }, function (err) {
+          alert("Failed to update graphite whitelist. Err: " + err)
+        });
   };
 
   $scope.saveGraphiteBlacklist = function (bl) {
-    if (confirm("Confirm update graphite blacklist?")) 
-      $http.post(getClusterUrl() + '/settings/actions/set-graphite-filterlist/blacklist', {"blacklist": bl })
-                .then(function() {
-                  console.log("Graphite blacklist updated successfully")
-                },function(err){
-                  alert("Failed to update graphite blacklist. Err: "+err)
-                });
+    if (confirm("Confirm update graphite blacklist?"))
+      $http.post(getClusterUrl() + '/settings/actions/set-graphite-filterlist/blacklist', { "blacklist": bl })
+        .then(function () {
+          console.log("Graphite blacklist updated successfully")
+        }, function (err) {
+          alert("Failed to update graphite blacklist. Err: " + err)
+        });
   };
 
   $scope.reloadFilterlist = function () {
     if (confirm("This will reload graphite filterlist from file to runtime. Confirm?")) $http.get(getClusterUrl() + '/settings/actions/reload-graphite-filterlist').then(function (res) {
       $scope.gfilterUpdate = true
     },
-  function (err) {
-    alert("Failed to reload filterlist to runtime. Err:" + err)
-  });
+      function (err) {
+        alert("Failed to reload filterlist to runtime. Err:" + err)
+      });
   }
 
   $scope.resetFilterlist = function (type) {
-    if (confirm("This will reset graphite filterlist to "+type+" template. Confirm?")) {
-      $http.get(getClusterUrl() + '/settings/actions/reset-graphite-filterlist/'+type).then(function (res) {
+    if (confirm("This will reset graphite filterlist to " + type + " template. Confirm?")) {
+      $http.get(getClusterUrl() + '/settings/actions/reset-graphite-filterlist/' + type).then(function (res) {
         $scope.gfilterUpdate = true
       },
-    function (err) {
-      alert("Failed to reset filterlist using "+type+" template. Err:" + err)
-    });
+        function (err) {
+          alert("Failed to reset filterlist using " + type + " template. Err:" + err)
+        });
     }
   }
 
@@ -1629,15 +1641,15 @@ app.controller('DashboardController', function (
   };
 
   $scope.saveBackupType = function (selectedLogicalBackup, selectedPhysicalBackup, selectedBinlogBackup, selectedBinlogBackupScript) {
-    if (confirm("Confirm backup types: " + selectedLogicalBackup + "/" + selectedPhysicalBackup+ "/" + selectedBinlogBackup)) {
+    if (confirm("Confirm backup types: " + selectedLogicalBackup + "/" + selectedPhysicalBackup + "/" + selectedBinlogBackup)) {
       httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-logical-type/' + selectedLogicalBackup);
       httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-physical-type/' + selectedPhysicalBackup);
-      if(selectedBinlogBackup == "script"){
+      if (selectedBinlogBackup == "script") {
         alert("Saved Physical and Logical Backup Type")
-        if(!selectedBinlogBackupScript){
+        if (!selectedBinlogBackupScript) {
           alert("Backup binlog script not confirmed, cancel setting backup mode to script")
         } else {
-          if(confirm("Confirm backup script: " + selectedBinlogBackupScript)){
+          if (confirm("Confirm backup script: " + selectedBinlogBackupScript)) {
             httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-binlog-type/' + selectedBinlogBackup);
             httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-binlog-script/' + selectedBinlogBackupScript);
           } else {
@@ -2013,6 +2025,10 @@ app.controller('DashboardController', function (
     $scope.gfilterUpdate = true;
   };
 
+  $scope.toggleGC = function () {
+    $scope.showGC = !$scope.showGC
+    // console.log("toggled")
+  }
 
   $scope.longQueryTime = "0";
 

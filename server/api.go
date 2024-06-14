@@ -111,6 +111,15 @@ type token struct {
 	Token string `json:"token"`
 }
 
+func (repman *ReplicationManager) SharedirHandler(folder string) http.Handler {
+	sub, err := fs.Sub(share.EmbededDbModuleFS, folder)
+	if err != nil {
+		log.Printf("folder read error [%s]: %s", folder, err)
+	}
+
+	return http.StripPrefix("/grafana/", http.FileServer(http.FS(sub)))
+}
+
 func (repman *ReplicationManager) DashboardFSHandler() http.Handler {
 	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard")
 	if err != nil {
@@ -147,10 +156,12 @@ func (repman *ReplicationManager) apiserver() {
 		router.HandleFunc("/", repman.handlerApp)
 		router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", http.FileServer(http.Dir(repman.Conf.ShareDir+"/grafana"))))
 	} else {
 		router.HandleFunc("/", repman.rootHandler)
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
+		router.PathPrefix("/grafana/").Handler(repman.SharedirHandler("grafana"))
 	}
 
 	router.HandleFunc("/api/login", repman.loginHandler)
@@ -173,6 +184,9 @@ func (repman *ReplicationManager) apiserver() {
 	))
 	router.Handle("/api/repocomp/current", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerRepoComp)),
+	))
+	router.Handle("/api/configs/grafana", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGrafana)),
 	))
 	//UNPROTECTED ENDPOINTS FOR SETTINGS
 	router.Handle("/api/monitor", negroni.New(
@@ -341,7 +355,6 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				Time: time.Now(),
 			}
 			repman.UserAuthTry.Store(user.Username, auth_try)
-
 
 			signer := jwt.New(jwt.SigningMethodRS256)
 			claims := signer.Claims.(jwt.MapClaims)
@@ -757,4 +770,32 @@ func (repman *ReplicationManager) handlerStatic(h http.Handler) http.Handler {
 
 		h.ServeHTTP(w, r)
 	})
+}
+
+func (repman *ReplicationManager) handlerMuxGrafana(w http.ResponseWriter, r *http.Request) {
+	var entries []fs.DirEntry
+	var list []string = make([]string, 0)
+	var err error
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	if repman.Conf.Test {
+		entries, err = os.ReadDir(conf.ShareDir + "/grafana")
+	} else {
+		entries, err = share.EmbededDbModuleFS.ReadDir("grafana")
+	}
+	if err != nil {
+		http.Error(w, "Encoding reading directory", 500)
+		return
+	}
+	for _, b := range entries {
+		if !b.IsDir() {
+			list = append(list, b.Name())
+		}
+	}
+
+	err = json.NewEncoder(w).Encode(list)
+	if err != nil {
+		http.Error(w, "Encoding error", 500)
+		return
+	}
 }
