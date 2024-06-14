@@ -419,11 +419,14 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			}
 		} //if bootstrap
 
-		// //Set the GUI flag to maintenance if proxysql status is OFFLINE_SOFT
-		// if (bke.PrxStatus == "OFFLINE_SOFT" || bkeread.PrxStatus == "OFFLINE_SOFT") && !s.IsMaintenance {
-		// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlInfo, "Found DB server %s in OFFLINE_SOFT, flag as maintenance. ", s.Host+":"+s.Port)
-		// 	s.SwitchMaintenance()
-		// }
+		// //Set the alert if proxysql status is OFFLINE_SOFT
+		if (bke.PrxStatus == "OFFLINE_SOFT" || bkeread.PrxStatus == "OFFLINE_SOFT") && !s.IsMaintenance {
+			if !cluster.StateMachine.IsInState("ERR00091") {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlInfo, clusterError["ERR00091"], proxy.Name, s.URL)
+			}
+			cluster.StateMachine.AddState("ERR00091", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00091"], proxy.Name, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+			// s.SwitchMaintenance()
+		}
 
 		// load the grants
 		if s.IsMaster() && cluster.Conf.ProxysqlCopyGrants {
