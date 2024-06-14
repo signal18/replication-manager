@@ -1,12 +1,3 @@
-
-body {
-  font-family: "Helvetica Neue", Helvetica, sans-serif;
-  margin: auto;
-  margin-top: 40px;
-  margin-bottom: 4em;
-  width: 960px;
-}
-
 #body {
   position: relative;
 }
