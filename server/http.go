@@ -83,7 +83,7 @@ func (repman *ReplicationManager) httpserver() {
 		router.HandleFunc("/", repman.rootHandler)
 		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
-		router.PathPrefix("/grafana/").Handler(repman.SharedirHandler("grafana"))
+		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", repman.SharedirHandler("grafana")))
 	}
 
 	router.HandleFunc("/api/login", repman.loginHandler)

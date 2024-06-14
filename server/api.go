@@ -117,7 +117,7 @@ func (repman *ReplicationManager) SharedirHandler(folder string) http.Handler {
 		log.Printf("folder read error [%s]: %s", folder, err)
 	}
 
-	return http.StripPrefix("/grafana/", http.FileServer(http.FS(sub)))
+	return http.FileServer(http.FS(sub))
 }
 
 func (repman *ReplicationManager) DashboardFSHandler() http.Handler {
@@ -161,7 +161,7 @@ func (repman *ReplicationManager) apiserver() {
 		router.HandleFunc("/", repman.rootHandler)
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
-		router.PathPrefix("/grafana/").Handler(repman.SharedirHandler("grafana"))
+		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", repman.SharedirHandler("grafana")))
 	}
 
 	router.HandleFunc("/api/login", repman.loginHandler)
