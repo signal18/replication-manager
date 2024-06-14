@@ -76,6 +76,12 @@ func (server *ServerMonitor) CheckReplication() string {
 			return "Master OK"
 		}
 	}
+
+	//Prevent maintenance label for topology active passive
+	if cluster.Topology == topoActivePassive {
+		return "Master OK"
+	}
+
 	if server.IsMaintenance {
 		server.SetState(stateMaintenance)
 		return "Maintenance"
