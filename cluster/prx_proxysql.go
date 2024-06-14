@@ -422,7 +422,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 		// //Set the alert if proxysql status is OFFLINE_SOFT
 		if (bke.PrxStatus == "OFFLINE_SOFT" || bkeread.PrxStatus == "OFFLINE_SOFT") && !s.IsMaintenance {
 			if !cluster.StateMachine.IsInState("ERR00091") {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlInfo, clusterError["ERR00091"], proxy.Name, s.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlWarn, clusterError["ERR00091"], proxy.Name, s.URL)
 			}
 			cluster.StateMachine.AddState("ERR00091", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00091"], proxy.Name, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 			// s.SwitchMaintenance()
