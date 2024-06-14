@@ -565,7 +565,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.GraphiteCarbonHost, "graphite-carbon-host", "127.0.0.1", "Graphite monitoring host")
 		flags.BoolVar(&conf.GraphiteMetrics, "graphite-metrics", false, "Enable Graphite monitoring")
 		flags.BoolVar(&conf.GraphiteEmbedded, "graphite-embedded", false, "Enable Internal Graphite Carbon Server")
-		flags.BoolVar(&conf.GraphiteWhitelist, "graphite-whitelist", false, "Enable Whitelist")
+		flags.BoolVar(&conf.GraphiteWhitelist, "graphite-whitelist", true, "Enable Whitelist")
 		flags.BoolVar(&conf.GraphiteBlacklist, "graphite-blacklist", false, "Enable Blacklist")
 		flags.StringVar(&conf.GraphiteWhitelistTemplate, "graphite-whitelist-template", "minimal", "Graphite default template for whitelist (none | minimal | grafana | all)")
 	}
