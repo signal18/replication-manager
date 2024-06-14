@@ -517,7 +517,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					}
 				}
 			}
-			if cluster.GetTopology() != topoMultiMasterWsrep || cluster.GetTopology() != topoMultiMasterGrouprep {
+
+			if cluster.Topology == topoActivePassive {
+				server.SetState(stateMaster)
+			} else if cluster.GetTopology() != topoMultiMasterWsrep || cluster.GetTopology() != topoMultiMasterGrouprep {
 				if server.IsGroupReplicationSlave {
 					server.SetState(stateSlave)
 				} else {
