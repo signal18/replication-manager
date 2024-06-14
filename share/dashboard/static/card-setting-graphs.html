@@ -34,18 +34,17 @@
 </md-card>
 <md-card>
     <md-card-content>
-        <p class="sectionheader">Metrics Configuration <span class="pull-right" style="display:inline-block;;margin: 2px;"
-            ng-click="reloadFilterlist()">
-            <i style="display:inline-block;;margin: 2px;" class="fa fa-refresh"></i>
-        </span></p>
+        <p class="sectionheader">Metrics Configuration <span class="pull-right"
+                style="display:inline-block;;margin: 2px;" ng-click="reloadFilterlist()">
+                <i style="display:inline-block;;margin: 2px;" class="fa fa-refresh"></i>
+            </span></p>
     </md-card-content>
 
     <table ng-if="settings" class="table">
         <tr>
             <th colspan="2">Reset graphite template</th>
             <th width="10%">
-                <span style="display:inline-block;;margin: 2px;"
-                    ng-click="resetFilterlist(selectedWhitelistTemplate)">
+                <span style="display:inline-block;;margin: 2px;" ng-click="resetFilterlist(selectedWhitelistTemplate)">
                     <i style="display:inline-block;;margin: 2px;" class="fa fa-undo"></i>
                 </span>
             </th>
@@ -58,16 +57,25 @@
                     <md-option ng-selected="{{key ==  selectedCluster.config.graphiteWhitelistTemplate}}"
                         ng-repeat="(key, value) in settings.graphiteTemplateList" ng-value="key">{{key}}</md-option>
                 </md-select>
+                <div ng-if="selectedWhitelistTemplate=='grafana'|| (selectedWhitelistTemplate==''&&selectedCluster.config.graphiteWhitelistTemplate=='grafana')">
+                    <span style="display:inline-block;;margin: 2px;"
+                    class="label label-success">Template</span>
+                    <button ng-click="toggleGC()"><span ng-show="showGC">Hide</span><span ng-show="!showGC">Show</span></button>
+                    <ul ng-show="showGC" style="padding-left: 20px;">
+                        <li ng-repeat="gc in grafanaConfigs">
+                            <a href="grafana/{{gc}}">{{gc}}</a>
+                        </li>
+                    </ul>
+                </div>
             </td>
-        </tr>
         <tr>
-            <th colspan="2">Graphite Whitelist</th>
-            <th width="10%">
-                <span style="display:inline-block;;margin: 2px;"
-                    ng-click="saveGraphiteWhitelist(gfilter.whitelist)">
-                    <i style="display:inline-block;;margin: 2px;" class="fa fa-save"></i>
-                </span>
-            </th>
+        </tr>
+        <th colspan="2">Graphite Whitelist</th>
+        <th width="10%">
+            <span style="display:inline-block;;margin: 2px;" ng-click="saveGraphiteWhitelist(gfilter.whitelist)">
+                <i style="display:inline-block;;margin: 2px;" class="fa fa-save"></i>
+            </span>
+        </th>
         </tr>
         <tr>
             <td colspan="3">
@@ -81,16 +89,15 @@
         </tr>
         <tr ng-class="">
             <td width="20%">Graphite Whitelist Regexp:</td width="100%">
-            <td colspan="2"><textarea rows="10" cols="100" name="whitelist"
-                    ng-model="gfilter.whitelist" ng-disabled="selectedCluster.config.graphiteWhitelist==false">{{gfilter.whitelist}}</textarea></td>
+            <td colspan="2"><textarea rows="10" cols="100" name="whitelist" ng-model="gfilter.whitelist"
+                    ng-disabled="selectedCluster.config.graphiteWhitelist==false">{{gfilter.whitelist}}</textarea></td>
         </tr>
     </table>
     <table ng-if="settings" class="table">
         <tr>
             <th colspan="2">Graphite Blacklist</th>
             <th width="10%">
-                <span style="display:inline-block;;margin: 2px;"
-                    ng-click="saveGraphiteBlacklist(gfilter.blacklist)">
+                <span style="display:inline-block;;margin: 2px;" ng-click="saveGraphiteBlacklist(gfilter.blacklist)">
                     <i style="display:inline-block;;margin: 2px;" class="fa fa-save"></i>
                 </span>
             </th>
@@ -109,8 +116,8 @@
         <tr ng-class="">
             <td width="20%">Graphite Blacklist Regexp:</td width="100%">
             <td colspan="2">
-                <textarea rows="10" cols="100" name="blacklist"
-                    ng-model="gfilter.blacklist" ng-disabled="selectedCluster.config.graphiteBlacklist==false">{{gfilter.blacklist}}</textarea>
+                <textarea rows="10" cols="100" name="blacklist" ng-model="gfilter.blacklist"
+                    ng-disabled="selectedCluster.config.graphiteBlacklist==false">{{gfilter.blacklist}}</textarea>
             </td>
         </tr>
     </table>
