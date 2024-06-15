@@ -34,6 +34,19 @@ func (cluster *Cluster) NewClusterGraphite() {
 		UseBlacklist: cluster.Conf.GraphiteBlacklist,
 	}
 
+	/**
+	* Check if whitelist.conf not exists
+	* When not exists check if graphite embedded is already set
+	* If graphite embedded is immutable, set the default whitelist as grafana to prevent missing metrics
+	* The next process will be executed by ReloadGraphiteFilterList()
+	 */
+	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/whitelist.conf"); errors.Is(err, os.ErrNotExist) {
+		//This will change the default to grafana
+		if _, ok := cluster.Conf.ImmuableFlagMap["graphite-embedded"]; ok {
+			cluster.Conf.GraphiteWhitelistTemplate = config.ConstGraphiteTemplateGrafana
+		}
+	}
+
 	cluster.ReloadGraphiteFilterList()
 }
 
