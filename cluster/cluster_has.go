@@ -56,6 +56,9 @@ func (cluster *Cluster) HasSchedulerEntry(myname string) bool {
 }
 
 func (cluster *Cluster) HasNoValidSlave() bool {
+	if cluster.Topology == topoActivePassive {
+		return true
+	}
 	//All slave stopped
 	if cluster.StateMachine.IsInState("ERR00010") {
 		return true
