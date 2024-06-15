@@ -43,6 +43,7 @@ func (cluster *Cluster) NewClusterGraphite() {
 	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/whitelist.conf"); errors.Is(err, os.ErrNotExist) {
 		//This will change the default to grafana
 		if _, ok := cluster.Conf.ImmuableFlagMap["graphite-embedded"]; ok {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "[Whitelist] failed to read file in cluster %s working dir, change template as grafana due to immutable graphite-embedded exists", cluster.Name)
 			cluster.Conf.GraphiteWhitelistTemplate = config.ConstGraphiteTemplateGrafana
 		}
 	}
