@@ -6,7 +6,7 @@ __replication-manager__ is an high availability solution to manage MariaDB 10.x 
 
 The main features are:
  * Replication monitoring (gtid, multi source, delayed)
- * Topology detection (Leader for assync, semi-sync, multi-master ,mesh, wsrep, group-repl, relay)  
+ * Topology detection (Leader for assync, semi-sync, multi-master, mesh, wsrep, group-repl, relay)  
  * Slave to master promotion (switchover)
  * Master election on failure detection (failover)
  * Replication best practice enforcement
@@ -21,7 +21,7 @@ The main features are:
  * Remote scripting via SSH
  * Database and proxying configurator
  * OpenSVC a K8S service deployment including init container
- * Hashable configuration, multi layer configuration
+ * Encrypt config file secret, multi layer configs  
  * SSO on gilab,
  * API wih ACL
  * Capture on high load
