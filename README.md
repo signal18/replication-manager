@@ -5,14 +5,26 @@
 __replication-manager__ is an high availability solution to manage MariaDB 10.x and MySQL & Percona Server 5.7 GTID replication topologies.  
 
 The main features are:
- * Replication monitoring
- * Topology detection
+ * Replication monitoring (gtid, multi source, delayed)
+ * Topology detection (Leader for assync, semi-sync, multi-master ,mesh, wsrep, group-repl, relay)  
  * Slave to master promotion (switchover)
  * Master election on failure detection (failover)
  * Replication best practice enforcement
- * Target to up to zero loss in most failure scenarios
- * Multiple cluster management
+ * Target up to zero loss in most failure scenarios
+ * Multiple clusters management
  * Proxy integration (ProxySQL, MaxScale, HAProxy, Spider)
+ * Maintenance automation (Logical & physical Backups, Defrag, Backups Sanpshot , Log archiving)
+ * Metrics history in carbon, graphite API
+ * Alereting via EMail, Pushover Slack, Teams, Mattermost
+ * Rejoining and Reseeding policy
+ * Scriptable state and events
+ * Remote scripting via SSH
+ * Database and proxying configurator
+ * OpenSVC a K8S service deployment including init container
+ * Hashable configuration, multi layer configuration
+ * SSO on gilab,
+ * API wih ACL 
+      
 
 ### [Documentation](https://docs.signal18.io)
 
