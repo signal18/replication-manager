@@ -13,7 +13,7 @@ The main features are:
  * Target up to zero loss in most failure scenarios
  * Multiple clusters management
  * Proxy integration (ProxySQL, MaxScale, HAProxy, Spider)
- * Maintenance automation (Logical & physical Backups, Defrag, Backups Sanpshot , Log archiving)
+ * Maintenance automation (Logical & physical Backups, Defrag, Backups Snapshot, Log Archiving)
  * Metrics history in carbon, graphite API
  * Alereting via EMail, Pushover Slack, Teams, Mattermost
  * Rejoining and Reseeding policy
@@ -23,7 +23,9 @@ The main features are:
  * OpenSVC a K8S service deployment including init container
  * Hashable configuration, multi layer configuration
  * SSO on gilab,
- * API wih ACL 
+ * API wih ACL
+ * Capture on high load
+ * SLA tracking
       
 
 ### [Documentation](https://docs.signal18.io)
