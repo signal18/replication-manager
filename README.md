@@ -11,15 +11,15 @@ The main features are:
  * Master election on failure detection (failover)
  * Replication best practice enforcement
  * Target up to zero loss in most failure scenarios
- * Multiple clusters management
+ * Multi clusters management
  * Proxy integration (ProxySQL, MaxScale, HAProxy, Spider)
  * Maintenance automation (Logical & physical Backups, Defrag, Backups Snapshot, Log Archiving)
  * Metrics history in carbon, graphite API
  * Alereting via EMail, Pushover Slack, Teams, Mattermost
- * Rejoining and Reseeding policy
- * Scriptable state and events
+ * Database Rejoining and Reseeding policy
+ * Scriptable state and event
  * Remote scripting via SSH
- * Database and proxying configurator
+ * Database, Proxy configurator
  * OpenSVC a K8S service deployment including init container
  * Encrypt config file secret, multi layer configs  
  * SSO on gilab,
