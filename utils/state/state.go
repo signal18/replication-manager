@@ -33,6 +33,11 @@ type StateHttp struct {
 
 type Map map[string]State
 
+type CapturedState struct {
+	State
+	Counter int
+}
+
 func NewMap() *Map {
 	m := make(Map)
 	return &m
@@ -62,16 +67,17 @@ func (m Map) Search(key string) bool {
 }
 
 type StateMachine struct {
-	CurState               *Map  `json:"-"`
-	OldState               *Map  `json:"-"`
-	Discovered             bool  `json:"discovered"`
-	sla                    Sla   `json:"-"`
-	lastState              int64 `json:"-"`
-	heartbeats             int64 `json:"-"`
-	InFailover             bool  `json:"inFailover"`
-	InSchemaMonitor        bool  `json:"inSchemaMonitor"`
-	SchemaMonitorStartTime int64 `json:"-"`
-	SchemaMonitorEndTime   int64 `json:"-"`
+	CurState               *Map      `json:"-"`
+	OldState               *Map      `json:"-"`
+	CapturedState          *sync.Map `json:"-"`
+	Discovered             bool      `json:"discovered"`
+	sla                    Sla       `json:"-"`
+	lastState              int64     `json:"-"`
+	heartbeats             int64     `json:"-"`
+	InFailover             bool      `json:"inFailover"`
+	InSchemaMonitor        bool      `json:"inSchemaMonitor"`
+	SchemaMonitorStartTime int64     `json:"-"`
+	SchemaMonitorEndTime   int64     `json:"-"`
 	sync.Mutex
 }
 
@@ -120,9 +126,9 @@ func (SM *StateMachine) SetSla(mySla Sla) {
 }
 
 func (SM *StateMachine) Init() {
-
 	SM.CurState = NewMap()
 	SM.OldState = NewMap()
+	SM.CapturedState = new(sync.Map)
 	SM.Discovered = false
 	SM.sla.Init()
 	SM.lastState = 0
@@ -405,5 +411,44 @@ func (SM *StateMachine) PreserveState(key string) {
 	if SM.OldState.Search(key) {
 		value := (*SM.OldState)[key]
 		SM.AddState(key, value)
+	}
+}
+
+func (SM *StateMachine) AddToCapturedState(key string, cstate *CapturedState) {
+	_, ok := SM.CapturedState.Load(key)
+	if !ok {
+		SM.CapturedState.Store(key, cstate)
+	}
+}
+
+func (SM *StateMachine) DeleteCapturedState(key string) {
+	SM.CapturedState.Delete(key)
+}
+
+func (SM *StateMachine) SearchCapturedState(key string) bool {
+	_, ok := SM.CapturedState.Load(key)
+	if ok {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (SM *StateMachine) GetCapturedState(key string) (*CapturedState, bool) {
+	cs, ok := SM.CapturedState.Load(key)
+	if ok {
+		return cs.(*CapturedState), true
+	} else {
+		return nil, false
+	}
+}
+
+func (SM *StateMachine) IncrementCapturedState(key string) bool {
+	cs, ok := SM.CapturedState.Load(key)
+	if ok {
+		cs.(*CapturedState).Counter++
+		return true
+	} else {
+		return false
 	}
 }
