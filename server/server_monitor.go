@@ -14,7 +14,7 @@ package server
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 
 	mysqllog "log"
 
@@ -29,7 +29,7 @@ var defaultFlagMap map[string]interface{}
 func init() {
 	fmt.Println("init")
 	conf.ProvOrchestrator = "local"
-	var errLog = mysql.Logger(mysqllog.New(ioutil.Discard, "", 0))
+	var errLog = mysql.Logger(mysqllog.New(io.Discard, "", 0))
 	mysql.SetLogger(errLog)
 
 	RepMan.AddFlags(monitorCmd.Flags(), &conf)

@@ -14,7 +14,6 @@ import (
 	"hash"
 	"hash/crc64"
 	"io"
-	"io/ioutil"
 	"log/syslog"
 	"net"
 	"os/signal"
@@ -821,7 +820,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 			if conf.ProvOpensvcUseCollectorAPI {
 				dbConfig := viper.New()
 				dbConfig.SetConfigType("yaml")
-				file, err := ioutil.ReadFile(conf.ProvOpensvcCollectorAccount)
+				file, err := os.ReadFile(conf.ProvOpensvcCollectorAccount)
 				if err != nil {
 					log.Errorf("Provide OpenSVC account file : %s", err)
 
@@ -897,7 +896,7 @@ func (repman *ReplicationManager) initEmbed() error {
 			log.Errorf("failed opening file because: %s", err.Error())
 			return err
 		}
-		err = ioutil.WriteFile("./.replication-manager/config.toml", file, 0644) //remplacer nil par l'obj créer pour config.toml dans etc/local/embed
+		err = os.WriteFile("./.replication-manager/config.toml", file, 0644) //remplacer nil par l'obj créer pour config.toml dans etc/local/embed
 		if err != nil {
 			log.Errorf("failed write file because: %s", err.Error())
 			return err
@@ -1023,7 +1022,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		}
 
 		//load files from the include path
-		files, err := ioutil.ReadDir(conf.ClusterConfigPath)
+		files, err := os.ReadDir(conf.ClusterConfigPath)
 		if err != nil {
 			log.Infof("No config include directory %s ", conf.ClusterConfigPath)
 		}
@@ -1068,7 +1067,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		dynRead.SetConfigType("toml")
 
 		//load files from the working dir
-		files, err := ioutil.ReadDir(conf.WorkingDir)
+		files, err := os.ReadDir(conf.WorkingDir)
 		if err != nil {
 			log.Infof("No working directory %s ", conf.WorkingDir)
 		}
@@ -1637,7 +1636,7 @@ func (repman *ReplicationManager) Run() error {
 				}
 				if repman.Conf.Cloud18 {
 					//then to check new file pulled in working dir
-					files, err := ioutil.ReadDir(repman.Conf.WorkingDir)
+					files, err := os.ReadDir(repman.Conf.WorkingDir)
 					if err != nil {
 						log.Infof("No working directory %s ", repman.Conf.WorkingDir)
 					}
@@ -1821,7 +1820,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		return true
 	}
 	defer resp.Body.Close()
-	monjson, err := ioutil.ReadAll(resp.Body)
+	monjson, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if bcksplitbrain == false {
 			log.Debugf("Could not read body from peer response")
@@ -1930,13 +1929,13 @@ func (repman *ReplicationManager) DownloadFile(url string, file string) error {
 		return err
 	}
 	defer response.Body.Close()
-	contents, err := ioutil.ReadAll(response.Body)
+	contents, err := io.ReadAll(response.Body)
 	if err != nil {
 		log.Errorf("Read File %s to %s : %s", url, file, err)
 		return err
 	}
 
-	err = ioutil.WriteFile(file, contents, 0644)
+	err = os.WriteFile(file, contents, 0644)
 	if err != nil {
 		log.Errorf("Write File %s to %s : %s", url, file, err)
 		return err
@@ -1970,7 +1969,7 @@ func (repman *ReplicationManager) InitServicePlans() error {
 		return err
 	}
 
-	file, err := ioutil.ReadFile(repman.Conf.WorkingDir + "/serviceplan.json")
+	file, err := os.ReadFile(repman.Conf.WorkingDir + "/serviceplan.json")
 	if err != nil {
 		log.Errorf("failed opening file because: %s", err.Error())
 		return err

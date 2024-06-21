@@ -10,7 +10,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -55,7 +55,7 @@ func GetGitLabTokenOAuth(acces_token string, log_git bool) (string, int) {
 		return "", -1
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	if log_git {
 		log.Println("Gitlab API Response: ", string(body))
@@ -84,7 +84,7 @@ func GetGitLabTokenOAuth(acces_token string, log_git bool) (string, int) {
 		return "", -1
 	}
 	defer resp.Body.Close()
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	//log.Println("Gitlab API Response: ", string(body))
 
 	err = json.Unmarshal(body, &tokenInfos[0])
@@ -110,7 +110,7 @@ func GitLabCreateProject(token string, name string, path string, namespace strin
 		return
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	if log_git {
 		log.Println("Gitlab API Response: ", string(body))
@@ -140,7 +140,7 @@ func GitLabCreateProject(token string, name string, path string, namespace strin
 			return
 		}
 		defer resp.Body.Close()
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 
 		if log_git {
 			log.Println("Gitlab API Response: ", string(body))
@@ -170,7 +170,7 @@ func GitLabCreateProject(token string, name string, path string, namespace strin
 				return
 			}
 			defer resp.Body.Close()
-			body, _ = ioutil.ReadAll(resp.Body)
+			body, _ = io.ReadAll(resp.Body)
 			if log_git {
 				log.Println("Gitlab API Response: ", string(body))
 			}
@@ -199,7 +199,7 @@ func RefreshAccessToken(refresh_tok string, client_id string, secret_id string, 
 	}
 	defer res.Body.Close()
 
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		log.Println("Gitlab API Error: ", err)
 		return "", "", err
@@ -238,7 +238,7 @@ func GetGitLabTokenBasicAuth(user string, password string, log_git bool) string 
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Println("Erreur lors de la lecture de la réponse : ", err)
 		return ""

@@ -8,7 +8,7 @@ package haproxy
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"testing"
 )
 
@@ -45,7 +45,7 @@ func TestConfiguration_GetRoute(t *testing.T) {
 }
 
 func TestConfiguration_AddRoute(t *testing.T) {
-	j, _ := ioutil.ReadFile(ROUTE_JSON)
+	j, _ := os.ReadFile(ROUTE_JSON)
 	var route *Route
 	_ = json.Unmarshal(j, &route)
 
@@ -81,7 +81,7 @@ func TestConfiguration_AddRoute(t *testing.T) {
 
 func TestConfiguration_UpdateRoute(t *testing.T) {
 
-	j, _ := ioutil.ReadFile(ROUTE_JSON)
+	j, _ := os.ReadFile(ROUTE_JSON)
 	var route *Route
 	if err := json.Unmarshal(j, &route); err != nil {
 		t.Errorf(err.Error())
@@ -124,7 +124,7 @@ func TestConfiguration_GetRouteService(t *testing.T) {
 }
 
 func TestConfiguration_AddRouteServices(t *testing.T) {
-	j, _ := ioutil.ReadFile(SERVICE_JSON)
+	j, _ := os.ReadFile(SERVICE_JSON)
 	var services []*Service
 	_ = json.Unmarshal(j, &services)
 
@@ -145,7 +145,7 @@ func TestConfiguration_AddRouteServices(t *testing.T) {
 }
 
 func TestConfiguration_UpdateRouteService(t *testing.T) {
-	j, _ := ioutil.ReadFile(SERVICE_JSON)
+	j, _ := os.ReadFile(SERVICE_JSON)
 	var services []*Service
 	_ = json.Unmarshal(j, &services)
 
@@ -159,7 +159,7 @@ func TestConfiguration_UpdateRouteService(t *testing.T) {
 }
 
 func TestConfiguration_UpdateRouteServices(t *testing.T) {
-	j, _ := ioutil.ReadFile(SERVICES_JSON)
+	j, _ := os.ReadFile(SERVICES_JSON)
 	var services []*Service
 	_ = json.Unmarshal(j, &services)
 
@@ -222,7 +222,7 @@ func TestConfiguration_AddServiceServer(t *testing.T) {
 	route := "test_route_1"
 	service := "service_a"
 
-	j, _ := ioutil.ReadFile(SERVICE_JSON)
+	j, _ := os.ReadFile(SERVICE_JSON)
 	var server Server
 
 	_ = json.Unmarshal(j, &server)
@@ -267,7 +267,7 @@ func TestConfiguration_DeleteServiceServer(t *testing.T) {
 
 func TestConfiguration_UpdateServiceServer(t *testing.T) {
 
-	j, _ := ioutil.ReadFile(SERVER_JSON)
+	j, _ := os.ReadFile(SERVER_JSON)
 
 	var server *Server
 	_ = json.Unmarshal(j, &server)

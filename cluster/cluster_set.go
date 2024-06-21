@@ -11,7 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1049,7 +1049,7 @@ func (cl *Cluster) SetArbitratorReport() error {
 	// if cl.GetLogLevel() > 2 {
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, " Report abitrator connect took: %s\n", stopConnect.Sub(startConnect))
 	// }
-	ioutil.ReadAll(resp.Body)
+	io.ReadAll(resp.Body)
 	defer resp.Body.Close()
 	cl.IsFailedArbitrator = false
 	return nil

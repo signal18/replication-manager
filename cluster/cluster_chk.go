@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -311,7 +311,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	}
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	type response struct {
 		Arbitration string `json:"arbitration"`
@@ -761,7 +761,7 @@ func (cluster *Cluster) CheckCanSaveDynamicConfig() {
 func (cluster *Cluster) CheckIsOverwrite() {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Check overwrite conf path : %s\n", cluster.Conf.WorkingDir+"/"+cluster.Name)
 	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/overwrite.toml"); !os.IsNotExist(err) {
-		input, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/overwrite.toml")
+		input, err := os.ReadFile(cluster.Conf.WorkingDir + "/" + cluster.Name + "/overwrite.toml")
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot read config file %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", err)
 			return

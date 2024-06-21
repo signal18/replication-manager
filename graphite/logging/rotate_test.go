@@ -1,9 +1,8 @@
-
 package logging
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -17,7 +16,7 @@ func TestFsnotifyRotate(t *testing.T) {
 
 	assert := assert.New(t)
 
-	tmpDir, err := ioutil.TempDir("", "")
+	tmpDir, err := os.MkdirTemp("", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +26,7 @@ func TestFsnotifyRotate(t *testing.T) {
 		}
 	}()
 
-	fd, err := ioutil.TempFile(tmpDir, "log")
+	fd, err := os.CreateTemp(tmpDir, "log")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +48,7 @@ func TestFsnotifyRotate(t *testing.T) {
 		}
 		defer fd.Close()
 
-		b, err := ioutil.ReadAll(fd)
+		b, err := io.ReadAll(fd)
 		if err != nil {
 			t.Fatal(err)
 		}

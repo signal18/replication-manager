@@ -8,7 +8,6 @@ package haproxy
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -47,7 +46,7 @@ func TestConfiguration_GetConfigFromDisk(t *testing.T) {
 
 func TestConfiguration_UpdateConfig(t *testing.T) {
 
-	j, _ := ioutil.ReadFile(CFG_JSON)
+	j, _ := os.ReadFile(CFG_JSON)
 	var config *Config
 	if err := json.Unmarshal(j, &config); err != nil {
 		t.Errorf(err.Error())
@@ -197,7 +196,7 @@ func TestConfiguration_GetBackend(t *testing.T) {
 }
 
 func TestConfiguration_AddBackend(t *testing.T) {
-	j, _ := ioutil.ReadFile(BACKEND_JSON)
+	j, _ := os.ReadFile(BACKEND_JSON)
 	var backend *Backend
 	_ = json.Unmarshal(j, &backend)
 

@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc64"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -1396,7 +1395,7 @@ func (server *ServerMonitor) SaveInfos() error {
 	clsave.SlaveStatus = server.LastSeenReplications
 	clsave.MaxSlowQueryTimestamp = server.MaxSlowQueryTimestamp
 	saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
-	err := ioutil.WriteFile(server.Datadir+"/serverstate.json", saveJSON, 0644)
+	err := os.WriteFile(server.Datadir+"/serverstate.json", saveJSON, 0644)
 	if err != nil {
 		return errors.New("SaveInfos" + err.Error())
 	}
@@ -1414,7 +1413,7 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 	}
 
 	var clsave Save
-	file, err := ioutil.ReadFile(server.Datadir + "/serverstate.json")
+	file, err := os.ReadFile(server.Datadir + "/serverstate.json")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No file found %s: %v\n", server.Datadir+"/serverstate.json", err)
 		return err
@@ -1462,7 +1461,7 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Slave Status for server %s: %s ", server.URL, err)
 
 		saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
-		err := ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/capture_"+server.Name+"_"+t.Format("20060102150405")+".json", saveJSON, 0644)
+		err := os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/capture_"+server.Name+"_"+t.Format("20060102150405")+".json", saveJSON, 0644)
 		if err != nil {
 			return
 		}

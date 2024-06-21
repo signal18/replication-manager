@@ -12,8 +12,8 @@ package clients
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 
@@ -34,7 +34,7 @@ var regTestCmd = &cobra.Command{
 				Results []cluster.Test `json:"results"`
 			}
 			var cltests TestResults
-			file, err := ioutil.ReadFile(cliTestConvertFile)
+			file, err := os.ReadFile(cliTestConvertFile)
 			if err != nil {
 				fmt.Printf("File error: %v\n", err)
 				return

@@ -20,7 +20,6 @@ import (
 
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
@@ -401,7 +400,7 @@ func PopulateFlags(c *cli.Context) (ret *FlagStorage) {
 		}
 
 		if _, ok := flags.MountOptions["allow_other"]; !ok {
-			flags.MountPointCreated, err = ioutil.TempDir("", ".goofys-mnt")
+			flags.MountPointCreated, err = os.MkdirTemp("", ".goofys-mnt")
 			if err != nil {
 				io.WriteString(cli.ErrWriter,
 					fmt.Sprintf("Unable to create temp dir: %v", err))

@@ -11,7 +11,7 @@ package clients
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"runtime/pprof"
 	"sort"
@@ -25,7 +25,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-		"github.com/spf13/viper"
+	"github.com/spf13/viper"
 )
 
 var dbCurrrentTag string
@@ -122,7 +122,7 @@ var configuratorCmd = &cobra.Command{
 		connectionsInput = cluster.Configurator.GetConfigMaxConnections()
 
 		fmt.Printf("%s \n", RepMan.Clusters["mycluster"].Conf.ProvTags)
-		conf.SetLogOutput(ioutil.Discard)
+		conf.SetLogOutput(io.Discard)
 		err := termbox.Init()
 		if err != nil {
 			log.WithError(err).Fatal("Termbox initialization error")

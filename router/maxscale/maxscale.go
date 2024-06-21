@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -135,7 +135,7 @@ func (m *MaxScale) GetMaxInfoServers(url string) ([]ServerMaxinfo, error) {
 	// when done reading from it
 	// Defer the closing of the body
 	defer resp.Body.Close()
-	monjson, err := ioutil.ReadAll(resp.Body)
+	monjson, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatal("Do: ", err)
 		return nil, err
@@ -170,7 +170,7 @@ func (m *MaxScale) GetMaxInfoMonitors(url string) ([]MonitorMaxinfo, error) {
 	// when done reading from it
 	// Defer the closing of the body
 	defer resp.Body.Close()
-	monjson, err := ioutil.ReadAll(resp.Body)
+	monjson, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatal("Do: ", err)
 		return nil, err

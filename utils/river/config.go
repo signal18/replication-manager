@@ -1,7 +1,7 @@
 package river
 
 import (
-	"io/ioutil"
+	"os"
 
 	"github.com/BurntSushi/toml"
 	"github.com/juju/errors"
@@ -46,7 +46,7 @@ type Config struct {
 }
 
 func NewConfigWithFile(name string) (*Config, error) {
-	data, err := ioutil.ReadFile(name)
+	data, err := os.ReadFile(name)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}

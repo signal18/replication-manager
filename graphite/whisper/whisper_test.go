@@ -1,9 +1,7 @@
-
 package whisper
 
 import (
 	"fmt"
-	"io/ioutil"
 	"math"
 	"os"
 	"sort"
@@ -234,8 +232,8 @@ func TestOpenFile(t *testing.T) {
 }
 
 /*
-  Test the full cycle of creating a whisper file, adding some
-  data points to it and then fetching a time series.
+Test the full cycle of creating a whisper file, adding some
+data points to it and then fetching a time series.
 */
 func testCreateUpdateFetch(t *testing.T, aggregationMethod AggregationMethod, xFilesFactor float32, secondsAgo, fromAgo, fetchLength, step int, currentValue, increment float64) *TimeSeries {
 	var whisper *Whisper
@@ -666,7 +664,7 @@ func TestOpenValidatation(t *testing.T) {
 		path, _, _, tearDown := setUpCreate()
 		defer tearDown()
 
-		err := ioutil.WriteFile(path, data, 0777)
+		err := os.WriteFile(path, data, 0777)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -684,7 +682,7 @@ func TestOpenValidatation(t *testing.T) {
 		path, _, _, tearDown := setUpCreate()
 		defer tearDown()
 
-		err := ioutil.WriteFile(path, data, 0777)
+		err := os.WriteFile(path, data, 0777)
 		if err != nil {
 			t.Fatal(err)
 		}

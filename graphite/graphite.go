@@ -3,7 +3,6 @@ package graphite
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -226,7 +225,7 @@ func RunCarbon(conf *config.Config) error {
 
 	logging.Log = Log
 
-	input, err := ioutil.ReadFile(conf.ShareDir + "/carbon.conf.template")
+	input, err := os.ReadFile(conf.ShareDir + "/carbon.conf.template")
 	if err != nil {
 		return err
 	}
@@ -241,7 +240,7 @@ func RunCarbon(conf *config.Config) error {
 	output6 := bytes.Replace(output5, []byte("{{.graphitecarbonpprofport}}"), []byte(strconv.Itoa(conf.GraphiteCarbonPprofPort)), -1)
 	output7 := bytes.Replace(output6, []byte("{{.graphitecarbonserverport}}"), []byte(strconv.Itoa(conf.GraphiteCarbonServerPort)), -1)
 
-	if err = ioutil.WriteFile(conf.WorkingDir+"/carbon.conf", output7, 0666); err != nil {
+	if err = os.WriteFile(conf.WorkingDir+"/carbon.conf", output7, 0666); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}

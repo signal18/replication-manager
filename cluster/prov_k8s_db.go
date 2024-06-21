@@ -2,9 +2,8 @@ package cluster
 
 import (
 	"context"
+	"os"
 	"strconv"
-
-	"io/ioutil"
 
 	"github.com/signal18/replication-manager/config"
 	appsv1 "k8s.io/api/apps/v1"
@@ -99,7 +98,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes physical volume claim %q.\n", pvcresult.GetObjectMeta().GetName())
 
 	s.GetDatabaseConfig()
-	data, err := ioutil.ReadFile(s.Datadir + "/config.tar.gz")
+	data, err := os.ReadFile(s.Datadir + "/config.tar.gz")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Provision can not found file %s ", s.Datadir+"/config.tar.gz")
 	}

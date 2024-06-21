@@ -8,7 +8,6 @@ package cluster
 
 import (
 	"bytes"
-	"io/ioutil"
 	"net"
 	"os"
 	"runtime"
@@ -16,7 +15,7 @@ import (
 )
 
 func readPidFromFile(pidfile string) (string, error) {
-	d, err := ioutil.ReadFile(pidfile)
+	d, err := os.ReadFile(pidfile)
 	if err != nil {
 		return "", err
 	}

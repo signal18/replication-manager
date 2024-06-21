@@ -9,8 +9,8 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/codegangsta/negroni"
@@ -1679,7 +1679,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
 			node.GetDatabaseConfig()
-			data, err := ioutil.ReadFile(string(node.Datadir + "/config.tar.gz"))
+			data, err := os.ReadFile(string(node.Datadir + "/config.tar.gz"))
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
 				w.WriteHeader(404)
@@ -1690,7 +1690,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 
 		} else if proxy != nil {
 			proxy.GetProxyConfig()
-			data, err := ioutil.ReadFile(string(proxy.GetDatadir() + "/config.tar.gz"))
+			data, err := os.ReadFile(string(proxy.GetDatadir() + "/config.tar.gz"))
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
 				w.WriteHeader(404)

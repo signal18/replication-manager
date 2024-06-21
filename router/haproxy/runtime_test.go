@@ -7,7 +7,6 @@
 package haproxy
 
 import (
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"testing"
@@ -34,7 +33,7 @@ func TestRuntime_UseExistingPid(t *testing.T) {
 
 	//create a pid file
 	emptyPid := []byte("12356")
-	ioutil.WriteFile(PID_FILE, emptyPid, 0644)
+	os.WriteFile(PID_FILE, emptyPid, 0644)
 	defer os.Remove(PID_FILE)
 
 	if err := haRuntime.SetPid(PID_FILE); err == nil {
@@ -52,15 +51,15 @@ func TestRuntime_HaproxyFunctions(t *testing.T) {
 
 	//create a pid file
 	emptyPid := []byte("")
-	ioutil.WriteFile(PID_FILE, emptyPid, 0644)
+	os.WriteFile(PID_FILE, emptyPid, 0644)
 	defer os.Remove(PID_FILE)
 
-	test_config_file, err := ioutil.ReadFile(PREFILLED_CONFIG_FILE)
+	test_config_file, err := os.ReadFile(PREFILLED_CONFIG_FILE)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
 
-	err = ioutil.WriteFile("/tmp/haproxy_test.cfg", test_config_file, 0664)
+	err = os.WriteFile("/tmp/haproxy_test.cfg", test_config_file, 0664)
 	// defer os.Remove("/tmp/haproxy_test.cfg")
 	if err != nil {
 		t.Fatal(err.Error())

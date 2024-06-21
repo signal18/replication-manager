@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -146,7 +145,7 @@ var (
 
 func (collector *Collector) LoadCert(certsFile string) error {
 	var err error
-	collector.CertsDER, err = ioutil.ReadFile(certsFile)
+	collector.CertsDER, err = os.ReadFile(certsFile)
 	if err != nil {
 		return err
 	}
@@ -308,7 +307,7 @@ func (collector *Collector) CreateMRMGroup() (int, error) {
 		return 0, err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	type Priv struct {
 		Privilege   bool   `json:"privilege"`
@@ -356,7 +355,7 @@ func (collector *Collector) CreateTemplate(name string, template string) (int, e
 		return 0, err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	type Template struct {
 		Id int `json:"id"`
 	}
@@ -402,7 +401,7 @@ func (collector *Collector) ProvisionTemplate(id int, nodeid string, name string
 		return 0, err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println(string(body))
 	type Message struct {
 		Data []Action `json:"data"`
@@ -446,7 +445,7 @@ func (collector *Collector) CreateMRMUser(user string, password string) (int, er
 		return 0, err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	type User struct {
 		Id int `json:"id"`
 	}
@@ -491,7 +490,7 @@ func (collector *Collector) SetAppCodeResponsible(appid int, groupid int) (strin
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	type response struct {
 		Info string `json:"info"`
@@ -525,7 +524,7 @@ func (collector *Collector) SetServiceTag(tag_id string, service_id string) (str
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	type response struct {
 		Info string `json:"info"`
@@ -559,7 +558,7 @@ func (collector *Collector) SetAppCodePublication(appid int, groupid int) (strin
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	type response struct {
 		Info string `json:"info"`
@@ -594,7 +593,7 @@ func (collector *Collector) CreateAppCode(code string) (int, error) {
 		return 0, err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	type App struct {
 		Id int `json:"id"`
@@ -632,7 +631,7 @@ func (collector *Collector) CreateTag(tag string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	type Message struct {
 		Data []Tag `json:"data"`
@@ -667,7 +666,7 @@ func (collector *Collector) CreateService(service string, app string) (string, e
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	type Message struct {
 		Data []Service `json:"data"`
@@ -706,7 +705,7 @@ func (collector *Collector) SetPrimaryGroup(groupid int, userid int) (string, er
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	type response struct {
 		Info string `json:"info"`
@@ -742,7 +741,7 @@ func (collector *Collector) SetGroupUser(groupid int, userid int) (string, error
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	type response struct {
 		Info string `json:"info"`
@@ -759,7 +758,7 @@ func (collector *Collector) SetGroupUser(groupid int, userid int) (string, error
 }
 
 func (collector *Collector) ImportCompliance(path string) (string, error) {
-	file, err := ioutil.ReadFile(path)
+	file, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Printf("File error: %v\n", err)
 		return "", err
@@ -783,7 +782,7 @@ func (collector *Collector) ImportCompliance(path string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return "", err
@@ -811,7 +810,7 @@ func (collector *Collector) PublishSafe(safeUUID string, group string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	_, err = ioutil.ReadAll(resp.Body)
+	_, err = io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return err
@@ -868,7 +867,7 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return "", err
@@ -897,7 +896,7 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 
 // Dead code
 func (collector *Collector) ImportForms(path string) (string, error) {
-	file, err := ioutil.ReadFile(path)
+	file, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Printf("File error: %v\n", err)
 		return "", err
@@ -923,7 +922,7 @@ func (collector *Collector) ImportForms(path string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return "", err
@@ -949,7 +948,7 @@ func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return nil, err
@@ -985,7 +984,7 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return nil, err
@@ -1046,7 +1045,7 @@ func (collector *Collector) SetRulesetVariableValue(RulesetName string, Variable
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println(string(body))
 	type response struct {
 		Info string `json:"info"`
@@ -1081,7 +1080,7 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return nil, err
@@ -1118,7 +1117,7 @@ func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
 		return "0", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return "0", err
@@ -1165,7 +1164,7 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return nil, err
@@ -1225,7 +1224,7 @@ func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
 		return err
 	}
 	defer resp.Body.Close()
-	_, err = ioutil.ReadAll(resp.Body)
+	_, err = io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return err
@@ -1270,7 +1269,7 @@ func (collector *Collector) GetTags() ([]Tag, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return nil, err
@@ -1308,7 +1307,7 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return nil, err
@@ -1349,7 +1348,7 @@ func (collector *Collector) GetActionStatus(actionid string) string {
 		return "W"
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return "W"
@@ -1395,7 +1394,7 @@ func (collector *Collector) GetAction(actionid string) *Action {
 		return nil
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return nil
@@ -1437,7 +1436,7 @@ func (collector *Collector) GetServices() ([]Service, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return nil, err
@@ -1477,7 +1476,7 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return nil, err
@@ -1547,7 +1546,7 @@ func (collector *Collector) StopService(nodeid string, serviceid string) (string
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return "", err
@@ -1576,7 +1575,7 @@ func (collector *Collector) StartService(nodeid string, serviceid string) (strin
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return "", err
@@ -1612,7 +1611,7 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 		return 0, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return 0, err
@@ -1656,7 +1655,7 @@ func (collector *Collector) DeleteService(serviceid string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("OpenSVC API Error: ", err)
 		return "", err

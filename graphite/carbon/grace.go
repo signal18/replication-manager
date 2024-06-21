@@ -1,11 +1,9 @@
-
 package carbon
 
 import (
 	"bufio"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"sort"
@@ -13,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/signal18/replication-manager/graphite/persister"
 	"github.com/signal18/replication-manager/graphite/points"
+	"github.com/sirupsen/logrus"
 )
 
 type SyncWriter struct {
@@ -183,7 +181,7 @@ func RestoreFromDir(dumpDir string, storeFunc func(*points.Points)) {
 		logrus.WithField("time", finishTime.Sub(startTime).String()).Info("[restore] finished")
 	}()
 
-	files, err := ioutil.ReadDir(dumpDir)
+	files, err := os.ReadDir(dumpDir)
 	if err != nil {
 		logrus.Errorf("readdir %s failed: %s", dumpDir, err.Error())
 		return
