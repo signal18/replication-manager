@@ -421,3 +421,7 @@ func (server *ServerMonitor) SetBackingUpBinaryLog(value bool) {
 func (server *ServerMonitor) SetBinaryLogDir(value string) {
 	server.BinaryLogDir = value
 }
+
+func (server *ServerMonitor) SetInCaptureMode(value bool) {
+	server.InCaptureMode = value
+}

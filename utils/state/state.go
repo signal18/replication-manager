@@ -11,6 +11,7 @@ package state
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -32,6 +33,26 @@ type StateHttp struct {
 }
 
 type Map map[string]State
+
+type CapturedState struct {
+	ErrKey     string
+	ErrType    string
+	ErrDesc    string
+	ErrFrom    string
+	ServerURLs []string
+}
+
+func (cs *CapturedState) Contains(url string) bool {
+	return slices.Contains(cs.ServerURLs, url)
+}
+
+func (cs *CapturedState) Parse(s State) {
+	cs.ErrKey = s.ErrKey
+	cs.ErrType = s.ErrType
+	cs.ErrDesc = s.ErrDesc
+	cs.ErrFrom = s.ErrFrom
+	cs.ServerURLs = make([]string, 0)
+}
 
 func NewMap() *Map {
 	m := make(Map)
@@ -62,16 +83,17 @@ func (m Map) Search(key string) bool {
 }
 
 type StateMachine struct {
-	CurState               *Map  `json:"-"`
-	OldState               *Map  `json:"-"`
-	Discovered             bool  `json:"discovered"`
-	sla                    Sla   `json:"-"`
-	lastState              int64 `json:"-"`
-	heartbeats             int64 `json:"-"`
-	InFailover             bool  `json:"inFailover"`
-	InSchemaMonitor        bool  `json:"inSchemaMonitor"`
-	SchemaMonitorStartTime int64 `json:"-"`
-	SchemaMonitorEndTime   int64 `json:"-"`
+	CurState               *Map      `json:"-"`
+	OldState               *Map      `json:"-"`
+	CapturedState          *sync.Map `json:"-"`
+	Discovered             bool      `json:"discovered"`
+	sla                    Sla       `json:"-"`
+	lastState              int64     `json:"-"`
+	heartbeats             int64     `json:"-"`
+	InFailover             bool      `json:"inFailover"`
+	InSchemaMonitor        bool      `json:"inSchemaMonitor"`
+	SchemaMonitorStartTime int64     `json:"-"`
+	SchemaMonitorEndTime   int64     `json:"-"`
 	sync.Mutex
 }
 
@@ -120,9 +142,9 @@ func (SM *StateMachine) SetSla(mySla Sla) {
 }
 
 func (SM *StateMachine) Init() {
-
 	SM.CurState = NewMap()
 	SM.OldState = NewMap()
+	SM.CapturedState = new(sync.Map)
 	SM.Discovered = false
 	SM.sla.Init()
 	SM.lastState = 0
@@ -405,5 +427,34 @@ func (SM *StateMachine) PreserveState(key string) {
 	if SM.OldState.Search(key) {
 		value := (*SM.OldState)[key]
 		SM.AddState(key, value)
+	}
+}
+
+func (SM *StateMachine) AddToCapturedState(key string, cstate *CapturedState) {
+	_, ok := SM.CapturedState.Load(key)
+	if !ok {
+		SM.CapturedState.Store(key, cstate)
+	}
+}
+
+func (SM *StateMachine) DeleteCapturedState(key string) {
+	SM.CapturedState.Delete(key)
+}
+
+func (SM *StateMachine) SearchCapturedState(key string) bool {
+	_, ok := SM.CapturedState.Load(key)
+	if ok {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (SM *StateMachine) GetCapturedState(key string) (*CapturedState, bool) {
+	cs, ok := SM.CapturedState.Load(key)
+	if ok {
+		return cs.(*CapturedState), true
+	} else {
+		return nil, false
 	}
 }
