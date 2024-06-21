@@ -1377,6 +1377,7 @@ func (server *ServerMonitor) Capture(cstate *state.CapturedState) error {
 	}
 	//Log the server url
 	cstate.ServerURLs = append(cstate.ServerURLs, server.URL)
+	// cluster.GetStateMachine().CapturedState.Store(cstate.ErrKey, cstate)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Capture %s on server %s", cstate.ErrKey, server.URL)
 
 	go server.CaptureLoop(cluster.GetStateMachine().GetHeartbeats())
@@ -1469,13 +1470,13 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Slave Status for server %s: %s ", server.URL, err)
 
 		saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
-		err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/capture_"+server.Name+"_"+t.Format("20060102150405")+".json", saveJSON, 0644)
+		err = os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/capture_"+server.Name+"_"+t.Format("20060102150405")+".json", saveJSON, 0644)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Exit loop %s with error %v\n", server.URL, err)
 			return
 		}
 
-		if curHB == cluster.GetStateMachine().GetHeartbeats() {
+		for curHB == cluster.GetStateMachine().GetHeartbeats() {
 			time.Sleep(10 * time.Millisecond)
 		}
 
