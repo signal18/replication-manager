@@ -1375,9 +1375,9 @@ func (server *ServerMonitor) Capture(cstate *state.CapturedState) error {
 	if server.InCaptureMode {
 		return nil
 	}
-	//Initiate increment
-	cstate.Counter++
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Capture %s - Attempt %d", cstate.ErrKey, cstate.Counter)
+	//Log the server url
+	cstate.ServerURLs = append(cstate.ServerURLs, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Capture %s on server %s", cstate.ErrKey, server.URL)
 
 	go server.CaptureLoop(cluster.GetStateMachine().GetHeartbeats())
 	go server.JobCapturePurge(cluster.Conf.WorkingDir+"/"+cluster.Name, cluster.Conf.MonitorCaptureFileKeep)
@@ -1433,8 +1433,11 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 }
 
 func (server *ServerMonitor) CaptureLoop(start int64) {
-	server.InCaptureMode = true
 	cluster := server.ClusterGroup
+
+	server.SetInCaptureMode(true)
+	defer server.SetInCaptureMode(false)
+
 	type Save struct {
 		ProcessList  []dbhelper.Processlist `json:"processlist"`
 		InnoDBStatus string                 `json:"innodbstatus"`
@@ -1445,36 +1448,44 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 	t := time.Now()
 	logs := ""
 	var err error
-	// for true {
+	var curHB int64 = start
+	for {
 
-	var clsave Save
-	clsave.ProcessList,
-		logs, err = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
-	cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Processlist for server %s: %s ", server.URL, err)
+		var clsave Save
+		clsave.ProcessList,
+			logs, err = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
+		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Processlist for server %s: %s ", server.URL, err)
 
-	clsave.InnoDBStatus, logs, err = dbhelper.GetEngineInnoDBSatus(server.Conn)
-	cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed InnoDB Status for server %s: %s ", server.URL, err)
-	clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion)
-	cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Status for server %s: %s ", server.URL, err)
+		clsave.InnoDBStatus, logs, err = dbhelper.GetEngineInnoDBSatus(server.Conn)
+		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed InnoDB Status for server %s: %s ", server.URL, err)
+		clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion)
+		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Status for server %s: %s ", server.URL, err)
 
-	if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
-		clsave.SlaveSatus, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
-	} else {
-		clsave.SlaveSatus, logs, err = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
+		if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
+			clsave.SlaveSatus, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
+		} else {
+			clsave.SlaveSatus, logs, err = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
+		}
+		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Slave Status for server %s: %s ", server.URL, err)
+
+		saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
+		err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/capture_"+server.Name+"_"+t.Format("20060102150405")+".json", saveJSON, 0644)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Exit loop %s with error %v\n", server.URL, err)
+			return
+		}
+
+		if curHB == cluster.GetStateMachine().GetHeartbeats() {
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		curHB = cluster.GetStateMachine().GetHeartbeats()
+
+		if curHB >= start+5 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Exit loop %s. Start HB: %d, Stop HB: %d ", server.URL, start, curHB-1)
+			break
+		}
 	}
-	cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Slave Status for server %s: %s ", server.URL, err)
-
-	saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
-	err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/capture_"+server.Name+"_"+t.Format("20060102150405")+".json", saveJSON, 0644)
-	if err != nil {
-		return
-	}
-	// if cluster.GetStateMachine().GetHeartbeats() < start+5 {
-	// 	break
-	// }
-	// 	time.Sleep(40 * time.Millisecond)
-	// }
-	server.InCaptureMode = false
 }
 
 func (server *ServerMonitor) RotateSystemLogs() {

@@ -11,6 +11,7 @@ package state
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -34,8 +35,23 @@ type StateHttp struct {
 type Map map[string]State
 
 type CapturedState struct {
-	State
-	Counter int
+	ErrKey     string
+	ErrType    string
+	ErrDesc    string
+	ErrFrom    string
+	ServerURLs []string
+}
+
+func (cs *CapturedState) Contains(url string) bool {
+	return slices.Contains(cs.ServerURLs, url)
+}
+
+func (cs *CapturedState) Parse(s State) {
+	cs.ErrKey = s.ErrKey
+	cs.ErrType = s.ErrType
+	cs.ErrDesc = s.ErrDesc
+	cs.ErrFrom = s.ErrFrom
+	cs.ServerURLs = make([]string, 0)
 }
 
 func NewMap() *Map {
@@ -440,15 +456,5 @@ func (SM *StateMachine) GetCapturedState(key string) (*CapturedState, bool) {
 		return cs.(*CapturedState), true
 	} else {
 		return nil, false
-	}
-}
-
-func (SM *StateMachine) IncrementCapturedState(key string) bool {
-	cs, ok := SM.CapturedState.Load(key)
-	if ok {
-		cs.(*CapturedState).Counter++
-		return true
-	} else {
-		return false
 	}
 }

@@ -474,12 +474,13 @@ func (cluster *Cluster) CheckCapture(st state.State) {
 		if cs, ok := SM.GetCapturedState(st.ErrKey); ok {
 			cstate = cs
 		} else {
-			cstate = &state.CapturedState{State: st}
+			cstate = new(state.CapturedState)
+			cstate.Parse(st)
 			SM.AddToCapturedState(st.ErrKey, cstate)
 		}
 
-		//Skip if already captured in previous monitor 5 times
-		if st.ServerUrl != "" && cstate.Counter < 5 {
+		//Capture if the server is not logged
+		if st.ServerUrl != "" && cstate.Contains(st.ServerUrl) == false {
 			srv := cluster.GetServerFromURL(st.ServerUrl)
 			if srv != nil {
 				//Add entry to captured state
