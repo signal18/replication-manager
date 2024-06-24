@@ -246,6 +246,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 		Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
 		SSL:       cluster.Conf.ReplicationSSL,
+		Channel:   cluster.Conf.MasterConn,
 	}, server.DBVersion)
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 	if err != nil {
