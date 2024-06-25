@@ -299,9 +299,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogBackupStream, "log-backup-stream", true, "To log backup stream process")
 	flags.IntVar(&conf.LogBackupStreamLevel, "log-backup-stream-level", 2, "Log Backup Stream Level")
 
-	// Backup Stream
-	flags.BoolVar(&conf.LogOrchestrator, "log-orchestrator", true, "To log backup stream process")
-	flags.IntVar(&conf.LogOrchestratorLevel, "log-orchestrator-level", 2, "Log Backup Stream Level")
+	// Log orchestrator
+	flags.BoolVar(&conf.LogOrchestrator, "log-orchestrator", true, "To log orchestrator process")
+	flags.IntVar(&conf.LogOrchestratorLevel, "log-orchestrator-level", 2, "Log orchestrator Level")
 
 	// DB Credentials
 	flags.StringVar(&conf.User, "db-servers-credential", "root:mariadb", "Database login, specified in the [user]:[password] format")
