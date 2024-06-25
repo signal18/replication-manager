@@ -428,11 +428,13 @@ func (sst *SST) stream_copy_to_restic() <-chan int {
 	return sync_channel
 }
 
-func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
+func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, task string) {
 	port, _ := strconv.Atoi(sv.SSTPort)
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlWarn, "SST Reseed to port %s server %s", sv.SSTPort, sv.Host)
+
 	if cluster.Conf.SchedulerReceiverUseSSL {
-		cluster.SSTRunSenderSSL(backupfile, sv)
+		cluster.SSTRunSenderSSL(backupfile, sv, task)
 		return
 	}
 
@@ -457,6 +459,10 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 	sendBuffer := make([]byte, cluster.Conf.SSTSendBuffer)
 	//fmt.Println("Start sending file!")
 	var total uint64
+
+	defer file.Close()
+	defer sv.RunTaskCallback(task)
+
 	for {
 		if strings.Contains(backupfile, "gz") {
 			fz, err := gzip.NewReader(file)
@@ -480,11 +486,9 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup has been sent, closing connection!")
 
-	defer file.Close()
-
 }
 
-func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor) {
+func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor, task string) {
 	var (
 		client *tls.Conn
 		err    error
@@ -505,6 +509,9 @@ func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor) {
 	}
 	sendBuffer := make([]byte, 16384)
 	var total uint64
+
+	defer file.Close()
+	defer sv.RunTaskCallback(task)
 	for {
 		_, err = file.Read(sendBuffer)
 		if err == io.EOF {

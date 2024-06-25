@@ -1865,7 +1865,7 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			break
 		case module == ConstLogModHeartBeat:
 			if conf.LogHeartbeat {
-				return conf.LogSSTLevel >= lvl
+				return conf.LogHeartbeatLevel >= lvl
 			}
 			break
 		case module == ConstLogModConfigLoad:
