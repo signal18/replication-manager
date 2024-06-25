@@ -26,6 +26,7 @@ The main features are:
  * API wih ACL
  * Capture on high load
  * SLA tracking
+ * Replication and monitoring user/password rotation or Vault usage
       
 
 ### [Documentation](https://docs.signal18.io)
