@@ -364,6 +364,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 			Logfile:   realmaster.FailoverMasterLogFile,
 			Logpos:    realmaster.FailoverMasterLogPos,
 			SSL:       cluster.Conf.ReplicationSSL,
+			Channel:   cluster.Conf.MasterConn,
 		}, server.DBVersion)
 		cluster.LogSQL(logs, err3, server.URL, "Rejoin", config.LvlErr, "Failed change master maxscale on %s: %s", server.URL, err3)
 	}
