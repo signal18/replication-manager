@@ -1369,11 +1369,15 @@ func (server *ServerMonitor) UnInstallPlugin(name string) error {
 	return nil
 }
 
-func (server *ServerMonitor) Capture() error {
+func (server *ServerMonitor) Capture(cstate *state.CapturedState) error {
 	cluster := server.ClusterGroup
 	if server.InCaptureMode {
 		return nil
 	}
+	//Log the server url
+	cstate.ServerURLs = append(cstate.ServerURLs, server.URL)
+	// cluster.GetStateMachine().CapturedState.Store(cstate.ErrKey, cstate)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Capture %s on server %s", cstate.ErrKey, server.URL)
 
 	go server.CaptureLoop(cluster.GetStateMachine().GetHeartbeats())
 	go server.JobCapturePurge(cluster.Conf.WorkingDir+"/"+cluster.Name, cluster.Conf.MonitorCaptureFileKeep)
@@ -1429,8 +1433,11 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 }
 
 func (server *ServerMonitor) CaptureLoop(start int64) {
-	server.InCaptureMode = true
 	cluster := server.ClusterGroup
+
+	server.SetInCaptureMode(true)
+	defer server.SetInCaptureMode(false)
+
 	type Save struct {
 		ProcessList  []dbhelper.Processlist `json:"processlist"`
 		InnoDBStatus string                 `json:"innodbstatus"`
@@ -1441,7 +1448,8 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 	t := time.Now()
 	logs := ""
 	var err error
-	for true {
+	var curHB int64 = start
+	for {
 
 		var clsave Save
 		clsave.ProcessList,
@@ -1461,16 +1469,23 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Slave Status for server %s: %s ", server.URL, err)
 
 		saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
-		err := os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/capture_"+server.Name+"_"+t.Format("20060102150405")+".json", saveJSON, 0644)
+		err = os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/capture_"+server.Name+"_"+t.Format("20060102150405")+".json", saveJSON, 0644)
 		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Exit loop %s with error %v\n", server.URL, err)
 			return
 		}
-		if cluster.GetStateMachine().GetHeartbeats() < start+5 {
+
+		for curHB == cluster.GetStateMachine().GetHeartbeats() {
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		curHB = cluster.GetStateMachine().GetHeartbeats()
+
+		if curHB >= start+5 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Exit loop %s. Start HB: %d, Stop HB: %d ", server.URL, start, curHB-1)
 			break
 		}
-		time.Sleep(40 * time.Millisecond)
 	}
-	server.InCaptureMode = false
 }
 
 func (server *ServerMonitor) RotateSystemLogs() {

@@ -460,15 +460,31 @@ func (cluster *Cluster) IsCurrentGTIDSync(m *ServerMonitor, s *ServerMonitor) bo
 	}
 }
 
-func (cluster *Cluster) CheckCapture(state state.State) {
+func (cluster *Cluster) CheckCapture(st state.State) {
 	if !cluster.Conf.MonitorCapture {
 		return
 	}
-	if strings.Contains(cluster.Conf.MonitorCaptureTrigger, state.ErrKey) {
-		if state.ServerUrl != "" {
-			srv := cluster.GetServerFromURL(state.ServerUrl)
+
+	if strings.Contains(cluster.Conf.MonitorCaptureTrigger, st.ErrKey) {
+
+		var cstate *state.CapturedState
+
+		// Check captured state
+		SM := cluster.GetStateMachine()
+		if cs, ok := SM.GetCapturedState(st.ErrKey); ok {
+			cstate = cs
+		} else {
+			cstate = new(state.CapturedState)
+			cstate.Parse(st)
+			SM.AddToCapturedState(st.ErrKey, cstate)
+		}
+
+		//Capture if the server is not logged
+		if st.ServerUrl != "" && cstate.Contains(st.ServerUrl) == false {
+			srv := cluster.GetServerFromURL(st.ServerUrl)
 			if srv != nil {
-				srv.Capture()
+				//Add entry to captured state
+				srv.Capture(cstate)
 			}
 		}
 	}

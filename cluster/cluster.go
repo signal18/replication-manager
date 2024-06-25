@@ -705,6 +705,8 @@ func (cluster *Cluster) StateProcessing() {
 		mybcksrv := cluster.GetBackupServer()
 		master := cluster.GetMaster()
 		for _, s := range cstates {
+			//Remove from captured state if already resolved, so it will capture next occurence
+			cluster.GetStateMachine().CapturedState.Delete(s.ErrKey)
 			servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
 			if s.ErrKey == "WARN0073" {
 				for _, s := range cluster.Servers {
