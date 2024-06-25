@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -8,7 +7,7 @@ import (
 	"expvar"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -189,7 +188,7 @@ func singleGet(uri, server string, ch chan<- serverResponse, started chan<- stru
 		return
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Logln("error reading body: ", server, "/", uri, ":", err)
 		ch <- serverResponse{server, nil}
@@ -719,7 +718,7 @@ func main() {
 		log.Fatal("missing config file")
 	}
 
-	cfgjs, err := ioutil.ReadFile(*configFile)
+	cfgjs, err := os.ReadFile(*configFile)
 	if err != nil {
 		log.Fatal("unable to load config file:", err)
 	}

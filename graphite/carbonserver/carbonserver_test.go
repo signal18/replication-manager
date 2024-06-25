@@ -1,9 +1,7 @@
-
 package carbonserver
 
 import (
 	"fmt"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -11,11 +9,11 @@ import (
 	"testing"
 	"time"
 
+	trigram "github.com/dgryski/go-trigram"
 	"github.com/signal18/replication-manager/graphite/cache"
 	pb "github.com/signal18/replication-manager/graphite/carbonzipperpb"
 	"github.com/signal18/replication-manager/graphite/points"
 	whisper "github.com/signal18/replication-manager/graphite/whisper"
-	trigram "github.com/dgryski/go-trigram"
 )
 
 type point struct {
@@ -234,7 +232,7 @@ func getSingleMetricTest(name string) *FetchTest {
 
 func testFetchSingleMetricCommon(t *testing.T, test *FetchTest) {
 	cache := cache.New()
-	path, err := ioutil.TempDir("", "")
+	path, err := os.MkdirTemp("", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +318,7 @@ func TestFetchSingleMetricDataCache(t *testing.T) {
 }
 
 func benchmarkFetchSingleMetricCommon(b *testing.B, test *FetchTest) {
-	path, err := ioutil.TempDir("", "")
+	path, err := os.MkdirTemp("", "")
 	if err != nil {
 		b.Fatal(err)
 	}

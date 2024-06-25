@@ -449,6 +449,10 @@ func (cluster *Cluster) SwitchFailoverCheckDelayStat() {
 	cluster.Conf.FailoverCheckDelayStat = !cluster.Conf.FailoverCheckDelayStat
 }
 
+func (cluster *Cluster) SwitchLogSQLInMonitoring() {
+	cluster.Conf.LogSQLInMonitoring = !cluster.Conf.LogSQLInMonitoring
+}
+
 func (cluster *Cluster) SwitchLogFailedElection() {
 	if cluster.Conf.LogFailedElection {
 		cluster.Conf.LogFailedElectionLevel = 0

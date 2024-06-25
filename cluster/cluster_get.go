@@ -12,7 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc64"
-	"io/ioutil"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -118,7 +118,7 @@ func (cluster *Cluster) GetPersitentState() error {
 	}
 
 	var clsave Save
-	file, err := ioutil.ReadFile(cluster.WorkingDir + "/clusterstate.json")
+	file, err := os.ReadFile(cluster.WorkingDir + "/clusterstate.json")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No file found: %v\n", err)
 		return err
@@ -841,7 +841,7 @@ func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 	}
 	var m Message
 
-	file, err := ioutil.ReadFile(cluster.Conf.WorkingDir + "/serviceplan.json")
+	file, err := os.ReadFile(cluster.Conf.WorkingDir + "/serviceplan.json")
 	if err != nil {
 		log.Errorf("failed opening file because: %s", err.Error())
 		return nil

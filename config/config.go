@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 
 	"os"
 	"reflect"
@@ -1145,7 +1144,7 @@ func (conf *Config) Reveal(clusterName string, tmpDir string) {
 }
 
 func readAndPrintFile(fileName string) {
-	content, err := ioutil.ReadFile(fileName)
+	content, err := os.ReadFile(fileName)
 	if err != nil {
 		fmt.Printf("Erreur lors de la lecture du fichier %s: %v\n", fileName, err)
 		return
@@ -1638,7 +1637,7 @@ func (conf *Config) GetDockerRepos(file string, is_not_embed bool) ([]DockerRepo
 		}
 
 		defer jsonFile.Close()
-		byteValue, _ = ioutil.ReadAll(jsonFile)
+		byteValue, _ = io.ReadAll(jsonFile)
 	} else {
 		byteValue, _ = share.EmbededDbModuleFS.ReadFile("repo/repos.json")
 	}
@@ -1684,15 +1683,15 @@ func (conf *Config) GetTarballs(is_not_embed bool) ([]Tarball, error) {
 		}
 
 		defer jsonFile.Close()
-		byteValue, _ = ioutil.ReadAll(jsonFile)
+		byteValue, _ = io.ReadAll(jsonFile)
 	} else {
 		jsonFile, err := share.EmbededDbModuleFS.Open("repo/tarballs.json")
 		if err != nil {
 			return tarballs.Tarballs, err
 		}
-		byteValue, _ = ioutil.ReadAll(jsonFile)
+		byteValue, _ = io.ReadAll(jsonFile)
 	}
-	//byteValue, _ := ioutil.ReadAll(jsonFile)
+	//byteValue, _ := io.ReadAll(jsonFile)
 
 	err := json.Unmarshal([]byte(byteValue), &tarballs)
 	if err != nil {
@@ -1774,7 +1773,7 @@ func (conf Config) MergeConfig(path string, name string, ImmMap map[string]inter
 }
 
 func (conf Config) WriteMergeConfig(confPath string, dynMap map[string]interface{}) error {
-	input, err := ioutil.ReadFile(confPath)
+	input, err := os.ReadFile(confPath)
 	if err != nil {
 		fmt.Printf("Cannot read config file %s : %s", confPath, err)
 		return err
@@ -1800,7 +1799,7 @@ func (conf Config) WriteMergeConfig(confPath string, dynMap map[string]interface
 
 	}
 	output := strings.Join(lines, "\n")
-	err = ioutil.WriteFile(confPath, []byte(output), 0644)
+	err = os.WriteFile(confPath, []byte(output), 0644)
 	if err != nil {
 		fmt.Printf("Cannot write config file %s : %s", confPath, err)
 		return err

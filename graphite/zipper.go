@@ -1,10 +1,9 @@
-
 package graphite
 
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -47,9 +46,9 @@ func (z zipper) get(who string, u *url.URL, msg unmarshaler) error {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("ioutil.ReadAll: %+v", err)
+		return fmt.Errorf("io.ReadAll: %+v", err)
 	}
 
 	err = msg.Unmarshal(body)
@@ -70,9 +69,9 @@ func (z zipper) Passthrough(metric string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("ioutil.ReadAll: %+v", err)
+		return nil, fmt.Errorf("io.ReadAll: %+v", err)
 	}
 
 	return body, nil

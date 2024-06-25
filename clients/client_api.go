@@ -12,7 +12,7 @@ package clients
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 
@@ -53,7 +53,7 @@ func cliAPICmd(urlpost string, params []RequetParam) (string, error) {
 	}
 
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR", err)
 		return "", err

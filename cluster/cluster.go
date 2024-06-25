@@ -16,7 +16,6 @@ import (
 	"hash"
 	"hash/crc64"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"runtime"
@@ -844,7 +843,7 @@ func (cluster *Cluster) Save() error {
 	clsave.SLAHistory = cluster.SLAHistory
 
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
-	err := ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
+	err := os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
 	if err != nil {
 		return err
 	}
@@ -852,14 +851,14 @@ func (cluster *Cluster) Save() error {
 	has_changed := false
 
 	saveQeueryRules, _ := json.MarshalIndent(cluster.QueryRules, "", "\t")
-	err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/queryrules.json", saveQeueryRules, 0644)
+	err = os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/queryrules.json", saveQeueryRules, 0644)
 	if err != nil {
 		return err
 	}
 
 	saveAgents, _ := json.MarshalIndent(cluster.Agents, "", "\t")
 
-	err = ioutil.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/agents.json", saveAgents, 0644)
+	err = os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/agents.json", saveAgents, 0644)
 	if err != nil {
 		return err
 	}

@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -30,7 +29,7 @@ func (r *Runtime) SetPid(pidfile string) error {
 	//Create and empty pid file on the specified location, if not already there
 	if _, err := os.Stat(pidfile); err != nil {
 		emptyPid := []byte("")
-		ioutil.WriteFile(pidfile, emptyPid, 0644)
+		os.WriteFile(pidfile, emptyPid, 0644)
 		return nil
 	}
 	return errors.New("file already there")
@@ -39,7 +38,7 @@ func (r *Runtime) SetPid(pidfile string) error {
 // Reload runtime with configuration
 func (r *Runtime) Reload(c *Config) error {
 
-	pid, err := ioutil.ReadFile(c.PidFile)
+	pid, err := os.ReadFile(c.PidFile)
 	if err != nil {
 		return err
 	}

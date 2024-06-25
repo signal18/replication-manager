@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -80,7 +80,7 @@ func (configurator *Configurator) LoadDBModules() error {
 		// defer the closing of our jsonFile so that we can parse it later on
 		defer jsonFile.Close()
 
-		byteValue, _ = ioutil.ReadAll(jsonFile)
+		byteValue, _ = io.ReadAll(jsonFile)
 	} else {
 		byteValue, _ = share.EmbededDbModuleFS.ReadFile("opensvc/moduleset_mariadb.svc.mrm.db.json")
 	}
@@ -104,7 +104,7 @@ func (configurator *Configurator) LoadProxyModules() error {
 			return errors.New(fmt.Sprintf("Failed opened module %s %s", file, err))
 		}
 		defer jsonFile.Close()
-		byteValue, _ = ioutil.ReadAll(jsonFile)
+		byteValue, _ = io.ReadAll(jsonFile)
 	} else {
 		byteValue, _ = share.EmbededDbModuleFS.ReadFile("opensvc/moduleset_mariadb.svc.mrm.proxy.json")
 	}

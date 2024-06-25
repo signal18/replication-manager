@@ -8,7 +8,7 @@ package haproxy
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"testing"
 )
 
@@ -21,11 +21,11 @@ func TestFilters_ParseFilter(t *testing.T) {
 
 	fakeRoute := "my_route"
 
-	j, _ := ioutil.ReadFile(FILTERS_CORRECT_JSON)
+	j, _ := os.ReadFile(FILTERS_CORRECT_JSON)
 	var filtersCorrect, filtersWrong []*Filter
 	_ = json.Unmarshal(j, &filtersCorrect)
 
-	i, _ := ioutil.ReadFile(FILTERS_WRONG_JSON)
+	i, _ := os.ReadFile(FILTERS_WRONG_JSON)
 	_ = json.Unmarshal(i, &filtersWrong)
 
 	for _, filter := range filtersCorrect {

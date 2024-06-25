@@ -15,7 +15,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 	"sync"
@@ -86,7 +86,7 @@ func (cl *Cluster) ArbitratorElection() error {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	type response struct {
 		Arbitration string `json:"arbitration"`

@@ -3,7 +3,6 @@ package regtest
 import (
 	"bufio"
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,7 +68,7 @@ func (regtest *RegTest) GetTests() []string {
 
 func (regtest *RegTest) SaveTestsFromResult(cl *cluster.Cluster, result map[string]cluster.Test) error {
 	saveJson, _ := json.MarshalIndent(result, "", "\t")
-	errmarshall := ioutil.WriteFile(cl.Conf.WorkingDir+"/"+cl.Name+"/tests.json", saveJson, 0644)
+	errmarshall := os.WriteFile(cl.Conf.WorkingDir+"/"+cl.Name+"/tests.json", saveJson, 0644)
 	if errmarshall != nil {
 		return errmarshall
 	}
@@ -116,7 +115,7 @@ func (regtest *RegTest) CreateTestsFromShare(cl *cluster.Cluster) map[string]clu
 		return allTests
 	}
 	saveJson, _ := json.MarshalIndent(allTests, "", "\t")
-	errmarshall := ioutil.WriteFile(cl.Conf.WorkingDir+"/"+cl.Name+"/tests.json", saveJson, 0644)
+	errmarshall := os.WriteFile(cl.Conf.WorkingDir+"/"+cl.Name+"/tests.json", saveJson, 0644)
 	if errmarshall != nil {
 		return allTests
 	}

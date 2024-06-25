@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"time"
@@ -46,7 +45,7 @@ func (cluster *Cluster) loadDBCertificates(path string) error {
 		clicertfile = cluster.Conf.HostsTlsCliCert
 		clikeyfile = cluster.Conf.HostsTlsCliKey
 	}
-	pem, err := ioutil.ReadFile(cacertfile)
+	pem, err := os.ReadFile(cacertfile)
 	if err != nil {
 		return errors.New("Can not load database TLS Authority CA")
 	}
@@ -92,7 +91,7 @@ func (cluster *Cluster) loadDBOldCertificates(path string) error {
 		clicertfile = cluster.Conf.HostsTlsCliCert
 		clikeyfile = cluster.Conf.HostsTlsCliKey
 	}
-	pem, err := ioutil.ReadFile(cacertfile)
+	pem, err := os.ReadFile(cacertfile)
 	if err != nil {
 		return errors.New("Can not load database TLS Authority CA")
 	}

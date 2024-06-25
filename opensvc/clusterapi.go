@@ -13,7 +13,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"hash/crc64"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -68,7 +68,7 @@ func (collector *Collector) StartServiceV2(cluster string, srv string, node stri
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 }
@@ -92,7 +92,7 @@ func (collector *Collector) StopServiceV2(cluster string, srv string, node strin
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 }
@@ -117,7 +117,7 @@ func (collector *Collector) PurgeServiceV2(cluster string, srv string, node stri
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 }
@@ -146,7 +146,7 @@ func (collector *Collector) CreateConfigKeyValueV2(namespace string, service str
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 }
@@ -175,7 +175,7 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 }
@@ -210,7 +210,7 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 }
@@ -243,7 +243,7 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println("Api Response: ", string(body))
 	return nil
 }
@@ -275,7 +275,7 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
 
 	//	collector.WaitServiceAvailable(srv, node)
@@ -308,7 +308,7 @@ func (collector *Collector) CreateTemplateV2Monitor(srv string, node string) err
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 }
@@ -336,7 +336,7 @@ func (collector *Collector) WaitServiceAvailable(srv string, node string) error 
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 
@@ -365,7 +365,7 @@ func (collector *Collector) WaitServicePropagate(srv string, node string) error 
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	log.Println("OpenSVC API Response: ", string(body))
 	return nil
 
@@ -420,7 +420,7 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 	defer client.CloseIdleConnections()
 	defer resp.Body.Close()
 	startRead := time.Now()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}

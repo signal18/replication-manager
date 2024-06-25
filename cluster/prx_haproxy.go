@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -252,7 +251,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 		if cluster.Conf.HaproxyDebug {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "haproxy show servers state response :%s", showleaderstate)
 		}
-		showleaderstatereader := ioutil.NopCloser(bytes.NewReader([]byte(showleaderstate)))
+		showleaderstatereader := io.NopCloser(bytes.NewReader([]byte(showleaderstate)))
 
 		defer showleaderstatereader.Close()
 		reader := csv.NewReader(showleaderstatereader)
@@ -284,7 +283,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 	if cluster.Conf.HaproxyDebug {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy show stat result: %s", result)
 	}
-	r := ioutil.NopCloser(bytes.NewReader([]byte(result)))
+	r := io.NopCloser(bytes.NewReader([]byte(result)))
 	defer r.Close()
 	reader := csv.NewReader(r)
 
