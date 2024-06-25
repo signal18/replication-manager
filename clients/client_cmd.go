@@ -15,7 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -421,7 +421,7 @@ func cliLogin() (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR ", err)
 		return "", err
@@ -459,7 +459,7 @@ func cliGetAllClusters() ([]string, error) {
 		return res, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR", err)
 		return res, err
@@ -489,7 +489,7 @@ func cliGetSettings() (cluster.Cluster, error) {
 		return r, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR in settings", err)
 		return r, err
@@ -521,7 +521,7 @@ func cliGetMonitor() (server.ReplicationManager, error) {
 		return r, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR in monitor", err)
 		return r, err
@@ -555,7 +555,7 @@ func cliGetServers() ([]cluster.ServerMonitor, error) {
 		return r, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR ", err)
 		return r, err
@@ -587,7 +587,7 @@ func cliGetMaster() (cluster.ServerMonitor, error) {
 		return r, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR ", err)
 		return r, err
@@ -616,7 +616,7 @@ func cliGetLogs() ([]string, error) {
 		return r, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR on getting logs", err)
 		return r, err
@@ -659,7 +659,7 @@ func cliClusterCmd(command string, params []RequetParam) error {
 		return err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("ERROR", err)
 		return err

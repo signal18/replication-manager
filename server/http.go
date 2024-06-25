@@ -32,7 +32,6 @@ package server
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -188,7 +187,7 @@ func (repman *ReplicationManager) handlerApp(w http.ResponseWriter, r *http.Requ
 
 func (repman *ReplicationManager) handlerRepoComp(w http.ResponseWriter, r *http.Request) {
 
-	data, err := ioutil.ReadFile(string(repman.Conf.ShareDir + "/opensvc/current"))
+	data, err := os.ReadFile(string(repman.Conf.ShareDir + "/opensvc/current"))
 
 	if err != nil {
 		w.WriteHeader(404)

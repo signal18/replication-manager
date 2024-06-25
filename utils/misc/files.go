@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -131,7 +131,7 @@ func CopyDir(src string, dst string) (err error) {
 		return
 	}
 
-	entries, err := ioutil.ReadDir(src)
+	entries, err := os.ReadDir(src)
 	if err != nil {
 		return
 	}
@@ -146,9 +146,14 @@ func CopyDir(src string, dst string) (err error) {
 				return
 			}
 		} else {
-			// Skip symlinks.
-			if entry.Mode()&os.ModeSymlink != 0 {
-				continue
+			var eInfo fs.FileInfo
+			if eInfo, err = entry.Info(); err != nil {
+				return
+			} else {
+				// Skip symlinks.
+				if eInfo.Mode()&os.ModeSymlink != 0 {
+					continue
+				}
 			}
 
 			err = CopyFile(srcPath, dstPath)

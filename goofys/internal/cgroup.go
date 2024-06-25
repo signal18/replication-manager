@@ -16,7 +16,7 @@ package internal
 
 import (
 	"errors"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -30,7 +30,7 @@ const MEM_USAGE_FILE_SUFFIX = "/memory.usage_in_bytes"
 func getCgroupAvailableMem() (retVal uint64, err error) {
 	//get the memory cgroup for self and send limit - usage for the cgroup
 
-	data, err := ioutil.ReadFile(CGROUP_PATH)
+	data, err := os.ReadFile(CGROUP_PATH)
 	if err != nil {
 		log.Debugf("Unable to read file %s error: %s", CGROUP_PATH, err)
 		return 0, err
@@ -90,7 +90,7 @@ func getMemoryCgroupPath(data string) (string, error) {
 }
 
 func readFileAndGetValue(path string) (uint64, error) {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		log.Debugf("Unable to read file %v error: %v", path, err)
 		return 0, err

@@ -9,7 +9,6 @@ package haproxy
 import (
 	"encoding/json"
 	"errors"
-	"io/ioutil"
 
 	//"log"
 	"os"
@@ -23,7 +22,7 @@ const (
 
 // Load a config from disk
 func (c *Config) GetConfigFromDisk() error {
-	if s, err := ioutil.ReadFile(c.JsonFile); err != nil {
+	if s, err := os.ReadFile(c.JsonFile); err != nil {
 		return err
 	} else {
 		if err := json.Unmarshal(s, &c); err != nil {
@@ -307,7 +306,7 @@ func (c *Config) Render() error {
 	//log.Println(c.TemplateFile)
 
 	// read the template
-	f, err := ioutil.ReadFile(c.TemplateFile)
+	f, err := os.ReadFile(c.TemplateFile)
 	if err != nil {
 		return err
 	}
@@ -336,7 +335,7 @@ func (c *Config) Persist() error {
 	if err != nil {
 		return err
 	}
-	err = ioutil.WriteFile(c.JsonFile, b, 0666)
+	err = os.WriteFile(c.JsonFile, b, 0666)
 	if err != nil {
 		return err
 	}

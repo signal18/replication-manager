@@ -1,13 +1,11 @@
-
 package persister
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/signal18/replication-manager/graphite/whisper"
+	"github.com/stretchr/testify/assert"
 )
 
 func assertRetentionsEq(t *testing.T, ret whisper.Retentions, s string) {
@@ -59,7 +57,7 @@ func TestParseRetentionDefs(t *testing.T) {
 }
 
 func parseSchemas(t *testing.T, content string) (WhisperSchemas, error) {
-	tmpFile, err := ioutil.TempFile("", "schemas-")
+	tmpFile, err := os.CreateTemp("", "schemas-")
 	if err != nil {
 		t.Fatal(err)
 		return nil, nil
@@ -183,7 +181,7 @@ func TestSchemasNotFound(t *testing.T) {
 	// create and remove file
 	assert := assert.New(t)
 
-	tmpFile, err := ioutil.TempFile("", "schemas-")
+	tmpFile, err := os.CreateTemp("", "schemas-")
 	if err != nil {
 		t.Fatal(err)
 	}

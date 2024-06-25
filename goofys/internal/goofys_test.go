@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"os"
@@ -1761,7 +1760,7 @@ func (s *GoofysTest) TestWriteAnonymousFuse(t *C) {
 	s.mount(t, mountPoint)
 	defer s.umount(t, mountPoint)
 
-	err := ioutil.WriteFile(mountPoint+"/test", []byte(""), 0600)
+	err := os.WriteFile(mountPoint+"/test", []byte(""), 0600)
 	t.Assert(err, NotNil)
 	pathErr, ok := err.(*os.PathError)
 	t.Assert(ok, Equals, true)
@@ -1775,7 +1774,7 @@ func (s *GoofysTest) TestWriteAnonymousFuse(t *C) {
 	// t.Assert(ok, Equals, true)
 	// t.Assert(pathErr.Err, Equals, fuse.ENOENT)
 
-	_, err = ioutil.ReadFile(mountPoint + "/test")
+	_, err = os.ReadFile(mountPoint + "/test")
 	t.Assert(err, NotNil)
 	pathErr, ok = err.(*os.PathError)
 	t.Assert(ok, Equals, true)
@@ -2006,7 +2005,7 @@ func (s *GoofysTest) TestClientForkExec(t *C) {
 	t.Assert(err, IsNil)
 	fh = nil
 	// Check file content.
-	content, err := ioutil.ReadFile(file)
+	content, err := os.ReadFile(file)
 	t.Assert(err, IsNil)
 	t.Assert(string(content), Equals, "1.1;1.2;")
 
@@ -2026,7 +2025,7 @@ func (s *GoofysTest) TestClientForkExec(t *C) {
 	t.Assert(err, IsNil)
 	fh = nil
 	// Verify that the file is updated as per the new write.
-	content, err = ioutil.ReadFile(file)
+	content, err = os.ReadFile(file)
 	t.Assert(err, IsNil)
 	t.Assert(string(content), Equals, "2.1;2.2;")
 }
@@ -2178,7 +2177,7 @@ func (s *GoofysTest) TestCreateRenameBeforeCloseFuse(t *C) {
 	t.Assert(ok, Equals, true)
 	t.Assert(pathErr.Err, Equals, fuse.ENOENT)
 
-	content, err := ioutil.ReadFile(to)
+	content, err := os.ReadFile(to)
 	t.Assert(err, IsNil)
 	t.Assert(string(content), Equals, "hello world")
 }
@@ -2192,7 +2191,7 @@ func (s *GoofysTest) TestRenameBeforeCloseFuse(t *C) {
 	from := mountPoint + "/newfile"
 	to := mountPoint + "/newfile2"
 
-	err := ioutil.WriteFile(from, []byte(""), 0600)
+	err := os.WriteFile(from, []byte(""), 0600)
 	t.Assert(err, IsNil)
 
 	fh, err := os.OpenFile(from, os.O_WRONLY, 0600)
@@ -2220,7 +2219,7 @@ func (s *GoofysTest) TestRenameBeforeCloseFuse(t *C) {
 	t.Assert(ok, Equals, true)
 	t.Assert(pathErr.Err, Equals, fuse.ENOENT)
 
-	content, err := ioutil.ReadFile(to)
+	content, err := os.ReadFile(to)
 	t.Assert(err, IsNil)
 	t.Assert(string(content), Equals, "hello world")
 }
@@ -2412,7 +2411,7 @@ func (s *GoofysTest) writeSeekWriteFuse(t *C, file string, fh *os.File, first st
 	t.Assert(err, IsNil)
 	fh = nil
 
-	content, err := ioutil.ReadFile(file)
+	content, err := os.ReadFile(file)
 	t.Assert(err, IsNil)
 	t.Assert(string(content), Equals, first+second+third)
 
@@ -3286,7 +3285,7 @@ func verifyFileData(t *C, mountPoint string, path string, content *string) {
 		mountPoint = mountPoint + "/"
 	}
 	path = mountPoint + path
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	comment := Commentf("failed while verifying %v", path)
 	if content != nil {
 		t.Assert(err, IsNil, comment)

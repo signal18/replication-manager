@@ -11,9 +11,9 @@ package cluster
 
 import (
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"strconv"
 
 	"github.com/signal18/replication-manager/config"
@@ -46,7 +46,7 @@ func (server *ServerMonitor) GetTunnelLocalPort() int {
 
 // Get private key for ssh authentication
 func (server *ServerMonitor) parsePrivateKey(keyPath string) (ssh.Signer, error) {
-	buff, _ := ioutil.ReadFile(keyPath)
+	buff, _ := os.ReadFile(keyPath)
 	return ssh.ParsePrivateKey(buff)
 }
 

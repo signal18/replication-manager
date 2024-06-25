@@ -2,7 +2,6 @@ package misc
 
 import (
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
@@ -41,13 +40,13 @@ func DownloadFileTimeout(url string, file string, timesecond int) error {
 		return err
 	}
 	defer response.Body.Close()
-	contents, err := ioutil.ReadAll(response.Body)
+	contents, err := io.ReadAll(response.Body)
 	if err != nil {
 		log.Errorf("Read File %s to %s : %s", url, file, err)
 		return err
 	}
 
-	err = ioutil.WriteFile(file, contents, 0644)
+	err = os.WriteFile(file, contents, 0644)
 	if err != nil {
 		log.Errorf("Write File %s to %s : %s", url, file, err)
 		return err

@@ -17,7 +17,6 @@ package internal
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 	"sync"
 	"time"
@@ -212,13 +211,13 @@ type MakeBucketOutput struct {
 	RequestId string
 }
 
-/// Implementations of all the functions here are expected to be
-/// concurrency-safe, except for
-///
-/// Init() is called exactly once before any other functions are
-/// called.
-///
-/// Capabilities()/Bucket() are expected to be const
+// / Implementations of all the functions here are expected to be
+// / concurrency-safe, except for
+// /
+// / Init() is called exactly once before any other functions are
+// / called.
+// /
+// / Capabilities()/Bucket() are expected to be const
 type StorageBackend interface {
 	Init(key string) error
 	Capabilities() *Capabilities
@@ -470,7 +469,7 @@ func (e StorageBackendInitError) GetBlob(param *GetBlobInput) (*GetBlobOutput, e
 				},
 				ContentType: PString("text/plain"),
 			},
-			Body: ioutil.NopCloser(strings.NewReader(errStr)),
+			Body: io.NopCloser(strings.NewReader(errStr)),
 		}, nil
 	} else {
 		return nil, fuse.ENOENT

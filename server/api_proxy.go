@@ -7,8 +7,8 @@
 package server
 
 import (
-	"io/ioutil"
 	"net/http"
+	"os"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
@@ -132,7 +132,7 @@ func (repman *ReplicationManager) handlerMuxSphinxIndexes(w http.ResponseWriter,
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		data, err := ioutil.ReadFile(mycluster.GetConf().SphinxConfig)
+		data, err := os.ReadFile(mycluster.GetConf().SphinxConfig)
 		if err != nil {
 			w.WriteHeader(404)
 			w.Write([]byte("404 Something went wrong - " + http.StatusText(404)))

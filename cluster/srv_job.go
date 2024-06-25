@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -1134,7 +1133,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		}
 		binlogfilestop++
 	}
-	files, err := ioutil.ReadDir(server.GetMyBackupDirectory())
+	files, err := os.ReadDir(server.GetMyBackupDirectory())
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to read backup directory of %s,%s", server.URL, err.Error())
 	}
@@ -1152,7 +1151,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 func (server *ServerMonitor) JobCapturePurge(path string, keep int) error {
 	drop := make(map[string]int)
 
-	files, err := ioutil.ReadDir(path)
+	files, err := os.ReadDir(path)
 	if err != nil {
 		return err
 	}

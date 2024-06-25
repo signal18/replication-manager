@@ -1,3 +1,4 @@
+//go:build cairo
 // +build cairo
 
 package expr
@@ -6,7 +7,6 @@ import (
 	"bytes"
 	"fmt"
 	"image/color"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
@@ -950,7 +950,7 @@ func marshalCairo(r *http.Request, results []*MetricData, backend cairoBackend) 
 	switch backend {
 	case cairoSVG:
 		var err error
-		tmpfile, err = ioutil.TempFile("/dev/shm", "cairosvg")
+		tmpfile, err = os.CreateTemp("/dev/shm", "cairosvg")
 		if err != nil {
 			return nil
 		}
@@ -988,7 +988,7 @@ func marshalCairo(r *http.Request, results []*MetricData, backend cairoBackend) 
 		b = buf.Bytes()
 	case cairoSVG:
 		surface.Finish()
-		b, _ = ioutil.ReadFile(tmpfile.Name())
+		b, _ = os.ReadFile(tmpfile.Name())
 		// NOTE(dgryski): This is the dumbest thing ever, but needed
 		// for compatibility.  I'm not doing the rest of the svg
 		// munging that graphite does.

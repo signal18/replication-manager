@@ -9,7 +9,6 @@ package cluster
 import (
 	"bytes"
 	"errors"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
@@ -57,7 +56,7 @@ func (cluster *Cluster) LocalhostStopHaProxyService(prx *HaproxyProxy) error {
 
 	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,"TEST", "Killing database %s %d", server.Id, server.Process.Pid)
 
-	pid, err := ioutil.ReadFile(prx.Datadir + "/var/haproxy.pid")
+	pid, err := os.ReadFile(prx.Datadir + "/var/haproxy.pid")
 	if err != nil {
 		return errors.New("No such file " + prx.Datadir + "/var/haproxy.pid")
 	}

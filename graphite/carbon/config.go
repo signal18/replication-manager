@@ -1,10 +1,9 @@
-
 package carbon
 
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -247,13 +246,13 @@ func TestConfig(rootDir string) string {
 		return configFile
 	}
 
-	ioutil.WriteFile(cfg.Whisper.SchemasFilename, []byte(`
+	os.WriteFile(cfg.Whisper.SchemasFilename, []byte(`
 [default]
 priority = 1
 pattern = .*
 retentions = 60:43200,3600:43800`), 0644)
 
-	ioutil.WriteFile(configFile, buf.Bytes(), 0644)
+	os.WriteFile(configFile, buf.Bytes(), 0644)
 
 	return configFile
 }

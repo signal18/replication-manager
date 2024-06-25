@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -156,7 +155,7 @@ func getArbitratorBackendStorageConnection() (*sqlx.DB, error) {
 
 func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	var h server.Heartbeat
-	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1048576))
 	if err != nil {
 		log.Errorln(err)
 		w.WriteHeader(500)
@@ -203,7 +202,7 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 }
 func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var h server.Heartbeat
-	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1048576))
 
 	if err != nil {
 		panic(err)
@@ -253,7 +252,7 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 func handlerForget(w http.ResponseWriter, r *http.Request) {
 	var h server.Heartbeat
-	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1048576))
 
 	if err != nil {
 		w.WriteHeader(500)
