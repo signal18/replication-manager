@@ -1176,6 +1176,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchForceBinlogAnnotate()
 	case "force-binlog-slow-queries":
 		mycluster.SwitchForceBinlogSlowqueries()
+	case "log-sql-in-monitoring":
+		mycluster.SwitchLogSQLInMonitoring()
 	case "log-failed-election":
 		mycluster.SwitchLogFailedElection()
 	case "log-sst":
