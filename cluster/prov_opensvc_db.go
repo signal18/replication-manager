@@ -276,6 +276,10 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 		svccontainer["run_args"] = "--ulimit nofile=262144:262144"
+		svccontainer["#run_args"] = "--user mysql --cap-add SYS_PTRACE --ulimit nofile=262144:262144"
+		svccontainer["#command"]  = "gdb -ex r -ex thread apply all bt -frame-arguments all full --args mariadbd"
+		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
+
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/mysql-files:/var/lib/mysql-files:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 

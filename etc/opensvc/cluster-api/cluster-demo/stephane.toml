@@ -67,5 +67,5 @@ backup-streaming-endpoint= "https://s3.signal18.io/"
 backup-streaming-region= "fr-1"
 backup-streaming-bucket= "repman"
 backup-mysqldump-path = "/usr/local/bin/mysqldump"
-graphite-embedded     = false
+graphite-embedded     = true
 graphite-metrics = true
