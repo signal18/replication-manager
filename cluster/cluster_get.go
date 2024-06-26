@@ -140,6 +140,9 @@ func (cluster *Cluster) GetPersitentState() error {
 }
 
 func (cluster *Cluster) GetMaster() *ServerMonitor {
+	if cluster.master == nil && cluster.vmaster == nil {
+		return nil
+	}
 	if cluster.master == nil {
 		return cluster.vmaster
 	} else {
