@@ -1,9 +1,23 @@
 FROM golang:1.23rc1-bullseye
 
 ENV PROXYSQL_VERSION=2.5.5
+ENV MYDUMPER_VERSION=0.16.3-3
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
+
+# Move to top for better cache
+RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl vim libatomic1
+RUN curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian11_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian11_amd64.deb
+RUN curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_VERSION/mydumper_$MYDUMPER_VERSION.bullseye_amd64.deb && dpkg -i mydumper_$MYDUMPER_VERSION.bullseye_amd64.deb
+RUN /usr/local/go/bin/go install -v golang.org/x/tools/gopls@latest
+RUN /usr/local/go/bin/go install -v github.com/cweill/gotests/gotests@v1.6.0
+RUN /usr/local/go/bin/go install -v github.com/fatih/gomodifytags@v1.16.0
+RUN /usr/local/go/bin/go install -v github.com/josharian/impl@v1.1.0
+RUN /usr/local/go/bin/go install -v github.com/haya14busa/goplay/cmd/goplay@v1.0.0
+RUN /usr/local/go/bin/go install -v github.com/haya14busa/goplay/cmd/goplay@v1.0.0
+RUN /usr/local/go/bin/go install -v github.com/go-delve/delve/cmd/dlv@latest
+RUN /usr/local/go/bin/go install -v honnef.co/go/tools/cmd/staticcheck@latest
 
 COPY . .
 
@@ -22,15 +36,5 @@ cp -r share /usr/share/replication-manager/ && \
 cp build/binaries/replication-manager-pro /usr/bin/replication-manager && \
 cp build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 
-RUN apt-get update && apt-get -y install mydumper ca-certificates restic mariadb-client mariadb-server mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl vim
-RUN curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian11_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian11_amd64.deb
-RUN /usr/local/go/bin/go install -v golang.org/x/tools/gopls@latest
-RUN /usr/local/go/bin/go install -v github.com/cweill/gotests/gotests@v1.6.0
-RUN /usr/local/go/bin/go install -v github.com/fatih/gomodifytags@v1.16.0
-RUN /usr/local/go/bin/go install -v github.com/josharian/impl@v1.1.0
-RUN /usr/local/go/bin/go install -v github.com/haya14busa/goplay/cmd/goplay@v1.0.0
-RUN /usr/local/go/bin/go install -v github.com/haya14busa/goplay/cmd/goplay@v1.0.0
-RUN /usr/local/go/bin/go install -v github.com/go-delve/delve/cmd/dlv@latest
-RUN /usr/local/go/bin/go install -v honnef.co/go/tools/cmd/staticcheck@latest
 CMD ["while true ; do sleep 1; done"]
 EXPOSE 10001
