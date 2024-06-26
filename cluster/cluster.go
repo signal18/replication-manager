@@ -733,6 +733,9 @@ func (cluster *Cluster) StateProcessing() {
 				}
 			}
 			if s.ErrKey == "WARN0075" {
+				/*
+					This action is inactive due to direct function from Job
+				*/
 				// //Only mysqldump exists in the script
 				// task := "reseed" + cluster.Conf.BackupLogicalType
 				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master logical backup to reseed %s", s.ServerUrl)
@@ -756,14 +759,17 @@ func (cluster *Cluster) StateProcessing() {
 				}
 			}
 			if s.ErrKey == "WARN0077" {
-				//Only mysqldump exists in the script
-				task := "flashback" + cluster.Conf.BackupLogicalType
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
-				if mybcksrv != nil {
-					go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				} else {
-					go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				}
+				/*
+					This action is inactive due to direct function from rejoin
+				*/
+				// //Only mysqldump exists in the script
+				// task := "flashback" + cluster.Conf.BackupLogicalType
+				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
+				// if mybcksrv != nil {
+				// 	go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
+				// } else {
+				// 	go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
+				// }
 			}
 			if s.ErrKey == "WARN0101" {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have backup")
