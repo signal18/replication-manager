@@ -314,6 +314,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 		Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
 		Mode:      "SLAVE_POS",
 		SSL:       cluster.Conf.ReplicationSSL,
+		Channel:   cluster.Conf.MasterConn,
 	}, server.DBVersion)
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 	if err != nil {
@@ -429,6 +430,9 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalLoadThreads)
 
 	myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyLoaderOptions, "  ", " "), " ")
+	if server.URL == cluster.GetMaster().URL {
+		myargs = append(myargs, "--enable-binlog")
+	}
 	myargs = append(myargs, "--directory="+cluster.master.GetMasterBackupDirectory(), "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
 	dumpCmd := exec.Command(cluster.GetMyLoaderPath(), myargs...)
 

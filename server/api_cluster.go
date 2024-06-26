@@ -1050,6 +1050,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchRejoinLogicalBackup()
 	case "autorejoin-physical-backup":
 		mycluster.SwitchRejoinPhysicalBackup()
+	case "autorejoin-force-restore":
+		mycluster.SwitchRejoinForceRestore()
 	case "switchover-at-sync":
 		mycluster.SwitchSwitchoverSync()
 	case "check-replication-filters":
