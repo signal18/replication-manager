@@ -299,8 +299,10 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 		server.createCookie("cookie_waitbackup")
 		return 0, errors.New("No Logical Backup")
 	}
-	var jobid int64
-	jobid, err = server.JobInsertTaks(task, server.SSTPort, cluster.Conf.MonitorAddress)
+	if v, ok := server.ActiveTasks.Load(task); ok {
+		dt = v.(DBTask)
+	}
+	jobid, err := server.JobInsertTaks(task, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Receive flashback logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
 		return jobid, err
