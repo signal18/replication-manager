@@ -882,7 +882,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		//  --no-schemas     --regex '^(?!(mysql))'
 
 		threads := strconv.Itoa(cluster.Conf.BackupLogicalDumpThreads)
-		myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyLoaderOptions, "  ", " "), " ")
+		myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyDumperOptions, "  ", " "), " ")
 		myargs = append(myargs, "--outputdir="+server.GetMyBackupDirectory(), "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
 		dumpCmd := exec.Command(cluster.GetMyDumperPath(), myargs...)
 
