@@ -1,6 +1,17 @@
 <md-card>
     <table ng-if="settings" class="table">
         <tr>
+            <th>Failover Limit</th>
+        </tr>
+        <tr>
+            <td>
+                <md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-value="selectedCluster.config.failoverLimit" md-discrete flex
+                           ng-model="selectedFailoverLimit" ng-change="changefailoverlimit(selectedFailoverLimit)" step="1" min="0" max="10" aria-label="failover limit">
+                </md-slider>
+                <span class="label label-primary">{{selectedCluster.config.failoverLimit}}</span>
+            </td>
+        </tr>
+        <tr>
             <th>Checks failover & switchover constraints</th>
         </tr>
         <tr>

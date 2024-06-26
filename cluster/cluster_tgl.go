@@ -204,7 +204,14 @@ func (cluster *Cluster) SwitchRejoinPhysicalBackup() {
 func (cluster *Cluster) SwitchRejoinBackupBinlog() {
 	cluster.Conf.AutorejoinBackupBinlog = !cluster.Conf.AutorejoinBackupBinlog
 }
-
+func (cluster *Cluster) SwitchRejoinForceRestore() {
+	out := "N"
+	cluster.Conf.AutorejoinForceRestore = !cluster.Conf.AutorejoinForceRestore
+	if cluster.Conf.AutorejoinForceRestore {
+		out = "Y"
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Autorejoin active: %s", out)
+}
 func (cluster *Cluster) SwitchRejoinSemisync() {
 	cluster.Conf.AutorejoinSemisync = !cluster.Conf.AutorejoinSemisync
 }

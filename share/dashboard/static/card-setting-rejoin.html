@@ -106,6 +106,20 @@
             </td>
         </tr>
         <tr>
+            <th>Force Rejoin With Restore</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.autorejoinForceRestore"
+                           ng-click="switchsettings('autorejoin-force-restore')"
+                           aria-label="Auto rejoin force Restore">
+                    <span ng-if="selectedCluster.config.autorejoinForceRestore" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.autorejoinForceRestore" class="label label-warning">Off</span>
+            </td>
+            </md-switch>
+            </td>
+        </tr>
+        <tr>
             <th>Auto seed from backup standalone server</th>
         </tr>
         <tr>

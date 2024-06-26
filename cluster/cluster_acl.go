@@ -579,7 +579,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/discover") {
 			return true
 		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/reset-failover-control") {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/reset-failover-control") {
 			return true
 		}
 	}

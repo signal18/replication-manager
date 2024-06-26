@@ -8,8 +8,10 @@ package cluster
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -94,9 +96,16 @@ func (server *ServerMonitor) GetDatabaseDatadir() string {
 	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
 		return server.SlapOSDatadir + "/var/lib/mysql"
 	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorOnPremise {
-		value := server.GetConfigVariable("DATADIR")
-		if value != "" {
-			return value
+		if server.DBDataDir == "" {
+			//Not using Variables[] due to uppercase values
+			if value, _, err := dbhelper.GetVariableByName(server.Conn, "DATADIR", server.DBVersion); err == nil {
+				value, _ := strings.CutSuffix(value, "/")
+
+				server.DBDataDir = value
+				return server.DBDataDir
+			}
+		} else {
+			return server.DBDataDir
 		}
 	}
 	return "/var/lib/mysql"
