@@ -1185,7 +1185,7 @@ app.controller('DashboardController', function (
     if (confirm("Confirm database apply config")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/apply-dynamic-config');
   };
   $scope.resetfail = function () {
-    if (confirm("Reset Failover counter?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-failover-counter');
+    if (confirm("Reset Failover counter?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-failover-control');
   };
   $scope.resetsla = function () {
     if (confirm("Reset SLA counters?")) httpGetWithoutResponse(getClusterUrl() + '/actions/reset-sla');
@@ -1699,6 +1699,9 @@ app.controller('DashboardController', function (
   };
   $scope.changemaxdelay = function (delay) {
     if (confirm("Confirm change delay  " + delay.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/failover-max-slave-delay/' + delay);
+  };
+  $scope.changefailoverlimit = function (limit) {
+    if (confirm("Confirm change failover-limit  " + limit.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/failover-limit/' + limit);
   };
   $scope.changebackupbinlogskeep = function (delay) {
     if (confirm("Confirm change keep binlogs files " + delay.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/backup-binlogs-keep/' + delay);

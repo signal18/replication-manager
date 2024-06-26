@@ -263,7 +263,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
-		go server.JobReseedMysqldump()
+		go server.JobReseedMysqldump(task)
 	} else if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
 		go server.JobReseedMyLoader()
 	}
@@ -292,15 +292,22 @@ func (server *ServerMonitor) JobServerRestart() (int64, error) {
 
 func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 	cluster := server.ClusterGroup
+	task := "flashback" + cluster.Conf.BackupLogicalType
+	var dt DBTask = DBTask{task: task}
+	var err error
 	if cluster.master != nil && !cluster.GetBackupServer().HasBackupLogicalCookie() {
 		server.createCookie("cookie_waitbackup")
 		return 0, errors.New("No Logical Backup")
 	}
-	jobid, err := server.JobInsertTaks("flashback"+cluster.Conf.BackupLogicalType, server.SSTPort, cluster.Conf.MonitorAddress)
+	var jobid int64
+	jobid, err = server.JobInsertTaks(task, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Receive reseed logical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
-
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Receive flashback logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
 		return jobid, err
+	} else {
+		dt.ct++
+		dt.id = jobid
+		server.ActiveTasks.Store(task, dt)
 	}
 	logs, err := server.StopSlave()
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
@@ -316,14 +323,17 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 		SSL:       cluster.Conf.ReplicationSSL,
 		Channel:   cluster.Conf.MasterConn,
 	}, server.DBVersion)
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "flashback can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
 	if err != nil {
 		return jobid, err
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Receive flashback logical backup %s request for server: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if cluster.Conf.BackupLoadScript != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Using script from backup-load-script on %s", server.URL)
 		go server.JobReseedBackupScript()
+	} else if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
+		go server.JobReseedMysqldump(task)
 	} else if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
 		go server.JobReseedMyLoader()
 	}
@@ -473,14 +483,12 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 
 }
 
-func (server *ServerMonitor) JobReseedMysqldump() {
+func (server *ServerMonitor) JobReseedMysqldump(task string) {
 	cluster := server.ClusterGroup
 	mybcksrv := cluster.GetBackupServer()
 	master := cluster.GetMaster()
 	go server.JobRunViaSSH()
 
-	//Only mysqldump exists in the script
-	task := "reseed" + cluster.Conf.BackupLogicalType
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending logical backup to reseed %s", server.URL)
 	if master != nil {
 		if mybcksrv != nil {
