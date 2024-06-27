@@ -1,22 +1,37 @@
 [Default]
 
+## Configs ar loeded in that revert order :
+## /etc/replication-manager/config.toml
+## ./replication-maneger/config.toml
+## all *.toml in a single include directory in this file
+## /var/lib/replication-manager/<cluster>/cluster.json
+
 include = "/etc/replication-manager/cluster.d"
+
+## Default for replcation-manager-osc following extra orchestration in osc
+
 prov-orchestrator = "onpremise"
+# prov-orchestrator = "local"
 
+## Default for replcation-manager-pro following extra orchestration in pro
 
-# To preserve settings changed using clients between restart
-# Default  load config from /etc if any config found in a cluster directory it read only cluster variables not defined in etc
-# Use the merge command line option in sudo to overwrite system config of a cluster proposed by api users
+# prov-orchestrator = "opensvc"
+# prov-orchestrator = "slapos"
+# prov-orchestrator = "kube"
+
+## Save options changed using API between restart and not forced in config file
+## Use the merge command line option in sudo to overwrite system config of a cluster proposed by api users
 
 # monitoring-save-config = true
 
-# To enable ssh to database and proxy hosts, use ssh-keygen ssh-copy-id for first deployment
+## To enable ssh to database and proxy hosts, use ssh-keygen ssh-copy-id for first deployment
+
 # onpremise-ssh = true
 # onpremise-ssh-credential = "root:"
 # scheduler-jobs-ssh = true
 
-#T he network address of this replocation-manager
-#monitoring-address = "127.0.0.1"
+## The network address of this replocation-manager
+# monitoring-address = "127.0.0.1"
 
 ## Timeout in seconds between consecutive monitoring
 monitoring-ticker = 2
@@ -26,12 +41,16 @@ monitoring-ticker = 2
 #########
 
 log-file = "/var/log/replication-manager.log"
-log-heartbeat = false
+# log-syslog = false
 
+## pto release with arbitrator
 
-##########
-## HTTP ##
-##########
+# log-heartbeat = false
+# log-heartbeat-level = 1
+
+##############
+## HTTP API ##
+##############
 
 http-server = true
 http-bind-address = "0.0.0.0"
@@ -40,10 +59,19 @@ http-auth = false
 http-session-lifetime =   3600
 http-refresh-interval = 4000
 
-#########
-## API ##
-#########
 
-api-credentials = "admin:repman"
-api-credentials-acl-allow = "admin:cluster db prov"
+###############
+## HTTPS API ##
+###############
+
 api-port = "10005"
+api-credentials = "admin:repman"
+# api-credentials-external = ""
+api-credentials-acl-allow = "admin:cluster db prov"
+# api-credentials-acl-discard = ""
+
+## force https with ssl key path and disbale http for web client
+
+# api-https-bind = true
+# monitoring-ssl-cert = ""
+# monitoring-ssl-key = ""
