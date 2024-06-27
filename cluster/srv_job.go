@@ -146,17 +146,55 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	//return 0, nil
 }
 
+func (server *ServerMonitor) ReseedPhysicalBackup(task string) error {
+	cluster := server.ClusterGroup
+	master := cluster.GetMaster()
+	var err error
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", server.URL)
+	if master != nil {
+		backupext := ".xbtream"
+		task := "reseed" + cluster.Conf.BackupPhysicalType
+
+		if cluster.Conf.CompressBackups {
+			backupext = backupext + ".gz"
+		}
+
+		go server.JobRunViaSSH()
+		//Wait for socat init
+		time.Sleep(1 * time.Second)
+
+		cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
+	} else {
+		err = errors.New(fmt.Sprintf("No master cancel backup reseeding %s", server.URL))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, err.Error())
+	}
+
+	return err
+}
+
 func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	cluster := server.ClusterGroup
-	if cluster.master != nil && !cluster.GetBackupServer().HasBackupPhysicalCookie() {
+	task := "reseed" + cluster.Conf.BackupPhysicalType
+	var dt DBTask = DBTask{task: task}
+	if cluster.GetMaster() != nil && !cluster.GetBackupServer().HasBackupPhysicalCookie() {
 		server.createCookie("cookie_waitbackup")
 		return 0, errors.New("No Physical Backup")
 	}
-	jobid, err := server.JobInsertTaks("reseed"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
+
+	if v, ok := server.ActiveTasks.Load(task); ok {
+		dt = v.(DBTask)
+	}
+
+	jobid, err := server.JobInsertTaks(task, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Receive reseed physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 		return jobid, err
+	} else {
+		dt.ct++
+		dt.id = jobid
+		server.ActiveTasks.Store(task, dt)
 	}
+
 	logs, err := server.StopSlave()
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
@@ -170,14 +208,15 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 		SSL:       cluster.Conf.ReplicationSSL,
 		Channel:   cluster.Conf.MasterConn,
 	}, server.DBVersion)
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 	if err != nil {
 		return jobid, err
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
 
+	go server.ReseedPhysicalBackup(task)
 	return jobid, err
 }
 
@@ -1067,22 +1106,36 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	buf2 := strings.NewReader(server.GetSshEnv())
 	r := io.MultiReader(buf2, buf)
 
+	var out string
+	var errstr string
 	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database jobs run via SSH: %s", stderr.String())
 	}
-	out := stdout.String()
+
+	out = stdout.String()
+	errstr = stderr.String()
 
 	if server.GetCluster().Conf.LogSST {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, stderr.String())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, errstr)
 	}
 
 	res := new(JobResult)
 	val := reflect.ValueOf(res).Elem()
 	for i := 0; i < val.NumField(); i++ {
-		if strings.Contains(strings.ToLower(string(out)), strings.ToLower("no "+val.Type().Field(i).Name)) {
+		jobname := val.Type().Field(i).Name
+		if strings.Contains(strings.ToLower(string(out)), strings.ToLower("no "+jobname)) {
 			val.Field(i).SetBool(false)
 		} else {
 			val.Field(i).SetBool(true)
+			// If xtrabackup or mariabackup
+			switch jobname {
+			case "Xtrabackup", "Mariabackup":
+				// Space before Completed OK! is Important
+				if strings.Contains(errstr, " completed OK!") {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "%s completed without error. Creating cookie for physical backup.", jobname)
+					server.SetBackupPhysicalCookie()
+				}
+			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database jobs run via SSH: %s", val.Type().Field(i).Name)
 		}
 	}
@@ -1437,8 +1490,8 @@ func (server *ServerMonitor) RunTaskCallback(task string) error {
 	if v, ok := server.ActiveTasks.Load(task); ok {
 		dt := v.(DBTask)
 		switch dt.task {
-		case "reseedmysqldump", "flashbackmysqldump":
-			go server.CallbackMysqldump(dt)
+		case "reseedmysqldump", "flashbackmysqldump", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
+			go server.StartSlaveCallback(dt)
 		}
 	} else {
 		err = errors.New("No active task found!")
@@ -1448,7 +1501,7 @@ func (server *ServerMonitor) RunTaskCallback(task string) error {
 	return err
 }
 
-func (server *ServerMonitor) CallbackMysqldump(dt DBTask) error {
+func (server *ServerMonitor) StartSlaveCallback(dt DBTask) error {
 	cluster := server.ClusterGroup
 	var err error
 
@@ -1474,7 +1527,7 @@ func (server *ServerMonitor) CallbackMysqldump(dt DBTask) error {
 			return nil
 		} else {
 			time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
-			return server.CallbackMysqldump(dt)
+			return server.StartSlaveCallback(dt)
 		}
 	}
 

@@ -703,34 +703,32 @@ func (cluster *Cluster) StateProcessing() {
 		// trigger action on resolving states
 		cstates := cluster.StateMachine.GetResolvedStates()
 		mybcksrv := cluster.GetBackupServer()
-		master := cluster.GetMaster()
+		// master := cluster.GetMaster()
 		for _, s := range cstates {
 			//Remove from captured state if already resolved, so it will capture next occurence
 			cluster.GetStateMachine().CapturedState.Delete(s.ErrKey)
 			servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
-			if s.ErrKey == "WARN0073" {
-				for _, s := range cluster.Servers {
-					s.SetBackupPhysicalCookie()
-				}
-			}
 			if s.ErrKey == "WARN0074" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
-				if master != nil {
-					backupext := ".xbtream"
-					task := "reseed" + cluster.Conf.BackupPhysicalType
+				/*
+					This action is inactive due to direct function from Job
+				*/
+				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
+				// if master != nil {
+				// 	backupext := ".xbtream"
+				// 	task := "reseed" + cluster.Conf.BackupPhysicalType
 
-					if cluster.Conf.CompressBackups {
-						backupext = backupext + ".gz"
-					}
+				// 	if cluster.Conf.CompressBackups {
+				// 		backupext = backupext + ".gz"
+				// 	}
 
-					if mybcksrv != nil {
-						go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed, task)
-					} else {
-						go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed, task)
-					}
-				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
-				}
+				// 	if mybcksrv != nil {
+				// 		go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed, task)
+				// 	} else {
+				// 		go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed, task)
+				// 	}
+				// } else {
+				// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
+				// }
 			}
 			if s.ErrKey == "WARN0075" {
 				/*

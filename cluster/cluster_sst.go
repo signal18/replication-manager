@@ -213,7 +213,9 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor) {
 		SSTs.Unlock()
 
 		backtype := "physical"
-		server.BackupRestic(sst.cluster.Conf.Cloud18GitUser, sst.cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, sst.cluster.Conf.BackupPhysicalType)
+		if sst.cluster.Conf.BackupRestic {
+			server.BackupRestic(sst.cluster.Conf.Cloud18GitUser, sst.cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, sst.cluster.Conf.BackupPhysicalType)
+		}
 		sst.cluster.SetInPhysicalBackupState(false)
 	}()
 
