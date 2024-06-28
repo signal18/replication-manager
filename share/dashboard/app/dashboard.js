@@ -1615,9 +1615,9 @@ app.controller('DashboardController', function (
     }
   }
 
-  $scope.saveTopoPreferred = function (topo) {
+  $scope.saveTopoTarget = function (topo) {
     if (confirm("This will set preferred topology to " + topo + ". Confirm?")) {
-      httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/topology-preferred/' + topo);
+      httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/topology-target/' + topo);
     }
   }
 

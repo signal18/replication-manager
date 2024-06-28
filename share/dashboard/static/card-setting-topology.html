@@ -3,17 +3,17 @@
         <tr>
             <th colspan="2">Preferred Topology</th>
             <th width="10%">
-                <span style="display:inline-block;;margin: 2px;" ng-click="saveTopoPreferred(selectedTopoPreferred)">
-                    <i style="display:inline-block;;margin: 2px;" class="fa fa-undo"></i>
+                <span style="display:inline-block;;margin: 2px;" ng-click="saveTopoTarget(selectedTopoTarget)">
+                    <i style="display:inline-block;;margin: 2px;" class="fa fa-save"></i>
                 </span>
             </th>
         </tr>
         <tr>
             <td colspan="3">
                 <span style="display:inline-block;;margin: 2px;"
-                    class="label label-success">{{selectedCluster.config.topologyPreferred }}</span>
-                <md-select name="selectedTopoPreferred" ng-model="selectedTopoPreferred">
-                    <md-option ng-selected="{{key ==  selectedCluster.config.topologyPreferred}}"
+                    class="label label-success">{{selectedCluster.config.topologyTarget }}</span>
+                <md-select name="selectedTopoTarget" ng-model="selectedTopoTarget">
+                    <md-option ng-selected="{{key ==  selectedCluster.config.topologyTarget}}"
                         ng-repeat="(key, value) in selectedCluster.topologyType" ng-value="key">{{key}}</md-option>
                 </md-select>
             </td>

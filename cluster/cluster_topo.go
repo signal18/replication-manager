@@ -320,7 +320,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	// If no relay and master-slave is preferred
-	if !hasRelay && cluster.Conf.TopologyPreferred == topoMasterSlave {
+	if !hasRelay && cluster.Conf.TopologyTarget == topoMasterSlave {
 		cluster.ChangeTopology(topoMasterSlave)
 	}
 

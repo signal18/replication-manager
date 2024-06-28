@@ -1733,8 +1733,8 @@ func (cluster *Cluster) SetGraphiteWhitelistTemplate(value string) {
 	cluster.Unlock()
 }
 
-func (cluster *Cluster) SetTopologyPreferred(value string) {
+func (cluster *Cluster) SetTopologyTarget(value string) {
 	cluster.Lock()
-	cluster.Conf.TopologyPreferred = value
+	cluster.Conf.TopologyTarget = value
 	cluster.Unlock()
 }

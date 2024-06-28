@@ -1462,8 +1462,8 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetLogBinlogPurgeLevel(val)
 	case "graphite-whitelist-template":
 		mycluster.SetGraphiteWhitelistTemplate(value)
-	case "topology-preferred":
-		mycluster.SetTopologyPreferred(value)
+	case "topology-target":
+		mycluster.SetTopologyTarget(value)
 	}
 
 }
