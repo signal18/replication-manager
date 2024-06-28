@@ -466,6 +466,12 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		cluster.Topology = cluster.GetTopologyFromConf()
 	}
 
+	//Last check for Read-Only
+	mst := cluster.GetMaster()
+	if cluster.IsDiscovered() && mst != nil && mst.IsReadOnly() && !mst.IsMaintenance {
+		mst.SetReadWrite()
+	}
+
 	if cluster.StateMachine.CanMonitor() {
 		return nil
 	}
