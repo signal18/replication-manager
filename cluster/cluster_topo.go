@@ -279,11 +279,13 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				if sl.HasCycling() {
 					if cluster.Conf.MultiMaster == false && len(cluster.Servers) == 2 {
 						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO", ServerUrl: sl.URL})
-						cluster.Conf.MultiMaster = true
+						if cluster.Conf.DynamicTopology {
+							cluster.Conf.MultiMaster = true
+						}
 					}
 					if cluster.Conf.MultiMasterRing == false && len(cluster.Servers) > 2 {
 						// Prevent Multi Master Ring for unsafe environment
-						if len(cluster.LogSlaveServers) > 1 || cluster.Conf.MultiMasterRingUnsafe {
+						if cluster.Conf.DynamicTopology && (len(cluster.LogSlaveServers) > 1 || cluster.Conf.MultiMasterRingUnsafe) {
 							cluster.Conf.MultiMasterRing = true
 						}
 					}
@@ -321,7 +323,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			_, err := s.GetSlaveStatus(s.ReplicationSourceName)
 
 			if err != nil {
-				cluster.Conf.MultiMaster = false
+				if cluster.Conf.DynamicTopology {
+					cluster.Conf.MultiMaster = false
+				}
 			}
 		}
 		if srw > 1 {
