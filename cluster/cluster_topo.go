@@ -472,6 +472,11 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		mst.SetReadWrite()
 	}
 
+	if cluster.Topology == topoMasterSlave && cluster.master != nil && cluster.vmaster != nil {
+		cluster.vmaster.IsVirtualMaster = false
+		cluster.vmaster = nil
+	}
+
 	if cluster.StateMachine.CanMonitor() {
 		return nil
 	}
