@@ -1227,6 +1227,10 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchForceBinlogPurgeOnRestore()
 	case "force-binlog-purge-replicas":
 		mycluster.SwitchForceBinlogPurgeReplicas()
+	case "multi-master-ring-unsafe":
+		mycluster.SwitchMultiMasterRingUnsafe()
+	case "dynamic-topology":
+		mycluster.SwitchDynamicTopology()
 	}
 }
 
