@@ -206,6 +206,19 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		if sv.IsFailed() {
 			continue
 		}
+		// Check for log slave updates
+		if lsu, ok := sv.Variables["LOG_SLAVE_UPDATES"]; ok && lsu == "ON" {
+			add := true
+			for _, lsv := range cluster.LogSlaveServers {
+				if lsv == sv.URL {
+					add = false
+				}
+			}
+
+			if add {
+				cluster.LogSlaveServers = append(cluster.LogSlaveServers, sv.URL)
+			}
+		}
 		// count wsrep node as  slaves
 		if sv.IsSlave || sv.IsWsrepPrimary || sv.IsGroupReplicationSlave {
 			// if cluster.Conf.LogLevel > 2 {
@@ -269,7 +282,10 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						cluster.Conf.MultiMaster = true
 					}
 					if cluster.Conf.MultiMasterRing == false && len(cluster.Servers) > 2 {
-						cluster.Conf.MultiMasterRing = true
+						// Prevent Multi Master Ring for unsafe environment
+						if len(cluster.LogSlaveServers) > 1 || cluster.Conf.MultiMasterRingUnsafe {
+							cluster.Conf.MultiMasterRing = true
+						}
 					}
 					if cluster.Conf.MultiMasterRing == true && cluster.GetMaster() == nil {
 						cluster.vmaster = sl
@@ -431,7 +447,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 	}
 
-	cluster.Topology = cluster.GetTopologyFromConf()
+	if cluster.Conf.DynamicTopology || cluster.Topology == config.TopoUnknown {
+		cluster.Topology = cluster.GetTopologyFromConf()
+	}
 
 	if cluster.StateMachine.CanMonitor() {
 		return nil

@@ -71,6 +71,7 @@ type Cluster struct {
 	Tenant                        string                `json:"tenant"`
 	WorkingDir                    string                `json:"workingDir"`
 	Servers                       serverList            `json:"-"`
+	LogSlaveServers               []string              `json:"-"` //To store slave with log-slave-updates
 	ServerIdList                  []string              `json:"dbServers"`
 	Crashes                       crashList             `json:"dbServersCrashes"`
 	Proxies                       proxyList             `json:"-"`

@@ -153,7 +153,9 @@ type Config struct {
 	MasterConn                                string                 `mapstructure:"replication-source-name" toml:"replication-source-name" json:"replicationSourceName"`
 	ReplicationSSL                            bool                   `mapstructure:"replication-use-ssl" toml:"replication-use-ssl" json:"replicationUseSsl"`
 	ActivePassive                             bool                   `mapstructure:"replication-active-passive" toml:"replication-active-passive" json:"replicationActivePassive"`
+	DynamicTopology                           bool                   `mapstructure:"replication-dynamic-topology" toml:"replication-dynamic-topology" json:"replicationDynamicTopology"`
 	MultiMasterRing                           bool                   `mapstructure:"replication-multi-master-ring" toml:"replication-multi-master-ring" json:"replicationMultiMasterRing"`
+	MultiMasterRingUnsafe                     bool                   `mapstructure:"replication-multi-master-ring-unsafe" toml:"replication-multi-master-ring-unsafe" json:"replicationMultiMasterRingUnsafe"`
 	MultiMasterWsrep                          bool                   `mapstructure:"replication-multi-master-wsrep" toml:"replication-multi-master-wsrep" json:"replicationMultiMasterWsrep"`
 	MultiMasterGrouprep                       bool                   `mapstructure:"replication-multi-master-grouprep" toml:"replication-multi-master-grouprep" json:"replicationMultiMasterGrouprep"`
 	MultiMasterGrouprepPort                   int                    `mapstructure:"replication-multi-master-grouprep-port" toml:"replication-multi-master-grouprep-port" json:"replicationMultiMasterGrouprepPort"`
