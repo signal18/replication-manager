@@ -461,8 +461,6 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Cleaning up replication on existing servers")
 	cluster.StateMachine.SetFailoverState()
-	// Retain current master
-	master := cluster.GetMaster()
 	for _, server := range cluster.Servers {
 		err := server.Refresh()
 		if err != nil {
@@ -503,8 +501,8 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 			cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "Can reset GTID slave pos %s %s", server.URL, err)
 		}
 
-		// Fix back to master-slave if previous was multi-master
-		if master != nil && master.URL == server.URL && !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterRing && !cluster.Conf.MultiMasterGrouprep && !cluster.Conf.MultiMasterWsrep {
+		// reset all replication if go to master-slave
+		if !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterRing && !cluster.Conf.MultiMasterGrouprep && !cluster.Conf.MultiMasterWsrep {
 			server.ResetSlave()
 		}
 
