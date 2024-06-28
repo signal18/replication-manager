@@ -50,7 +50,7 @@ func (cluster *Cluster) newServerList() error {
 	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModTopology,config.LvlErr, "hello %+v", cluster.Conf.Hosts)
 	cluster.Lock()
-	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModTopology,config.LvlErr, "hello %+v", cluster.Conf.Hosts)
+	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Processing host: %s", cluster.Conf.Hosts)
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 	// split("")  return len = 1
 
@@ -187,7 +187,8 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		cluster.Topology = topoActivePassive
 		cluster.Conf.ActivePassive = true
 		return nil
-
+	} else {
+		cluster.Conf.ActivePassive = false
 	}
 
 	// Check topology Cluster is down
@@ -271,6 +272,13 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	hasRelay := false
+	hasCycling := false
+
+	if len(cluster.Servers) == 2 {
+		sv := cluster.Servers[0]
+		hasCycling = sv.HasCycling()
+	}
+
 	// Check that all slave servers have the same master and conformity.
 	if !cluster.Conf.MultiMaster && !cluster.Conf.Spider {
 		for _, sl := range cluster.slaves {
@@ -278,10 +286,12 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				sl.CheckSlaveSettings()
 				sl.CheckSlaveSameMasterGrants()
 				if sl.HasCycling() {
+					hasCycling = true
 					if cluster.Conf.MultiMaster == false && len(cluster.Servers) == 2 {
 						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO", ServerUrl: sl.URL})
 						if cluster.Conf.DynamicTopology {
 							cluster.Conf.MultiMaster = true
+							cluster.Topology = topoMultiMaster
 						}
 					}
 					if cluster.Conf.MultiMasterRing == false && len(cluster.Servers) > 2 {
@@ -320,7 +330,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	// If no relay and master-slave is preferred
-	if !hasRelay && cluster.Conf.TopologyTarget == topoMasterSlave {
+	if !hasRelay && !hasCycling && cluster.Conf.TopologyTarget == topoMasterSlave {
 		cluster.ChangeTopology(topoMasterSlave)
 	}
 

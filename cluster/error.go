@@ -101,6 +101,7 @@ var clusterError = map[string]string{
 	"ERR00089": "Authentification error to Vault %s",
 	"ERR00090": "Monitoring save config enable but no encryption key for password, see the keygen command",
 	"ERR00091": "Proxysql %s found active server %s as OFFLINE_SOFT in ProxySQL.",
+	"ERR00092": "Cluster [%s] topology (%s) is not same with target topology (%s).",
 	"WARN0022": "Rejoining standalone server %s to master %s",
 	"WARN0023": "Number of failed master ping has been reached",
 	"WARN0045": "Provision task is in queue",
