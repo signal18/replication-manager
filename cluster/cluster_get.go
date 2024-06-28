@@ -748,7 +748,7 @@ func (cluster *Cluster) GetRingChildServer(oldMaster *ServerMonitor) *ServerMoni
 			if s.ServerID != cluster.oldMaster.ServerID {
 				//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlDbg, "test %s failed %s", s.URL, cluster.oldMaster.URL)
 				master, err := cluster.GetMasterFromReplication(s)
-				if err == nil && master.ServerID == oldMaster.ServerID {
+				if err == nil && master != nil && master.ServerID == oldMaster.ServerID {
 					return s
 				}
 			}
