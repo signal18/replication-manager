@@ -394,6 +394,7 @@ type Config struct {
 	RegistryConsulJanitorWeights              string                 `mapstructure:"registry-janitor-weights" toml:"registry-janitor-weights" json:"registryJanitorWeights"`
 	KeyPath                                   string                 `mapstructure:"keypath" toml:"-" json:"-"`
 	Topology                                  string                 `mapstructure:"topology" toml:"-" json:"-"` // use by bootstrap
+	TopologyPreferred                         string                 `mapstructure:"topology-preferred" toml:"topology-preferred" json:"topologyPreferred"`
 	GraphiteMetrics                           bool                   `mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
 	GraphiteEmbedded                          bool                   `mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
 	GraphiteWhitelist                         bool                   `mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteWhitelist"`

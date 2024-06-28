@@ -1615,6 +1615,12 @@ app.controller('DashboardController', function (
     }
   }
 
+  $scope.saveTopoPreferred = function (topo) {
+    if (confirm("This will set preferred topology to " + topo + ". Confirm?")) {
+      httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/topology-preferred/' + topo);
+    }
+  }
+
   $scope.saveDBDisk = function (selectedDBDiskTyoe, selectedDBDiskFS, selectedDBDiskPool, selectedDBDiskDevice) {
     if (confirm("Confirm change DB disk: " + selectedDBDiskTyoe + "/" + selectedDBDiskFS + "/" + selectedDBDiskPool + "/" + selectedDBDiskDevice)) {
       httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/prov-db-disk-type/' + selectedDBDiskTyoe);

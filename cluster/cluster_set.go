@@ -1732,3 +1732,9 @@ func (cluster *Cluster) SetGraphiteWhitelistTemplate(value string) {
 	cluster.Conf.GraphiteWhitelistTemplate = value
 	cluster.Unlock()
 }
+
+func (cluster *Cluster) SetTopologyPreferred(value string) {
+	cluster.Lock()
+	cluster.Conf.TopologyPreferred = value
+	cluster.Unlock()
+}

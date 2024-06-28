@@ -270,6 +270,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		cluster.SetState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00010"]), ErrFrom: "TOPO"})
 	}
 
+	hasRelay := false
 	// Check that all slave servers have the same master and conformity.
 	if !cluster.Conf.MultiMaster && !cluster.Conf.Spider {
 		for _, sl := range cluster.slaves {
@@ -311,8 +312,18 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					sl.IsRelay = false
 				}
 			}
+			//Tag has relay
+			if sl.IsRelay {
+				hasRelay = true
+			}
 		}
 	}
+
+	// If no relay and master-slave is preferred
+	if !hasRelay && cluster.Conf.TopologyPreferred == topoMasterSlave {
+		cluster.ChangeTopology(topoMasterSlave)
+	}
+
 	if cluster.Conf.MultiMaster == true || cluster.GetTopology() == topoMultiMasterWsrep || cluster.GetTopology() == topoMultiMasterGrouprep {
 		srw := 0
 		for _, s := range cluster.Servers {
@@ -620,5 +631,67 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 	if oldest != "" && cluster.SlavesOldestMasterFile.Suffix != binInt {
 		cluster.SetSlavesOldestMasterFile(oldest)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Oldest master log used for all slaves : %s\n", oldest)
+	}
+}
+
+func (cluster *Cluster) ChangeTopology(topology string) {
+	switch topology {
+	case "master-slave":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.Topology = config.TopoMasterSlave
+	case "master-slave-no-gtid":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(true)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.Topology = config.TopoMasterSlave
+	case "multi-master":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(true)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.Topology = config.TopoMultiMaster
+	case "multi-tier-slave":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(true)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.Topology = config.TopoMultiTierSlave
+	case "maxscale-binlog":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(true)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.Topology = config.TopoBinlogServer
+	case "multi-master-ring":
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterRing(true)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.Topology = config.TopoMultiMasterRing
+	case "multi-master-wsrep":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiMasterWsrep(true)
+		cluster.Topology = config.TopoMultiMasterWsrep
 	}
 }
