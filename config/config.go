@@ -930,6 +930,23 @@ const (
 	ConstGraphiteTemplateAll     = "all"
 )
 
+/*
+This is the list of topology
+*/
+const (
+	TopoMasterSlave         string = "master-slave"
+	TopoUnknown             string = "unknown"
+	TopoBinlogServer        string = "binlog-server"
+	TopoMultiTierSlave      string = "multi-tier-slave"
+	TopoMultiMaster         string = "multi-master"
+	TopoMultiMasterRing     string = "multi-master-ring"
+	TopoMultiMasterWsrep    string = "multi-master-wsrep"
+	TopoMultiMasterGrouprep string = "multi-master-grprep"
+	TopoMasterSlavePgLog    string = "master-slave-pg-logical"
+	TopoMasterSlavePgStream string = "master-slave-pg-stream"
+	TopoActivePassive       string = "active-passive"
+)
+
 func (conf *Config) GetSecrets() map[string]Secret {
 	// to store the flags to encrypt in the git (in Save() function)
 	return conf.Secrets
