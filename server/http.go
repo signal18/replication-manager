@@ -100,6 +100,10 @@ func (repman *ReplicationManager) httpserver() {
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPrometheus)),
 	))
 
+	router.Handle("/api/configs/grafana", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGrafana)),
+	))
+
 	router.Handle("/api/timeout", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTimeout)),
 	))
