@@ -2474,7 +2474,7 @@ func MasterWaitGTID(db *sqlx.DB, gtid string, timeout int) (string, error) {
 func MasterPosWait(db *sqlx.DB, myver *MySQLVersion, log string, pos string, timeout int, channel string) (string, error) {
 	// SOURCE_POS_WAIT  before MySQL 8.0.26
 	funcname := "MASTER_POS_WAIT"
-	if (myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26) {
+	if myver.IsMySQLOrPercona() && myver.GreaterEqual("8.0.26") {
 		funcname = "SOURCE_POS_WAIT"
 	}
 
