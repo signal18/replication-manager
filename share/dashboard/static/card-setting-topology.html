@@ -33,6 +33,22 @@
                 </md-switch>
             </td>
         </tr>
-
+        <tr>
+            <th>Enable Multi-Tier Slave</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false&&selectedCluster.config.replicationDynamicTopology==false"
+                    ng-true-value="true" ng-false-value="false"
+                    ng-model="selectedCluster.config.replicationMultiTierSlave"
+                    ng-click="switchsettings('multi-tier-slave')"
+                    aria-label="Disable relay on master-slave topology">
+                    <span ng-if="selectedCluster.config.replicationMultiTierSlave"
+                        class="label label-primary">On</span>
+                    <span ng-if="!selectedCluster.config.replicationMultiTierSlave"
+                        class="label label-warning">Off</span>
+                </md-switch>
+            </td>
+        </tr>
     </table>
 </md-card>

@@ -605,3 +605,7 @@ func (cluster *Cluster) SwitchMultiMasterRingUnsafe() {
 func (cluster *Cluster) SwitchDynamicTopology() {
 	cluster.Conf.DynamicTopology = !cluster.Conf.DynamicTopology
 }
+
+func (cluster *Cluster) SwitchMultiTierSlave() {
+	cluster.SetMultiTierSlave(!cluster.Conf.MultiTierSlave)
+}

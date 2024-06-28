@@ -502,7 +502,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 		}
 
 		// reset all replication if go to master-slave
-		if !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterRing && !cluster.Conf.MultiMasterGrouprep && !cluster.Conf.MultiMasterWsrep {
+		if !cluster.Conf.MultiTierSlave && !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterRing && !cluster.Conf.MultiMasterGrouprep && !cluster.Conf.MultiMasterWsrep {
 			server.ResetSlave()
 		}
 
