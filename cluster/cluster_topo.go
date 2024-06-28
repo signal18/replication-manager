@@ -228,8 +228,8 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Server %s has no slaves ", sv.URL)
 				// }
 			} else {
-
-				if cluster.IsActive() && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
+				master := cluster.GetMaster()
+				if cluster.IsActive() && master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != master.URL {
 					//Extra master in master slave topology rejoin it after split brain
 					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
 					//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping */
