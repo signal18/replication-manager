@@ -680,12 +680,6 @@ func (cluster *Cluster) Run() {
 			}
 		}
 
-		if cluster.Conf.Topology == topoUnknown {
-			cluster.Lock()
-			cluster.Topology = cluster.GetTopologyFromConf()
-			cluster.Unlock()
-		}
-
 		if cluster.clog != nil {
 			clevel := cluster.Conf.ToLogrusLevel(cluster.Conf.LogGraphiteLevel)
 			if cluster.clog.GetLevel() != clevel {

@@ -285,8 +285,10 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 			if cluster.Conf.MultiMaster == false && sl.IsMaxscale == false {
 				if sl.IsSlave == true && sl.HasSlaves(cluster.slaves) == true {
-					sl.IsRelay = true
-					sl.SetState(stateRelay)
+					if sl.IsRelay == false {
+						sl.IsRelay = true
+						sl.SetState(stateRelay)
+					}
 				} else if sl.IsRelay {
 					sl.IsRelay = false
 				}
@@ -428,6 +430,8 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		}
 
 	}
+
+	cluster.Topology = cluster.GetTopologyFromConf()
 
 	if cluster.StateMachine.CanMonitor() {
 		return nil
