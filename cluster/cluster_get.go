@@ -716,7 +716,8 @@ func (cluster *Cluster) GetChildClusters() map[string]*Cluster {
 		if condidateclustermaster != nil && c.Name != cluster.Name {
 			for _, rep := range condidateclustermaster.Replications {
 				// is a source name has my cluster name or is any child cluster master point to my master
-				if rep.ConnectionName.String == cluster.Name || (cluster.GetMaster() != nil && cluster.master.Host == rep.MasterHost.String && cluster.master.Port == rep.MasterPort.String) {
+				master := cluster.GetMaster()
+				if rep.ConnectionName.String == cluster.Name || (master != nil && master.Host == rep.MasterHost.String && master.Port == rep.MasterPort.String) {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Discovering of a child cluster via multi source %s replication source %s", c.Name, rep.ConnectionName.String)
 					clusters[c.Name] = c
 				}
