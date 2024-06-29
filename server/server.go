@@ -344,7 +344,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MultiMasterWsrep, "replication-multi-master-wsrep", false, "Enable Galera wsrep multi-master")
 	flags.StringVar(&conf.MultiMasterWsrepSSTMethod, "replication-multi-master-wsrep-sst-method", "mariabackup", "mariabackup|xtrabackup-v2|rsync|mysqldump")
 	flags.IntVar(&conf.MultiMasterWsrepPort, "replication-multi-master-wsrep-port", 4567, "wsrep network port")
-	flags.StringVar(&conf.TopologyTarget, "topology-target", "master-slave", "Preferred topology")
+	flags.StringVar(&conf.TopologyTarget, "topology-target", "master-slave", "Target topology for current cluster. Default 'master-slave'")
 	flags.BoolVar(&conf.DynamicTopology, "replication-dynamic-topology", true, "Auto discover topology when changed") //Set to true to keep same behavior
 	flags.BoolVar(&conf.MultiMasterRing, "replication-multi-master-ring", false, "Multi-master ring topology")
 	flags.BoolVar(&conf.MultiMasterRingUnsafe, "replication-multi-master-ring-unsafe", true, "Allow multi-master ring topology without log slave updates") //Set to true to keep same behavior

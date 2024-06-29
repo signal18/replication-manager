@@ -1231,8 +1231,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchMultiMasterRingUnsafe()
 	case "dynamic-topology":
 		mycluster.SwitchDynamicTopology()
-	case "multi-tier-slave":
-		mycluster.SwitchMultiTierSlave()
+	case "replication-no-relay":
+		mycluster.SwitchReplicationNoRelay()
 	}
 }
 

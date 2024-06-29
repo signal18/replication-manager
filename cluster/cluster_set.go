@@ -565,11 +565,6 @@ func (cluster *Cluster) SetReplicationNoRelay(norelay bool) {
 
 // topology setter
 func (cluster *Cluster) SetMultiTierSlave(multitierslave bool) {
-	if multitierslave {
-		cluster.SetReplicationNoRelay(false)
-	} else {
-		cluster.SetReplicationNoRelay(true)
-	}
 	cluster.Conf.MultiTierSlave = multitierslave
 }
 func (cluster *Cluster) SetMultiMasterRing(multimasterring bool) {

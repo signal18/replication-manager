@@ -606,6 +606,6 @@ func (cluster *Cluster) SwitchDynamicTopology() {
 	cluster.Conf.DynamicTopology = !cluster.Conf.DynamicTopology
 }
 
-func (cluster *Cluster) SwitchMultiTierSlave() {
-	cluster.SetMultiTierSlave(!cluster.Conf.MultiTierSlave)
+func (cluster *Cluster) SwitchReplicationNoRelay() {
+	cluster.Conf.ReplicationNoRelay = !cluster.Conf.ReplicationNoRelay
 }

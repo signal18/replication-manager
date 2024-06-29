@@ -476,12 +476,13 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		cluster.Topology = cluster.GetTopologyFromConf()
 	}
 
-	//Last check for Read-Only
+	// Remove master or vmaster read only if not in maintenance
 	mst := cluster.GetMaster()
 	if cluster.IsDiscovered() && mst != nil && mst.IsReadOnly() && !mst.IsMaintenance {
 		mst.SetReadWrite()
 	}
 
+	// Remove Virtual Master from Master-Slave Topology
 	if cluster.Topology == topoMasterSlave && cluster.master != nil && cluster.vmaster != nil {
 		cluster.vmaster.IsVirtualMaster = false
 		cluster.vmaster = nil
