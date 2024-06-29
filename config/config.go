@@ -741,6 +741,14 @@ const (
 	LvlDbg  = "DEBUG"
 )
 
+// Log levels
+const (
+	NumLvlError = 1
+	NumLvlWarn  = 2
+	NumLvlInfo  = 3
+	NumLvlDebug = 4
+)
+
 const (
 	ConstStreamingSubDir string = "backups"
 )
@@ -1856,16 +1864,16 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 	lvl = 0
 	switch level {
 	case "ERROR", "ALERT":
-		lvl = 1
+		lvl = NumLvlError
 		break
 	case "WARN", "START":
-		lvl = 2
+		lvl = NumLvlWarn
 		break
 	case "INFO", "TEST", "BENCH":
-		lvl = 3
+		lvl = NumLvlInfo
 		break
 	case "DEBUG":
-		lvl = 4
+		lvl = NumLvlDebug
 		break
 	}
 
