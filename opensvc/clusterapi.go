@@ -73,7 +73,11 @@ func (collector *Collector) StartServiceV2(cluster string, srv string, node stri
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
+
 	return nil
 }
 
@@ -83,7 +87,11 @@ func (collector *Collector) StopServiceV2(cluster string, srv string, node strin
 	jsondata := `{"path": "` + srv + `", "action": "stop", "options": {}}`
 	b := bytes.NewBuffer([]byte(jsondata))
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
-	log.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
+	}
+
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
 		return err
@@ -97,7 +105,10 @@ func (collector *Collector) StopServiceV2(cluster string, srv string, node strin
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
 	return nil
 }
 
@@ -108,7 +119,11 @@ func (collector *Collector) PurgeServiceV2(cluster string, srv string, node stri
 	//jsondata := `{"path": "` + srv + `", "action": "purge", "options": {}}`
 	b := bytes.NewBuffer([]byte(jsondata))
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_monitor"
-	log.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
+	}
+
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
 		return err
@@ -122,7 +137,10 @@ func (collector *Collector) PurgeServiceV2(cluster string, srv string, node stri
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
 	return nil
 }
 
@@ -130,6 +148,7 @@ func (collector *Collector) CreateConfigKeyValueV2(namespace string, service str
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
 	jsondata := `{"path": "` + namespace + `/cfg/` + service + `", "key":"` + key + ` ", "data": "` + value + `"}`
+
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
 		log.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
 	}
@@ -155,7 +174,10 @@ func (collector *Collector) CreateConfigKeyValueV2(namespace string, service str
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
 	return nil
 }
 
@@ -163,6 +185,7 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
 	jsondata := `{"path": "` + namespace + `/sec/` + service + `", "key":"` + key + ` ", "data": "` + value + `"}`
+
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
 		log.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
 	}
@@ -188,7 +211,10 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
 	return nil
 }
 
@@ -198,6 +224,7 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 
 	// just create or replace
 	jsondata := `{"data": {"` + namespace + `/sec/` + service + `": {}}}`
+
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
 		log.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
 	}
@@ -227,7 +254,10 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
 	return nil
 }
 
@@ -235,6 +265,7 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
 	jsondata := `{"data": {"` + namespace + `/cfg/` + service + `": {}}}`
+
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
 		log.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
 	}
@@ -264,7 +295,10 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	log.WithField("FROM", "OpenSVC").Println("Api Response: ", string(body))
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("Api Response: ", string(body))
+	}
 	return nil
 }
 
@@ -300,8 +334,10 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
 	//	collector.WaitServiceAvailable(srv, node)
 	//	collector.WaitServicePropagate(srv, node)
 
@@ -315,7 +351,10 @@ func (collector *Collector) CreateTemplateV2Monitor(srv string, node string) err
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_monitor"
 	jsondata := `{"path": "` + srv + `", "global_expect": "provisioned", "options": {}}`
 
-	log.WithField("FROM", "OpenSVC").Println("OpenSVC API Request: ", urlpost, " Payload: ", jsondata)
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("OpenSVC API Request: ", urlpost, " Payload: ", jsondata)
+	}
+
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer([]byte(jsondata))
 	req, err := http.NewRequest("POST", urlpost, b)
@@ -337,7 +376,10 @@ func (collector *Collector) CreateTemplateV2Monitor(srv string, node string) err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
 	return nil
 }
 
@@ -369,7 +411,10 @@ func (collector *Collector) WaitServiceAvailable(srv string, node string) error 
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
 	return nil
 
 }
@@ -402,7 +447,10 @@ func (collector *Collector) WaitServicePropagate(srv string, node string) error 
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		log.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
 	return nil
 
 }
