@@ -254,8 +254,11 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					if len(cluster.Servers) == 1 {
 						cluster.Conf.ActivePassive = true
 					}
-					cluster.master = cluster.Servers[k]
-					cluster.master.SetMaster()
+					// Prevent unneeded set master
+					if cluster.master != cluster.Servers[k] || cluster.master == nil {
+						cluster.master = cluster.Servers[k]
+						cluster.master.SetMaster()
+					}
 					if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
 						cluster.master.SetReadWrite()
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
@@ -289,14 +292,15 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					hasCycling = true
 					if cluster.Conf.MultiMaster == false && len(cluster.Servers) == 2 {
 						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO", ServerUrl: sl.URL})
-						if cluster.Conf.DynamicTopology {
-							cluster.Conf.MultiMaster = true
-							cluster.Topology = topoMultiMaster
-						}
+						// if cluster.Conf.DynamicTopology {
+						cluster.Conf.MultiMaster = true
+						cluster.Topology = topoMultiMaster
+						// }
 					}
 					if cluster.Conf.MultiMasterRing == false && len(cluster.Servers) > 2 {
 						// Prevent Multi Master Ring for unsafe environment
-						if cluster.Conf.DynamicTopology && (len(cluster.LogSlaveServers) > 1 || cluster.Conf.MultiMasterRingUnsafe) {
+						// if cluster.Conf.DynamicTopology && (len(cluster.LogSlaveServers) > 1 || cluster.Conf.MultiMasterRingUnsafe) {
+						if len(cluster.LogSlaveServers) > 1 || cluster.Conf.MultiMasterRingUnsafe {
 							cluster.Conf.MultiMasterRing = true
 						}
 					}
@@ -344,9 +348,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			_, err := s.GetSlaveStatus(s.ReplicationSourceName)
 
 			if err != nil {
-				if cluster.Conf.DynamicTopology {
-					cluster.Conf.MultiMaster = false
-				}
+				// if cluster.Conf.DynamicTopology {
+				cluster.Conf.MultiMaster = false
+				// }
 			}
 		}
 		if srw > 1 {
@@ -472,17 +476,23 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 	}
 
-	if cluster.Conf.DynamicTopology || cluster.Topology == config.TopoUnknown {
-		cluster.Topology = cluster.GetTopologyFromConf()
-	}
+	// if cluster.Conf.DynamicTopology || cluster.Topology == config.TopoUnknown {
+	cluster.Topology = cluster.GetTopologyFromConf()
+	// }
 
 	// Remove master or vmaster read only if not in maintenance
 	mst := cluster.GetMaster()
-	if cluster.IsDiscovered() && mst != nil && mst.IsReadOnly() && !mst.IsMaintenance {
+	if cluster.IsDiscovered() && mst != nil && mst.IsReadOnly() && !mst.IsMaintenance && cluster.Topology != topoMasterSlave {
 		mst.SetReadWrite()
 	}
 
 	// Remove Virtual Master from Master-Slave Topology
+	if cluster.Topology == topoMasterSlave && cluster.master != nil && cluster.vmaster != nil {
+		cluster.vmaster.IsVirtualMaster = false
+		cluster.vmaster = nil
+	}
+
+	// If wrongly configured master outside topology
 	if cluster.Topology == topoMasterSlave && cluster.master != nil && cluster.vmaster != nil {
 		cluster.vmaster.IsVirtualMaster = false
 		cluster.vmaster = nil

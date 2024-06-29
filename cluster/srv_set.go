@@ -66,7 +66,7 @@ func (server *ServerMonitor) SetState(state string) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s state transition from %s changed to: %s", server.URL, server.PrevState, state)
 		_, file, no, ok := runtime.Caller(1)
 		if ok {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set state called from %s#%d\n", file, no)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Set state called from %s#%d\n", file, no)
 		}
 	}
 	server.State = state
@@ -91,7 +91,7 @@ func (server *ServerMonitor) SetMaster() {
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Server %s state transition from %s changed to: %s in SetMaster", server.URL, server.PrevState, stateMaster)
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "SetMaster called from %s#%d\n", file, no)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "SetMaster called from %s#%d\n", file, no)
 	}
 	for _, s := range cluster.Servers {
 		s.HaveNoMasterOnStart = false
@@ -177,6 +177,10 @@ func (server *ServerMonitor) SetReadWrite() error {
 		if err != nil {
 			return err
 		}
+	}
+	_, file, no, ok := runtime.Caller(1)
+	if ok {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Set RW called from %s#%d\n", file, no)
 	}
 	return nil
 }
