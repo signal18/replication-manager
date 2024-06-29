@@ -24,6 +24,7 @@ func (cluster *Cluster) AddSeededServer(srv string) error {
 		cluster.Conf.Hosts = srv
 	}
 	cluster.StateMachine.SetFailoverState()
+	cluster.SetDbServerHosts(cluster.Conf.Hosts)
 	cluster.newServerList()
 	wg := new(sync.WaitGroup)
 	wg.Add(1)

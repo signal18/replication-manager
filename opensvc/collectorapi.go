@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/signal18/replication-manager/config"
 	log "github.com/sirupsen/logrus"
 	pkcs12 "software.sslmate.com/src/go-pkcs12"
 	//"golang.org/x/crypto/pkcs12"
@@ -87,6 +88,7 @@ type Tag struct {
 type HostList []*Host
 
 type Collector struct {
+	ClusterConf                 *config.Config
 	Host                        string
 	Port                        string
 	User                        string

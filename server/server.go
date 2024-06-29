@@ -302,6 +302,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogOrchestrator, "log-orchestrator", true, "To log orchestrator process")
 	flags.IntVar(&conf.LogOrchestratorLevel, "log-orchestrator-level", 2, "Log orchestrator Level")
 
+	// Log orchestrator
+	flags.BoolVar(&conf.LogTopology, "log-topology", true, "To log topology process")
+	flags.IntVar(&conf.LogTopologyLevel, "log-topology-level", 2, "Log topology Level")
+
 	// DB Credentials
 	flags.StringVar(&conf.User, "db-servers-credential", "root:mariadb", "Database login, specified in the [user]:[password] format")
 	flags.StringVar(&conf.Hosts, "db-servers-hosts", "", "Database hosts list to monitor, IP and port (optional), specified in the host:[port] format and separated by commas")
@@ -344,7 +348,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MultiMasterWsrep, "replication-multi-master-wsrep", false, "Enable Galera wsrep multi-master")
 	flags.StringVar(&conf.MultiMasterWsrepSSTMethod, "replication-multi-master-wsrep-sst-method", "mariabackup", "mariabackup|xtrabackup-v2|rsync|mysqldump")
 	flags.IntVar(&conf.MultiMasterWsrepPort, "replication-multi-master-wsrep-port", 4567, "wsrep network port")
+	flags.StringVar(&conf.TopologyTarget, "topology-target", "master-slave", "Target topology for current cluster. Default 'master-slave'")
+	flags.BoolVar(&conf.DynamicTopology, "replication-dynamic-topology", true, "Auto discover topology when changed") //Set to true to keep same behavior
 	flags.BoolVar(&conf.MultiMasterRing, "replication-multi-master-ring", false, "Multi-master ring topology")
+	flags.BoolVar(&conf.MultiMasterRingUnsafe, "replication-multi-master-ring-unsafe", true, "Allow multi-master ring topology without log slave updates") //Set to true to keep same behavior
 	flags.BoolVar(&conf.MultiTierSlave, "replication-multi-tier-slave", false, "Relay slaves topology")
 	flags.BoolVar(&conf.MasterSlavePgStream, "replication-master-slave-pg-stream", false, "Postgres streaming replication")
 	flags.BoolVar(&conf.MasterSlavePgLogical, "replication-master-slave-pg-locgical", false, "Postgres logical replication")

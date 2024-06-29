@@ -622,35 +622,45 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 func (repman *ReplicationManager) bootstrapTopology(mycluster *cluster.Cluster, topology string) {
 	switch topology {
 	case "master-slave":
+		mycluster.SetMultiMasterRing(false)
 		mycluster.SetMultiTierSlave(false)
 		mycluster.SetForceSlaveNoGtid(false)
 		mycluster.SetMultiMaster(false)
 		mycluster.SetBinlogServer(false)
 		mycluster.SetMultiMasterWsrep(false)
+		mycluster.Topology = config.TopoMasterSlave
 	case "master-slave-no-gtid":
+		mycluster.SetMultiMasterRing(false)
 		mycluster.SetMultiTierSlave(false)
 		mycluster.SetForceSlaveNoGtid(true)
 		mycluster.SetMultiMaster(false)
 		mycluster.SetBinlogServer(false)
 		mycluster.SetMultiMasterWsrep(false)
+		mycluster.Topology = config.TopoMasterSlave
 	case "multi-master":
+		mycluster.SetMultiMasterRing(false)
 		mycluster.SetMultiTierSlave(false)
 		mycluster.SetForceSlaveNoGtid(false)
 		mycluster.SetMultiMaster(true)
 		mycluster.SetBinlogServer(false)
 		mycluster.SetMultiMasterWsrep(false)
+		mycluster.Topology = config.TopoMultiMaster
 	case "multi-tier-slave":
+		mycluster.SetMultiMasterRing(false)
 		mycluster.SetMultiTierSlave(true)
 		mycluster.SetForceSlaveNoGtid(false)
 		mycluster.SetMultiMaster(false)
 		mycluster.SetBinlogServer(false)
 		mycluster.SetMultiMasterWsrep(false)
+		mycluster.Topology = config.TopoMultiTierSlave
 	case "maxscale-binlog":
+		mycluster.SetMultiMasterRing(false)
 		mycluster.SetMultiTierSlave(false)
 		mycluster.SetForceSlaveNoGtid(false)
 		mycluster.SetMultiMaster(false)
 		mycluster.SetBinlogServer(true)
 		mycluster.SetMultiMasterWsrep(false)
+		mycluster.Topology = config.TopoBinlogServer
 	case "multi-master-ring":
 		mycluster.SetMultiTierSlave(false)
 		mycluster.SetForceSlaveNoGtid(false)
@@ -658,13 +668,16 @@ func (repman *ReplicationManager) bootstrapTopology(mycluster *cluster.Cluster, 
 		mycluster.SetBinlogServer(false)
 		mycluster.SetMultiMasterRing(true)
 		mycluster.SetMultiMasterWsrep(false)
+		mycluster.Topology = config.TopoMultiMasterRing
 	case "multi-master-wsrep":
+		mycluster.SetMultiMasterRing(false)
 		mycluster.SetMultiTierSlave(false)
 		mycluster.SetForceSlaveNoGtid(false)
 		mycluster.SetMultiMaster(false)
 		mycluster.SetBinlogServer(false)
 		mycluster.SetMultiMasterRing(false)
 		mycluster.SetMultiMasterWsrep(true)
+		mycluster.Topology = config.TopoMultiMasterWsrep
 	}
 }
 
@@ -1214,6 +1227,12 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchForceBinlogPurgeOnRestore()
 	case "force-binlog-purge-replicas":
 		mycluster.SwitchForceBinlogPurgeReplicas()
+	case "multi-master-ring-unsafe":
+		mycluster.SwitchMultiMasterRingUnsafe()
+	case "dynamic-topology":
+		mycluster.SwitchDynamicTopology()
+	case "replication-no-relay":
+		mycluster.SwitchReplicationNoRelay()
 	}
 }
 
@@ -1443,6 +1462,8 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetLogBinlogPurgeLevel(val)
 	case "graphite-whitelist-template":
 		mycluster.SetGraphiteWhitelistTemplate(value)
+	case "topology-target":
+		mycluster.SetTopologyTarget(value)
 	}
 
 }

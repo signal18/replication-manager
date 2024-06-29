@@ -501,6 +501,11 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 			cluster.LogSQL(logs, err, server.URL, "BootstrapReplicationCleanup", config.LvlErr, "Can reset GTID slave pos %s %s", server.URL, err)
 		}
 
+		// reset all replication if go to master-slave
+		if !cluster.Conf.MultiTierSlave && !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterRing && !cluster.Conf.MultiMasterGrouprep && !cluster.Conf.MultiMasterWsrep {
+			server.ResetSlave()
+		}
+
 	}
 	cluster.master = nil
 	cluster.vmaster = nil
@@ -528,6 +533,9 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		if server.State == stateFailed {
 			continue
 		} else {
+			// Cleanup relay and vmaster state
+			server.IsRelay = false
+			server.IsVirtualMaster = false
 			server.Refresh()
 		}
 	}

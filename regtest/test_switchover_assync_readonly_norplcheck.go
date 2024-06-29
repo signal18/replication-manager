@@ -27,13 +27,25 @@ func (regtest *RegTest) TestSwitchoverReadOnlyNoRplCheck(cluster *cluster.Cluste
 	}
 	cluster.SwitchoverWaitTest()
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master is %s ", cluster.GetMaster().URL)
+	newmaster := cluster.GetMaster()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master is %s ", newmaster.URL)
 	for _, s := range cluster.GetSlaves() {
 		s.Refresh()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Server  %s is %s", s.URL, s.ReadOnly)
-		if s.ReadOnly == "OFF" {
-			return false
+		if cluster.Topology == config.TopoMultiMaster {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Cluster [%s] topology is [%s], skipping master check", cluster.Name, cluster.Topology)
+
+			if newmaster.URL != s.URL {
+				if s.ReadOnly == "OFF" {
+					return false
+				}
+			}
+		} else {
+			if s.ReadOnly == "OFF" {
+				return false
+			}
 		}
+
 	}
 	return true
 }
