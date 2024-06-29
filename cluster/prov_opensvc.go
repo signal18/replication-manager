@@ -23,6 +23,7 @@ var dockerMinusRm bool
 
 func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
+	svc.ClusterConf = &cluster.Conf
 	svc.UseAPI = cluster.Conf.ProvOpensvcUseCollectorAPI
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 		svc.CertsDERSecret = cluster.Conf.GetDecryptedValue("opensvc-p12-secret")
