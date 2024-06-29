@@ -71,6 +71,7 @@ type Cluster struct {
 	Tenant                        string                `json:"tenant"`
 	WorkingDir                    string                `json:"workingDir"`
 	Servers                       serverList            `json:"-"`
+	LogSlaveServers               []string              `json:"-"` //To store slave with log-slave-updates
 	ServerIdList                  []string              `json:"dbServers"`
 	Crashes                       crashList             `json:"dbServersCrashes"`
 	Proxies                       proxyList             `json:"-"`
@@ -651,6 +652,9 @@ func (cluster *Cluster) Run() {
 						if !cluster.CanConnectVault {
 							cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
 						}
+						if cluster.Topology != cluster.Conf.TopologyTarget {
+							cluster.SetState("ERR00092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00092"], cluster.Name, cluster.Topology, cluster.Conf.TopologyTarget), ErrFrom: "TOPO"})
+						}
 
 						if cluster.StateMachine.GetHeartbeats()%36000 == 0 {
 							cluster.ResticPurgeRepo()
@@ -678,12 +682,6 @@ func (cluster *Cluster) Run() {
 				cluster.SetStatus()
 				cluster.StateProcessing()
 			}
-		}
-
-		if cluster.Conf.Topology == topoUnknown {
-			cluster.Lock()
-			cluster.Topology = cluster.GetTopologyFromConf()
-			cluster.Unlock()
 		}
 
 		if cluster.clog != nil {

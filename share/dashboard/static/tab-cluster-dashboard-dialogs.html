@@ -4,17 +4,15 @@
     <div class="md-dialog-container" id="myNewServerDialog">
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">New Server</h2>
-            <form>
-                Host: <input type="text" ng-model="$parent.dlgServerName"><BR>
-                Port: <input type="text" ng-model="$parent.dlgServerPort">
+                Host: <input type="text" ng-model="dlgServerName"><BR>
+                Port: <input type="text" ng-model="dlgServerPort">
                 Type:  <md-select  ng-model="$parent.selectedMonitor" ng-model-options="{trackBy: '$value.id'}">
 <md-option ng-value="monitor" ng-repeat="monitor in monitors">{{ monitor.name }}</md-option>
 </md-select>
-            </form>
             <md-button ng-click="cancelNewServerDialog()" class="md-primary">
                 Cancel
             </md-button>
-            <md-button ng-click="closeNewServerDialog()" class="md-primary">
+            <md-button ng-click="closeNewServerDialog(dlgServerName,dlgServerPort)" class="md-primary">
                 Ok
             </md-button>
         </md-dialog>

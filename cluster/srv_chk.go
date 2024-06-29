@@ -156,7 +156,7 @@ func (server *ServerMonitor) CheckReplication() string {
 	if server.IsRelay == false && server.IsMaxscale == false {
 		server.SetState(stateSlave)
 	} else if server.IsRelay {
-		server.SetState(stateRelayLate)
+		server.SetState(stateRelay)
 	}
 
 	if cluster.Conf.DelayStatCapture {

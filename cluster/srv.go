@@ -391,7 +391,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			if cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL && server.GetCluster().GetTopology() != topoUnknown {
 				server.FailSuspectHeartbeat = cluster.StateMachine.GetHeartbeats()
 				if cluster.GetMaster().FailCount <= cluster.Conf.MaxFail {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Master Failure detected! Retry %d/%d", cluster.master.FailCount, cluster.Conf.MaxFail)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Master Failure detected! Retry %d/%d", cluster.GetMaster().FailCount, cluster.Conf.MaxFail)
 				}
 				if server.FailCount >= cluster.Conf.MaxFail {
 					if server.FailCount == cluster.Conf.MaxFail {

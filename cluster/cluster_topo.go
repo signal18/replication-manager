@@ -50,7 +50,7 @@ func (cluster *Cluster) newServerList() error {
 	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModTopology,config.LvlErr, "hello %+v", cluster.Conf.Hosts)
 	cluster.Lock()
-	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModTopology,config.LvlErr, "hello %+v", cluster.Conf.Hosts)
+	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Processing host: %s", cluster.Conf.Hosts)
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 	// split("")  return len = 1
 
@@ -187,7 +187,8 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		cluster.Topology = topoActivePassive
 		cluster.Conf.ActivePassive = true
 		return nil
-
+	} else {
+		cluster.Conf.ActivePassive = false
 	}
 
 	// Check topology Cluster is down
@@ -205,6 +206,19 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		// Failed Do not ignore suspect or topology will change to fast
 		if sv.IsFailed() {
 			continue
+		}
+		// Check for log slave updates
+		if lsu, ok := sv.Variables["LOG_SLAVE_UPDATES"]; ok && lsu == "ON" {
+			add := true
+			for _, lsv := range cluster.LogSlaveServers {
+				if lsv == sv.URL {
+					add = false
+				}
+			}
+
+			if add {
+				cluster.LogSlaveServers = append(cluster.LogSlaveServers, sv.URL)
+			}
 		}
 		// count wsrep node as  slaves
 		if sv.IsSlave || sv.IsWsrepPrimary || sv.IsGroupReplicationSlave {
@@ -228,8 +242,8 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Server %s has no slaves ", sv.URL)
 				// }
 			} else {
-
-				if cluster.IsActive() && cluster.master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != cluster.master.URL {
+				master := cluster.GetMaster()
+				if cluster.IsActive() && master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != master.URL {
 					//Extra master in master slave topology rejoin it after split brain
 					cluster.SetState("ERR00063", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00063"]), ErrFrom: "TOPO"})
 					//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping */
@@ -240,8 +254,11 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					if len(cluster.Servers) == 1 {
 						cluster.Conf.ActivePassive = true
 					}
-					cluster.master = cluster.Servers[k]
-					cluster.master.SetMaster()
+					// Prevent unneeded set master
+					if cluster.master != cluster.Servers[k] || cluster.master == nil {
+						cluster.master = cluster.Servers[k]
+						cluster.master.SetMaster()
+					}
 					if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
 						cluster.master.SetReadWrite()
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)
@@ -257,6 +274,14 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		cluster.SetState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00010"]), ErrFrom: "TOPO"})
 	}
 
+	hasRelay := false
+	hasCycling := false
+
+	if len(cluster.Servers) == 2 {
+		sv := cluster.Servers[0]
+		hasCycling = sv.HasCycling()
+	}
+
 	// Check that all slave servers have the same master and conformity.
 	if !cluster.Conf.MultiMaster && !cluster.Conf.Spider {
 		for _, sl := range cluster.slaves {
@@ -264,12 +289,20 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				sl.CheckSlaveSettings()
 				sl.CheckSlaveSameMasterGrants()
 				if sl.HasCycling() {
+					hasCycling = true
 					if cluster.Conf.MultiMaster == false && len(cluster.Servers) == 2 {
 						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO", ServerUrl: sl.URL})
+						// if cluster.Conf.DynamicTopology {
 						cluster.Conf.MultiMaster = true
+						cluster.Topology = topoMultiMaster
+						// }
 					}
 					if cluster.Conf.MultiMasterRing == false && len(cluster.Servers) > 2 {
-						cluster.Conf.MultiMasterRing = true
+						// Prevent Multi Master Ring for unsafe environment
+						// if cluster.Conf.DynamicTopology && (len(cluster.LogSlaveServers) > 1 || cluster.Conf.MultiMasterRingUnsafe) {
+						if len(cluster.LogSlaveServers) > 1 || cluster.Conf.MultiMasterRingUnsafe {
+							cluster.Conf.MultiMasterRing = true
+						}
 					}
 					if cluster.Conf.MultiMasterRing == true && cluster.GetMaster() == nil {
 						cluster.vmaster = sl
@@ -285,14 +318,26 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 			if cluster.Conf.MultiMaster == false && sl.IsMaxscale == false {
 				if sl.IsSlave == true && sl.HasSlaves(cluster.slaves) == true {
-					sl.IsRelay = true
-					sl.SetState(stateRelay)
+					if sl.IsRelay == false {
+						sl.IsRelay = true
+						sl.SetState(stateRelay)
+					}
 				} else if sl.IsRelay {
 					sl.IsRelay = false
 				}
 			}
+			//Tag has relay
+			if sl.IsRelay {
+				hasRelay = true
+			}
 		}
 	}
+
+	// If no relay and master-slave is preferred
+	if !hasRelay && !hasCycling && cluster.Conf.TopologyTarget == topoMasterSlave {
+		cluster.ChangeTopology(topoMasterSlave)
+	}
+
 	if cluster.Conf.MultiMaster == true || cluster.GetTopology() == topoMultiMasterWsrep || cluster.GetTopology() == topoMultiMasterGrouprep {
 		srw := 0
 		for _, s := range cluster.Servers {
@@ -303,7 +348,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			_, err := s.GetSlaveStatus(s.ReplicationSourceName)
 
 			if err != nil {
+				// if cluster.Conf.DynamicTopology {
 				cluster.Conf.MultiMaster = false
+				// }
 			}
 		}
 		if srw > 1 {
@@ -400,7 +447,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					// }
 					replMaster, _ := cluster.GetMasterFromReplication(sl)
 
-					if replMaster != nil && replMaster.Id != cluster.master.Id {
+					if replMaster != nil && replMaster.Id != cluster.master.Id && !cluster.Conf.MultiTierSlave {
 						cluster.SetState("ERR00064", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00064"], sl.URL, cluster.master.URL, replMaster.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 
 						if cluster.Conf.ReplicationNoRelay && cluster.Status == ConstMonitorActif {
@@ -427,6 +474,22 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			})
 		}
 
+	}
+
+	// if cluster.Conf.DynamicTopology || cluster.Topology == config.TopoUnknown {
+	cluster.Topology = cluster.GetTopologyFromConf()
+	// }
+
+	// Remove master or vmaster read only if not in maintenance
+	mst := cluster.GetMaster()
+	if cluster.IsDiscovered() && mst != nil && mst.IsReadOnly() && !mst.IsMaintenance && cluster.Topology != topoMasterSlave {
+		mst.SetReadWrite()
+	}
+
+	// Remove Virtual Master from Master-Slave Topology
+	if cluster.Topology == topoMasterSlave && cluster.master != nil && cluster.vmaster != nil {
+		cluster.vmaster.IsVirtualMaster = false
+		cluster.vmaster = nil
 	}
 
 	if cluster.StateMachine.CanMonitor() {
@@ -594,5 +657,67 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 	if oldest != "" && cluster.SlavesOldestMasterFile.Suffix != binInt {
 		cluster.SetSlavesOldestMasterFile(oldest)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Oldest master log used for all slaves : %s\n", oldest)
+	}
+}
+
+func (cluster *Cluster) ChangeTopology(topology string) {
+	switch topology {
+	case "master-slave":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.Topology = config.TopoMasterSlave
+	case "master-slave-no-gtid":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(true)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.Topology = config.TopoMasterSlave
+	case "multi-master":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(true)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.Topology = config.TopoMultiMaster
+	case "multi-tier-slave":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(true)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.Topology = config.TopoMultiTierSlave
+	case "maxscale-binlog":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(true)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.Topology = config.TopoBinlogServer
+	case "multi-master-ring":
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterRing(true)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.Topology = config.TopoMultiMasterRing
+	case "multi-master-wsrep":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiMasterWsrep(true)
+		cluster.Topology = config.TopoMultiMasterWsrep
 	}
 }

@@ -153,7 +153,9 @@ type Config struct {
 	MasterConn                                string                 `mapstructure:"replication-source-name" toml:"replication-source-name" json:"replicationSourceName"`
 	ReplicationSSL                            bool                   `mapstructure:"replication-use-ssl" toml:"replication-use-ssl" json:"replicationUseSsl"`
 	ActivePassive                             bool                   `mapstructure:"replication-active-passive" toml:"replication-active-passive" json:"replicationActivePassive"`
+	DynamicTopology                           bool                   `mapstructure:"replication-dynamic-topology" toml:"replication-dynamic-topology" json:"replicationDynamicTopology"`
 	MultiMasterRing                           bool                   `mapstructure:"replication-multi-master-ring" toml:"replication-multi-master-ring" json:"replicationMultiMasterRing"`
+	MultiMasterRingUnsafe                     bool                   `mapstructure:"replication-multi-master-ring-unsafe" toml:"replication-multi-master-ring-unsafe" json:"replicationMultiMasterRingUnsafe"`
 	MultiMasterWsrep                          bool                   `mapstructure:"replication-multi-master-wsrep" toml:"replication-multi-master-wsrep" json:"replicationMultiMasterWsrep"`
 	MultiMasterGrouprep                       bool                   `mapstructure:"replication-multi-master-grouprep" toml:"replication-multi-master-grouprep" json:"replicationMultiMasterGrouprep"`
 	MultiMasterGrouprepPort                   int                    `mapstructure:"replication-multi-master-grouprep-port" toml:"replication-multi-master-grouprep-port" json:"replicationMultiMasterGrouprepPort"`
@@ -392,6 +394,7 @@ type Config struct {
 	RegistryConsulJanitorWeights              string                 `mapstructure:"registry-janitor-weights" toml:"registry-janitor-weights" json:"registryJanitorWeights"`
 	KeyPath                                   string                 `mapstructure:"keypath" toml:"-" json:"-"`
 	Topology                                  string                 `mapstructure:"topology" toml:"-" json:"-"` // use by bootstrap
+	TopologyTarget                            string                 `mapstructure:"topology-target" toml:"topology-target" json:"topologyTarget"`
 	GraphiteMetrics                           bool                   `mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
 	GraphiteEmbedded                          bool                   `mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
 	GraphiteWhitelist                         bool                   `mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteWhitelist"`
@@ -928,6 +931,23 @@ const (
 	ConstGraphiteTemplateMinimal = "minimal"
 	ConstGraphiteTemplateGrafana = "grafana"
 	ConstGraphiteTemplateAll     = "all"
+)
+
+/*
+This is the list of topology
+*/
+const (
+	TopoMasterSlave         string = "master-slave"
+	TopoUnknown             string = "unknown"
+	TopoBinlogServer        string = "binlog-server"
+	TopoMultiTierSlave      string = "multi-tier-slave"
+	TopoMultiMaster         string = "multi-master"
+	TopoMultiMasterRing     string = "multi-master-ring"
+	TopoMultiMasterWsrep    string = "multi-master-wsrep"
+	TopoMultiMasterGrouprep string = "multi-master-grprep"
+	TopoMasterSlavePgLog    string = "master-slave-pg-logical"
+	TopoMasterSlavePgStream string = "master-slave-pg-stream"
+	TopoActivePassive       string = "active-passive"
 )
 
 func (conf *Config) GetSecrets() map[string]Secret {

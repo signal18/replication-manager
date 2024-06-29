@@ -742,12 +742,15 @@ func (cluster *Cluster) GetParentClusterFromReplicationSource(rep dbhelper.Slave
 }
 
 func (cluster *Cluster) GetRingChildServer(oldMaster *ServerMonitor) *ServerMonitor {
-	for _, s := range cluster.Servers {
-		if s.ServerID != cluster.oldMaster.ServerID {
-			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlDbg, "test %s failed %s", s.URL, cluster.oldMaster.URL)
-			master, err := cluster.GetMasterFromReplication(s)
-			if err == nil && master.ServerID == oldMaster.ServerID {
-				return s
+	//Prevent crash if oldmaster not found
+	if oldMaster != nil {
+		for _, s := range cluster.Servers {
+			if s.ServerID != cluster.oldMaster.ServerID {
+				//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlDbg, "test %s failed %s", s.URL, cluster.oldMaster.URL)
+				master, err := cluster.GetMasterFromReplication(s)
+				if err == nil && master != nil && master.ServerID == oldMaster.ServerID {
+					return s
+				}
 			}
 		}
 	}

@@ -597,3 +597,15 @@ func (cluster *Cluster) SwitchForceBinlogPurgeOnRestore() {
 func (cluster *Cluster) SwitchForceBinlogPurgeReplicas() {
 	cluster.Conf.ForceBinlogPurgeReplicas = !cluster.Conf.ForceBinlogPurgeReplicas
 }
+
+func (cluster *Cluster) SwitchMultiMasterRingUnsafe() {
+	cluster.Conf.MultiMasterRingUnsafe = !cluster.Conf.MultiMasterRingUnsafe
+}
+
+func (cluster *Cluster) SwitchDynamicTopology() {
+	cluster.Conf.DynamicTopology = !cluster.Conf.DynamicTopology
+}
+
+func (cluster *Cluster) SwitchReplicationNoRelay() {
+	cluster.Conf.ReplicationNoRelay = !cluster.Conf.ReplicationNoRelay
+}

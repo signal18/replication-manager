@@ -559,6 +559,10 @@ func (cluster *Cluster) SetForceSlaveNoGtid(forceslavenogtid bool) {
 	cluster.Conf.ForceSlaveNoGtid = forceslavenogtid
 }
 
+func (cluster *Cluster) SetReplicationNoRelay(norelay bool) {
+	cluster.Conf.ReplicationNoRelay = norelay
+}
+
 // topology setter
 func (cluster *Cluster) SetMultiTierSlave(multitierslave bool) {
 	cluster.Conf.MultiTierSlave = multitierslave
@@ -1721,5 +1725,11 @@ func (cluster *Cluster) SetInResticBackupState(value bool) {
 func (cluster *Cluster) SetGraphiteWhitelistTemplate(value string) {
 	cluster.Lock()
 	cluster.Conf.GraphiteWhitelistTemplate = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetTopologyTarget(value string) {
+	cluster.Lock()
+	cluster.Conf.TopologyTarget = value
 	cluster.Unlock()
 }
