@@ -31,7 +31,6 @@ func (repman *ReplicationManager) apiClusterUnprotectedHandler(router *mux.Route
 	router.Handle("/api/clusters/{clusterName}/actions/master-physical-backup", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterMasterPhysicalBackup)),
 	))
-
 }
 
 func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router) {

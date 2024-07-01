@@ -932,6 +932,29 @@ const (
 )
 
 /*
+This is the list of modules to be used in LogModulePrintF
+*/
+const (
+	ConstLogNameGeneral        string = "log-general"
+	ConstLogNameFailedElection string = "log-failed-election"
+	ConstLogNameSST            string = "log-sst"
+	ConstLogNameHeartBeat      string = "log-heartbeat"
+	ConstLogNameConfigLoad     string = "log-config-load"
+	ConstLogNameGit            string = "log-git"
+	ConstLogNameBackupStream   string = "log-backup-stream"
+	ConstLogNameOrchestrator   string = "log-orchestrator"
+	ConstLogNameVault          string = "log-vault"
+	ConstLogNameTopology       string = "log-topology"
+	ConstLogNameProxy          string = "log-proxy"
+	ConstLogNameProxySQL       string = "log-proxysql"
+	ConstLogNameHAProxy        string = "log-haproxy"
+	ConstLogNameProxyJanitor   string = "log-proxy-janitor"
+	ConstLogNameMaxscale       string = "log-maxscale"
+	ConstLogNameGraphite       string = "log-graphite"
+	ConstLogNamePurge          string = "log-binlog-purge"
+)
+
+/*
 This is the list of graphite template
 */
 const (
@@ -1991,4 +2014,52 @@ func (conf *Config) GetGraphiteTemplateList() map[string]bool {
 		ConstGraphiteTemplateGrafana: true,
 		ConstGraphiteTemplateAll:     true,
 	}
+}
+
+func GetIndexFromModuleName(module string) int {
+	switch module {
+	case ConstLogNameGeneral:
+		return ConstLogModGeneral
+	case ConstLogNameFailedElection:
+		return ConstLogModFailedElection
+	case ConstLogNameSST:
+		return ConstLogModSST
+	case ConstLogNameHeartBeat:
+		return ConstLogModHeartBeat
+	case ConstLogNameConfigLoad:
+		return ConstLogModConfigLoad
+	case ConstLogNameGit:
+		return ConstLogModGit
+	case ConstLogNameBackupStream:
+		return ConstLogModBackupStream
+	case ConstLogNameOrchestrator:
+		return ConstLogModOrchestrator
+	case ConstLogNameVault:
+		return ConstLogModVault
+	case ConstLogNameTopology:
+		return ConstLogModTopology
+	case ConstLogNameProxy:
+		return ConstLogModProxy
+	case ConstLogNameProxySQL:
+		return ConstLogModProxySQL
+	case ConstLogNameHAProxy:
+		return ConstLogModHAProxy
+	case ConstLogNameProxyJanitor:
+		return ConstLogModProxyJanitor
+	case ConstLogNameMaxscale:
+		return ConstLogModMaxscale
+	case ConstLogNameGraphite:
+		return ConstLogModGraphite
+	case ConstLogNamePurge:
+		return ConstLogModPurge
+	}
+	return -1
+}
+
+func IsValidLogLevel(lvl string) bool {
+	switch lvl {
+	case LvlErr, LvlWarn, LvlInfo, LvlDbg:
+		return true
+	}
+	return false
 }
