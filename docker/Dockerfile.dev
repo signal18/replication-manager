@@ -8,7 +8,7 @@ RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
 
 # Move to top for better cache
-RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl vim libatomic1 mydumper nodejs
+RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl vim libatomic1 mydumper nodejs npm
 RUN curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian11_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian11_amd64.deb
 # RUN curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_VERSION/mydumper_$MYDUMPER_VERSION.bullseye_amd64.deb && dpkg -i mydumper_$MYDUMPER_VERSION.bullseye_amd64.deb
 RUN /usr/local/go/bin/go install -v golang.org/x/tools/gopls@latest
