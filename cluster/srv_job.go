@@ -161,7 +161,7 @@ func (server *ServerMonitor) ReseedPhysicalBackup(task string) error {
 
 		go server.JobRunViaSSH(task)
 		//Wait for socat init
-		time.Sleep(1 * time.Second)
+		time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
 
 		cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
 	} else {
@@ -212,11 +212,11 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 	if err != nil {
 		return jobid, err
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
+		go server.ReseedPhysicalBackup(task)
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
-
-	go server.ReseedPhysicalBackup(task)
 	return jobid, err
 }
 
@@ -1553,6 +1553,8 @@ func (server *ServerMonitor) JobWriteLogAPI(task string) error {
 	}
 	defer client.Close()
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Write-Log connected")
+
 	var (
 		stdout bytes.Buffer
 		stderr bytes.Buffer
@@ -1580,10 +1582,12 @@ func (server *ServerMonitor) JobWriteLogAPI(task string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Parse job's log: %s", stderr.String())
 	}
 
-	// out := stdout.String()
-	// errstr := stderr.String()
+	if cluster.Conf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+		out := stdout.String()
+		errstr := stderr.String()
 
-	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, errstr)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, errstr)
+	}
 
 	return nil
 }
