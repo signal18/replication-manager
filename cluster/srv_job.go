@@ -139,7 +139,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 
 	jobid, err := server.JobInsertTaks(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
 	if err == nil {
-		go server.JobRunViaSSH()
+		go server.JobRunViaSSH(cluster.Conf.BackupPhysicalType)
 	}
 	return jobid, err
 	//	}
@@ -159,7 +159,7 @@ func (server *ServerMonitor) ReseedPhysicalBackup(task string) error {
 			backupext = backupext + ".gz"
 		}
 
-		go server.JobRunViaSSH()
+		go server.JobRunViaSSH(task)
 		//Wait for socat init
 		time.Sleep(1 * time.Second)
 
@@ -528,7 +528,10 @@ func (server *ServerMonitor) JobReseedMysqldump(task string) {
 	cluster := server.ClusterGroup
 	mybcksrv := cluster.GetBackupServer()
 	master := cluster.GetMaster()
-	go server.JobRunViaSSH()
+	go server.JobRunViaSSH(task)
+
+	//Wait for ssh task to open port
+	time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending logical backup to reseed %s", server.URL)
 	if master != nil {
@@ -975,7 +978,7 @@ func (server *ServerMonitor) copyLogs(r io.Reader) {
 		if !s.Scan() {
 			break
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "%s", s.Text())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", s.Text())
 		}
 	}
 }
@@ -1066,7 +1069,7 @@ func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, e
 
 }
 
-func (server *ServerMonitor) JobRunViaSSH() error {
+func (server *ServerMonitor) JobRunViaSSH(task string) error {
 	cluster := server.ClusterGroup
 	if cluster.IsInFailover() {
 		return errors.New("Cancel dbjob via ssh during failover")
@@ -1086,7 +1089,6 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 
 	if _, err := os.Stat(scriptpath); os.IsNotExist(err) && server.GetCluster().GetConf().OnPremiseSSHDbJobScript == "" && !server.IsConfigGen {
 		server.GetDatabaseConfig()
-
 	}
 
 	if server.GetCluster().GetConf().OnPremiseSSHDbJobScript != "" {
@@ -1105,6 +1107,11 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 
 	buf2 := strings.NewReader(server.GetSshEnv())
 	r := io.MultiReader(buf2, buf)
+
+	// Run write-log to fetch individual logs
+	if task != "all" {
+		go server.JobWriteLogAPI(task)
+	}
 
 	var out string
 	var errstr string
@@ -1532,4 +1539,51 @@ func (server *ServerMonitor) StartSlaveCallback(dt DBTask) error {
 	}
 
 	return err
+}
+
+func (server *ServerMonitor) JobWriteLogAPI(task string) error {
+	cluster := server.ClusterGroup
+	if cluster.IsInFailover() {
+		return errors.New("Cancel dbjob via ssh during failover")
+	}
+	client, err := server.GetCluster().OnPremiseConnect(server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "OnPremise run  job  %s", err)
+		return err
+	}
+	defer client.Close()
+
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+	scriptpath := server.Datadir + "/init/init/parselog"
+
+	if _, err := os.Stat(scriptpath); os.IsNotExist(err) && !server.IsConfigGen {
+		server.GetDatabaseConfig()
+	}
+
+	filerc, err2 := os.Open(scriptpath)
+	if err2 != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Parse job's log %s, scriptpath : %s", err2, scriptpath)
+		return errors.New("Cancel parselog can't open script")
+	}
+	defer filerc.Close()
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(filerc)
+
+	buf2 := strings.NewReader(server.GetSshEnv())
+	buf3 := strings.NewReader(server.GetSshLogEnv(task))
+	r := io.MultiReader(buf2, buf3, buf)
+
+	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Parse job's log: %s", stderr.String())
+	}
+
+	// out := stdout.String()
+	// errstr := stderr.String()
+
+	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, errstr)
+
+	return nil
 }

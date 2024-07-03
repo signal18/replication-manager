@@ -308,7 +308,7 @@ func (cluster *Cluster) SetSchedulerDbJobsSsh() {
 		cluster.idSchedulerDbsjobsSsh, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerJobsSSHCron, func() {
 			for _, s := range cluster.Servers {
 				if s != nil {
-					s.JobRunViaSSH()
+					s.JobRunViaSSH("all")
 				}
 
 			}

@@ -1749,7 +1749,13 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 					}
 
 					if valid {
-						mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, vars["level"], msg.Message)
+						messages := strings.Split(msg.Message, "\n")
+						for _, m := range messages {
+							// Prevent empty lines
+							if m != "" {
+								mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, vars["level"], m)
+							}
+						}
 						w.Header().Set("Content-Type", "application/json")
 						json.NewEncoder(w).Encode(ApiResponse{Data: "Message logged", Success: true})
 					} else {
@@ -2150,7 +2156,7 @@ func (repman *ReplicationManager) handlerMuxRunJobs(w http.ResponseWriter, r *ht
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			err := node.JobRunViaSSH()
+			err := node.JobRunViaSSH("all")
 			if err != nil {
 				http.Error(w, "Encoding running job", 500)
 				return

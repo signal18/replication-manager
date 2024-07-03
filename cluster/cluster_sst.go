@@ -446,7 +446,6 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, task 
 		return
 	}
 
-	defer client.Close()
 	file, err := os.Open(backupfile)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST sending file: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
 	if os.IsNotExist(err) && cluster.Conf.CompressBackups {
@@ -455,18 +454,19 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, task 
 	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
+		client.Close() // Close connection due to error
 		return
 	}
 
 	sendBuffer := make([]byte, cluster.Conf.SSTSendBuffer)
 	//fmt.Println("Start sending file!")
 	var total uint64
-
 	defer file.Close()
+	defer client.Close()
 	defer sv.RunTaskCallback(task)
 
 	for {
-		if strings.Contains(backupfile, "gz") {
+		if strings.Contains(backupfile, "gz") && !strings.Contains(backupfile, "mysqldump") {
 			fz, err := gzip.NewReader(file)
 			if err != nil {
 				return

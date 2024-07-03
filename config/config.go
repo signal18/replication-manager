@@ -666,6 +666,7 @@ type Config struct {
 	OAuthClientSecret                         string                 `mapstructure:"api-oauth-client-secret" toml:"api-oauth-client-secret" json:"apiOAuthClientSecret"`
 	CacheStaticMaxAge                         int                    `mapstructure:"cache-static-max-age" toml:"cache-static-max-age" json:"-"`
 	TokenTimeout                              int                    `mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
+	JobLogBatchSize                           int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API

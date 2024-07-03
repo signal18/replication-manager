@@ -622,6 +622,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.SchedulerAlertDisable, "scheduler-alert-disable", false, "Schedule to disable alerting")
 	flags.StringVar(&conf.SchedulerAlertDisableCron, "scheduler-alert-disable-cron", "0 0 0 * * 0-4", "Disabling alert cron expression represents a set of times, using 6 space-separated fields.")
 	flags.IntVar(&conf.SchedulerAlertDisableTime, "scheduler-alert-disable-time", 3600, "Time in seconds to disable alerting")
+	flags.IntVar(&conf.JobLogBatchSize, "job-log-batch-size", 5, "Number of lines per API call for write-logs")
 
 	flags.BoolVar(&conf.Backup, "backup", false, "Turn on Backup")
 	flags.BoolVar(&conf.BackupLockDDL, "backup-lockddl", true, "Use mariadb backup stage")
