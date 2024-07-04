@@ -1741,21 +1741,29 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 					var valid bool
 					if node != nil && node.IP == raddr[0] {
 						valid = true
-					}
-					if proxy != nil {
-						if myip, err := dbhelper.CheckHostAddr(proxy.GetHost()); err == nil && myip == raddr[0] {
-							valid = true
-						}
-					}
-
-					if valid {
 						messages := strings.Split(msg.Message, "\n")
 						for _, m := range messages {
 							// Prevent empty lines
 							if m != "" {
-								mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, vars["level"], m)
+								mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, vars["level"], "[%s] %s", node.Name, m)
 							}
 						}
+					}
+					if proxy != nil {
+						if myip, err := dbhelper.CheckHostAddr(proxy.GetHost()); err == nil && myip == raddr[0] {
+							valid = true
+							messages := strings.Split(msg.Message, "\n")
+							for _, m := range messages {
+								// Prevent empty lines
+								if m != "" {
+									mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, vars["level"], "[%s] %s", proxy.GetName(), m)
+								}
+							}
+						}
+					}
+
+					if valid {
+
 						w.Header().Set("Content-Type", "application/json")
 						json.NewEncoder(w).Encode(ApiResponse{Data: "Message logged", Success: true})
 					} else {
