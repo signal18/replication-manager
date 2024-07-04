@@ -1548,12 +1548,12 @@ func (server *ServerMonitor) JobWriteLogAPI(task string) error {
 	}
 	client, err := server.GetCluster().OnPremiseConnect(server)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "OnPremise run  job  %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "OnPremise run  job  %s", err)
 		return err
 	}
 	defer client.Close()
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Write-Log connected")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Write-Log connected")
 
 	var (
 		stdout bytes.Buffer
@@ -1567,7 +1567,7 @@ func (server *ServerMonitor) JobWriteLogAPI(task string) error {
 
 	filerc, err2 := os.Open(scriptpath)
 	if err2 != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Parse job's log %s, scriptpath : %s", err2, scriptpath)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Parse job's log %s, scriptpath : %s", err2, scriptpath)
 		return errors.New("Cancel parselog can't open script")
 	}
 	defer filerc.Close()
@@ -1579,14 +1579,15 @@ func (server *ServerMonitor) JobWriteLogAPI(task string) error {
 	r := io.MultiReader(buf2, buf3, buf)
 
 	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Parse job's log: %s", stderr.String())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Parse job's log: %s", stderr.String())
 	}
 
-	if cluster.Conf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+	//only parse if debug
+	if cluster.Conf.IsEligibleForPrinting(config.ConstLogModBackupStream, config.LvlDbg) {
 		out := stdout.String()
 		errstr := stderr.String()
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, errstr)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, errstr)
 	}
 
 	return nil
