@@ -309,7 +309,12 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 			}
 		}
 	}
+
 	cliformat := format
+	//Skip re-format module general
+	if module > 0 {
+		cliformat = fmt.Sprintf("[%s] %s", config.GetTagsForLog(module), cliformat)
+	}
 	format = "[" + cluster.Name + "] " + padright(level, " ", 5) + " - " + format
 
 	eligible := cluster.Conf.IsEligibleForPrinting(module, level)

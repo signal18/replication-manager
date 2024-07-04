@@ -74,6 +74,29 @@
             <th>Toggle Log Level Per Module</th>
         </tr>
         <tr>
+            <td>Log DB Jobs</td>
+        </tr>
+        <tr>
+            <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete
+                    flex ng-model="selectedCluster.config.logTaskLevel"
+                    ng-change="setsettings('log-task-level',selectedCluster.config.logTaskLevel)"
+                    step="1" min="0" max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
+        </tr>
+        <tr>
+            <td>
+                <span ng-if="selectedCluster.config.logTaskLevel == 0" class="label label-default"> NO LOGGING
+                </span>
+                <span ng-if="selectedCluster.config.logTaskLevel >= 1" class="label label-danger"> ERROR
+                </span> &nbsp; &nbsp;
+                <span ng-if="selectedCluster.config.logTaskLevel >= 2" class="label label-warning"> WARNING
+                </span> &nbsp; &nbsp;
+                <span ng-if="selectedCluster.config.logTaskLevel >= 3" class="label label-info"> INFO </span>
+                &nbsp; &nbsp;
+                <span ng-if="selectedCluster.config.logTaskLevel >= 4" class="label label-primary"> DEBUG
+                </span>
+            </td>
+        </tr>
+        <tr>
             <td>Log Failed Election</td>
         </tr>
         <tr>
