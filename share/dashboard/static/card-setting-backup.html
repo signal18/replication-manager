@@ -9,7 +9,7 @@
             <th>
                 <span style="display:inline-block;;margin: 2px;"
                     ng-click="saveBackupType(selectedLogicalBackup,selectedPhysicalBackup,selectedBinlogBackup,selectedBinlogBackupScript)"><i
-                        style="display:inline-block;;margin: 2px;" class="fa fa-save" ></i></span>
+                        style="display:inline-block;;margin: 2px;" class="fa fa-save"></i></span>
             </th>
         </tr>
         <tr>
@@ -20,12 +20,30 @@
                     <md-option ng-selected="{{key ==  selectedCluster.config.backupLogicalType}}"
                         ng-repeat="(key, value) in settings.backupLogicalList" ng-value="key">{{key}}</md-option>
                 </md-select>
+                <div
+                    ng-if="selectedLogicalBackup=='mysqldump'|| (selectedLogicalBackup==''&&selectedCluster.config.backupLogicalType=='mysqldump')">
+                    <span style="display:inline-block;;margin: 2px;" class="label label-success">Options Mysqldump</span><br/>
+                    <input type="text" name="selectedBackupMysqldumpOptions" value="selectedCluster.config.backupMysqldumpOptions"   id="selectedBackupMysqldumpOptions" maxlength="120" size="80" ng-model="selectedCluster.config.backupMysqldumpOptions"  />
+                </div>
+                <div
+                    ng-if="selectedLogicalBackup=='mydumper'|| (selectedLogicalBackup==''&&selectedCluster.config.backupLogicalType=='mydumper')">
+                    <span style="display:inline-block;;margin: 2px;" class="label label-success">Options MyDumper</span><br/>
+                    <input type="text" name="selectedBackupMyDumperOptions" value="selectedCluster.config.backupMyDumperOptions"   id="selectedBackupMyDumperOptions" maxlength="120" size="80" ng-model="selectedCluster.config.backupMyDumperOptions"  />
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td colspan=4>
                 Physical Backup: <span style="display:inline-block;;margin: 2px;"
                     class="label label-success">{{selectedCluster.config.backupPhysicalType }}</span>
                 <md-select name="selectedPhysicalBackup" ng-model="selectedPhysicalBackup">
                     <md-option ng-selected="{{key ==  selectedCluster.config.backupPhysicalType}}"
                         ng-repeat="(key, value) in settings.backupPhysicalList" ng-value="key">{{key}}</md-option>
                 </md-select>
+            </td>
+        </tr>
+        <tr>
+            <td colspan=4>
                 Binlog Backup: <span style="display:inline-block;;margin: 2px;"
                     class="label label-success">{{selectedCluster.config.binlogCopyMode }}</span>
                 <md-select name="selectedBinlogBackup" ng-model="selectedBinlogBackup">
