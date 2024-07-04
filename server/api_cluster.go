@@ -1464,6 +1464,9 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetGraphiteWhitelistTemplate(value)
 	case "topology-target":
 		mycluster.SetTopologyTarget(value)
+	case "log-task-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogTaskLevel(val)
 	}
 
 }
