@@ -36,6 +36,23 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+type DBTask struct {
+	task    string `json:"task"`
+	ct      int    `json:"ct"`
+	id      int64  `json:"id"`
+	state   int    `json:"state"`
+	desc    string `json:"state"`
+	BeginTS int64  `json:"beginTS"`
+	EndTS   int64  `json:"endTS"`
+	ErrTS   int64  `json:"errTS"`
+}
+
+type DBTaskUpdate struct {
+	task  string `json:"task"`
+	state int    `json:"state"`
+	desc  string `json:"state"`
+}
+
 func (server *ServerMonitor) JobRun() {
 
 }
@@ -178,6 +195,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	var dt DBTask = DBTask{task: task}
 	if cluster.GetMaster() != nil && !cluster.GetBackupServer().HasBackupPhysicalCookie() {
 		server.createCookie("cookie_waitbackup")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Receive reseed physical backup %s request for server %s: No Physical backup found", cluster.Conf.BackupPhysicalType, server.URL)
 		return 0, errors.New("No Physical Backup")
 	}
 
@@ -212,10 +230,10 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 	if err != nil {
 		return jobid, err
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
-		go server.ReseedPhysicalBackup(task)
 	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
+	go server.ReseedPhysicalBackup(task)
 
 	return jobid, err
 }
@@ -496,11 +514,11 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn)
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "MYLOADER")
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn)
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "MYLOADER")
 	}()
 	wg.Wait()
 	if err := dumpCmd.Wait(); err != nil {
@@ -558,11 +576,11 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn)
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "RESEED")
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn)
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "RESEED")
 	}()
 	wg.Wait()
 	if err := cmd.Wait(); err != nil {
@@ -628,12 +646,6 @@ func (server *ServerMonitor) JobMyLoaderParseMeta(dir string) (config.MyDumperMe
 	}
 
 	return m, nil
-}
-
-type DBTask struct {
-	task string
-	ct   int
-	id   int64
 }
 
 func (server *ServerMonitor) JobsCheckRunning() error {
@@ -798,11 +810,11 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			server.copyLogs(stdoutIn)
+			server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "BACKUP")
 		}()
 		go func() {
 			defer wg.Done()
-			server.copyLogs(stderrIn)
+			server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "BACKUP")
 		}()
 		wg.Wait()
 		if err := scriptCmd.Wait(); err != nil {
@@ -888,7 +900,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			server.copyLogs(stderrIn)
+			server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "BACKUP")
 		}()
 		go func() {
 			defer wg.Done()
@@ -950,11 +962,11 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			server.copyLogs(stdoutIn)
+			server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "MYDUMPER")
 		}()
 		go func() {
 			defer wg.Done()
-			server.copyLogs(stderrIn)
+			server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "MYDUMPER")
 		}()
 		wg.Wait()
 		if err := dumpCmd.Wait(); err != nil {
@@ -970,7 +982,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	return nil
 }
 
-func (server *ServerMonitor) copyLogs(r io.Reader) {
+func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string, tag string) {
 	cluster := server.ClusterGroup
 	//	buf := make([]byte, 1024)
 	s := bufio.NewScanner(r)
@@ -978,7 +990,7 @@ func (server *ServerMonitor) copyLogs(r io.Reader) {
 		if !s.Scan() {
 			break
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", s.Text())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s - %s] %s", server.Name, tag, s.Text())
 		}
 	}
 }
@@ -1135,8 +1147,8 @@ func (server *ServerMonitor) JobRunViaSSH(task string) error {
 		} else {
 			val.Field(i).SetBool(true)
 			// If xtrabackup or mariabackup
-			switch jobname {
-			case "Xtrabackup", "Mariabackup":
+			switch strings.ToLower(jobname) {
+			case "xtrabackup", "mariabackup":
 				// Space before Completed OK! is Important
 				if strings.Contains(errstr, " completed OK!") {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "%s completed without error. Creating cookie for physical backup.", jobname)
@@ -1372,13 +1384,14 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	//
 	go func() {
 		defer wg.Done()
-		source.copyLogs(stderrIn)
+		source.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "REJOIN")
 	}()
 	go func() {
 		defer wg.Done()
-		dest.copyLogs(stderrOut)
+		dest.copyLogs(stderrOut, config.ConstLogModBackupStream, config.LvlInfo, "REJOIN")
 	}()
 
 	wg.Wait()
