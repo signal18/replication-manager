@@ -2000,3 +2000,43 @@ func (conf *Config) GetGraphiteTemplateList() map[string]bool {
 		ConstGraphiteTemplateAll:     true,
 	}
 }
+
+func GetTagsForLog(module int) string {
+	switch module {
+	case ConstLogModFailedElection:
+		return "FAIL"
+	case ConstLogModSST:
+		return "SST"
+	case ConstLogModHeartBeat:
+		return "HB"
+	case ConstLogModConfigLoad:
+		return "CONF"
+	case ConstLogModGit:
+		return "GIT"
+	case ConstLogModBackupStream:
+		return "BACKUP"
+	case ConstLogModOrchestrator:
+		return "ORC"
+	case ConstLogModVault:
+		return "VAULT"
+	case ConstLogModTopology:
+		return "TOPO"
+	case ConstLogModProxy:
+		return "PRX"
+	case ConstLogModProxySQL:
+		return "PRXSQL"
+	case ConstLogModHAProxy:
+		return "HAPRX"
+	case ConstLogModProxyJanitor:
+		return "PRXJT"
+	case ConstLogModMaxscale:
+		return "MXSCL"
+	case ConstLogModGraphite:
+		return "GRAPH"
+	case ConstLogModPurge:
+		return "PURGE"
+	case ConstLogModTask:
+		return "JOB"
+	}
+	return ""
+}
