@@ -99,6 +99,8 @@ type Config struct {
 	LogRotateMaxSize                          int                    `mapstructure:"log-rotate-max-size" toml:"log-rotate-max-size" json:"logRotateMaxSize"`
 	LogRotateMaxBackup                        int                    `mapstructure:"log-rotate-max-backup" toml:"log-rotate-max-backup" json:"logRotateMaxBackup"`
 	LogRotateMaxAge                           int                    `mapstructure:"log-rotate-max-age" toml:"log-rotate-max-age" json:"logRotateMaxAge"`
+	LogTask                                   bool                   `mapstructure:"log-task" toml:"log-task" json:"logTask"`
+	LogTaskLevel                              int                    `mapstructure:"log-task-level" toml:"log-task-level" json:"logTaskLevel"`
 	LogSST                                    bool                   `mapstructure:"log-sst" toml:"log-sst" json:"logSst"`                  // internal replication-manager sst
 	LogSSTLevel                               int                    `mapstructure:"log-sst-level" toml:"log-sst-level" json:"logSstLevel"` // internal replication-manager sst
 	SSTSendBuffer                             int                    `mapstructure:"sst-send-buffer" toml:"sst-send-buffer" json:"sstSendBuffer"`
@@ -929,6 +931,7 @@ const (
 	ConstLogModMaxscale       = 14
 	ConstLogModGraphite       = 15
 	ConstLogModPurge          = 16
+	ConstLogModTask           = 17
 )
 
 /*
@@ -1961,6 +1964,11 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 				return conf.LogBinlogPurgeLevel >= lvl
 			}
 			break
+		case module == ConstLogModTask:
+			if conf.LogTask {
+				return conf.LogTaskLevel >= lvl
+			}
+			break
 		}
 	}
 
@@ -1991,4 +1999,44 @@ func (conf *Config) GetGraphiteTemplateList() map[string]bool {
 		ConstGraphiteTemplateGrafana: true,
 		ConstGraphiteTemplateAll:     true,
 	}
+}
+
+func GetTagsForLog(module int) string {
+	switch module {
+	case ConstLogModFailedElection:
+		return "FAIL"
+	case ConstLogModSST:
+		return "SST"
+	case ConstLogModHeartBeat:
+		return "HB"
+	case ConstLogModConfigLoad:
+		return "CONF"
+	case ConstLogModGit:
+		return "GIT"
+	case ConstLogModBackupStream:
+		return "BACKUP"
+	case ConstLogModOrchestrator:
+		return "ORC"
+	case ConstLogModVault:
+		return "VAULT"
+	case ConstLogModTopology:
+		return "TOPO"
+	case ConstLogModProxy:
+		return "PRX"
+	case ConstLogModProxySQL:
+		return "PRXSQL"
+	case ConstLogModHAProxy:
+		return "HAPRX"
+	case ConstLogModProxyJanitor:
+		return "PRXJT"
+	case ConstLogModMaxscale:
+		return "MXSCL"
+	case ConstLogModGraphite:
+		return "GRAPH"
+	case ConstLogModPurge:
+		return "PURGE"
+	case ConstLogModTask:
+		return "JOB"
+	}
+	return ""
 }

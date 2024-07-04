@@ -1644,6 +1644,15 @@ func (cluster *Cluster) SetMxsLogLevel(value int) {
 	}
 }
 
+func (cluster *Cluster) SetLogTaskLevel(value int) {
+	cluster.Conf.LogTaskLevel = value
+	if value > 0 {
+		cluster.Conf.LogTask = true
+	} else {
+		cluster.Conf.LogTask = false
+	}
+}
+
 func (cluster *Cluster) SetSlavesOldestMasterFile(value string) error {
 
 	parts := strings.Split(value, ".")
