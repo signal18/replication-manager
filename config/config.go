@@ -1009,7 +1009,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 
 		/* Decrypt feature not managed within log modules config due to risk of credentials leak */
 		if conf.LogSecrets {
-			log.WithField("cluster", "config").Infof("DecryptSecretsFromConfig: %s", secret.Value)
+			log.WithFields(log.Fields{"cluster": "-", "type": "log", "module": "CONFIG"}).Infof("DecryptSecretsFromConfig: %s", secret.Value)
 		}
 
 		lst_cred := strings.Split(secret.Value, ",")
@@ -1024,7 +1024,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 				} else {
 					//Show warnings on empty credentials
 					if conf.IsEligibleForPrinting(ConstLogModConfigLoad, LvlWarn) {
-						log.WithField("cluster", "config").Warnf("Empty credential do not decrypt key: %s", k)
+						log.WithFields(log.Fields{"cluster": "-", "type": "log", "module": "CONFIG"}).Warnf("Empty credential do not decrypt key: %s", k)
 					}
 				}
 			}
@@ -1131,7 +1131,7 @@ func (conf *Config) GetDecryptedPassword(key string, value string) string {
 		value = strings.TrimPrefix(value, "hash_")
 		p := crypto.Password{Key: conf.SecretKey}
 		if conf.LogConfigLoad {
-			log.WithField("cluster", "config").Infof("GetDecryptedPassword: key(%s) value(%s) %s", key, value, conf.SecretKey)
+			log.WithFields(log.Fields{"cluster": "-", "type": "log", "module": "CONFIG"}).Infof("GetDecryptedPassword: key(%s) value(%s) %s", key, value, conf.SecretKey)
 		}
 
 		if value != "" {
@@ -1707,7 +1707,7 @@ func (conf *Config) GetTarballs(is_not_embed bool) ([]Tarball, error) {
 	if is_not_embed {
 
 		file := conf.ShareDir + "/repo/tarballs.json"
-		log.WithField("cluster", "config").Infof("GetTarballs1 file value : %s ", file)
+		log.WithFields(log.Fields{"cluster": "-", "type": "log", "module": "CONFIG"}).Infof("GetTarballs1 file value : %s ", file)
 		jsonFile, err := os.Open(file)
 		if err != nil {
 			return tarballs.Tarballs, err
@@ -1770,10 +1770,10 @@ func (conf Config) MergeConfig(path string, name string, ImmMap map[string]inter
 	dynMap := make(map[string]interface{})
 
 	if _, err := os.Stat(path + "/" + name + "/overwrite.toml"); os.IsNotExist(err) {
-		log.WithField("cluster", "config").Infof("No monitoring saved config found %s", path+"/"+name+"/overwrite.toml")
+		log.WithFields(log.Fields{"cluster": "-", "type": "log", "module": "CONFIG"}).Infof("No monitoring saved config found %s", path+"/"+name+"/overwrite.toml")
 		return err
 	} else {
-		log.WithField("cluster", "config").Infof("Parsing saved config from working directory %s", path+"/"+name+"/overwrite.toml")
+		log.WithFields(log.Fields{"cluster": "-", "type": "log", "module": "CONFIG"}).Infof("Parsing saved config from working directory %s", path+"/"+name+"/overwrite.toml")
 
 		dynRead.AddConfigPath(path + "/" + name)
 		err := dynRead.ReadInConfig()
@@ -2003,6 +2003,8 @@ func (conf *Config) GetGraphiteTemplateList() map[string]bool {
 
 func GetTagsForLog(module int) string {
 	switch module {
+	case ConstLogModGeneral:
+		return "GENERAL"
 	case ConstLogModFailedElection:
 		return "FAIL"
 	case ConstLogModSST:
