@@ -63,6 +63,17 @@ app.controller('DashboardController', function (
   $scope.promise = undefined;
 
   $scope.showTable = false
+  $scope.showLog = true
+  $scope.showLogTask = false
+
+  $scope.toggleLog = function(panel){
+    if(panel == "log") {
+      $scope.showLog = !$scope.showLog
+    }
+    if(panel == "task") {
+      $scope.showLogTask = !$scope.showLogTask
+    }
+  }
 
   $scope.user = undefined;
 

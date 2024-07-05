@@ -161,6 +161,7 @@ func (cluster *Cluster) LogPrintf(level string, format string, args ...interface
 				Text:      fmt.Sprintf(cliformat, args...),
 			}
 			line = cluster.htlog.Add(msg)
+
 			cluster.Log.Add(msg)
 		}
 	}
@@ -332,7 +333,12 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 				Text:      fmt.Sprintf(cliformat, args...),
 			}
 			line = cluster.htlog.Add(msg)
-			cluster.Log.Add(msg)
+			switch module {
+			case config.ConstLogModTask, config.ConstLogModSST, config.ConstLogModBackupStream:
+				cluster.LogTask.Add(msg)
+			default:
+				cluster.Log.Add(msg)
+			}
 		}
 
 		if cluster.Conf.Daemon {
