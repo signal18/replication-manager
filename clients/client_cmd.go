@@ -70,9 +70,9 @@ var (
 	cliPrefMaster                string
 	cliStatusErrors              bool
 	cliServerID                  string
-	cliServerMaintenance         bool
-	cliServerStop                bool
-	cliServerStart               bool
+	cliServerSet                 string
+	cliServerGet                 string
+	cliServerAction              string
 	cliConsoleServerIndex        int
 	cliShowObjects               string
 	cliConfirm                   string
@@ -285,9 +285,10 @@ func initApiFlags(cmd *cobra.Command) {
 func initServerFlags(cmd *cobra.Command) {
 	initServerApiFlags(serverCmd)
 	serverCmd.Flags().StringVar(&cliServerID, "id", "", "server id")
-	serverCmd.Flags().BoolVar(&cliServerMaintenance, "maintenance", false, "Toggle maintenance")
-	serverCmd.Flags().BoolVar(&cliServerStop, "stop", false, "Start server")
-	serverCmd.Flags().BoolVar(&cliServerStart, "start", false, "Stop server")
+	serverCmd.Flags().StringVar(&cliServerset, "set", "", "maintenance=on|maintenance=off|maintenance=switch|ignored=switch|prefered=switch")
+	serverCmd.Flags().StringVar(&cliServerGet, "get", "", "processlist|slow-query|digest-statements-pfs|errors|status-delta|innodb-status|variables|meta-data-locks|query-response-time")
+	serverCmd.Flags().StringVar(&cliServerAction, "action", "", "stop|start")
+
 	viper.BindPFlags(cmd.Flags())
 }
 
