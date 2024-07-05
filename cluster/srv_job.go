@@ -710,55 +710,6 @@ func (server *ServerMonitor) GetMasterBackupDirectory() string {
 
 }
 
-func (server *ServerMonitor) JobBackupLogical() error {
-	//server can be nil as no dicovered master
-	if server == nil {
-		return errors.New("No server define")
-	}
-
-	cluster := server.ClusterGroup
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
-	if server.IsDown() {
-		return errors.New("Can't backup when server down")
-	}
-
-	//Wait for previous restic backup
-	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
-		cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-		time.Sleep(1 * time.Second)
-
-		return server.JobBackupLogical()
-	}
-
-	cluster.SetInLogicalBackupState(true)
-	defer cluster.SetInLogicalBackupState(false)
-
-	// Removing previous valid backup state and start
-	server.DelBackupLogicalCookie()
-
-	//Skip other type if using backup script
-	if cluster.Conf.BackupSaveScript != "" {
-		return server.JobBackupScript()
-	}
-
-	//Change to switch since we only allow one type of backup (for now)
-	switch cluster.Conf.BackupLogicalType {
-	case config.ConstBackupLogicalTypeMysqldump:
-		server.JobBackupMysqldump()
-	case config.ConstBackupLogicalTypeDumpling:
-		server.JobBackupDumpling()
-	case config.ConstBackupLogicalTypeMydumper:
-		server.JobBackupMyDumper()
-	case config.ConstBackupLogicalTypeRiver:
-		server.JobBackupRiver()
-	}
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
-	backtype := "logical"
-	server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupLogicalType)
-	return nil
-}
-
 func (server *ServerMonitor) JobBackupScript() error {
 	var err error
 	cluster := server.ClusterGroup
@@ -1012,6 +963,55 @@ func (server *ServerMonitor) JobBackupRiver() error {
 	}
 
 	return err
+}
+
+func (server *ServerMonitor) JobBackupLogical() error {
+	//server can be nil as no dicovered master
+	if server == nil {
+		return errors.New("No server defined")
+	}
+
+	cluster := server.ClusterGroup
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	if server.IsDown() {
+		return errors.New("Can't backup when server down")
+	}
+
+	//Wait for previous restic backup
+	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+		cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		time.Sleep(1 * time.Second)
+
+		return server.JobBackupLogical()
+	}
+
+	cluster.SetInLogicalBackupState(true)
+	defer cluster.SetInLogicalBackupState(false)
+
+	// Removing previous valid backup state and start
+	server.DelBackupLogicalCookie()
+
+	//Skip other type if using backup script
+	if cluster.Conf.BackupSaveScript != "" {
+		return server.JobBackupScript()
+	}
+
+	//Change to switch since we only allow one type of backup (for now)
+	switch cluster.Conf.BackupLogicalType {
+	case config.ConstBackupLogicalTypeMysqldump:
+		server.JobBackupMysqldump()
+	case config.ConstBackupLogicalTypeDumpling:
+		server.JobBackupDumpling()
+	case config.ConstBackupLogicalTypeMydumper:
+		server.JobBackupMyDumper()
+	case config.ConstBackupLogicalTypeRiver:
+		server.JobBackupRiver()
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	backtype := "logical"
+	server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupLogicalType)
+	return nil
 }
 
 func (server *ServerMonitor) copyLogs(r io.Reader) {
