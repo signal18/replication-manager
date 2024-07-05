@@ -4,13 +4,15 @@ import App from './App.jsx'
 import './index.css'
 import { Provider } from 'react-redux'
 import store from './redux/store.js'
-import { ChakraProvider } from '@chakra-ui/react'
+import { ChakraProvider, ColorModeScript } from '@chakra-ui/react'
 import { createBrowserRouter, createRoutesFromElements } from 'react-router-dom'
+import theme from './utility/theme'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <Provider store={store}>
-      <ChakraProvider>
+      <ChakraProvider theme={theme}>
+        <ColorModeScript initialColorMode={theme.config.initialColorMode} />
         <App />
       </ChakraProvider>
     </Provider>

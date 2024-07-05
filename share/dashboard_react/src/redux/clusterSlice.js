@@ -15,8 +15,13 @@ export const getClusters = createAsyncThunk('cluster/getClusters', async ({}, th
 
 export const clusterSlice = createSlice({
   name: 'cluster',
-  initialState: { loading: false, error: null, cluster: null },
-  reducers: {},
+  initialState: { loading: false, error: null, cluster: null, refreshInterval: 0 },
+  reducers: {
+    setRefreshInterval: (state, action) => {
+      localStorage.setItem('refresh_interval', action.payload.interval)
+      state.refreshInterval = action.payload.interval
+    }
+  },
   extraReducers: (builder) => {
     builder
       .addCase(getClusters.pending, (state) => {
@@ -30,6 +35,8 @@ export const clusterSlice = createSlice({
       })
   }
 })
+
+export const { setRefreshInterval } = clusterSlice.actions
 
 // this is for configureStore
 export default clusterSlice.reducer

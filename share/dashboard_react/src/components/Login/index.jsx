@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useRef, useState,Suspense } from 'react'
+import React, { forwardRef, useEffect, useRef, useState, Suspense } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { gitLogin, login } from '../../redux/authSlice'
@@ -25,6 +25,7 @@ import {
 } from '@chakra-ui/react'
 import PageContainer from '../PageContainer'
 import { HiEye, HiEyeOff } from 'react-icons/hi'
+import { isAuthorized } from '../../utility/common'
 
 function Login(props) {
   const [username, setUsername] = useState('')
@@ -38,6 +39,12 @@ function Login(props) {
   const {
     auth: { isLogged, loading, user, error }
   } = useSelector((state) => state)
+
+  useEffect(() => {
+    if (isAuthorized()) {
+      navigate('/')
+    }
+  }, [])
 
   useEffect(() => {
     if (!loading) {
@@ -88,57 +95,57 @@ function Login(props) {
   return (
     <PageContainer>
       <Suspense fallback={<div>Loading...</div>}>
-      <Container maxWidth='lg' py={{ base: '12', md: '24' }} px={{ base: '0', sm: '8' }}>
-        <Stack spacing='8'>
-          <Stack spacing='6'>
-            <Image
-            loading="lazy"
-              margin='auto'
-              height='100px'
-              width='300px'
-              objectFit='contain'
-              src='/images/logo.png'
-              alt='Replication Manager'
-            />
-            <Stack spacing={{ base: '2', md: '3' }} textAlign='center'>
-              <Heading size={{ base: 'xs', md: 'sm' }}>Log in to your account</Heading>
-            </Stack>
-          </Stack>
-          <Box
-            sx={styles.loginContainer}
-            py={{ base: '8', sm: '8' }}
-            px={{ base: '4', sm: '10' }}
-            bg={{ base: 'transparent', sm: 'bg.surface' }}
-            boxShadow={{ base: 'none', sm: 'md' }}
-            borderRadius={{ base: 'none', sm: 'xl' }}>
+        <Container maxWidth='lg' py={{ base: '12', md: '24' }} px={{ base: '0', sm: '8' }}>
+          <Stack spacing='8'>
             <Stack spacing='6'>
-              <Stack spacing='5'>
-                <FormControl isInvalid={usernameError}>
-                  <FormLabel htmlFor='username'>Username</FormLabel>
-                  <Input id='username' type='text' value={username} onChange={(e) => setUsername(e.target.value)} />
-                  <FormErrorMessage>{usernameError}</FormErrorMessage>
-                </FormControl>
-                <PasswordField passwordError={passwordError} onChange={(e) => setPassword(e.target.value)} />
-              </Stack>
-              {error && <Text color='red.500'>{error}</Text>}
-
-              <Stack spacing='6'>
-                <Button
-                  type='button'
-                  colorScheme='blue'
-                  onClick={onButtonClick}
-                  isLoading={loading}
-                  loadingText={'Signing in'}>
-                  Sign in
-                </Button>
-                <Button type='button' colorScheme='blue' onClick={onGitButtonClick} isLoading={false}>
-                  Sign in with cloud18
-                </Button>
+              <Image
+                loading='lazy'
+                margin='auto'
+                height='100px'
+                width='300px'
+                objectFit='contain'
+                src='/images/logo.png'
+                alt='Replication Manager'
+              />
+              <Stack spacing={{ base: '2', md: '3' }} textAlign='center'>
+                <Heading size={{ base: 'xs', md: 'sm' }}>Log in to your account</Heading>
               </Stack>
             </Stack>
-          </Box>
-        </Stack>
-      </Container>
+            <Box
+              sx={styles.loginContainer}
+              py={{ base: '8', sm: '8' }}
+              px={{ base: '4', sm: '10' }}
+              bg={{ base: 'transparent', sm: 'bg.surface' }}
+              boxShadow={{ base: 'none', sm: 'md' }}
+              borderRadius={{ base: 'none', sm: 'xl' }}>
+              <Stack spacing='6'>
+                <Stack spacing='5'>
+                  <FormControl isInvalid={usernameError}>
+                    <FormLabel htmlFor='username'>Username</FormLabel>
+                    <Input id='username' type='text' value={username} onChange={(e) => setUsername(e.target.value)} />
+                    <FormErrorMessage>{usernameError}</FormErrorMessage>
+                  </FormControl>
+                  <PasswordField passwordError={passwordError} onChange={(e) => setPassword(e.target.value)} />
+                </Stack>
+                {error && <Text color='red.500'>{error}</Text>}
+
+                <Stack spacing='6'>
+                  <Button
+                    type='button'
+                    colorScheme='blue'
+                    onClick={onButtonClick}
+                    isLoading={loading}
+                    loadingText={'Signing in'}>
+                    Sign in
+                  </Button>
+                  <Button type='button' colorScheme='blue' onClick={onGitButtonClick} isLoading={false}>
+                    Sign in with cloud18
+                  </Button>
+                </Stack>
+              </Stack>
+            </Box>
+          </Stack>
+        </Container>
       </Suspense>
     </PageContainer>
   )

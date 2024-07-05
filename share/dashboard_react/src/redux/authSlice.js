@@ -31,8 +31,16 @@ export const authSlice = createSlice({
   reducers: {
     logout: (state, action) => {
       localStorage.removeItem('user_token')
+      localStorage.removeItem('username')
       state.user = null
       state.isLogged = false
+    },
+    setUserData:(state, action)=>{
+      const username =  localStorage.getItem('username')
+      state.user = {
+          username: username
+        }
+
     }
   },
   extraReducers: (builder) => {
@@ -45,6 +53,7 @@ export const authSlice = createSlice({
         const { token } = payload
         const { arg } = meta
         localStorage.setItem('user_token', token)
+        localStorage.setItem('username', arg.username)
         state.loading = false
         state.isLogged = true
         state.user = {
@@ -72,7 +81,7 @@ export const authSlice = createSlice({
 })
 
 // this is for dispatch
-export const { logout } = authSlice.actions
+export const { logout,setUserData } = authSlice.actions
 
 // this is for configureStore
 export default authSlice.reducer

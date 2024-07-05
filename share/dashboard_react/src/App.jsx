@@ -1,9 +1,9 @@
-import {lazy} from 'react' 
+import React, { lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import PageContainer from './components/PageContainer'
-const Login = lazy(()=>import('./components/Login'))
-const Dashboard = lazy(()=>import('./components/Dashboard'))
+const Login = lazy(() => import('./components/Login'))
+const Dashboard = lazy(() => import('./components/Dashboard'))
 
 function App() {
   return (
