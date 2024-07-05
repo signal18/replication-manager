@@ -201,7 +201,7 @@ func (server *ServerMonitor) ReseedPhysicalBackup(task string) error {
 
 		go server.JobRunViaSSH(task)
 		//Wait for socat init
-		time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
+		time.Sleep(2 * time.Second)
 
 		cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
 	} else {
@@ -572,7 +572,7 @@ func (server *ServerMonitor) JobReseedMysqldump(task string) {
 	go server.JobRunViaSSH(task)
 
 	//Wait for ssh task to open port
-	time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
+	time.Sleep(2 * time.Second)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Sending logical backup to reseed %s", server.URL)
 	if master != nil {
@@ -1241,6 +1241,9 @@ func (server *ServerMonitor) JobRunViaSSH(task string) error {
 	out = stdout.String()
 	errstr = stderr.String()
 
+	//Wait for write-log parser so the log will be fully sent
+	time.Sleep(2 * time.Second)
+
 	//Log Task - Debug Level
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, stderr.String())
 
@@ -1651,7 +1654,7 @@ func (server *ServerMonitor) StartSlaveCallback(dt DBTask) error {
 			server.StartSlave()
 			return nil
 		} else {
-			time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
+			time.Sleep(2 * time.Second)
 			return server.StartSlaveCallback(dt)
 		}
 	}
