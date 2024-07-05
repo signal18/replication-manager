@@ -128,6 +128,12 @@ func TestMySQLVersion(t *testing.T) {
 		t.Error("Between(10,11) is true (Incorrect)")
 	}
 
+	if mv.GreaterEqualReleaseList("8.0.29", "5.6", "8.1") {
+		t.Error("GreaterEqualReleaseList('8.0.29', '5.6', '8.1') is true (Incorrect)")
+	} else {
+		t.Log("GreaterEqualReleaseList('8.0.29', '5.6', '8.1') is false (Correct)")
+	}
+
 }
 
 func TestMariaDBVersion(t *testing.T) {
