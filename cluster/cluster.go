@@ -111,6 +111,7 @@ type Cluster struct {
 	WorkLoad                      WorkLoad              `json:"workLoad"`
 	LogPushover                   *log.Logger           `json:"-"`
 	Log                           s18log.HttpLog        `json:"log"`
+	LogTask                       s18log.HttpLog        `json:"logTask"`
 	LogSlack                      *log.Logger           `json:"-"`
 	JobResults                    map[string]*JobResult `json:"jobResults"`
 	Grants                        map[string]string     `json:"-"`
@@ -363,6 +364,7 @@ func (cluster *Cluster) InitFromConf() {
 	}
 	cluster.benchmarkType = "sysbench"
 	cluster.Log = s18log.NewHttpLog(200)
+	cluster.LogTask = s18log.NewHttpLog(200)
 
 	cluster.MonitorType = cluster.Conf.GetMonitorType()
 	cluster.TopologyType = cluster.Conf.GetTopologyType()
