@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	gzip "github.com/klauspost/pgzip"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
@@ -709,17 +710,274 @@ func (server *ServerMonitor) GetMasterBackupDirectory() string {
 
 }
 
+func (server *ServerMonitor) JobBackupScript() error {
+	var err error
+	cluster := server.ClusterGroup
+
+	scriptCmd := exec.Command(cluster.Conf.BackupSaveScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
+	stdoutIn, _ := scriptCmd.StdoutPipe()
+	stderrIn, _ := scriptCmd.StderrPipe()
+	scriptCmd.Start()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stdoutIn)
+	}()
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stderrIn)
+	}()
+
+	wg.Wait()
+
+	if err = scriptCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Backup script error: %s", err)
+		return err
+	} else {
+		server.SetBackupLogicalCookie()
+	}
+	return err
+}
+
+func (server *ServerMonitor) JobBackupMysqldump() error {
+	cluster := server.ClusterGroup
+	var err error
+	var bckConn *sqlx.DB
+
+	//Block DDL For Backup
+	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.4") && cluster.Conf.BackupLockDDL {
+		bckConn, err = server.GetNewDBConn()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
+		}
+		defer bckConn.Close()
+
+		_, err = bckConn.Exec("BACKUP STAGE START")
+		if err != nil {
+			cluster.LogSQL("BACKUP STAGE START", err, server.URL, "JobBackupLogical", config.LvlWarn, "Failed SQL for server %s: %s ", server.URL, err)
+		}
+		_, err = bckConn.Exec("BACKUP STAGE BLOCK_DDL")
+		if err != nil {
+			cluster.LogSQL("BACKUP BLOCK_DDL", err, server.URL, "JobBackupLogical", config.LvlWarn, "Failed SQL for server %s: %s ", server.URL, err)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Blocking DDL via BACKUP STAGE")
+	}
+
+	file, err2 := cluster.CreateTmpClientConfFile()
+	if err2 != nil {
+		return err2
+	}
+	defer os.Remove(file)
+	usegtid := server.JobGetDumpGtidParameter()
+	events := ""
+	dumpslave := ""
+	//		if !server.HasMySQLGTID() {
+	if server.IsMaster() {
+		dumpslave = "--master-data=1"
+	} else {
+		dumpslave = "--dump-slave=1"
+	}
+	//	}
+	if server.HasEventScheduler() {
+		events = "--events=true"
+	} else {
+		events = "--events=false"
+	}
+
+	dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
+	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser() /*"--log-error="+server.GetMyBackupDirectory()+"dump_error.log"*/)
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
+	f, err := os.Create(server.GetMyBackupDirectory() + "mysqldump.sql.gz")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump backup request: %s", err)
+		return err
+	}
+	wf := bufio.NewWriter(f)
+	gw := gzip.NewWriter(wf)
+	//fw := bufio.NewWriter(gw)
+	dumpCmd.Stdout = gw
+	stderrIn, _ := dumpCmd.StderrPipe()
+	err = dumpCmd.Start()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
+		return err
+	}
+
+	errCh := make(chan error, 2) // Create a channel to send errors
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stderrIn)
+	}()
+	go func() {
+		defer wg.Done()
+		err := dumpCmd.Wait()
+
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "mysqldump: %s", err)
+			errCh <- fmt.Errorf("Error mysqldump: %w", err) // Send the error through the channel with more context
+		} else {
+			server.SetBackupLogicalCookie()
+		}
+		gw.Flush()
+		gw.Close()
+		wf.Flush()
+		f.Close()
+	}()
+
+	// Wait for goroutines to finish
+	wg.Wait()
+
+	// Check for errors
+	select {
+	case err := <-errCh:
+		// Handle the error here
+		fmt.Println("Error occurred:", err)
+	default:
+		// No errors occurred
+		fmt.Println("No errors occurred")
+	}
+
+	return err
+}
+
+func (server *ServerMonitor) JobBackupMyDumper() error {
+	cluster := server.ClusterGroup
+	var err error
+	var bckConn *sqlx.DB
+
+	//Block DDL For Backup
+	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.4") && cluster.Conf.BackupLockDDL {
+		bckConn, err = server.GetNewDBConn()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
+		}
+		defer bckConn.Close()
+
+		_, err = bckConn.Exec("BACKUP STAGE START")
+		if err != nil {
+			cluster.LogSQL("BACKUP STAGE START", err, server.URL, "JobBackupLogical", config.LvlWarn, "Failed SQL for server %s: %s ", server.URL, err)
+		}
+		_, err = bckConn.Exec("BACKUP STAGE BLOCK_DDL")
+		if err != nil {
+			cluster.LogSQL("BACKUP BLOCK_DDL", err, server.URL, "JobBackupLogical", config.LvlWarn, "Failed SQL for server %s: %s ", server.URL, err)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Blocking DDL via BACKUP STAGE")
+	}
+
+	threads := strconv.Itoa(cluster.Conf.BackupLogicalDumpThreads)
+	myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyDumperOptions, "  ", " "), " ")
+	myargs = append(myargs, "--outputdir="+server.GetMyBackupDirectory(), "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
+	dumpCmd := exec.Command(cluster.GetMyDumperPath(), myargs...)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "%s", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", 1))
+	stdoutIn, _ := dumpCmd.StdoutPipe()
+	stderrIn, _ := dumpCmd.StderrPipe()
+	dumpCmd.Start()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stdoutIn)
+	}()
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stderrIn)
+	}()
+	wg.Wait()
+	if err = dumpCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyDumper: %s", err)
+	} else {
+		server.SetBackupLogicalCookie()
+	}
+	return err
+}
+
+func (server *ServerMonitor) JobBackupDumpling() error {
+	var err error
+	cluster := server.ClusterGroup
+
+	conf := dumplingext.DefaultConfig()
+	conf.Database = ""
+	conf.Host = misc.Unbracket(server.Host)
+	conf.User = cluster.GetDbUser()
+	conf.Port, _ = strconv.Atoi(server.Port)
+	conf.Password = cluster.GetDbPass()
+
+	conf.Threads = cluster.Conf.BackupLogicalDumpThreads
+	conf.FileSize = 1000
+	conf.StatementSize = dumplingext.UnspecifiedSize
+	conf.OutputDirPath = server.GetMyBackupDirectory()
+	conf.Consistency = "flush"
+	conf.NoViews = true
+	conf.StatusAddr = ":8281"
+	conf.Rows = dumplingext.UnspecifiedSize
+	conf.Where = ""
+	conf.EscapeBackslash = true
+	conf.LogLevel = config.LvlInfo
+
+	err = dumplingext.Dump(conf)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Dumpling %s", err)
+
+	return err
+}
+
+func (server *ServerMonitor) JobBackupRiver() error {
+	var err error
+	cluster := server.ClusterGroup
+
+	cfg := new(river.Config)
+	cfg.MyHost = server.URL
+	cfg.MyUser = server.User
+	cfg.MyPassword = server.Pass
+	cfg.MyFlavor = "mariadb"
+
+	//	cfg.ESAddr = *es_addr
+	cfg.StatAddr = "127.0.0.1:12800"
+	cfg.DumpServerID = 1001
+
+	cfg.DumpPath = cluster.Conf.WorkingDir + "/" + cluster.Name + "/river"
+	cfg.DumpExec = cluster.GetMysqlDumpPath()
+	cfg.DumpOnly = true
+	cfg.DumpInit = true
+	cfg.BatchMode = "CSV"
+	cfg.BatchSize = 100000
+	cfg.BatchTimeOut = 1
+	cfg.DataDir = cluster.Conf.WorkingDir + "/" + cluster.Name + "/river"
+
+	os.RemoveAll(cfg.DumpPath)
+
+	//cfg.Sources = []river.SourceConfig{river.SourceConfig{Schema: "test", Tables: []string{"test", "[*]"}}}
+	cfg.Sources = []river.SourceConfig{river.SourceConfig{Schema: "test", Tables: []string{"City"}}}
+
+	_, err = river.NewRiver(cfg)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error river backup: %s", err)
+	}
+
+	return err
+}
+
 func (server *ServerMonitor) JobBackupLogical() error {
 	//server can be nil as no dicovered master
 	if server == nil {
-		return errors.New("No server define")
+		return errors.New("No server defined")
 	}
+
 	cluster := server.ClusterGroup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if server.IsDown() {
 		return errors.New("Can't backup when server down")
 	}
 
+	//Wait for previous restic backup
 	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
 		cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
@@ -730,196 +988,24 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	cluster.SetInLogicalBackupState(true)
 	defer cluster.SetInLogicalBackupState(false)
 
+	// Removing previous valid backup state and start
 	server.DelBackupLogicalCookie()
-	if server.IsMariaDB() && server.DBVersion.Major == 10 &&
-		server.DBVersion.Minor >= 4 &&
-		cluster.Conf.BackupLockDDL &&
-		(cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump || cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper) {
-		bckConn, err := server.GetNewDBConn()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
-		}
-		defer bckConn.Close()
-		_, err = bckConn.Exec("BACKUP STAGE START")
-		cluster.LogSQL("BACKUP STAGE START", err, server.URL, "JobBackupLogical", config.LvlErr, "Failed SQL for server %s: %s ", server.URL, err)
-		_, err = bckConn.Exec("BACKUP STAGE BLOCK_DDL")
-		cluster.LogSQL("BACKUP BLOCK_DDL", err, server.URL, "JobBackupLogical", config.LvlErr, "Failed SQL for server %s: %s ", server.URL, err)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Blocking DDL via BACKUP STAGE")
-	}
+
+	//Skip other type if using backup script
 	if cluster.Conf.BackupSaveScript != "" {
-		scriptCmd := exec.Command(cluster.Conf.BackupSaveScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
-		stdoutIn, _ := scriptCmd.StdoutPipe()
-		stderrIn, _ := scriptCmd.StderrPipe()
-		scriptCmd.Start()
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			server.copyLogs(stdoutIn)
-		}()
-		go func() {
-			defer wg.Done()
-			server.copyLogs(stderrIn)
-		}()
-		wg.Wait()
-		if err := scriptCmd.Wait(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Backup script error: %s", err)
-			return err
-		} else {
-			server.SetBackupLogicalCookie()
-		}
-		return nil
-	}
-	if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeRiver {
-		cfg := new(river.Config)
-		cfg.MyHost = server.URL
-		cfg.MyUser = server.User
-		cfg.MyPassword = server.Pass
-		cfg.MyFlavor = "mariadb"
-
-		//	cfg.ESAddr = *es_addr
-		cfg.StatAddr = "127.0.0.1:12800"
-		cfg.DumpServerID = 1001
-
-		cfg.DumpPath = cluster.Conf.WorkingDir + "/" + cluster.Name + "/river"
-		cfg.DumpExec = cluster.GetMysqlDumpPath()
-		cfg.DumpOnly = true
-		cfg.DumpInit = true
-		cfg.BatchMode = "CSV"
-		cfg.BatchSize = 100000
-		cfg.BatchTimeOut = 1
-		cfg.DataDir = cluster.Conf.WorkingDir + "/" + cluster.Name + "/river"
-
-		os.RemoveAll(cfg.DumpPath)
-
-		//cfg.Sources = []river.SourceConfig{river.SourceConfig{Schema: "test", Tables: []string{"test", "[*]"}}}
-		cfg.Sources = []river.SourceConfig{river.SourceConfig{Schema: "test", Tables: []string{"City"}}}
-
-		river.NewRiver(cfg)
+		return server.JobBackupScript()
 	}
 
-	// Blocking DDL
-	if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
-		file, err2 := cluster.CreateTmpClientConfFile()
-		if err2 != nil {
-			return err2
-		}
-		defer os.Remove(file)
-		usegtid := server.JobGetDumpGtidParameter()
-		events := ""
-		dumpslave := ""
-		//		if !server.HasMySQLGTID() {
-		if server.IsMaster() {
-			dumpslave = "--master-data=1"
-		} else {
-			dumpslave = "--dump-slave=1"
-		}
-		//	}
-		if server.HasEventScheduler() {
-			events = "--events=true"
-		} else {
-			events = "--events=false"
-		}
-
-		dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
-		dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser() /*"--log-error="+server.GetMyBackupDirectory()+"dump_error.log"*/)
-		dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
-		f, err := os.Create(server.GetMyBackupDirectory() + "mysqldump.sql.gz")
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump backup request: %s", err)
-			return err
-		}
-		wf := bufio.NewWriter(f)
-		gw := gzip.NewWriter(wf)
-		//fw := bufio.NewWriter(gw)
-		dumpCmd.Stdout = gw
-		stderrIn, _ := dumpCmd.StderrPipe()
-		err = dumpCmd.Start()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
-			return err
-		}
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			server.copyLogs(stderrIn)
-		}()
-		go func() {
-			defer wg.Done()
-			err := dumpCmd.Wait()
-
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "mysqldump: %s", err)
-			} else {
-				server.SetBackupLogicalCookie()
-			}
-			gw.Flush()
-			gw.Close()
-			wf.Flush()
-			f.Close()
-		}()
-		wg.Wait()
-
-	}
-
-	if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeDumpling {
-
-		conf := dumplingext.DefaultConfig()
-		conf.Database = ""
-		conf.Host = misc.Unbracket(server.Host)
-		conf.User = cluster.GetDbUser()
-		conf.Port, _ = strconv.Atoi(server.Port)
-		conf.Password = cluster.GetDbPass()
-
-		conf.Threads = cluster.Conf.BackupLogicalDumpThreads
-		conf.FileSize = 1000
-		conf.StatementSize = dumplingext.UnspecifiedSize
-		conf.OutputDirPath = server.GetMyBackupDirectory()
-		conf.Consistency = "flush"
-		conf.NoViews = true
-		conf.StatusAddr = ":8281"
-		conf.Rows = dumplingext.UnspecifiedSize
-		conf.Where = ""
-		conf.EscapeBackslash = true
-		conf.LogLevel = config.LvlInfo
-
-		err := dumplingext.Dump(conf)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Dumpling %s", err)
-
-	}
-
-	if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
-		//  --no-schemas     --regex '^(?!(mysql))'
-
-		threads := strconv.Itoa(cluster.Conf.BackupLogicalDumpThreads)
-		myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyDumperOptions, "  ", " "), " ")
-		myargs = append(myargs, "--outputdir="+server.GetMyBackupDirectory(), "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
-		dumpCmd := exec.Command(cluster.GetMyDumperPath(), myargs...)
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "%s", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", 1))
-		stdoutIn, _ := dumpCmd.StdoutPipe()
-		stderrIn, _ := dumpCmd.StderrPipe()
-		dumpCmd.Start()
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			server.copyLogs(stdoutIn)
-		}()
-		go func() {
-			defer wg.Done()
-			server.copyLogs(stderrIn)
-		}()
-		wg.Wait()
-		if err := dumpCmd.Wait(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyDumper: %s", err)
-		} else {
-			server.SetBackupLogicalCookie()
-		}
+	//Change to switch since we only allow one type of backup (for now)
+	switch cluster.Conf.BackupLogicalType {
+	case config.ConstBackupLogicalTypeMysqldump:
+		server.JobBackupMysqldump()
+	case config.ConstBackupLogicalTypeDumpling:
+		server.JobBackupDumpling()
+	case config.ConstBackupLogicalTypeMydumper:
+		server.JobBackupMyDumper()
+	case config.ConstBackupLogicalTypeRiver:
+		server.JobBackupRiver()
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
