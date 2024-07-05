@@ -1,16 +1,25 @@
 import { Box, Flex, Image, Button, Spacer, Text, HStack, useColorMode, IconButton } from '@chakra-ui/react'
-import React from 'react'
-import { useDispatch } from 'react-redux'
+import React, { useEffect } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
+import ThemeIcon from '../ThemeIcon'
 import RefreshCounter from '../RefreshCounter'
-import { HiMoon } from 'react-icons/hi'
+import { HiMoon, HiSun } from 'react-icons/hi'
+import { isAuthorized } from '../../utility/common'
 
-function Navbar({ username }) {
+function Navbar({ username, theme }) {
   const dispatch = useDispatch()
-  const { toggleColorMode } = useColorMode()
+  const {
+    common: { isMobile, isTablet, isDesktop }
+  } = useSelector((state) => state)
+
   const styles = {
     navbarContainer: {
-      boxShadow: '0px -1px 8px #BFC1CB'
+      boxShadow: theme === 'dark' ? 'none' : '0px -1px 8px #BFC1CB'
+    },
+    logo: {
+      bg: '#eff2fe',
+      borderRadius: '4px'
     }
   }
 
@@ -18,34 +27,41 @@ function Navbar({ username }) {
     dispatch(logout())
   }
   return (
-    <Flex as='nav' p='10px' sx={styles.navbarContainer} gap='2' align='center'>
-      <Image
-        loading='lazy'
-        height='50px'
-        width='300px'
-        objectFit='contain'
-        src='/images/logo.png'
-        alt='Replication Manager'
-      />
-      <Spacer />
-
-      <RefreshCounter />
-
-      <Spacer />
-      <HStack spacing='4'>
-        {username && <Text>{`Welcome, ${username}`}</Text>}
-        <Button type='button' colorScheme='blue' onClick={handleLogout}>
-          Logout
-        </Button>
-        <IconButton
-          onClick={toggleColorMode}
-          icon={<HiMoon fontSize='1.5rem' />}
-          size='sm'
-          variant='unstyled'
-          colorScheme='blue'
+    <>
+      <Flex as='nav' p='10px' sx={styles.navbarContainer} gap='2' align='center'>
+        <Image
+          loading='lazy'
+          height='50px'
+          width={isMobile ? '180px' : 'fit-content'}
+          sx={styles.logo}
+          objectFit='contain'
+          src='/images/logo.png'
+          alt='Replication Manager'
         />
-      </HStack>
-    </Flex>
+        <Spacer />
+
+        {isAuthorized() && !isMobile && <RefreshCounter />}
+
+        <Spacer />
+        <HStack spacing='4'>
+          {isAuthorized() && (
+            <>
+              {username && !isMobile && <Text>{`Welcome, ${username}`}</Text>}{' '}
+              <Button type='button' size={{ base: 'sm' }} colorScheme='blue' onClick={handleLogout}>
+                Logout
+              </Button>
+            </>
+          )}
+
+          <ThemeIcon />
+        </HStack>
+      </Flex>
+      {isAuthorized() && isMobile && (
+        <Box mx='auto' p='16px'>
+          <RefreshCounter />
+        </Box>
+      )}
+    </>
   )
 }
 

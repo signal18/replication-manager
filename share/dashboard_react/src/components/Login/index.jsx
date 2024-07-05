@@ -21,7 +21,8 @@ import {
   Text,
   background,
   useDisclosure,
-  useMergeRefs
+  useMergeRefs,
+  useTheme
 } from '@chakra-ui/react'
 import PageContainer from '../PageContainer'
 import { HiEye, HiEyeOff } from 'react-icons/hi'
@@ -33,10 +34,12 @@ function Login(props) {
   const [usernameError, setUsernameError] = useState('')
   const [passwordError, setPasswordError] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const theme = useTheme()
 
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const {
+    common: { theme: currentTheme },
     auth: { isLogged, loading, user, error }
   } = useSelector((state) => state)
 
@@ -59,8 +62,28 @@ function Login(props) {
 
   const styles = {
     loginContainer: {
-      bg: '#fff'
-    }
+      bg:'#fff',
+      label:{
+        color:theme.colors.primary.dark
+      
+      },
+      input:{
+        color:theme.colors.primary.dark,
+        borderColor:'var(--chakra-colors-gray-200)',
+        '&:hover':{
+           borderColor:'var(--chakra-colors-gray-200)',
+        }
+      },
+     
+    },
+     errorMessage:{
+        color: 'var(--chakra-colors-red-500)'
+      },
+      revealButton:{
+        svg:{
+          fill:theme.colors.primary.dark
+        }
+      }
   }
 
   const onButtonClick = () => {
@@ -98,17 +121,8 @@ function Login(props) {
         <Container maxWidth='lg' py={{ base: '12', md: '24' }} px={{ base: '0', sm: '8' }}>
           <Stack spacing='8'>
             <Stack spacing='6'>
-              <Image
-                loading='lazy'
-                margin='auto'
-                height='100px'
-                width='300px'
-                objectFit='contain'
-                src='/images/logo.png'
-                alt='Replication Manager'
-              />
               <Stack spacing={{ base: '2', md: '3' }} textAlign='center'>
-                <Heading size={{ base: 'xs', md: 'sm' }}>Log in to your account</Heading>
+                <Heading size='md'>Sign in to your account</Heading>
               </Stack>
             </Stack>
             <Box
@@ -123,9 +137,9 @@ function Login(props) {
                   <FormControl isInvalid={usernameError}>
                     <FormLabel htmlFor='username'>Username</FormLabel>
                     <Input id='username' type='text' value={username} onChange={(e) => setUsername(e.target.value)} />
-                    <FormErrorMessage>{usernameError}</FormErrorMessage>
+                    <FormErrorMessage sx={styles.errorMessage}>{usernameError}</FormErrorMessage>
                   </FormControl>
-                  <PasswordField passwordError={passwordError} onChange={(e) => setPassword(e.target.value)} />
+                  <PasswordField passwordError={passwordError} onChange={(e) => setPassword(e.target.value)} styles={styles} />
                 </Stack>
                 {error && <Text color='red.500'>{error}</Text>}
 
@@ -171,6 +185,7 @@ const PasswordField = forwardRef((props, ref) => {
       <InputGroup>
         <InputRightElement>
           <IconButton
+          sx={props.styles.revealButton}
             variant='text'
             aria-label={isOpen ? 'Mask password' : 'Reveal password'}
             icon={isOpen ? <HiEyeOff /> : <HiEye />}
@@ -178,6 +193,7 @@ const PasswordField = forwardRef((props, ref) => {
           />
         </InputRightElement>
         <Input
+         
           id='password'
           ref={mergeRef}
           name='password'
@@ -188,7 +204,7 @@ const PasswordField = forwardRef((props, ref) => {
           {...props}
         />
       </InputGroup>
-      <FormErrorMessage>{props.passwordError}</FormErrorMessage>
+      <FormErrorMessage sx={props.styles.errorMessage}>{props.passwordError}</FormErrorMessage>
     </FormControl>
   )
 })

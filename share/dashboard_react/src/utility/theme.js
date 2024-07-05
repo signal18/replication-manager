@@ -4,13 +4,10 @@ import { extendTheme } from '@chakra-ui/react'
 const theme = extendTheme({
   colors: {
     primary: {
-      light: '#6CB4EE',
-      dark: '#3C82C3'
+      light: '#eff2fe',
+      dark: '#131A34'
     },
-    background: {
-      light: '#FFFFFF',
-      dark: '#1A202C'
-    },
+
     text: {
       light: '#333333',
       dark: '#FFFFFF'
@@ -21,13 +18,27 @@ const theme = extendTheme({
     useSystemColorMode: false // Optional: enables automatic switching based on system preferences
   },
   styles: {
-    global: {
+    global: (props) => ({
       // Global styles
       body: {
-        bg: 'background.light',
-        color: 'text.light'
+        bg: props.colorMode === 'dark' ? 'primary.dark' : 'primary.light',
+        color: props.colorMode === 'dark' ? 'text.dark' : 'text.light'
+      },
+      'html, body':{
+        height: '100%',
+        width: '100%',
+        margin: 0,
+        padding: 0,
+        overflow: 'hidden',
+      },
+      '#root': {
+        height: '100%',
+        width: '100%',
+      },
+      'html, body,p, label': {
+        color: props.colorMode === 'dark' ? 'text.dark' : 'text.light'
       }
-    }
+    })
   }
 })
 
