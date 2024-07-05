@@ -67,10 +67,21 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	server.ExecQueryNoBinLog("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
 	err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task)) engine=innodb")
 	if err != nil {
-		// if cluster.Conf.LogLevel > 2 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't create table replication_manager_schema.jobs")
-		// }
+		return err
 	}
+	//Add column instead of changing create table for compatibility
+	err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD COLUMN IF NOT EXISTS state tinyint not null default 0 AFTER `done`")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
+	}
+
+	//Add index
+	err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD INDEX IF NOT EXISTS idx3 (task, state)")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
+	}
+
 	return err
 }
 
@@ -83,17 +94,27 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 	server.JobsCreateTable()
 	conn, err := server.GetNewDBConn()
 	if err != nil {
-		// if cluster.Conf.LogLevel > 2 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't connect")
-		// }
 		return 0, err
 	}
+
+	var cnt int
+	err = server.Conn.Get(&cnt, "SELECT count(id) ct FROM `replication_manager_schema`.`jobs` WHERE `task` = '"+task+"' and `state` < 3")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Job can not query to replication_manager_schema.jobs table. Error: %s", err.Error())
+		return 0, err
+	}
+
+	if cnt > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Skip insert task for %s, previous task is exists", task)
+		err = errors.New("Skip insert tasks, previous task is exists")
+		return 0, err
+	}
+
 	defer conn.Close()
 	_, err = conn.Exec("set sql_log_bin=0")
 	if err != nil {
-		// if cluster.Conf.LogLevel > 2 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't disable binlog for session")
-		// }
 		return 0, err
 	}
 
@@ -109,6 +130,8 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 }
 
 func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
+	var err error
+
 	//server can be nil as no dicovered master
 	if server == nil {
 		return 0, nil
@@ -140,7 +163,6 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 		} else {
 	*/
 	var port string
-	var err error
 	var backupext string = ".xbtream"
 	if cluster.Conf.CompressBackups {
 		backupext = backupext + ".gz"
@@ -778,11 +800,11 @@ func (server *ServerMonitor) JobBackupScript() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "BACKUP")
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "SCRIPT")
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "BACKUP")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "SCRIPT")
 	}()
 
 	wg.Wait()
@@ -867,7 +889,7 @@ func (server *ServerMonitor) JobBackupMysqldump() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "BACKUP")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "DUMP")
 	}()
 	go func() {
 		defer wg.Done()
@@ -939,11 +961,11 @@ func (server *ServerMonitor) JobBackupMyDumper() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "BACKUP")
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "MYDUMPER")
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "BACKUP")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "MYDUMPER")
 	}()
 	wg.Wait()
 	if err = dumpCmd.Wait(); err != nil {
@@ -1076,7 +1098,7 @@ func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string, tag
 		if !s.Scan() {
 			break
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s - %s] %s", server.Name, tag, s.Text())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s|%s] %s", server.Name, tag, s.Text())
 		}
 	}
 }

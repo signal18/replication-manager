@@ -956,6 +956,28 @@ const (
 	ConstLogNameMaxscale       string = "log-maxscale"
 	ConstLogNameGraphite       string = "log-graphite"
 	ConstLogNamePurge          string = "log-binlog-purge"
+	ConstLogNameTask           string = "log-task"
+)
+
+/*
+This is the list of task to be used in SSH
+*/
+const (
+	ConstTaskXB        string = "xtrabackup"
+	ConstTaskMB        string = "mariabackup"
+	ConstTaskError     string = "error"
+	ConstTaskSlowQuery string = "slowquery"
+	ConstTaskZFS       string = "zfssnapback"
+	ConstTaskOptimize  string = "optimize"
+	ConstTaskReseedXB  string = "reseedxtrabackup"
+	ConstTaskReseedMB  string = "reseedmariabackup"
+	ConstTaskDump      string = "reseedmysqldump"
+	ConstTaskFlashXB   string = "flashbackxtrabackup"
+	ConstTaskFlashMB   string = "flashbackmariadbackup"
+	ConstTaskFlashDump string = "flashbackmysqldump"
+	ConstTaskStop      string = "stop"
+	ConstTaskRestart   string = "restart"
+	ConstTaskStart     string = "start"
 )
 
 /*
@@ -2065,6 +2087,17 @@ func GetTagsForLog(module int) string {
 	return ""
 }
 
+// If task is about backup and reseed, it will use log backup stream else will use log task
+func GetModuleNameForTask(task string) string {
+	switch task {
+	case ConstTaskXB, ConstTaskMB, ConstTaskReseedXB, ConstTaskReseedMB, ConstTaskDump, ConstTaskFlashXB, ConstTaskFlashMB, ConstTaskFlashDump:
+		return ConstLogNameBackupStream
+	default:
+		return ConstLogNameTask
+
+	}
+}
+
 func GetIndexFromModuleName(module string) int {
 	switch module {
 	case ConstLogNameGeneral:
@@ -2101,6 +2134,8 @@ func GetIndexFromModuleName(module string) int {
 		return ConstLogModGraphite
 	case ConstLogNamePurge:
 		return ConstLogModPurge
+	case ConstLogNameTask:
+		return ConstLogModTask
 	}
 	return -1
 }

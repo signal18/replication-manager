@@ -51,8 +51,11 @@ func (server *ServerMonitor) GetSshEnv() string {
 	return "export REPLICATION_MANAGER_HOST_USER=\"" + server.User + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + server.Pass + "\";export MYSQL_ROOT_PASSWORD=\"" + server.Pass + "\";export REPLICATION_MANAGER_URL=\"https://" + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + server.Host + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + server.Port + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + server.ClusterGroup.Name + "\"\n"
 }
 
+// Log Level will always be debug to prevent too verbose
 func (server *ServerMonitor) GetSshLogEnv(task string) string {
-	return fmt.Sprintf("export JOB_NAME_ENV=\"%s\";export LOG_MODULE_ENV=\"%s\";export LOG_LEVEL_ENV=\"%s\";export LOG_BATCH_LINES_ENV=\"%d\"\n", task, config.ConstLogNameOrchestrator, config.LvlInfo, server.GetClusterConfig().JobLogBatchSize)
+	var module string = config.GetModuleNameForTask(task)
+
+	return fmt.Sprintf("export JOB_NAME_ENV=\"%s\";export LOG_MODULE_ENV=\"%s\";export LOG_LEVEL_ENV=\"%s\";export LOG_BATCH_LINES_ENV=\"%d\"\n", task, module, config.LvlDbg, server.GetClusterConfig().JobLogBatchSize)
 }
 
 func (server *ServerMonitor) GetUniversalGtidServerID() uint64 {

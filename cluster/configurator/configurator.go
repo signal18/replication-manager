@@ -575,10 +575,10 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 					json.Unmarshal([]byte(variable.Value), &f)
 					fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
 					dir := filepath.Dir(fpath)
-					/*		if server.ClusterGroup.Conf.LogLevel > 2 {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config create %s", fpath)
-							}
-					*/
+					// if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+					// 	log.Debugf("Config create %s", fpath)
+					// }
+
 					// create directory
 					if _, err := os.Stat(dir); os.IsNotExist(err) {
 						err := os.MkdirAll(dir, os.FileMode(0775))
