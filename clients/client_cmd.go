@@ -285,7 +285,7 @@ func initApiFlags(cmd *cobra.Command) {
 func initServerFlags(cmd *cobra.Command) {
 	initServerApiFlags(serverCmd)
 	serverCmd.Flags().StringVar(&cliServerID, "id", "", "server id")
-	serverCmd.Flags().StringVar(&cliServerset, "set", "", "maintenance=on|maintenance=off|maintenance=switch|ignored=switch|prefered=switch")
+	serverCmd.Flags().StringVar(&cliServerSet, "set", "", "maintenance=on|maintenance=off|maintenance=switch|ignored=switch|prefered=switch")
 	serverCmd.Flags().StringVar(&cliServerGet, "get", "", "processlist|slow-query|digest-statements-pfs|errors|status-delta|innodb-status|variables|meta-data-locks|query-response-time")
 	serverCmd.Flags().StringVar(&cliServerAction, "action", "", "stop|start")
 

@@ -25,6 +25,11 @@ var serverCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		log.SetFormatter(&log.TextFormatter{})
 		cliInit(true)
+
+		if cliServerID == "" {
+			fmt.Fprintf(os.Stderr, "API call error: %s", "No server id specified")
+			os.Exit(1)
+		}
 		urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/servers"
 		if strings.Contains(strings.ToLower(cliServerSet), "maintenance=on") {
 			urlpost += "/" + cliServerID + "/actions/set-maintenance"
@@ -84,11 +89,17 @@ var serverCmd = &cobra.Command{
 			urlpost += "/" + cliServerID + "/actions/unprovision"
 		}
 
-		_, err := cliAPICmd(urlpost, nil)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s", err)
+		if urlpost == "https://"+cliHost+":"+cliPort+"/api/clusters/"+cliClusters[cliClusterIndex]+"/servers" {
+			fmt.Fprintf(os.Stderr, "Command %s not found, try server --help", cliServerAction+cliServerGet+cliServerSet)
 			os.Exit(1)
 		}
+
+		res, err := cliAPICmd(urlpost, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "API call error: %s", err)
+			os.Exit(1)
+		}
+		fmt.Printf(res)
 		os.Exit(0)
 	},
 }
