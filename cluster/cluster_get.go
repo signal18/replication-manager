@@ -62,9 +62,10 @@ func (cluster *Cluster) GetMysqlDumpPath() string {
 		//if mysqldump installed
 		if path, err := exec.Command("which", "mysqldump").Output(); err == nil {
 			strpath := strings.TrimRight(string(path), "\r\n")
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Using from installer: %s\n", strpath)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Using from os package: %s\n", strpath)
 			return strpath
 		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Installed mysqldump not found, using from repman embed.")
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqldump"
 	}
 	return cluster.Conf.BackupMysqldumpPath
@@ -86,6 +87,13 @@ func (cluster *Cluster) GetMyLoaderPath() string {
 
 func (cluster *Cluster) GetMysqlBinlogPath() string {
 	if cluster.Conf.BackupMysqlbinlogPath == "" {
+		//if mysqlbinlog installed
+		if path, err := exec.Command("which", "mysqlbinlog").Output(); err == nil {
+			strpath := strings.TrimRight(string(path), "\r\n")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Using from os package: %s\n", strpath)
+			return strpath
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Installed mysqlbinlog not found, using from repman embed.")
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqlbinlog"
 	}
 	return cluster.Conf.BackupMysqlbinlogPath
