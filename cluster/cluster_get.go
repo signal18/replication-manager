@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"hash/crc64"
 	"os"
+	"os/exec"
 	"regexp"
 	"sort"
 	"strconv"
@@ -55,8 +56,13 @@ func (cluster *Cluster) GetShareDir() string {
 	return cluster.Conf.ShareDir
 }
 
+// This will use installed mysqldump first
 func (cluster *Cluster) GetMysqlDumpPath() string {
 	if cluster.Conf.BackupMysqldumpPath == "" {
+		//if mysqldump installed
+		if path, err := exec.Command("which", "mysqldump").Output(); err == nil {
+			return string(path)
+		}
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqldump"
 	}
 	return cluster.Conf.BackupMysqldumpPath
