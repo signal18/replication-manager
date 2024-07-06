@@ -333,6 +333,12 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/actions/maintenance") {
 			return true
 		}
+		if strings.Contains(URL, "/actions/set-maintenance") {
+			return true
+		}
+		if strings.Contains(URL, "/actions/del-maintenance") {
+			return true
+		}
 		if strings.Contains(URL, "/actions/wait-innodb-purge") {
 			return true
 		}

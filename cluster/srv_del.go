@@ -60,3 +60,7 @@ func (server *ServerMonitor) DelBackupLogicalCookie() error {
 func (server *ServerMonitor) DelBackupPhysicalCookie() error {
 	return server.delCookie("cookie_physicalbackup")
 }
+
+func (server *ServerMonitor) DelMaintenance() {
+	server.IsMaintenance = false
+}

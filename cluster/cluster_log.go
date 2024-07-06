@@ -311,12 +311,9 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 		}
 	}
 
+	tag := config.GetTagsForLog(module)
 	cliformat := format
-	//Skip re-format module general
-	if module > 0 {
-		cliformat = fmt.Sprintf("[%s] %s", config.GetTagsForLog(module), cliformat)
-	}
-	format = "[" + cluster.Name + "] " + padright(level, " ", 5) + " - " + format
+	format = "[" + cluster.Name + "] [" + tag + "] " + padright(level, " ", 5) + " - " + format
 
 	eligible := cluster.Conf.IsEligibleForPrinting(module, level)
 	//Write to htlog and tlog
@@ -327,11 +324,12 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 		}
 
 		if cluster.Conf.HttpServ {
+			httpformat := fmt.Sprintf("[%s] %s", tag, cliformat)
 			msg := s18log.HttpMessage{
 				Group:     cluster.Name,
 				Level:     level,
 				Timestamp: stamp,
-				Text:      fmt.Sprintf(cliformat, args...),
+				Text:      fmt.Sprintf(httpformat, args...),
 			}
 			line = cluster.htlog.Add(msg)
 			switch module {
@@ -346,47 +344,47 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 			// wrap logrus levels
 			switch level {
 			case "ERROR":
-				log.WithField("cluster", cluster.Name).Errorf(cliformat, args...)
+				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "log", "module": tag}).Errorf(cliformat, args...)
 				if cluster.Conf.SlackURL != "" {
-					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack"}).Errorf(cliformat, args...)
+					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack", "module": tag}).Errorf(cliformat, args...)
 				}
 				if cluster.Conf.TeamsUrl != "" {
 					go cluster.sendMsTeams(level, format, args...)
 				}
 			case "INFO":
-				log.WithField("cluster", cluster.Name).Infof(cliformat, args...)
+				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "log", "module": tag}).Infof(cliformat, args...)
 			case "DEBUG":
-				log.WithField("cluster", cluster.Name).Debugf(cliformat, args...)
+				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "log", "module": tag}).Debugf(cliformat, args...)
 			case "WARN":
-				log.WithField("cluster", cluster.Name).Warnf(cliformat, args...)
+				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "log", "module": tag}).Warnf(cliformat, args...)
 				if cluster.Conf.SlackURL != "" {
-					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack"}).Warnf(cliformat, args...)
+					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack", "module": tag}).Warnf(cliformat, args...)
 				}
 				if cluster.Conf.TeamsUrl != "" {
 					go cluster.sendMsTeams(level, format, args...)
 				}
 			case "TEST":
-				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "test", "channel": "StdOut"}).Infof(cliformat, args...)
+				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "test", "channel": "StdOut", "module": tag}).Infof(cliformat, args...)
 			case "BENCH":
-				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "benchmark", "channel": "StdOut"}).Infof(cliformat, args...)
+				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "benchmark", "channel": "StdOut", "module": tag}).Infof(cliformat, args...)
 			case "ALERT":
-				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut"}).Errorf(cliformat, args...)
+				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut", "module": tag}).Errorf(cliformat, args...)
 				if cluster.Conf.SlackURL != "" {
-					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack"}).Errorf(cliformat, args...)
+					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack", "module": tag}).Errorf(cliformat, args...)
 				}
 				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-					cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Pushover"}).Errorf(cliformat, args...)
+					cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Pushover", "module": tag}).Errorf(cliformat, args...)
 				}
 				if cluster.Conf.TeamsUrl != "" {
 					go cluster.sendMsTeams(level, format, args...)
 				}
 			case "START":
-				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut"}).Warnf(cliformat, args...)
+				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut", "module": tag}).Warnf(cliformat, args...)
 				if cluster.Conf.SlackURL != "" {
-					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "start", "channel": "Slack"}).Warnf(cliformat, args...)
+					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "start", "channel": "Slack", "module": tag}).Warnf(cliformat, args...)
 				}
 				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-					cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "start", "channel": "Pushover"}).Warnf(cliformat, args...)
+					cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "start", "channel": "Pushover", "module": tag}).Warnf(cliformat, args...)
 				}
 				if cluster.Conf.TeamsUrl != "" {
 					go cluster.sendMsTeams(level, format, args...)
@@ -412,7 +410,7 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 				}
 
 			default:
-				log.Printf(cliformat, args...)
+				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "log", "module": tag}).Printf(cliformat, args...)
 			}
 		}
 	}
