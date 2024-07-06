@@ -56,8 +56,16 @@ func (cluster *Cluster) GetShareDir() string {
 	return cluster.Conf.ShareDir
 }
 
+// This will use installed mysqldump first
 func (cluster *Cluster) GetMysqlDumpPath() string {
 	if cluster.Conf.BackupMysqldumpPath == "" {
+		//if mysqldump installed
+		if path, err := exec.Command("which", "mysqldump").Output(); err == nil {
+			strpath := strings.TrimRight(string(path), "\r\n")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Using from os package: %s\n", strpath)
+			return strpath
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Installed mysqldump not found, using from repman embed.")
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqldump"
 	}
 	return cluster.Conf.BackupMysqldumpPath
