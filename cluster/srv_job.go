@@ -1276,14 +1276,22 @@ func (server *ServerMonitor) JobRunViaSSH(task string) error {
 
 func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) error {
 	cluster := server.ClusterGroup
+	var err error
+
 	if !server.IsMaster() {
-		return errors.New("Copy only master binlog")
+		err = errors.New("Cancelling backup because server is not master")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s", err.Error())
+		return err
 	}
 	if cluster.IsInFailover() {
-		return errors.New("Cancel job copy binlog during failover")
+		err = errors.New("Cancel job copy binlog during failover")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s", err.Error())
+		return err
 	}
 	if !cluster.Conf.BackupBinlogs {
-		return errors.New("Copy binlog not enable")
+		err = errors.New("Copy binlog not enable")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s", err.Error())
+		return err
 	}
 
 	//Skip setting in backup state due to batch purging
@@ -1303,7 +1311,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	defer server.SetBackingUpBinaryLog(false)
 
 	cmdrun := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory(), binlogfile)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "%s", strings.Replace(cmdrun.String(), cluster.GetRplPass(), "XXXX", 1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "%s", strings.ReplaceAll(cmdrun.String(), cluster.GetRplPass(), "XXXX"))
 
 	var outrun bytes.Buffer
 	cmdrun.Stdout = &outrun
@@ -1597,6 +1605,10 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 		binlogpath := strings.Join(parts[:len(parts)-1], "/")
 
 		server.SetBinaryLogDir(binlogpath)
+	}
+
+	if !isPurge {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
 	}
 
 	switch cluster.Conf.BinlogCopyMode {

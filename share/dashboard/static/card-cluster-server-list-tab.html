@@ -94,6 +94,18 @@
             <td class="rowicon">Fail Cnt</td>
             <td>{{server.failCount}}/{{server.failSuspectHeartbeat}}</td>
           </tr>
+          <tr>
+            <td class="rowicon">Binary Log</td>
+            <td>{{server.binaryLogFile}}</td>
+          </tr>
+          <tr>
+            <td class="rowicon">Binary Log Oldest</td>
+            <td>{{server.binaryLogFileOldest}}</td>
+          </tr>
+          <tr>
+            <td class="rowicon">Binary Log Oldest Timestamp </td>
+            <td><span ng-if="server.binaryLogOldestTimestamp > 0">{{ (server.binaryLogOldestTimestamp * 1000) | date:'yyyy-MM-dd HH:mm:ss' }}</span></td>
+          </tr>
         </table>
         <div ng-repeat="replication in server.replications">
           <table style="width: 100%;" class="table table-condensed fixed" border=0>
