@@ -168,8 +168,8 @@
         <tr>
             <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete
                     flex ng-model="selectedCluster.config.logConfigLoadLevel"
-                    ng-change="setsettings('log-git-level',selectedCluster.config.logConfigLoadLevel)" step="1" min="0"
-                    max="4" round="0" aria-label="Log Failed Election Level"></md-slider></td>
+                    ng-change="setsettings('log-config-load-level',selectedCluster.config.logConfigLoadLevel)" step="1" min="0"
+                    max="4" round="0" aria-label="Log Config Load Level"></md-slider></td>
         </tr>
         <tr>
             <td>
