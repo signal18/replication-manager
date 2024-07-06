@@ -1,0 +1,45 @@
+FROM golang:1.23rc1-bullseye
+
+# Use specific mariadb version in case 
+ENV MARIADB_VERSION=10.11.7
+ENV PROXYSQL_VERSION=2.5.5
+# Cancel using 0.16.3-3 due to incompatible with older version
+# ENV MYDUMPER_VERSION=0.16.3-3 
+
+RUN mkdir -p /go/src/github.com/signal18/replication-manager
+WORKDIR /go/src/github.com/signal18/replication-manager
+
+# Move to top for better cache
+RUN apt-get update && apt-get -y install ca-certificates restic haproxy fuse sysbench curl vim libatomic1 mydumper nodejs npm
+RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION"
+RUN apt-get -y install mariadb-client mariadb-server mariadb-plugin-spider libmariadb-dev
+RUN curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian11_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian11_amd64.deb
+# RUN curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_VERSION/mydumper_$MYDUMPER_VERSION.bullseye_amd64.deb && dpkg -i mydumper_$MYDUMPER_VERSION.bullseye_amd64.deb
+RUN /usr/local/go/bin/go install -v golang.org/x/tools/gopls@latest
+RUN /usr/local/go/bin/go install -v github.com/cweill/gotests/gotests@v1.6.0
+RUN /usr/local/go/bin/go install -v github.com/fatih/gomodifytags@v1.16.0
+RUN /usr/local/go/bin/go install -v github.com/josharian/impl@v1.1.0
+RUN /usr/local/go/bin/go install -v github.com/haya14busa/goplay/cmd/goplay@v1.0.0
+RUN /usr/local/go/bin/go install -v github.com/haya14busa/goplay/cmd/goplay@v1.0.0
+RUN /usr/local/go/bin/go install -v github.com/go-delve/delve/cmd/dlv@latest
+RUN /usr/local/go/bin/go install -v honnef.co/go/tools/cmd/staticcheck@latest
+
+COPY . .
+
+RUN make pro cli
+
+RUN mkdir -p \
+        /etc/replication-manager \
+        /etc/replication-manager/cluster.d \
+        /var/lib/replication-manager
+
+
+RUN cp etc/local/config.toml.docker /etc/replication-manager/config.toml && \
+cp etc/local/masterslave/haproxy/config.toml /etc/replication-manager/cluster.d/localmasterslavehaproxy.toml && \
+cp etc/local/masterslave/proxysql/config.toml /etc/replication-manager/cluster.d/localmasterslaveproxysql.toml && \
+cp -r share /usr/share/replication-manager/ && \
+cp build/binaries/replication-manager-pro /usr/bin/replication-manager && \
+cp build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
+
+CMD ["while true ; do sleep 1; done"]
+EXPOSE 10001
