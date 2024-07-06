@@ -61,7 +61,9 @@ func (cluster *Cluster) GetMysqlDumpPath() string {
 	if cluster.Conf.BackupMysqldumpPath == "" {
 		//if mysqldump installed
 		if path, err := exec.Command("which", "mysqldump").Output(); err == nil {
-			return string(path)
+			strpath := strings.TrimRight(string(path), "\r\n")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Using from installer: %s\n", strpath)
+			return strpath
 		}
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqldump"
 	}
