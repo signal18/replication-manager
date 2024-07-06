@@ -62,28 +62,26 @@ function Login(props) {
 
   const styles = {
     loginContainer: {
-      bg:'#fff',
-      label:{
-        color:theme.colors.primary.dark
-      
+      bg: '#fff',
+      label: {
+        color: theme.colors.primary.dark
       },
-      input:{
-        color:theme.colors.primary.dark,
-        borderColor:'var(--chakra-colors-gray-200)',
-        '&:hover':{
-           borderColor:'var(--chakra-colors-gray-200)',
-        }
-      },
-     
-    },
-     errorMessage:{
-        color: 'var(--chakra-colors-red-500)'
-      },
-      revealButton:{
-        svg:{
-          fill:theme.colors.primary.dark
+      input: {
+        color: theme.colors.primary.dark,
+        borderColor: 'var(--chakra-colors-gray-200)',
+        '&:hover': {
+          borderColor: 'var(--chakra-colors-gray-200)'
         }
       }
+    },
+    errorMessage: {
+      color: 'var(--chakra-colors-red-500)'
+    },
+    revealButton: {
+      svg: {
+        fill: theme.colors.primary.dark
+      }
+    }
   }
 
   const onButtonClick = () => {
@@ -139,20 +137,19 @@ function Login(props) {
                     <Input id='username' type='text' value={username} onChange={(e) => setUsername(e.target.value)} />
                     <FormErrorMessage sx={styles.errorMessage}>{usernameError}</FormErrorMessage>
                   </FormControl>
-                  <PasswordField passwordError={passwordError} onChange={(e) => setPassword(e.target.value)} styles={styles} />
+                  <PasswordField
+                    passwordError={passwordError}
+                    onChange={(e) => setPassword(e.target.value)}
+                    styles={styles}
+                  />
                 </Stack>
                 {error && <Text color='red.500'>{error}</Text>}
 
                 <Stack spacing='6'>
-                  <Button
-                    type='button'
-                    colorScheme='blue'
-                    onClick={onButtonClick}
-                    isLoading={loading}
-                    loadingText={'Signing in'}>
+                  <Button type='button' onClick={onButtonClick} isLoading={loading} loadingText={'Signing in'}>
                     Sign in
                   </Button>
-                  <Button type='button' colorScheme='blue' onClick={onGitButtonClick} isLoading={false}>
+                  <Button type='button' onClick={onGitButtonClick} isLoading={false}>
                     Sign in with cloud18
                   </Button>
                 </Stack>
@@ -185,7 +182,7 @@ const PasswordField = forwardRef((props, ref) => {
       <InputGroup>
         <InputRightElement>
           <IconButton
-          sx={props.styles.revealButton}
+            sx={props.styles.revealButton}
             variant='text'
             aria-label={isOpen ? 'Mask password' : 'Reveal password'}
             icon={isOpen ? <HiEyeOff /> : <HiEye />}
@@ -193,7 +190,6 @@ const PasswordField = forwardRef((props, ref) => {
           />
         </InputRightElement>
         <Input
-         
           id='password'
           ref={mergeRef}
           name='password'

@@ -40,23 +40,23 @@ function Navbar({ username, theme }) {
         />
         <Spacer />
 
-        {isAuthorized() && !isMobile && <RefreshCounter />}
+        {isAuthorized() && isDesktop && <RefreshCounter />}
 
         <Spacer />
         <HStack spacing='4'>
           {isAuthorized() && (
             <>
-              {username && !isMobile && <Text>{`Welcome, ${username}`}</Text>}{' '}
-              <Button type='button' size={{ base: 'sm' }} colorScheme='blue' onClick={handleLogout}>
+              {username && isDesktop && <Text>{`Welcome, ${username}`}</Text>}{' '}
+              <Button type='button' size={{ base: 'sm' }} onClick={handleLogout}>
                 Logout
               </Button>
             </>
           )}
 
-          <ThemeIcon />
+          <ThemeIcon theme={theme} />
         </HStack>
       </Flex>
-      {isAuthorized() && isMobile && (
+      {isAuthorized() && !isDesktop && (
         <Box mx='auto' p='16px'>
           <RefreshCounter />
         </Box>

@@ -12,21 +12,9 @@ function ThemeIcon({ theme }) {
     dispatch(setTheme({ theme: colorMode }))
   }, [colorMode])
   return theme === 'light' ? (
-    <IconButton
-      onClick={toggleColorMode}
-      icon={<HiMoon fontSize='1.5rem' />}
-      size='sm'
-      variant='filled'
-      colorScheme='blue'
-    />
+    <IconButton onClick={toggleColorMode} icon={<HiMoon fontSize='1.5rem' />} size='sm' variant='filled' />
   ) : (
-    <IconButton
-      onClick={toggleColorMode}
-      icon={<HiSun fontSize='1.5rem' />}
-      size='sm'
-      variant='filled'
-      colorScheme='blue'
-    />
+    <IconButton onClick={toggleColorMode} icon={<HiSun fontSize='1.5rem' />} size='sm' variant='filled' />
   )
 }
 

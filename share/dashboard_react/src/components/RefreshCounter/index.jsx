@@ -63,27 +63,15 @@ function RefreshCounter(props) {
   return (
     <HStack spacing='4'>
       <Tooltip label='Reload manually' aria-label='A tooltip'>
-        <IconButton icon={<HiRefresh fontSize='1.5rem' />} size='sm' variant='outline' colorScheme='blue' />
+        <IconButton icon={<HiRefresh fontSize='1.5rem' />} size='sm' variant='outline' />
       </Tooltip>
       {isPaused ? (
         <Tooltip label='Start auto reload' aria-label='A tooltip'>
-          <IconButton
-            onClick={playInterval}
-            icon={<HiPlay fontSize='1.5rem' />}
-            size='sm'
-            variant='outline'
-            colorScheme='blue'
-          />
+          <IconButton onClick={playInterval} icon={<HiPlay fontSize='1.5rem' />} size='sm' variant='outline' />
         </Tooltip>
       ) : (
         <Tooltip label='Pause auto reload' aria-label='A tooltip'>
-          <IconButton
-            onClick={pauseInterval}
-            icon={<HiStop fontSize='1.5rem' />}
-            size='sm'
-            variant='outline'
-            colorScheme='blue'
-          />
+          <IconButton onClick={pauseInterval} icon={<HiStop fontSize='1.5rem' />} size='sm' variant='outline' />
         </Tooltip>
       )}
 
@@ -92,17 +80,17 @@ function RefreshCounter(props) {
           <IconButton
             {...dec}
             icon={<HiOutlineMinusCircle fontSize='1.5rem' />}
-            colorScheme='blue'
             size='sm'
             aria-label='Decrement'
+            variant='outline'
           />
           <Input {...input} width='75px' size='sm' ref={inputRef} />
           <IconButton
             {...inc}
             icon={<HiOutlinePlusCircle fontSize='1.5rem' />}
-            colorScheme='blue'
             size='sm'
             aria-label='Increment'
+            variant='outline'
           />
         </HStack>
       )}
@@ -110,12 +98,7 @@ function RefreshCounter(props) {
         label={isPaused ? 'Auto reload is currently paused' : `Auto reload every ${seconds} seconds`}
         aria-label='A tooltip'>
         {/* <Icon as={HiInformationCircle} fontSize='1.5rem' /> */}
-        <IconButton
-          icon={<HiOutlineInformationCircle fontSize='1.5rem' />}
-          size='sm'
-          variant='ghost'
-          colorScheme='blue'
-        />
+        <IconButton icon={<HiOutlineInformationCircle fontSize='1.5rem' />} size='sm' variant='ghost' />
       </Tooltip>
       {/* <Text fontSize='sm'>{`Auto reload every ${seconds} seconds`}</Text> */}
     </HStack>
