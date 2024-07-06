@@ -429,3 +429,7 @@ func (server *ServerMonitor) SetBinaryLogDir(value string) {
 func (server *ServerMonitor) SetInCaptureMode(value bool) {
 	server.InCaptureMode = value
 }
+
+func (server *ServerMonitor) SetInRefreshBinlog(value bool) {
+	server.IsRefreshingBinlog = value
+}
