@@ -664,7 +664,7 @@ func (cluster *Cluster) Run() {
 							cluster.StateMachine.PreserveState("WARN0094")
 						}
 						if cluster.SlavesOldestMasterFile.Suffix == 0 {
-							cluster.CheckSlavesReplicationsPurge()
+							go cluster.CheckSlavesReplicationsPurge()
 						}
 						cluster.PrintDelayStat()
 					}
@@ -834,9 +834,8 @@ func (cluster *Cluster) Save() error {
 		return nil
 	}
 	_, file, no, ok := runtime.Caller(1)
-	// if ok && cluster.GetLogLevel() > 3 {
 	if ok {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Saved called from %s#%d\n", file, no)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
 	}
 	type Save struct {
 		Servers    string      `json:"servers"`

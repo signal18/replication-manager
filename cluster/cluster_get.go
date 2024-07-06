@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"hash/crc64"
 	"os"
+	"os/exec"
 	"regexp"
 	"sort"
 	"strconv"
@@ -78,6 +79,11 @@ func (cluster *Cluster) GetMyLoaderPath() string {
 
 func (cluster *Cluster) GetMysqlBinlogPath() string {
 	if cluster.Conf.BackupMysqlbinlogPath == "" {
+		// Return installed mysqlbinlog on repman host instead of embedded if exists
+		if out, err := exec.Command("which", "mysqlbinlog").Output(); err == nil {
+			path := strings.Trim(string(out), "\r\n")
+			return path
+		}
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqlbinlog"
 	}
 	return cluster.Conf.BackupMysqlbinlogPath

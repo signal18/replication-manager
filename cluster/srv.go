@@ -179,8 +179,9 @@ type ServerMonitor struct {
 	SSTPort                     string                       `json:"sstPort"`       //used to send data to dbjobs
 	Agent                       string                       `json:"agent"`         //used to provision service in orchestrator
 	BinaryLogFiles              map[string]uint              `json:"binaryLogFiles"`
-	BinaryLogOldestFile         string                       `json:"-"`
-	OldestBinaryLogTimestamp    int64                        `json:"-"`
+	BinaryLogFileOldest         string                       `json:"binaryLogFileOldest"`
+	BinaryLogOldestTimestamp    int64                        `json:"binaryLogOldestTimestamp"`
+	BinaryLogPurgeBefore        int64                        `json:"binaryLogPurgeBefore"`
 	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
 	WorkLoad                    map[string]WorkLoad          `json:"workLoad"`
 	DelayStat                   *ServerDelayStat             `json:"delayStat"`
@@ -189,6 +190,7 @@ type ServerMonitor struct {
 	IsInPFSQueryCapture         bool
 	InPurgingBinaryLog          bool
 	IsBackingUpBinaryLog        bool
+	IsRefreshingBinlog          bool
 	ActiveTasks                 sync.Map
 	BinaryLogDir                string
 	DBDataDir                   string
@@ -788,7 +790,7 @@ func (server *ServerMonitor) Refresh() error {
 	if server.InCaptureMode {
 		cluster.SetState("WARN0085", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0085"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 	}
-	// SHOW MASTER STATUS
+
 	logs := ""
 	server.MasterStatus, logs, err = dbhelper.GetMasterStatus(server.Conn, server.DBVersion)
 	cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get master status %s %s", server.URL, err)
@@ -796,45 +798,10 @@ func (server *ServerMonitor) Refresh() error {
 		// binary log might be closed for that server
 	} else {
 		server.BinaryLogFile = server.MasterStatus.File
-
-		if len(server.BinaryLogFiles) == 0 {
-			go server.RefreshBinaryLogs()
-		}
-
-		if server.BinaryLogFilePrevious != "" && server.BinaryLogFilePrevious != server.BinaryLogFile {
-			// Always running, triggered by binlog rotation
-			if cluster.Conf.BinlogRotationScript != "" && server.IsMaster() {
-				cluster.BinlogRotationScript(server)
-			}
-
-			if cluster.Conf.BackupBinlogs {
-				//Set second parameter to false, not part of backupbinlogpurge
-				server.InitiateJobBackupBinlog(server.BinaryLogFilePrevious, false)
-				//Initiate purging backup binlog
-				go server.JobBackupBinlogPurge(server.BinaryLogFilePrevious)
-			}
-
-			server.RefreshBinaryLogs()
-		}
-
-		server.BinaryLogFilePrevious = server.BinaryLogFile
 		server.BinaryLogPos = strconv.FormatUint(uint64(server.MasterStatus.Position), 10)
 
-		if cluster.Conf.ForceBinlogPurge {
-			if server.IsMaster() {
-				if !server.IsBackingUpBinaryLog {
-					if cluster.Conf.ForceBinlogPurgeOnRestore {
-						go server.CheckAndPurgeBinlogMasterOnRestore()
-					} else {
-						go server.CheckAndPurgeBinlogMaster()
-					}
-				}
-			} else {
-				if cluster.Conf.ForceBinlogPurgeReplicas && server.HaveBinlogSlaveUpdates && !server.IsIgnored() {
-					go server.CheckAndPurgeBinlogSlave()
-				}
-			}
-		}
+		//Detach binlog process from main process
+		go server.CheckBinaryLogs()
 	}
 
 	if !server.DBVersion.IsPostgreSQL() {

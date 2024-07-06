@@ -101,7 +101,7 @@ func (cluster *Cluster) BinlogRotationScript(srv *ServerMonitor) error {
 	if cluster.Conf.BinlogRotationScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling binlog rotation script")
 		var out []byte
-		out, err := exec.Command(cluster.Conf.BinlogRotationScript, cluster.Name, srv.Host, srv.Port, srv.BinaryLogFile, srv.BinaryLogFilePrevious, srv.BinaryLogOldestFile).CombinedOutput()
+		out, err := exec.Command(cluster.Conf.BinlogRotationScript, cluster.Name, srv.Host, srv.Port, srv.BinaryLogFile, srv.BinaryLogFilePrevious, srv.BinaryLogFileOldest).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 		}
