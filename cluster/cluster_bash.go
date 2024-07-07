@@ -59,6 +59,20 @@ func (cluster *Cluster) BashScriptCloseSate(state state.State) error {
 	return nil
 }
 
+func (cluster *Cluster) BashScriptDbServersChangeState(srv *ServerMonitor, newState string, oldState string) error {
+	if cluster.Conf.DbServersChangeStateScript != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling database change state script")
+		var out []byte
+		out, err := exec.Command(cluster.Conf.DbServersChangeStateScript, cluster.Name, srv.Host, srv.Port, newState, oldState).CombinedOutput()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Database change state script %s:", string(out))
+	}
+	return nil
+}
+
 func (cluster *Cluster) failoverPostScript(fail bool) {
 	if cluster.Conf.PostScript != "" {
 
