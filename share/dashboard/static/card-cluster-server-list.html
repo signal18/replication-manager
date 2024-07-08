@@ -16,11 +16,11 @@
         </th>
         <th class="gtid">
             <span ng-if="mariadbGtid">Current GTID</span>
-            <span ng-if="mysqlGtid">File</span>
+            <span ng-if="!mariadbGtid && !mysqlGtid">File</span>
         </th>
         <th class="gtid">
             <span ng-if="mariadbGtid">Slave GTID</span>
-            <span ng-if="mysqlGtid">Pos</span>
+            <span ng-if="!mariadbGtid && !mysqlGtid">Pos</span>
         </th>
         <th>Delay</th>
         <th>Fail Cnt</th>
