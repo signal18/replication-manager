@@ -281,7 +281,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.LogHeartbeatLevel, "log-heartbeat-level", 1, "Log Heartbeat Level")
 
 	flags.BoolVar(&conf.LogFailedElection, "log-failed-election", true, "Log failed election")
-	flags.IntVar(&conf.LogFailedElectionLevel, "log-failed-election-level", 1, "Log failed election Level")
+	flags.IntVar(&conf.LogFailedElectionLevel, "log-failed-election-level", 3, "Log failed election Level")
 
 	flags.BoolVar(&conf.LogBinlogPurge, "log-binlog-purge", false, "Log Binlog Purge")
 	flags.IntVar(&conf.LogBinlogPurgeLevel, "log-binlog-purge-level", 1, "Log Binlog Purge Level")
