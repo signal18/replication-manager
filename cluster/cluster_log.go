@@ -11,6 +11,7 @@
 package cluster
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net/http"
@@ -415,4 +416,16 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 	}
 
 	return line
+}
+
+func (cluster *Cluster) provCopyLogs(r io.Reader, module int, level string, name string) {
+	//	buf := make([]byte, 1024)
+	s := bufio.NewScanner(r)
+	for {
+		if !s.Scan() {
+			break
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", name, s.Text())
+		}
+	}
 }

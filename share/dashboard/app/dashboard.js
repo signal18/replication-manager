@@ -64,7 +64,7 @@ app.controller('DashboardController', function (
 
   $scope.showTable = false
   $scope.showLog = true
-  $scope.showLogTask = false
+  $scope.showLogTask = true
 
   $scope.toggleLog = function(panel){
     if(panel == "log") {
