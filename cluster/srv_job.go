@@ -465,11 +465,11 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "loader")
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo)
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "loader")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo)
 	}()
 	wg.Wait()
 	if err := dumpCmd.Wait(); err != nil {
@@ -547,7 +547,7 @@ func (server *ServerMonitor) JobReseedMysqldump(task string) {
 		}
 
 		go func() {
-			server.copyLogs(stderr, config.ConstLogModBackupStream, config.LvlInfo, "dump")
+			server.copyLogs(stderr, config.ConstLogModBackupStream, config.LvlInfo)
 		}()
 
 		clientCmd.Wait()
@@ -571,11 +571,11 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "reseed")
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo)
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "reseed")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo)
 	}()
 	wg.Wait()
 	if err := cmd.Wait(); err != nil {
@@ -778,11 +778,11 @@ func (server *ServerMonitor) JobBackupScript() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "script")
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo)
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "script")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo)
 	}()
 
 	wg.Wait()
@@ -867,7 +867,7 @@ func (server *ServerMonitor) JobBackupMysqldump() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "dump")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo)
 	}()
 	go func() {
 		defer wg.Done()
@@ -940,11 +940,11 @@ func (server *ServerMonitor) JobBackupMyDumper() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "dumper")
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo)
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "dumper")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo)
 	}()
 	wg.Wait()
 	if err = dumpCmd.Wait(); err != nil {
@@ -1069,7 +1069,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	return nil
 }
 
-func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string, tag string) {
+func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string) {
 	cluster := server.ClusterGroup
 	//	buf := make([]byte, 1024)
 	s := bufio.NewScanner(r)
@@ -1077,7 +1077,7 @@ func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string, tag
 		if !s.Scan() {
 			break
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s|%s] %s", server.Name, tag, s.Text())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, s.Text())
 		}
 	}
 }
@@ -1460,11 +1460,11 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 	go func() {
 		defer wg.Done()
-		source.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "rejoin")
+		source.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo)
 	}()
 	go func() {
 		defer wg.Done()
-		dest.copyLogs(stderrOut, config.ConstLogModBackupStream, config.LvlInfo, "rejoin")
+		dest.copyLogs(stderrOut, config.ConstLogModBackupStream, config.LvlInfo)
 	}()
 
 	wg.Wait()
