@@ -75,6 +75,9 @@ app.controller('DashboardController', function (
     }
   }
 
+  $scope.mariadbGtid = false
+  $scope.mysqlGtid = false
+
   $scope.user = undefined;
 
   $scope.wait = undefined;
@@ -380,6 +383,8 @@ app.controller('DashboardController', function (
               return passedTest;
             }
             $scope.slaves = myfilter(data, function (currentServer) { return (currentServer.isSlave); });
+            $scope.mariadbGtid = Array.isArray(data) ? data.some(function (currentServer) { return (currentServer.haveMariadbGtid); }) : false;
+            $scope.mysqlGtid = Array.isArray(data) ? data.some(function (currentServer) { return (currentServer.haveMysqlGtid); }) : false;
             $scope.reserror = false;
           }
         }
