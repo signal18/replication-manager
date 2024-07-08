@@ -129,6 +129,14 @@ func (server *ServerMonitor) HasWaitBackupCookie() bool {
 	return server.hasCookie("cookie_waitbackup")
 }
 
+func (server *ServerMonitor) HasWaitLogicalBackupCookie() bool {
+	return server.hasCookie("cookie_waitlogicalbackup")
+}
+
+func (server *ServerMonitor) HasWaitPhysicalBackupCookie() bool {
+	return server.hasCookie("cookie_waitphysicalbackup")
+}
+
 func (server *ServerMonitor) HasWaitStopCookie() bool {
 	return server.hasCookie("cookie_waitstop")
 }

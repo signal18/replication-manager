@@ -150,9 +150,13 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	cluster := server.ClusterGroup
 	if cluster.master != nil && !cluster.GetBackupServer().HasBackupPhysicalCookie() {
-		server.createCookie("cookie_waitbackup")
+		server.SetWaitPhysicalBackupCookie()
 		return 0, errors.New("No Physical Backup")
 	}
+
+	//Delete wait physical backup cookie
+	server.DelWaitPhysicalBackupCookie()
+
 	jobid, err := server.JobInsertTaks("reseed"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive reseed physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
@@ -185,7 +189,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 	cluster := server.ClusterGroup
 	if cluster.master != nil && !cluster.GetBackupServer().HasBackupPhysicalCookie() {
-		server.createCookie("cookie_waitbackup")
+		server.SetWaitPhysicalBackupCookie()
 		return 0, errors.New("No Physical Backup")
 	}
 
@@ -225,9 +229,12 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 	task := "reseed" + cluster.Conf.BackupLogicalType
 	var dt DBTask = DBTask{task: task}
 	if cluster.master != nil && !cluster.GetBackupServer().HasBackupLogicalCookie() {
-		server.createCookie("cookie_waitbackup")
+		server.SetWaitLogicalBackupCookie()
 		return 0, errors.New("No Logical Backup")
 	}
+
+	//Delete wait logical backup cookie
+	server.DelWaitLogicalBackupCookie()
 
 	if v, ok := server.ActiveTasks.Load(task); ok {
 		dt = v.(DBTask)
@@ -259,9 +266,9 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 	}, server.DBVersion)
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 	if err != nil {
-
 		return jobid, err
 	}
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
 		go server.JobReseedMysqldump(task)
@@ -297,7 +304,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 	var dt DBTask = DBTask{task: task}
 	var err error
 	if cluster.master != nil && !cluster.GetBackupServer().HasBackupLogicalCookie() {
-		server.createCookie("cookie_waitbackup")
+		server.SetWaitLogicalBackupCookie()
 		return 0, errors.New("No Logical Backup")
 	}
 	if v, ok := server.ActiveTasks.Load(task); ok {
@@ -488,22 +495,69 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 			server.StartSlave()
 		}
 	}
-
 }
 
 func (server *ServerMonitor) JobReseedMysqldump(task string) {
 	cluster := server.ClusterGroup
-	mybcksrv := cluster.GetBackupServer()
 	master := cluster.GetMaster()
-	go server.JobRunViaSSH()
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Sending logical backup to reseed %s", server.URL)
 	if master != nil {
-		if mybcksrv != nil {
-			go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", server, task)
-		} else {
-			go cluster.SSTRunSender(master.GetMasterBackupDirectory()+"mysqldump.sql.gz", server, task)
+		filename := "mysqldump.sql.gz"
+		mybcksrv := cluster.GetBackupServer()
+		backupfile := mybcksrv.GetMyBackupDirectory() + filename
+		if _, err := os.Stat(backupfile); os.IsNotExist(err) {
+			// Remove valid cookie due to missing file
+			mybcksrv.DelBackupLogicalCookie()
+			return
 		}
+
+		server.StopSlave()
+
+		file, err := cluster.CreateTmpClientConfFile()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "[%s] Failed creating tmp connection file:  %s ", server.URL, err)
+			return
+		}
+		defer os.Remove(file)
+
+		gzfile, err := os.Open(backupfile)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "[%s] Failed opening backup file in backup server for reseed:  %s ", server.URL, err)
+			return
+		}
+
+		fz, err := gzip.NewReader(gzfile)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
+			return
+		}
+		defer fz.Close()
+
+		var buf bytes.Buffer
+		_, err = io.Copy(&buf, fz)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "[%s] Error happened when unzipping backup file in backup server for reseed:  %s ", server.URL, err)
+			return
+		}
+
+		clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
+		clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), &buf)
+
+		stderr, _ := clientCmd.StderrPipe()
+
+		if err := clientCmd.Start(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't start mysql client:%s at %s", err, strings.ReplaceAll(clientCmd.String(), cluster.GetDbPass(), "XXXX"))
+			return
+		}
+
+		go func() {
+			server.copyLogs(stderr)
+		}()
+
+		clientCmd.Wait()
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
+		server.StartSlave()
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "No master. Cancel backup reseeding %s", server.URL)
 	}

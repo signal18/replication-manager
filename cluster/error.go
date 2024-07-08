@@ -169,4 +169,6 @@ var clusterError = map[string]string{
 	"WARN0108": "Default users still use default password. Please change the credentials for users: (%s)",
 	"WARN0109": "Error while checking master log file for purging in slave [%s] (%s) : %s\n",
 	"WARN0110": "Pending %s backup using %s for [%s] due to another job. Waiting...",
+	"WARN0111": "Cluster does not have logical backup",
+	"WARN0112": "Cluster does not have physical backup",
 }
