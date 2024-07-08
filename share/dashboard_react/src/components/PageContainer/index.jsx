@@ -27,10 +27,12 @@ function PageContainer({ children }) {
     cluster: { refreshInterval }
   } = useSelector((state) => state)
 
-  const breakpointValues = {
-    base: useBreakpointValue({ base: '480px' }),
-    md: useBreakpointValue({ md: '768px' })
-  }
+  const currentBreakpoint = useBreakpointValue({
+    base: 'base',
+    sm: 'mobile',
+    md: 'tablet',
+    lg: 'desktop'
+  })
 
   useEffect(() => {
     if (isAuthorized() && user === null) {
@@ -48,7 +50,7 @@ function PageContainer({ children }) {
     return () => {
       window.removeEventListener('resize', handleResize)
     }
-  }, [])
+  }, [currentBreakpoint, dispatch])
 
   useEffect(() => {
     if (!isLogged && user === null && !isAuthorized()) {
@@ -61,11 +63,14 @@ function PageContainer({ children }) {
   }
 
   const handleResize = () => {
-    const isMobile = window.innerWidth <= parseInt(breakpointValues.base)
-    const isTablet =
-      window.innerWidth > parseInt(breakpointValues.base) && window.innerWidth <= parseInt(breakpointValues.md)
-    const isDesktop = window.innerWidth > parseInt(breakpointValues.md)
-
+    // console.log('breakpointValues::', breakpointValues)
+    // const isMobile = window.innerWidth <= parseInt(breakpointValues.base)
+    // const isTablet =
+    //   window.innerWidth > parseInt(breakpointValues.base) && window.innerWidth <= parseInt(breakpointValues.md)
+    // const isDesktop = window.innerWidth > parseInt(breakpointValues.md)
+    const isMobile = currentBreakpoint === 'mobile'
+    const isTablet = currentBreakpoint === 'tablet'
+    const isDesktop = currentBreakpoint === 'desktop'
     dispatch(setIsMobile(isMobile))
     dispatch(setIsTablet(isTablet))
     dispatch(setIsDesktop(isDesktop))

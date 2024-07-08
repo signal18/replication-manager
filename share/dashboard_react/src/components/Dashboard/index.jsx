@@ -2,7 +2,7 @@ import React, { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import PageContainer from '../PageContainer'
 import { getClusters } from '../../redux/clusterSlice'
-import Tabs from '../Tabs'
+import TabItems from '../TabItems'
 
 function Dashboard(props) {
   const dispatch = useDispatch()
@@ -13,7 +13,7 @@ function Dashboard(props) {
   return (
     <PageContainer>
       <div>
-        <Tabs />
+        <TabItems />
       </div>
     </PageContainer>
   )

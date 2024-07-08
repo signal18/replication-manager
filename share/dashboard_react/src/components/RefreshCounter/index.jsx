@@ -63,44 +63,30 @@ function RefreshCounter(props) {
   return (
     <HStack spacing='4'>
       <Tooltip label='Reload manually' aria-label='A tooltip'>
-        <IconButton icon={<HiRefresh fontSize='1.5rem' />} size='sm' variant='outline' />
+        <IconButton icon={<HiRefresh fontSize='1.5rem' />} size='sm' />
       </Tooltip>
       {isPaused ? (
         <Tooltip label='Start auto reload' aria-label='A tooltip'>
-          <IconButton onClick={playInterval} icon={<HiPlay fontSize='1.5rem' />} size='sm' variant='outline' />
+          <IconButton onClick={playInterval} icon={<HiPlay fontSize='1.5rem' />} size='sm' />
         </Tooltip>
       ) : (
         <Tooltip label='Pause auto reload' aria-label='A tooltip'>
-          <IconButton onClick={pauseInterval} icon={<HiStop fontSize='1.5rem' />} size='sm' variant='outline' />
+          <IconButton onClick={pauseInterval} icon={<HiStop fontSize='1.5rem' />} size='sm' />
         </Tooltip>
       )}
 
       {!isPaused && (
         <HStack spacing='3'>
-          <IconButton
-            {...dec}
-            icon={<HiOutlineMinusCircle fontSize='1.5rem' />}
-            size='sm'
-            aria-label='Decrement'
-            variant='outline'
-          />
+          <IconButton {...dec} icon={<HiOutlineMinusCircle fontSize='1.5rem' />} size='sm' aria-label='Decrement' />
           <Input {...input} width='75px' size='sm' ref={inputRef} />
-          <IconButton
-            {...inc}
-            icon={<HiOutlinePlusCircle fontSize='1.5rem' />}
-            size='sm'
-            aria-label='Increment'
-            variant='outline'
-          />
+          <IconButton {...inc} icon={<HiOutlinePlusCircle fontSize='1.5rem' />} size='sm' aria-label='Increment' />
         </HStack>
       )}
       <Tooltip
         label={isPaused ? 'Auto reload is currently paused' : `Auto reload every ${seconds} seconds`}
         aria-label='A tooltip'>
-        {/* <Icon as={HiInformationCircle} fontSize='1.5rem' /> */}
         <IconButton icon={<HiOutlineInformationCircle fontSize='1.5rem' />} size='sm' variant='ghost' />
       </Tooltip>
-      {/* <Text fontSize='sm'>{`Auto reload every ${seconds} seconds`}</Text> */}
     </HStack>
   )
 }
