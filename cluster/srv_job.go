@@ -548,11 +548,11 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "MYLOADER")
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "MYLOADER")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	wg.Wait()
 	if err := dumpCmd.Wait(); err != nil {
@@ -634,7 +634,7 @@ func (server *ServerMonitor) JobReseedMysqldump(task string) {
 		}
 
 		go func() {
-			server.copyLogs(stderr, config.ConstLogModBackupStream, config.LvlInfo, "DUMP")
+			server.copyLogs(stderr, config.ConstLogModBackupStream, config.LvlDbg)
 		}()
 
 		clientCmd.Wait()
@@ -658,11 +658,11 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "RESEED")
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "RESEED")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	wg.Wait()
 	if err := cmd.Wait(); err != nil {
@@ -859,11 +859,11 @@ func (server *ServerMonitor) JobBackupScript() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "SCRIPT")
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "SCRIPT")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 
 	wg.Wait()
@@ -948,7 +948,7 @@ func (server *ServerMonitor) JobBackupMysqldump() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "DUMP")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	go func() {
 		defer wg.Done()
@@ -1021,11 +1021,11 @@ func (server *ServerMonitor) JobBackupMyDumper() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "MYDUMPER")
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "MYDUMPER")
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	wg.Wait()
 	if err = dumpCmd.Wait(); err != nil {
@@ -1150,7 +1150,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	return nil
 }
 
-func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string, tag string) {
+func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string) {
 	cluster := server.ClusterGroup
 	//	buf := make([]byte, 1024)
 	s := bufio.NewScanner(r)
@@ -1158,7 +1158,7 @@ func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string, tag
 		if !s.Scan() {
 			break
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s|%s] %s", server.Name, tag, s.Text())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, s.Text())
 		}
 	}
 }
@@ -1563,11 +1563,11 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	//
 	go func() {
 		defer wg.Done()
-		source.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "REJOIN")
+		source.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	go func() {
 		defer wg.Done()
-		dest.copyLogs(stderrOut, config.ConstLogModBackupStream, config.LvlInfo, "REJOIN")
+		dest.copyLogs(stderrOut, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 
 	wg.Wait()
@@ -1771,7 +1771,7 @@ func (server *ServerMonitor) JobWriteLogAPI(task string) error {
 	buf3 := strings.NewReader(server.GetSshLogEnv(task))
 	r := io.MultiReader(buf2, buf3, buf)
 
-	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
+	if err := client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Parse job's log: %s", stderr.String())
 	}
 
