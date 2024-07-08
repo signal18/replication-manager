@@ -478,7 +478,7 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 	server.Refresh()
 	if server.IsSlave {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
-		meta, err := server.JobMyLoaderParseMeta(cluster.master.GetMasterBackupDirectory())
+		meta, err := server.JobMyLoaderParseMeta(backupdir)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err)
 		}
