@@ -68,6 +68,7 @@ func (server *ServerMonitor) SetState(state string) {
 		if ok {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Set state called from %s#%d\n", file, no)
 		}
+		cluster.BashScriptDbServersChangeState(server, state, server.PrevState)
 	}
 	server.State = state
 }
