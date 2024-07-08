@@ -31,18 +31,46 @@ func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
 func (cluster *Cluster) HasValidBackup() bool {
 	//	if cluster.Conf.MonitorScheduler && (cluster.Conf.SchedulerBackupLogical || cluster.Conf.SchedulerBackupPhysical) {
 	sv := cluster.GetBackupServer()
+	logical := false
+	physical := false
 	if sv != nil {
 		if sv.HasBackupLogicalCookie() || sv.HasBackupPhysicalCookie() {
+			if sv.HasBackupLogicalCookie() {
+				logical = true
+			}
+
+			if sv.HasBackupPhysicalCookie() {
+				physical = true
+			}
 			return true
 		}
 	}
 
 	if cluster.master.HasBackupLogicalCookie() || cluster.master.HasBackupPhysicalCookie() {
+		if cluster.master.HasBackupLogicalCookie() {
+			logical = true
+		}
+
+		if cluster.master.HasBackupPhysicalCookie() {
+			physical = true
+		}
 		return true
 	}
 
+	if logical {
+		cluster.StateMachine.DeleteState("WARN0111")
+	} else {
+		cluster.SetState("WARN0111", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0111"]), ErrFrom: "TOPO"})
+	}
+
+	if physical {
+		cluster.StateMachine.DeleteState("WARN0112")
+	} else {
+		cluster.SetState("WARN0112", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0112"]), ErrFrom: "TOPO"})
+	}
+
 	//	}
-	cluster.SetState("WARN0101", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0101"]), ErrFrom: "TOPO"})
+	// cluster.SetState("WARN0101", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0101"]), ErrFrom: "TOPO"})
 	return false
 
 }

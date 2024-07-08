@@ -99,6 +99,11 @@ func (cluster *Cluster) GetMysqlBinlogPath() string {
 
 func (cluster *Cluster) GetMysqlclientPath() string {
 	if cluster.Conf.BackupMysqlclientPath == "" {
+		// Return installed mysql client on repman host instead of embedded if exists
+		if out, err := exec.Command("which", "mysql").Output(); err == nil {
+			path := strings.Trim(string(out), "\r\n")
+			return path
+		}
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysql"
 	}
 	return cluster.Conf.BackupMysqlclientPath
