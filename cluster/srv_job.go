@@ -446,10 +446,15 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 	if server.URL == cluster.GetMaster().URL {
 		myargs = append(myargs, "--enable-binlog")
 	}
-	myargs = append(myargs, "--directory="+cluster.master.GetMasterBackupDirectory(), "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
+	//Use mydumper subdir if exists
+	backupdir := cluster.master.GetMasterBackupDirectory() + "mydumper/"
+	if _, err := os.Stat(backupdir); os.IsNotExist(err) {
+		backupdir = cluster.master.GetMasterBackupDirectory()
+	}
+	myargs = append(myargs, "--directory="+backupdir, "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
 	dumpCmd := exec.Command(cluster.GetMyLoaderPath(), myargs...)
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", 1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s", strings.ReplaceAll(dumpCmd.String(), cluster.GetDbPass(), "XXXX"))
 
 	stdoutIn, _ := dumpCmd.StdoutPipe()
 	stderrIn, _ := dumpCmd.StderrPipe()
@@ -871,7 +876,7 @@ func (server *ServerMonitor) JobBackupMyDumper() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Blocking DDL via BACKUP STAGE")
 	}
 
-	outputdir := server.GetMyBackupDirectory() + "mydumper"
+	outputdir := server.GetMyBackupDirectory() + "mydumper/"
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalDumpThreads)
 	myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyDumperOptions, "  ", " "), " ")
 	myargs = append(myargs, "--outputdir="+outputdir, "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
