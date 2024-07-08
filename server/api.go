@@ -103,8 +103,9 @@ type userCredentials struct {
 	Password string `json:"password"`
 }
 
-type apiresponse struct {
-	Data string `json:"data"`
+type ApiResponse struct {
+	Data    string `json:"data"`
+	Success bool   `json:"success"`
 }
 
 type token struct {

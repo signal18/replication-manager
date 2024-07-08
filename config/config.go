@@ -669,6 +669,7 @@ type Config struct {
 	OAuthClientSecret                         string                 `mapstructure:"api-oauth-client-secret" toml:"api-oauth-client-secret" json:"apiOAuthClientSecret"`
 	CacheStaticMaxAge                         int                    `mapstructure:"cache-static-max-age" toml:"cache-static-max-age" json:"-"`
 	TokenTimeout                              int                    `mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
+	JobLogBatchSize                           int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
@@ -933,6 +934,51 @@ const (
 	ConstLogModGraphite       = 15
 	ConstLogModPurge          = 16
 	ConstLogModTask           = 17
+)
+
+/*
+This is the list of modules to be used in LogModulePrintF
+*/
+const (
+	ConstLogNameGeneral        string = "log-general"
+	ConstLogNameFailedElection string = "log-failed-election"
+	ConstLogNameSST            string = "log-sst"
+	ConstLogNameHeartBeat      string = "log-heartbeat"
+	ConstLogNameConfigLoad     string = "log-config-load"
+	ConstLogNameGit            string = "log-git"
+	ConstLogNameBackupStream   string = "log-backup-stream"
+	ConstLogNameOrchestrator   string = "log-orchestrator"
+	ConstLogNameVault          string = "log-vault"
+	ConstLogNameTopology       string = "log-topology"
+	ConstLogNameProxy          string = "log-proxy"
+	ConstLogNameProxySQL       string = "log-proxysql"
+	ConstLogNameHAProxy        string = "log-haproxy"
+	ConstLogNameProxyJanitor   string = "log-proxy-janitor"
+	ConstLogNameMaxscale       string = "log-maxscale"
+	ConstLogNameGraphite       string = "log-graphite"
+	ConstLogNamePurge          string = "log-binlog-purge"
+	ConstLogNameTask           string = "log-task"
+)
+
+/*
+This is the list of task to be used in SSH
+*/
+const (
+	ConstTaskXB        string = "xtrabackup"
+	ConstTaskMB        string = "mariabackup"
+	ConstTaskError     string = "error"
+	ConstTaskSlowQuery string = "slowquery"
+	ConstTaskZFS       string = "zfssnapback"
+	ConstTaskOptimize  string = "optimize"
+	ConstTaskReseedXB  string = "reseedxtrabackup"
+	ConstTaskReseedMB  string = "reseedmariabackup"
+	ConstTaskDump      string = "reseedmysqldump"
+	ConstTaskFlashXB   string = "flashbackxtrabackup"
+	ConstTaskFlashMB   string = "flashbackmariadbackup"
+	ConstTaskFlashDump string = "flashbackmysqldump"
+	ConstTaskStop      string = "stop"
+	ConstTaskRestart   string = "restart"
+	ConstTaskStart     string = "start"
 )
 
 /*
@@ -2042,4 +2088,65 @@ func GetTagsForLog(module int) string {
 		return "job"
 	}
 	return ""
+}
+
+// If task is about backup and reseed, it will use log backup stream else will use log task
+func GetModuleNameForTask(task string) string {
+	switch task {
+	case ConstTaskXB, ConstTaskMB, ConstTaskReseedXB, ConstTaskReseedMB, ConstTaskDump, ConstTaskFlashXB, ConstTaskFlashMB, ConstTaskFlashDump:
+		return ConstLogNameBackupStream
+	default:
+		return ConstLogNameTask
+
+	}
+}
+
+func GetIndexFromModuleName(module string) int {
+	switch module {
+	case ConstLogNameGeneral:
+		return ConstLogModGeneral
+	case ConstLogNameFailedElection:
+		return ConstLogModFailedElection
+	case ConstLogNameSST:
+		return ConstLogModSST
+	case ConstLogNameHeartBeat:
+		return ConstLogModHeartBeat
+	case ConstLogNameConfigLoad:
+		return ConstLogModConfigLoad
+	case ConstLogNameGit:
+		return ConstLogModGit
+	case ConstLogNameBackupStream:
+		return ConstLogModBackupStream
+	case ConstLogNameOrchestrator:
+		return ConstLogModOrchestrator
+	case ConstLogNameVault:
+		return ConstLogModVault
+	case ConstLogNameTopology:
+		return ConstLogModTopology
+	case ConstLogNameProxy:
+		return ConstLogModProxy
+	case ConstLogNameProxySQL:
+		return ConstLogModProxySQL
+	case ConstLogNameHAProxy:
+		return ConstLogModHAProxy
+	case ConstLogNameProxyJanitor:
+		return ConstLogModProxyJanitor
+	case ConstLogNameMaxscale:
+		return ConstLogModMaxscale
+	case ConstLogNameGraphite:
+		return ConstLogModGraphite
+	case ConstLogNamePurge:
+		return ConstLogModPurge
+	case ConstLogNameTask:
+		return ConstLogModTask
+	}
+	return -1
+}
+
+func IsValidLogLevel(lvl string) bool {
+	switch lvl {
+	case LvlErr, LvlWarn, LvlInfo, LvlDbg:
+		return true
+	}
+	return false
 }
