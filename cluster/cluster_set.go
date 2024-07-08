@@ -803,11 +803,17 @@ func (cluster *Cluster) SetBackupKeepWeekly(keep string) error {
 }
 
 func (cluster *Cluster) SetBackupLogicalType(backup string) {
-	cluster.Conf.BackupLogicalType = backup
+	if cluster.Conf.BackupLogicalType != backup {
+		cluster.Conf.BackupLogicalType = backup
+		cluster.GetBackupServer().DelBackupLogicalCookie()
+	}
 }
 
 func (cluster *Cluster) SetBackupPhysicalType(backup string) {
-	cluster.Conf.BackupPhysicalType = backup
+	if cluster.Conf.BackupPhysicalType != backup {
+		cluster.Conf.BackupPhysicalType = backup
+		cluster.GetBackupServer().DelBackupPhysicalCookie()
+	}
 }
 
 func (cluster *Cluster) SetBackupBinlogType(backup string) {

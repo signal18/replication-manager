@@ -645,6 +645,8 @@ func (cluster *Cluster) Run() {
 							cluster.StateMachine.PreserveState("WARN0084")
 							cluster.StateMachine.PreserveState("WARN0095")
 							cluster.StateMachine.PreserveState("WARN0101")
+							cluster.StateMachine.PreserveState("WARN0111")
+							cluster.StateMachine.PreserveState("WARN0112")
 							cluster.StateMachine.PreserveState("ERR00090")
 							cluster.StateMachine.PreserveState("WARN0102")
 						}
@@ -769,15 +771,35 @@ func (cluster *Cluster) StateProcessing() {
 				// 	go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
 				// }
 			}
-			if s.ErrKey == "WARN0101" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have backup")
+			/*
+				// Unused, will be split to logical and physical backup. For rejoin will still use the same ReseedMasterSST
+					if s.ErrKey == "WARN0101" {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have backup")
+						for _, srv := range cluster.Servers {
+							if srv.HasWaitBackupCookie() {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for backup", srv.URL)
+								go srv.ReseedMasterSST()
+							}
+						}
+					}
+			*/
+			if s.ErrKey == "WARN0111" {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have logical backup")
 				for _, srv := range cluster.Servers {
-					if srv.HasWaitBackupCookie() {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for backup", srv.URL)
-						go srv.ReseedMasterSST()
+					if srv.HasWaitLogicalBackupCookie() {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for logical backup", srv.URL)
+						go srv.JobReseedLogicalBackup()
 					}
 				}
-
+			}
+			if s.ErrKey == "WARN0112" {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have physical backup")
+				for _, srv := range cluster.Servers {
+					if srv.HasWaitLogicalBackupCookie() {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for physical backup", srv.URL)
+						go srv.JobReseedPhysicalBackup()
+					}
+				}
 			}
 
 			//		cluster.statecloseChan <- s

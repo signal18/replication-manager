@@ -67,7 +67,7 @@
                   Logical Backup
                </md-button>
             </md-menu-item>
-            <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedmysqldump(server.id)">
+            <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedlogical(server.id)">
                <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false">
                   <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
                   Reseed Logical From Backup

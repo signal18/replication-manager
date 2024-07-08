@@ -1111,8 +1111,8 @@ app.controller('DashboardController', function (
   $scope.flushlogs = function (server) {
     if (confirm("Confirm flush logs for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/flush-logs');
   };
-  $scope.dbreseedmysqldump = function (server) {
-    if (confirm("Confirm reseed with mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/logicalbackup');
+  $scope.dbreseedlogical = function (server) {
+    if (confirm("Confirm reseed with logical backup (" + $scope.selectedCluster.config.backupLogicalType + ") for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/logicalbackup');
   };
   $scope.dbreseedmysqldumpmaster = function (server) {
     if (confirm("Confirm reseed with mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/logicalmaster');
@@ -1121,7 +1121,7 @@ app.controller('DashboardController', function (
     if (confirm("Confirm sending physical backup (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-physical');
   };
   $scope.dbdump = function (server) {
-    if (confirm("Confirm sending mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-logical');
+    if (confirm("Confirm sending logical backup (" + $scope.selectedCluster.config.backupLogicalType + ") for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-logical');
   };
   $scope.dbskipreplicationevent = function (server) {
     if (confirm("Confirm skip replication event for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/skip-replication-event');

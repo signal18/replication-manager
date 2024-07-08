@@ -390,6 +390,14 @@ func (server *ServerMonitor) SetWaitBackupCookie() error {
 	return server.createCookie("cookie_waitbackup")
 }
 
+func (server *ServerMonitor) SetWaitLogicalBackupCookie() error {
+	return server.createCookie("cookie_waitlogicalbackup")
+}
+
+func (server *ServerMonitor) SetWaitPhysicalBackupCookie() error {
+	return server.createCookie("cookie_waitphysicalbackup")
+}
+
 func (server *ServerMonitor) SetBackupPhysicalCookie() error {
 	return server.createCookie("cookie_physicalbackup")
 }

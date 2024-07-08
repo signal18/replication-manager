@@ -53,6 +53,14 @@ func (server *ServerMonitor) DelWaitBackupCookie() error {
 	return server.delCookie("cookie_waitbackup")
 }
 
+func (server *ServerMonitor) DelWaitLogicalBackupCookie() error {
+	return server.delCookie("cookie_waitlogicalbackup")
+}
+
+func (server *ServerMonitor) DelWaitPhysicalBackupCookie() error {
+	return server.delCookie("cookie_waitphysicalbackup")
+}
+
 func (server *ServerMonitor) DelBackupLogicalCookie() error {
 	return server.delCookie("cookie_logicalbackup")
 }
