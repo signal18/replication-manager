@@ -50,7 +50,6 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	server.ExecQueryNoBinLog("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
 	err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task)) engine=innodb")
 	if err != nil {
-		// if cluster.Conf.LogLevel > 2 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't create table replication_manager_schema.jobs")
 		// }
 	}
@@ -66,17 +65,13 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 	server.JobsCreateTable()
 	conn, err := server.GetNewDBConn()
 	if err != nil {
-		// if cluster.Conf.LogLevel > 2 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't connect")
-		// }
 		return 0, err
 	}
 	defer conn.Close()
 	_, err = conn.Exec("set sql_log_bin=0")
 	if err != nil {
-		// if cluster.Conf.LogLevel > 2 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't disable binlog for session")
-		// }
 		return 0, err
 	}
 
@@ -470,11 +465,11 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn)
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "loader")
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn)
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "loader")
 	}()
 	wg.Wait()
 	if err := dumpCmd.Wait(); err != nil {
@@ -552,7 +547,7 @@ func (server *ServerMonitor) JobReseedMysqldump(task string) {
 		}
 
 		go func() {
-			server.copyLogs(stderr)
+			server.copyLogs(stderr, config.ConstLogModBackupStream, config.LvlInfo, "dump")
 		}()
 
 		clientCmd.Wait()
@@ -576,11 +571,11 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn)
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "reseed")
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn)
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "reseed")
 	}()
 	wg.Wait()
 	if err := cmd.Wait(); err != nil {
@@ -783,11 +778,11 @@ func (server *ServerMonitor) JobBackupScript() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn)
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "script")
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn)
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "script")
 	}()
 
 	wg.Wait()
@@ -872,7 +867,7 @@ func (server *ServerMonitor) JobBackupMysqldump() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn)
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "dump")
 	}()
 	go func() {
 		defer wg.Done()
@@ -945,11 +940,11 @@ func (server *ServerMonitor) JobBackupMyDumper() error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn)
+		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlInfo, "dumper")
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn)
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "dumper")
 	}()
 	wg.Wait()
 	if err = dumpCmd.Wait(); err != nil {
@@ -1074,7 +1069,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	return nil
 }
 
-func (server *ServerMonitor) copyLogs(r io.Reader) {
+func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string, tag string) {
 	cluster := server.ClusterGroup
 	//	buf := make([]byte, 1024)
 	s := bufio.NewScanner(r)
@@ -1082,7 +1077,7 @@ func (server *ServerMonitor) copyLogs(r io.Reader) {
 		if !s.Scan() {
 			break
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "%s", s.Text())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s|%s] %s", server.Name, tag, s.Text())
 		}
 	}
 }
@@ -1193,7 +1188,6 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 
 	if _, err := os.Stat(scriptpath); os.IsNotExist(err) && server.GetCluster().GetConf().OnPremiseSSHDbJobScript == "" && !server.IsConfigGen {
 		server.GetDatabaseConfig()
-
 	}
 
 	if server.GetCluster().GetConf().OnPremiseSSHDbJobScript != "" {
@@ -1466,11 +1460,11 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 	go func() {
 		defer wg.Done()
-		source.copyLogs(stderrIn)
+		source.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlInfo, "rejoin")
 	}()
 	go func() {
 		defer wg.Done()
-		dest.copyLogs(stderrOut)
+		dest.copyLogs(stderrOut, config.ConstLogModBackupStream, config.LvlInfo, "rejoin")
 	}()
 
 	wg.Wait()
@@ -1635,4 +1629,56 @@ func (server *ServerMonitor) CallbackMysqldump(dt DBTask) error {
 	}
 
 	return err
+}
+
+func (server *ServerMonitor) JobWriteLogAPI(task string) error {
+	cluster := server.ClusterGroup
+	if cluster.IsInFailover() {
+		return errors.New("Cancel dbjob via ssh during failover")
+	}
+	client, err := server.GetCluster().OnPremiseConnect(server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "OnPremise run  job  %s", err)
+		return err
+	}
+	defer client.Close()
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Write-Log connected")
+
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+	scriptpath := server.Datadir + "/init/init/parselog"
+
+	if _, err := os.Stat(scriptpath); os.IsNotExist(err) && !server.IsConfigGen {
+		server.GetDatabaseConfig()
+	}
+
+	filerc, err2 := os.Open(scriptpath)
+	if err2 != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Parse job's log %s, scriptpath : %s", err2, scriptpath)
+		return errors.New("Cancel parselog can't open script")
+	}
+	defer filerc.Close()
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(filerc)
+
+	buf2 := strings.NewReader(server.GetSshEnv())
+	buf3 := strings.NewReader(server.GetSshLogEnv(task))
+	r := io.MultiReader(buf2, buf3, buf)
+
+	if err := client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Parse job's log: %s", stderr.String())
+	}
+
+	//only parse if debug
+	if cluster.Conf.IsEligibleForPrinting(config.ConstLogModBackupStream, config.LvlDbg) {
+		out := stdout.String()
+		errstr := stderr.String()
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, errstr)
+	}
+
+	return nil
 }

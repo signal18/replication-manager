@@ -425,7 +425,7 @@ func (cluster *Cluster) provCopyLogs(r io.Reader, module int, level string, name
 		if !s.Scan() {
 			break
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s-%s] %s", name, tag, s.Text())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s|%s] %s", name, tag, s.Text())
 		}
 	}
 }
