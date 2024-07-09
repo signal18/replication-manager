@@ -203,7 +203,7 @@ type Config struct {
 	CheckFalsePositiveExternal                bool                   `mapstructure:"failover-falsepositive-external" toml:"failover-falsepositive-external" json:"failoverFalsePositiveExternal"`
 	CheckFalsePositiveExternalPort            int                    `mapstructure:"failover-falsepositive-external-port" toml:"failover-falsepositive-external-port" json:"failoverFalsePositiveExternalPort"`
 	FailoverLogFileKeep                       int                    `mapstructure:"failover-log-file-keep" toml:"failover-log-file-keep" json:"failoverLogFileKeep"`
-	FailoverCheckRegression                   bool                   `mapstructure:"failover-check-regression" toml:"failover-check-regression" json:"failoverCheckRegression"`
+	FailoverCheckBlocker                      bool                   `mapstructure:"failover-check-blocker" toml:"failover-check-blocker" json:"FailoverCheckBlocker"`
 	FailoverSwitchToPrefered                  bool                   `mapstructure:"failover-switch-to-prefered" toml:"failover-switch-to-prefered" json:"failoverSwithToPrefered"`
 	DelayStatCapture                          bool                   `mapstructure:"delay-stat-capture" toml:"delay-stat-capture" json:"delayStatCapture"`
 	PrintDelayStat                            bool                   `mapstructure:"print-delay-stat" toml:"print-delay-stat" json:"printDelayStat"`

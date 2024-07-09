@@ -92,7 +92,7 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 	}
 
 	// If cluster have bug in replication
-	if cluster.Conf.FailoverCheckRegression && cluster.CheckReplicationRegression(sl, forcingLog) == false {
+	if cluster.Conf.FailoverCheckBlocker && cluster.CheckBlockerState(sl, forcingLog) == false {
 		return false
 	}
 
@@ -862,9 +862,9 @@ func (cluster *Cluster) CheckDefaultUser(i bool) {
 }
 
 // This will check replication from bug, return true if valid or not activated
-func (cluster *Cluster) CheckReplicationRegression(sl *ServerMonitor, forcingLog bool) bool {
+func (cluster *Cluster) CheckBlockerState(sl *ServerMonitor, forcingLog bool) bool {
 	// If regression check disabled
-	if !cluster.Conf.FailoverCheckRegression {
+	if !cluster.Conf.FailoverCheckBlocker {
 		return true
 	}
 

@@ -383,7 +383,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.CheckFalsePositiveExternalPort, "failover-falsepositive-external-port", 80, "Failover checks external port")
 	flags.IntVar(&conf.MaxFail, "failover-falsepositive-ping-counter", 5, "Failover after this number of ping failures (interval 1s)")
 	flags.IntVar(&conf.FailoverLogFileKeep, "failover-log-file-keep", 5, "Purge log files taken during failover")
-	flags.BoolVar(&conf.FailoverCheckRegression, "failover-check-regression", true, "Failover checks for replication bug")
+	flags.BoolVar(&conf.FailoverCheckBlocker, "failover-check-blocker", true, "Failover checks for replication bug")
 
 	flags.BoolVar(&conf.FailoverCheckDelayStat, "failover-check-delay-stat", false, "Use delay avg statistic for failover decision")
 	flags.BoolVar(&conf.DelayStatCapture, "delay-stat-capture", false, "Capture hourly statistic for delay average")

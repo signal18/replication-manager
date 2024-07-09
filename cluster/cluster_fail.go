@@ -1073,7 +1073,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	}
 
 	// If cluster have bug in replication
-	if cluster.Conf.FailoverCheckRegression && cluster.CheckReplicationRegression(sl, forcingLog) == false {
+	if cluster.Conf.FailoverCheckBlocker && cluster.CheckBlockerState(sl, forcingLog) == false {
 		return false
 	}
 
