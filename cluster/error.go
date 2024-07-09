@@ -157,7 +157,7 @@ var clusterError = map[string]string{
 	"WARN0096": "Restart database server via job request %s",
 	"WARN0097": "Stop database server via job request %s",
 	"WARN0098": "ProxySQL could not load global variables from runtime (%s)",
-	"WARN0099": "MariaDB version as replication issue https://jira.mariadb.org/browse/MDEV-20821",
+	"WARN0099": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"WARN0100": "No space left on device pn %s",
 	"WARN0101": "Cluster does not have backup",
 	"WARN0102": "The config file must be merge because an immutable parameter has been changed. Use the config-merge command to save your changes.",
@@ -171,4 +171,5 @@ var clusterError = map[string]string{
 	"WARN0110": "Pending %s backup using %s for [%s] due to another job. Waiting...",
 	"WARN0111": "Cluster does not have logical backup",
 	"WARN0112": "Cluster does not have physical backup",
+	"WARN0113": "MariaDB version has replication issue with MIXED format https://jira.mariadb.org/browse/MDEV-28310",
 }

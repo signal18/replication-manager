@@ -33,10 +33,9 @@ func (server *ServerMonitor) CheckMaxConnections() {
 
 func (server *ServerMonitor) CheckVersion() {
 	cluster := server.ClusterGroup
-	if server.DBVersion.IsMariaDB() && ((server.DBVersion.Major == 10 && server.DBVersion.Minor == 4 && server.DBVersion.Release < 12) || (server.DBVersion.Major == 10 && server.DBVersion.Minor == 5 && server.DBVersion.Release < 1)) {
+	if server.DBVersion.IsMariaDB() && server.DBVersion.LowerReleaseList("10.4.12", "10.5.1") {
 		cluster.StateMachine.AddState("WARN0099", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0099"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
 	}
-
 }
 
 // CheckDisks check mariadb disk plugin ti see if it get free space

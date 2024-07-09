@@ -90,6 +90,12 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		// }
 		return false
 	}
+
+	// If cluster have bug in replication
+	if cluster.Conf.FailoverCheckRegression && cluster.CheckReplicationRegression(sl, forcingLog) == false {
+		return false
+	}
+
 	if cluster.Conf.SwitchGtidCheck && cluster.IsCurrentGTIDSync(sl, cluster.master) == false && cluster.Conf.RplChecks == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlWarn, "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
@@ -853,4 +859,19 @@ func (cluster *Cluster) CheckDefaultUser(i bool) {
 		}
 		cluster.StateMachine.AddState("WARN0108", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0108"], out), ErrFrom: "CLUSTER"})
 	}
+}
+
+// This will check replication from bug, return true if valid or not activated
+func (cluster *Cluster) CheckReplicationRegression(sl *ServerMonitor, forcingLog bool) bool {
+	// If regression check disabled
+	if !cluster.Conf.FailoverCheckRegression {
+		return true
+	}
+
+	// https://jira.mariadb.org/browse/MDEV-28310
+	if sl.DBVersion.IsMariaDB() && !sl.HasBinlogRow() && sl.DBVersion.LowerReleaseList("10.2.44", "10.3.35", "10.4.25", "10.5.16", "10.6.8", "10.7.4", "10.8.3", "10.9.1") {
+		cluster.StateMachine.AddState("WARN0113", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0113"], sl.URL), ErrFrom: "CLUSTER", ServerUrl: sl.URL})
+		return false
+	}
+	return true
 }

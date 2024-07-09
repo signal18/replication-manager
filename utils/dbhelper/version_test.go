@@ -10,7 +10,10 @@
 package dbhelper
 
 import (
+	"fmt"
+	"math/rand"
 	"testing"
+	"time"
 )
 
 func TestMySQLVersion(t *testing.T) {
@@ -251,4 +254,22 @@ func TestMariaDBVersion(t *testing.T) {
 		t.Error("Between(5,8) is true (Incorrect)")
 	}
 
+}
+
+func TestMariaDBVersionBinlogFormat(t *testing.T) {
+
+	for i := 0; i < 10; i++ {
+		vmin := rand.Intn(11)
+		vrel := rand.Intn(40)
+		tstring := fmt.Sprintf("10.%d.%d-MariaDB-1:10.%d.%d+maria~ubu2204-log", vmin, vrel, vmin, vrel)
+		cstring := "MariaDB"
+		mv, _ := NewMySQLVersion(tstring, cstring)
+
+		if mv.LowerReleaseList("10.2.44", "10.3.35", "10.4.25", "10.5.16", "10.6.8", "10.7.4", "10.8.3", "10.9.1") {
+			t.Logf("Version %s is unsafe", mv.ToString())
+		} else {
+			t.Logf("Version %s is safe", mv.ToString())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

@@ -1072,6 +1072,11 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		return false
 	}
 
+	// If cluster have bug in replication
+	if cluster.Conf.FailoverCheckRegression && cluster.CheckReplicationRegression(sl, forcingLog) == false {
+		return false
+	}
+
 	//if master is alived and connection issues, we have to refetch password from vault
 	if ss.SlaveIORunning.String == "Connecting" && !cluster.IsMasterFailed() {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlDbg, "isSlaveElect lastIOErrno: %s", ss.LastIOErrno.String)
