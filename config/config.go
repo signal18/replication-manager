@@ -941,7 +941,7 @@ This is the list of modules to be used in LogModulePrintF
 */
 const (
 	ConstLogNameGeneral        string = "log-general"
-	ConstLogNameFailedElection string = "log-writer-election"
+	ConstLogNameWriterelection string = "log-writer-election"
 	ConstLogNameSST            string = "log-sst"
 	ConstLogNameHeartBeat      string = "log-heartbeat"
 	ConstLogNameConfigLoad     string = "log-config-load"
@@ -2088,7 +2088,7 @@ func GetIndexFromModuleName(module string) int {
 	switch module {
 	case ConstLogNameGeneral:
 		return ConstLogModGeneral
-	case ConstLogNameFailedElection:
+	case ConstLogNameWriterelection:
 		return ConstLogModWriterElection
 	case ConstLogNameSST:
 		return ConstLogModSST
