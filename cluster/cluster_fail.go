@@ -960,10 +960,8 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 
 		}
 
-		if cluster.Conf.LogWriterElection {
-			data, _ := json.MarshalIndent(trackposList, "", "\t")
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, config.LvlInfo, "Election matrice maxseq >0: %s ", data)
-		}
+		data, _ := json.MarshalIndent(trackposList, "", "\t")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, config.LvlDbg, "Election matrice maxseq >0: %s ", data)
 		return -1
 	}
 
@@ -1011,16 +1009,14 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 				return p.Indice
 			}
 		}
-		if cluster.Conf.LogWriterElection {
-			data, _ := json.MarshalIndent(trackposList, "", "\t")
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, config.LvlInfo, "Election matrice maxpos>0: %s ", data)
-		}
+
+		data, _ := json.MarshalIndent(trackposList, "", "\t")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, config.LvlDbg, "Election matrice maxpos>0: %s ", data)
 		return -1
 	}
-	if cluster.Conf.LogWriterElection {
-		data, _ := json.MarshalIndent(trackposList, "", "\t")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, config.LvlInfo, "Election matrice: %s ", data)
-	}
+
+	data, _ := json.MarshalIndent(trackposList, "", "\t")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, config.LvlDbg, "Election matrice: %s ", data)
 	return -1
 }
 
