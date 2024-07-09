@@ -917,7 +917,7 @@ This is the list of modules to be used in LogModulePrintF
 */
 const (
 	ConstLogModGeneral        = 0
-	ConstLogModFailedElection = 1
+	ConstLogModWriterElection = 1
 	ConstLogModSST            = 2
 	ConstLogModHeartBeat      = 3
 	ConstLogModConfigLoad     = 4
@@ -1931,7 +1931,7 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 		switch {
 		case module == ConstLogModGeneral:
 			return conf.LogLevel >= lvl
-		case module == ConstLogModFailedElection:
+		case module == ConstLogModWriterElection:
 			if conf.LogWriterElection {
 				return conf.LogWriterElectionLevel >= lvl
 			}
@@ -2052,7 +2052,7 @@ func GetTagsForLog(module int) string {
 	switch module {
 	case ConstLogModGeneral:
 		return "general"
-	case ConstLogModFailedElection:
+	case ConstLogModWriterElection:
 		return "fail"
 	case ConstLogModSST:
 		return "sst"
@@ -2106,7 +2106,7 @@ func GetIndexFromModuleName(module string) int {
 	case ConstLogNameGeneral:
 		return ConstLogModGeneral
 	case ConstLogNameFailedElection:
-		return ConstLogModFailedElection
+		return ConstLogModWriterElection
 	case ConstLogNameSST:
 		return ConstLogModSST
 	case ConstLogNameHeartBeat:
