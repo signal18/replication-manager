@@ -107,8 +107,8 @@ type Config struct {
 	LogHeartbeat                              bool                   `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
 	LogHeartbeatLevel                         int                    `mapstructure:"log-heartbeat-level" toml:"log-heartbeat-level" json:"logHeartbeatLevel"`
 	LogSQLInMonitoring                        bool                   `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
-	LogFailedElection                         bool                   `mapstructure:"log-failed-election"  toml:"log-failed-election" json:"logFailedElection"`
-	LogFailedElectionLevel                    int                    `mapstructure:"log-failed-election-level"  toml:"log-failed-election-level" json:"logFailedElectionLevel"`
+	LogWriterElection                         bool                   `mapstructure:"log-writer-election"  toml:"log-writer-election" json:"logWriterElection"`
+	LogWriterElectionLevel                    int                    `mapstructure:"log-writer-election-level"  toml:"log-writer-election-level" json:"logWriterElectionLevel"`
 	LogGit                                    bool                   `mapstructure:"log-git" toml:"log-git" json:"logGit"`
 	LogGitLevel                               int                    `mapstructure:"log-git-level" toml:"log-git-level" json:"logGitLevel"`
 	LogConfigLoad                             bool                   `mapstructure:"log-config-load" toml:"log-config-load" json:"logConfigLoad"`
@@ -941,7 +941,7 @@ This is the list of modules to be used in LogModulePrintF
 */
 const (
 	ConstLogNameGeneral        string = "log-general"
-	ConstLogNameFailedElection string = "log-failed-election"
+	ConstLogNameFailedElection string = "log-writer-election"
 	ConstLogNameSST            string = "log-sst"
 	ConstLogNameHeartBeat      string = "log-heartbeat"
 	ConstLogNameConfigLoad     string = "log-config-load"
@@ -1932,8 +1932,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 		case module == ConstLogModGeneral:
 			return conf.LogLevel >= lvl
 		case module == ConstLogModFailedElection:
-			if conf.LogFailedElection {
-				return conf.LogFailedElectionLevel >= lvl
+			if conf.LogWriterElection {
+				return conf.LogWriterElectionLevel >= lvl
 			}
 			break
 		case module == ConstLogModSST:

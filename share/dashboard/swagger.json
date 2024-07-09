@@ -1418,9 +1418,9 @@
           "type": "string",
           "x-go-name": "KubeConfig"
         },
-        "logFailedElection": {
+        "logWriterElection": {
           "type": "boolean",
-          "x-go-name": "LogFailedElection"
+          "x-go-name": "LogWriterElection"
         },
         "logFile": {
           "type": "string",

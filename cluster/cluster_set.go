@@ -1537,12 +1537,12 @@ func (cluster *Cluster) SetPrintDelayStatInterval(keep string) error {
 	return nil
 }
 
-func (cluster *Cluster) SetLogFailedElectionLevel(value int) {
-	cluster.Conf.LogFailedElectionLevel = value
+func (cluster *Cluster) SetLogWriterElectionLevel(value int) {
+	cluster.Conf.LogWriterElectionLevel = value
 	if value > 0 {
-		cluster.Conf.LogFailedElection = true
+		cluster.Conf.LogWriterElection = true
 	} else {
-		cluster.Conf.LogFailedElection = false
+		cluster.Conf.LogWriterElection = false
 	}
 }
 func (cluster *Cluster) SetLogSSTLevel(value int) {
