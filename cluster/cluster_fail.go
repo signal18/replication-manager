@@ -707,7 +707,7 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 		if cluster.IsInPreferedHosts(sl) {
 			// if (cluster.Conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
 			if cluster.IsInFailover() {
-				cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlDbg, "Election rig: %s elected as preferred master", sl.URL)
+				cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlInfo, "Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
 		}
@@ -931,7 +931,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 	}
 	if forcingLog {
 		data, _ := json.MarshalIndent(trackposList, "", "\t")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Election matrice: %s ", data)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlInfo, "Election matrice: %s ", data)
 	}
 
 	if maxseq > 0 {
@@ -953,17 +953,15 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		for _, p := range trackposList {
 			if p.Seq == maxseq && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == true {
 				if forcingLog {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, config.LvlInfo, "Ignored server is the most up to date ")
+					cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlInfo, "Ignored server is the most up to date ")
 				}
 				return p.Indice
 			}
 
 		}
 
-		if cluster.Conf.LogFailedElection {
-			data, _ := json.MarshalIndent(trackposList, "", "\t")
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, config.LvlInfo, "Election matrice maxseq >0: %s ", data)
-		}
+		data, _ := json.MarshalIndent(trackposList, "", "\t")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModWriterElection, config.LvlDbg, "Election matrice maxseq >0: %s ", data)
 		return -1
 	}
 
@@ -1006,35 +1004,33 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		for _, p := range trackposList {
 			if p.Pos == maxpos && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == true {
 				if forcingLog {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, config.LvlInfo, "Ignored server is the most up to date ")
+					cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlInfo, "Ignored server is the most up to date ")
 				}
 				return p.Indice
 			}
 		}
-		if cluster.Conf.LogFailedElection {
-			data, _ := json.MarshalIndent(trackposList, "", "\t")
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, config.LvlInfo, "Election matrice maxpos>0: %s ", data)
-		}
+
+		data, _ := json.MarshalIndent(trackposList, "", "\t")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModWriterElection, config.LvlDbg, "Election matrice maxpos>0: %s ", data)
 		return -1
 	}
-	if cluster.Conf.LogFailedElection {
-		data, _ := json.MarshalIndent(trackposList, "", "\t")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, config.LvlInfo, "Election matrice: %s ", data)
-	}
+
+	data, _ := json.MarshalIndent(trackposList, "", "\t")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModWriterElection, config.LvlDbg, "Election matrice: %s ", data)
 	return -1
 }
 
 func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) bool {
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModFailedElection, config.LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModWriterElection, config.LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
 		return false
 	}
 	//if master is alived and IO Thread stops then not a good candidate and not forced
 	if ss.SlaveIORunning.String == "No" && cluster.Conf.RplChecks && !cluster.IsMasterFailed() {
 		cluster.SetState("ERR00087", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00087"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Unsafe failover condition. Slave %s IO Thread is stopped %s. Skipping", sl.URL, ss.LastIOError.String)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Unsafe failover condition. Slave %s IO Thread is stopped %s. Skipping", sl.URL, ss.LastIOError.String)
 		// }
 		return false
 	}
@@ -1043,14 +1039,14 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host, sl.DBVersion) == false {
 		cluster.SetState("ERR00040", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00040"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Slave %s does not ping or has no binlogs. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave %s does not ping or has no binlogs. Skipping", sl.URL)
 		// }
 		return false
 	}
 	if sl.IsMaintenance {
 		cluster.SetState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
 		// }
 		return false
 	}
@@ -1058,7 +1054,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	if ss.SecondsBehindMaster.Int64 > cluster.Conf.FailMaxDelay && cluster.Conf.FailMaxDelay != -1 && cluster.Conf.RplChecks == true {
 		cluster.SetState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"]+" Sql: "+sl.GetProcessListReplicationLongQuery(), sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
 		// }
 
 		return false
@@ -1067,14 +1063,14 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	if ss.SlaveSQLRunning.String == "No" && cluster.Conf.RplChecks {
 		cluster.SetState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		// }
 		return false
 	}
 
 	//if master is alived and connection issues, we have to refetch password from vault
 	if ss.SlaveIORunning.String == "Connecting" && !cluster.IsMasterFailed() {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlDbg, "isSlaveElect lastIOErrno: %s", ss.LastIOErrno.String)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlDbg, "isSlaveElect lastIOErrno: %s", ss.LastIOErrno.String)
 		if ss.LastIOErrno.String == "1045" {
 			cluster.SetState("ERR00088", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00088"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			sl.SetReplicationCredentialsRotation(ss)
@@ -1084,13 +1080,13 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.FailSync && cluster.Conf.RplChecks {
 		cluster.SetState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		// }
 		return false
 	}
 	if sl.IsIgnored() {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Slave is in ignored list %s", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave is in ignored list %s", sl.URL)
 		// }
 		return false
 	}
@@ -1100,14 +1096,14 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) bool {
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
 		return false
 	}
 
 	if sl.IsMaintenance {
 		cluster.SetState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
 		// }
 		return false
 	}
@@ -1131,13 +1127,13 @@ func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) b
 	if ss.SlaveSQLRunning.String == "No" {
 		cluster.SetState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		// }
 		return false
 	}
 	if sl.IsIgnored() {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Slave is in ignored list %s", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave is in ignored list %s", sl.URL)
 		// }
 		return false
 	}
