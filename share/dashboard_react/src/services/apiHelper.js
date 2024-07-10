@@ -28,6 +28,16 @@ export function getRequest(apiUrl, params, authValue = 1) {
   }).then((response) => response.json())
 }
 
+export function getRequestAll(urls, params, authValue = 1) {
+  const requestHeaders = {
+    method: 'GET',
+    headers: authHeader(authValue),
+    ...(params ? { body: JSON.stringify(params) } : {})
+  }
+  const fetchUrls = urls.map((url) => fetch(`/api/${url}`, requestHeaders))
+  return Promise.all(fetchUrls).then((responses) => responses)
+}
+
 export async function postRequest(apiUrl, params, authValue = 1) {
   try {
     const response = await fetch(`/api/${apiUrl}`, {

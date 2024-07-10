@@ -1,5 +1,6 @@
 // theme.js
-import { extendTheme } from '@chakra-ui/react'
+import { extendTheme, Tabs } from '@chakra-ui/react'
+import { tabsTheme } from './tabsTheme'
 
 const theme = extendTheme({
   breakpoints: {
@@ -26,22 +27,15 @@ const theme = extendTheme({
   styles: {
     global: (props) => ({
       // Global styles
-      body: {
-        bg: props.colorMode === 'dark' ? 'primary.dark' : 'primary.light',
-        color: props.colorMode === 'dark' ? 'text.dark' : 'text.light'
-      },
-      'html, body': {
+      'html, body, #root': {
         height: '100%',
         width: '100%',
         margin: 0,
         padding: 0,
-        overflow: 'hidden'
+        bg: props.colorMode === 'dark' ? 'primary.dark' : 'primary.light',
+        color: props.colorMode === 'dark' ? 'text.dark' : 'text.light'
       },
-      '#root': {
-        height: '100%',
-        width: '100%'
-      },
-      'html, body,p, label': {
+      'html, body,p, label, span, [role="menu"] > button': {
         color: props.colorMode === 'dark' ? 'text.dark' : 'text.light'
       }
     })
@@ -80,7 +74,8 @@ const theme = extendTheme({
           }
         }
       }
-    }
+    },
+    Tabs: tabsTheme
   }
 })
 

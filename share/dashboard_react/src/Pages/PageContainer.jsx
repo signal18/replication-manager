@@ -1,13 +1,13 @@
 import React, { useEffect, lazy, Suspense } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { logout, setUserData } from '../../redux/authSlice'
+import { logout, setUserData } from '../redux/authSlice'
 import { Box, useBreakpointValue } from '@chakra-ui/react'
-import { isAuthorized, getRefreshInterval } from '../../utility/common'
-import { setRefreshInterval } from '../../redux/clusterSlice'
-import { setIsMobile, setIsTablet, setIsDesktop } from '../../redux/commonSlice'
-import ThemeIcon from '../ThemeIcon'
-const Navbar = lazy(() => import('../Navbar'))
+import { isAuthorized } from '../utility/common'
+import { getClusters, getMonitoredData } from '../redux/clusterSlice'
+import { setIsMobile, setIsTablet, setIsDesktop } from '../redux/commonSlice'
+import { AppSettings } from '../AppSettings'
+const Navbar = lazy(() => import('../components/Navbar'))
 
 function PageContainer({ children }) {
   const dispatch = useDispatch()
@@ -23,8 +23,7 @@ function PageContainer({ children }) {
 
   const {
     common: { theme },
-    auth: { isLogged, user },
-    cluster: { refreshInterval }
+    auth: { isLogged, user }
   } = useSelector((state) => state)
 
   const currentBreakpoint = useBreakpointValue({
@@ -38,11 +37,6 @@ function PageContainer({ children }) {
     if (isAuthorized() && user === null) {
       dispatch(setUserData())
     }
-    const interval = parseInt(getRefreshInterval())
-    if (interval !== null && refreshInterval === 0) {
-      dispatch(setRefreshInterval({ interval }))
-    }
-
     handleResize() // Initial setup
 
     window.addEventListener('resize', handleResize)
@@ -58,16 +52,7 @@ function PageContainer({ children }) {
     }
   }, [isLogged, user])
 
-  const handleLogout = () => {
-    dispatch(logout())
-  }
-
   const handleResize = () => {
-    // console.log('breakpointValues::', breakpointValues)
-    // const isMobile = window.innerWidth <= parseInt(breakpointValues.base)
-    // const isTablet =
-    //   window.innerWidth > parseInt(breakpointValues.base) && window.innerWidth <= parseInt(breakpointValues.md)
-    // const isDesktop = window.innerWidth > parseInt(breakpointValues.md)
     const isMobile = currentBreakpoint === 'mobile'
     const isTablet = currentBreakpoint === 'tablet'
     const isDesktop = currentBreakpoint === 'desktop'
@@ -78,9 +63,7 @@ function PageContainer({ children }) {
 
   return (
     <Box sx={styles.container}>
-      <Suspense fallback={<div>Loading...</div>}>
-        <Navbar username={user?.username} theme={theme} />
-      </Suspense>
+      <Navbar username={user?.username} theme={theme} />
       {children}
     </Box>
   )

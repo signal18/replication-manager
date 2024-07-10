@@ -1,20 +1,6 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import {
-  NumberInput,
-  NumberInputField,
-  NumberInputStepper,
-  NumberIncrementStepper,
-  NumberDecrementStepper,
-  HStack,
-  Text,
-  useNumberInput,
-  Input,
-  Button,
-  IconButton,
-  Tooltip,
-  Icon
-} from '@chakra-ui/react'
+import { HStack, useNumberInput, Input, IconButton, Tooltip } from '@chakra-ui/react'
 import {
   HiOutlinePlusCircle,
   HiOutlineMinusCircle,
@@ -23,13 +9,23 @@ import {
   HiRefresh,
   HiOutlineInformationCircle
 } from 'react-icons/hi'
-import { setRefreshInterval } from '../../redux/clusterSlice'
+import { setRefreshInterval } from '../redux/clusterSlice'
+import { getRefreshInterval } from '../utility/common'
+import { AppSettings } from '../AppSettings'
 
 function RefreshCounter(props) {
+  const defaultSeconds = 4
   const inputRef = useRef(null)
-  const [seconds, setSeconds] = useState(4)
+  const [seconds, setSeconds] = useState(defaultSeconds)
   const [isPaused, setIsPaused] = useState(false)
   const dispatch = useDispatch()
+
+  useEffect(() => {
+    const currentInterval = getRefreshInterval()
+    if (!currentInterval) {
+      dispatch(setRefreshInterval({ interval: AppSettings.DEFAULT_INTERVAL }))
+    }
+  }, [])
 
   const {
     cluster: { refreshInterval }

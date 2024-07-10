@@ -1,7 +1,7 @@
 import React, { forwardRef, useEffect, useRef, useState, Suspense } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { gitLogin, login } from '../../redux/authSlice'
+import { gitLogin, login } from '../redux/authSlice'
 import {
   Box,
   Button,
@@ -24,9 +24,9 @@ import {
   useMergeRefs,
   useTheme
 } from '@chakra-ui/react'
-import PageContainer from '../PageContainer'
+import PageContainer from './PageContainer'
 import { HiEye, HiEyeOff } from 'react-icons/hi'
-import { isAuthorized } from '../../utility/common'
+import { isAuthorized } from '../utility/common'
 
 function Login(props) {
   const [username, setUsername] = useState('')

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import { IconButton, useColorMode } from '@chakra-ui/react'
 import { HiMoon, HiSun } from 'react-icons/hi'
-import { setTheme } from '../../redux/commonSlice'
+import { setTheme } from '../redux/commonSlice'
 import { useDispatch } from 'react-redux'
 
 function ThemeIcon({ theme }) {

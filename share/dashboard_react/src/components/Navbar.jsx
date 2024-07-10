@@ -1,11 +1,11 @@
 import { Box, Flex, Image, Button, Spacer, Text, HStack, useColorMode, IconButton } from '@chakra-ui/react'
 import React, { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { logout } from '../../redux/authSlice'
-import ThemeIcon from '../ThemeIcon'
-import RefreshCounter from '../RefreshCounter'
-import { HiMoon, HiSun } from 'react-icons/hi'
-import { isAuthorized } from '../../utility/common'
+import { logout } from '../redux/authSlice'
+import ThemeIcon from './ThemeIcon'
+import RefreshCounter from './RefreshCounter'
+import { isAuthorized } from '../utility/common'
+import { Link } from 'react-router-dom'
 
 function Navbar({ username, theme }) {
   const dispatch = useDispatch()
@@ -29,15 +29,18 @@ function Navbar({ username, theme }) {
   return (
     <>
       <Flex as='nav' p='10px' sx={styles.navbarContainer} gap='2' align='center'>
-        <Image
-          loading='lazy'
-          height='50px'
-          width={isMobile ? '180px' : 'fit-content'}
-          sx={styles.logo}
-          objectFit='contain'
-          src='/images/logo.png'
-          alt='Replication Manager'
-        />
+        <Link to='/'>
+          <Image
+            loading='lazy'
+            height='50px'
+            width={isMobile ? '180px' : 'fit-content'}
+            sx={styles.logo}
+            objectFit='contain'
+            src='/images/logo.png'
+            alt='Replication
+           Manager'
+          />
+        </Link>
         <Spacer />
 
         {isAuthorized() && isDesktop && <RefreshCounter />}
