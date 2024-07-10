@@ -707,7 +707,7 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 		if cluster.IsInPreferedHosts(sl) {
 			// if (cluster.Conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
 			if cluster.IsInFailover() {
-				cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlDbg, "Election rig: %s elected as preferred master", sl.URL)
+				cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlInfo, "Election rig: %s elected as preferred master", sl.URL)
 			}
 			return i
 		}
