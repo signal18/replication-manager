@@ -351,7 +351,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 
 	if cluster.SlavesConnected <= cluster.Conf.ForceBinlogPurgeMinReplica {
 		if cluster.StateMachine.CurState.Search("WARN0106") == false {
-			cluster.StateMachine.AddState("WARN0106", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0106"], cluster.Conf.ForceBinlogPurgeMinReplica), ErrFrom: "PURGE", ServerUrl: server.URL})
+			cluster.SetState("WARN0106", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0106"], cluster.Conf.ForceBinlogPurgeMinReplica), ErrFrom: "PURGE", ServerUrl: server.URL})
 		}
 		return
 	}
@@ -444,7 +444,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 				//Halt and return if last binlogfile is same with slave master pos
 				if oldestbinlog == cluster.SlavesOldestMasterFile.Suffix {
 					if cluster.StateMachine.CurState.Search("WARN0107") == false {
-						cluster.StateMachine.AddState("WARN0107", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0107"], cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix), ErrFrom: "CHECK", ServerUrl: server.URL})
+						cluster.SetState("WARN0107", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0107"], cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix), ErrFrom: "CHECK", ServerUrl: server.URL})
 					}
 					return
 				}

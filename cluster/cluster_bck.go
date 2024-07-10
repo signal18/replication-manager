@@ -64,7 +64,7 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 
 		err := resticcmd.Wait()
 		if err != nil {
-			cluster.StateMachine.AddState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
+			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
 			return err
 		}
 		if errStdout != nil || errStderr != nil {
@@ -122,7 +122,7 @@ func (cluster *Cluster) ResticInitRepo() error {
 
 		err := resticcmd.Wait()
 		if err != nil {
-			cluster.StateMachine.AddState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
+			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
 		}
 		if errStdout != nil || errStderr != nil {
 			return errors.New("failed to capture stdout or stderr\n")
@@ -162,7 +162,7 @@ func (cluster *Cluster) ResticFetchRepo() error {
 
 		err := resticcmd.Wait()
 		if err != nil {
-			cluster.StateMachine.AddState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
+			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
 			cluster.ResticInitRepo()
 			return err
 		}
@@ -221,7 +221,7 @@ func (cluster *Cluster) ResticFetchRepoStat() error {
 
 	err := resticcmd.Wait()
 	if err != nil {
-		cluster.StateMachine.AddState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
+		cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
 		cluster.ResticInitRepo()
 		return err
 	}

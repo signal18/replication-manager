@@ -88,7 +88,7 @@ func (proxy *SphinxProxy) Init() {
 
 	sphinx, err := proxy.Connect()
 	if err != nil {
-		cluster.StateMachine.AddState("ERR00058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00058"], err), ErrFrom: "MON"})
+		cluster.SetState("ERR00058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00058"], err), ErrFrom: "MON"})
 		return
 	}
 	defer sphinx.Connection.Close()
@@ -107,7 +107,7 @@ func (proxy *SphinxProxy) Refresh() error {
 
 	sphinx, err := proxy.Connect()
 	if err != nil {
-		cluster.StateMachine.AddState("ERR00058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00058"], err), ErrFrom: "MON"})
+		cluster.SetState("ERR00058", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00058"], err), ErrFrom: "MON"})
 		return err
 	}
 	defer sphinx.Connection.Close()

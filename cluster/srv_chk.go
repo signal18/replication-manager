@@ -27,14 +27,14 @@ func (server *ServerMonitor) CheckMaxConnections() {
 	maxCx, _ := strconv.ParseInt(server.Variables["MAX_CONNECTIONS"], 10, 64)
 	curCx, _ := strconv.ParseInt(server.Status["THREADS_CONNECTED"], 10, 64)
 	if curCx > maxCx*80/100 {
-		cluster.StateMachine.AddState("ERR00076", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00076"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
+		cluster.SetState("ERR00076", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00076"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
 	}
 }
 
 func (server *ServerMonitor) CheckVersion() {
 	cluster := server.ClusterGroup
 	if server.DBVersion.IsMariaDB() && ((server.DBVersion.Major == 10 && server.DBVersion.Minor == 4 && server.DBVersion.Release < 12) || (server.DBVersion.Major == 10 && server.DBVersion.Minor == 5 && server.DBVersion.Release < 1)) {
-		cluster.StateMachine.AddState("WARN0099", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0099"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
+		cluster.SetState("WARN0099", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0099"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
 	}
 
 }
@@ -44,7 +44,7 @@ func (server *ServerMonitor) CheckDisks() {
 	cluster := server.ClusterGroup
 	for _, d := range server.Disks {
 		if d.Used/d.Total*100 > int32(cluster.Conf.MonitorDiskUsagePct) {
-			cluster.StateMachine.AddState("ERR00079", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00079"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
+			cluster.SetState("ERR00079", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00079"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
 		}
 	}
 }
@@ -173,7 +173,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "DEBUG", "Enforce semisync on slave %s", sl.URL)
 		dbhelper.InstallSemiSync(sl.Conn, server.DBVersion)
 	} else if sl.IsIgnored() == false && sl.HaveSemiSync == false && cluster.GetTopology() != topoMultiMasterWsrep {
-		cluster.StateMachine.AddState("WARN0048", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0048"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0048", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0048"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
 	if cluster.Conf.ForceBinlogRow && sl.HaveBinlogRow == false {
@@ -182,7 +182,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce binlog format ROW on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.HaveBinlogRow == false && (cluster.Conf.AutorejoinFlashback == true || cluster.GetTopology() == topoMultiMasterWsrep) {
 		//galera or binlog flashback need row based binlog
-		cluster.StateMachine.AddState("WARN0049", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0049"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0049", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0049"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if cluster.Conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" && !server.IsIgnoredReadonly() && !cluster.IsMultiMaster() {
 		// In non-multimaster mode, enforce read-only flag if the option is set
@@ -193,32 +193,32 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		dbhelper.SetSlaveHeartbeat(sl.Conn, "1", cluster.Conf.MasterConn, server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce heartbeat to 1s on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.GetReplicationHearbeatPeriod() > 1 {
-		cluster.StateMachine.AddState("WARN0050", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0050"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0050", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0050"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if cluster.Conf.ForceSlaveGtid && sl.GetReplicationUsingGtid() == "No" {
 		dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos", cluster.Conf.MasterConn, server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce GTID replication on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.GetReplicationUsingGtid() == "No" && cluster.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
-		cluster.StateMachine.AddState("WARN0051", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0051", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if cluster.Conf.ForceSlaveGtidStrict && !sl.IsReplicationUsingGtidStrict() && cluster.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
 		dbhelper.SetSlaveGTIDModeStrict(sl.Conn, server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce GTID strict mode on slave %s", sl.URL)
 	} else if !sl.IsIgnored() && !sl.IsReplicationUsingGtidStrict() && cluster.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
-		cluster.StateMachine.AddState("WARN0058", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0058"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0058", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0058"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
 	if cluster.Conf.ForceSlaveIdempotent && !sl.HaveSlaveIdempotent && cluster.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
 		dbhelper.SetSlaveExecMode(sl.Conn, "IDEMPOTENT", cluster.Conf.MasterConn, server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce replication mode idempotent on slave %s", sl.URL)
 	} /* else if !sl.IsIgnored() && cluster.Conf.ForceSlaveIdempotent && sl.HaveSlaveIdempotent && cluster.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
-		cluster.StateMachine.AddState("WARN0103", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0103"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0103", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0103"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}*/
 	if cluster.Conf.ForceSlaveStrict && sl.HaveSlaveIdempotent && cluster.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
 		dbhelper.SetSlaveExecMode(sl.Conn, "STRICT", cluster.Conf.MasterConn, server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce replication mode strict on slave %s", sl.URL)
 	} /*else if !sl.IsIgnored() && cluster.Conf.ForceSlaveStrict &&  && cluster.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
-		cluster.StateMachine.AddState("WARN0104", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0103"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0104", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0103"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	} */
 	if strings.ToUpper(cluster.Conf.ForceSlaveParallelMode) == "OPTIMISTIC" && !sl.HaveSlaveOptimistic && cluster.GetTopology() != topoMultiMasterWsrep && server.IsMariaDB() {
 		dbhelper.SetSlaveParallelMode(sl.Conn, "OPTIMISTIC", cluster.Conf.MasterConn, server.DBVersion)
@@ -244,35 +244,35 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		dbhelper.SetSyncInnodb(sl.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce InnoDB durability on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.HaveInnodbTrxCommit == false {
-		cluster.StateMachine.AddState("WARN0052", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0052"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0052", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0052"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if cluster.Conf.ForceBinlogChecksum && sl.HaveChecksum == false {
 		dbhelper.SetBinlogChecksum(sl.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce checksum on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.HaveChecksum == false {
-		cluster.StateMachine.AddState("WARN0053", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0053"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0053", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0053"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if cluster.Conf.ForceBinlogSlowqueries && sl.HaveBinlogSlowqueries == false {
 		dbhelper.SetBinlogSlowqueries(sl.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce log slow queries of replication on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.HaveBinlogSlowqueries == false {
-		cluster.StateMachine.AddState("WARN0054", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0054"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0054", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0054"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if cluster.Conf.ForceBinlogAnnotate && sl.HaveBinlogAnnotate == false && server.IsMariaDB() {
 		dbhelper.SetBinlogAnnotate(sl.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce annotate on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.HaveBinlogAnnotate == false && server.IsMariaDB() {
-		cluster.StateMachine.AddState("WARN0055", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0055"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0055", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0055"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
 	if cluster.Conf.ForceBinlogCompress && sl.HaveBinlogCompress == false && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
 		dbhelper.SetBinlogCompress(sl.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce binlog compression on slave %s", sl.URL)
 	} else if sl.IsIgnored() == false && sl.HaveBinlogCompress == false && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
-		cluster.StateMachine.AddState("WARN0056", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0056"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0056", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0056"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if sl.IsIgnored() == false && sl.HaveBinlogSlaveUpdates == false {
-		cluster.StateMachine.AddState("WARN0057", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0057"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		cluster.SetState("WARN0057", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0057"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
 	if server.IsAcid() == false && cluster.IsDiscovered() {
@@ -288,49 +288,49 @@ func (server *ServerMonitor) CheckMasterSettings() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce semisync on Master %s", server.URL)
 		dbhelper.InstallSemiSync(server.Conn, server.DBVersion)
 	} else if server.HaveSemiSync == false && cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoMultiMasterGrouprep {
-		cluster.StateMachine.AddState("WARN0060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0060"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
+		cluster.SetState("WARN0060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0060"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if cluster.Conf.ForceBinlogRow && server.HaveBinlogRow == false {
 		dbhelper.SetBinlogFormat(server.Conn, "ROW")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce binlog format ROW on Master %s", server.URL)
 	} else if server.HaveBinlogRow == false && cluster.Conf.AutorejoinFlashback == true {
-		cluster.StateMachine.AddState("WARN0061", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0061"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
+		cluster.SetState("WARN0061", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0061"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if cluster.Conf.ForceSyncBinlog && server.HaveBinlogSync == false {
 		dbhelper.SetSyncBinlog(server.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce sync binlog on Master %s", server.URL)
 	} else if server.HaveBinlogSync == false {
-		cluster.StateMachine.AddState("WARN0062", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0062"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
+		cluster.SetState("WARN0062", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0062"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if cluster.Conf.ForceSyncInnoDB && server.HaveBinlogSync == false {
 		dbhelper.SetSyncInnodb(server.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce innodb durability on Master %s", server.URL)
 	} else if server.HaveBinlogSync == false {
-		cluster.StateMachine.AddState("WARN0064", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0064"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
+		cluster.SetState("WARN0064", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0064"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if cluster.Conf.ForceBinlogAnnotate && server.HaveBinlogAnnotate == false && server.IsMariaDB() {
 		dbhelper.SetBinlogAnnotate(server.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce binlog annotate on master %s", server.URL)
 	} else if server.HaveBinlogAnnotate == false && server.IsMariaDB() {
-		cluster.StateMachine.AddState("WARN0067", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0067"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
+		cluster.SetState("WARN0067", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0067"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if cluster.Conf.ForceBinlogChecksum && server.HaveChecksum == false {
 		dbhelper.SetBinlogChecksum(server.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce ckecksum annotate on master %s", server.URL)
 	} else if server.HaveChecksum == false {
-		cluster.StateMachine.AddState("WARN0065", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0065"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
+		cluster.SetState("WARN0065", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0065"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if cluster.Conf.ForceBinlogCompress && server.HaveBinlogCompress == false && server.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {
 		dbhelper.SetBinlogCompress(server.Conn)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce binlog compression on master %s", server.URL)
 	} else if server.HaveBinlogCompress == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {
-		cluster.StateMachine.AddState("WARN0068", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0068"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
+		cluster.SetState("WARN0068", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0068"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if server.HaveBinlogSlaveUpdates == false {
-		cluster.StateMachine.AddState("WARN0069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0069"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
+		cluster.SetState("WARN0069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0069"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if server.HaveGtidStrictMode == false && server.DBVersion.Flavor == "MariaDB" && cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoMultiMasterGrouprep {
-		cluster.StateMachine.AddState("WARN0070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0070"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
+		cluster.SetState("WARN0070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0070"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if server.IsAcid() == false && cluster.IsDiscovered() {
 		cluster.SetState("WARN0007", state.State{ErrType: "WARNING", ErrDesc: "At least one server is not ACID-compliant. Please make sure that sync_binlog and innodb_flush_log_at_trx_commit are set to 1", ErrFrom: "CONF", ServerUrl: server.URL})
@@ -345,7 +345,7 @@ func (server *ServerMonitor) CheckSlaveSameMasterGrants() bool {
 	}
 	for _, user := range cluster.GetMaster().Users {
 		if _, ok := server.Users["'"+user.User+"'@'"+user.Host+"'"]; !ok {
-			cluster.StateMachine.AddState("ERR00056", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00056"], fmt.Sprintf("'%s'@'%s'", user.User, user.Host), server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
+			cluster.SetState("ERR00056", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00056"], fmt.Sprintf("'%s'@'%s'", user.User, user.Host), server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 			return false
 		}
 	}
