@@ -1119,6 +1119,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchProxySQL()
 	case "proxy-servers-read-on-master":
 		mycluster.SwitchProxyServersReadOnMaster()
+	case "proxy-servers-read-on-master-no-slave":
+		mycluster.SwitchProxyServersReadOnMasterNoSlave()
 	case "proxy-servers-backend-compression":
 		mycluster.SwitchProxyServersBackendCompression()
 	case "database-heartbeat":
