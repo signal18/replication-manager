@@ -22,7 +22,7 @@ The main features are:
  * Database, Proxy configurator
  * OpenSVC a K8S service deployment including init container
  * Encrypt config file secret, multi layer configs  
- * SSO on gilab,
+ * SSO on GitLab,
  * API wih ACL
  * Capture on high load
  * SLA tracking
