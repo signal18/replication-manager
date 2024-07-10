@@ -1775,6 +1775,14 @@ app.controller('DashboardController', function (
     if (confirm("Confirm change " + setting.toString() + "to " + value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
   };
 
+  $scope.setsettingsnullable = function (setting, value) {
+    if (value.length == 0){
+      value = "{undefined}"
+    }
+    
+    return $scope.setsettings(setting,value)
+  };
+
 
 
 

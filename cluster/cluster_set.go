@@ -1750,7 +1750,19 @@ func (cluster *Cluster) SetTopologyTarget(value string) {
 }
 
 func (cluster *Cluster) SetMonitorIgnoreErrors(value string) {
+	if value == "{undefined}" {
+		value = ""
+	}
 	cluster.Lock()
 	cluster.Conf.MonitorIgnoreErrors = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetMonitorCaptureTrigger(value string) {
+	if value == "{undefined}" {
+		value = ""
+	}
+	cluster.Lock()
+	cluster.Conf.MonitorCaptureTrigger = value
 	cluster.Unlock()
 }

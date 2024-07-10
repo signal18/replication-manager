@@ -43,7 +43,7 @@
         <input ng-show="roCaptureTrigger" type="text" ng-model="selectedCluster.config.monitoringCaptureTrigger" maxlength="120" size="80" readonly/>
         <input ng-show="!roCaptureTrigger" type="text" name="selectedMonitoringCaptureTrigger" id="selectedMonitoringCaptureTrigger" ng-model="selectedMonitoringCaptureTrigger" maxlength="120" size="80"/>
         <button ng-click="toggleCaptureTrigger()"><span ng-show="!roCaptureTrigger"><i class="fas fa fa-times"></i></span><span ng-show="roCaptureTrigger"><i class="fas fa fa-edit"></i></span></button>
-        <button ng-if="!roCaptureTrigger" ng-click="setsettings('monitoring-capture-trigger',selectedMonitoringCaptureTrigger);toggleCaptureTrigger()"><i class="fas fa fa-save"></i></button>
+        <button ng-if="!roCaptureTrigger" ng-click="setsettingsnullable('monitoring-capture-trigger',selectedMonitoringCaptureTrigger);toggleCaptureTrigger()"><i class="fas fa fa-save"></i></button>
       </td>
     </tr>
     <tr>
@@ -54,7 +54,7 @@
         <input ng-show="roIgnoreErrors" type="text" ng-model="selectedCluster.config.monitoringIgnoreErrors" maxlength="120" size="80" readonly/>
         <input ng-show="!roIgnoreErrors" type="text" name="selectedMonitoringIgnoreErrors" id="selectedMonitoringIgnoreErrors" ng-model="selectedMonitoringIgnoreErrors" maxlength="120" size="80"/>
         <button ng-click="toggleIgnoreErrors()"><span ng-show="!roIgnoreErrors"><i class="fas fa fa-times"></i></span><span ng-show="roIgnoreErrors"><i class="fas fa fa-edit"></i></span></button>
-        <button ng-if="!roIgnoreErrors" ng-click="setsettings('monitoring-ignore-errors',selectedMonitoringIgnoreErrors);toggleIgnoreErrors()"><i class="fas fa fa-save"></i></button>
+        <button ng-if="!roIgnoreErrors" ng-click="setsettingsnullable('monitoring-ignore-errors',selectedMonitoringIgnoreErrors);toggleIgnoreErrors()"><i class="fas fa fa-save"></i></button>
       </td>
     </tr>
     <tr>
