@@ -803,11 +803,17 @@ func (cluster *Cluster) SetBackupKeepWeekly(keep string) error {
 }
 
 func (cluster *Cluster) SetBackupLogicalType(backup string) {
-	cluster.Conf.BackupLogicalType = backup
+	if cluster.Conf.BackupLogicalType != backup {
+		cluster.Conf.BackupLogicalType = backup
+		cluster.GetBackupServer().DelBackupLogicalCookie()
+	}
 }
 
 func (cluster *Cluster) SetBackupPhysicalType(backup string) {
-	cluster.Conf.BackupPhysicalType = backup
+	if cluster.Conf.BackupPhysicalType != backup {
+		cluster.Conf.BackupPhysicalType = backup
+		cluster.GetBackupServer().DelBackupPhysicalCookie()
+	}
 }
 
 func (cluster *Cluster) SetBackupBinlogType(backup string) {
@@ -1010,7 +1016,7 @@ func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
 }
 
 func (cluster *Cluster) SetState(key string, s state.State) {
-	if !strings.Contains(cluster.Conf.MonitorIgnoreError, key) {
+	if !strings.Contains(cluster.Conf.MonitorIgnoreErrors, key) {
 		cluster.StateMachine.AddState(key, s)
 	}
 }
@@ -1531,12 +1537,12 @@ func (cluster *Cluster) SetPrintDelayStatInterval(keep string) error {
 	return nil
 }
 
-func (cluster *Cluster) SetLogFailedElectionLevel(value int) {
-	cluster.Conf.LogFailedElectionLevel = value
+func (cluster *Cluster) SetLogWriterElectionLevel(value int) {
+	cluster.Conf.LogWriterElectionLevel = value
 	if value > 0 {
-		cluster.Conf.LogFailedElection = true
+		cluster.Conf.LogWriterElection = true
 	} else {
-		cluster.Conf.LogFailedElection = false
+		cluster.Conf.LogWriterElection = false
 	}
 }
 func (cluster *Cluster) SetLogSSTLevel(value int) {
@@ -1644,6 +1650,15 @@ func (cluster *Cluster) SetMxsLogLevel(value int) {
 	}
 }
 
+func (cluster *Cluster) SetLogTaskLevel(value int) {
+	cluster.Conf.LogTaskLevel = value
+	if value > 0 {
+		cluster.Conf.LogTask = true
+	} else {
+		cluster.Conf.LogTask = false
+	}
+}
+
 func (cluster *Cluster) SetSlavesOldestMasterFile(value string) error {
 
 	parts := strings.Split(value, ".")
@@ -1731,5 +1746,23 @@ func (cluster *Cluster) SetGraphiteWhitelistTemplate(value string) {
 func (cluster *Cluster) SetTopologyTarget(value string) {
 	cluster.Lock()
 	cluster.Conf.TopologyTarget = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetMonitorIgnoreErrors(value string) {
+	if value == "{undefined}" {
+		value = ""
+	}
+	cluster.Lock()
+	cluster.Conf.MonitorIgnoreErrors = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetMonitorCaptureTrigger(value string) {
+	if value == "{undefined}" {
+		value = ""
+	}
+	cluster.Lock()
+	cluster.Conf.MonitorCaptureTrigger = value
 	cluster.Unlock()
 }

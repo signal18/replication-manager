@@ -8,9 +8,9 @@
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
-package cluster
+package config
 
-var clusterError = map[string]string{
+var ClusterError = map[string]string{
 	"ERR00001": "Monitor freeze while running critical section",
 	"ERR00002": "Waiting for a user manual failover",
 	"ERR00004": "Database %s access denied: %s",
@@ -169,4 +169,6 @@ var clusterError = map[string]string{
 	"WARN0108": "Default users still use default password. Please change the credentials for users: (%s)",
 	"WARN0109": "Error while checking master log file for purging in slave [%s] (%s) : %s\n",
 	"WARN0110": "Pending %s backup using %s for [%s] due to another job. Waiting...",
+	"WARN0111": "Cluster does not have logical backup",
+	"WARN0112": "Cluster does not have physical backup",
 }

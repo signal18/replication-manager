@@ -640,7 +640,7 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 		if err != nil {
 			if err != nil {
 				// Create state when master log file is not found or incorrect
-				cluster.StateMachine.AddState("WARN0109", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0109"], sl.Host+":"+sl.Port, sl.SlaveStatus.MasterLogFile.String, err.Error()), ErrFrom: "PURGE"})
+				cluster.SetState("WARN0109", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0109"], sl.Host+":"+sl.Port, sl.SlaveStatus.MasterLogFile.String, err.Error()), ErrFrom: "PURGE"})
 			}
 		}
 		if curInt > 0 && (binInt == 0 || curInt < binInt) {

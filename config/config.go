@@ -85,7 +85,7 @@ type Config struct {
 	MonitorDiskUsage                          bool                   `mapstructure:"monitoring-disk-usage" toml:"monitoring-disk-usage" json:"monitoringDiskUsage"`
 	MonitorDiskUsagePct                       int                    `mapstructure:"monitoring-disk-usage-pct" toml:"monitoring-disk-usage-pct" json:"monitoringDiskUsagePct"`
 	MonitorCaptureTrigger                     string                 `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
-	MonitorIgnoreError                        string                 `mapstructure:"monitoring-ignore-errors" toml:"monitoring-ignore-errors" json:"monitoringIgnoreErrors"`
+	MonitorIgnoreErrors                       string                 `mapstructure:"monitoring-ignore-errors" toml:"monitoring-ignore-errors" json:"monitoringIgnoreErrors"`
 	MonitorTenant                             string                 `mapstructure:"monitoring-tenant" toml:"monitoring-tenant" json:"monitoringTenant"`
 	MonitoringAlertTrigger                    string                 `mapstructure:"monitoring-alert-trigger" toml:"monitoring-alert-trigger" json:"monitoringAlertTrigger"`
 	MonitoringQueryTimeout                    int                    `mapstructure:"monitoring-query-timeout" toml:"monitoring-query-timeout" json:"monitoringQueryTimeout"`
@@ -99,14 +99,16 @@ type Config struct {
 	LogRotateMaxSize                          int                    `mapstructure:"log-rotate-max-size" toml:"log-rotate-max-size" json:"logRotateMaxSize"`
 	LogRotateMaxBackup                        int                    `mapstructure:"log-rotate-max-backup" toml:"log-rotate-max-backup" json:"logRotateMaxBackup"`
 	LogRotateMaxAge                           int                    `mapstructure:"log-rotate-max-age" toml:"log-rotate-max-age" json:"logRotateMaxAge"`
+	LogTask                                   bool                   `mapstructure:"log-task" toml:"log-task" json:"logTask"`
+	LogTaskLevel                              int                    `mapstructure:"log-task-level" toml:"log-task-level" json:"logTaskLevel"`
 	LogSST                                    bool                   `mapstructure:"log-sst" toml:"log-sst" json:"logSst"`                  // internal replication-manager sst
 	LogSSTLevel                               int                    `mapstructure:"log-sst-level" toml:"log-sst-level" json:"logSstLevel"` // internal replication-manager sst
 	SSTSendBuffer                             int                    `mapstructure:"sst-send-buffer" toml:"sst-send-buffer" json:"sstSendBuffer"`
 	LogHeartbeat                              bool                   `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
 	LogHeartbeatLevel                         int                    `mapstructure:"log-heartbeat-level" toml:"log-heartbeat-level" json:"logHeartbeatLevel"`
 	LogSQLInMonitoring                        bool                   `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
-	LogFailedElection                         bool                   `mapstructure:"log-failed-election"  toml:"log-failed-election" json:"logFailedElection"`
-	LogFailedElectionLevel                    int                    `mapstructure:"log-failed-election-level"  toml:"log-failed-election-level" json:"logFailedElectionLevel"`
+	LogWriterElection                         bool                   `mapstructure:"log-writer-election"  toml:"log-writer-election" json:"logWriterElection"`
+	LogWriterElectionLevel                    int                    `mapstructure:"log-writer-election-level"  toml:"log-writer-election-level" json:"logWriterElectionLevel"`
 	LogGit                                    bool                   `mapstructure:"log-git" toml:"log-git" json:"logGit"`
 	LogGitLevel                               int                    `mapstructure:"log-git-level" toml:"log-git-level" json:"logGitLevel"`
 	LogConfigLoad                             bool                   `mapstructure:"log-config-load" toml:"log-config-load" json:"logConfigLoad"`
@@ -125,6 +127,7 @@ type Config struct {
 	LogBinlogPurgeLevel                       int                    `mapstructure:"log-binlog-purge-level" toml:"log-binlog-purge-level" json:"logBinlogPurgeLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
+	DbServersChangeStateScript                string                 `mapstructure:"db-servers-change-state-script" toml:"db-servers-change-state-script" json:"dbServersChangeStateScript"`
 	HostsDelayed                              string                 `mapstructure:"replication-delayed-hosts" toml:"replication-delayed-hosts" json:"replicationDelayedHosts"`
 	HostsDelayedTime                          int                    `mapstructure:"replication-delayed-time" toml:"replication-delayed-time" json:"replicationDelayedTime"`
 	DBServersTLSUseGeneratedCertificate       bool                   `mapstructure:"db-servers-tls-use-generated-cert" toml:"db-servers-tls-use-generated-cert" json:"dbServersUseGeneratedCert"`
@@ -666,6 +669,7 @@ type Config struct {
 	OAuthClientSecret                         string                 `mapstructure:"api-oauth-client-secret" toml:"api-oauth-client-secret" json:"apiOAuthClientSecret"`
 	CacheStaticMaxAge                         int                    `mapstructure:"cache-static-max-age" toml:"cache-static-max-age" json:"-"`
 	TokenTimeout                              int                    `mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
+	JobLogBatchSize                           int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
@@ -913,7 +917,7 @@ This is the list of modules to be used in LogModulePrintF
 */
 const (
 	ConstLogModGeneral        = 0
-	ConstLogModFailedElection = 1
+	ConstLogModWriterElection = 1
 	ConstLogModSST            = 2
 	ConstLogModHeartBeat      = 3
 	ConstLogModConfigLoad     = 4
@@ -929,6 +933,52 @@ const (
 	ConstLogModMaxscale       = 14
 	ConstLogModGraphite       = 15
 	ConstLogModPurge          = 16
+	ConstLogModTask           = 17
+)
+
+/*
+This is the list of modules to be used in LogModulePrintF
+*/
+const (
+	ConstLogNameGeneral        string = "log-general"
+	ConstLogNameWriterelection string = "log-writer-election"
+	ConstLogNameSST            string = "log-sst"
+	ConstLogNameHeartBeat      string = "log-heartbeat"
+	ConstLogNameConfigLoad     string = "log-config-load"
+	ConstLogNameGit            string = "log-git"
+	ConstLogNameBackupStream   string = "log-backup-stream"
+	ConstLogNameOrchestrator   string = "log-orchestrator"
+	ConstLogNameVault          string = "log-vault"
+	ConstLogNameTopology       string = "log-topology"
+	ConstLogNameProxy          string = "log-proxy"
+	ConstLogNameProxySQL       string = "log-proxysql"
+	ConstLogNameHAProxy        string = "log-haproxy"
+	ConstLogNameProxyJanitor   string = "log-proxy-janitor"
+	ConstLogNameMaxscale       string = "log-maxscale"
+	ConstLogNameGraphite       string = "log-graphite"
+	ConstLogNamePurge          string = "log-binlog-purge"
+	ConstLogNameTask           string = "log-task"
+)
+
+/*
+This is the list of task to be used in SSH
+*/
+const (
+	ConstTaskXB        string = "xtrabackup"
+	ConstTaskMB        string = "mariabackup"
+	ConstTaskError     string = "error"
+	ConstTaskSlowQuery string = "slowquery"
+	ConstTaskZFS       string = "zfssnapback"
+	ConstTaskOptimize  string = "optimize"
+	ConstTaskReseedXB  string = "reseedxtrabackup"
+	ConstTaskReseedMB  string = "reseedmariabackup"
+	ConstTaskDump      string = "reseedmysqldump"
+	ConstTaskFlashXB   string = "flashbackxtrabackup"
+	ConstTaskFlashMB   string = "flashbackmariadbackup"
+	ConstTaskFlashDump string = "flashbackmysqldump"
+	ConstTaskStop      string = "stop"
+	ConstTaskRestart   string = "restart"
+	ConstTaskStart     string = "start"
 )
 
 /*
@@ -1006,7 +1056,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 
 		/* Decrypt feature not managed within log modules config due to risk of credentials leak */
 		if conf.LogSecrets {
-			log.WithField("cluster", "config").Infof("DecryptSecretsFromConfig: %s", secret.Value)
+			log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Infof("DecryptSecretsFromConfig: %s", secret.Value)
 		}
 
 		lst_cred := strings.Split(secret.Value, ",")
@@ -1021,7 +1071,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 				} else {
 					//Show warnings on empty credentials
 					if conf.IsEligibleForPrinting(ConstLogModConfigLoad, LvlWarn) {
-						log.WithField("cluster", "config").Warnf("Empty credential do not decrypt key: %s", k)
+						log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Warnf("Empty credential do not decrypt key: %s", k)
 					}
 				}
 			}
@@ -1128,7 +1178,7 @@ func (conf *Config) GetDecryptedPassword(key string, value string) string {
 		value = strings.TrimPrefix(value, "hash_")
 		p := crypto.Password{Key: conf.SecretKey}
 		if conf.LogConfigLoad {
-			log.WithField("cluster", "config").Infof("GetDecryptedPassword: key(%s) value(%s) %s", key, value, conf.SecretKey)
+			log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Infof("GetDecryptedPassword: key(%s) value(%s) %s", key, value, conf.SecretKey)
 		}
 
 		if value != "" {
@@ -1704,7 +1754,7 @@ func (conf *Config) GetTarballs(is_not_embed bool) ([]Tarball, error) {
 	if is_not_embed {
 
 		file := conf.ShareDir + "/repo/tarballs.json"
-		log.WithField("cluster", "config").Infof("GetTarballs1 file value : %s ", file)
+		log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Infof("GetTarballs1 file value : %s ", file)
 		jsonFile, err := os.Open(file)
 		if err != nil {
 			return tarballs.Tarballs, err
@@ -1767,10 +1817,10 @@ func (conf Config) MergeConfig(path string, name string, ImmMap map[string]inter
 	dynMap := make(map[string]interface{})
 
 	if _, err := os.Stat(path + "/" + name + "/overwrite.toml"); os.IsNotExist(err) {
-		log.WithField("cluster", "config").Infof("No monitoring saved config found %s", path+"/"+name+"/overwrite.toml")
+		log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Infof("No monitoring saved config found %s", path+"/"+name+"/overwrite.toml")
 		return err
 	} else {
-		log.WithField("cluster", "config").Infof("Parsing saved config from working directory %s", path+"/"+name+"/overwrite.toml")
+		log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Infof("Parsing saved config from working directory %s", path+"/"+name+"/overwrite.toml")
 
 		dynRead.AddConfigPath(path + "/" + name)
 		err := dynRead.ReadInConfig()
@@ -1881,86 +1931,74 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 		switch {
 		case module == ConstLogModGeneral:
 			return conf.LogLevel >= lvl
-		case module == ConstLogModFailedElection:
-			if conf.LogFailedElection {
-				return conf.LogFailedElectionLevel >= lvl
+		case module == ConstLogModWriterElection:
+			if conf.LogWriterElection {
+				return conf.LogWriterElectionLevel >= lvl
 			}
-			break
 		case module == ConstLogModSST:
 			if conf.LogSST {
 				return conf.LogSSTLevel >= lvl
 			}
-			break
 		case module == ConstLogModHeartBeat:
 			if conf.LogHeartbeat {
 				return conf.LogHeartbeatLevel >= lvl
 			}
-			break
 		case module == ConstLogModConfigLoad:
 			if conf.LogConfigLoad {
 				return conf.LogConfigLoadLevel >= lvl
 			}
-			break
 		case module == ConstLogModGit:
 			if conf.LogGit {
 				return conf.LogGitLevel >= lvl
 			}
-			break
 		case module == ConstLogModBackupStream:
 			if conf.LogBackupStream {
 				return conf.LogBackupStreamLevel >= lvl
 			}
-			break
 		case module == ConstLogModOrchestrator:
 			if conf.LogOrchestrator {
 				return conf.LogOrchestratorLevel >= lvl
 			}
-			break
 		case module == ConstLogModVault:
 			if conf.LogVault {
 				return conf.LogVaultLevel >= lvl
 			}
-			break
 		case module == ConstLogModTopology:
 			if conf.LogTopology {
 				return conf.LogTopologyLevel >= lvl
 			}
-			break
 		case module == ConstLogModProxy:
 			if conf.LogProxy {
 				return conf.LogProxyLevel >= lvl
 			}
-			break
 		case module == ConstLogModProxySQL:
 			if conf.ProxysqlDebug {
 				return conf.ProxysqlLogLevel >= lvl
 			}
-			break
 		case module == ConstLogModHAProxy:
 			if conf.HaproxyDebug {
 				return conf.HaproxyLogLevel >= lvl
 			}
-			break
 		case module == ConstLogModProxyJanitor:
 			if conf.ProxyJanitorDebug {
 				return conf.ProxyJanitorLogLevel >= lvl
 			}
-			break
 		case module == ConstLogModMaxscale:
 			if conf.MxsDebug {
 				return conf.MxsLogLevel >= lvl
 			}
-			break
 		case module == ConstLogModGraphite:
 			if conf.LogGraphite {
 				return conf.LogGraphiteLevel >= lvl
 			}
-			break
 		case module == ConstLogModPurge:
 			if conf.LogBinlogPurge {
 				return conf.LogBinlogPurgeLevel >= lvl
 			}
-			break
+		case module == ConstLogModTask:
+			if conf.LogTask {
+				return conf.LogTaskLevel >= lvl
+			}
 		}
 	}
 
@@ -1991,4 +2029,107 @@ func (conf *Config) GetGraphiteTemplateList() map[string]bool {
 		ConstGraphiteTemplateGrafana: true,
 		ConstGraphiteTemplateAll:     true,
 	}
+}
+
+func GetTagsForLog(module int) string {
+	switch module {
+	case ConstLogModGeneral:
+		return "general"
+	case ConstLogModWriterElection:
+		return "election"
+	case ConstLogModSST:
+		return "sst"
+	case ConstLogModHeartBeat:
+		return "heartbeat"
+	case ConstLogModConfigLoad:
+		return "conf"
+	case ConstLogModGit:
+		return "git"
+	case ConstLogModBackupStream:
+		return "backup"
+	case ConstLogModOrchestrator:
+		return "orchestrator"
+	case ConstLogModVault:
+		return "vault"
+	case ConstLogModTopology:
+		return "topology"
+	case ConstLogModProxy:
+		return "proxy"
+	case ConstLogModProxySQL:
+		return "proxysql"
+	case ConstLogModHAProxy:
+		return "haproxy"
+	case ConstLogModProxyJanitor:
+		return "prxjanitor"
+	case ConstLogModMaxscale:
+		return "maxscale"
+	case ConstLogModGraphite:
+		return "graphite"
+	case ConstLogModPurge:
+		return "purge"
+	case ConstLogModTask:
+		return "job"
+	}
+	return ""
+}
+
+// If task is about backup and reseed, it will use log backup stream else will use log task
+func GetModuleNameForTask(task string) string {
+	switch task {
+	case ConstTaskXB, ConstTaskMB, ConstTaskReseedXB, ConstTaskReseedMB, ConstTaskDump, ConstTaskFlashXB, ConstTaskFlashMB, ConstTaskFlashDump:
+		return ConstLogNameBackupStream
+	default:
+		return ConstLogNameTask
+
+	}
+}
+
+func GetIndexFromModuleName(module string) int {
+	switch module {
+	case ConstLogNameGeneral:
+		return ConstLogModGeneral
+	case ConstLogNameWriterelection:
+		return ConstLogModWriterElection
+	case ConstLogNameSST:
+		return ConstLogModSST
+	case ConstLogNameHeartBeat:
+		return ConstLogModHeartBeat
+	case ConstLogNameConfigLoad:
+		return ConstLogModConfigLoad
+	case ConstLogNameGit:
+		return ConstLogModGit
+	case ConstLogNameBackupStream:
+		return ConstLogModBackupStream
+	case ConstLogNameOrchestrator:
+		return ConstLogModOrchestrator
+	case ConstLogNameVault:
+		return ConstLogModVault
+	case ConstLogNameTopology:
+		return ConstLogModTopology
+	case ConstLogNameProxy:
+		return ConstLogModProxy
+	case ConstLogNameProxySQL:
+		return ConstLogModProxySQL
+	case ConstLogNameHAProxy:
+		return ConstLogModHAProxy
+	case ConstLogNameProxyJanitor:
+		return ConstLogModProxyJanitor
+	case ConstLogNameMaxscale:
+		return ConstLogModMaxscale
+	case ConstLogNameGraphite:
+		return ConstLogModGraphite
+	case ConstLogNamePurge:
+		return ConstLogModPurge
+	case ConstLogNameTask:
+		return ConstLogModTask
+	}
+	return -1
+}
+
+func IsValidLogLevel(lvl string) bool {
+	switch lvl {
+	case LvlErr, LvlWarn, LvlInfo, LvlDbg:
+		return true
+	}
+	return false
 }

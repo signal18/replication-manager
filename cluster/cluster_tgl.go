@@ -460,13 +460,13 @@ func (cluster *Cluster) SwitchLogSQLInMonitoring() {
 	cluster.Conf.LogSQLInMonitoring = !cluster.Conf.LogSQLInMonitoring
 }
 
-func (cluster *Cluster) SwitchLogFailedElection() {
-	if cluster.Conf.LogFailedElection {
-		cluster.Conf.LogFailedElectionLevel = 0
+func (cluster *Cluster) SwitchLogWriterElection() {
+	if cluster.Conf.LogWriterElection {
+		cluster.Conf.LogWriterElectionLevel = 0
 	} else {
-		cluster.Conf.LogFailedElectionLevel = 1
+		cluster.Conf.LogWriterElectionLevel = 1
 	}
-	cluster.Conf.LogFailedElection = !cluster.Conf.LogFailedElection
+	cluster.Conf.LogWriterElection = !cluster.Conf.LogWriterElection
 }
 
 func (cluster *Cluster) SwitchLogSST() {

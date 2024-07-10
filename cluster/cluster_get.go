@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"hash/crc64"
 	"os"
+	"os/exec"
 	"regexp"
 	"sort"
 	"strconv"
@@ -55,8 +56,16 @@ func (cluster *Cluster) GetShareDir() string {
 	return cluster.Conf.ShareDir
 }
 
+// This will use installed mysqldump first
 func (cluster *Cluster) GetMysqlDumpPath() string {
 	if cluster.Conf.BackupMysqldumpPath == "" {
+		//if mysqldump installed
+		if path, err := exec.Command("which", "mysqldump").Output(); err == nil {
+			strpath := strings.TrimRight(string(path), "\r\n")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Using from os package: %s\n", strpath)
+			return strpath
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Installed mysqldump not found, using from repman embed.")
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqldump"
 	}
 	return cluster.Conf.BackupMysqldumpPath
@@ -78,6 +87,11 @@ func (cluster *Cluster) GetMyLoaderPath() string {
 
 func (cluster *Cluster) GetMysqlBinlogPath() string {
 	if cluster.Conf.BackupMysqlbinlogPath == "" {
+		// Return installed mysqlbinlog on repman host instead of embedded if exists
+		if out, err := exec.Command("which", "mysqlbinlog").Output(); err == nil {
+			path := strings.Trim(string(out), "\r\n")
+			return path
+		}
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysqlbinlog"
 	}
 	return cluster.Conf.BackupMysqlbinlogPath
@@ -85,6 +99,11 @@ func (cluster *Cluster) GetMysqlBinlogPath() string {
 
 func (cluster *Cluster) GetMysqlclientPath() string {
 	if cluster.Conf.BackupMysqlclientPath == "" {
+		// Return installed mysql client on repman host instead of embedded if exists
+		if out, err := exec.Command("which", "mysql").Output(); err == nil {
+			path := strings.Trim(string(out), "\r\n")
+			return path
+		}
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysql"
 	}
 	return cluster.Conf.BackupMysqlclientPath

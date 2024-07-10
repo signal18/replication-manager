@@ -68,6 +68,7 @@ func (server *ServerMonitor) SetState(state string) {
 		if ok {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Set state called from %s#%d\n", file, no)
 		}
+		cluster.BashScriptDbServersChangeState(server, state, server.PrevState)
 	}
 	server.State = state
 }
@@ -389,6 +390,14 @@ func (server *ServerMonitor) SetWaitBackupCookie() error {
 	return server.createCookie("cookie_waitbackup")
 }
 
+func (server *ServerMonitor) SetWaitLogicalBackupCookie() error {
+	return server.createCookie("cookie_waitlogicalbackup")
+}
+
+func (server *ServerMonitor) SetWaitPhysicalBackupCookie() error {
+	return server.createCookie("cookie_waitphysicalbackup")
+}
+
 func (server *ServerMonitor) SetBackupPhysicalCookie() error {
 	return server.createCookie("cookie_physicalbackup")
 }
@@ -428,4 +437,8 @@ func (server *ServerMonitor) SetBinaryLogDir(value string) {
 
 func (server *ServerMonitor) SetInCaptureMode(value bool) {
 	server.InCaptureMode = value
+}
+
+func (server *ServerMonitor) SetInRefreshBinlog(value bool) {
+	server.IsRefreshingBinlog = value
 }

@@ -90,6 +90,18 @@ func (mv *MySQLVersion) GreaterEqual(vstring string) bool {
 	return mv.ToInt(tokens) >= v.ToInt(tokens)
 }
 
+// This will check if the Major is same, but Minor is greater e.g. 10.6 until 10.11 but not 11.0
+func (mv *MySQLVersion) GreaterEqualMinor(vstring string) bool {
+	v, _ := NewMySQLVersion(vstring, mv.Flavor)
+	return mv.Major == v.Major && mv.Minor >= v.Minor
+}
+
+// This will check if the Major and Minor is same, but release is greater e.g. 10.6.4 until 10.6.xx but not 10.7.xx
+func (mv *MySQLVersion) GreaterEqualRelease(vstring string) bool {
+	v, _ := NewMySQLVersion(vstring, mv.Flavor)
+	return mv.Major == v.Major && mv.Minor == v.Minor && mv.Release >= v.Release
+}
+
 func (mv *MySQLVersion) Lower(vstring string) bool {
 	v, tokens := NewMySQLVersion(vstring, mv.Flavor)
 	return mv.ToInt(tokens) < v.ToInt(tokens)
@@ -107,6 +119,17 @@ func (mv *MySQLVersion) Equal(vstring string) bool {
 
 func (mv *MySQLVersion) Between(minvstring string, maxvstring string) bool {
 	return mv.GreaterEqual(minvstring) && mv.LowerEqual(maxvstring)
+}
+
+// Will check set of versions with GreaterEqualRelease
+func (mv *MySQLVersion) GreaterEqualReleaseList(vstrings ...string) bool {
+	for _, vstr := range vstrings {
+		// return if found without checking the rest
+		if mv.GreaterEqualRelease(vstr) {
+			return true
+		}
+	}
+	return false
 }
 
 func (mv *MySQLVersion) IsMySQL() bool {

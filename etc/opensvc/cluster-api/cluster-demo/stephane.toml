@@ -3,7 +3,8 @@
 include ="etc/opensvc/cluster-api/cluster-demo/stephane.d"
 log-file="/var/log/replication-manager.log"
 http-bind-address = "0.0.0.0"
-api-credentials="admin:repman"
+api-credentials = "admin:hash_ac60e1f5625dfb87f67af46c04424cabc28f5ad77799"
+
 #VPN Address
 monitoring-address = "10.8.0.50"
 #monitoring-ssl-cert="/Users/apple/.ssh/id_rsa"

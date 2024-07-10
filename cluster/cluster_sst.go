@@ -464,7 +464,7 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, task 
 	defer sv.RunTaskCallback(task)
 
 	for {
-		if strings.Contains(backupfile, "gz") {
+		if strings.HasSuffix(backupfile, "gz") {
 			fz, err := gzip.NewReader(file)
 			if err != nil {
 				return

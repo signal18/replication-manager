@@ -1,5 +1,7 @@
 FROM golang:1.23rc1-bullseye
 
+# Use specific mariadb version in case 
+ENV MARIADB_VERSION=10.11.7
 ENV PROXYSQL_VERSION=2.5.5
 # Cancel using 0.16.3-3 due to incompatible with older version
 # ENV MYDUMPER_VERSION=0.16.3-3 
@@ -8,7 +10,9 @@ RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
 
 # Move to top for better cache
-RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl vim libatomic1 mydumper nodejs npm
+RUN apt-get update && apt-get -y install ca-certificates restic haproxy fuse sysbench curl vim libatomic1 mydumper nodejs npm
+RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION"
+RUN apt-get -y install mariadb-client mariadb-server mariadb-plugin-spider libmariadb-dev
 RUN curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian11_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian11_amd64.deb
 # RUN curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_VERSION/mydumper_$MYDUMPER_VERSION.bullseye_amd64.deb && dpkg -i mydumper_$MYDUMPER_VERSION.bullseye_amd64.deb
 RUN /usr/local/go/bin/go install -v golang.org/x/tools/gopls@latest

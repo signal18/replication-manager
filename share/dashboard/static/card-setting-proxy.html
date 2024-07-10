@@ -31,6 +31,21 @@
             </md-switch>
             </td>
         </tr>
+        <tr>
+            <th>Proxies reads on writer when no slave</th>
+        </tr>
+        <tr>
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false"
+                           ng-model="selectedCluster.config.proxyServersReadOnMasterNoSlave"
+                           ng-click="switchsettings('proxy-servers-read-on-master-no-slave')" aria-label="Reads on Master when no slave">
+                    <span ng-if="selectedCluster.config.proxyServersReadOnMasterNoSlave"
+                          class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.proxyServersReadOnMasterNoSlave" class="label label-warning">Off</span>
+            </td>
+            </md-switch>
+            </td>
+        </tr>
           <th>Proxies Max Backend Connections</th>
         </tr>
         <tr>

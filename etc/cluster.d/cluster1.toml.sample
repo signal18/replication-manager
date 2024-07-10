@@ -47,7 +47,7 @@ replication-credential = "root:mariadb"
 ##  CLUSTER LOGS  ##
 ####################
 
-# log-failed-election  = true
+# log-writer-election  = true
 # log-level = 3
 # log-rotate-max-age = 7
 # log-rotate-max-backup = 7
@@ -60,8 +60,8 @@ replication-credential = "root:mariadb"
 # log-binlog-purge-level = 1
 # log-config-load = true
 # log-config-load-level= 2
-# log-failed-election = true
-# log-failed-election-level 1
+# log-writer-election = true
+# log-writer-election-level 1
 # log-git = true
 # log-git-level = 1
 # log-graphite = true

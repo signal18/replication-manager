@@ -47,6 +47,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+var clusterError = config.ClusterError
+
 // A Clusters is a collection of Cluster objects
 //
 // swagger:response clusters
@@ -111,6 +113,7 @@ type Cluster struct {
 	WorkLoad                      WorkLoad              `json:"workLoad"`
 	LogPushover                   *log.Logger           `json:"-"`
 	Log                           s18log.HttpLog        `json:"log"`
+	LogTask                       s18log.HttpLog        `json:"logTask"`
 	LogSlack                      *log.Logger           `json:"-"`
 	JobResults                    map[string]*JobResult `json:"jobResults"`
 	Grants                        map[string]string     `json:"-"`
@@ -363,6 +366,7 @@ func (cluster *Cluster) InitFromConf() {
 	}
 	cluster.benchmarkType = "sysbench"
 	cluster.Log = s18log.NewHttpLog(200)
+	cluster.LogTask = s18log.NewHttpLog(200)
 
 	cluster.MonitorType = cluster.Conf.GetMonitorType()
 	cluster.TopologyType = cluster.Conf.GetTopologyType()
@@ -643,6 +647,8 @@ func (cluster *Cluster) Run() {
 							cluster.StateMachine.PreserveState("WARN0084")
 							cluster.StateMachine.PreserveState("WARN0095")
 							cluster.StateMachine.PreserveState("WARN0101")
+							cluster.StateMachine.PreserveState("WARN0111")
+							cluster.StateMachine.PreserveState("WARN0112")
 							cluster.StateMachine.PreserveState("ERR00090")
 							cluster.StateMachine.PreserveState("WARN0102")
 						}
@@ -662,7 +668,7 @@ func (cluster *Cluster) Run() {
 							cluster.StateMachine.PreserveState("WARN0094")
 						}
 						if cluster.SlavesOldestMasterFile.Suffix == 0 {
-							cluster.CheckSlavesReplicationsPurge()
+							go cluster.CheckSlavesReplicationsPurge()
 						}
 						cluster.PrintDelayStat()
 					}
@@ -769,15 +775,35 @@ func (cluster *Cluster) StateProcessing() {
 				// 	go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
 				// }
 			}
-			if s.ErrKey == "WARN0101" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have backup")
+			/*
+				// Unused, will be split to logical and physical backup. For rejoin will still use the same ReseedMasterSST
+					if s.ErrKey == "WARN0101" {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have backup")
+						for _, srv := range cluster.Servers {
+							if srv.HasWaitBackupCookie() {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for backup", srv.URL)
+								go srv.ReseedMasterSST()
+							}
+						}
+					}
+			*/
+			if s.ErrKey == "WARN0111" {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have logical backup")
 				for _, srv := range cluster.Servers {
-					if srv.HasWaitBackupCookie() {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for backup", srv.URL)
-						go srv.ReseedMasterSST()
+					if srv.HasWaitLogicalBackupCookie() {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for logical backup", srv.URL)
+						go srv.JobReseedLogicalBackup()
 					}
 				}
-
+			}
+			if s.ErrKey == "WARN0112" {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have physical backup")
+				for _, srv := range cluster.Servers {
+					if srv.HasWaitLogicalBackupCookie() {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for physical backup", srv.URL)
+						go srv.JobReseedPhysicalBackup()
+					}
+				}
 			}
 
 			//		cluster.statecloseChan <- s
@@ -832,9 +858,8 @@ func (cluster *Cluster) Save() error {
 		return nil
 	}
 	_, file, no, ok := runtime.Caller(1)
-	// if ok && cluster.GetLogLevel() > 3 {
 	if ok {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Saved called from %s#%d\n", file, no)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
 	}
 	type Save struct {
 		Servers    string      `json:"servers"`

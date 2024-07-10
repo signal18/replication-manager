@@ -16,6 +16,7 @@ import (
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
 func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Router) {
@@ -63,7 +64,9 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{module}/{level}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
+	))
 }
 
 func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router) {
@@ -152,6 +155,14 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/maintenance", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerMaintenance)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/set-maintenance", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSetMaintenance)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/del-maintenance", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDelMaintenance)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/switchover", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -627,6 +638,50 @@ func (repman *ReplicationManager) handlerMuxServerMaintenance(w http.ResponseWri
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			mycluster.SwitchServerMaintenance(node.ServerID)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerSetMaintenance(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			node.SetMaintenance()
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerDelMaintenance(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			node.DelMaintenance()
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -1701,6 +1756,79 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 			w.Write(data)
 		} else {
 			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		// if mycluster.Conf.APISecureConfig {
+		// 	if !repman.IsValidClusterACL(r, mycluster) {
+		// 		http.Error(w, "No valid ACL", 403)
+		// 		return
+		// 	}
+		// }
+
+		// Decode the request body
+		var msg struct {
+			Message string `json:"message"`
+		}
+		err := json.NewDecoder(r.Body).Decode(&msg)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if mod := config.GetIndexFromModuleName(vars["module"]); mod > -1 {
+			if config.IsValidLogLevel(vars["level"]) {
+				node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+				proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
+				if node != nil || proxy != nil {
+					raddr := strings.Split(r.RemoteAddr, ":")
+					var valid bool
+					if node != nil && node.IP == raddr[0] {
+						valid = true
+						messages := strings.Split(msg.Message, "\n")
+						for _, m := range messages {
+							// Prevent empty lines
+							if m != "" {
+								mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, vars["level"], "[%s] %s", node.Name, m)
+							}
+						}
+					}
+					if proxy != nil {
+						if myip, err := dbhelper.CheckHostAddr(proxy.GetHost()); err == nil && myip == raddr[0] {
+							valid = true
+							messages := strings.Split(msg.Message, "\n")
+							for _, m := range messages {
+								// Prevent empty lines
+								if m != "" {
+									mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, vars["level"], "[%s] %s", proxy.GetName(), m)
+								}
+							}
+						}
+					}
+
+					if valid {
+
+						w.Header().Set("Content-Type", "application/json")
+						json.NewEncoder(w).Encode(ApiResponse{Data: "Message logged", Success: true})
+					} else {
+						http.Error(w, "The requester address is not same with node/proxy address", 500)
+					}
+				} else {
+					http.Error(w, "No server", 500)
+				}
+			} else {
+				http.Error(w, "Invalid Log Module Level", 500)
+			}
+		} else {
+			http.Error(w, "Invalid Log Module Name", 500)
 		}
 	} else {
 		http.Error(w, "No cluster", 500)

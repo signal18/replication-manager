@@ -59,6 +59,20 @@ func (cluster *Cluster) BashScriptCloseSate(state state.State) error {
 	return nil
 }
 
+func (cluster *Cluster) BashScriptDbServersChangeState(srv *ServerMonitor, newState string, oldState string) error {
+	if cluster.Conf.DbServersChangeStateScript != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling database change state script")
+		var out []byte
+		out, err := exec.Command(cluster.Conf.DbServersChangeStateScript, cluster.Name, srv.Host, srv.Port, newState, oldState).CombinedOutput()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Database change state script %s:", string(out))
+	}
+	return nil
+}
+
 func (cluster *Cluster) failoverPostScript(fail bool) {
 	if cluster.Conf.PostScript != "" {
 
@@ -101,7 +115,7 @@ func (cluster *Cluster) BinlogRotationScript(srv *ServerMonitor) error {
 	if cluster.Conf.BinlogRotationScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling binlog rotation script")
 		var out []byte
-		out, err := exec.Command(cluster.Conf.BinlogRotationScript, cluster.Name, srv.Host, srv.Port, srv.BinaryLogFile, srv.BinaryLogFilePrevious, srv.BinaryLogOldestFile).CombinedOutput()
+		out, err := exec.Command(cluster.Conf.BinlogRotationScript, cluster.Name, srv.Host, srv.Port, srv.BinaryLogFile, srv.BinaryLogFilePrevious, srv.BinaryLogFileOldest).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 		}
@@ -125,7 +139,7 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
 		if cluster.IsInBackup() && cluster.Conf.BackupRestic {
-			cluster.StateMachine.AddState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 			time.Sleep(1 * time.Second)
 			return cluster.BinlogCopyScript(server, binlog, isPurge)
 		}
