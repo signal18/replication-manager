@@ -245,7 +245,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorVariableDiff, "monitoring-variable-diff", true, "Monitor variable difference beetween nodes")
 	flags.BoolVar(&conf.MonitorPFS, "monitoring-performance-schema", true, "Monitor performance schema")
 	flags.BoolVar(&conf.MonitorInnoDBStatus, "monitoring-innodb-status", true, "Monitor innodb status")
-	flags.StringVar(&conf.MonitorIgnoreError, "monitoring-ignore-errors", "", "Comma separated list of error or warning to ignore")
+	flags.StringVar(&conf.MonitorIgnoreErrors, "monitoring-ignore-errors", "", "Comma separated list of error or warning to ignore")
 	flags.BoolVar(&conf.MonitorSchemaChange, "monitoring-schema-change", true, "Monitor schema change")
 	flags.StringVar(&conf.MonitorSchemaChangeScript, "monitoring-schema-change-script", "", "Monitor schema change external script")
 	flags.StringVar(&conf.MonitoringSSLCert, "monitoring-ssl-cert", "", "HTTPS & API TLS certificate")
