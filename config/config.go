@@ -85,7 +85,7 @@ type Config struct {
 	MonitorDiskUsage                          bool                   `mapstructure:"monitoring-disk-usage" toml:"monitoring-disk-usage" json:"monitoringDiskUsage"`
 	MonitorDiskUsagePct                       int                    `mapstructure:"monitoring-disk-usage-pct" toml:"monitoring-disk-usage-pct" json:"monitoringDiskUsagePct"`
 	MonitorCaptureTrigger                     string                 `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
-	MonitorIgnoreError                        string                 `mapstructure:"monitoring-ignore-errors" toml:"monitoring-ignore-errors" json:"monitoringIgnoreErrors"`
+	MonitorIgnoreErrors                       string                 `mapstructure:"monitoring-ignore-errors" toml:"monitoring-ignore-errors" json:"monitoringIgnoreErrors"`
 	MonitorTenant                             string                 `mapstructure:"monitoring-tenant" toml:"monitoring-tenant" json:"monitoringTenant"`
 	MonitoringAlertTrigger                    string                 `mapstructure:"monitoring-alert-trigger" toml:"monitoring-alert-trigger" json:"monitoringAlertTrigger"`
 	MonitoringQueryTimeout                    int                    `mapstructure:"monitoring-query-timeout" toml:"monitoring-query-timeout" json:"monitoringQueryTimeout"`

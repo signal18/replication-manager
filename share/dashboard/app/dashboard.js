@@ -66,12 +66,38 @@ app.controller('DashboardController', function (
   $scope.showLog = true
   $scope.showLogTask = true
 
-  $scope.toggleLog = function(panel){
-    if(panel == "log") {
+  $scope.toggleLog = function (panel) {
+    if (panel == "log") {
       $scope.showLog = !$scope.showLog
     }
-    if(panel == "task") {
+    if (panel == "task") {
       $scope.showLogTask = !$scope.showLogTask
+    }
+  }
+
+  $scope.roCaptureTrigger = true
+  $scope.selectedMonitoringCaptureTrigger = ""
+
+  $scope.toggleCaptureTrigger = function () {
+    $scope.roCaptureTrigger = !$scope.roCaptureTrigger
+  }
+  $scope.SetCaptureTrigger = function (val) {
+    if ($scope.roCaptureTrigger) {
+      $scope.selectedMonitoringCaptureTrigger = val
+      angular.element(document.querySelector('#selectedMonitoringCaptureTrigger')).get(0).value = val
+    }
+  }
+
+  $scope.roIgnoreErrors = true
+  $scope.selectedMonitoringIgnoreErrors = ""
+
+  $scope.toggleIgnoreErrors = function () {
+    $scope.roIgnoreErrors = !$scope.roIgnoreErrors
+  }
+  $scope.SetIgnoreErrors = function (val) {
+    if ($scope.roIgnoreErrors) {
+      $scope.selectedMonitoringIgnoreErrors = val
+      angular.element(document.querySelector('#selectedMonitoringIgnoreErrors')).get(0).value = val
     }
   }
 
@@ -406,7 +432,8 @@ app.controller('DashboardController', function (
         $scope.agents = data.agents;
         $scope.missingDBTags = isInTags(data.configurator.configTags, data.configurator.dbServersTags, function (currentTag, dbTags) { return (dbTags.indexOf(currentTag) == -1); });
         $scope.missingProxyTags = isInTags(data.configurator.configPrxTags, data.configurator.proxyServersTags, function (currentTag, proxyTags) { return (proxyTags.indexOf(currentTag) == -1); });
-
+        $scope.SetIgnoreErrors(data.config.monitoringIgnoreErrors);
+        $scope.SetCaptureTrigger(data.config.monitoringCaptureTrigger);
 
         $scope.reserror = false;
       }, function () {
@@ -1748,6 +1775,14 @@ app.controller('DashboardController', function (
     if (confirm("Confirm change " + setting.toString() + "to " + value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
   };
 
+  $scope.setsettingsnullable = function (setting, value) {
+    if (value.length == 0){
+      value = "{undefined}"
+    }
+    
+    return $scope.setsettings(setting,value)
+  };
+
 
 
 
@@ -1899,7 +1934,7 @@ app.controller('DashboardController', function (
       parent: angular.element(document.body),
     });
   };
-  $scope.closeNewServerDialog = function (dlgServerName,dlgServerPort) {
+  $scope.closeNewServerDialog = function (dlgServerName, dlgServerPort) {
     $mdDialog.hide({ contentElement: '#myNewServerDialog', });
     if (confirm("Confirm adding new server " + dlgServerName + ":" + dlgServerPort + "  " + $scope.selectedMonitor.id)) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' + dlgServerName + '/' + dlgServerPort + "/" + $scope.selectedMonitor.id);
   };

@@ -1016,7 +1016,7 @@ func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
 }
 
 func (cluster *Cluster) SetState(key string, s state.State) {
-	if !strings.Contains(cluster.Conf.MonitorIgnoreError, key) {
+	if !strings.Contains(cluster.Conf.MonitorIgnoreErrors, key) {
 		cluster.StateMachine.AddState(key, s)
 	}
 }
@@ -1746,5 +1746,23 @@ func (cluster *Cluster) SetGraphiteWhitelistTemplate(value string) {
 func (cluster *Cluster) SetTopologyTarget(value string) {
 	cluster.Lock()
 	cluster.Conf.TopologyTarget = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetMonitorIgnoreErrors(value string) {
+	if value == "{undefined}" {
+		value = ""
+	}
+	cluster.Lock()
+	cluster.Conf.MonitorIgnoreErrors = value
+	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetMonitorCaptureTrigger(value string) {
+	if value == "{undefined}" {
+		value = ""
+	}
+	cluster.Lock()
+	cluster.Conf.MonitorCaptureTrigger = value
 	cluster.Unlock()
 }

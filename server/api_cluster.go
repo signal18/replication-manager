@@ -1469,6 +1469,10 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "log-task-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogTaskLevel(val)
+	case "monitoring-ignore-errors":
+		mycluster.SetMonitorIgnoreErrors(value)
+	case "monitoring-capture-trigger":
+		mycluster.SetMonitorCaptureTrigger(value)
 	}
 
 }
