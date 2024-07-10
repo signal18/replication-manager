@@ -931,7 +931,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 	}
 	if forcingLog {
 		data, _ := json.MarshalIndent(trackposList, "", "\t")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Election matrice: %s ", data)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlInfo, "Election matrice: %s ", data)
 	}
 
 	if maxseq > 0 {
@@ -953,7 +953,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		for _, p := range trackposList {
 			if p.Seq == maxseq && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == true {
 				if forcingLog {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModWriterElection, config.LvlInfo, "Ignored server is the most up to date ")
+					cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlInfo, "Ignored server is the most up to date ")
 				}
 				return p.Indice
 			}
@@ -1004,7 +1004,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		for _, p := range trackposList {
 			if p.Pos == maxpos && p.Ignoredrelay == false && p.Ignoredmultimaster == false && p.Ignoredreplication == false && p.Ignoredconf == true {
 				if forcingLog {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModWriterElection, config.LvlInfo, "Ignored server is the most up to date ")
+					cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlInfo, "Ignored server is the most up to date ")
 				}
 				return p.Indice
 			}
