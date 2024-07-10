@@ -6,7 +6,7 @@ import { useSelector } from 'react-redux'
 
 function ClusterDetail({ selectedCluster }) {
   const {
-    common: { theme }
+    common: { theme, isDesktop }
   } = useSelector((state) => state)
 
   const dataObject = [
@@ -48,15 +48,17 @@ function ClusterDetail({ selectedCluster }) {
 
   return (
     <Card
-      width={'50%'}
+      width={isDesktop ? '50%' : '100%'}
       header={
         <>
           <Text>Cluster</Text>
-          {selectedCluster?.activePassiveStatus === 'A' ? (
-            <TagPill type='success' text={'Active'} />
-          ) : selectedCluster?.activePassiveStatus === 'S' ? (
-            <TagPill type='warning' text={'Standby'} />
-          ) : null}
+          <Box ml='auto'>
+            {selectedCluster?.activePassiveStatus === 'A' ? (
+              <TagPill type='success' text={'Active'} />
+            ) : selectedCluster?.activePassiveStatus === 'S' ? (
+              <TagPill type='warning' text={'Standby'} />
+            ) : null}
+          </Box>
         </>
       }
       body={

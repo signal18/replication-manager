@@ -2,10 +2,11 @@ import { Box, HStack, Switch } from '@chakra-ui/react'
 import React from 'react'
 import { useSelector } from 'react-redux'
 import MenuOptions from './MenuOptions'
+import { setIsDesktop } from '../redux/commonSlice'
 
 function Card({ header, body, showDashboardOptions, width, showSwitch, onSwitchChange }) {
   const {
-    common: { theme }
+    common: { theme, isDesktop }
   } = useSelector((state) => state)
 
   const styles = {
@@ -21,17 +22,20 @@ function Card({ header, body, showDashboardOptions, width, showSwitch, onSwitchC
       borderTopRightRadius: '16px',
       color: '#000',
       fontWeight: 'bold'
-    },
-    actions: {
-      marginLeft: 'auto'
     }
   }
   return (
     <Box sx={styles.card} w={width}>
       <HStack size={'sm'} sx={styles.heading}>
+        {showSwitch && <Switch colorScheme='blue' onChange={onSwitchChange} />}
+        {showDashboardOptions && (
+          <MenuOptions
+            placement='right-end'
+            subMenuPlacement={isDesktop ? 'right-end' : 'bottom'}
+            showDashboardOptions={showDashboardOptions}
+          />
+        )}
         {header}
-        {showDashboardOptions && <MenuOptions sx={styles.actions} showDashboardOptions={showDashboardOptions} />}
-        {showSwitch && <Switch colorScheme='blue' sx={styles.actions} onChange={onSwitchChange} />}
       </HStack>
       {body}
     </Box>

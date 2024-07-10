@@ -6,7 +6,9 @@ export const clusterService = {
   getClusterData,
   getClusterAlerts,
   getClusterMaster,
-  getClusterServers
+  getClusterServers,
+  switchOverCluster,
+  failOverCluster
 }
 
 function getClusters() {
@@ -31,4 +33,11 @@ function getClusterMaster(clusterName) {
 
 function getClusterServers(clusterName) {
   return getRequest(`clusters/${clusterName}/topology/servers`)
+}
+
+function switchOverCluster(clusterName) {
+  return getRequest(`clusters/${clusterName}/topology/switchover`)
+}
+function failOverCluster(clusterName) {
+  return getRequest(`clusters/${clusterName}/actions/failover`)
 }

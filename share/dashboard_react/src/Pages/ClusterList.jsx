@@ -13,7 +13,7 @@ function ClusterList(props) {
   const dispatch = useDispatch()
 
   const {
-    common: { theme },
+    common: { theme, isDesktop },
     cluster: { clusters, loading, refreshInterval }
   } = useSelector((state) => state)
   useEffect(() => {

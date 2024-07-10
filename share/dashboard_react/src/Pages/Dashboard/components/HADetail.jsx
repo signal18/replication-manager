@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import Card from '../../../components/Card'
 import {
+  Box,
   Button,
   Modal,
   ModalCloseButton,
@@ -11,8 +12,12 @@ import {
   Text
 } from '@chakra-ui/react'
 import TagPill from '../../../components/TagPill'
+import { useSelector } from 'react-redux'
 
 function HADetail({ selectedCluster }) {
+  const {
+    common: { theme, isDesktop }
+  } = useSelector((state) => state)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isChecked, setIsChecked] = useState(false)
   const handleSwitchChange = (e) => {
@@ -26,11 +31,13 @@ function HADetail({ selectedCluster }) {
   return (
     <>
       <Card
-        width={'50%'}
+        width={isDesktop ? '50%' : '100%'}
         header={
           <>
             <Text>HA</Text>
-            <TagPill type='success' text={selectedCluster.topology} />
+            <Box ml='auto'>
+              <TagPill type='success' text={selectedCluster.topology} />
+            </Box>
           </>
         }
         onSwitchChange={handleSwitchChange}
@@ -47,7 +54,9 @@ function HADetail({ selectedCluster }) {
               <Button colorScheme='blue' mr={3} onClick={closeModal}>
                 No
               </Button>
-              <Button variant='ghost'>Yes</Button>
+              <Button variant='ghost' onClick={handleSwitch}>
+                Yes
+              </Button>
             </ModalFooter>
           </ModalContent>
         </Modal>

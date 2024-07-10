@@ -38,7 +38,6 @@ function Cluster(props) {
   return (
     <PageContainer>
       <Box m='4'>
-        <BackLink path={`/clusters`} mb='2' />
         <TabItems
           options={[
             'Dashboard',

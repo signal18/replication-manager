@@ -53,7 +53,7 @@ function PageContainer({ children }) {
   }, [isLogged, user])
 
   const handleResize = () => {
-    const isMobile = currentBreakpoint === 'mobile'
+    const isMobile = currentBreakpoint === 'mobile' || currentBreakpoint === 'base'
     const isTablet = currentBreakpoint === 'tablet'
     const isDesktop = currentBreakpoint === 'desktop'
     dispatch(setIsMobile(isMobile))

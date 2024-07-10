@@ -1,15 +1,19 @@
 import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import { clusterService } from '../services/clusterService'
 
+const handleError = (error, thunkAPI) => {
+  const errorMessage = error.message || 'Request failed'
+  const errorStatus = error.errorStatus || 500 // Default error status if not provided
+  // Handle errors (including custom errorStatus)
+  return thunkAPI.rejectWithValue({ errorMessage, errorStatus }) // Pass the entire Error object to the rejected action
+}
+
 export const getClusters = createAsyncThunk('cluster/getClusters', async ({}, thunkAPI) => {
   try {
     const response = await clusterService.getClusters()
     return response
   } catch (error) {
-    const errorMessage = error.message || 'Request failed'
-    const errorStatus = error.errorStatus || 500 // Default error status if not provided
-    // Handle errors (including custom errorStatus)
-    return thunkAPI.rejectWithValue({ errorMessage, errorStatus }) // Pass the entire Error object to the rejected action
+    handleError(error, thunkAPI)
   }
 })
 
@@ -18,10 +22,7 @@ export const getMonitoredData = createAsyncThunk('cluster/getMonitoredData', asy
     const response = await clusterService.getMonitoredData()
     return response
   } catch (error) {
-    const errorMessage = error.message || 'Request failed'
-    const errorStatus = error.errorStatus || 500 // Default error status if not provided
-    // Handle errors (including custom errorStatus)
-    return thunkAPI.rejectWithValue({ errorMessage, errorStatus }) // Pass the entire Error object to the rejected action
+    handleError(error, thunkAPI)
   }
 })
 
@@ -30,10 +31,7 @@ export const getClusterData = createAsyncThunk('cluster/getClusterData', async (
     const response = await clusterService.getClusterData(clusterName)
     return response
   } catch (error) {
-    const errorMessage = error.message || 'Request failed'
-    const errorStatus = error.errorStatus || 500 // Default error status if not provided
-    // Handle errors (including custom errorStatus)
-    return thunkAPI.rejectWithValue({ errorMessage, errorStatus }) // Pass the entire Error object to the rejected action
+    handleError(error, thunkAPI)
   }
 })
 
@@ -42,10 +40,7 @@ export const getClusterAlerts = createAsyncThunk('cluster/getClusterAlerts', asy
     const response = await clusterService.getClusterAlerts(clusterName)
     return response
   } catch (error) {
-    const errorMessage = error.message || 'Request failed'
-    const errorStatus = error.errorStatus || 500 // Default error status if not provided
-    // Handle errors (including custom errorStatus)
-    return thunkAPI.rejectWithValue({ errorMessage, errorStatus }) // Pass the entire Error object to the rejected action
+    handleError(error, thunkAPI)
   }
 })
 
@@ -54,10 +49,25 @@ export const getClusterMaster = createAsyncThunk('cluster/getClusterMaster', asy
     const response = await clusterService.getClusterMaster(clusterName)
     return response
   } catch (error) {
-    const errorMessage = error.message || 'Request failed'
-    const errorStatus = error.errorStatus || 500 // Default error status if not provided
-    // Handle errors (including custom errorStatus)
-    return thunkAPI.rejectWithValue({ errorMessage, errorStatus }) // Pass the entire Error object to the rejected action
+    handleError(error, thunkAPI)
+  }
+})
+
+export const switchOverCluster = createAsyncThunk('cluster/switchOverCluster', async ({ clusterName }, thunkAPI) => {
+  try {
+    const response = await clusterService.switchOverCluster(clusterName)
+    return response
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
+export const failOverCluster = createAsyncThunk('cluster/failOverCluster', async ({ clusterName }, thunkAPI) => {
+  try {
+    const response = await clusterService.failOverCluster(clusterName)
+    return response
+  } catch (error) {
+    handleError(error, thunkAPI)
   }
 })
 

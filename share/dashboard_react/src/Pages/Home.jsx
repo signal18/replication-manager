@@ -4,11 +4,15 @@ import { Box } from '@chakra-ui/react'
 import PageContainer from './PageContainer'
 import TabItems from '../components/TabItems'
 import ClusterList from './ClusterList'
+import { useSelector } from 'react-redux'
 
 function Home() {
+  const {
+    common: { theme, isDesktop }
+  } = useSelector((state) => state)
   return (
     <PageContainer>
-      <Box m='6'>
+      <Box m={isDesktop ? '6' : '3'}>
         <TabItems options={['Clusters']} tabContents={[<ClusterList />]} />
       </Box>
     </PageContainer>

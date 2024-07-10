@@ -1,8 +1,14 @@
 import React, { useEffect, useState } from 'react'
-import { Menu, MenuButton, MenuList, MenuItem, IconButton } from '@chakra-ui/react'
-import { HiArrowRight, HiDotsVertical } from 'react-icons/hi'
+import { Menu, MenuButton, MenuList, MenuItem, IconButton, HStack, Spacer } from '@chakra-ui/react'
+import { HiArrowRight, HiChevronRight, HiDotsVertical } from 'react-icons/hi'
 
-function MenuOptions({ options = [], showDashboardOptions, ...rest }) {
+function MenuOptions({
+  options = [],
+  placement = 'bottom',
+  subMenuPlacement = 'bottom',
+  showDashboardOptions,
+  ...rest
+}) {
   const [menuOptions, setMenuOptions] = useState([])
 
   useEffect(() => {
@@ -71,19 +77,20 @@ function MenuOptions({ options = [], showDashboardOptions, ...rest }) {
       borderRadius: '50%',
       width: '24px',
       height: '24px',
-      minWidth: '24px',
-      marginLeft: 'auto'
+      minWidth: '24px'
     }
   }
   return (
-    <Menu colorScheme='blue' {...rest}>
+    <Menu colorScheme='blue' placement={placement} {...rest}>
       <MenuButton aria-label='Options' as={IconButton} sx={styles.menuButton} icon={<HiDotsVertical />}></MenuButton>
       <MenuList>
         {menuOptions?.map((option) => {
           return option.subMenu ? (
-            <Menu>
-              <MenuItem as={MenuButton} rightIcon={<HiArrowRight />}>
-                {option.name}
+            <Menu placement={subMenuPlacement}>
+              <MenuItem as={MenuButton}>
+                <HStack>
+                  <span>{option.name}</span> <Spacer /> <HiChevronRight fontSize={'1.5rem'} />
+                </HStack>
               </MenuItem>
               <MenuList>
                 {option.subMenu.map((subMenuOption) => (

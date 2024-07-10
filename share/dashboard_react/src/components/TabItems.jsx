@@ -25,7 +25,7 @@ function TabItems({ variant = 'enclosed', options, tabContents }) {
       </TabList>
       <TabPanels>
         {tabContents.map((content) => (
-          <TabPanel>{content}</TabPanel>
+          <TabPanel p='0'>{content}</TabPanel>
         ))}
       </TabPanels>
     </Tabs>
