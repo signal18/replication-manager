@@ -166,7 +166,7 @@ func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MariadbShardProxy) {
 	}
 	schemas, _, err := cluster.master.GetSchemas()
 	if err != nil {
-		cluster.StateMachine.AddState("WARN0089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0089"], cluster.master.URL), ErrFrom: "PROXY", ServerUrl: cluster.master.URL})
+		cluster.SetState("WARN0089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0089"], cluster.master.URL), ErrFrom: "PROXY", ServerUrl: cluster.master.URL})
 		return
 	}
 	foundReplicationManagerSchema := false

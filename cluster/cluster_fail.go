@@ -643,7 +643,7 @@ func (cluster *Cluster) electSwitchoverGroupReplicationCandidate(l []*ServerMoni
 	//	Return one not ignored not full , not prefered
 	for i, sl := range l {
 		if sl.IsIgnored() {
-			cluster.StateMachine.AddState("ERR00037", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.SetState("ERR00037", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 		if cluster.IsInPreferedHosts(sl) {
@@ -671,7 +671,7 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 
 		/* If server is in the ignore list, do not elect it in switchover */
 		if sl.IsIgnored() {
-			cluster.StateMachine.AddState("ERR00037", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.SetState("ERR00037", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 		if sl.IsFull {
@@ -679,7 +679,7 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 		}
 		//Need comment//
 		if sl.IsRelay {
-			cluster.StateMachine.AddState("ERR00036", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.SetState("ERR00036", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 		if !sl.HasBinlog() && !sl.IsIgnored() {
@@ -687,19 +687,19 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 			continue
 		}
 		if cluster.Conf.MultiMaster == true && sl.State == stateMaster {
-			cluster.StateMachine.AddState("ERR00035", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.SetState("ERR00035", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 
 		// The tests below should run only in case of a switchover as they require the master to be up.
 
 		if cluster.isSlaveElectableForSwitchover(sl, forcingLog) == false {
-			cluster.StateMachine.AddState("ERR00034", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00034"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.SetState("ERR00034", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00034"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 		/* binlog + ping  */
 		if cluster.isSlaveElectable(sl, forcingLog) == false {
-			cluster.StateMachine.AddState("ERR00039", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00039"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.SetState("ERR00039", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00039"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 
@@ -712,14 +712,14 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 			return i
 		}
 		if sl.HaveNoMasterOnStart == true && cluster.Conf.FailRestartUnsafe == false {
-			cluster.StateMachine.AddState("ERR00084", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00084"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.SetState("ERR00084", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00084"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 		ss, errss := sl.GetSlaveStatus(sl.ReplicationSourceName)
 		// not a slave
 		if errss != nil && cluster.Conf.FailRestartUnsafe == false {
 			//Skip slave in election %s have no master log file, slave might have failed
-			cluster.StateMachine.AddState("ERR00033", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.SetState("ERR00033", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 		// Fake position if none as new slave
@@ -815,19 +815,19 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 
 		//Need comment//
 		if sl.IsRelay {
-			cluster.StateMachine.AddState("ERR00036", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+			cluster.SetState("ERR00036", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			continue
 		}
 		if sl.IsFull {
 			continue
 		}
 		if cluster.Conf.MultiMaster == true && sl.State == stateMaster {
-			cluster.StateMachine.AddState("ERR00035", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+			cluster.SetState("ERR00035", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00035"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			trackposList[i].Ignoredmultimaster = true
 			continue
 		}
 		if sl.HaveNoMasterOnStart == true && cluster.Conf.FailRestartUnsafe == false {
-			cluster.StateMachine.AddState("ERR00084", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00084"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
+			cluster.SetState("ERR00084", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00084"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
 		if !sl.HasBinlog() && !sl.IsIgnored() {
@@ -850,7 +850,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		ss, errss := sl.GetSlaveStatus(sl.ReplicationSourceName)
 		// not a slave
 		if errss != nil && cluster.Conf.FailRestartUnsafe == false {
-			cluster.StateMachine.AddState("ERR00033", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+			cluster.SetState("ERR00033", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00033"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			trackposList[i].Ignoredreplication = true
 			continue
 		}
@@ -905,7 +905,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 	} //end loop all slaves
 
 	if !HaveOneValidReader {
-		cluster.StateMachine.AddState("ERR00085", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00085"]), ErrFrom: "CHECK"})
+		cluster.SetState("ERR00085", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00085"]), ErrFrom: "CHECK"})
 	}
 
 	if !cluster.Conf.FailoverCheckDelayStat {
@@ -1032,7 +1032,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	}
 	//if master is alived and IO Thread stops then not a good candidate and not forced
 	if ss.SlaveIORunning.String == "No" && cluster.Conf.RplChecks && !cluster.IsMasterFailed() {
-		cluster.StateMachine.AddState("ERR00087", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00087"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		cluster.SetState("ERR00087", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00087"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Unsafe failover condition. Slave %s IO Thread is stopped %s. Skipping", sl.URL, ss.LastIOError.String)
 		// }
@@ -1041,14 +1041,14 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 
 	/* binlog + ping  */
 	if dbhelper.CheckSlavePrerequisites(sl.Conn, sl.Host, sl.DBVersion) == false {
-		cluster.StateMachine.AddState("ERR00040", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00040"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		cluster.SetState("ERR00040", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00040"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Slave %s does not ping or has no binlogs. Skipping", sl.URL)
 		// }
 		return false
 	}
 	if sl.IsMaintenance {
-		cluster.StateMachine.AddState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		cluster.SetState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
 		// }
@@ -1056,7 +1056,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	}
 
 	if ss.SecondsBehindMaster.Int64 > cluster.Conf.FailMaxDelay && cluster.Conf.FailMaxDelay != -1 && cluster.Conf.RplChecks == true {
-		cluster.StateMachine.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"]+" Sql: "+sl.GetProcessListReplicationLongQuery(), sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		cluster.SetState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"]+" Sql: "+sl.GetProcessListReplicationLongQuery(), sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
 		// }
@@ -1065,7 +1065,7 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	}
 
 	if ss.SlaveSQLRunning.String == "No" && cluster.Conf.RplChecks {
-		cluster.StateMachine.AddState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		cluster.SetState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		// }
@@ -1076,13 +1076,13 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 	if ss.SlaveIORunning.String == "Connecting" && !cluster.IsMasterFailed() {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlDbg, "isSlaveElect lastIOErrno: %s", ss.LastIOErrno.String)
 		if ss.LastIOErrno.String == "1045" {
-			cluster.StateMachine.AddState("ERR00088", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00088"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+			cluster.SetState("ERR00088", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00088"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			sl.SetReplicationCredentialsRotation(ss)
 		}
 	}
 
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.FailSync && cluster.Conf.RplChecks {
-		cluster.StateMachine.AddState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		cluster.SetState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		// }
@@ -1105,7 +1105,7 @@ func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) b
 	}
 
 	if sl.IsMaintenance {
-		cluster.StateMachine.AddState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		cluster.SetState("ERR00047", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00047"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Slave %s is in maintenance. Skipping", sl.URL)
 		// }
@@ -1113,7 +1113,7 @@ func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) b
 	}
 
 	/*if ss.SecondsBehindMaster.Int64 > cluster.Conf.FailMaxDelay && cluster.Conf.FailMaxDelay != -1  {
-		cluster.StateMachine.AddState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"]+" Sql: "+sl.GetProcessListReplicationLongQuery(), sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		cluster.SetState("ERR00041", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00041"]+" Sql: "+sl.GetProcessListReplicationLongQuery(), sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral,LvlWarn, "Unsafe failover condition. Slave %s has more than failover-max-delay %d seconds with replication delay %d. Skipping", sl.URL, cluster.Conf.FailMaxDelay, ss.SecondsBehindMaster.Int64)
 		}
@@ -1121,7 +1121,7 @@ func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) b
 		return false
 	}
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.FailSync && cluster.Conf.RplChecks {
-		cluster.StateMachine.AddState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		cluster.SetState("ERR00043", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00043"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral,LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		}
@@ -1129,7 +1129,7 @@ func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) b
 	}
 	*/
 	if ss.SlaveSQLRunning.String == "No" {
-		cluster.StateMachine.AddState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
+		cluster.SetState("ERR00042", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00042"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModFailedElection, config.LvlWarn, "Unsafe failover condition. Slave %s SQL Thread is stopped. Skipping", sl.URL)
 		// }
@@ -1387,7 +1387,7 @@ func (cluster *Cluster) electVirtualCandidate(oldMaster *ServerMonitor, forcingL
 	for i, sl := range cluster.Servers {
 		/* If server is in the ignore list, do not elect it */
 		if sl.IsIgnored() {
-			cluster.StateMachine.AddState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ErrFrom: "CHECK"})
+			cluster.SetState("ERR00037", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ErrFrom: "CHECK"})
 			// if cluster.Conf.LogLevel > 1 || forcingLog {
 			cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlDbg, "%s is in the ignore list. Skipping", sl.URL)
 			// }
