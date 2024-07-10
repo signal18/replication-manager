@@ -47,6 +47,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+var clusterError = config.ClusterError
+
 // A Clusters is a collection of Cluster objects
 //
 // swagger:response clusters
