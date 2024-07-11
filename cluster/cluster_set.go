@@ -843,7 +843,7 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 	cluster.SetDBRestartCookie()
 	if cluster.Conf.VaultMode == VaultConfigStoreV2 && !cluster.isMasterFailed() {
 		found_user := false
-		for _, u := range cluster.master.Users {
+		for _, u := range cluster.master.Users.ToNewMap() {
 			if u.User == cluster.GetDbUser() {
 				found_user = true
 				logs, err := dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, cluster.GetDbPass())
@@ -857,7 +857,7 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 			oldDbUser, _ := misc.SplitPair(cluster.Conf.Secrets["db-servers-credential"].OldValue)
 			if oldDbUser != "root" {
 
-				for _, u := range cluster.master.Users {
+				for _, u := range cluster.master.Users.ToNewMap() {
 					if u.User == oldDbUser {
 						logs, err := dbhelper.RenameUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, cluster.GetDbPass(), cluster.GetDbUser())
 						cluster.LogSQL(logs, err, cluster.master.URL, "Security", config.LvlErr, "Alter user : %s", err)
@@ -902,7 +902,7 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 				prx.RotateProxyPasswords(pass)
 				prx.SetCredential(credential)
 				prx.ShardProxy.SetCredential(prx.ShardProxy.URL, prx.User, pass)
-				for _, u := range prx.ShardProxy.Users {
+				for _, u := range prx.ShardProxy.Users.ToNewMap() {
 					if u.User == prx.User {
 						dbhelper.SetUserPassword(prx.ShardProxy.Conn, prx.ShardProxy.DBVersion, u.Host, u.User, pass)
 					}

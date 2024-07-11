@@ -12,7 +12,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
-func (configurator *Configurator) HasInstallPlugin(Plugins map[string]dbhelper.Plugin, name string) bool {
+func (configurator *Configurator) HasInstallPlugin(Plugins map[string]*dbhelper.Plugin, name string) bool {
 	val, ok := Plugins[name]
 	if !ok {
 		return false

@@ -145,11 +145,12 @@ func (server *ServerMonitor) GetDatabaseClientBasedir() string {
 }
 
 func (server *ServerMonitor) GetConfigVariable(variable string) string {
-	if server.Variables == nil {
-		return ""
-	}
-	value := server.Variables[variable]
-	return value
+	// if server.Variables == nil {
+	// 	return ""
+	// }
+	// value := server.Variables[variable]
+	// return value
+	return server.Variables.Get(variable)
 }
 
 func (server *ServerMonitor) GetDatabaseConfig() string {
@@ -177,33 +178,33 @@ func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string, cmd string)
 
 func (server *ServerMonitor) GetSlaveVariables() SlaveVariables {
 	svar := SlaveVariables{}
-	if server.Variables == nil {
-		return svar
-	}
+	// if server.Variables == nil {
+	// 	return svar
+	// }
 
-	if v, ok := server.Variables["SLAVE_PARALLEL_MODE"]; ok {
+	if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_MODE"); ok {
 		svar.SlaveParallelMode = v
 	}
 
-	if v, ok := server.Variables["SLAVE_TYPE_CONVERSIONS"]; ok {
+	if v, ok := server.Variables.CheckAndGet("SLAVE_TYPE_CONVERSIONS"); ok {
 		svar.SlaveTypeConversions = v
 	}
 
-	if v, ok := server.Variables["SLAVE_PARALLEL_MAX_QUEUED"]; ok {
+	if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_MAX_QUEUED"); ok {
 		mq, err := strconv.Atoi(v)
 		if err == nil {
 			svar.SlaveParallelMaxQueued = mq
 		}
 	}
 
-	if v, ok := server.Variables["SLAVE_PARALLEL_THREADS"]; ok {
+	if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_THREADS"); ok {
 		pt, err := strconv.Atoi(v)
 		if err == nil {
 			svar.SlaveParallelThreads = pt
 		}
 	}
 
-	if v, ok := server.Variables["SLAVE_PARALLEL_WORKERS"]; ok {
+	if v, ok := server.Variables.CheckAndGet("SLAVE_PARALLEL_WORKERS"); ok {
 		pw, err := strconv.Atoi(v)
 		if err == nil {
 			svar.SlaveParallelWorkers = pw

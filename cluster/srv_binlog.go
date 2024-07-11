@@ -45,7 +45,7 @@ func (server *ServerMonitor) RefreshBinaryLogs() error {
 		server.SetBinaryLogFiles(binlogs)
 	}
 
-	if len(server.BinaryLogFiles) > 0 {
+	if len(server.BinaryLogFiles.ToNewMap()) > 0 {
 		server.SetBinaryLogFileOldest()
 	}
 
@@ -62,7 +62,7 @@ func (server *ServerMonitor) CheckBinaryLogs() error {
 		return err
 	}
 
-	if len(server.BinaryLogFiles) == 0 {
+	if len(server.BinaryLogFiles.ToNewMap()) == 0 {
 		server.RefreshBinaryLogs()
 	}
 
@@ -115,7 +115,7 @@ func (server *ServerMonitor) ForcePurgeBinlogs() {
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlWarn, err.Error())
 		}
-	} else if len(server.BinaryLogFiles) > 2 {
+	} else if len(server.BinaryLogFiles.ToNewMap()) > 2 {
 		if isMaster {
 			go server.JobBinlogPurgeMaster()
 		}
@@ -273,7 +273,7 @@ func (server *ServerMonitor) SetMaxBinlogTotalSize() error {
 	cluster := server.ClusterGroup
 	totalsize := cluster.Conf.ForceBinlogPurgeTotalSize * 1024 * 1024 * 1024
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11.4 and up
-		v, ok := server.Variables["MAX_BINLOG_TOTAL_SIZE"]
+		v, ok := server.Variables.CheckAndGet("MAX_BINLOG_TOTAL_SIZE")
 		if !ok {
 			return errors.New("Variable max_binlog_total_size not found")
 		}
@@ -295,7 +295,7 @@ func (server *ServerMonitor) SetMaxBinlogTotalSize() error {
 
 func (server *ServerMonitor) SetBinaryLogFileOldest() {
 	cluster := server.ClusterGroup
-	files := len(server.BinaryLogFiles)
+	files := len(server.BinaryLogFiles.ToNewMap())
 
 	if server.IsRefreshingBinlog {
 		return
@@ -324,10 +324,10 @@ func (server *ServerMonitor) SetBinaryLogFileOldest() {
 		last := len(parts) - 1
 		prefix := strings.Join(parts[:last], ".")
 		latestbinlog, _ := strconv.Atoi(parts[last])
-		oldestbinlog := latestbinlog - len(server.BinaryLogFiles) + 1
+		oldestbinlog := latestbinlog - files + 1
 		oldest := prefix + "." + fmt.Sprintf("%06d", oldestbinlog)
 
-		if _, ok := server.BinaryLogFiles[oldest]; ok && server.BinaryLogFileOldest != server.BinaryLogFile {
+		if _, ok := server.BinaryLogFiles.CheckAndGet(oldest); ok && server.BinaryLogFileOldest != server.BinaryLogFile {
 			if server.BinaryLogFileOldest != oldest {
 				server.BinaryLogFileOldest = oldest
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogFileOldest)
@@ -356,7 +356,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 		return
 	}
 
-	if len(server.BinaryLogFiles) == 0 {
+	if len(server.BinaryLogFiles.ToNewMap()) == 0 {
 		server.RefreshBinaryLogs()
 	}
 
@@ -388,7 +388,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	prefix := strings.Join(parts[:last], ".")
 
 	suffix, _ := strconv.Atoi(parts[last])
-	oldestbinlog := suffix + 1 - len(server.BinaryLogFiles)
+	oldestbinlog := suffix + 1 - len(server.BinaryLogFiles.ToNewMap())
 
 	if cluster.SlavesOldestMasterFile.Prefix != prefix {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge cancelled, master binlog file has different prefix")
@@ -429,7 +429,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 		//Accumulating newest binlog size and shifting to oldest
 		for suffix > 0 && totalSize < uint(cluster.Conf.ForceBinlogPurgeTotalSize*(1024*1024*1024)) {
 			filename := prefix + "." + fmt.Sprintf("%06d", suffix)
-			if size, ok := server.BinaryLogFiles[filename]; ok {
+			if size, ok := server.BinaryLogFiles.CheckAndGet(filename); ok {
 				//accumulating size
 				totalSize += size
 				lastfile = suffix //last file based on total size
@@ -454,7 +454,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 
 				if oldestbinlog > 0 && oldestbinlog < cluster.SlavesOldestMasterFile.Suffix-1 {
 					filename := prefix + "." + fmt.Sprintf("%06d", oldestbinlog)
-					if _, ok := server.BinaryLogFiles[filename]; ok {
+					if _, ok := server.BinaryLogFiles.CheckAndGet(filename); ok {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purging binlog of %s: %s. ", server.URL, filename)
 						_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)
 						if err != nil {
@@ -476,7 +476,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 func (server *ServerMonitor) PurgeBinlogTo(filename string) {
 	cluster := server.ClusterGroup
 	//Check if file exists
-	if _, ok := server.BinaryLogFiles[filename]; ok {
+	if _, ok := server.BinaryLogFiles.CheckAndGet(filename); ok {
 		_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlWarn, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
@@ -509,7 +509,7 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 		}
 
 		//Purge slaves to oldest master binlog timestamp and skip if slave only has 2 binary logs file left (Current Binlog and Prev Binlog)
-		if server.BinaryLogOldestTimestamp > 0 && master.BinaryLogOldestTimestamp > server.BinaryLogPurgeBefore && len(server.BinaryLogFiles) > 2 {
+		if server.BinaryLogOldestTimestamp > 0 && master.BinaryLogOldestTimestamp > server.BinaryLogPurgeBefore && len(server.BinaryLogFiles.ToNewMap()) > 2 {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purging slave binlog of %s from %s until oldest timestamp on master: %s", server.URL, time.Unix(server.BinaryLogOldestTimestamp, 0).String(), time.Unix(master.BinaryLogOldestTimestamp, 0).String())
 			q, err := dbhelper.PurgeBinlogBefore(server.Conn, master.BinaryLogOldestTimestamp)
 			if err != nil {

@@ -1321,7 +1321,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		if binlogfilestop > 0 {
 			filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestop)
 			if _, err := os.Stat(server.GetMyBackupDirectory() + "/" + filename); os.IsNotExist(err) {
-				if _, ok := server.BinaryLogFiles[filename]; ok {
+				if _, ok := server.BinaryLogFiles.CheckAndGet(filename); ok {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup master missing binlog of %s,%s", server.URL, filename)
 					//Set true to skip sending to resting multiple times
 					server.InitiateJobBackupBinlog(filename, true)

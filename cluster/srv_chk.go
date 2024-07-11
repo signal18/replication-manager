@@ -24,8 +24,8 @@ import (
 // CheckMaxConnections Check 80% of max connection reach
 func (server *ServerMonitor) CheckMaxConnections() {
 	cluster := server.ClusterGroup
-	maxCx, _ := strconv.ParseInt(server.Variables["MAX_CONNECTIONS"], 10, 64)
-	curCx, _ := strconv.ParseInt(server.Status["THREADS_CONNECTED"], 10, 64)
+	maxCx, _ := strconv.ParseInt(server.Variables.Get("MAX_CONNECTIONS"), 10, 64)
+	curCx, _ := strconv.ParseInt(server.Status.Get("THREADS_CONNECTED"), 10, 64)
 	if curCx > maxCx*80/100 {
 		cluster.SetState("ERR00076", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00076"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
 	}
@@ -343,8 +343,8 @@ func (server *ServerMonitor) CheckSlaveSameMasterGrants() bool {
 	if cluster.GetMaster() == nil || server.IsIgnored() || cluster.Conf.CheckGrants == false {
 		return true
 	}
-	for _, user := range cluster.GetMaster().Users {
-		if _, ok := server.Users["'"+user.User+"'@'"+user.Host+"'"]; !ok {
+	for _, user := range cluster.GetMaster().Users.ToNewMap() {
+		if _, ok := server.Users.CheckAndGet("'" + user.User + "'@'" + user.Host + "'"); !ok {
 			cluster.SetState("ERR00056", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00056"], fmt.Sprintf("'%s'@'%s'", user.User, user.Host), server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 			return false
 		}
@@ -421,7 +421,7 @@ func (server *ServerMonitor) CheckMonitoringCredentialsRotation() {
 				cluster.SetClusterProxyCredentialsFromConfig()
 				cluster.SetClusterMonitorCredentialsFromConfig()
 				server.SetCredential(server.URL, cluster.GetShardUser(), cluster.GetShardPass())
-				for _, u := range server.Users {
+				for _, u := range server.Users.ToNewMap() {
 					if u.User == cluster.GetShardUser() {
 						dbhelper.SetUserPassword(server.Conn, server.DBVersion, u.Host, u.User, cluster.GetShardPass())
 					}

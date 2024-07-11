@@ -142,7 +142,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				srv.SetCredential(srv.URL, cluster.GetDbUser(), cluster.GetDbPass())
 			}
 
-			for _, u := range cluster.master.Users {
+			for _, u := range cluster.master.Users.ToNewMap() {
 				if u.User == cluster.GetDbUser() {
 					dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_db)
 				}
@@ -177,7 +177,7 @@ func (cluster *Cluster) RotatePasswords() error {
 						prx.RotateProxyPasswords(new_password_shard)
 						prx.SetCredential(prx.User + ":" + new_password_shard)
 						prx.ShardProxy.SetCredential(prx.ShardProxy.URL, prx.User, new_password_shard)
-						for _, u := range prx.ShardProxy.Users {
+						for _, u := range prx.ShardProxy.Users.ToNewMap() {
 							if u.User == prx.User {
 								dbhelper.SetUserPassword(prx.ShardProxy.Conn, prx.ShardProxy.DBVersion, u.Host, u.User, new_password_shard)
 							}
@@ -255,7 +255,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				srv.SetCredential(srv.URL, cluster.GetDbUser(), cluster.GetDbPass())
 			}
 
-			for _, u := range cluster.master.Users {
+			for _, u := range cluster.master.Users.ToNewMap() {
 				if u.User == cluster.GetDbUser() {
 					dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_db)
 				}
@@ -290,7 +290,7 @@ func (cluster *Cluster) RotatePasswords() error {
 						prx.RotateProxyPasswords(new_password_shard)
 						prx.SetCredential(prx.User + ":" + new_password_shard)
 						prx.ShardProxy.SetCredential(prx.ShardProxy.URL, prx.User, new_password_shard)
-						for _, u := range prx.ShardProxy.Users {
+						for _, u := range prx.ShardProxy.Users.ToNewMap() {
 							if u.User == prx.User {
 								dbhelper.SetUserPassword(prx.ShardProxy.Conn, prx.ShardProxy.DBVersion, u.Host, u.User, new_password_shard)
 							}

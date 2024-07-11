@@ -110,7 +110,7 @@ type Cluster struct {
 	UptimeFailable                string                `json:"uptimeFailable"`
 	UptimeSemiSync                string                `json:"uptimeSemisync"`
 	MonitorSpin                   string                `json:"monitorSpin"`
-	WorkLoad                      WorkLoad              `json:"workLoad"`
+	WorkLoad                      config.WorkLoad       `json:"workLoad"`
 	LogPushover                   *log.Logger           `json:"-"`
 	Log                           s18log.HttpLog        `json:"log"`
 	LogTask                       s18log.HttpLog        `json:"logTask"`
@@ -253,16 +253,6 @@ type Agent struct {
 	OsName       string `json:"osName"`
 	Status       string `json:"status"`
 	Version      string `json:"version"`
-}
-
-type WorkLoad struct {
-	DBTableSize   int64   `json:"dbTableSize"`
-	DBIndexSize   int64   `json:"dbIndexSize"`
-	Connections   int     `json:"connections"`
-	QPS           int64   `json:"qps"`
-	CpuThreadPool float64 `json:"cpuThreadPool"`
-	CpuUserStats  float64 `json:"cpuUserStats"`
-	BusyTime      string
 }
 
 type Alerts struct {
@@ -1385,7 +1375,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 	if !cluster.Conf.MonitorVariableDiff || cluster.GetMaster() == nil {
 		return
 	}
-	masterVariables := cluster.GetMaster().Variables
+	masterVariables := cluster.GetMaster().Variables.ToNewMap()
 	exceptVariables := map[string]bool{
 		"PORT":                true,
 		"SERVER_ID":           true,
@@ -1426,7 +1416,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		mastervalue.VariableValue = v
 		myvalues = append(myvalues, mastervalue)
 		for _, s := range cluster.slaves {
-			slaveVariables := s.Variables
+			slaveVariables := s.Variables.ToNewMap()
 			if slaveVariables[k] != v && exceptVariables[k] != true {
 				var slavevalue Diff
 				slavevalue.Server = s.URL
@@ -1469,9 +1459,6 @@ func (cluster *Cluster) MonitorSchema() {
 	if cmaster.Conn == nil {
 		return
 	}
-
-	cmaster.Lock()
-	defer cmaster.Unlock()
 
 	cluster.StateMachine.SetMonitorSchemaState()
 	cmaster.Conn.SetConnMaxLifetime(3595 * time.Second)
@@ -1541,7 +1528,7 @@ func (cluster *Cluster) MonitorSchema() {
 
 	cluster.WorkLoad.DBIndexSize = totindexsize
 	cluster.WorkLoad.DBTableSize = tottablesize
-	cmaster.DictTables = tables
+	cmaster.DictTables = config.FromNormalTablesMap(cmaster.DictTables, tables)
 	cluster.StateMachine.RemoveMonitorSchemaState()
 }
 

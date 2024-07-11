@@ -64,8 +64,8 @@ func (server *ServerMonitor) GetUniversalGtidServerID() uint64 {
 		return uint64(server.ServerID)
 	}
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", " %s %s", server.Variables["SERVER_UUID"], server.URL)
-		return crc64.Checksum([]byte(strings.ToUpper(server.Variables["SERVER_UUID"])), server.GetCluster().GetCrcTable())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", " %s %s", server.Variables.Get("SERVER_UUID"), server.URL)
+		return crc64.Checksum([]byte(strings.ToUpper(server.Variables.Get("SERVER_UUID"))), server.GetCluster().GetCrcTable())
 
 	}
 	return 0
@@ -163,7 +163,7 @@ func (server *ServerMonitor) GetBindAddress() string {
 
 func (server *ServerMonitor) IsReplicationUsingGtidStrict() bool {
 	if server.IsMariaDB() {
-		if server.Variables["GTID_STRICT_MODE"] == "ON" {
+		if server.Variables.Get("GTID_STRICT_MODE") == "ON" {
 			return true
 		} else {
 			return false
@@ -254,11 +254,11 @@ func (server *ServerMonitor) GetNumberOfEventsAfterPos(file string, pos string) 
 	return dbhelper.GetNumberOfEventsAfterPos(server.Conn, file, pos)
 }
 
-func (server *ServerMonitor) GetTableFromDict(URI string) (v3.Table, error) {
-	var emptyTable v3.Table
-	val, ok := server.DictTables[URI]
+func (server *ServerMonitor) GetTableFromDict(URI string) (*v3.Table, error) {
+	var emptyTable *v3.Table = new(v3.Table)
+	val, ok := server.DictTables.CheckAndGet(URI)
 	if !ok {
-		if len(server.DictTables) == 0 {
+		if len(server.DictTables.ToNewMap()) == 0 {
 			return emptyTable, errors.New("Empty")
 		} else {
 			return emptyTable, errors.New("Not found")
@@ -283,7 +283,7 @@ func (server *ServerMonitor) GetQueryResponseTime() []dbhelper.ResponseTime {
 
 func (server *ServerMonitor) GetVariables() []dbhelper.Variable {
 	var variables []dbhelper.Variable
-	for k, v := range server.Variables {
+	for k, v := range server.Variables.ToNewMap() {
 		var r dbhelper.Variable
 		r.Variable_name = k
 		r.Value = v
@@ -299,7 +299,7 @@ func (server *ServerMonitor) GetVariablesCaseSensitive() map[string]string {
 }
 
 func (server *ServerMonitor) GetQueryFromPFSDigest(digest string) (string, string, error) {
-	for _, v := range server.PFSQueries {
+	for _, v := range server.PFSQueries.ToNewMap() {
 		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status %s %s", digest, v.Digest)
 		if v.Digest == digest {
 			return v.Schema_name, v.Query, nil
@@ -361,28 +361,35 @@ func (server *ServerMonitor) GetQueryAnalyzeSlowLog(digest string) (string, stri
 
 func (server *ServerMonitor) GetStatus() []dbhelper.Variable {
 	var status []dbhelper.Variable
-	for k, v := range server.Status {
+	statf := func(key any, value any) bool {
+		k := key.(string)
+		v := value.(string)
 		var r dbhelper.Variable
 		r.Variable_name = k
 		r.Value = v
 		status = append(status, r)
+
+		return true
 	}
+	server.Status.Callback(statf)
 	sort.Sort(dbhelper.VariableSorter(status))
 	return status
 }
 
 func (server *ServerMonitor) GetServerConnections() int {
-	res, _ := strconv.Atoi(server.Status["THREADS_RUNNING"])
+	res, _ := strconv.Atoi(server.Status.Get("THREADS_RUNNING"))
 	return res
 }
 
 func (server *ServerMonitor) GetStatusDelta() []dbhelper.Variable {
 	var delta []dbhelper.Variable
-	for k, v := range server.Status {
+	deltaf := func(key any, value any) bool {
+		k := key.(string)
+		v := value.(string)
 		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status %s %s", k, v)
 		i1, err := strconv.ParseInt(v, 10, 64)
 		if err == nil {
-			i2, err2 := strconv.ParseInt(server.PrevStatus[k], 10, 64)
+			i2, err2 := strconv.ParseInt(server.PrevStatus.Get(k), 10, 64)
 			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status now %s %d", k, v)
 			if err2 == nil && i2-i1 != 0 {
 				//			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status prev %s %d", k, v)
@@ -393,7 +400,10 @@ func (server *ServerMonitor) GetStatusDelta() []dbhelper.Variable {
 			}
 		}
 
+		return true
 	}
+	server.Status.Callback(deltaf)
+	sort.Sort(dbhelper.VariableSorter(delta))
 	return delta
 }
 
@@ -414,14 +424,15 @@ func (server *ServerMonitor) GetPFSQueries() {
 	var err error
 	logs := ""
 	// GET PFS query digest
-	server.PFSQueries, logs, err = dbhelper.GetQueries(server.Conn)
+	pfsq, logs, err := dbhelper.GetQueries(server.Conn)
+	server.PFSQueries = config.FromNormalPFSMap(server.PFSQueries, pfsq)
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get queries %s %s", server.URL, err)
 }
 
 func (server *ServerMonitor) GetPFSStatements() []dbhelper.PFSQuery {
 	var rows []dbhelper.PFSQuery
-	for _, v := range server.PFSQueries {
-		rows = append(rows, v)
+	for _, v := range server.PFSQueries.ToNewMap() {
+		rows = append(rows, *v)
 	}
 	sort.Sort(dbhelper.PFSQuerySorter(rows))
 	return rows
@@ -613,16 +624,16 @@ func (server *ServerMonitor) GetTables() []v3.Table {
 	return server.Tables
 }
 
-func (server *ServerMonitor) GetVTables() map[string]v3.Table {
-	return server.DictTables
+func (server *ServerMonitor) GetVTables() map[string]*v3.Table {
+	return server.DictTables.ToNewMap()
 }
 
-func (server *ServerMonitor) GetDictTables() []v3.Table {
-	var tables []v3.Table
+func (server *ServerMonitor) GetDictTables() []*v3.Table {
+	var tables []*v3.Table
 	if server.IsFailed() {
 		return tables
 	}
-	for _, t := range server.DictTables {
+	for _, t := range server.DictTables.ToNewMap() {
 		tables = append(tables, t)
 
 	}
@@ -632,12 +643,17 @@ func (server *ServerMonitor) GetDictTables() []v3.Table {
 
 func (server *ServerMonitor) GetInnoDBStatus() []dbhelper.Variable {
 	var status []dbhelper.Variable
-	for k, v := range server.EngineInnoDB {
+	getf := func(key any, value any) bool {
+		k := key.(string)
+		v := value.(string)
+
 		var r dbhelper.Variable
 		r.Variable_name = k
 		r.Value = v
 		status = append(status, r)
+		return true
 	}
+	server.EngineInnoDB.Callback(getf)
 	sort.Sort(dbhelper.VariableSorter(status))
 	return status
 
@@ -702,7 +718,7 @@ func (server *ServerMonitor) GetWsrepNodeAddress() string {
 }
 
 func (server *ServerMonitor) GetCPUUsageFromStats(t time.Time) (float64, error) {
-	last_busy_time, _ := strconv.ParseFloat(server.WorkLoad["current"].BusyTime, 8)
+	last_busy_time, _ := strconv.ParseFloat(server.WorkLoad.Get("current").BusyTime, 64)
 	t_now := time.Now()
 	elapsed := t_now.Sub(t).Seconds()
 	if server.DBVersion.IsMariaDB() && last_busy_time != 0 {
@@ -711,8 +727,8 @@ func (server *ServerMonitor) GetCPUUsageFromStats(t time.Time) (float64, error) 
 		if server.HasUserStats() {
 			res, _, err := dbhelper.GetCPUUsageFromUserStats(server.Conn)
 			if err == nil {
-				busy_time, _ := strconv.ParseFloat(res, 8)
-				core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 8)
+				busy_time, _ := strconv.ParseFloat(res, 64)
+				core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 64)
 				return ((busy_time - last_busy_time) / (core * elapsed)) * 100, nil
 			}
 		}
@@ -740,9 +756,9 @@ func (server *ServerMonitor) GetBusyTimeFromStats() (string, error) {
 func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
 	if server.DBVersion.IsMariaDB() {
 		//we compute it from status
-		thread_idle, _ := strconv.ParseFloat(server.Status["THREADPOOL_IDLE_THREADS"], 8)
-		thread, _ := strconv.ParseFloat(server.Status["THREADPOOL_THREADS"], 8)
-		core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 8)
+		thread_idle, _ := strconv.ParseFloat(server.Status.Get("THREADPOOL_IDLE_THREADS"), 64)
+		thread, _ := strconv.ParseFloat(server.Status.Get("THREADPOOL_THREADS"), 64)
+		core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 64)
 		return ((thread - thread_idle) / core) * 100
 	}
 	return -1

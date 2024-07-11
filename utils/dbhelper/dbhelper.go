@@ -95,7 +95,7 @@ func (a PFSQuerySorter) Less(i, j int) bool {
 	return l > r
 }
 
-type TableSizeSorter []v3.Table
+type TableSizeSorter []*v3.Table
 
 func (a TableSizeSorter) Len() int      { return len(a) }
 func (a TableSizeSorter) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
@@ -1563,7 +1563,7 @@ func GetStatus(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, err
 	return vars, query, nil
 }
 
-func GetEngineInnoDBSatus(db *sqlx.DB) (string, string, error) {
+func GetEngineInnoDBStatus(db *sqlx.DB) (string, string, error) {
 	query := "SHOW ENGINE INNODB STATUS"
 	rows, err := db.Query(query)
 	if err != nil {
@@ -1582,7 +1582,7 @@ func GetEngineInnoDBSatus(db *sqlx.DB) (string, string, error) {
 
 func GetEngineInnoDBVariables(db *sqlx.DB) (map[string]string, string, error) {
 
-	statusCol, logs, err := GetEngineInnoDBSatus(db)
+	statusCol, logs, err := GetEngineInnoDBStatus(db)
 	if err != nil {
 		return nil, logs, err
 	}
@@ -1707,9 +1707,9 @@ func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
 	return vars, query, nil
 }
 
-func GetPlugins(db *sqlx.DB, myver *MySQLVersion) (map[string]Plugin, string, error) {
+func GetPlugins(db *sqlx.DB, myver *MySQLVersion) (map[string]*Plugin, string, error) {
 
-	vars := make(map[string]Plugin)
+	vars := make(map[string]*Plugin)
 	query := `SHOW PLUGINS`
 	if myver.IsMariaDB() {
 		query = `SHOW PLUGINS soname`
@@ -1726,7 +1726,7 @@ func GetPlugins(db *sqlx.DB, myver *MySQLVersion) (map[string]Plugin, string, er
 		if err != nil {
 			return nil, query, errors.New("Could not get results from plugins scan")
 		}
-		vars[v.Name] = v
+		vars[v.Name] = &v
 	}
 	return vars, query, nil
 }
@@ -1817,8 +1817,8 @@ func GetNoBlockOnMedataLock(db *sqlx.DB, myver *MySQLVersion) string {
 	}
 	return noBlockOnMedataLock
 }
-func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Table, string, error) {
-	vars := make(map[string]v3.Table)
+func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]*v3.Table, []v3.Table, string, error) {
+	vars := make(map[string]*v3.Table)
 	var tblList []v3.Table
 
 	logs := ""
@@ -1880,15 +1880,15 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Tabl
 				v.TableCrc = crc64Int
 			}
 			tblList = append(tblList, v)
-			vars[v.TableSchema+"."+v.TableName] = v
+			vars[v.TableSchema+"."+v.TableName] = &v
 		}
 		rows.Close()
 	}
 	return vars, tblList, logs, nil
 }
 
-func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, string, error) {
-	vars := make(map[string]Grant)
+func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]*Grant, string, error) {
+	vars := make(map[string]*Grant)
 	// password was remover from system table in mysql 8.0
 
 	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user where host<>'localhost' "
@@ -1913,7 +1913,7 @@ func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, string, error
 		if err != nil {
 			return vars, query, err
 		}
-		vars["'"+g.User+"'@'"+g.Host+"'"] = g
+		vars["'"+g.User+"'@'"+g.Host+"'"] = &g
 	}
 	return vars, query, nil
 }

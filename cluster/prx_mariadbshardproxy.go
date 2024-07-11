@@ -223,7 +223,7 @@ func (proxy *MariadbShardProxy) Refresh() error {
 		//proxy.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxy,config.LvlErr, "Sharding proxy refresh error (%s)", err)
 		return err
 	}
-	proxy.Version = proxy.ShardProxy.Variables["VERSION"]
+	proxy.Version = proxy.ShardProxy.Variables.Get("VERSION")
 
 	proxy.BackendsWrite = nil
 	proxy.BackendsRead = nil
@@ -276,7 +276,7 @@ func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *Mariad
 
 		return err
 	}
-	proxy.Version = proxy.ShardProxy.Variables["VERSION"]
+	proxy.Version = proxy.ShardProxy.Variables.Get("VERSION")
 
 	proxy.BackendsWrite = nil
 	proxy.BackendsRead = nil
@@ -364,7 +364,7 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *MariadbShardProxy, schema 
 		}
 		srv_def = srv_def + "\" "
 		link_status_def = link_status_def + "\" "
-		query := "CREATE OR REPLACE TABLE " + schema + "." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\",  mbk \"2\", mkd \"2\", msi \"" + proxy.ShardProxy.Variables["SERVER_ID"] + "\", " + srv_def + ", " + link_status_def + "'"
+		query := "CREATE OR REPLACE TABLE " + schema + "." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\",  mbk \"2\", mkd \"2\", msi \"" + proxy.ShardProxy.Variables.Get("SERVER_ID") + "\", " + srv_def + ", " + link_status_def + "'"
 
 		err = cluster.RunQueryWithLog(proxy.ShardProxy, query)
 		if err != nil {
