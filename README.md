@@ -15,7 +15,7 @@ The main features are:
  * Proxy integration (ProxySQL, MaxScale, HAProxy, Spider)
  * Maintenance automation (Logical & physical Backups, Defrag, Backups Snapshot, Log Archiving)
  * Metrics history in carbon, graphite API
- * Alereting via EMail, Pushover Slack, Teams, Mattermost
+ * Alerting via EMail, Pushover Slack, Teams, Mattermost
  * Database Rejoining and Reseeding policy
  * Scriptable state and event
  * Remote scripting via SSH
