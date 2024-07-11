@@ -105,6 +105,104 @@ func NewStringsMap() *StringsMap {
 	return m
 }
 
+type UIntsMap struct {
+	*sync.Map
+}
+
+func (m *UIntsMap) Get(key string) uint {
+	if v, ok := m.Load(key); ok {
+		return v.(uint)
+	}
+	return 0
+}
+
+func (m *UIntsMap) CheckAndGet(key string) (uint, bool) {
+	v, ok := m.Load(key)
+	if ok {
+		return v.(uint), true
+	}
+	return 0, false
+}
+
+func (m *UIntsMap) ToNormalMap(c map[string]uint) {
+	// clear old value
+	c = make(map[string]uint)
+
+	//Insert all values to new map
+	m.Range(func(k any, v any) bool {
+		c[k.(string)] = v.(uint)
+		return true
+	})
+}
+
+func (m *UIntsMap) ToNewMap() map[string]uint {
+	// clear old value
+	c := make(map[string]uint)
+
+	//Insert all values to new map
+	m.Range(func(k any, v any) bool {
+		c[k.(string)] = v.(uint)
+		return true
+	})
+
+	return c
+}
+
+func (m *UIntsMap) Set(k string, v uint) {
+	m.Store(k, v)
+}
+
+func FromNormalUIntsMap(m *UIntsMap, c map[string]uint) *UIntsMap {
+	if m == nil {
+		m = NewUIntsMap()
+	} else {
+		m.Clear()
+	}
+
+	for k, v := range c {
+		m.Store(k, v)
+	}
+
+	return m
+}
+
+func FromUIntSyncMap(m *UIntsMap, c *UIntsMap) *UIntsMap {
+	if m == nil {
+		m = NewUIntsMap()
+	} else {
+		m.Clear()
+	}
+
+	if c != nil {
+		c.Range(func(k any, v any) bool {
+			m.Store(k.(string), v.(uint))
+			return true
+		})
+	}
+
+	return m
+}
+
+func (m *UIntsMap) Callback(f func(key, value any) bool) {
+	//Insert all values to new map
+	m.Range(f)
+}
+
+func (m *UIntsMap) Clear() {
+	//Insert all values to new map
+	m.Range(func(key any, value any) bool {
+		k := key.(string)
+		m.Delete(k)
+		return true
+	})
+}
+
+func NewUIntsMap() *UIntsMap {
+	s := new(sync.Map)
+	m := &UIntsMap{Map: s}
+	return m
+}
+
 type PFSQueriesMap struct {
 	*sync.Map
 }

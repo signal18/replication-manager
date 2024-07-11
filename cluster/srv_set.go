@@ -191,9 +191,7 @@ func (server *ServerMonitor) SetMaintenance() {
 }
 
 func (server *ServerMonitor) SetBinaryLogFiles(files map[string]uint) {
-	server.Lock()
-	server.BinaryLogFiles = files
-	server.Unlock()
+	server.BinaryLogFiles = config.FromNormalUIntsMap(server.BinaryLogFiles, files)
 }
 
 func (server *ServerMonitor) SetDSN() {

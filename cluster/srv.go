@@ -178,7 +178,7 @@ type ServerMonitor struct {
 	TLSConfigUsed               string                  `json:"tlsConfigUsed"` //used to track TLS config during key rotation
 	SSTPort                     string                  `json:"sstPort"`       //used to send data to dbjobs
 	Agent                       string                  `json:"agent"`         //used to provision service in orchestrator
-	BinaryLogFiles              map[string]uint         `json:"binaryLogFiles"`
+	BinaryLogFiles              *config.UIntsMap        `json:"binaryLogFiles"`
 	BinaryLogFileOldest         string                  `json:"binaryLogFileOldest"`
 	BinaryLogOldestTimestamp    int64                   `json:"binaryLogOldestTimestamp"`
 	BinaryLogPurgeBefore        int64                   `json:"binaryLogPurgeBefore"`
@@ -284,6 +284,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.DictTables = config.NewTablesMap()
 	server.Plugins = config.NewPluginsMap()
 	server.Users = config.NewGrantsMap()
+	server.BinaryLogFiles = config.NewUIntsMap()
 
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
@@ -335,7 +336,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.DelayStat.ResetDelayStat()
 
 	server.WorkLoad = make(map[string]WorkLoad)
-	server.BinaryLogFiles = make(map[string]uint)
+
 	server.CurrentWorkLoad()
 	server.WorkLoad["max"] = server.WorkLoad["current"]
 	server.WorkLoad["average"] = server.WorkLoad["current"]
