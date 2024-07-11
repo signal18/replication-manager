@@ -200,6 +200,101 @@ func FromPFSQueriesMap(m *PFSQueriesMap, c *PFSQueriesMap) *PFSQueriesMap {
 	return m
 }
 
+type PluginsMap struct {
+	*sync.Map
+}
+
+func NewPluginsMap() *PluginsMap {
+	s := new(sync.Map)
+	m := &PluginsMap{Map: s}
+	return m
+}
+
+func (m *PluginsMap) Get(key string) *dbhelper.Plugin {
+	if v, ok := m.Load(key); ok {
+		return v.(*dbhelper.Plugin)
+	}
+	return nil
+}
+
+func (m *PluginsMap) CheckAndGet(key string) (*dbhelper.Plugin, bool) {
+	v, ok := m.Load(key)
+	if ok {
+		return v.(*dbhelper.Plugin), true
+	}
+	return nil, false
+}
+
+func (m *PluginsMap) Set(key string, value *dbhelper.Plugin) {
+	m.Store(key, value)
+}
+
+func (m *PluginsMap) ToNormalMap(c map[string]*dbhelper.Plugin) {
+	// Clear the old values in the output map
+	for k := range c {
+		delete(c, k)
+	}
+
+	// Insert all values from the PluginsMap to the output map
+	m.Callback(func(key string, value *dbhelper.Plugin) bool {
+		c[key] = value
+		return true
+	})
+}
+
+func (m *PluginsMap) ToNewMap() map[string]*dbhelper.Plugin {
+	result := make(map[string]*dbhelper.Plugin)
+	m.Range(func(k, v any) bool {
+		result[k.(string)] = v.(*dbhelper.Plugin)
+		return true
+	})
+	return result
+}
+
+func (m *PluginsMap) Callback(f func(key string, value *dbhelper.Plugin) bool) {
+	m.Range(func(k, v any) bool {
+		return f(k.(string), v.(*dbhelper.Plugin))
+	})
+}
+
+func (m *PluginsMap) Clear() {
+	m.Range(func(key, value any) bool {
+		m.Delete(key.(string))
+		return true
+	})
+}
+
+func FromNormalPluginsMap(m *PluginsMap, c map[string]*dbhelper.Plugin) *PluginsMap {
+	if m == nil {
+		m = NewPluginsMap()
+	} else {
+		m.Clear()
+	}
+
+	for k, v := range c {
+		m.Set(k, v)
+	}
+
+	return m
+}
+
+func FromPluginsMap(m *PluginsMap, c *PluginsMap) *PluginsMap {
+	if m == nil {
+		m = NewPluginsMap()
+	} else {
+		m.Clear()
+	}
+
+	if c != nil {
+		c.Callback(func(key string, value *dbhelper.Plugin) bool {
+			m.Set(key, value)
+			return true
+		})
+	}
+
+	return m
+}
+
 type TablesMap struct {
 	*sync.Map
 }

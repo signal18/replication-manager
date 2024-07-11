@@ -1707,9 +1707,9 @@ func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
 	return vars, query, nil
 }
 
-func GetPlugins(db *sqlx.DB, myver *MySQLVersion) (map[string]Plugin, string, error) {
+func GetPlugins(db *sqlx.DB, myver *MySQLVersion) (map[string]*Plugin, string, error) {
 
-	vars := make(map[string]Plugin)
+	vars := make(map[string]*Plugin)
 	query := `SHOW PLUGINS`
 	if myver.IsMariaDB() {
 		query = `SHOW PLUGINS soname`
@@ -1726,7 +1726,7 @@ func GetPlugins(db *sqlx.DB, myver *MySQLVersion) (map[string]Plugin, string, er
 		if err != nil {
 			return nil, query, errors.New("Could not get results from plugins scan")
 		}
-		vars[v.Name] = v
+		vars[v.Name] = &v
 	}
 	return vars, query, nil
 }

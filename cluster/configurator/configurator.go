@@ -21,7 +21,6 @@ import (
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/share"
-	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -120,8 +119,9 @@ func (configurator *Configurator) LoadProxyModules() error {
 	return nil
 }
 
-func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, Plugins map[string]dbhelper.Plugin) error {
-
+func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, Plugins *config.PluginsMap) error {
+	pmap := Plugins.ToNewMap()
+	vmap := Variables.ToNewMap()
 	innodbmem, err := strconv.ParseUint(Variables.Get("INNODB_BUFFER_POOL_SIZE"), 10, 64)
 	if err != nil {
 		return err
@@ -201,19 +201,19 @@ func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, 
 		configurator.AddDBTag("compresstable")
 	}
 
-	if configurator.HasInstallPlugin(Plugins, "BLACKHOLE") {
+	if configurator.HasInstallPlugin(pmap, "BLACKHOLE") {
 		configurator.AddDBTag("blackhole")
 	}
-	if configurator.HasInstallPlugin(Plugins, "QUERY_RESPONSE_TIME") {
+	if configurator.HasInstallPlugin(pmap, "QUERY_RESPONSE_TIME") {
 		configurator.AddDBTag("userstats")
 	}
-	if configurator.HasInstallPlugin(Plugins, "SQL_ERROR_LOG") {
+	if configurator.HasInstallPlugin(pmap, "SQL_ERROR_LOG") {
 		configurator.AddDBTag("sqlerror")
 	}
-	if configurator.HasInstallPlugin(Plugins, "METADATA_LOCK_INFO") {
+	if configurator.HasInstallPlugin(pmap, "METADATA_LOCK_INFO") {
 		configurator.AddDBTag("metadatalocks")
 	}
-	if configurator.HasInstallPlugin(Plugins, "SERVER_AUDIT") {
+	if configurator.HasInstallPlugin(pmap, "SERVER_AUDIT") {
 		configurator.AddDBTag("audit")
 	}
 	if Variables.Get("SLOW_QUERY_LOG") == "ON" {
@@ -229,30 +229,30 @@ func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, 
 		configurator.AddDBTag("logtotable")
 	}
 
-	if configurator.HasInstallPlugin(Plugins, "CONNECT") {
+	if configurator.HasInstallPlugin(pmap, "CONNECT") {
 		configurator.AddDBTag("connect")
 	}
-	if configurator.HasInstallPlugin(Plugins, "SPIDER") {
+	if configurator.HasInstallPlugin(pmap, "SPIDER") {
 		configurator.AddDBTag("spider")
 	}
-	if configurator.HasInstallPlugin(Plugins, "SPHINX") {
+	if configurator.HasInstallPlugin(pmap, "SPHINX") {
 		configurator.AddDBTag("sphinx")
 	}
-	if configurator.HasInstallPlugin(Plugins, "MROONGA") {
+	if configurator.HasInstallPlugin(pmap, "MROONGA") {
 		configurator.AddDBTag("mroonga")
 	}
-	if configurator.HasWsrep(Variables) {
+	if configurator.HasWsrep(vmap) {
 		configurator.AddDBTag("wsrep")
 	}
 	//missing in compliance
-	if configurator.HasInstallPlugin(Plugins, "ARCHIVE") {
+	if configurator.HasInstallPlugin(pmap, "ARCHIVE") {
 		configurator.AddDBTag("archive")
 	}
 
-	if configurator.HasInstallPlugin(Plugins, "CRACKLIB_PASSWORD_CHECK") {
+	if configurator.HasInstallPlugin(pmap, "CRACKLIB_PASSWORD_CHECK") {
 		configurator.AddDBTag("pwdcheckcracklib")
 	}
-	if configurator.HasInstallPlugin(Plugins, "SIMPLE_PASSWORD_CHECK") {
+	if configurator.HasInstallPlugin(pmap, "SIMPLE_PASSWORD_CHECK") {
 		configurator.AddDBTag("pwdchecksimple")
 	}
 

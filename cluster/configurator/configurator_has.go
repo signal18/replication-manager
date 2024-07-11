@@ -9,11 +9,10 @@ package configurator
 import (
 	"strings"
 
-	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
-func (configurator *Configurator) HasInstallPlugin(Plugins map[string]dbhelper.Plugin, name string) bool {
+func (configurator *Configurator) HasInstallPlugin(Plugins map[string]*dbhelper.Plugin, name string) bool {
 	val, ok := Plugins[name]
 	if !ok {
 		return false
@@ -24,8 +23,8 @@ func (configurator *Configurator) HasInstallPlugin(Plugins map[string]dbhelper.P
 	return false
 }
 
-func (configurator *Configurator) HasWsrep(Variables *config.StringsMap) bool {
-	return Variables.Get("WSREP_ON") == "ON"
+func (configurator *Configurator) HasWsrep(Variables map[string]string) bool {
+	return Variables["WSREP_ON"] == "ON"
 }
 
 func (configurator *Configurator) HaveDBTag(tag string) bool {

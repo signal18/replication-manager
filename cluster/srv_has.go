@@ -303,7 +303,7 @@ func (server *ServerMonitor) HasMariaDBGTID() bool {
 }
 
 func (server *ServerMonitor) HasInstallPlugin(name string) bool {
-	val, ok := server.Plugins[name]
+	val, ok := server.Plugins.CheckAndGet(name)
 	if !ok {
 		return false
 	}
