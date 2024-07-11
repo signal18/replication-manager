@@ -26,14 +26,17 @@ import (
 )
 
 type Configurator struct {
-	ClusterConfig config.Config     `json:"-"`
-	DBModule      config.Compliance `json:"-"`
-	ProxyModule   config.Compliance `json:"-"`
-	ConfigDBTags  []v3.Tag          `json:"configTags"`    //from module
-	ConfigPrxTags []v3.Tag          `json:"configPrxTags"` //from module
-	DBTags        []string          `json:"dbServersTags"` //from conf
-	ProxyTags     []string          `json:"proxyServersTags"`
-	WorkingDir    string            `json:"-"` // working dir is the place to generate the all cluster config
+	ClusterConfig         config.Config     `json:"-"`
+	ClusterConfigDiscover config.Config     `json:"-"`
+	DBModule              config.Compliance `json:"-"`
+	ProxyModule           config.Compliance `json:"-"`
+	ConfigDBTags          []v3.Tag          `json:"configTags"`    //from module
+	ConfigPrxTags         []v3.Tag          `json:"configPrxTags"` //from module
+	DBTags                []string          `json:"dbServersTags"` //from conf
+	ProxyTags             []string          `json:"proxyServersTags"`
+	DBTagsDiscover        []string          `json:"dbServersTagsDiscover"` //from conf
+	ProxyTagsDiscover     []string          `json:"proxyServersTagsDiscover"`
+	WorkingDir            string            `json:"-"` // working dir is the place to generate the all cluster config
 }
 
 func (configurator *Configurator) Init(conf config.Config) error {
