@@ -2315,6 +2315,25 @@
                 }
             ],
             "fset_name": "mariadb.replication.noalter2phase"
+        },
+        {
+            "fset_stats": false,
+            "id": 415,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "noforcepk",
+                        "f_table": "v_tags",
+                        "id": 373
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.noforcepk"
         }
     ],
     "rulesets": [
@@ -4029,6 +4048,30 @@
                     "var_updated": "2023-12-20 12:29:32",
                     "var_name": "db_cnf_rep_no_alter2phase",
                     "id": 6296
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/parselog\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\nJOB_NAME=\\\"$JOB_NAME_ENV\\\"\\nLOG_MODULE=\\\"$LOG_MODULE_ENV\\\"\\nLOG_LEVEL=\\\"$LOG_LEVEL_ENV\\\"\\nBATCH_SIZE=\\\"$LOG_BATCH_LINES_ENV\\\" # Set the batch size to 5 for testing\\nREPLICATION_MANAGER_ADDR=%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%\\nCLUSTER_NAME=%%ENV:SVC_NAMESPACE%%\\nMYSQL_PORT=%%ENV:SERVER_PORT%%\\nMYSQL_SERVER=%%ENV:SERVER_HOST%%\\nLOG_DIR=\\\"/tmp/dbjobs/$JOB_NAME\\\"\\nLOCK_FILE=\\\"$LOG_DIR/lock\\\"\\nRUN_FILE=\\\"$LOG_DIR/run\\\"\\nAPI_ENDPOINT=\\\"http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/write-log/$LOG_MODULE/$LOG_LEVEL\\\"\\nPROCESSES=( \\\"mariabackup\\\" \\\"xtrabackup\\\" \\\"mysql\\\" \\\"zfs\\\" socat )\\n\\nread_checkpoint() {\\n  local CHECKPOINT_FILE=$1\\n\\n  if [ -f \\\"$CHECKPOINT_FILE\\\" ]; then\\n    read -r LAST_LINE < \\\"$CHECKPOINT_FILE\\\"\\n    echo \\\"$LAST_LINE\\\"\\n  else\\n    echo \\\"1\\\"\\n  fi\\n}\\n\\nupdate_checkpoint() {\\n  local CHECKPOINT_FILE=$1\\n  local LAST_LINE=$2\\n\\n  echo \\\"$LAST_LINE\\\" > \\\"$CHECKPOINT_FILE\\\"\\n}\\n\\nsend_api_request() {\\n      local log_data=$1\\n  resp=$(curl -s -X POST -H \\\"Accept: */*\\\" -H \\\"Content-Type: application/json\\\" -d \\\"{\\\\\\\"message\\\\\\\":\\\\\\\"$log_data\\\\\\\"}\\\" $API_ENDPOINT)\\n  if [ $? -eq 0 ]; then\\n    return 0\\n  else\\n    return 1\\n  fi\\n}\\n\\nprocess_batch() {\\n  local LOG_DATA=$1\\n  local LAST_LINE=$2\\n  local LINES=$3\\n\\n  if send_api_request \\\"$LOG_DATA\\\"; then\\n    ((LAST_LINE += LINES))\\n    echo \\\"$LAST_LINE\\\"\\n    return 0\\n  else\\n    echo \\\"$LAST_LINE\\\"\\n    return 1\\n  fi\\n}\\n\\nprocess() {\\n  local LOG_FILE=$1\\n  local CHECKPOINT_FILE=$2\\n  local CHECKPOINT_LINE=$(read_checkpoint \\\"$CHECKPOINT_FILE\\\")\\n  local -a BATCH_LINES\\n\\n  while IFS= read -r line; do\\n    BATCH_LINES+=(\\\"$line\\\")\\n    if [ \\\"${#BATCH_LINES[@]}\\\" -eq \\\"$BATCH_SIZE\\\" ]; then\\n      log_data=$(printf '%s\\\\\\\\n' \\\"${BATCH_LINES[@]}\\\")\\n      processed=$(process_batch \\\"$log_data\\\" \\\"$CHECKPOINT_LINE\\\" \\\"${#BATCH_LINES[@]}\\\")\\n      if ! [ $? -eq 0 ] ; then\\n        return 1\\n      fi\\n      CHECKPOINT_LINE=$processed\\n      update_checkpoint \\\"$CHECKPOINT_FILE\\\" \\\"$CHECKPOINT_LINE\\\"\\n      unset \\\"BATCH_LINES[@]\\\"\\n    fi\\ndone < <(sed -n \\\"$CHECKPOINT_LINE,\\\\$p\\\" \\\"$LOG_FILE\\\")\\n  if [ ${#BATCH_LINES[@]} -gt 0 ]; then\\n    log_data=$(printf '%s\\\\\\\\n' \\\"${BATCH_LINES[@]}\\\")\\n    processed=$(process_batch \\\"$log_data\\\" \\\"$CHECKPOINT_LINE\\\" \\\"${#BATCH_LINES[@]}\\\")\\n    if ! [ $? -eq 0 ]; then\\n\\t    return 1\\n    fi\\n    CHECKPOINT_LINE=$processed\\n    update_checkpoint \\\"$CHECKPOINT_FILE\\\" \\\"$CHECKPOINT_LINE\\\"\\n  fi\\n}\\n\\nparselog() {\\n  local logfile=\\\"$1.out\\\"\\n  local CHECKPOINT_FILE=\\\"$1.chk\\\"\\n  rm -r \\\"$CHECKPOINT_FILE\\\"\\n  while true; do\\n\\t    if [ -d \\\"$RUN_FILE\\\" ]; then\\n\\t\\t\\t    process \\\"$logfile\\\" \\\"$CHECKPOINT_FILE\\\"\\n          sleep 1\\n\\t    else\\n\\t\\t    break\\n\\t    fi\\n  done\\n  process \\\"$logfile\\\" \\\"$CHECKPOINT_FILE\\\"\\n}\\n\\nmain() {\\n  if mkdir -p \\\"$LOCK_FILE\\\" 2>/dev/null; then\\n    # Lock acquired, do your work here\\n    echo \\\"Process started.\\\"\\n\\n    until [ -d \\\"$RUN_FILE\\\" ]\\n    do\\n\\t    echo \\\"Waiting for the file to be created...\\\"\\n\\t    sleep 1\\n    done\\n    \\n\\t\\tfor PROC in \\\"${PROCESSES[@]}\\\"; do\\n      parselog \\\"$LOG_DIR/${PROC}\\\" > \\\"$LOG_DIR/${PROC}.proc\\\" &\\n\\t\\tdone\\n    wait\\n    echo \\\"Process finished.\\\"\\n    rmdir \\\"$LOCK_FILE\\\"\\n  else\\n    echo \\\"Another process is already running. Exiting.\\\"\\n    exit 1\\n  fi\\n}\\n\\nmain\"}",
+                    "var_updated": "2024-07-03 14:34:48",
+                    "var_name": "db_cnf_script_parselog",
+                    "id": 6298
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/dbjobs_dev\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\nset -x\\nUSER=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%\\nPASSWORD=$MYSQL_ROOT_PASSWORD\\nMYSQL_PORT=%%ENV:SERVER_PORT%%\\nMYSQL_SERVER=%%ENV:SERVER_HOST%%\\nCLUSTER_NAME=%%ENV:SVC_NAMESPACE%%\\nREPLICATION_MANAGER_ADDR=%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%\\nMYSQL_CONF=%%ENV:SVC_CONF_ENV_MYSQL_CONFDIR%%\\nDATADIR=%%ENV:SVC_CONF_ENV_MYSQL_DATADIR%%\\nMYSQL_CLIENT_PARAMETERS=\\\"-u$USER -h$MYSQL_SERVER -p$PASSWORD -P$MYSQL_PORT\\\" \\nMYSQL_CLIENT=\\\"%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysql $MYSQL_CLIENT_PARAMETERS\\\"\\nMYSQL_CHECK=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqlcheck\\nMYSQL_DUMP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqldump\\nSST_RECEIVER_PORT=%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%\\nSOCAT_BIND=%%ENV:SERVER_IP%%\\nMARIADB_BACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mariabackup\\nXTRABACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/xtrabackup\\nINNODBACKUPEX=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/innobackupex\\n\\nERROLOG=$DATADIR/.system/logs/error.log\\nSLOWLOG=$DATADIR/.system/logs/slow-query.log\\nBACKUPDIR=$DATADIR/.system/backup\\n\\nJOBS=( \\\"xtrabackup\\\" \\\"mariabackup\\\" \\\"error\\\" \\\"slowquery\\\" \\\"zfssnapback\\\" \\\"optimize\\\" \\\"reseedxtrabackup\\\" \\\"reseedmariabackup\\\" \\\"reseedmysqldump\\\" \\\"flashbackxtrabackup\\\" \\\"flashbackmariadbackup\\\" \\\"flashbackmysqldump\\\" \\\"stop\\\" \\\"restart\\\" \\\"start\\\")\\n\\n# OSX need socat extra path\\nexport PATH=$PATH:/usr/local/bin\\n \\nsocatCleaner()\\n{\\n kill -9 $(lsof -t -i:$SST_RECEIVER_PORT -sTCP:LISTEN)\\n}\\n\\ndoneJob()\\n{\\n $MYSQL_CLIENT -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), result=LOAD_FILE('/tmp/dbjob.out'), done=1  WHERE id='$ID';\\\" &\\n}\\n\\npauseJob()\\n{\\n $MYSQL_CLIENT  -e \\\"select sleep(20);set sql_log_bin=0;UPDATE replication_manager_schema.jobs set done=1,result=LOAD_FILE('/tmp/dbjob.out') WHERE id='$ID';\\\" &\\n}\\n\\nslaveReady()\\n{\\n $MYSQL_CLIENT -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set result='ready' WHERE id='$ID';\\\" &\\n}\\n\\npartialRestore()\\n{\\n chown -R mysql:mysql $BACKUPDIR\\n $MYSQL_CLIENT -e \\\"set sql_log_bin=0;install plugin BLACKHOLE soname 'ha_blackhole.so'\\\"\\n for dir in $(ls -d $BACKUPDIR/*/ | xargs -n 1 basename | grep -vE 'mysql|performance_schema|replication_manager_schema') ; do\\n $MYSQL_CLIENT -e \\\"set sql_log_bin=0;drop database IF EXISTS $dir; CREATE DATABASE $dir;\\\"\\n\\n\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.ibd\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   cat $BACKUPDIR/$dir/$file.frm | sed -e 's/\\\\x06\\\\x00\\\\x49\\\\x6E\\\\x6E\\\\x6F\\\\x44\\\\x42\\\\x00\\\\x00\\\\x00/\\\\x09\\\\x00\\\\x42\\\\x4C\\\\x41\\\\x43\\\\x4B\\\\x48\\\\x4F\\\\x4C\\\\x45/g' > $DATADIR/$dir/mrm_pivo.frm\\n   chown mysql:mysql $DATADIR/$dir/mrm_pivo.frm\\n   $MYSQL_CLIENT -e \\\"set sql_log_bin=0;ALTER TABLE $dir.mrm_pivo  engine=innodb;RENAME TABLE $dir.mrm_pivo TO $dir.$file; ALTER TABLE $dir.$file DISCARD TABLESPACE;\\\"\\n   mv $BACKUPDIR/$dir/$file.ibd $DATADIR/$dir/$file.ibd\\n   mv $BACKUPDIR/$dir/$file.exp $DATADIR/$dir/$file.exp\\n   mv $BACKUPDIR/$dir/$file.cfg $DATADIR/$dir/$file.cfg\\n   mv $BACKUPDIR/$dir/$file.TRG $DATADIR/$dir/$file.TRG\\n   $MYSQL_CLIENT -e \\\"set sql_log_bin=0;ALTER TABLE $dir.$file IMPORT TABLESPACE\\\"\\n  done\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.MYD\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/$dir/$file.* $DATADIR/$dir/\\n   $MYSQL_CLIENT -e \\\"set sql_log_bin=0;FLUSH TABLE $dir.$file\\\"\\n  done\\n  for file in $(find $BACKUPDIR/$dir/ -name \\\"*.CSV\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/$dir/$file.* $DATADIR/$dir/\\n   $MYSQL_CLIENT -e \\\"set sql_log_bin=0;FLUSH TABLE $dir.$file\\\"\\n  done\\n done\\n for file in $(find $BACKUPDIR/mysql/ -name \\\"*.MYD\\\" | xargs -n 1 basename | cut -d'.' --complement -f2-) ; do\\n   mv $BACKUPDIR/mysql/$file.* $DATADIR/mysql/\\n   $MYSQL_CLIENT -e \\\"set sql_log_bin=0;FLUSH TABLE mysql.$file\\\"\\n done\\n cat $BACKUPDIR/xtrabackup_info | grep binlog_pos | awk  -F, '{ print $3 }' | sed -e 's/GTID of the last change/set sql_log_bin=0;set global gtid_slave_pos=/g' | $MYSQL_CLIENT \\n $MYSQL_CLIENT -e\\\"set sql_log_bin=0;flush privileges;start slave;\\\"\\n}\\n\\nfor job in \\\"${JOBS[@]}\\\"\\ndo\\n\\n TASK=($(echo \\\"SELECT concat(id,'@',server,':',port) FROM replication_manager_schema.jobs WHERE task='$job' and done=0   AND (result is NULL OR result<>'processing') order by id desc limit 1\\\" | $MYSQL_CLIENT -N))\\n\\n ADDRESS=($(echo $TASK | awk -F@ '{ print $2 }'))\\n ID=($(echo $TASK | awk -F@ '{ print $1 }'))\\n \\n  if [ \\\"$ADDRESS\\\" == \\\"\\\" ]; then\\n    echo \\\"No $job needed\\\"\\n    case \\\"$job\\\" in \\n    start)\\n       if [ \\\"curl -so /dev/null -w '%{response_code}'   http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/need-start\\\" == \\\"200\\\" ]; then\\n          curl http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config|tar xzvf etc/* - -C $CONFDIR/../..\\n    systemctl start mysql \\n       fi\\n    ;;\\n   esac\\n  else\\n    echo \\\"Processing $job\\\"\\n    LOG_DIR=\\\"/tmp/dbjobs/$job\\\"\\n    #purge de past\\n    $MYSQL_CLIENT -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set done=1 WHERE done=0 AND task='$job' AND ID<>$ID;\\\"\\n    $MYSQL_CLIENT -e \\\"set sql_log_bin=0;UPDATE replication_manager_schema.jobs set result='processing' WHERE task='$job' AND ID=$ID;\\\"\\n    #FLAG START\\n    mkdir -p \\\"$LOG_DIR/run\\\"\\n    case \\\"$job\\\" in\\n      reseedmysqldump)\\n       echo \\\"Waiting backup.\\\" > \\\"$LOG_DIR/dbjob.out\\\"\\n       pauseJob\\n       socatCleaner\\n       time socat -d -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT 2> \\\"$LOG_DIR/socat.out\\\" | gunzip | $MYSQL_CLIENT  --init-command=\\\"reset master;set sql_log_bin=0;\\\" > \\\"$LOG_DIR/mysql.out\\\" 2>&1\\n        slaveReady\\n      ;;\\n      flashbackmysqldump)\\n       echo \\\"Waiting backup.\\\" >  \\\"$LOG_DIR/dbjob.out\\\"\\n       pauseJob\\n       socatCleaner\\n       socat -d -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT 2> \\\"$LOG_DIR/socat.out\\\" | gunzip | $MYSQL_CLIENT --init-command=\\\"set sql_log_bin=0\\\" > \\\"$LOG_DIR/mysql.out\\\" 2>&1\\n        slaveReady\\n      ;;\\n      reseedxtrabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir -p $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  \\\"$LOG_DIR/dbjob.out\\\"\\n       pauseJob\\n       socatCleaner\\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT 2> \\\"$LOG_DIR/socat.out\\\" | xbstream -x -C $BACKUPDIR\\n       $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2> \\\"$LOG_DIR/xtrabackup.out\\\"\\n       partialRestore\\n      ;;\\n      reseedmariabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir -p $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  \\\"$LOG_DIR/dbjob.out\\\"\\n       pauseJob\\n       socatCleaner\\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT 2> \\\"$LOG_DIR/socat.out\\\" | mbstream -x -C $BACKUPDIR\\n       # mbstream -p, --parallel\\n       $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2> \\\"$LOG_DIR/mariabackup.out\\\"\\n       partialRestore\\n      ;;\\n      flashbackxtrabackup)\\n       rm -rf $BACKUPDIR\\n       mkdir -p $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  \\\"$LOG_DIR/dbjob.out\\\"\\n       pauseJob\\n       socatCleaner \\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT 2> \\\"$LOG_DIR/socat.out\\\" | xbstream -x -C $BACKUPDIR\\n       $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2> \\\"$LOG_DIR/xtrabackup.out\\\"\\n       partialRestore\\n      ;;\\n      flashbackmariadbackup)\\n       rm -rf $BACKUPDIR\\n       mkdir -p $BACKUPDIR\\n       echo \\\"Waiting backup.\\\" >  \\\"$LOG_DIR/dbjob.out\\\"\\n       pauseJob\\n       socatCleaner\\n       socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT 2> \\\"$LOG_DIR/socat.out\\\" | xbstream -x -C $BACKUPDIR\\n       $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2> \\\"$LOG_DIR/mariabackup.out\\\"\\n       partialRestore\\n      ;;\\n      xtrabackup)\\n       cd /docker-entrypoint-initdb.d\\n       $XTRABACKUP  --defaults-file=$MYSQL_CONF/my.cnf --backup -u$USER -H$MYSQL_SERVER -p$PASSWORD -P$MYSQL_PORT --stream=xbstream --target-dir=/tmp/ 2> \\\"$LOG_DIR/xtrabackup.out\\\" | socat -u stdio TCP:$ADDRESS &>\\\"$LOG_DIR/socat.out\\\"\\n      ;;\\n      mariabackup)\\n       cd /docker-entrypoint-initdb.d\\n       $MARIADB_BACKUP --innobackupex --defaults-file=$MYSQL_CONF/my.cnf --databases-exclude=.system --protocol=TCP  $MYSQL_CLIENT_PARAMETERS --stream=xbstream 2> \\\"$LOG_DIR/mariabackup.out\\\"  | socat -u stdio TCP:$ADDRESS &>\\\"$LOG_DIR/socat.out\\\"\\n      ;;\\n      error)\\n       cat $ERROLOG| socat -u stdio TCP:$ADDRESS &>\\\"$LOG_DIR/dbjob.out\\\"\\n       > $ERROLOG\\n      ;;\\n      slowquery)\\n       cat $SLOWLOG| socat -u stdio TCP:$ADDRESS &>\\\"$LOG_DIR/dbjob.out\\\"\\n       > $SLOWLOG\\n      ;;\\n      zfssnapback)\\n       LASTSNAP=$(zfs list -r -t all |grep zp%%ENV:SERVICES_SVCNAME%%_pod01 | grep daily | sort -r | head -n 1  | cut -d\\\" \\\" -f1)\\n       %%ENV:SERVICES_SVCNAME%% stop\\n       zfs rollback $LASTSNAP\\n       %%ENV:SERVICES_SVCNAME%% start\\n      ;;\\n      optimize)\\n       $MYSQL_CHECK -o $MYSQL_CLIENT_PARAMETERS  --all-databases --skip-write-binlog &> \\\"$LOG_DIR/dbjob.out\\\"\\n      ;;\\n      restart)\\n       systemctl restart mysql  \\n       journalctl -u mysql > \\\"$LOG_DIR/dbjob.out\\\"\\n      ;;\\n      stop)\\n       systemctl stop mysql \\n       journalctl -u mysql > \\\"$LOG_DIR/dbjob.out\\\"\\n      ;;\\n  esac\\n  doneJob\\n  # Flag done\\n  rmdir \\\"$LOG_DIR/run\\\"\\n  fi\\n\\ndone\\n\"}",
+                    "var_updated": "2024-07-03 12:32:05",
+                    "var_name": "db_cnf_script_dbjobs_dev",
+                    "id": 6299
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_forcepk.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL innodb_force_primary_key = O;\\n# mysql_command: SET GLOBAL innodb_force_primary_key = O;\\n# mariadb_default:SET GLOBAL innodb_force_primary_key = 1;\\n# mysql_default:SET GLOBAL innodb_force_primary_key = 1;\\n\\n[mysqld]\\nloose_innodb_force_primary_key = O\"}",
+                    "var_updated": "2024-07-11 13:07:08",
+                    "var_name": "db_cnf_opt_no_forceprimarykey",
+                    "id": 6300
                 }
             ],
             "ruleset_public": false,
@@ -4151,7 +4194,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.disk_withsplitundolog",
                 "mariadb.svc.mrm.db.cnf.generic.disk_nosplitpath",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withgrouprep",
-                "mariadb.svc.mrm.db.cnf.generic.rep_noalter2phase"
+                "mariadb.svc.mrm.db.cnf.generic.rep_noalter2phase",
+                "mariadb.svc.mrm.db.cnf.generic.opt_noforcepk"
             ],
             "publications": [
                 "replication-manager"
@@ -7135,6 +7179,30 @@
                 "replication-manager"
             ],
             "id": 1154,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.noforcepk",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_noforcepk",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/55_no_opt_forcepk.cnf\",\"target\":\"../no_opt_forcepk.cnf\"}",
+                    "var_updated": "2024-07-11 13:05:37",
+                    "var_name": "db_link_noforcepk",
+                    "id": 6301
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1155,
             "responsibles": [
                 "replication-manager"
             ]
