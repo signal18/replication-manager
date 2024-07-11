@@ -620,8 +620,6 @@ var start_time time.Time
 
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
-	server.Lock()
-	defer server.Unlock()
 	cluster := server.ClusterGroup
 	var err error
 
