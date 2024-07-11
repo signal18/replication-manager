@@ -250,7 +250,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 			}
 			db, err := pr.GetClusterConnection()
 			if err != nil {
-				cluster.StateMachine.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
+				cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 			} else {
 				if pr.GetType() == config.ConstProxyMyProxy {
 					definer = "DEFINER = root@localhost"
@@ -260,7 +260,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 				_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + misc.GetUUID() + "' from dual")
 
 				if err != nil {
-					cluster.StateMachine.AddState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
+					cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
 					db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 
 				}

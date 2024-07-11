@@ -85,7 +85,7 @@ type Config struct {
 	MonitorDiskUsage                          bool                   `mapstructure:"monitoring-disk-usage" toml:"monitoring-disk-usage" json:"monitoringDiskUsage"`
 	MonitorDiskUsagePct                       int                    `mapstructure:"monitoring-disk-usage-pct" toml:"monitoring-disk-usage-pct" json:"monitoringDiskUsagePct"`
 	MonitorCaptureTrigger                     string                 `mapstructure:"monitoring-capture-trigger" toml:"monitoring-capture-trigger" json:"monitoringCaptureTrigger"`
-	MonitorIgnoreError                        string                 `mapstructure:"monitoring-ignore-errors" toml:"monitoring-ignore-errors" json:"monitoringIgnoreErrors"`
+	MonitorIgnoreErrors                       string                 `mapstructure:"monitoring-ignore-errors" toml:"monitoring-ignore-errors" json:"monitoringIgnoreErrors"`
 	MonitorTenant                             string                 `mapstructure:"monitoring-tenant" toml:"monitoring-tenant" json:"monitoringTenant"`
 	MonitoringAlertTrigger                    string                 `mapstructure:"monitoring-alert-trigger" toml:"monitoring-alert-trigger" json:"monitoringAlertTrigger"`
 	MonitoringQueryTimeout                    int                    `mapstructure:"monitoring-query-timeout" toml:"monitoring-query-timeout" json:"monitoringQueryTimeout"`
@@ -107,8 +107,8 @@ type Config struct {
 	LogHeartbeat                              bool                   `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
 	LogHeartbeatLevel                         int                    `mapstructure:"log-heartbeat-level" toml:"log-heartbeat-level" json:"logHeartbeatLevel"`
 	LogSQLInMonitoring                        bool                   `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
-	LogFailedElection                         bool                   `mapstructure:"log-failed-election"  toml:"log-failed-election" json:"logFailedElection"`
-	LogFailedElectionLevel                    int                    `mapstructure:"log-failed-election-level"  toml:"log-failed-election-level" json:"logFailedElectionLevel"`
+	LogWriterElection                         bool                   `mapstructure:"log-writer-election"  toml:"log-writer-election" json:"logWriterElection"`
+	LogWriterElectionLevel                    int                    `mapstructure:"log-writer-election-level"  toml:"log-writer-election-level" json:"logWriterElectionLevel"`
 	LogGit                                    bool                   `mapstructure:"log-git" toml:"log-git" json:"logGit"`
 	LogGitLevel                               int                    `mapstructure:"log-git-level" toml:"log-git-level" json:"logGitLevel"`
 	LogConfigLoad                             bool                   `mapstructure:"log-config-load" toml:"log-config-load" json:"logConfigLoad"`
@@ -918,7 +918,7 @@ This is the list of modules to be used in LogModulePrintF
 */
 const (
 	ConstLogModGeneral        = 0
-	ConstLogModFailedElection = 1
+	ConstLogModWriterElection = 1
 	ConstLogModSST            = 2
 	ConstLogModHeartBeat      = 3
 	ConstLogModConfigLoad     = 4
@@ -942,7 +942,7 @@ This is the list of modules to be used in LogModulePrintF
 */
 const (
 	ConstLogNameGeneral        string = "log-general"
-	ConstLogNameFailedElection string = "log-failed-election"
+	ConstLogNameWriterelection string = "log-writer-election"
 	ConstLogNameSST            string = "log-sst"
 	ConstLogNameHeartBeat      string = "log-heartbeat"
 	ConstLogNameConfigLoad     string = "log-config-load"
@@ -1932,91 +1932,74 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 		switch {
 		case module == ConstLogModGeneral:
 			return conf.LogLevel >= lvl
-		case module == ConstLogModFailedElection:
-			if conf.LogFailedElection {
-				return conf.LogFailedElectionLevel >= lvl
+		case module == ConstLogModWriterElection:
+			if conf.LogWriterElection {
+				return conf.LogWriterElectionLevel >= lvl
 			}
-			break
 		case module == ConstLogModSST:
 			if conf.LogSST {
 				return conf.LogSSTLevel >= lvl
 			}
-			break
 		case module == ConstLogModHeartBeat:
 			if conf.LogHeartbeat {
 				return conf.LogHeartbeatLevel >= lvl
 			}
-			break
 		case module == ConstLogModConfigLoad:
 			if conf.LogConfigLoad {
 				return conf.LogConfigLoadLevel >= lvl
 			}
-			break
 		case module == ConstLogModGit:
 			if conf.LogGit {
 				return conf.LogGitLevel >= lvl
 			}
-			break
 		case module == ConstLogModBackupStream:
 			if conf.LogBackupStream {
 				return conf.LogBackupStreamLevel >= lvl
 			}
-			break
 		case module == ConstLogModOrchestrator:
 			if conf.LogOrchestrator {
 				return conf.LogOrchestratorLevel >= lvl
 			}
-			break
 		case module == ConstLogModVault:
 			if conf.LogVault {
 				return conf.LogVaultLevel >= lvl
 			}
-			break
 		case module == ConstLogModTopology:
 			if conf.LogTopology {
 				return conf.LogTopologyLevel >= lvl
 			}
-			break
 		case module == ConstLogModProxy:
 			if conf.LogProxy {
 				return conf.LogProxyLevel >= lvl
 			}
-			break
 		case module == ConstLogModProxySQL:
 			if conf.ProxysqlDebug {
 				return conf.ProxysqlLogLevel >= lvl
 			}
-			break
 		case module == ConstLogModHAProxy:
 			if conf.HaproxyDebug {
 				return conf.HaproxyLogLevel >= lvl
 			}
-			break
 		case module == ConstLogModProxyJanitor:
 			if conf.ProxyJanitorDebug {
 				return conf.ProxyJanitorLogLevel >= lvl
 			}
-			break
 		case module == ConstLogModMaxscale:
 			if conf.MxsDebug {
 				return conf.MxsLogLevel >= lvl
 			}
-			break
 		case module == ConstLogModGraphite:
 			if conf.LogGraphite {
 				return conf.LogGraphiteLevel >= lvl
 			}
-			break
 		case module == ConstLogModPurge:
 			if conf.LogBinlogPurge {
 				return conf.LogBinlogPurgeLevel >= lvl
 			}
-			break
 		case module == ConstLogModTask:
 			if conf.LogTask {
 				return conf.LogTaskLevel >= lvl
 			}
-			break
 		}
 	}
 
@@ -2053,8 +2036,8 @@ func GetTagsForLog(module int) string {
 	switch module {
 	case ConstLogModGeneral:
 		return "general"
-	case ConstLogModFailedElection:
-		return "fail"
+	case ConstLogModWriterElection:
+		return "election"
 	case ConstLogModSST:
 		return "sst"
 	case ConstLogModHeartBeat:
@@ -2106,8 +2089,8 @@ func GetIndexFromModuleName(module string) int {
 	switch module {
 	case ConstLogNameGeneral:
 		return ConstLogModGeneral
-	case ConstLogNameFailedElection:
-		return ConstLogModFailedElection
+	case ConstLogNameWriterelection:
+		return ConstLogModWriterElection
 	case ConstLogNameSST:
 		return ConstLogModSST
 	case ConstLogNameHeartBeat:

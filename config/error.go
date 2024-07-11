@@ -8,9 +8,9 @@
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
-package cluster
+package config
 
-var clusterError = map[string]string{
+var ClusterError = map[string]string{
 	"ERR00001": "Monitor freeze while running critical section",
 	"ERR00002": "Waiting for a user manual failover",
 	"ERR00004": "Database %s access denied: %s",

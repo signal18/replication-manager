@@ -1119,6 +1119,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchProxySQL()
 	case "proxy-servers-read-on-master":
 		mycluster.SwitchProxyServersReadOnMaster()
+	case "proxy-servers-read-on-master-no-slave":
+		mycluster.SwitchProxyServersReadOnMasterNoSlave()
 	case "proxy-servers-backend-compression":
 		mycluster.SwitchProxyServersBackendCompression()
 	case "database-heartbeat":
@@ -1193,8 +1195,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchForceBinlogSlowqueries()
 	case "log-sql-in-monitoring":
 		mycluster.SwitchLogSQLInMonitoring()
-	case "log-failed-election":
-		mycluster.SwitchLogFailedElection()
+	case "log-writer-election":
+		mycluster.SwitchLogWriterElection()
 	case "log-sst":
 		mycluster.SwitchLogSST()
 	case "log-heartbeat":
@@ -1406,9 +1408,9 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "log-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogLevel(val)
-	case "log-failed-election-level":
+	case "log-writer-election-level":
 		val, _ := strconv.Atoi(value)
-		mycluster.SetLogFailedElectionLevel(val)
+		mycluster.SetLogWriterElectionLevel(val)
 	case "log-sst-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogSSTLevel(val)
@@ -1467,6 +1469,10 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "log-task-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogTaskLevel(val)
+	case "monitoring-ignore-errors":
+		mycluster.SetMonitorIgnoreErrors(value)
+	case "monitoring-capture-trigger":
+		mycluster.SetMonitorCaptureTrigger(value)
 	}
 
 }
