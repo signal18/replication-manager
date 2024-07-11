@@ -187,8 +187,12 @@ func (server *ServerMonitor) SetReadWrite() error {
 }
 
 func (server *ServerMonitor) SetMaintenance() {
-	server.Lock()
 	server.IsMaintenance = true
+}
+
+func (server *ServerMonitor) SetBinaryLogFiles(files map[string]uint) {
+	server.Lock()
+	server.BinaryLogFiles = files
 	server.Unlock()
 }
 

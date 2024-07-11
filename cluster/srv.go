@@ -194,7 +194,7 @@ type ServerMonitor struct {
 	ActiveTasks                 sync.Map
 	BinaryLogDir                string
 	DBDataDir                   string
-	sync.Mutex
+	sync.RWMutex
 }
 
 type SlaveVariables struct {
@@ -324,6 +324,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.DelayStat.ResetDelayStat()
 
 	server.WorkLoad = make(map[string]WorkLoad)
+	server.BinaryLogFiles = make(map[string]uint)
 	server.CurrentWorkLoad()
 	server.WorkLoad["max"] = server.WorkLoad["current"]
 	server.WorkLoad["average"] = server.WorkLoad["current"]
@@ -620,8 +621,6 @@ var start_time time.Time
 
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
-	server.Lock()
-	defer server.Unlock()
 	cluster := server.ClusterGroup
 	var err error
 

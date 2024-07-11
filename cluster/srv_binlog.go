@@ -38,9 +38,11 @@ func (server *ServerMonitor) RefreshBinaryLogs() error {
 		return err
 	}
 
-	server.BinaryLogFiles, logs, err = dbhelper.GetBinaryLogs(server.Conn, server.DBVersion)
+	binlogs, logs, err := dbhelper.GetBinaryLogs(server.Conn, server.DBVersion)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get binary log files %s %s", server.URL, err)
+	} else {
+		server.SetBinaryLogFiles(binlogs)
 	}
 
 	if len(server.BinaryLogFiles) > 0 {
@@ -125,9 +127,7 @@ func (server *ServerMonitor) ForcePurgeBinlogs() {
 }
 
 func (server *ServerMonitor) SetIsPurgingBinlog(value bool) {
-	server.Lock()
 	server.InPurgingBinaryLog = value
-	server.Unlock()
 }
 
 func (server *ServerMonitor) SetBinlogOldestTimestamp(str string) error {
