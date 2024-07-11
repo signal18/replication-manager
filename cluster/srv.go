@@ -154,7 +154,7 @@ type ServerMonitor struct {
 	EventStatus                 []dbhelper.Event             `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist       `json:"-"`
 	Variables                   *config.StringsMap           `json:"-"`
-	EngineInnoDB                map[string]string            `json:"engineInnodb"`
+	EngineInnoDB                *config.StringsMap           `json:"engineInnodb"`
 	ErrorLog                    s18log.HttpLog               `json:"errorLog"`
 	SlowLog                     s18log.SlowLog               `json:"-"`
 	Status                      map[string]string            `json:"-"`
@@ -275,9 +275,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.ReplicationSourceName = cluster.Conf.MasterConn
 
 	// Initiate sync.Map pointers
-	if server.Variables == nil {
-		server.Variables = config.NewStringsMap()
-	}
+	server.Variables = config.NewStringsMap()
+	server.EngineInnoDB = config.NewStringsMap()
 
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
@@ -827,7 +826,8 @@ func (server *ServerMonitor) Refresh() error {
 
 		if cluster.Conf.MonitorInnoDBStatus {
 			// SHOW ENGINE INNODB STATUS
-			server.EngineInnoDB, logs, err = dbhelper.GetEngineInnoDBVariables(server.Conn)
+			engine, logs, err := dbhelper.GetEngineInnoDBVariables(server.Conn)
+			server.EngineInnoDB = config.FromNormalMap(server.EngineInnoDB, engine)
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get engine innodb status %s %s", server.URL, err)
 		}
 		go server.GetPFSQueries()
@@ -1433,7 +1433,7 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 			logs, err = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Processlist for server %s: %s ", server.URL, err)
 
-		clsave.InnoDBStatus, logs, err = dbhelper.GetEngineInnoDBSatus(server.Conn)
+		clsave.InnoDBStatus, logs, err = dbhelper.GetEngineInnoDBStatus(server.Conn)
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed InnoDB Status for server %s: %s ", server.URL, err)
 		clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion)
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Status for server %s: %s ", server.URL, err)
@@ -1506,7 +1506,7 @@ func (server *ServerMonitor) WaitInnoDBPurge() error {
 	server.ExecQueryNoBinLog(query)
 	ct := 0
 	for {
-		if server.EngineInnoDB["history_list_lenght_inside_innodb"] == "0" {
+		if server.EngineInnoDB.Get("history_list_lenght_inside_innodb") == "0" {
 			return nil
 		}
 		if ct == 1200 {

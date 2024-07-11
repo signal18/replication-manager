@@ -82,14 +82,29 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 	// 		}
 	// 	}
 	// }
-	for k, v := range server.EngineInnoDB {
+
+	engf := func(key any, value any) bool {
+		k := key.(string)
+		v := value.(string)
 		if isNumeric(v) {
 			mname := fmt.Sprintf("mysql.%s.engine_innodb_%s", hostname, strings.ToLower(k))
 			if cg.MatchList(mname) {
 				metrics = append(metrics, graphite.NewMetric(mname, v, time.Now().Unix()))
 			}
 		}
+
+		return true
 	}
+	// Loop inside engine var than copy variables
+	server.EngineInnoDB.Callback(engf)
+	// for k, v := range server.EngineInnoDB {
+	// 	if isNumeric(v) {
+	// 		mname := fmt.Sprintf("mysql.%s.engine_innodb_%s", hostname, strings.ToLower(k))
+	// 		if cg.MatchList(mname) {
+	// 			metrics = append(metrics, graphite.NewMetric(mname, v, time.Now().Unix()))
+	// 		}
+	// 	}
+	// }
 
 	for _, v := range server.PFSQueries {
 		if isNumeric(v.Value) {

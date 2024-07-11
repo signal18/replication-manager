@@ -632,12 +632,17 @@ func (server *ServerMonitor) GetDictTables() []v3.Table {
 
 func (server *ServerMonitor) GetInnoDBStatus() []dbhelper.Variable {
 	var status []dbhelper.Variable
-	for k, v := range server.EngineInnoDB {
+	getf := func(key any, value any) bool {
+		k := key.(string)
+		v := value.(string)
+
 		var r dbhelper.Variable
 		r.Variable_name = k
 		r.Value = v
 		status = append(status, r)
+		return true
 	}
+	server.EngineInnoDB.Callback(getf)
 	sort.Sort(dbhelper.VariableSorter(status))
 	return status
 

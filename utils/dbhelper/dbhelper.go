@@ -1563,7 +1563,7 @@ func GetStatus(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, err
 	return vars, query, nil
 }
 
-func GetEngineInnoDBSatus(db *sqlx.DB) (string, string, error) {
+func GetEngineInnoDBStatus(db *sqlx.DB) (string, string, error) {
 	query := "SHOW ENGINE INNODB STATUS"
 	rows, err := db.Query(query)
 	if err != nil {
@@ -1582,7 +1582,7 @@ func GetEngineInnoDBSatus(db *sqlx.DB) (string, string, error) {
 
 func GetEngineInnoDBVariables(db *sqlx.DB) (map[string]string, string, error) {
 
-	statusCol, logs, err := GetEngineInnoDBSatus(db)
+	statusCol, logs, err := GetEngineInnoDBStatus(db)
 	if err != nil {
 		return nil, logs, err
 	}
