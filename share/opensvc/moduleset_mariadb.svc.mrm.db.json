@@ -4068,8 +4068,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_forcepk.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL innodb_force_primary_key = O;\\n# mysql_command: SET GLOBAL innodb_force_primary_key = O;\\n# mariadb_default:SET GLOBAL innodb_force_primary_key = 1;\\n# mysql_default:SET GLOBAL innodb_force_primary_key = 1;\\n\\n[mysqld]\\nloose_innodb_force_primary_key = O\"}",
-                    "var_updated": "2024-07-11 13:07:08",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/no_opt_forcepk.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL innodb_force_primary_key = OFF;\\n# mysql_command: SET GLOBAL innodb_force_primary_key = OFF;\\n# mariadb_default:SET GLOBAL innodb_force_primary_key = ON;\\n# mysql_default:SET GLOBAL innodb_force_primary_key = ON;\\n\\n[mysqld]\\nloose_innodb_force_primary_key = 0\"}",
+                    "var_updated": "2024-07-11 13:12:23",
                     "var_name": "db_cnf_opt_no_forceprimarykey",
                     "id": 6300
                 }
