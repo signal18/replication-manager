@@ -38,12 +38,12 @@ func (server *ServerMonitor) RefreshBinaryLogs() error {
 		return err
 	}
 
-	server.Lock()
-	server.BinaryLogFiles, logs, err = dbhelper.GetBinaryLogs(server.Conn, server.DBVersion)
+	binlogs, logs, err := dbhelper.GetBinaryLogs(server.Conn, server.DBVersion)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get binary log files %s %s", server.URL, err)
+	} else {
+		server.SetBinaryLogFiles(binlogs)
 	}
-	server.Unlock()
 
 	if len(server.BinaryLogFiles) > 0 {
 		server.SetBinaryLogFileOldest()

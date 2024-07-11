@@ -192,6 +192,12 @@ func (server *ServerMonitor) SetMaintenance() {
 	server.Unlock()
 }
 
+func (server *ServerMonitor) SetBinaryLogFiles(files map[string]uint) {
+	server.Lock()
+	server.BinaryLogFiles = files
+	server.Unlock()
+}
+
 func (server *ServerMonitor) SetDSN() {
 	cluster := server.ClusterGroup
 	pgdsn := func() string {
