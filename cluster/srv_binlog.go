@@ -273,7 +273,7 @@ func (server *ServerMonitor) SetMaxBinlogTotalSize() error {
 	cluster := server.ClusterGroup
 	totalsize := cluster.Conf.ForceBinlogPurgeTotalSize * 1024 * 1024 * 1024
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11.4 and up
-		v, ok := server.Variables["MAX_BINLOG_TOTAL_SIZE"]
+		v, ok := server.Variables.CheckAndGet("MAX_BINLOG_TOTAL_SIZE")
 		if !ok {
 			return errors.New("Variable max_binlog_total_size not found")
 		}

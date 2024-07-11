@@ -83,7 +83,7 @@ func (server *ServerMonitor) SwitchSqlErrorLog() {
 
 func (server *ServerMonitor) SwitchSlowQueryCapture() {
 	if !server.SlowQueryCapture {
-		server.LongQueryTimeSaved = server.Variables["LONG_QUERY_TIME"]
+		server.LongQueryTimeSaved = server.Variables.Get("LONG_QUERY_TIME")
 		server.SlowQueryCapture = true
 		server.SetLongQueryTime("0")
 
@@ -108,7 +108,7 @@ func (server *ServerMonitor) SwitchSlowQueryCapturePFS() {
 }
 
 func (server *ServerMonitor) SwitchSlowQueryCaptureMode() {
-	if server.Variables["LOG_OUTPUT"] == "FILE" {
+	if server.Variables.Get("LOG_OUTPUT") == "FILE" {
 		dbhelper.SetQueryCaptureMode(server.Conn, "TABLE")
 	} else {
 		dbhelper.SetQueryCaptureMode(server.Conn, "FILE")

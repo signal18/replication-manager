@@ -64,8 +64,8 @@ func (server *ServerMonitor) GetUniversalGtidServerID() uint64 {
 		return uint64(server.ServerID)
 	}
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", " %s %s", server.Variables["SERVER_UUID"], server.URL)
-		return crc64.Checksum([]byte(strings.ToUpper(server.Variables["SERVER_UUID"])), server.GetCluster().GetCrcTable())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", " %s %s", server.Variables.Get("SERVER_UUID"), server.URL)
+		return crc64.Checksum([]byte(strings.ToUpper(server.Variables.Get("SERVER_UUID"))), server.GetCluster().GetCrcTable())
 
 	}
 	return 0
@@ -163,7 +163,7 @@ func (server *ServerMonitor) GetBindAddress() string {
 
 func (server *ServerMonitor) IsReplicationUsingGtidStrict() bool {
 	if server.IsMariaDB() {
-		if server.Variables["GTID_STRICT_MODE"] == "ON" {
+		if server.Variables.Get("GTID_STRICT_MODE") == "ON" {
 			return true
 		} else {
 			return false
@@ -283,7 +283,7 @@ func (server *ServerMonitor) GetQueryResponseTime() []dbhelper.ResponseTime {
 
 func (server *ServerMonitor) GetVariables() []dbhelper.Variable {
 	var variables []dbhelper.Variable
-	for k, v := range server.Variables {
+	for k, v := range server.Variables.ToNewMap() {
 		var r dbhelper.Variable
 		r.Variable_name = k
 		r.Value = v

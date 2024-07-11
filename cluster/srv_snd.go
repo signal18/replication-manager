@@ -24,7 +24,7 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 	cg := cluster.ClusterGraphite
 
 	replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-")
-	hostname := replacer.Replace(server.Variables["HOSTNAME"])
+	hostname := replacer.Replace(server.Variables.Get("HOSTNAME"))
 	var metrics []graphite.Metric
 	if server.IsSlave && server.GetCluster().GetTopology() != topoMultiMasterWsrep && server.GetCluster().GetTopology() != topoMultiMasterGrouprep {
 		m := graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_seconds_behind_master", hostname), fmt.Sprintf("%d", server.SlaveStatus.SecondsBehindMaster.Int64), time.Now().Unix())
@@ -59,15 +59,29 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 		}
 	}
 
-	for k, v := range server.Variables {
+	varf := func(key any, value any) bool {
+		k := key.(string)
+		v := value.(string)
 		if isNumeric(v) {
 			mname := fmt.Sprintf("mysql.%s.mysql_global_variables_%s", hostname, strings.ToLower(k))
 			if cg.MatchList(mname) {
 				metrics = append(metrics, graphite.NewMetric(mname, v, time.Now().Unix()))
 			}
 		}
-
+		//Always true for loop
+		return true
 	}
+	// Loop inside variables than copy variables
+	server.Variables.Callback(varf)
+
+	// for k, v := range server.Variables.ToNewMap() {
+	// 	if isNumeric(v) {
+	// 		mname := fmt.Sprintf("mysql.%s.mysql_global_variables_%s", hostname, strings.ToLower(k))
+	// 		if cg.MatchList(mname) {
+	// 			metrics = append(metrics, graphite.NewMetric(mname, v, time.Now().Unix()))
+	// 		}
+	// 	}
+	// }
 	for k, v := range server.EngineInnoDB {
 		if isNumeric(v) {
 			mname := fmt.Sprintf("mysql.%s.engine_innodb_%s", hostname, strings.ToLower(k))

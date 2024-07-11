@@ -1385,7 +1385,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 	if !cluster.Conf.MonitorVariableDiff || cluster.GetMaster() == nil {
 		return
 	}
-	masterVariables := cluster.GetMaster().Variables
+	masterVariables := cluster.GetMaster().Variables.ToNewMap()
 	exceptVariables := map[string]bool{
 		"PORT":                true,
 		"SERVER_ID":           true,
@@ -1426,7 +1426,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		mastervalue.VariableValue = v
 		myvalues = append(myvalues, mastervalue)
 		for _, s := range cluster.slaves {
-			slaveVariables := s.Variables
+			slaveVariables := s.Variables.ToNewMap()
 			if slaveVariables[k] != v && exceptVariables[k] != true {
 				var slavevalue Diff
 				slavevalue.Server = s.URL

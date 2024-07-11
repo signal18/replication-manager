@@ -153,7 +153,7 @@ type ServerMonitor struct {
 	ReplicationHealth           string                       `json:"replicationHealth"`
 	EventStatus                 []dbhelper.Event             `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist       `json:"-"`
-	Variables                   map[string]string            `json:"-"`
+	Variables                   *config.StringsMap           `json:"-"`
 	EngineInnoDB                map[string]string            `json:"engineInnodb"`
 	ErrorLog                    s18log.HttpLog               `json:"errorLog"`
 	SlowLog                     s18log.SlowLog               `json:"-"`
@@ -273,6 +273,11 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	server.SetCredential(url, user, pass)
 	server.ReplicationSourceName = cluster.Conf.MasterConn
+
+	// Initiate sync.Map pointers
+	if server.Variables == nil {
+		server.Variables = config.NewStringsMap()
+	}
 
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
@@ -663,7 +668,8 @@ func (server *ServerMonitor) Refresh() error {
 		server.DBVersion, logs, err = dbhelper.GetDBVersion(server.Conn)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Could not get database version %s %s", server.URL, err)
 
-		server.Variables, logs, err = dbhelper.GetVariables(server.Conn, server.DBVersion)
+		vars, logs, err := dbhelper.GetVariables(server.Conn, server.DBVersion)
+		server.Variables = config.FromNormalMap(server.Variables, vars)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Could not get database variables %s %s", server.URL, err)
 		if err != nil {
 			return nil
@@ -677,11 +683,11 @@ func (server *ServerMonitor) Refresh() error {
 				}
 			}
 			server.HaveEventScheduler = server.HasEventScheduler()
-			server.Strict = server.Variables["GTID_STRICT_MODE"]
-			server.ReadOnly = server.Variables["READ_ONLY"]
-			server.LongQueryTime = server.Variables["LONG_QUERY_TIME"]
-			server.LogOutput = server.Variables["LOG_OUTPUT"]
-			server.SlowQueryLog = server.Variables["SLOW_QUERY_LOG"]
+			server.Strict = server.Variables.Get("GTID_STRICT_MODE")
+			server.ReadOnly = server.Variables.Get("READ_ONLY")
+			server.LongQueryTime = server.Variables.Get("LONG_QUERY_TIME")
+			server.LogOutput = server.Variables.Get("LOG_OUTPUT")
+			server.SlowQueryLog = server.Variables.Get("SLOW_QUERY_LOG")
 			server.HaveReadOnly = server.HasReadOnly()
 			server.HaveSlaveIdempotent = server.HasSlaveIndempotent()
 			server.HaveSlaveOptimistic = server.HasSlaveParallelOptimistic()
@@ -706,15 +712,15 @@ func (server *ServerMonitor) Refresh() error {
 				server.HavePFSSlowQueryLog = server.HasLogPFSSlowQuery()
 			}
 			server.HaveMySQLGTID = server.HasMySQLGTID()
-			server.RelayLogSize, _ = strconv.ParseUint(server.Variables["RELAY_LOG_SPACE_LIMIT"], 10, 64)
+			server.RelayLogSize, _ = strconv.ParseUint(server.Variables.Get("RELAY_LOG_SPACE_LIMIT"), 10, 64)
 			server.SlaveVariables = server.GetSlaveVariables()
 
 			if server.DBVersion.IsMariaDB() {
-				server.GTIDBinlogPos = gtid.NewList(server.Variables["GTID_BINLOG_POS"])
-				server.CurrentGtid = gtid.NewList(server.Variables["GTID_CURRENT_POS"])
-				server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
+				server.GTIDBinlogPos = gtid.NewList(server.Variables.Get("GTID_BINLOG_POS"))
+				server.CurrentGtid = gtid.NewList(server.Variables.Get("GTID_CURRENT_POS"))
+				server.SlaveGtid = gtid.NewList(server.Variables.Get("GTID_SLAVE_POS"))
 
-				sid, err := strconv.ParseUint(server.Variables["GTID_DOMAIN_ID"], 10, 64)
+				sid, err := strconv.ParseUint(server.Variables.Get("GTID_DOMAIN_ID"), 10, 64)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not parse domain_id, reason: %s", err)
 				} else {
@@ -722,16 +728,16 @@ func (server *ServerMonitor) Refresh() error {
 				}
 
 			} else {
-				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"], server.GetCluster().GetCrcTable())
-				server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
+				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables.Get("GTID_EXECUTED"), server.GetCluster().GetCrcTable())
+				server.GTIDExecuted = server.Variables.Get("GTID_EXECUTED")
 				server.CurrentGtid = server.GTIDBinlogPos
-				server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
-				server.HashUUID = crc64.Checksum([]byte(strings.ToUpper(server.Variables["SERVER_UUID"])), server.GetCluster().GetCrcTable())
-				//		fmt.Fprintf(os.Stdout, "gniac2 "+strings.ToUpper(server.Variables["SERVER_UUID"])+" "+strconv.FormatUint(server.HashUUID, 10))
+				server.SlaveGtid = gtid.NewList(server.Variables.Get("GTID_SLAVE_POS"))
+				server.HashUUID = crc64.Checksum([]byte(strings.ToUpper(server.Variables.Get("SERVER_UUID"))), server.GetCluster().GetCrcTable())
+				//		fmt.Fprintf(os.Stdout, "gniac2 "+strings.ToUpper(server.Variables.Get("SERVER_UUID"))+" "+strconv.FormatUint(server.HashUUID, 10))
 			}
 
 			var sid uint64
-			sid, err = strconv.ParseUint(server.Variables["SERVER_ID"], 10, 64)
+			sid, err = strconv.ParseUint(server.Variables.Get("SERVER_ID"), 10, 64)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not parse server_id, reason: %s", err)
 			}
@@ -1361,7 +1367,7 @@ func (server *ServerMonitor) SaveInfos() error {
 		MaxSlowQueryTimestamp int64                  `json:"maxSlowQueryTimestamp"`
 	}
 	var clsave Save
-	clsave.Variables = server.Variables
+	server.Variables.ToNormalMap(clsave.Variables)
 	clsave.Status = server.Status
 	clsave.ProcessList = server.FullProcessList
 	clsave.SlaveStatus = server.LastSeenReplications
@@ -1395,7 +1401,10 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "File error: %v\n", err)
 		return err
 	}
-	server.Variables = clsave.Variables
+	if server.Variables == nil {
+		server.Variables = new(config.StringsMap)
+	}
+	server.Variables = config.FromNormalMap(server.Variables, clsave.Variables)
 	server.MaxSlowQueryTimestamp = clsave.MaxSlowQueryTimestamp
 	return nil
 }

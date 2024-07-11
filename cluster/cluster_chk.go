@@ -442,7 +442,7 @@ func (cluster *Cluster) IsEqualBinlogFilters(m *ServerMonitor, s *ServerMonitor)
 
 func (cluster *Cluster) IsEqualReplicationFilters(m *ServerMonitor, s *ServerMonitor) bool {
 
-	if m.Variables["REPLICATE_DO_TABLE"] == s.Variables["REPLICATE_DO_TABLE"] && m.Variables["REPLICATE_IGNORE_TABLE"] == s.Variables["REPLICATE_IGNORE_TABLE"] && m.Variables["REPLICATE_WILD_DO_TABLE"] == s.Variables["REPLICATE_WILD_DO_TABLE"] && m.Variables["REPLICATE_WILD_IGNORE_TABLE"] == s.Variables["REPLICATE_WILD_IGNORE_TABLE"] && m.Variables["REPLICATE_DO_DB"] == s.Variables["REPLICATE_DO_DB"] && m.Variables["REPLICATE_IGNORE_DB"] == s.Variables["REPLICATE_IGNORE_DB"] {
+	if m.Variables.Get("REPLICATE_DO_TABLE") == s.Variables.Get("REPLICATE_DO_TABLE") && m.Variables.Get("REPLICATE_IGNORE_TABLE") == s.Variables.Get("REPLICATE_IGNORE_TABLE") && m.Variables.Get("REPLICATE_WILD_DO_TABLE") == s.Variables.Get("REPLICATE_WILD_DO_TABLE") && m.Variables.Get("REPLICATE_WILD_IGNORE_TABLE") == s.Variables.Get("REPLICATE_WILD_IGNORE_TABLE") && m.Variables.Get("REPLICATE_DO_DB") == s.Variables.Get("REPLICATE_DO_DB") && m.Variables.Get("REPLICATE_IGNORE_DB") == s.Variables.Get("REPLICATE_IGNORE_DB") {
 		return true
 	} else {
 		return false
@@ -451,8 +451,8 @@ func (cluster *Cluster) IsEqualReplicationFilters(m *ServerMonitor, s *ServerMon
 
 func (cluster *Cluster) IsCurrentGTIDSync(m *ServerMonitor, s *ServerMonitor) bool {
 
-	sGtid := s.Variables["GTID_CURRENT_POS"]
-	mGtid := m.Variables["GTID_CURRENT_POS"]
+	sGtid := s.Variables.Get("GTID_CURRENT_POS")
+	mGtid := m.Variables.Get("GTID_CURRENT_POS")
 	if sGtid == mGtid {
 		return true
 	} else {
@@ -725,7 +725,7 @@ func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
 			continue
 		}
 
-		hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, cluster.master.Variables["GTID_EXECUTED"], s.Variables["GTID_EXECUTED"])
+		hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, cluster.master.Variables.Get("GTID_EXECUTED"), s.Variables.Get("GTID_EXECUTED"))
 		if hasErrantTrx {
 			cluster.SetState("WARN0091", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0091"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
 			return false
