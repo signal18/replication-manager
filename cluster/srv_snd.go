@@ -77,7 +77,7 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 		}
 	}
 
-	for _, v := range server.PFSQueries {
+	for _, v := range server.PFSQueries.ToNewMap() {
 		if isNumeric(v.Value) {
 			label := replacer.Replace(v.Digest)
 			if len(label) > 198 {

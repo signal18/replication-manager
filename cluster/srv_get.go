@@ -299,7 +299,7 @@ func (server *ServerMonitor) GetVariablesCaseSensitive() map[string]string {
 }
 
 func (server *ServerMonitor) GetQueryFromPFSDigest(digest string) (string, string, error) {
-	for _, v := range server.PFSQueries {
+	for _, v := range server.PFSQueries.ToNewMap() {
 		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status %s %s", digest, v.Digest)
 		if v.Digest == digest {
 			return v.Schema_name, v.Query, nil
@@ -424,14 +424,15 @@ func (server *ServerMonitor) GetPFSQueries() {
 	var err error
 	logs := ""
 	// GET PFS query digest
-	server.PFSQueries, logs, err = dbhelper.GetQueries(server.Conn)
+	pfsq, logs, err := dbhelper.GetQueries(server.Conn)
+	server.PFSQueries = config.FromNormalPFSMap(server.PFSQueries, pfsq)
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get queries %s %s", server.URL, err)
 }
 
 func (server *ServerMonitor) GetPFSStatements() []dbhelper.PFSQuery {
 	var rows []dbhelper.PFSQuery
-	for _, v := range server.PFSQueries {
-		rows = append(rows, v)
+	for _, v := range server.PFSQueries.ToNewMap() {
+		rows = append(rows, *v)
 	}
 	sort.Sort(dbhelper.PFSQuerySorter(rows))
 	return rows
