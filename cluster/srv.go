@@ -194,7 +194,6 @@ type ServerMonitor struct {
 	ActiveTasks                 sync.Map
 	BinaryLogDir                string
 	DBDataDir                   string
-	sync.RWMutex
 }
 
 type SlaveVariables struct {

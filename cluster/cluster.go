@@ -1460,9 +1460,6 @@ func (cluster *Cluster) MonitorSchema() {
 		return
 	}
 
-	cmaster.Lock()
-	defer cmaster.Unlock()
-
 	cluster.StateMachine.SetMonitorSchemaState()
 	cmaster.Conn.SetConnMaxLifetime(3595 * time.Second)
 
