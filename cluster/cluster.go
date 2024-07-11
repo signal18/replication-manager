@@ -110,7 +110,7 @@ type Cluster struct {
 	UptimeFailable                string                `json:"uptimeFailable"`
 	UptimeSemiSync                string                `json:"uptimeSemisync"`
 	MonitorSpin                   string                `json:"monitorSpin"`
-	WorkLoad                      WorkLoad              `json:"workLoad"`
+	WorkLoad                      config.WorkLoad       `json:"workLoad"`
 	LogPushover                   *log.Logger           `json:"-"`
 	Log                           s18log.HttpLog        `json:"log"`
 	LogTask                       s18log.HttpLog        `json:"logTask"`
@@ -253,16 +253,6 @@ type Agent struct {
 	OsName       string `json:"osName"`
 	Status       string `json:"status"`
 	Version      string `json:"version"`
-}
-
-type WorkLoad struct {
-	DBTableSize   int64   `json:"dbTableSize"`
-	DBIndexSize   int64   `json:"dbIndexSize"`
-	Connections   int     `json:"connections"`
-	QPS           int64   `json:"qps"`
-	CpuThreadPool float64 `json:"cpuThreadPool"`
-	CpuUserStats  float64 `json:"cpuUserStats"`
-	BusyTime      string
 }
 
 type Alerts struct {

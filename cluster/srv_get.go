@@ -718,7 +718,7 @@ func (server *ServerMonitor) GetWsrepNodeAddress() string {
 }
 
 func (server *ServerMonitor) GetCPUUsageFromStats(t time.Time) (float64, error) {
-	last_busy_time, _ := strconv.ParseFloat(server.WorkLoad["current"].BusyTime, 8)
+	last_busy_time, _ := strconv.ParseFloat(server.WorkLoad.Get("current").BusyTime, 64)
 	t_now := time.Now()
 	elapsed := t_now.Sub(t).Seconds()
 	if server.DBVersion.IsMariaDB() && last_busy_time != 0 {
@@ -727,8 +727,8 @@ func (server *ServerMonitor) GetCPUUsageFromStats(t time.Time) (float64, error) 
 		if server.HasUserStats() {
 			res, _, err := dbhelper.GetCPUUsageFromUserStats(server.Conn)
 			if err == nil {
-				busy_time, _ := strconv.ParseFloat(res, 8)
-				core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 8)
+				busy_time, _ := strconv.ParseFloat(res, 64)
+				core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 64)
 				return ((busy_time - last_busy_time) / (core * elapsed)) * 100, nil
 			}
 		}
@@ -756,9 +756,9 @@ func (server *ServerMonitor) GetBusyTimeFromStats() (string, error) {
 func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
 	if server.DBVersion.IsMariaDB() {
 		//we compute it from status
-		thread_idle, _ := strconv.ParseFloat(server.Status.Get("THREADPOOL_IDLE_THREADS"), 8)
-		thread, _ := strconv.ParseFloat(server.Status.Get("THREADPOOL_THREADS"), 8)
-		core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 8)
+		thread_idle, _ := strconv.ParseFloat(server.Status.Get("THREADPOOL_IDLE_THREADS"), 64)
+		thread, _ := strconv.ParseFloat(server.Status.Get("THREADPOOL_THREADS"), 64)
+		core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 64)
 		return ((thread - thread_idle) / core) * 100
 	}
 	return -1

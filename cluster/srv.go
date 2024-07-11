@@ -183,7 +183,7 @@ type ServerMonitor struct {
 	BinaryLogOldestTimestamp    int64                   `json:"binaryLogOldestTimestamp"`
 	BinaryLogPurgeBefore        int64                   `json:"binaryLogPurgeBefore"`
 	MaxSlowQueryTimestamp       int64                   `json:"maxSlowQueryTimestamp"`
-	WorkLoad                    map[string]WorkLoad     `json:"workLoad"`
+	WorkLoad                    *config.WorkLoadsMap    `json:"workLoad"`
 	DelayStat                   *ServerDelayStat        `json:"delayStat"`
 	SlaveVariables              SlaveVariables          `json:"slaveVariables"`
 	IsInSlowQueryCapture        bool
@@ -285,6 +285,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.Plugins = config.NewPluginsMap()
 	server.Users = config.NewGrantsMap()
 	server.BinaryLogFiles = config.NewUIntsMap()
+	server.WorkLoad = config.NewWorkLoadsMap()
 
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
@@ -335,11 +336,9 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.DelayStat = new(ServerDelayStat)
 	server.DelayStat.ResetDelayStat()
 
-	server.WorkLoad = make(map[string]WorkLoad)
-
 	server.CurrentWorkLoad()
-	server.WorkLoad["max"] = server.WorkLoad["current"]
-	server.WorkLoad["average"] = server.WorkLoad["current"]
+	server.WorkLoad.Set("max", server.WorkLoad.Get("current"))
+	server.WorkLoad.Set("average", server.WorkLoad.Get("current"))
 
 	/*if cluster.Conf.MasterSlavePgStream || cluster.Conf.MasterSlavePgLogical {
 		server.Conn, err = sqlx.Open("postgres", server.DSN)
@@ -1679,81 +1678,81 @@ func (server *ServerMonitor) StartGroupReplication() error {
 }
 
 func (server *ServerMonitor) CurrentWorkLoad() {
-	new_current_WorkLoad := server.WorkLoad["current"]
+	new_current_WorkLoad := server.WorkLoad.GetOrNew("current")
 	new_current_WorkLoad.Connections = server.GetServerConnections()
 	new_current_WorkLoad.CpuThreadPool = server.GetCPUUsageFromThreadsPool()
 	new_current_WorkLoad.QPS = server.QPS
-	server.WorkLoad["current"] = new_current_WorkLoad
+	server.WorkLoad.Set("current", new_current_WorkLoad)
 
 }
 
 func (server *ServerMonitor) AvgWorkLoad() {
-	new_avg_WorkLoad := server.WorkLoad["average"]
-	if server.WorkLoad["average"].Connections > 0 {
-		new_avg_WorkLoad.Connections = (server.GetServerConnections() + server.WorkLoad["average"].Connections) / 2
+	new_avg_WorkLoad := server.WorkLoad.Get("average")
+	if server.WorkLoad.Get("average").Connections > 0 {
+		new_avg_WorkLoad.Connections = (server.GetServerConnections() + server.WorkLoad.Get("average").Connections) / 2
 	} else {
 		new_avg_WorkLoad.Connections = server.GetServerConnections()
 	}
 
-	if server.WorkLoad["average"].CpuThreadPool > 0 {
-		new_avg_WorkLoad.CpuThreadPool = (server.GetCPUUsageFromThreadsPool() + server.WorkLoad["average"].CpuThreadPool) / 2
+	if server.WorkLoad.Get("average").CpuThreadPool > 0 {
+		new_avg_WorkLoad.CpuThreadPool = (server.GetCPUUsageFromThreadsPool() + server.WorkLoad.Get("average").CpuThreadPool) / 2
 	} else {
 		new_avg_WorkLoad.CpuThreadPool = server.GetCPUUsageFromThreadsPool()
 	}
 
-	if server.WorkLoad["average"].QPS > 0 {
-		new_avg_WorkLoad.QPS = (server.QPS + server.WorkLoad["average"].QPS) / 2
+	if server.WorkLoad.Get("average").QPS > 0 {
+		new_avg_WorkLoad.QPS = (server.QPS + server.WorkLoad.Get("average").QPS) / 2
 	} else {
-		new_avg_WorkLoad.QPS = server.WorkLoad["average"].QPS
+		new_avg_WorkLoad.QPS = server.WorkLoad.Get("average").QPS
 	}
 
-	server.WorkLoad["average"] = new_avg_WorkLoad
+	server.WorkLoad.Set("average", new_avg_WorkLoad)
 }
 
 func (server *ServerMonitor) MaxWorkLoad() {
-	max_workLoad := server.WorkLoad["max"]
-	if server.GetServerConnections() > server.WorkLoad["max"].Connections {
+	max_workLoad := server.WorkLoad.Get("max")
+	if server.GetServerConnections() > server.WorkLoad.Get("max").Connections {
 		max_workLoad.Connections = server.GetServerConnections()
 	}
 
-	if server.QPS > server.WorkLoad["max"].QPS {
+	if server.QPS > server.WorkLoad.Get("max").QPS {
 		max_workLoad.QPS = server.QPS
 	}
 
-	if server.GetCPUUsageFromThreadsPool() > server.WorkLoad["max"].CpuThreadPool {
+	if server.GetCPUUsageFromThreadsPool() > server.WorkLoad.Get("max").CpuThreadPool {
 		max_workLoad.CpuThreadPool = server.GetCPUUsageFromThreadsPool()
 	}
 
-	server.WorkLoad["max"] = max_workLoad
+	server.WorkLoad.Set("max", max_workLoad)
 }
 
 func (server *ServerMonitor) CpuFromStatWorkLoad(start_time time.Time) time.Time {
-	if server.WorkLoad["current"].BusyTime != "" {
+	if server.WorkLoad.Get("current").BusyTime != "" {
 
-		old_cpu_time := server.WorkLoad["current"].CpuUserStats
-		current_workLoad := server.WorkLoad["current"]
+		old_cpu_time := server.WorkLoad.Get("current").CpuUserStats
+		current_workLoad := server.WorkLoad.Get("current")
 		new_cpu_usage, _ := server.GetCPUUsageFromStats(start_time)
 		current_workLoad.BusyTime, _ = server.GetBusyTimeFromStats()
 		current_workLoad.CpuUserStats = new_cpu_usage
-		server.WorkLoad["current"] = current_workLoad
+		server.WorkLoad.Set("current", current_workLoad)
 
 		if old_cpu_time != 0 {
-			avg_workLoad := server.WorkLoad["average"]
+			avg_workLoad := server.WorkLoad.Get("average")
 			avg_workLoad.CpuUserStats = (current_workLoad.CpuUserStats + old_cpu_time) / 2
-			server.WorkLoad["average"] = avg_workLoad
+			server.WorkLoad.Set("average", avg_workLoad)
 		}
-		if current_workLoad.CpuUserStats > server.WorkLoad["max"].CpuUserStats {
-			max_workLoad := server.WorkLoad["max"]
+		if current_workLoad.CpuUserStats > server.WorkLoad.Get("max").CpuUserStats {
+			max_workLoad := server.WorkLoad.Get("max")
 			max_workLoad.CpuUserStats = current_workLoad.CpuUserStats
-			server.WorkLoad["max"] = max_workLoad
+			server.WorkLoad.Set("max", max_workLoad)
 
 		}
 		return time.Now()
 
 	} else {
-		current_workLoad := server.WorkLoad["current"]
+		current_workLoad := server.WorkLoad.Get("current")
 		current_workLoad.BusyTime, _ = server.GetBusyTimeFromStats()
-		server.WorkLoad["current"] = current_workLoad
+		server.WorkLoad.Set("current", current_workLoad)
 		return time.Now()
 	}
 }

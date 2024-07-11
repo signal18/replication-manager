@@ -583,3 +583,105 @@ func NewTablesMap() *TablesMap {
 	m := &TablesMap{Map: s}
 	return m
 }
+
+type WorkLoadsMap struct {
+	*sync.Map
+}
+
+func NewWorkLoadsMap() *WorkLoadsMap {
+	s := new(sync.Map)
+	m := &WorkLoadsMap{Map: s}
+	return m
+}
+
+func (m *WorkLoadsMap) Get(key string) *WorkLoad {
+	if v, ok := m.Load(key); ok {
+		return v.(*WorkLoad)
+	}
+	return nil
+}
+
+func (m *WorkLoadsMap) GetOrNew(key string) *WorkLoad {
+	if v, ok := m.Load(key); ok {
+		return v.(*WorkLoad)
+	}
+	return new(WorkLoad)
+}
+
+func (m *WorkLoadsMap) CheckAndGet(key string) (*WorkLoad, bool) {
+	v, ok := m.Load(key)
+	if ok {
+		return v.(*WorkLoad), true
+	}
+	return nil, false
+}
+
+func (m *WorkLoadsMap) Set(key string, value *WorkLoad) {
+	m.Store(key, value)
+}
+
+func (m *WorkLoadsMap) ToNormalMap(c map[string]*WorkLoad) {
+	// Clear the old values in the output map
+	for k := range c {
+		delete(c, k)
+	}
+
+	// Insert all values from the WorkLoadsMap to the output map
+	m.Callback(func(key string, value *WorkLoad) bool {
+		c[key] = value
+		return true
+	})
+}
+
+func (m *WorkLoadsMap) ToNewMap() map[string]*WorkLoad {
+	result := make(map[string]*WorkLoad)
+	m.Range(func(k, v any) bool {
+		result[k.(string)] = v.(*WorkLoad)
+		return true
+	})
+	return result
+}
+
+func (m *WorkLoadsMap) Callback(f func(key string, value *WorkLoad) bool) {
+	m.Range(func(k, v any) bool {
+		return f(k.(string), v.(*WorkLoad))
+	})
+}
+
+func (m *WorkLoadsMap) Clear() {
+	m.Range(func(key, value any) bool {
+		m.Delete(key.(string))
+		return true
+	})
+}
+
+func FromNormalWorkLoadsMap(m *WorkLoadsMap, c map[string]*WorkLoad) *WorkLoadsMap {
+	if m == nil {
+		m = NewWorkLoadsMap()
+	} else {
+		m.Clear()
+	}
+
+	for k, v := range c {
+		m.Set(k, v)
+	}
+
+	return m
+}
+
+func FromWorkLoadsMap(m *WorkLoadsMap, c *WorkLoadsMap) *WorkLoadsMap {
+	if m == nil {
+		m = NewWorkLoadsMap()
+	} else {
+		m.Clear()
+	}
+
+	if c != nil {
+		c.Callback(func(key string, value *WorkLoad) bool {
+			m.Set(key, value)
+			return true
+		})
+	}
+
+	return m
+}
