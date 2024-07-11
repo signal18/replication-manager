@@ -254,11 +254,11 @@ func (server *ServerMonitor) GetNumberOfEventsAfterPos(file string, pos string) 
 	return dbhelper.GetNumberOfEventsAfterPos(server.Conn, file, pos)
 }
 
-func (server *ServerMonitor) GetTableFromDict(URI string) (v3.Table, error) {
-	var emptyTable v3.Table
-	val, ok := server.DictTables[URI]
+func (server *ServerMonitor) GetTableFromDict(URI string) (*v3.Table, error) {
+	var emptyTable *v3.Table = new(v3.Table)
+	val, ok := server.DictTables.CheckAndGet(URI)
 	if !ok {
-		if len(server.DictTables) == 0 {
+		if len(server.DictTables.ToNewMap()) == 0 {
 			return emptyTable, errors.New("Empty")
 		} else {
 			return emptyTable, errors.New("Not found")
@@ -624,16 +624,16 @@ func (server *ServerMonitor) GetTables() []v3.Table {
 	return server.Tables
 }
 
-func (server *ServerMonitor) GetVTables() map[string]v3.Table {
-	return server.DictTables
+func (server *ServerMonitor) GetVTables() map[string]*v3.Table {
+	return server.DictTables.ToNewMap()
 }
 
-func (server *ServerMonitor) GetDictTables() []v3.Table {
-	var tables []v3.Table
+func (server *ServerMonitor) GetDictTables() []*v3.Table {
+	var tables []*v3.Table
 	if server.IsFailed() {
 		return tables
 	}
-	for _, t := range server.DictTables {
+	for _, t := range server.DictTables.ToNewMap() {
 		tables = append(tables, t)
 
 	}

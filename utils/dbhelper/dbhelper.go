@@ -95,7 +95,7 @@ func (a PFSQuerySorter) Less(i, j int) bool {
 	return l > r
 }
 
-type TableSizeSorter []v3.Table
+type TableSizeSorter []*v3.Table
 
 func (a TableSizeSorter) Len() int      { return len(a) }
 func (a TableSizeSorter) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
@@ -1817,8 +1817,8 @@ func GetNoBlockOnMedataLock(db *sqlx.DB, myver *MySQLVersion) string {
 	}
 	return noBlockOnMedataLock
 }
-func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Table, string, error) {
-	vars := make(map[string]v3.Table)
+func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]*v3.Table, []v3.Table, string, error) {
+	vars := make(map[string]*v3.Table)
 	var tblList []v3.Table
 
 	logs := ""
@@ -1880,7 +1880,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]v3.Table, []v3.Tabl
 				v.TableCrc = crc64Int
 			}
 			tblList = append(tblList, v)
-			vars[v.TableSchema+"."+v.TableName] = v
+			vars[v.TableSchema+"."+v.TableName] = &v
 		}
 		rows.Close()
 	}

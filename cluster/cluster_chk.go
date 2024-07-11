@@ -547,9 +547,9 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	pk, _ := cluster.master.GetTablePK(schema, table)
 	if pk == "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum, no primary key for table %s.%s", schema, table)
-		t := cluster.master.DictTables[schema+"."+table]
+		t := cluster.master.DictTables.Get(schema + "." + table)
 		t.TableSync = "NA"
-		cluster.master.DictTables[schema+"."+table] = t
+		cluster.master.DictTables.Set(schema+"."+table, t)
 		return
 	}
 	if strings.Contains(pk, ",") {
@@ -655,17 +655,17 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 			if chunk.ChunkCheckSum != slaveChecksums[chunk.ChunkId].ChunkCheckSum {
 				checkok = false
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table failed chunk(%s,%s) %s.%s %s", chunk.ChunkMinKey, chunk.ChunkMaxKey, schema, table, s.URL)
-				t := cluster.master.DictTables[schema+"."+table]
+				t := cluster.master.DictTables.Get(schema + "." + table)
 				t.TableSync = "ER"
-				cluster.master.DictTables[schema+"."+table] = t
+				cluster.master.DictTables.Set(schema+"."+table, t)
 			}
 
 		}
 		if checkok {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table succeed %s.%s %s", schema, table, s.URL)
-			t := cluster.master.DictTables[schema+"."+table]
+			t := cluster.master.DictTables.Get(schema + "." + table)
 			t.TableSync = "OK"
-			cluster.master.DictTables[schema+"."+table] = t
+			cluster.master.DictTables.Set(schema+"."+table, t)
 		}
 	}
 }

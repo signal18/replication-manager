@@ -161,7 +161,7 @@ type ServerMonitor struct {
 	PrevStatus                  *config.StringsMap         `json:"-"`
 	PFSQueries                  *config.PFSQueriesMap      `json:"-"` //PFS queries
 	SlowPFSQueries              *config.PFSQueriesMap      `json:"-"` //PFS queries from slow
-	DictTables                  map[string]v3.Table        `json:"-"`
+	DictTables                  *config.TablesMap          `json:"-"`
 	Tables                      []v3.Table                 `json:"-"`
 	Disks                       []dbhelper.Disk            `json:"-"`
 	Plugins                     map[string]dbhelper.Plugin `json:"-"`
@@ -281,6 +281,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.PrevStatus = config.NewStringsMap()
 	server.PFSQueries = config.NewPFSQueriesMap()
 	server.SlowPFSQueries = config.NewPFSQueriesMap()
+	server.DictTables = config.NewTablesMap()
 
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true

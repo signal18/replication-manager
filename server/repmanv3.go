@@ -916,7 +916,7 @@ func (s *ReplicationManager) GetSchema(in *v3.Cluster, stream v3.ClusterService_
 	}
 
 	for _, table := range m.GetDictTables() {
-		if err := stream.Send(&table); err != nil {
+		if err := stream.Send(table); err != nil {
 			return err
 		}
 	}

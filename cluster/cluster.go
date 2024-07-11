@@ -1541,7 +1541,7 @@ func (cluster *Cluster) MonitorSchema() {
 
 	cluster.WorkLoad.DBIndexSize = totindexsize
 	cluster.WorkLoad.DBTableSize = tottablesize
-	cmaster.DictTables = tables
+	cmaster.DictTables = config.FromNormalTablesMap(cmaster.DictTables, tables)
 	cluster.StateMachine.RemoveMonitorSchemaState()
 }
 

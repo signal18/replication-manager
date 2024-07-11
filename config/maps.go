@@ -3,6 +3,7 @@ package config
 import (
 	"sync"
 
+	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
@@ -196,5 +197,101 @@ func FromPFSQueriesMap(m *PFSQueriesMap, c *PFSQueriesMap) *PFSQueriesMap {
 		})
 	}
 
+	return m
+}
+
+type TablesMap struct {
+	*sync.Map
+}
+
+func (m *TablesMap) Get(key string) *v3.Table {
+	if v, ok := m.Load(key); ok {
+		return v.(*v3.Table)
+	}
+	return nil
+}
+
+func (m *TablesMap) CheckAndGet(key string) (*v3.Table, bool) {
+	v, ok := m.Load(key)
+	if ok {
+		return v.(*v3.Table), true
+	}
+	return nil, false
+}
+
+func (m *TablesMap) ToNormalMap(c map[string]*v3.Table) {
+	// clear old value
+	c = make(map[string]*v3.Table)
+
+	// Insert all values to new map
+	m.Range(func(k any, v any) bool {
+		c[k.(string)] = v.(*v3.Table)
+		return true
+	})
+}
+
+func (m *TablesMap) ToNewMap() map[string]*v3.Table {
+	// clear old value
+	c := make(map[string]*v3.Table)
+
+	// Insert all values to new map
+	m.Range(func(k any, v any) bool {
+		c[k.(string)] = v.(*v3.Table)
+		return true
+	})
+
+	return c
+}
+
+func (m *TablesMap) Set(k string, v *v3.Table) {
+	m.Store(k, v)
+}
+
+func FromNormalTablesMap(m *TablesMap, c map[string]*v3.Table) *TablesMap {
+	if m == nil {
+		m = NewTablesMap()
+	} else {
+		m.Clear()
+	}
+
+	for k, v := range c {
+		m.Store(k, v)
+	}
+
+	return m
+}
+
+func FromTablesSyncMap(m *TablesMap, c *TablesMap) *TablesMap {
+	if m == nil {
+		m = NewTablesMap()
+	} else {
+		m.Clear()
+	}
+
+	if c != nil {
+		c.Range(func(k any, v any) bool {
+			m.Store(k.(string), v.(*v3.Table))
+			return true
+		})
+	}
+
+	return m
+}
+
+func (m *TablesMap) Callback(f func(key, value any) bool) {
+	m.Range(f)
+}
+
+func (m *TablesMap) Clear() {
+	m.Range(func(key any, value any) bool {
+		k := key.(string)
+		m.Delete(k)
+		return true
+	})
+}
+
+func NewTablesMap() *TablesMap {
+	s := new(sync.Map)
+	m := &TablesMap{Map: s}
 	return m
 }
