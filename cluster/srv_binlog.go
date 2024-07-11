@@ -127,9 +127,7 @@ func (server *ServerMonitor) ForcePurgeBinlogs() {
 }
 
 func (server *ServerMonitor) SetIsPurgingBinlog(value bool) {
-	server.Lock()
 	server.InPurgingBinaryLog = value
-	server.Unlock()
 }
 
 func (server *ServerMonitor) SetBinlogOldestTimestamp(str string) error {
