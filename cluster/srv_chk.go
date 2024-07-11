@@ -25,7 +25,7 @@ import (
 func (server *ServerMonitor) CheckMaxConnections() {
 	cluster := server.ClusterGroup
 	maxCx, _ := strconv.ParseInt(server.Variables.Get("MAX_CONNECTIONS"), 10, 64)
-	curCx, _ := strconv.ParseInt(server.Status["THREADS_CONNECTED"], 10, 64)
+	curCx, _ := strconv.ParseInt(server.Status.Get("THREADS_CONNECTED"), 10, 64)
 	if curCx > maxCx*80/100 {
 		cluster.SetState("ERR00076", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00076"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
 	}

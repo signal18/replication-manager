@@ -157,8 +157,8 @@ type ServerMonitor struct {
 	EngineInnoDB                *config.StringsMap           `json:"engineInnodb"`
 	ErrorLog                    s18log.HttpLog               `json:"errorLog"`
 	SlowLog                     s18log.SlowLog               `json:"-"`
-	Status                      map[string]string            `json:"-"`
-	PrevStatus                  map[string]string            `json:"-"`
+	Status                      *config.StringsMap           `json:"-"`
+	PrevStatus                  *config.StringsMap           `json:"-"`
 	PFSQueries                  map[string]dbhelper.PFSQuery `json:"-"` //PFS queries
 	SlowPFSQueries              map[string]dbhelper.PFSQuery `json:"-"` //PFS queries from slow
 	DictTables                  map[string]v3.Table          `json:"-"`
@@ -277,6 +277,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	// Initiate sync.Map pointers
 	server.Variables = config.NewStringsMap()
 	server.EngineInnoDB = config.NewStringsMap()
+	server.Status = config.NewStringsMap()
+	server.PrevStatus = config.NewStringsMap()
 
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
@@ -898,8 +900,9 @@ func (server *ServerMonitor) Refresh() error {
 	if cluster.Conf.MxsBinlogOn && server.IsMaxscale {
 		return nil
 	}
-	server.PrevStatus = server.Status
-	server.Status, logs, _ = dbhelper.GetStatus(server.Conn, server.DBVersion)
+	server.PrevStatus = config.FromSyncMap(server.PrevStatus, server.Status)
+	status, logs, _ := dbhelper.GetStatus(server.Conn, server.DBVersion)
+	server.Status = config.FromNormalMap(server.Status, status)
 
 	server.HaveSemiSync = server.HasSemiSync()
 	server.SemiSyncMasterStatus = server.IsSemiSyncMaster()
@@ -918,9 +921,10 @@ func (server *ServerMonitor) Refresh() error {
 		}
 	}
 
-	if len(server.PrevStatus) > 0 {
-		qps, _ := strconv.ParseInt(server.Status["QUERIES"], 10, 64)
-		prevqps, _ := strconv.ParseInt(server.PrevStatus["QUERIES"], 10, 64)
+	//Since there is no len within sync.Map we use exists instead
+	if pqps, ok := server.PrevStatus.CheckAndGet("QUERIES"); ok {
+		qps, _ := strconv.ParseInt(server.Status.Get("QUERIES"), 10, 64)
+		prevqps, _ := strconv.ParseInt(pqps, 10, 64)
 		if server.MonitorTime-server.PrevMonitorTime > 0 {
 			server.QPS = (qps - prevqps) / (server.MonitorTime - server.PrevMonitorTime)
 		}
@@ -1368,7 +1372,7 @@ func (server *ServerMonitor) SaveInfos() error {
 	}
 	var clsave Save
 	server.Variables.ToNormalMap(clsave.Variables)
-	clsave.Status = server.Status
+	clsave.Status = server.Status.ToNewMap()
 	clsave.ProcessList = server.FullProcessList
 	clsave.SlaveStatus = server.LastSeenReplications
 	clsave.MaxSlowQueryTimestamp = server.MaxSlowQueryTimestamp

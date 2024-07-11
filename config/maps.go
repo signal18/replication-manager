@@ -52,13 +52,29 @@ func (m *StringsMap) Set(k string, v string) {
 func FromNormalMap(m *StringsMap, c map[string]string) *StringsMap {
 	if m == nil {
 		m = NewStringsMap()
+	} else {
+		m.Clear()
 	}
-	m.Clear()
-	if c == nil {
-		c = make(map[string]string)
-	}
+
 	for k, v := range c {
 		m.Store(k, v)
+	}
+
+	return m
+}
+
+func FromSyncMap(m *StringsMap, c *StringsMap) *StringsMap {
+	if m == nil {
+		m = NewStringsMap()
+	} else {
+		m.Clear()
+	}
+
+	if c != nil {
+		c.Range(func(k any, v any) bool {
+			m.Store(k.(string), v.(string))
+			return true
+		})
 	}
 
 	return m

@@ -361,28 +361,35 @@ func (server *ServerMonitor) GetQueryAnalyzeSlowLog(digest string) (string, stri
 
 func (server *ServerMonitor) GetStatus() []dbhelper.Variable {
 	var status []dbhelper.Variable
-	for k, v := range server.Status {
+	statf := func(key any, value any) bool {
+		k := key.(string)
+		v := value.(string)
 		var r dbhelper.Variable
 		r.Variable_name = k
 		r.Value = v
 		status = append(status, r)
+
+		return true
 	}
+	server.Status.Callback(statf)
 	sort.Sort(dbhelper.VariableSorter(status))
 	return status
 }
 
 func (server *ServerMonitor) GetServerConnections() int {
-	res, _ := strconv.Atoi(server.Status["THREADS_RUNNING"])
+	res, _ := strconv.Atoi(server.Status.Get("THREADS_RUNNING"))
 	return res
 }
 
 func (server *ServerMonitor) GetStatusDelta() []dbhelper.Variable {
 	var delta []dbhelper.Variable
-	for k, v := range server.Status {
+	deltaf := func(key any, value any) bool {
+		k := key.(string)
+		v := value.(string)
 		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status %s %s", k, v)
 		i1, err := strconv.ParseInt(v, 10, 64)
 		if err == nil {
-			i2, err2 := strconv.ParseInt(server.PrevStatus[k], 10, 64)
+			i2, err2 := strconv.ParseInt(server.PrevStatus.Get(k), 10, 64)
 			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status now %s %d", k, v)
 			if err2 == nil && i2-i1 != 0 {
 				//			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Status prev %s %d", k, v)
@@ -393,7 +400,10 @@ func (server *ServerMonitor) GetStatusDelta() []dbhelper.Variable {
 			}
 		}
 
+		return true
 	}
+	server.Status.Callback(deltaf)
+	sort.Sort(dbhelper.VariableSorter(delta))
 	return delta
 }
 
@@ -745,8 +755,8 @@ func (server *ServerMonitor) GetBusyTimeFromStats() (string, error) {
 func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
 	if server.DBVersion.IsMariaDB() {
 		//we compute it from status
-		thread_idle, _ := strconv.ParseFloat(server.Status["THREADPOOL_IDLE_THREADS"], 8)
-		thread, _ := strconv.ParseFloat(server.Status["THREADPOOL_THREADS"], 8)
+		thread_idle, _ := strconv.ParseFloat(server.Status.Get("THREADPOOL_IDLE_THREADS"), 8)
+		thread, _ := strconv.ParseFloat(server.Status.Get("THREADPOOL_THREADS"), 8)
 		core, _ := strconv.ParseFloat(server.GetCluster().Conf.ProvCores, 8)
 		return ((thread - thread_idle) / core) * 100
 	}

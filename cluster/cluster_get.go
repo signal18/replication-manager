@@ -268,8 +268,8 @@ func (cluster *Cluster) GetConnections() int {
 	allconns := 0
 	for _, server := range cluster.Servers {
 		if server != nil {
-			if conns, ok := server.Status["THREADS_RUNNING"]; ok {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Reading connections on server: %s ,%s", server.URL, server.Status["THREADS_RUNNING"])
+			if conns, ok := server.Status.CheckAndGet("THREADS_RUNNING"); ok {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Reading connections on server: %s ,%s", server.URL, server.Status.Get("THREADS_RUNNING"))
 				numconns, _ := strconv.Atoi(conns)
 				allconns += numconns
 			}

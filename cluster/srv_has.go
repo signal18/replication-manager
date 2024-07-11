@@ -19,16 +19,16 @@ import (
 )
 
 func (server *ServerMonitor) IsSemiSyncMaster() bool {
-	return server.Status["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" || server.Status["RPL_SEMI_SYNC_SOURCE_STATUS"] == "ON"
+	return server.Status.Get("RPL_SEMI_SYNC_MASTER_STATUS") == "ON" || server.Status.Get("RPL_SEMI_SYNC_SOURCE_STATUS") == "ON"
 }
 
 func (server *ServerMonitor) IsSemiSyncReplica() bool {
 	// If MySQL or Percona 8.0 or greater
 	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0") {
-		return server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "ON" || server.Status["RPL_SEMI_SYNC_REPLICA_STATUS"] == "ON"
+		return server.Status.Get("RPL_SEMI_SYNC_SLAVE_STATUS") == "ON" || server.Status.Get("RPL_SEMI_SYNC_REPLICA_STATUS") == "ON"
 	}
 	if server.DBVersion.IsMariaDB() || (server.DBVersion.IsMySQLOrPercona() && server.DBVersion.Lower("8.0")) {
-		return server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "ON"
+		return server.Status.Get("RPL_SEMI_SYNC_SLAVE_STATUS") == "ON"
 	}
 
 	return false
@@ -39,21 +39,21 @@ func (server *ServerMonitor) HasSemiSync() bool {
 }
 
 func (server *ServerMonitor) HasWsrepSync() bool {
-	if server.Status["WSREP_LOCAL_STATE"] == "4" {
+	if server.Status.Get("WSREP_LOCAL_STATE") == "4" {
 		return true
 	}
 	return false
 }
 
 func (server *ServerMonitor) HasWsrepDonor() bool {
-	if server.Status["WSREP_LOCAL_STATE"] == "2" {
+	if server.Status.Get("WSREP_LOCAL_STATE") == "2" {
 		return true
 	}
 	return false
 }
 
 func (server *ServerMonitor) HasWsrepPrimary() bool {
-	if server.Status["WSREP_CLUSTER_STATUS"] == "PRIMARY" {
+	if server.Status.Get("WSREP_CLUSTER_STATUS") == "PRIMARY" {
 		return true
 	}
 	return false
@@ -416,8 +416,8 @@ func (server *ServerMonitor) HasHighNumberSlowQueries() bool {
 	if server.Variables.Get("LONG_QUERY_TIME") == "0" || server.Variables.Get("LONG_QUERY_TIME") == "0.000010" {
 		return false
 	}
-	slowquerynow, _ := strconv.ParseInt(server.Status["SLOW_QUERIES"], 10, 64)
-	slowquerybefore, _ := strconv.ParseInt(server.PrevStatus["SLOW_QUERIES"], 10, 64)
+	slowquerynow, _ := strconv.ParseInt(server.Status.Get("SLOW_QUERIES"), 10, 64)
+	slowquerybefore, _ := strconv.ParseInt(server.PrevStatus.Get("SLOW_QUERIES"), 10, 64)
 	if server.MonitorTime-server.PrevMonitorTime > 0 {
 		qpssecond := (slowquerynow - slowquerybefore) / (server.MonitorTime - server.PrevMonitorTime)
 		if qpssecond > 20 {

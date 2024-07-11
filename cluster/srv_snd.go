@@ -50,7 +50,7 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 		return err == nil
 	}
 
-	for k, v := range server.Status {
+	for k, v := range server.Status.ToNewMap() {
 		if isNumeric(v) {
 			mname := fmt.Sprintf("mysql.%s.mysql_global_status_%s", hostname, strings.ToLower(k))
 			if cg.MatchList(mname) {
@@ -59,52 +59,23 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 		}
 	}
 
-	varf := func(key any, value any) bool {
-		k := key.(string)
-		v := value.(string)
+	for k, v := range server.Variables.ToNewMap() {
 		if isNumeric(v) {
 			mname := fmt.Sprintf("mysql.%s.mysql_global_variables_%s", hostname, strings.ToLower(k))
 			if cg.MatchList(mname) {
 				metrics = append(metrics, graphite.NewMetric(mname, v, time.Now().Unix()))
 			}
 		}
-		//Always true for loop
-		return true
 	}
-	// Loop inside variables than copy variables
-	server.Variables.Callback(varf)
 
-	// for k, v := range server.Variables.ToNewMap() {
-	// 	if isNumeric(v) {
-	// 		mname := fmt.Sprintf("mysql.%s.mysql_global_variables_%s", hostname, strings.ToLower(k))
-	// 		if cg.MatchList(mname) {
-	// 			metrics = append(metrics, graphite.NewMetric(mname, v, time.Now().Unix()))
-	// 		}
-	// 	}
-	// }
-
-	engf := func(key any, value any) bool {
-		k := key.(string)
-		v := value.(string)
+	for k, v := range server.EngineInnoDB.ToNewMap() {
 		if isNumeric(v) {
 			mname := fmt.Sprintf("mysql.%s.engine_innodb_%s", hostname, strings.ToLower(k))
 			if cg.MatchList(mname) {
 				metrics = append(metrics, graphite.NewMetric(mname, v, time.Now().Unix()))
 			}
 		}
-
-		return true
 	}
-	// Loop inside engine var than copy variables
-	server.EngineInnoDB.Callback(engf)
-	// for k, v := range server.EngineInnoDB {
-	// 	if isNumeric(v) {
-	// 		mname := fmt.Sprintf("mysql.%s.engine_innodb_%s", hostname, strings.ToLower(k))
-	// 		if cg.MatchList(mname) {
-	// 			metrics = append(metrics, graphite.NewMetric(mname, v, time.Now().Unix()))
-	// 		}
-	// 	}
-	// }
 
 	for _, v := range server.PFSQueries {
 		if isNumeric(v.Value) {

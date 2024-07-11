@@ -700,8 +700,8 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 			if sothers.IsFailed() || s.URL == sothers.URL {
 				continue
 			}
-			if s.Status["WSREP_CLUSTER_STATE_UUID"] != sothers.Status["WSREP_CLUSTER_STATE_UUID"] {
-				cluster.SetState("ERR00083", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00083"], s.URL, s.Status["WSREP_CLUSTER_STATE_UUID"], sothers.URL, sothers.Status["WSREP_CLUSTER_STATE_UUID"]), ErrFrom: "MON", ServerUrl: s.URL})
+			if s.Status.Get("WSREP_CLUSTER_STATE_UUID") != sothers.Status.Get("WSREP_CLUSTER_STATE_UUID") {
+				cluster.SetState("ERR00083", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00083"], s.URL, s.Status.Get("WSREP_CLUSTER_STATE_UUID"), sothers.URL, sothers.Status.Get("WSREP_CLUSTER_STATE_UUID")), ErrFrom: "MON", ServerUrl: s.URL})
 				return false
 			}
 		}
