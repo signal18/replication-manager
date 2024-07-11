@@ -1887,8 +1887,8 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]*v3.Table, []v3.Tab
 	return vars, tblList, logs, nil
 }
 
-func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, string, error) {
-	vars := make(map[string]Grant)
+func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]*Grant, string, error) {
+	vars := make(map[string]*Grant)
 	// password was remover from system table in mysql 8.0
 
 	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user where host<>'localhost' "
@@ -1913,7 +1913,7 @@ func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]Grant, string, error
 		if err != nil {
 			return vars, query, err
 		}
-		vars["'"+g.User+"'@'"+g.Host+"'"] = g
+		vars["'"+g.User+"'@'"+g.Host+"'"] = &g
 	}
 	return vars, query, nil
 }

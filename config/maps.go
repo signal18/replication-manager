@@ -295,6 +295,101 @@ func FromPluginsMap(m *PluginsMap, c *PluginsMap) *PluginsMap {
 	return m
 }
 
+type GrantsMap struct {
+	*sync.Map
+}
+
+func NewGrantsMap() *GrantsMap {
+	s := new(sync.Map)
+	m := &GrantsMap{Map: s}
+	return m
+}
+
+func (m *GrantsMap) Get(key string) *dbhelper.Grant {
+	if v, ok := m.Load(key); ok {
+		return v.(*dbhelper.Grant)
+	}
+	return nil
+}
+
+func (m *GrantsMap) CheckAndGet(key string) (*dbhelper.Grant, bool) {
+	v, ok := m.Load(key)
+	if ok {
+		return v.(*dbhelper.Grant), true
+	}
+	return nil, false
+}
+
+func (m *GrantsMap) Set(key string, value *dbhelper.Grant) {
+	m.Store(key, value)
+}
+
+func (m *GrantsMap) ToNormalMap(c map[string]*dbhelper.Grant) {
+	// Clear the old values in the output map
+	for k := range c {
+		delete(c, k)
+	}
+
+	// Insert all values from the GrantsMap to the output map
+	m.Callback(func(key string, value *dbhelper.Grant) bool {
+		c[key] = value
+		return true
+	})
+}
+
+func (m *GrantsMap) ToNewMap() map[string]*dbhelper.Grant {
+	result := make(map[string]*dbhelper.Grant)
+	m.Range(func(k, v any) bool {
+		result[k.(string)] = v.(*dbhelper.Grant)
+		return true
+	})
+	return result
+}
+
+func (m *GrantsMap) Callback(f func(key string, value *dbhelper.Grant) bool) {
+	m.Range(func(k, v any) bool {
+		return f(k.(string), v.(*dbhelper.Grant))
+	})
+}
+
+func (m *GrantsMap) Clear() {
+	m.Range(func(key, value any) bool {
+		m.Delete(key.(string))
+		return true
+	})
+}
+
+func FromNormalGrantsMap(m *GrantsMap, c map[string]*dbhelper.Grant) *GrantsMap {
+	if m == nil {
+		m = NewGrantsMap()
+	} else {
+		m.Clear()
+	}
+
+	for k, v := range c {
+		m.Set(k, v)
+	}
+
+	return m
+}
+
+func FromGrantsMap(m *GrantsMap, c *GrantsMap) *GrantsMap {
+	if m == nil {
+		m = NewGrantsMap()
+	} else {
+		m.Clear()
+	}
+
+	if c != nil {
+		c.Callback(func(key string, value *dbhelper.Grant) bool {
+			m.Set(key, value)
+			return true
+		})
+	}
+
+	return m
+}
+
 type TablesMap struct {
 	*sync.Map
 }

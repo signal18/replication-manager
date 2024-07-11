@@ -267,15 +267,15 @@ func (proxy *ProxyJanitor) Refresh() error {
 		if err != nil {
 			cluster.SetState("ERR00053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00053"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
 		}
-		uniUsers := make(map[string]dbhelper.Grant)
+		uniUsers := make(map[string]*dbhelper.Grant)
 		dupUsers := make(map[string]string)
 
-		for _, u := range s.Users {
+		for _, u := range s.Users.ToNewMap() {
 
 			//		cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxyJanitor,LvlInfo, " %s,  %s", u.User, cluster.Name+".")
 			if !(strings.Contains(u.User, cluster.Name+".") || strings.Contains(u.User, "mysql.") || strings.Contains(u.Host, "localhost")) {
 
-				user, ok := s.Users["'"+u.User+"@"+proxy.GetJanitorDomain()+"'@'"+u.Host+"'"]
+				user, ok := s.Users.CheckAndGet("'" + u.User + "@" + proxy.GetJanitorDomain() + "'@'" + u.Host + "'")
 				if !ok {
 					//		cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxyJanitor,config.LvlErr, "lookup %s %s%v", u.User, proxy.GetJanitorDomain(), s.Users)
 					// create domain user in master
