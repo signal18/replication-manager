@@ -9,7 +9,7 @@ const theme = extendTheme({
   breakpoints: {
     sm: '30em', // 480px
     md: '48em', // 768px
-    lg: '64em', // 1024px
+    lg: '62em', // 992px
     xl: '80em' // 1280px
   },
   colors: {
@@ -38,7 +38,7 @@ const theme = extendTheme({
         bg: props.colorMode === 'dark' ? 'primary.dark' : 'primary.light',
         color: props.colorMode === 'dark' ? 'text.dark' : 'text.light'
       },
-      'html, body,p, label, span,th, [role="menu"] > button,  button[class*="accordion"]': {
+      'html, body,p, label, span, [role="menu"] > button,  button[class*="accordion"]': {
         color: props.colorMode === 'dark' ? 'text.dark' : 'text.light'
       },
       text: {
