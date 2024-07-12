@@ -1,11 +1,15 @@
 // theme.js
-import { extendTheme } from '@chakra-ui/react'
+import { Accordion, extendTheme, Tabs } from '@chakra-ui/react'
+import { tabsTheme } from './tabsTheme'
+import { accordionTheme } from './accordionTheme'
+import { menuTheme } from './menuTheme'
+import { buttonTheme } from './buttonTheme'
 
 const theme = extendTheme({
   breakpoints: {
     sm: '30em', // 480px
     md: '48em', // 768px
-    lg: '64em', // 1024px
+    lg: '62em', // 992px
     xl: '80em' // 1280px
   },
   colors: {
@@ -23,8 +27,30 @@ const theme = extendTheme({
     initialColorMode: 'light', // Set initial color mode here
     useSystemColorMode: false // Optional: enables automatic switching based on system preferences
   },
+  styles: {
+    global: (props) => ({
+      // Global styles
+      'html, body, #root': {
+        height: '100%',
+        width: '100%',
+        margin: 0,
+        padding: 0,
+        bg: props.colorMode === 'dark' ? 'primary.dark' : 'primary.light',
+        color: props.colorMode === 'dark' ? 'text.dark' : 'text.light'
+      },
+      'html, body,p, label, span, [role="menu"] > button,  button[class*="accordion"]': {
+        color: props.colorMode === 'dark' ? 'text.dark' : 'text.light'
+      },
+      text: {
+        fill: props.colorMode === 'dark' ? 'text.dark !important' : 'text.light !important'
+      }
+    })
+  },
   components: {
-    // Menu: menuTheme
+    Menu: menuTheme,
+    Button: buttonTheme,
+    Tabs: tabsTheme,
+    Accordion: accordionTheme
   }
 })
 
