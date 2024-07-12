@@ -1,13 +1,14 @@
 import React, { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { getClusters, getMonitoredData, setCurrentCluster, setRefreshInterval } from '../redux/clusterSlice'
-import { Box, Grid, GridItem, HStack, Icon, Link, Spinner, Text, Wrap, WrapItem } from '@chakra-ui/react'
+import { getClusters, getMonitoredData, setRefreshInterval } from '../redux/clusterSlice'
+import { HStack, Icon, Link, Text, Wrap } from '@chakra-ui/react'
 import NotFound from '../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
 import { HiCheck, HiExclamation, HiX } from 'react-icons/hi'
 import { Link as ReactRouterLink } from 'react-router-dom'
 import Card from '../components/Card'
 import { AppSettings } from '../AppSettings'
+import TableType2 from '../components/TableType2'
 
 function ClusterList(props) {
   const dispatch = useDispatch()
@@ -64,9 +65,6 @@ function ClusterList(props) {
     }
   }
 
-  const setSelectedClusterState = (clusterItem) => {
-    dispatch(setCurrentCluster({ cluster: clusterItem }))
-  }
   return !loading && clusters?.length === 0 ? (
     <NotFound text={'No cluster found!'} currentTheme={theme} />
   ) : (
@@ -139,12 +137,7 @@ function ClusterList(props) {
           { key: 'SLA', value: clusterItem.uptime }
         ]
         return (
-          <Link
-            sx={styles.linkCard}
-            onClick={() => setSelectedClusterState(clusterItem)}
-            as={ReactRouterLink}
-            mt='8'
-            to={`/clusters/${clusterItem.name}`}>
+          <Link sx={styles.linkCard} as={ReactRouterLink} mt='8' to={`/clusters/${clusterItem.name}`}>
             <Card
               width={'400px'}
               header={
@@ -152,24 +145,7 @@ function ClusterList(props) {
                   <Icon fontSize='1.5rem' as={AiOutlineCluster} /> <span>{clusterItem.name}</span>
                 </HStack>
               }
-              body={
-                <Grid templateColumns='repeat(2, 1fr)' gap={2} p={4}>
-                  {dataObject.map((item, index) => (
-                    <React.Fragment key={index}>
-                      <GridItem>
-                        <Box p={2} borderRadius='md'>
-                          {item.key}
-                        </Box>
-                      </GridItem>
-                      <GridItem>
-                        <Box bg={theme === 'light' ? 'gray.50' : 'gray.700'} p={2} borderRadius='md'>
-                          {item.value}
-                        </Box>
-                      </GridItem>
-                    </React.Fragment>
-                  ))}
-                </Grid>
-              }
+              body={<TableType2 dataArray={dataObject} />}
             />
           </Link>
         )

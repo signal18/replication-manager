@@ -1,32 +1,80 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import Card from '../../../components/Card'
 import {
   Box,
   Button,
+  Grid,
+  GridItem,
   Modal,
   ModalCloseButton,
   ModalContent,
   ModalFooter,
   ModalHeader,
   ModalOverlay,
+  Spinner,
   Text
 } from '@chakra-ui/react'
 import TagPill from '../../../components/TagPill'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
+import TableType1 from '../../../components/TableType1'
+import { failOverCluster, switchOverCluster } from '../../../redux/clusterSlice'
+import ConfirmModal from '../../../components/Modals/ConfirmModal'
 
 function HADetail({ selectedCluster }) {
   const {
+    cluster: {
+      clusteraMaster,
+      loadingStates: { switchOver: switchOverLoading, failOver: failOverLoading }
+    },
     common: { theme, isDesktop }
   } = useSelector((state) => state)
+  const dispatch = useDispatch()
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [isChecked, setIsChecked] = useState(false)
-  const handleSwitchChange = (e) => {
-    console.log('valuea;:', e.target.checked)
+  const [failOverData, setFailOverData] = useState([])
+  const [SLAData, setSLAData] = useState([])
+
+  useEffect(() => {
+    if (selectedCluster) {
+      setFailOverData([
+        { key: 'Checks', value: selectedCluster.monitorSpin },
+        { key: 'Failed', value: `${selectedCluster.failoverCounter} / ${selectedCluster.config.failoverLimit}` },
+        { key: 'Last Time', value: selectedCluster.failoverLastTime }
+      ])
+
+      setSLAData([
+        { key: 'Master Up', value: `${selectedCluster.uptime}%` },
+        { key: 'Slaves Catch', value: `${selectedCluster.uptimeFailable}%` },
+        { key: 'Slaves Sync', value: `${selectedCluster.uptimeSemisync}%` }
+      ])
+    }
+  }, [selectedCluster])
+
+  const styles = {
+    headerColumn: {
+      fontWeight: 'bold',
+      textAlign: 'center',
+      p: '2',
+      bg: theme === 'light' ? 'blue.50' : 'blue.900'
+    }
+  }
+
+  const openConfirmModal = (e) => {
     setIsModalOpen(true)
   }
 
   const closeModal = () => {
     setIsModalOpen(false)
+  }
+
+  const handleConfirm = () => {
+    if (selectedCluster) {
+      if (clusteraMaster?.state === 'Failed') {
+        dispatch(failOverCluster({ clusterName: selectedCluster.name }))
+      } else if (clusteraMaster?.state !== 'Failed') {
+        dispatch(switchOverCluster({ clusterName: selectedCluster.name }))
+      }
+    }
+    closeModal()
   }
   return (
     <>
@@ -36,30 +84,37 @@ function HADetail({ selectedCluster }) {
           <>
             <Text>HA</Text>
             <Box ml='auto'>
-              <TagPill type='success' text={selectedCluster.topology} />
+              <TagPill colorScheme='green' text={selectedCluster.topology} />
             </Box>
           </>
         }
-        onSwitchChange={handleSwitchChange}
-        showSwitch={true}
+        body={
+          <Grid
+            {...(isDesktop ? { templateColumns: 'repeat(2, 1fr)' } : { templateRows: 'repeat(2, 1fr)' })}
+            columnGap={2}>
+            <GridItem>
+              <Text sx={styles.headerColumn}>Failover</Text>
+              <TableType1 dataArray={failOverData} />
+            </GridItem>
+            <GridItem>
+              <Text sx={styles.headerColumn}>SLA</Text>
+              <TableType1 dataArray={SLAData} />
+            </GridItem>
+          </Grid>
+        }
+        onClick={openConfirmModal}
+        headerAction='button'
+        isLoading={switchOverLoading || failOverLoading}
+        loadingText={'Processing'}
+        buttonText={clusteraMaster?.state === 'Failed' ? 'Failover' : 'Switchover'}
       />
       {isModalOpen && (
-        <Modal isOpen={isModalOpen} onClose={closeModal}>
-          <ModalOverlay />
-          <ModalContent>
-            <ModalHeader>Confirm switchover?</ModalHeader>
-            <ModalCloseButton />
-
-            <ModalFooter>
-              <Button colorScheme='blue' mr={3} onClick={closeModal}>
-                No
-              </Button>
-              <Button variant='ghost' onClick={handleSwitch}>
-                Yes
-              </Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
+        <ConfirmModal
+          title={'Confirm switchover?'}
+          closeModal={closeModal}
+          isOpen={isModalOpen}
+          onConfirmClick={handleConfirm}
+        />
       )}
     </>
   )
