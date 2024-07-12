@@ -28,6 +28,7 @@ function ClusterDetail({ selectedCluster }) {
   const {
     common: { isDesktop },
     cluster: {
+      clusterMaster,
       loadingStates: { menuActions: menuActionsLoading }
     }
   } = useSelector((state) => state)
@@ -74,24 +75,29 @@ function ClusterDetail({ selectedCluster }) {
             setConfirmHandler(() => () => dispatch(toggleTraffic({ clusterName: selectedCluster?.name })))
           }
         },
-        {
-          name: 'Switchover',
-          onClick: () => {
-            openConfirmModal()
-            setConfirmTitle('Confirm switchover?')
-            setConfirmHandler(
-              () => () => dispatch(switchOverCluster({ clustclusterName: selectedCluster?.nameerName }))
-            )
-          }
-        },
-        {
-          name: 'Failover',
-          onClick: () => {
-            openConfirmModal()
-            setConfirmTitle('Confirm failover?')
-            setConfirmHandler(() => () => dispatch(failOverCluster({ clusterName: selectedCluster?.name })))
-          }
-        }
+        ...(clusterMaster?.state === 'Failed'
+          ? [
+              {
+                name: 'Failover',
+                onClick: () => {
+                  openConfirmModal()
+                  setConfirmTitle('Confirm failover?')
+                  setConfirmHandler(() => () => dispatch(failOverCluster({ clusterName: selectedCluster?.name })))
+                }
+              }
+            ]
+          : [
+              {
+                name: 'Switchover',
+                onClick: () => {
+                  openConfirmModal()
+                  setConfirmTitle('Confirm switchover?')
+                  setConfirmHandler(
+                    () => () => dispatch(switchOverCluster({ clustclusterName: selectedCluster?.nameerName }))
+                  )
+                }
+              }
+            ])
       ]
     },
     {
