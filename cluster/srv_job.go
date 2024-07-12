@@ -1027,7 +1027,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 
 	cluster := server.ClusterGroup
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if server.IsDown() {
 		return errors.New("Can't backup when server down")
 	}
@@ -1048,22 +1048,22 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	//Skip other type if using backup script
 	if cluster.Conf.BackupSaveScript != "" {
-		return server.JobBackupScript()
+		server.JobBackupScript()
+	} else {
+		//Change to switch since we only allow one type of backup (for now)
+		switch cluster.Conf.BackupLogicalType {
+		case config.ConstBackupLogicalTypeMysqldump:
+			server.JobBackupMysqldump()
+		case config.ConstBackupLogicalTypeDumpling:
+			server.JobBackupDumpling()
+		case config.ConstBackupLogicalTypeMydumper:
+			server.JobBackupMyDumper()
+		case config.ConstBackupLogicalTypeRiver:
+			server.JobBackupRiver()
+		}
 	}
 
-	//Change to switch since we only allow one type of backup (for now)
-	switch cluster.Conf.BackupLogicalType {
-	case config.ConstBackupLogicalTypeMysqldump:
-		server.JobBackupMysqldump()
-	case config.ConstBackupLogicalTypeDumpling:
-		server.JobBackupDumpling()
-	case config.ConstBackupLogicalTypeMydumper:
-		server.JobBackupMyDumper()
-	case config.ConstBackupLogicalTypeRiver:
-		server.JobBackupRiver()
-	}
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	backtype := "logical"
 	server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupLogicalType)
 	return nil

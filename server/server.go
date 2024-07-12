@@ -296,7 +296,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	// Backup Stream
 	flags.BoolVar(&conf.LogBackupStream, "log-backup-stream", true, "To log backup stream process")
-	flags.IntVar(&conf.LogBackupStreamLevel, "log-backup-stream-level", 2, "Log Backup Stream Level")
+	flags.IntVar(&conf.LogBackupStreamLevel, "log-backup-stream-level", 4, "Log Backup Stream Level")
 
 	// Log orchestrator
 	flags.BoolVar(&conf.LogOrchestrator, "log-orchestrator", true, "To log orchestrator process")
