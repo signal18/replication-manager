@@ -1,28 +1,18 @@
-import React, { useEffect, lazy, Suspense } from 'react'
+import React, { useEffect, lazy } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { logout, setUserData } from '../redux/authSlice'
+import { setUserData } from '../redux/authSlice'
 import { Box, useBreakpointValue } from '@chakra-ui/react'
 import { isAuthorized } from '../utility/common'
-import { getClusters, getMonitoredData } from '../redux/clusterSlice'
 import { setIsMobile, setIsTablet, setIsDesktop } from '../redux/commonSlice'
-import { AppSettings } from '../AppSettings'
 const Navbar = lazy(() => import('../components/Navbar'))
 
 function PageContainer({ children }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
-  const styles = {
-    container: {
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-      width: '100%'
-    }
-  }
 
   const {
-    common: { theme },
+    common: { theme, isDesktop },
     auth: { isLogged, user }
   } = useSelector((state) => state)
 
@@ -32,6 +22,19 @@ function PageContainer({ children }) {
     md: 'tablet',
     lg: 'desktop'
   })
+
+  const styles = {
+    container: {
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      width: '100%'
+    },
+    pageContent: {
+      zIndex: 1,
+      marginTop: isDesktop ? '74px' : '0'
+    }
+  }
 
   useEffect(() => {
     if (isAuthorized() && user === null) {
@@ -64,7 +67,7 @@ function PageContainer({ children }) {
   return (
     <Box sx={styles.container}>
       <Navbar username={user?.username} theme={theme} />
-      {children}
+      <Box sx={styles.pageContent}>{children}</Box>
     </Box>
   )
 }

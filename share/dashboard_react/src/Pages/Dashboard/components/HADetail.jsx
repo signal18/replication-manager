@@ -1,19 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import Card from '../../../components/Card'
-import {
-  Box,
-  Button,
-  Grid,
-  GridItem,
-  Modal,
-  ModalCloseButton,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  ModalOverlay,
-  Spinner,
-  Text
-} from '@chakra-ui/react'
+import { Box, Grid, GridItem, Text } from '@chakra-ui/react'
 import TagPill from '../../../components/TagPill'
 import { useDispatch, useSelector } from 'react-redux'
 import TableType1 from '../../../components/TableType1'
