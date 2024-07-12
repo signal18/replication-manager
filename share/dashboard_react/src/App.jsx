@@ -2,12 +2,14 @@ import React, { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import Cluster from './Pages/Cluster'
+import ToastManager from './components/ToastManager'
 const Login = lazy(() => import('./Pages/Login'))
 const Home = lazy(() => import('./Pages/Home'))
 
 function App() {
   return (
     <BrowserRouter>
+      <ToastManager />
       <Routes>
         <Route
           path={'/'}
