@@ -21,12 +21,11 @@ function Card({
   } = useSelector((state) => state)
   const { colorMode } = useColorMode()
 
-//   const blink = keyframes`
-//   0% { opacity: 1;}
-//   50% { opacity: 0; }
-//   100% { opacity: 1; }
-// `
-
+  //   const blink = keyframes`
+  //   0% { opacity: 1;}
+  //   50% { opacity: 0; }
+  //   100% { opacity: 1; }
+  // `
 
   const blink = keyframes`
    0% { background-color: red; }
