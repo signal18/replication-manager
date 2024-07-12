@@ -63,7 +63,7 @@ function RefreshCounter(props) {
       </Tooltip>
       {isPaused ? (
         <Tooltip label='Start auto reload' aria-label='A tooltip'>
-          <IconButton onClick={playInterval} icon={<HiPlay fontSize='1.5rem' />} size='sm' />
+          <IconButton onClick={playInterval} icon={<HiPlay />} size='sm' />
         </Tooltip>
       ) : (
         <Tooltip label='Pause auto reload' aria-label='A tooltip'>

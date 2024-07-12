@@ -19,13 +19,17 @@ function TabItems({ variant = 'enclosed', options, tabContents }) {
   return (
     <Tabs variant={variant} size='lg'>
       <TabList sx={styles.tabList}>
-        {options.map((option) => (
-          <Tab sx={styles.tab}>{option}</Tab>
+        {options.map((option, index) => (
+          <Tab key={index} sx={styles.tab}>
+            {option}
+          </Tab>
         ))}
       </TabList>
       <TabPanels>
-        {tabContents.map((content) => (
-          <TabPanel p='0'>{content}</TabPanel>
+        {tabContents.map((content, index) => (
+          <TabPanel key={index} px='0' py='4'>
+            {content}
+          </TabPanel>
         ))}
       </TabPanels>
     </Tabs>

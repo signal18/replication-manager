@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useRef, useState, Suspense } from 'react'
+import React, { useEffect, useState, Suspense } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { gitLogin, login } from '../redux/authSlice'
@@ -6,27 +6,18 @@ import {
   Box,
   Button,
   Container,
-  Divider,
   FormControl,
   FormLabel,
   FormErrorMessage,
-  HStack,
   Heading,
-  IconButton,
-  Image,
   Input,
-  InputGroup,
-  InputRightElement,
   Stack,
   Text,
-  background,
-  useDisclosure,
-  useMergeRefs,
   useTheme
 } from '@chakra-ui/react'
 import PageContainer from './PageContainer'
-import { HiEye, HiEyeOff } from 'react-icons/hi'
 import { isAuthorized } from '../utility/common'
+import PasswordControl from '../components/PasswordControl'
 
 function Login(props) {
   const [username, setUsername] = useState('')
@@ -39,7 +30,6 @@ function Login(props) {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const {
-    common: { theme: currentTheme },
     auth: { isLogged, loading, user, error }
   } = useSelector((state) => state)
 
@@ -85,11 +75,9 @@ function Login(props) {
   }
 
   const onButtonClick = () => {
-    // Set initial error values to empty
     setUsernameError('')
     setPasswordError('')
 
-    // Check if the user has entered both fields correctly
     if ('' === username) {
       setUsernameError('Please enter your username')
       return
@@ -101,8 +89,6 @@ function Login(props) {
     }
 
     logIn()
-
-    // Authentication calls will be made here...
   }
 
   const logIn = () => {
@@ -137,7 +123,7 @@ function Login(props) {
                     <Input id='username' type='text' value={username} onChange={(e) => setUsername(e.target.value)} />
                     <FormErrorMessage sx={styles.errorMessage}>{usernameError}</FormErrorMessage>
                   </FormControl>
-                  <PasswordField
+                  <PasswordControl
                     passwordError={passwordError}
                     onChange={(e) => setPassword(e.target.value)}
                     styles={styles}
@@ -163,44 +149,3 @@ function Login(props) {
 }
 
 export default Login
-
-const PasswordField = forwardRef((props, ref) => {
-  const { isOpen, onToggle } = useDisclosure()
-  const inputRef = useRef(null)
-
-  const mergeRef = useMergeRefs(inputRef, ref)
-  const onClickReveal = () => {
-    onToggle()
-    if (inputRef.current) {
-      inputRef.current.focus({ preventScroll: true })
-    }
-  }
-
-  return (
-    <FormControl isInvalid={props.passwordError}>
-      <FormLabel htmlFor='password'>Password</FormLabel>
-      <InputGroup>
-        <InputRightElement>
-          <IconButton
-            sx={props.styles.revealButton}
-            variant='text'
-            aria-label={isOpen ? 'Mask password' : 'Reveal password'}
-            icon={isOpen ? <HiEyeOff /> : <HiEye />}
-            onClick={onClickReveal}
-          />
-        </InputRightElement>
-        <Input
-          id='password'
-          ref={mergeRef}
-          name='password'
-          onChange={props.onChange}
-          type={isOpen ? 'text' : 'password'}
-          autoComplete='current-password'
-          required
-          {...props}
-        />
-      </InputGroup>
-      <FormErrorMessage sx={props.styles.errorMessage}>{props.passwordError}</FormErrorMessage>
-    </FormControl>
-  )
-})
