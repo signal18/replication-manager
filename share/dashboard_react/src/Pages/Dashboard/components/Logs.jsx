@@ -1,44 +1,56 @@
 import React from 'react'
 import TagPill from '../../../components/TagPill'
+import { Box, Code } from '@chakra-ui/react'
+import { useSelector } from 'react-redux'
 
 function Logs({ logs }) {
+  const {
+    common: { theme }
+  } = useSelector((state) => state)
   const styles = {
     table: {
       width: '100%',
-      borderCollapse: 'collapse',
-      maxHeight: '300px',
-      overFlowY: 'auto'
+      borderCollapse: 'collapse'
+    },
+    tr: {
+      borderBottom: '1px solid',
+      borderColor: theme === 'light' ? '#E9E9E9' : ''
     },
     td: {
-      border: '1px solid black',
-      padding: '8px',
-      textAlign: 'left'
+      paddingTop: '3px',
+      paddingBottom: '3px'
     },
-    levels: {
-      info: { color: 'blue' },
-      state: { color: 'orange' },
-      warn: { color: 'red' },
-      start: { color: 'green' }
-    }
+    timestamp: {
+      width: '200px'
+    },
+    text: {}
   }
 
   return (
-    <table style={styles.table}>
-      {logs?.map((log) => {
-        if (!log.timestamp) {
-          return null
-        }
-        const levelColor =
-          log.level === 'INFO' ? 'blue' : log.level === 'WARN' ? 'orange' : log.level === 'ERROR' ? 'red' : 'gray'
-        return (
-          <tr>
-            <td style={styles.timestamp}>{log.timestamp}</td>
-            <TagPill text={log.level} colorScheme={levelColor} />
-            <td style={styles.text}>{log.text}</td>
-          </tr>
-        )
-      })}
-    </table>
+    <Box w='100%' maxH='500px' overflow='auto'>
+      <table style={styles.table}>
+        {logs?.map((log, index) => {
+          if (!log.timestamp) {
+            return null
+          }
+          const levelColor =
+            log.level === 'INFO' ? 'blue' : log.level === 'WARN' ? 'orange' : log.level === 'ERROR' ? 'red' : 'gray'
+          return (
+            <tr style={styles.tr}>
+              <td style={{ ...styles.td, ...styles.timestamp }}>
+                <Code bg='transparent'>{log.timestamp}</Code>{' '}
+              </td>
+              <td style={styles.td}>
+                <TagPill text={log.level} colorScheme={levelColor} />
+              </td>
+              <td style={{ ...styles.td, ...styles.text }}>
+                <Code bg='transparent'>{log.text}</Code>
+              </td>
+            </tr>
+          )
+        })}
+      </table>
+    </Box>
   )
 }
 
