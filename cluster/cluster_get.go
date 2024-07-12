@@ -73,6 +73,13 @@ func (cluster *Cluster) GetMysqlDumpPath() string {
 
 func (cluster *Cluster) GetMyDumperPath() string {
 	if cluster.Conf.BackupMyDumperPath == "" {
+		//if mysqldump installed
+		if path, err := exec.Command("which", "mydumper").Output(); err == nil {
+			strpath := strings.TrimRight(string(path), "\r\n")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Using from os package: %s\n", strpath)
+			return strpath
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Installed mydumper not found, using from repman embed.")
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mydumper"
 	}
 	return cluster.Conf.BackupMyDumperPath
@@ -80,6 +87,13 @@ func (cluster *Cluster) GetMyDumperPath() string {
 
 func (cluster *Cluster) GetMyLoaderPath() string {
 	if cluster.Conf.BackupMyDumperPath == "" {
+		//if mysqldump installed
+		if path, err := exec.Command("which", "myloader").Output(); err == nil {
+			strpath := strings.TrimRight(string(path), "\r\n")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Using from os package: %s\n", strpath)
+			return strpath
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Installed myloader not found, using from repman embed.")
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/myloader"
 	}
 	return cluster.Conf.BackupMyLoaderPath
