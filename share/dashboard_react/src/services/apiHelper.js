@@ -20,12 +20,27 @@ const getContentType = (type) => {
   return {}
 }
 
-export function getRequest(apiUrl, params, authValue = 1) {
-  return fetch(`/api/${apiUrl}`, {
+export async function getRequest(apiUrl, params, authValue = 1) {
+  const response = await fetch(`/api/${apiUrl}`, {
     method: 'GET',
     headers: authHeader(authValue),
     ...(params ? { body: JSON.stringify(params) } : {})
-  }).then((response) => response.json())
+  })
+  const contentType = response.headers.get('Content-Type')
+  let data = null
+  if (contentType && contentType.includes('application/json')) {
+    data = await response.json()
+  }
+  return {
+    data,
+    status: response.status
+  }
+
+  // return fetch(`/api/${apiUrl}`, {
+  //   method: 'GET',
+  //   headers: authHeader(authValue),
+  //   ...(params ? { body: JSON.stringify(params) } : {})
+  // }).then((response) => response.json())
 }
 
 export function getRequestAll(urls, params, authValue = 1) {

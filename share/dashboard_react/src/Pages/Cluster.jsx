@@ -5,22 +5,34 @@ import { Box } from '@chakra-ui/react'
 import BackLink from '../components/BackLink'
 import { useDispatch, useSelector } from 'react-redux'
 import Dashboard from './Dashboard'
-import { getClusterAlerts, getClusterData, getClusterMaster } from '../redux/clusterSlice'
+import { getClusterAlerts, getClusterData, getClusterMaster, setRefreshInterval } from '../redux/clusterSlice'
+import { useParams, useSearchParams } from 'react-router-dom'
 
 function Cluster(props) {
   const dispatch = useDispatch()
+  const queryParams = useParams()
+  const clusterName = queryParams?.name
+
   const {
     common: { theme },
-    cluster: { selectedCluster, refreshInterval }
+    cluster: { refreshInterval, clusterData }
   } = useSelector((state) => state)
 
   useEffect(() => {
+    callServices()
+  }, [])
+
+  useEffect(() => {
     let intervalId = 0
-    if (refreshInterval > 0) {
+    let interval = localStorage.getItem('refresh_interval')
+      ? parseInt(localStorage.getItem('refresh_interval'))
+      : refreshInterval || AppSettings.DEFAULT_INTERVAL
+
+    if (interval > 0) {
       callServices()
       intervalId = setInterval(() => {
         callServices()
-      }, refreshInterval * 1000)
+      }, interval * 1000)
     }
     return () => {
       clearInterval(intervalId)
@@ -28,10 +40,10 @@ function Cluster(props) {
   }, [refreshInterval])
 
   const callServices = () => {
-    if (selectedCluster) {
-      dispatch(getClusterData({ clusterName: selectedCluster.name }))
-      dispatch(getClusterAlerts({ clusterName: selectedCluster.name }))
-      dispatch(getClusterMaster({ clusterName: selectedCluster.name }))
+    if (clusterName) {
+      dispatch(getClusterData({ clusterName }))
+      dispatch(getClusterAlerts({ clusterName }))
+      dispatch(getClusterMaster({ clusterName }))
     }
   }
 
@@ -50,7 +62,7 @@ function Cluster(props) {
             'Queryrules',
             'Shards'
           ]}
-          tabContents={[<Dashboard selectedCluster={selectedCluster} theme={theme} />]}
+          tabContents={[<Dashboard theme={theme} selectedCluster={clusterData} />]}
         />
       </Box>
     </PageContainer>

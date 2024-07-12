@@ -1,18 +1,18 @@
-import { Box, HStack, Switch } from '@chakra-ui/react'
+import { Box, Button, HStack, Spinner, Switch } from '@chakra-ui/react'
 import React from 'react'
 import { useSelector } from 'react-redux'
 import MenuOptions from './MenuOptions'
-import { setIsDesktop } from '../redux/commonSlice'
 
-function Card({ header, body, showDashboardOptions, width, showSwitch, onSwitchChange }) {
+function Card({ header, body, headerAction, menuOptions, buttonText, isLoading, loadingText, onClick, width }) {
   const {
     common: { theme, isDesktop }
   } = useSelector((state) => state)
 
   const styles = {
     card: {
-      boxShadow: theme === 'light' ? 'rgba(0, 0, 0, 0.16) 0px 1px 4px' : 'rgba(255, 255, 255, 0.16) 1px 0px 7px 0px',
-      borderRadius: '16px'
+      borderRadius: '16px',
+      border: '1px solid',
+      borderColor: theme === 'light' ? 'blue.100' : 'blue.800'
     },
     heading: {
       textAlign: 'center',
@@ -24,17 +24,23 @@ function Card({ header, body, showDashboardOptions, width, showSwitch, onSwitchC
       fontWeight: 'bold'
     }
   }
+
   return (
     <Box sx={styles.card} w={width}>
       <HStack size={'sm'} sx={styles.heading}>
-        {showSwitch && <Switch colorScheme='blue' onChange={onSwitchChange} />}
-        {showDashboardOptions && (
+        {headerAction === 'menu' && (
           <MenuOptions
             placement='right-end'
+            options={menuOptions}
             subMenuPlacement={isDesktop ? 'right-end' : 'bottom'}
-            showDashboardOptions={showDashboardOptions}
           />
         )}
+        {headerAction === 'button' && (
+          <Button variant='outline' size='sm' onClick={onClick} isLoading={isLoading} loadingText={loadingText}>
+            {buttonText}
+          </Button>
+        )}
+        {headerAction !== 'button' && isLoading && <Spinner label={loadingText} />}
         {header}
       </HStack>
       {body}
