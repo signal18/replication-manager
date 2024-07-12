@@ -23,11 +23,10 @@ function Cluster(props) {
   }, [])
 
   useEffect(() => {
-    let intervalId = 0
     let interval = localStorage.getItem('refresh_interval')
       ? parseInt(localStorage.getItem('refresh_interval'))
       : refreshInterval || AppSettings.DEFAULT_INTERVAL
-
+    let intervalId = 0
     if (interval > 0) {
       callServices()
       intervalId = setInterval(() => {

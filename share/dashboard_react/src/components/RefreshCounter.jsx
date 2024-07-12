@@ -14,7 +14,7 @@ import { getRefreshInterval } from '../utility/common'
 import { AppSettings } from '../AppSettings'
 
 function RefreshCounter(props) {
-  const defaultSeconds = 4
+  const defaultSeconds = getRefreshInterval() || AppSettings.DEFAULT_INTERVAL
   const inputRef = useRef(null)
   const [seconds, setSeconds] = useState(defaultSeconds)
   const [isPaused, setIsPaused] = useState(false)
@@ -22,7 +22,9 @@ function RefreshCounter(props) {
 
   useEffect(() => {
     const currentInterval = getRefreshInterval()
+
     if (!currentInterval) {
+      setSeconds(currentInterval)
       dispatch(setRefreshInterval({ interval: AppSettings.DEFAULT_INTERVAL }))
     }
   }, [])
@@ -38,7 +40,7 @@ function RefreshCounter(props) {
 
   const { getInputProps, getIncrementButtonProps, getDecrementButtonProps } = useNumberInput({
     step: 1,
-    defaultValue: refreshInterval || 4,
+    defaultValue: seconds,
     min: 2,
     max: 120,
     onChange: (valueAsString, valueAsNumber) => handleCountChange(valueAsString, valueAsNumber)

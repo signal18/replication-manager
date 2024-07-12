@@ -1,4 +1,4 @@
-import { Box, Flex, Image, Button, Spacer, Text, HStack, useColorMode, IconButton } from '@chakra-ui/react'
+import { Box, Flex, Image, Button, Spacer, Text, HStack, useColorMode, IconButton, background } from '@chakra-ui/react'
 import React, { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../redux/authSlice'
@@ -6,6 +6,7 @@ import ThemeIcon from './ThemeIcon'
 import RefreshCounter from './RefreshCounter'
 import { isAuthorized } from '../utility/common'
 import { Link } from 'react-router-dom'
+import { useTheme } from '@emotion/react'
 
 function Navbar({ username, theme }) {
   const dispatch = useDispatch()
@@ -13,9 +14,15 @@ function Navbar({ username, theme }) {
     common: { isMobile, isTablet, isDesktop }
   } = useSelector((state) => state)
 
+  const currentTheme = useTheme()
+
   const styles = {
     navbarContainer: {
-      boxShadow: theme === 'dark' ? 'none' : '0px -1px 8px #BFC1CB'
+      boxShadow: theme === 'dark' ? 'none' : '0px -1px 8px #BFC1CB',
+      position: 'fixed',
+      zIndex: 2,
+      width: '100%',
+      background: theme === 'light' ? currentTheme.colors.primary.light : currentTheme.colors.primary.dark
     },
     logo: {
       bg: '#eff2fe',
@@ -60,7 +67,7 @@ function Navbar({ username, theme }) {
         </HStack>
       </Flex>
       {isAuthorized() && !isDesktop && (
-        <Box mx='auto' p='16px'>
+        <Box mx='auto' p='16px' marginTop='80px'>
           <RefreshCounter />
         </Box>
       )}
