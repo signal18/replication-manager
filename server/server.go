@@ -112,6 +112,7 @@ type ReplicationManager struct {
 	v3Config                                         Repmanv3Config                 `json:"-"`
 	cloud18CheckSum                                  hash.Hash                      `json:"-"`
 	clog                                             *clog.Logger                   `json:"-"`
+	MDevIssues                                       *config.MDevIssueMap
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -1268,7 +1269,6 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 		if v != nil {
 			clustImmuableMap[f] = v
 		}
-
 	}
 
 	//set the default config
@@ -1423,6 +1423,16 @@ func (repman *ReplicationManager) InitRestic() error {
 	return nil
 }
 
+func (repman *ReplicationManager) InitMDevIssues() error {
+	repman.MDevIssues = config.NewMDevIssueMap()
+	filename := repman.Conf.WorkingDir + "/mdev.json"
+	//Only for premium users
+	// if repman.Conf.Cloud18 {
+	repman.MDevIssues.MDevLoadJSONFile(filename)
+	// }
+	return nil
+}
+
 func (repman *ReplicationManager) Run() error {
 	var err error
 
@@ -1441,7 +1451,6 @@ func (repman *ReplicationManager) Run() error {
 			log.Fatal(err)
 		}
 		pprof.StartCPUProfile(fcpupprof)
-
 	}
 
 	repman.Clusters = make(map[string]*cluster.Cluster)
