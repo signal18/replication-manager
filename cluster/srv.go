@@ -40,152 +40,152 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
-	Id                          string                       `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
-	Name                        string                       `json:"name"`
-	Domain                      string                       `json:"domain"` // Use to store orchestrator CNI domain .<cluster_name>.svc.<cluster_name>
-	ServiceName                 string                       `json:"serviceName"`
-	SourceClusterName           string                       `json:"sourceClusterName"` //Used to idenfied server added from other clusters linked with multi source
-	Conn                        *sqlx.DB                     `json:"-"`
-	User                        string                       `json:"user"`
-	Pass                        string                       `json:"-"`
-	URL                         string                       `json:"url"`
-	DSN                         string                       `json:"-"`
-	Host                        string                       `json:"host"`
-	Port                        string                       `json:"port"`
-	TunnelPort                  string                       `json:"tunnelPort"`
-	IP                          string                       `json:"ip"`
-	Strict                      string                       `json:"strict"`
-	ServerID                    uint64                       `json:"serverId"`
-	HashUUID                    uint64                       `json:"hashUUID"`
-	DomainID                    uint64                       `json:"domainId"`
-	GTIDBinlogPos               *gtid.List                   `json:"gtidBinlogPos"`
-	CurrentGtid                 *gtid.List                   `json:"currentGtid"`
-	SlaveGtid                   *gtid.List                   `json:"slaveGtid"`
-	IOGtid                      *gtid.List                   `json:"ioGtid"`
-	FailoverIOGtid              *gtid.List                   `json:"failoverIoGtid"`
-	GTIDExecuted                string                       `json:"gtidExecuted"`
-	ReadOnly                    string                       `json:"readOnly"`
-	State                       string                       `json:"state"`
-	PrevState                   string                       `json:"prevState"`
-	FailCount                   int                          `json:"failCount"`
-	FailSuspectHeartbeat        int64                        `json:"failSuspectHeartbeat"`
-	ClusterGroup                *Cluster                     `json:"-"` //avoid recusive json
-	BinaryLogFile               string                       `json:"binaryLogFile"`
-	BinaryLogFilePrevious       string                       `json:"binaryLogFilePrevious"`
-	BinaryLogPos                string                       `json:"binaryLogPos"`
-	FailoverMasterLogFile       string                       `json:"failoverMasterLogFile"`
-	FailoverMasterLogPos        string                       `json:"failoverMasterLogPos"`
-	FailoverSemiSyncSlaveStatus bool                         `json:"failoverSemiSyncSlaveStatus"`
-	Process                     *os.Process                  `json:"process"`
-	SemiSyncMasterStatus        bool                         `json:"semiSyncMasterStatus"`
-	SemiSyncSlaveStatus         bool                         `json:"semiSyncSlaveStatus"`
-	HaveHealthyReplica          bool                         `json:"HaveHealthyReplica"`
-	HaveEventScheduler          bool                         `json:"eventScheduler"`
-	HaveSemiSync                bool                         `json:"haveSemiSync"`
-	HaveInnodbTrxCommit         bool                         `json:"haveInnodbTrxCommit"`
-	HaveChecksum                bool                         `json:"haveInnodbChecksum"`
-	HaveLogGeneral              bool                         `json:"haveLogGeneral"`
-	HaveBinlog                  bool                         `json:"haveBinlog"`
-	HaveBinlogSync              bool                         `json:"haveBinLogSync"`
-	HaveBinlogRow               bool                         `json:"haveBinlogRow"`
-	HaveBinlogAnnotate          bool                         `json:"haveBinlogAnnotate"`
-	HaveBinlogSlowqueries       bool                         `json:"haveBinlogSlowqueries"`
-	HaveBinlogCompress          bool                         `json:"haveBinlogCompress"`
-	HaveBinlogSlaveUpdates      bool                         `json:"HaveBinlogSlaveUpdates"`
-	HaveGtidStrictMode          bool                         `json:"haveGtidStrictMode"`
-	HaveMySQLGTID               bool                         `json:"haveMysqlGtid"`
-	HaveMariaDBGTID             bool                         `json:"haveMariadbGtid"`
-	HaveSlowQueryLog            bool                         `json:"haveSlowQueryLog"`
-	HavePFSSlowQueryLog         bool                         `json:"havePFSSlowQueryLog"`
-	HaveMetaDataLocksLog        bool                         `json:"haveMetaDataLocksLog"`
-	HaveQueryResponseTimeLog    bool                         `json:"haveQueryResponseTimeLog"`
-	HaveDiskMonitor             bool                         `json:"haveDiskMonitor"`
-	HaveSQLErrorLog             bool                         `json:"haveSQLErrorLog"`
-	HavePFS                     bool                         `json:"havePFS"`
-	HaveWsrep                   bool                         `json:"haveWsrep"`
-	HaveReadOnly                bool                         `json:"haveReadOnly"`
-	HaveNoMasterOnStart         bool                         `json:"haveNoMasterOnStart"`
-	HaveSlaveIdempotent         bool                         `json:"haveSlaveIdempotent"`
-	HaveSlaveOptimistic         bool                         `json:"haveSlaveOptimistic "`
-	HaveSlaveSerialized         bool                         `json:"haveSlaveSerialized"`
-	HaveSlaveAggressive         bool                         `json:"haveSlaveAggressive"`
-	HaveSlaveMinimal            bool                         `json:"haveSlaveMinimal"`
-	HaveSlaveConservative       bool                         `json:"haveSlaveConservative"`
-	IsWsrepSync                 bool                         `json:"isWsrepSync"`
-	IsWsrepDonor                bool                         `json:"isWsrepDonor"`
-	IsWsrepPrimary              bool                         `json:"isWsrepPrimary"`
-	IsMaxscale                  bool                         `json:"isMaxscale"`
-	IsRelay                     bool                         `json:"isRelay"`
-	IsSlave                     bool                         `json:"isSlave"`
-	IsGroupReplicationSlave     bool                         `json:"isGroupReplicationSlave"`
-	IsGroupReplicationMaster    bool                         `json:"isGroupReplicationMaster"`
-	IsVirtualMaster             bool                         `json:"isVirtualMaster"`
-	IsMaintenance               bool                         `json:"isMaintenance"`
-	IsCompute                   bool                         `json:"isCompute"` //Used to idenfied spider compute nide
-	IsDelayed                   bool                         `json:"isDelayed"`
-	IsFull                      bool                         `json:"isFull"`
-	IsConfigGen                 bool                         `json:"isConfigGen"`
-	Ignored                     bool                         `json:"ignored"`
-	IgnoredRO                   bool                         `json:"ignoredRO"`
-	Prefered                    bool                         `json:"prefered"`
-	PreferedBackup              bool                         `json:"preferedBackup"`
-	InCaptureMode               bool                         `json:"inCaptureMode"`
-	LongQueryTimeSaved          string                       `json:"longQueryTimeSaved"`
-	LongQueryTime               string                       `json:"longQueryTime"`
-	LogOutput                   string                       `json:"logOutput"`
-	SlowQueryLog                string                       `json:"slowQueryLog"`
-	SlowQueryCapture            bool                         `json:"slowQueryCapture"`
-	BinlogDumpThreads           int                          `json:"binlogDumpThreads"`
-	MxsVersion                  int                          `json:"maxscaleVersion"`
-	MxsHaveGtid                 bool                         `json:"maxscaleHaveGtid"`
-	MxsServerName               string                       `json:"maxscaleServerName"` //Unique server Name in maxscale conf
-	MxsServerStatus             string                       `json:"maxscaleServerStatus"`
-	ProxysqlHostgroup           string                       `json:"proxysqlHostgroup"`
-	RelayLogSize                uint64                       `json:"relayLogSize"`
-	Replications                []dbhelper.SlaveStatus       `json:"replications"`
-	LastSeenReplications        []dbhelper.SlaveStatus       `json:"lastSeenReplications"`
-	MasterStatus                dbhelper.MasterStatus        `json:"masterStatus"`
-	SlaveStatus                 *dbhelper.SlaveStatus        `json:"-"`
-	ReplicationSourceName       string                       `json:"replicationSourceName"`
-	DBVersion                   *dbhelper.MySQLVersion       `json:"dbVersion"`
-	Version                     int                          `json:"-"`
-	QPS                         int64                        `json:"qps"`
-	ReplicationHealth           string                       `json:"replicationHealth"`
-	EventStatus                 []dbhelper.Event             `json:"eventStatus"`
-	FullProcessList             []dbhelper.Processlist       `json:"-"`
-	Variables                   map[string]string            `json:"-"`
-	EngineInnoDB                map[string]string            `json:"engineInnodb"`
-	ErrorLog                    s18log.HttpLog               `json:"errorLog"`
-	SlowLog                     s18log.SlowLog               `json:"-"`
-	Status                      map[string]string            `json:"-"`
-	PrevStatus                  map[string]string            `json:"-"`
-	PFSQueries                  map[string]dbhelper.PFSQuery `json:"-"` //PFS queries
-	SlowPFSQueries              map[string]dbhelper.PFSQuery `json:"-"` //PFS queries from slow
-	DictTables                  map[string]v3.Table          `json:"-"`
-	Tables                      []v3.Table                   `json:"-"`
-	Disks                       []dbhelper.Disk              `json:"-"`
-	Plugins                     map[string]dbhelper.Plugin   `json:"-"`
-	Users                       map[string]dbhelper.Grant    `json:"-"`
-	MetaDataLocks               []dbhelper.MetaDataLock      `json:"-"`
-	ErrorLogTailer              *tail.Tail                   `json:"-"`
-	SlowLogTailer               *tail.Tail                   `json:"-"`
-	MonitorTime                 int64                        `json:"-"`
-	PrevMonitorTime             int64                        `json:"-"`
-	maxConn                     string                       `json:"maxConn"` // used to back max connection for failover
-	Datadir                     string                       `json:"datadir"`
-	SlapOSDatadir               string                       `json:"slaposDatadir"`
-	PostgressDB                 string                       `json:"postgressDB"`
-	TLSConfigUsed               string                       `json:"tlsConfigUsed"` //used to track TLS config during key rotation
-	SSTPort                     string                       `json:"sstPort"`       //used to send data to dbjobs
-	Agent                       string                       `json:"agent"`         //used to provision service in orchestrator
-	BinaryLogFiles              map[string]uint              `json:"binaryLogFiles"`
-	BinaryLogFileOldest         string                       `json:"binaryLogFileOldest"`
-	BinaryLogOldestTimestamp    int64                        `json:"binaryLogOldestTimestamp"`
-	BinaryLogPurgeBefore        int64                        `json:"binaryLogPurgeBefore"`
-	MaxSlowQueryTimestamp       int64                        `json:"maxSlowQueryTimestamp"`
-	WorkLoad                    map[string]WorkLoad          `json:"workLoad"`
-	DelayStat                   *ServerDelayStat             `json:"delayStat"`
-	SlaveVariables              SlaveVariables               `json:"slaveVariables"`
+	Id                          string                  `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
+	Name                        string                  `json:"name"`
+	Domain                      string                  `json:"domain"` // Use to store orchestrator CNI domain .<cluster_name>.svc.<cluster_name>
+	ServiceName                 string                  `json:"serviceName"`
+	SourceClusterName           string                  `json:"sourceClusterName"` //Used to idenfied server added from other clusters linked with multi source
+	Conn                        *sqlx.DB                `json:"-"`
+	User                        string                  `json:"user"`
+	Pass                        string                  `json:"-"`
+	URL                         string                  `json:"url"`
+	DSN                         string                  `json:"-"`
+	Host                        string                  `json:"host"`
+	Port                        string                  `json:"port"`
+	TunnelPort                  string                  `json:"tunnelPort"`
+	IP                          string                  `json:"ip"`
+	Strict                      string                  `json:"strict"`
+	ServerID                    uint64                  `json:"serverId"`
+	HashUUID                    uint64                  `json:"hashUUID"`
+	DomainID                    uint64                  `json:"domainId"`
+	GTIDBinlogPos               *gtid.List              `json:"gtidBinlogPos"`
+	CurrentGtid                 *gtid.List              `json:"currentGtid"`
+	SlaveGtid                   *gtid.List              `json:"slaveGtid"`
+	IOGtid                      *gtid.List              `json:"ioGtid"`
+	FailoverIOGtid              *gtid.List              `json:"failoverIoGtid"`
+	GTIDExecuted                string                  `json:"gtidExecuted"`
+	ReadOnly                    string                  `json:"readOnly"`
+	State                       string                  `json:"state"`
+	PrevState                   string                  `json:"prevState"`
+	FailCount                   int                     `json:"failCount"`
+	FailSuspectHeartbeat        int64                   `json:"failSuspectHeartbeat"`
+	ClusterGroup                *Cluster                `json:"-"` //avoid recusive json
+	BinaryLogFile               string                  `json:"binaryLogFile"`
+	BinaryLogFilePrevious       string                  `json:"binaryLogFilePrevious"`
+	BinaryLogPos                string                  `json:"binaryLogPos"`
+	FailoverMasterLogFile       string                  `json:"failoverMasterLogFile"`
+	FailoverMasterLogPos        string                  `json:"failoverMasterLogPos"`
+	FailoverSemiSyncSlaveStatus bool                    `json:"failoverSemiSyncSlaveStatus"`
+	Process                     *os.Process             `json:"process"`
+	SemiSyncMasterStatus        bool                    `json:"semiSyncMasterStatus"`
+	SemiSyncSlaveStatus         bool                    `json:"semiSyncSlaveStatus"`
+	HaveHealthyReplica          bool                    `json:"HaveHealthyReplica"`
+	HaveEventScheduler          bool                    `json:"eventScheduler"`
+	HaveSemiSync                bool                    `json:"haveSemiSync"`
+	HaveInnodbTrxCommit         bool                    `json:"haveInnodbTrxCommit"`
+	HaveChecksum                bool                    `json:"haveInnodbChecksum"`
+	HaveLogGeneral              bool                    `json:"haveLogGeneral"`
+	HaveBinlog                  bool                    `json:"haveBinlog"`
+	HaveBinlogSync              bool                    `json:"haveBinLogSync"`
+	HaveBinlogRow               bool                    `json:"haveBinlogRow"`
+	HaveBinlogAnnotate          bool                    `json:"haveBinlogAnnotate"`
+	HaveBinlogSlowqueries       bool                    `json:"haveBinlogSlowqueries"`
+	HaveBinlogCompress          bool                    `json:"haveBinlogCompress"`
+	HaveBinlogSlaveUpdates      bool                    `json:"HaveBinlogSlaveUpdates"`
+	HaveGtidStrictMode          bool                    `json:"haveGtidStrictMode"`
+	HaveMySQLGTID               bool                    `json:"haveMysqlGtid"`
+	HaveMariaDBGTID             bool                    `json:"haveMariadbGtid"`
+	HaveSlowQueryLog            bool                    `json:"haveSlowQueryLog"`
+	HavePFSSlowQueryLog         bool                    `json:"havePFSSlowQueryLog"`
+	HaveMetaDataLocksLog        bool                    `json:"haveMetaDataLocksLog"`
+	HaveQueryResponseTimeLog    bool                    `json:"haveQueryResponseTimeLog"`
+	HaveDiskMonitor             bool                    `json:"haveDiskMonitor"`
+	HaveSQLErrorLog             bool                    `json:"haveSQLErrorLog"`
+	HavePFS                     bool                    `json:"havePFS"`
+	HaveWsrep                   bool                    `json:"haveWsrep"`
+	HaveReadOnly                bool                    `json:"haveReadOnly"`
+	HaveNoMasterOnStart         bool                    `json:"haveNoMasterOnStart"`
+	HaveSlaveIdempotent         bool                    `json:"haveSlaveIdempotent"`
+	HaveSlaveOptimistic         bool                    `json:"haveSlaveOptimistic "`
+	HaveSlaveSerialized         bool                    `json:"haveSlaveSerialized"`
+	HaveSlaveAggressive         bool                    `json:"haveSlaveAggressive"`
+	HaveSlaveMinimal            bool                    `json:"haveSlaveMinimal"`
+	HaveSlaveConservative       bool                    `json:"haveSlaveConservative"`
+	IsWsrepSync                 bool                    `json:"isWsrepSync"`
+	IsWsrepDonor                bool                    `json:"isWsrepDonor"`
+	IsWsrepPrimary              bool                    `json:"isWsrepPrimary"`
+	IsMaxscale                  bool                    `json:"isMaxscale"`
+	IsRelay                     bool                    `json:"isRelay"`
+	IsSlave                     bool                    `json:"isSlave"`
+	IsGroupReplicationSlave     bool                    `json:"isGroupReplicationSlave"`
+	IsGroupReplicationMaster    bool                    `json:"isGroupReplicationMaster"`
+	IsVirtualMaster             bool                    `json:"isVirtualMaster"`
+	IsMaintenance               bool                    `json:"isMaintenance"`
+	IsCompute                   bool                    `json:"isCompute"` //Used to idenfied spider compute nide
+	IsDelayed                   bool                    `json:"isDelayed"`
+	IsFull                      bool                    `json:"isFull"`
+	IsConfigGen                 bool                    `json:"isConfigGen"`
+	Ignored                     bool                    `json:"ignored"`
+	IgnoredRO                   bool                    `json:"ignoredRO"`
+	Prefered                    bool                    `json:"prefered"`
+	PreferedBackup              bool                    `json:"preferedBackup"`
+	InCaptureMode               bool                    `json:"inCaptureMode"`
+	LongQueryTimeSaved          string                  `json:"longQueryTimeSaved"`
+	LongQueryTime               string                  `json:"longQueryTime"`
+	LogOutput                   string                  `json:"logOutput"`
+	SlowQueryLog                string                  `json:"slowQueryLog"`
+	SlowQueryCapture            bool                    `json:"slowQueryCapture"`
+	BinlogDumpThreads           int                     `json:"binlogDumpThreads"`
+	MxsVersion                  int                     `json:"maxscaleVersion"`
+	MxsHaveGtid                 bool                    `json:"maxscaleHaveGtid"`
+	MxsServerName               string                  `json:"maxscaleServerName"` //Unique server Name in maxscale conf
+	MxsServerStatus             string                  `json:"maxscaleServerStatus"`
+	ProxysqlHostgroup           string                  `json:"proxysqlHostgroup"`
+	RelayLogSize                uint64                  `json:"relayLogSize"`
+	Replications                []dbhelper.SlaveStatus  `json:"replications"`
+	LastSeenReplications        []dbhelper.SlaveStatus  `json:"lastSeenReplications"`
+	MasterStatus                dbhelper.MasterStatus   `json:"masterStatus"`
+	SlaveStatus                 *dbhelper.SlaveStatus   `json:"-"`
+	ReplicationSourceName       string                  `json:"replicationSourceName"`
+	DBVersion                   *dbhelper.MySQLVersion  `json:"dbVersion"`
+	Version                     int                     `json:"-"`
+	QPS                         int64                   `json:"qps"`
+	ReplicationHealth           string                  `json:"replicationHealth"`
+	EventStatus                 []dbhelper.Event        `json:"eventStatus"`
+	FullProcessList             []dbhelper.Processlist  `json:"-"`
+	Variables                   *config.StringsMap      `json:"-"`
+	EngineInnoDB                *config.StringsMap      `json:"engineInnodb"`
+	ErrorLog                    s18log.HttpLog          `json:"errorLog"`
+	SlowLog                     s18log.SlowLog          `json:"-"`
+	Status                      *config.StringsMap      `json:"-"`
+	PrevStatus                  *config.StringsMap      `json:"-"`
+	PFSQueries                  *config.PFSQueriesMap   `json:"-"` //PFS queries
+	SlowPFSQueries              *config.PFSQueriesMap   `json:"-"` //PFS queries from slow
+	DictTables                  *config.TablesMap       `json:"-"`
+	Tables                      []v3.Table              `json:"-"`
+	Disks                       []dbhelper.Disk         `json:"-"`
+	Plugins                     *config.PluginsMap      `json:"-"`
+	Users                       *config.GrantsMap       `json:"-"`
+	MetaDataLocks               []dbhelper.MetaDataLock `json:"-"`
+	ErrorLogTailer              *tail.Tail              `json:"-"`
+	SlowLogTailer               *tail.Tail              `json:"-"`
+	MonitorTime                 int64                   `json:"-"`
+	PrevMonitorTime             int64                   `json:"-"`
+	maxConn                     string                  `json:"maxConn"` // used to back max connection for failover
+	Datadir                     string                  `json:"datadir"`
+	SlapOSDatadir               string                  `json:"slaposDatadir"`
+	PostgressDB                 string                  `json:"postgressDB"`
+	TLSConfigUsed               string                  `json:"tlsConfigUsed"` //used to track TLS config during key rotation
+	SSTPort                     string                  `json:"sstPort"`       //used to send data to dbjobs
+	Agent                       string                  `json:"agent"`         //used to provision service in orchestrator
+	BinaryLogFiles              *config.UIntsMap        `json:"binaryLogFiles"`
+	BinaryLogFileOldest         string                  `json:"binaryLogFileOldest"`
+	BinaryLogOldestTimestamp    int64                   `json:"binaryLogOldestTimestamp"`
+	BinaryLogPurgeBefore        int64                   `json:"binaryLogPurgeBefore"`
+	MaxSlowQueryTimestamp       int64                   `json:"maxSlowQueryTimestamp"`
+	WorkLoad                    *config.WorkLoadsMap    `json:"workLoad"`
+	DelayStat                   *ServerDelayStat        `json:"delayStat"`
+	SlaveVariables              SlaveVariables          `json:"slaveVariables"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 	InPurgingBinaryLog          bool
@@ -194,7 +194,6 @@ type ServerMonitor struct {
 	ActiveTasks                 sync.Map
 	BinaryLogDir                string
 	DBDataDir                   string
-	sync.Mutex
 }
 
 type SlaveVariables struct {
@@ -274,6 +273,19 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SetCredential(url, user, pass)
 	server.ReplicationSourceName = cluster.Conf.MasterConn
 
+	// Initiate sync.Map pointers
+	server.Variables = config.NewStringsMap()
+	server.EngineInnoDB = config.NewStringsMap()
+	server.Status = config.NewStringsMap()
+	server.PrevStatus = config.NewStringsMap()
+	server.PFSQueries = config.NewPFSQueriesMap()
+	server.SlowPFSQueries = config.NewPFSQueriesMap()
+	server.DictTables = config.NewTablesMap()
+	server.Plugins = config.NewPluginsMap()
+	server.Users = config.NewGrantsMap()
+	server.BinaryLogFiles = config.NewUIntsMap()
+	server.WorkLoad = config.NewWorkLoadsMap()
+
 	server.HaveSemiSync = true
 	server.HaveInnodbTrxCommit = true
 	server.HaveChecksum = true
@@ -323,10 +335,9 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.DelayStat = new(ServerDelayStat)
 	server.DelayStat.ResetDelayStat()
 
-	server.WorkLoad = make(map[string]WorkLoad)
 	server.CurrentWorkLoad()
-	server.WorkLoad["max"] = server.WorkLoad["current"]
-	server.WorkLoad["average"] = server.WorkLoad["current"]
+	server.WorkLoad.Set("max", server.WorkLoad.Get("current"))
+	server.WorkLoad.Set("average", server.WorkLoad.Get("current"))
 
 	/*if cluster.Conf.MasterSlavePgStream || cluster.Conf.MasterSlavePgLogical {
 		server.Conn, err = sqlx.Open("postgres", server.DSN)
@@ -620,8 +631,6 @@ var start_time time.Time
 
 // Refresh a server object
 func (server *ServerMonitor) Refresh() error {
-	server.Lock()
-	defer server.Unlock()
 	cluster := server.ClusterGroup
 	var err error
 
@@ -664,7 +673,8 @@ func (server *ServerMonitor) Refresh() error {
 		server.DBVersion, logs, err = dbhelper.GetDBVersion(server.Conn)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Could not get database version %s %s", server.URL, err)
 
-		server.Variables, logs, err = dbhelper.GetVariables(server.Conn, server.DBVersion)
+		vars, logs, err := dbhelper.GetVariables(server.Conn, server.DBVersion)
+		server.Variables = config.FromNormalStringMap(server.Variables, vars)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Could not get database variables %s %s", server.URL, err)
 		if err != nil {
 			return nil
@@ -678,11 +688,11 @@ func (server *ServerMonitor) Refresh() error {
 				}
 			}
 			server.HaveEventScheduler = server.HasEventScheduler()
-			server.Strict = server.Variables["GTID_STRICT_MODE"]
-			server.ReadOnly = server.Variables["READ_ONLY"]
-			server.LongQueryTime = server.Variables["LONG_QUERY_TIME"]
-			server.LogOutput = server.Variables["LOG_OUTPUT"]
-			server.SlowQueryLog = server.Variables["SLOW_QUERY_LOG"]
+			server.Strict = server.Variables.Get("GTID_STRICT_MODE")
+			server.ReadOnly = server.Variables.Get("READ_ONLY")
+			server.LongQueryTime = server.Variables.Get("LONG_QUERY_TIME")
+			server.LogOutput = server.Variables.Get("LOG_OUTPUT")
+			server.SlowQueryLog = server.Variables.Get("SLOW_QUERY_LOG")
 			server.HaveReadOnly = server.HasReadOnly()
 			server.HaveSlaveIdempotent = server.HasSlaveIndempotent()
 			server.HaveSlaveOptimistic = server.HasSlaveParallelOptimistic()
@@ -707,15 +717,15 @@ func (server *ServerMonitor) Refresh() error {
 				server.HavePFSSlowQueryLog = server.HasLogPFSSlowQuery()
 			}
 			server.HaveMySQLGTID = server.HasMySQLGTID()
-			server.RelayLogSize, _ = strconv.ParseUint(server.Variables["RELAY_LOG_SPACE_LIMIT"], 10, 64)
+			server.RelayLogSize, _ = strconv.ParseUint(server.Variables.Get("RELAY_LOG_SPACE_LIMIT"), 10, 64)
 			server.SlaveVariables = server.GetSlaveVariables()
 
 			if server.DBVersion.IsMariaDB() {
-				server.GTIDBinlogPos = gtid.NewList(server.Variables["GTID_BINLOG_POS"])
-				server.CurrentGtid = gtid.NewList(server.Variables["GTID_CURRENT_POS"])
-				server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
+				server.GTIDBinlogPos = gtid.NewList(server.Variables.Get("GTID_BINLOG_POS"))
+				server.CurrentGtid = gtid.NewList(server.Variables.Get("GTID_CURRENT_POS"))
+				server.SlaveGtid = gtid.NewList(server.Variables.Get("GTID_SLAVE_POS"))
 
-				sid, err := strconv.ParseUint(server.Variables["GTID_DOMAIN_ID"], 10, 64)
+				sid, err := strconv.ParseUint(server.Variables.Get("GTID_DOMAIN_ID"), 10, 64)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not parse domain_id, reason: %s", err)
 				} else {
@@ -723,16 +733,16 @@ func (server *ServerMonitor) Refresh() error {
 				}
 
 			} else {
-				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables["GTID_EXECUTED"], server.GetCluster().GetCrcTable())
-				server.GTIDExecuted = server.Variables["GTID_EXECUTED"]
+				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables.Get("GTID_EXECUTED"), server.GetCluster().GetCrcTable())
+				server.GTIDExecuted = server.Variables.Get("GTID_EXECUTED")
 				server.CurrentGtid = server.GTIDBinlogPos
-				server.SlaveGtid = gtid.NewList(server.Variables["GTID_SLAVE_POS"])
-				server.HashUUID = crc64.Checksum([]byte(strings.ToUpper(server.Variables["SERVER_UUID"])), server.GetCluster().GetCrcTable())
-				//		fmt.Fprintf(os.Stdout, "gniac2 "+strings.ToUpper(server.Variables["SERVER_UUID"])+" "+strconv.FormatUint(server.HashUUID, 10))
+				server.SlaveGtid = gtid.NewList(server.Variables.Get("GTID_SLAVE_POS"))
+				server.HashUUID = crc64.Checksum([]byte(strings.ToUpper(server.Variables.Get("SERVER_UUID"))), server.GetCluster().GetCrcTable())
+				//		fmt.Fprintf(os.Stdout, "gniac2 "+strings.ToUpper(server.Variables.Get("SERVER_UUID"))+" "+strconv.FormatUint(server.HashUUID, 10))
 			}
 
 			var sid uint64
-			sid, err = strconv.ParseUint(server.Variables["SERVER_ID"], 10, 64)
+			sid, err = strconv.ParseUint(server.Variables.Get("SERVER_ID"), 10, 64)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not parse server_id, reason: %s", err)
 			}
@@ -773,7 +783,8 @@ func (server *ServerMonitor) Refresh() error {
 		} // end not postgress
 
 		// get Users
-		server.Users, logs, err = dbhelper.GetUsers(server.Conn, server.DBVersion)
+		users, logs, err := dbhelper.GetUsers(server.Conn, server.DBVersion)
+		server.Users = config.FromNormalGrantsMap(server.Users, users)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database users %s %s", server.URL, err)
 		if cluster.Conf.MonitorScheduler {
 			server.JobsCheckRunning()
@@ -822,7 +833,8 @@ func (server *ServerMonitor) Refresh() error {
 
 		if cluster.Conf.MonitorInnoDBStatus {
 			// SHOW ENGINE INNODB STATUS
-			server.EngineInnoDB, logs, err = dbhelper.GetEngineInnoDBVariables(server.Conn)
+			engine, logs, err := dbhelper.GetEngineInnoDBVariables(server.Conn)
+			server.EngineInnoDB = config.FromNormalStringMap(server.EngineInnoDB, engine)
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get engine innodb status %s %s", server.URL, err)
 		}
 		go server.GetPFSQueries()
@@ -893,8 +905,9 @@ func (server *ServerMonitor) Refresh() error {
 	if cluster.Conf.MxsBinlogOn && server.IsMaxscale {
 		return nil
 	}
-	server.PrevStatus = server.Status
-	server.Status, logs, _ = dbhelper.GetStatus(server.Conn, server.DBVersion)
+	server.PrevStatus = config.FromStringSyncMap(server.PrevStatus, server.Status)
+	status, logs, _ := dbhelper.GetStatus(server.Conn, server.DBVersion)
+	server.Status = config.FromNormalStringMap(server.Status, status)
 
 	server.HaveSemiSync = server.HasSemiSync()
 	server.SemiSyncMasterStatus = server.IsSemiSyncMaster()
@@ -913,9 +926,10 @@ func (server *ServerMonitor) Refresh() error {
 		}
 	}
 
-	if len(server.PrevStatus) > 0 {
-		qps, _ := strconv.ParseInt(server.Status["QUERIES"], 10, 64)
-		prevqps, _ := strconv.ParseInt(server.PrevStatus["QUERIES"], 10, 64)
+	//Since there is no len within sync.Map we use exists instead
+	if pqps, ok := server.PrevStatus.CheckAndGet("QUERIES"); ok {
+		qps, _ := strconv.ParseInt(server.Status.Get("QUERIES"), 10, 64)
+		prevqps, _ := strconv.ParseInt(pqps, 10, 64)
 		if server.MonitorTime-server.PrevMonitorTime > 0 {
 			server.QPS = (qps - prevqps) / (server.MonitorTime - server.PrevMonitorTime)
 		}
@@ -928,7 +942,8 @@ func (server *ServerMonitor) Refresh() error {
 	if !server.DBVersion.IsPostgreSQL() {
 		if cluster.StateMachine.GetHeartbeats()%60 == 0 {
 			if cluster.Conf.MonitorPlugins {
-				server.Plugins, logs, err = dbhelper.GetPlugins(server.Conn, server.DBVersion)
+				plugins, _, _ := dbhelper.GetPlugins(server.Conn, server.DBVersion)
+				server.Plugins = config.FromNormalPluginsMap(server.Plugins, plugins)
 				server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
 				server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")
 				server.HaveDiskMonitor = server.HasInstallPlugin("DISK")
@@ -1298,7 +1313,7 @@ func (server *ServerMonitor) ExecScriptSQL(queries []string) (error, bool) {
 }
 
 func (server *ServerMonitor) InstallPlugin(name string) error {
-	val, ok := server.Plugins[name]
+	val, ok := server.Plugins.CheckAndGet(name)
 
 	if !ok {
 		return errors.New("Plugin not loaded")
@@ -1310,7 +1325,7 @@ func (server *ServerMonitor) InstallPlugin(name string) error {
 				return err
 			}
 			val.Status = "ACTIVE"
-			server.Plugins[name] = val
+			server.Plugins.Set(name, val)
 		} else {
 			return errors.New("Already Install Plugin")
 		}
@@ -1319,7 +1334,7 @@ func (server *ServerMonitor) InstallPlugin(name string) error {
 }
 
 func (server *ServerMonitor) UnInstallPlugin(name string) error {
-	val, ok := server.Plugins[name]
+	val, ok := server.Plugins.CheckAndGet(name)
 	if !ok {
 		return errors.New("Plugin not loaded")
 	} else {
@@ -1330,7 +1345,7 @@ func (server *ServerMonitor) UnInstallPlugin(name string) error {
 				return err
 			}
 			val.Status = "NOT INSTALLED"
-			server.Plugins[name] = val
+			server.Plugins.Set(name, val)
 		} else {
 			return errors.New("Already not installed Plugin")
 		}
@@ -1362,8 +1377,8 @@ func (server *ServerMonitor) SaveInfos() error {
 		MaxSlowQueryTimestamp int64                  `json:"maxSlowQueryTimestamp"`
 	}
 	var clsave Save
-	clsave.Variables = server.Variables
-	clsave.Status = server.Status
+	server.Variables.ToNormalMap(clsave.Variables)
+	clsave.Status = server.Status.ToNewMap()
 	clsave.ProcessList = server.FullProcessList
 	clsave.SlaveStatus = server.LastSeenReplications
 	clsave.MaxSlowQueryTimestamp = server.MaxSlowQueryTimestamp
@@ -1396,7 +1411,10 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "File error: %v\n", err)
 		return err
 	}
-	server.Variables = clsave.Variables
+	if server.Variables == nil {
+		server.Variables = new(config.StringsMap)
+	}
+	server.Variables = config.FromNormalStringMap(server.Variables, clsave.Variables)
 	server.MaxSlowQueryTimestamp = clsave.MaxSlowQueryTimestamp
 	return nil
 }
@@ -1425,7 +1443,7 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 			logs, err = dbhelper.GetProcesslist(server.Conn, server.DBVersion)
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Processlist for server %s: %s ", server.URL, err)
 
-		clsave.InnoDBStatus, logs, err = dbhelper.GetEngineInnoDBSatus(server.Conn)
+		clsave.InnoDBStatus, logs, err = dbhelper.GetEngineInnoDBStatus(server.Conn)
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed InnoDB Status for server %s: %s ", server.URL, err)
 		clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion)
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Status for server %s: %s ", server.URL, err)
@@ -1498,7 +1516,7 @@ func (server *ServerMonitor) WaitInnoDBPurge() error {
 	server.ExecQueryNoBinLog(query)
 	ct := 0
 	for {
-		if server.EngineInnoDB["history_list_lenght_inside_innodb"] == "0" {
+		if server.EngineInnoDB.Get("history_list_lenght_inside_innodb") == "0" {
 			return nil
 		}
 		if ct == 1200 {
@@ -1659,81 +1677,81 @@ func (server *ServerMonitor) StartGroupReplication() error {
 }
 
 func (server *ServerMonitor) CurrentWorkLoad() {
-	new_current_WorkLoad := server.WorkLoad["current"]
+	new_current_WorkLoad := server.WorkLoad.GetOrNew("current")
 	new_current_WorkLoad.Connections = server.GetServerConnections()
 	new_current_WorkLoad.CpuThreadPool = server.GetCPUUsageFromThreadsPool()
 	new_current_WorkLoad.QPS = server.QPS
-	server.WorkLoad["current"] = new_current_WorkLoad
+	server.WorkLoad.Set("current", new_current_WorkLoad)
 
 }
 
 func (server *ServerMonitor) AvgWorkLoad() {
-	new_avg_WorkLoad := server.WorkLoad["average"]
-	if server.WorkLoad["average"].Connections > 0 {
-		new_avg_WorkLoad.Connections = (server.GetServerConnections() + server.WorkLoad["average"].Connections) / 2
+	new_avg_WorkLoad := server.WorkLoad.Get("average")
+	if server.WorkLoad.Get("average").Connections > 0 {
+		new_avg_WorkLoad.Connections = (server.GetServerConnections() + server.WorkLoad.Get("average").Connections) / 2
 	} else {
 		new_avg_WorkLoad.Connections = server.GetServerConnections()
 	}
 
-	if server.WorkLoad["average"].CpuThreadPool > 0 {
-		new_avg_WorkLoad.CpuThreadPool = (server.GetCPUUsageFromThreadsPool() + server.WorkLoad["average"].CpuThreadPool) / 2
+	if server.WorkLoad.Get("average").CpuThreadPool > 0 {
+		new_avg_WorkLoad.CpuThreadPool = (server.GetCPUUsageFromThreadsPool() + server.WorkLoad.Get("average").CpuThreadPool) / 2
 	} else {
 		new_avg_WorkLoad.CpuThreadPool = server.GetCPUUsageFromThreadsPool()
 	}
 
-	if server.WorkLoad["average"].QPS > 0 {
-		new_avg_WorkLoad.QPS = (server.QPS + server.WorkLoad["average"].QPS) / 2
+	if server.WorkLoad.Get("average").QPS > 0 {
+		new_avg_WorkLoad.QPS = (server.QPS + server.WorkLoad.Get("average").QPS) / 2
 	} else {
-		new_avg_WorkLoad.QPS = server.WorkLoad["average"].QPS
+		new_avg_WorkLoad.QPS = server.WorkLoad.Get("average").QPS
 	}
 
-	server.WorkLoad["average"] = new_avg_WorkLoad
+	server.WorkLoad.Set("average", new_avg_WorkLoad)
 }
 
 func (server *ServerMonitor) MaxWorkLoad() {
-	max_workLoad := server.WorkLoad["max"]
-	if server.GetServerConnections() > server.WorkLoad["max"].Connections {
+	max_workLoad := server.WorkLoad.Get("max")
+	if server.GetServerConnections() > server.WorkLoad.Get("max").Connections {
 		max_workLoad.Connections = server.GetServerConnections()
 	}
 
-	if server.QPS > server.WorkLoad["max"].QPS {
+	if server.QPS > server.WorkLoad.Get("max").QPS {
 		max_workLoad.QPS = server.QPS
 	}
 
-	if server.GetCPUUsageFromThreadsPool() > server.WorkLoad["max"].CpuThreadPool {
+	if server.GetCPUUsageFromThreadsPool() > server.WorkLoad.Get("max").CpuThreadPool {
 		max_workLoad.CpuThreadPool = server.GetCPUUsageFromThreadsPool()
 	}
 
-	server.WorkLoad["max"] = max_workLoad
+	server.WorkLoad.Set("max", max_workLoad)
 }
 
 func (server *ServerMonitor) CpuFromStatWorkLoad(start_time time.Time) time.Time {
-	if server.WorkLoad["current"].BusyTime != "" {
+	if server.WorkLoad.Get("current").BusyTime != "" {
 
-		old_cpu_time := server.WorkLoad["current"].CpuUserStats
-		current_workLoad := server.WorkLoad["current"]
+		old_cpu_time := server.WorkLoad.Get("current").CpuUserStats
+		current_workLoad := server.WorkLoad.Get("current")
 		new_cpu_usage, _ := server.GetCPUUsageFromStats(start_time)
 		current_workLoad.BusyTime, _ = server.GetBusyTimeFromStats()
 		current_workLoad.CpuUserStats = new_cpu_usage
-		server.WorkLoad["current"] = current_workLoad
+		server.WorkLoad.Set("current", current_workLoad)
 
 		if old_cpu_time != 0 {
-			avg_workLoad := server.WorkLoad["average"]
+			avg_workLoad := server.WorkLoad.Get("average")
 			avg_workLoad.CpuUserStats = (current_workLoad.CpuUserStats + old_cpu_time) / 2
-			server.WorkLoad["average"] = avg_workLoad
+			server.WorkLoad.Set("average", avg_workLoad)
 		}
-		if current_workLoad.CpuUserStats > server.WorkLoad["max"].CpuUserStats {
-			max_workLoad := server.WorkLoad["max"]
+		if current_workLoad.CpuUserStats > server.WorkLoad.Get("max").CpuUserStats {
+			max_workLoad := server.WorkLoad.Get("max")
 			max_workLoad.CpuUserStats = current_workLoad.CpuUserStats
-			server.WorkLoad["max"] = max_workLoad
+			server.WorkLoad.Set("max", max_workLoad)
 
 		}
 		return time.Now()
 
 	} else {
-		current_workLoad := server.WorkLoad["current"]
+		current_workLoad := server.WorkLoad.Get("current")
 		current_workLoad.BusyTime, _ = server.GetBusyTimeFromStats()
-		server.WorkLoad["current"] = current_workLoad
+		server.WorkLoad.Set("current", current_workLoad)
 		return time.Now()
 	}
 }

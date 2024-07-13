@@ -208,7 +208,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			continue
 		}
 		// Check for log slave updates
-		if lsu, ok := sv.Variables["LOG_SLAVE_UPDATES"]; ok && lsu == "ON" {
+		if lsu, ok := sv.Variables.CheckAndGet("LOG_SLAVE_UPDATES"); ok && lsu == "ON" {
 			add := true
 			for _, lsv := range cluster.LogSlaveServers {
 				if lsv == sv.URL {

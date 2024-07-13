@@ -73,6 +73,13 @@ func (cluster *Cluster) GetMysqlDumpPath() string {
 
 func (cluster *Cluster) GetMyDumperPath() string {
 	if cluster.Conf.BackupMyDumperPath == "" {
+		//if mysqldump installed
+		if path, err := exec.Command("which", "mydumper").Output(); err == nil {
+			strpath := strings.TrimRight(string(path), "\r\n")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Using from os package: %s\n", strpath)
+			return strpath
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Installed mydumper not found, using from repman embed.")
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mydumper"
 	}
 	return cluster.Conf.BackupMyDumperPath
@@ -80,6 +87,13 @@ func (cluster *Cluster) GetMyDumperPath() string {
 
 func (cluster *Cluster) GetMyLoaderPath() string {
 	if cluster.Conf.BackupMyDumperPath == "" {
+		//if mysqldump installed
+		if path, err := exec.Command("which", "myloader").Output(); err == nil {
+			strpath := strings.TrimRight(string(path), "\r\n")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Using from os package: %s\n", strpath)
+			return strpath
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Installed myloader not found, using from repman embed.")
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/myloader"
 	}
 	return cluster.Conf.BackupMyLoaderPath
@@ -268,8 +282,8 @@ func (cluster *Cluster) GetConnections() int {
 	allconns := 0
 	for _, server := range cluster.Servers {
 		if server != nil {
-			if conns, ok := server.Status["THREADS_RUNNING"]; ok {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Reading connections on server: %s ,%s", server.URL, server.Status["THREADS_RUNNING"])
+			if conns, ok := server.Status.CheckAndGet("THREADS_RUNNING"); ok {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Reading connections on server: %s ,%s", server.URL, server.Status.Get("THREADS_RUNNING"))
 				numconns, _ := strconv.Atoi(conns)
 				allconns += numconns
 			}
@@ -283,9 +297,9 @@ func (cluster *Cluster) GetCpuTime() float64 {
 
 	for _, s := range cluster.Servers {
 		if s != nil {
-			v, ok := s.WorkLoad["current"]
+			v, ok := s.WorkLoad.CheckAndGet("current")
 			if ok && v.CpuThreadPool > max_cpu_usage {
-				max_cpu_usage = s.WorkLoad["current"].CpuThreadPool
+				max_cpu_usage = s.WorkLoad.Get("current").CpuThreadPool
 			}
 		}
 	}
@@ -296,8 +310,8 @@ func (cluster *Cluster) GetCpuTimeFromStat() float64 {
 	max_cpu_usage := 0.0
 	for _, s := range cluster.Servers {
 		if s != nil {
-			if s.WorkLoad["current"].CpuUserStats > max_cpu_usage {
-				max_cpu_usage = s.WorkLoad["current"].CpuUserStats
+			if s.WorkLoad.Get("current").CpuUserStats > max_cpu_usage {
+				max_cpu_usage = s.WorkLoad.Get("current").CpuUserStats
 			}
 		}
 	}

@@ -448,7 +448,7 @@ func (cluster *Cluster) IsEqualBinlogFilters(m *ServerMonitor, s *ServerMonitor)
 
 func (cluster *Cluster) IsEqualReplicationFilters(m *ServerMonitor, s *ServerMonitor) bool {
 
-	if m.Variables["REPLICATE_DO_TABLE"] == s.Variables["REPLICATE_DO_TABLE"] && m.Variables["REPLICATE_IGNORE_TABLE"] == s.Variables["REPLICATE_IGNORE_TABLE"] && m.Variables["REPLICATE_WILD_DO_TABLE"] == s.Variables["REPLICATE_WILD_DO_TABLE"] && m.Variables["REPLICATE_WILD_IGNORE_TABLE"] == s.Variables["REPLICATE_WILD_IGNORE_TABLE"] && m.Variables["REPLICATE_DO_DB"] == s.Variables["REPLICATE_DO_DB"] && m.Variables["REPLICATE_IGNORE_DB"] == s.Variables["REPLICATE_IGNORE_DB"] {
+	if m.Variables.Get("REPLICATE_DO_TABLE") == s.Variables.Get("REPLICATE_DO_TABLE") && m.Variables.Get("REPLICATE_IGNORE_TABLE") == s.Variables.Get("REPLICATE_IGNORE_TABLE") && m.Variables.Get("REPLICATE_WILD_DO_TABLE") == s.Variables.Get("REPLICATE_WILD_DO_TABLE") && m.Variables.Get("REPLICATE_WILD_IGNORE_TABLE") == s.Variables.Get("REPLICATE_WILD_IGNORE_TABLE") && m.Variables.Get("REPLICATE_DO_DB") == s.Variables.Get("REPLICATE_DO_DB") && m.Variables.Get("REPLICATE_IGNORE_DB") == s.Variables.Get("REPLICATE_IGNORE_DB") {
 		return true
 	} else {
 		return false
@@ -457,8 +457,8 @@ func (cluster *Cluster) IsEqualReplicationFilters(m *ServerMonitor, s *ServerMon
 
 func (cluster *Cluster) IsCurrentGTIDSync(m *ServerMonitor, s *ServerMonitor) bool {
 
-	sGtid := s.Variables["GTID_CURRENT_POS"]
-	mGtid := m.Variables["GTID_CURRENT_POS"]
+	sGtid := s.Variables.Get("GTID_CURRENT_POS")
+	mGtid := m.Variables.Get("GTID_CURRENT_POS")
 	if sGtid == mGtid {
 		return true
 	} else {
@@ -553,9 +553,9 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 	pk, _ := cluster.master.GetTablePK(schema, table)
 	if pk == "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Checksum, no primary key for table %s.%s", schema, table)
-		t := cluster.master.DictTables[schema+"."+table]
+		t := cluster.master.DictTables.Get(schema + "." + table)
 		t.TableSync = "NA"
-		cluster.master.DictTables[schema+"."+table] = t
+		cluster.master.DictTables.Set(schema+"."+table, t)
 		return
 	}
 	if strings.Contains(pk, ",") {
@@ -661,17 +661,17 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 			if chunk.ChunkCheckSum != slaveChecksums[chunk.ChunkId].ChunkCheckSum {
 				checkok = false
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table failed chunk(%s,%s) %s.%s %s", chunk.ChunkMinKey, chunk.ChunkMaxKey, schema, table, s.URL)
-				t := cluster.master.DictTables[schema+"."+table]
+				t := cluster.master.DictTables.Get(schema + "." + table)
 				t.TableSync = "ER"
-				cluster.master.DictTables[schema+"."+table] = t
+				cluster.master.DictTables.Set(schema+"."+table, t)
 			}
 
 		}
 		if checkok {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum table succeed %s.%s %s", schema, table, s.URL)
-			t := cluster.master.DictTables[schema+"."+table]
+			t := cluster.master.DictTables.Get(schema + "." + table)
 			t.TableSync = "OK"
-			cluster.master.DictTables[schema+"."+table] = t
+			cluster.master.DictTables.Set(schema+"."+table, t)
 		}
 	}
 }
@@ -706,8 +706,8 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 			if sothers.IsFailed() || s.URL == sothers.URL {
 				continue
 			}
-			if s.Status["WSREP_CLUSTER_STATE_UUID"] != sothers.Status["WSREP_CLUSTER_STATE_UUID"] {
-				cluster.SetState("ERR00083", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00083"], s.URL, s.Status["WSREP_CLUSTER_STATE_UUID"], sothers.URL, sothers.Status["WSREP_CLUSTER_STATE_UUID"]), ErrFrom: "MON", ServerUrl: s.URL})
+			if s.Status.Get("WSREP_CLUSTER_STATE_UUID") != sothers.Status.Get("WSREP_CLUSTER_STATE_UUID") {
+				cluster.SetState("ERR00083", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00083"], s.URL, s.Status.Get("WSREP_CLUSTER_STATE_UUID"), sothers.URL, sothers.Status.Get("WSREP_CLUSTER_STATE_UUID")), ErrFrom: "MON", ServerUrl: s.URL})
 				return false
 			}
 		}
@@ -731,7 +731,7 @@ func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
 			continue
 		}
 
-		hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, cluster.master.Variables["GTID_EXECUTED"], s.Variables["GTID_EXECUTED"])
+		hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, cluster.master.Variables.Get("GTID_EXECUTED"), s.Variables.Get("GTID_EXECUTED"))
 		if hasErrantTrx {
 			cluster.SetState("WARN0091", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0091"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
 			return false

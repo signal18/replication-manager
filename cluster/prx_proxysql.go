@@ -433,10 +433,10 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			if err != nil {
 				cluster.SetState("ERR00053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00053"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
 			}
-			uniUsers := make(map[string]dbhelper.Grant)
+			uniUsers := make(map[string]*dbhelper.Grant)
 			dupUsers := make(map[string]string)
 
-			for _, u := range s.Users {
+			for _, u := range s.Users.ToNewMap() {
 				user, ok := uniUsers[u.User+":"+u.Password]
 				if ok {
 					dupUsers[user.User] = user.User

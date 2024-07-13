@@ -19,16 +19,16 @@ import (
 )
 
 func (server *ServerMonitor) IsSemiSyncMaster() bool {
-	return server.Status["RPL_SEMI_SYNC_MASTER_STATUS"] == "ON" || server.Status["RPL_SEMI_SYNC_SOURCE_STATUS"] == "ON"
+	return server.Status.Get("RPL_SEMI_SYNC_MASTER_STATUS") == "ON" || server.Status.Get("RPL_SEMI_SYNC_SOURCE_STATUS") == "ON"
 }
 
 func (server *ServerMonitor) IsSemiSyncReplica() bool {
 	// If MySQL or Percona 8.0 or greater
 	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0") {
-		return server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "ON" || server.Status["RPL_SEMI_SYNC_REPLICA_STATUS"] == "ON"
+		return server.Status.Get("RPL_SEMI_SYNC_SLAVE_STATUS") == "ON" || server.Status.Get("RPL_SEMI_SYNC_REPLICA_STATUS") == "ON"
 	}
 	if server.DBVersion.IsMariaDB() || (server.DBVersion.IsMySQLOrPercona() && server.DBVersion.Lower("8.0")) {
-		return server.Status["RPL_SEMI_SYNC_SLAVE_STATUS"] == "ON"
+		return server.Status.Get("RPL_SEMI_SYNC_SLAVE_STATUS") == "ON"
 	}
 
 	return false
@@ -39,21 +39,21 @@ func (server *ServerMonitor) HasSemiSync() bool {
 }
 
 func (server *ServerMonitor) HasWsrepSync() bool {
-	if server.Status["WSREP_LOCAL_STATE"] == "4" {
+	if server.Status.Get("WSREP_LOCAL_STATE") == "4" {
 		return true
 	}
 	return false
 }
 
 func (server *ServerMonitor) HasWsrepDonor() bool {
-	if server.Status["WSREP_LOCAL_STATE"] == "2" {
+	if server.Status.Get("WSREP_LOCAL_STATE") == "2" {
 		return true
 	}
 	return false
 }
 
 func (server *ServerMonitor) HasWsrepPrimary() bool {
-	if server.Status["WSREP_CLUSTER_STATUS"] == "PRIMARY" {
+	if server.Status.Get("WSREP_CLUSTER_STATUS") == "PRIMARY" {
 		return true
 	}
 	return false
@@ -166,91 +166,91 @@ func (server *ServerMonitor) HasBackupPhysicalCookie() bool {
 }
 
 func (server *ServerMonitor) HasReadOnly() bool {
-	return server.Variables["READ_ONLY"] == "ON"
+	return server.Variables.Get("READ_ONLY") == "ON"
 }
 
 func (server *ServerMonitor) HasGtidStrictMode() bool {
-	return server.Variables["GTID_STRICT_MODE"] == "ON"
+	return server.Variables.Get("GTID_STRICT_MODE") == "ON"
 }
 
 func (server *ServerMonitor) HasBinlog() bool {
-	return server.Variables["LOG_BIN"] == "ON"
+	return server.Variables.Get("LOG_BIN") == "ON"
 }
 
 func (server *ServerMonitor) HasBinlogCompress() bool {
-	return server.Variables["LOG_BIN_COMPRESS"] == "ON"
+	return server.Variables.Get("LOG_BIN_COMPRESS") == "ON"
 }
 
 func (server *ServerMonitor) HasBinlogSlaveUpdates() bool {
-	return server.Variables["LOG_SLAVE_UPDATES"] == "ON"
+	return server.Variables.Get("LOG_SLAVE_UPDATES") == "ON"
 }
 
 func (server *ServerMonitor) HasBinlogRow() bool {
-	return server.Variables["BINLOG_FORMAT"] == "ROW"
+	return server.Variables.Get("BINLOG_FORMAT") == "ROW"
 }
 
 func (server *ServerMonitor) HasBinlogRowAnnotate() bool {
-	return server.Variables["BINLOG_ANNOTATE_ROW_EVENTS"] == "ON"
+	return server.Variables.Get("BINLOG_ANNOTATE_ROW_EVENTS") == "ON"
 }
 
 func (server *ServerMonitor) HasSlaveIndempotent() bool {
-	return server.Variables["SLAVE_EXEC_MODE"] == "IDEMPOTENT"
+	return server.Variables.Get("SLAVE_EXEC_MODE") == "IDEMPOTENT"
 }
 
 func (server *ServerMonitor) HasSlaveParallelOptimistic() bool {
-	return server.Variables["SLAVE_PARALLEL_MODE"] == "OPTIMISTIC"
+	return server.Variables.Get("SLAVE_PARALLEL_MODE") == "OPTIMISTIC"
 }
 
 func (server *ServerMonitor) HasSlaveParallelConservative() bool {
-	return server.Variables["SLAVE_PARALLEL_MODE"] == "CONSERVATIVE"
+	return server.Variables.Get("SLAVE_PARALLEL_MODE") == "CONSERVATIVE"
 }
 
 func (server *ServerMonitor) HasSlaveParallelSerialized() bool {
-	return server.Variables["SLAVE_PARALLEL_MODE"] == "NONE"
+	return server.Variables.Get("SLAVE_PARALLEL_MODE") == "NONE"
 }
 
 func (server *ServerMonitor) HasSlaveParallelAggressive() bool {
-	return server.Variables["SLAVE_PARALLEL_MODE"] == "AGGRESSIVE"
+	return server.Variables.Get("SLAVE_PARALLEL_MODE") == "AGGRESSIVE"
 }
 
 func (server *ServerMonitor) HasSlaveParallelMinimal() bool {
-	return server.Variables["SLAVE_PARALLEL_MODE"] == "MINIMAL"
+	return server.Variables.Get("SLAVE_PARALLEL_MODE") == "MINIMAL"
 }
 
 func (server *ServerMonitor) HasBinlogSlowSlaveQueries() bool {
-	return server.Variables["LOG_SLOW_SLAVE_STATEMENTS"] == "ON"
+	return server.Variables.Get("LOG_SLOW_SLAVE_STATEMENTS") == "ON"
 }
 
 func (server *ServerMonitor) HasInnoDBRedoLogDurable() bool {
-	return server.Variables["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] == "1"
+	return server.Variables.Get("INNODB_FLUSH_LOG_AT_TRX_COMMIT") == "1"
 }
 
 func (server *ServerMonitor) HasBinlogDurable() bool {
-	return server.Variables["SYNC_BINLOG"] == "1"
+	return server.Variables.Get("SYNC_BINLOG") == "1"
 }
 
 func (server *ServerMonitor) HasInnoDBChecksum() bool {
-	return server.Variables["INNODB_CHECKSUM"] != "NONE"
+	return server.Variables.Get("INNODB_CHECKSUM") != "NONE"
 }
 
 func (server *ServerMonitor) HasWsrep() bool {
-	return server.Variables["WSREP_ON"] == "ON"
+	return server.Variables.Get("WSREP_ON") == "ON"
 }
 
 func (server *ServerMonitor) HasEventScheduler() bool {
-	return server.Variables["EVENT_SCHEDULER"] == "ON"
+	return server.Variables.Get("EVENT_SCHEDULER") == "ON"
 }
 
 func (server *ServerMonitor) HasLogSlowQuery() bool {
-	return server.Variables["SLOW_QUERY_LOG"] == "ON"
+	return server.Variables.Get("SLOW_QUERY_LOG") == "ON"
 }
 
 func (server *ServerMonitor) HasLogPFS() bool {
-	return server.Variables["PERFORMANCE_SCHEMA"] == "ON"
+	return server.Variables.Get("PERFORMANCE_SCHEMA") == "ON"
 }
 
 func (server *ServerMonitor) HasLogsInSystemTables() bool {
-	return server.Variables["LOG_OUTPUT"] == "TABLE"
+	return server.Variables.Get("LOG_OUTPUT") == "TABLE"
 }
 
 func (server *ServerMonitor) HasLogPFSSlowQuery() bool {
@@ -260,11 +260,11 @@ func (server *ServerMonitor) HasLogPFSSlowQuery() bool {
 }
 
 func (server *ServerMonitor) HasLogGeneral() bool {
-	return server.Variables["GENERAL_LOG"] == "ON"
+	return server.Variables.Get("GENERAL_LOG") == "ON"
 }
 
 func (server *ServerMonitor) HasUserStats() bool {
-	return server.Variables["USERSTAT"] == "ON"
+	return server.Variables.Get("USERSTAT") == "ON"
 }
 
 func (server *ServerMonitor) HasMySQLGTID() bool {
@@ -275,12 +275,12 @@ func (server *ServerMonitor) HasMySQLGTID() bool {
 	if server.GetClusterConfig().ForceSlaveNoGtid {
 		return false
 	}
-	val := server.Variables["ENFORCE_GTID_CONSISTENCY"]
-	if val == "ON" {
+
+	if server.Variables.Get("ENFORCE_GTID_CONSISTENCY") == "ON" {
 		return true
 	}
-	val = server.Variables["GTID_MODE"]
-	if val == "ON" {
+
+	if server.Variables.Get("GTID_MODE") == "ON" {
 		return true
 	}
 
@@ -303,7 +303,7 @@ func (server *ServerMonitor) HasMariaDBGTID() bool {
 }
 
 func (server *ServerMonitor) HasInstallPlugin(name string) bool {
-	val, ok := server.Plugins[name]
+	val, ok := server.Plugins.CheckAndGet(name)
 	if !ok {
 		return false
 	}
@@ -366,12 +366,12 @@ func (sl serverList) HasAllSlavesRunning() bool {
 /* Check Consistency parameters on server */
 func (server *ServerMonitor) IsAcid() bool {
 	if server.DBVersion.IsPostgreSQL() {
-		if server.Variables["FSYNC"] == "ON" && server.Variables["SYNCHRONOUS_COMMIT"] == "ON" {
+		if server.Variables.Get("FSYNC") == "ON" && server.Variables.Get("SYNCHRONOUS_COMMIT") == "ON" {
 			return true
 		}
 	} else {
-		syncBin := server.Variables["SYNC_BINLOG"]
-		logFlush := server.Variables["INNODB_FLUSH_LOG_AT_TRX_COMMIT"]
+		syncBin := server.Variables.Get("SYNC_BINLOG")
+		logFlush := server.Variables.Get("INNODB_FLUSH_LOG_AT_TRX_COMMIT")
 		if syncBin == "1" && logFlush == "1" {
 			return true
 		}
@@ -413,11 +413,11 @@ func (server *ServerMonitor) HasCycling() bool {
 }
 
 func (server *ServerMonitor) HasHighNumberSlowQueries() bool {
-	if server.Variables["LONG_QUERY_TIME"] == "0" || server.Variables["LONG_QUERY_TIME"] == "0.000010" {
+	if server.Variables.Get("LONG_QUERY_TIME") == "0" || server.Variables.Get("LONG_QUERY_TIME") == "0.000010" {
 		return false
 	}
-	slowquerynow, _ := strconv.ParseInt(server.Status["SLOW_QUERIES"], 10, 64)
-	slowquerybefore, _ := strconv.ParseInt(server.PrevStatus["SLOW_QUERIES"], 10, 64)
+	slowquerynow, _ := strconv.ParseInt(server.Status.Get("SLOW_QUERIES"), 10, 64)
+	slowquerybefore, _ := strconv.ParseInt(server.PrevStatus.Get("SLOW_QUERIES"), 10, 64)
 	if server.MonitorTime-server.PrevMonitorTime > 0 {
 		qpssecond := (slowquerynow - slowquerybefore) / (server.MonitorTime - server.PrevMonitorTime)
 		if qpssecond > 20 {

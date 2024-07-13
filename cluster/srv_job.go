@@ -1027,7 +1027,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 
 	cluster := server.ClusterGroup
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if server.IsDown() {
 		return errors.New("Can't backup when server down")
 	}
@@ -1048,22 +1048,22 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	//Skip other type if using backup script
 	if cluster.Conf.BackupSaveScript != "" {
-		return server.JobBackupScript()
+		server.JobBackupScript()
+	} else {
+		//Change to switch since we only allow one type of backup (for now)
+		switch cluster.Conf.BackupLogicalType {
+		case config.ConstBackupLogicalTypeMysqldump:
+			server.JobBackupMysqldump()
+		case config.ConstBackupLogicalTypeDumpling:
+			server.JobBackupDumpling()
+		case config.ConstBackupLogicalTypeMydumper:
+			server.JobBackupMyDumper()
+		case config.ConstBackupLogicalTypeRiver:
+			server.JobBackupRiver()
+		}
 	}
 
-	//Change to switch since we only allow one type of backup (for now)
-	switch cluster.Conf.BackupLogicalType {
-	case config.ConstBackupLogicalTypeMysqldump:
-		server.JobBackupMysqldump()
-	case config.ConstBackupLogicalTypeDumpling:
-		server.JobBackupDumpling()
-	case config.ConstBackupLogicalTypeMydumper:
-		server.JobBackupMyDumper()
-	case config.ConstBackupLogicalTypeRiver:
-		server.JobBackupRiver()
-	}
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	backtype := "logical"
 	server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupLogicalType)
 	return nil
@@ -1321,7 +1321,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		if binlogfilestop > 0 {
 			filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestop)
 			if _, err := os.Stat(server.GetMyBackupDirectory() + "/" + filename); os.IsNotExist(err) {
-				if _, ok := server.BinaryLogFiles[filename]; ok {
+				if _, ok := server.BinaryLogFiles.CheckAndGet(filename); ok {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup master missing binlog of %s,%s", server.URL, filename)
 					//Set true to skip sending to resting multiple times
 					server.InitiateJobBackupBinlog(filename, true)

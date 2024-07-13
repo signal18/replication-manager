@@ -21,19 +21,21 @@ import (
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/share"
-	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
 type Configurator struct {
-	ClusterConfig config.Config     `json:"-"`
-	DBModule      config.Compliance `json:"-"`
-	ProxyModule   config.Compliance `json:"-"`
-	ConfigDBTags  []v3.Tag          `json:"configTags"`    //from module
-	ConfigPrxTags []v3.Tag          `json:"configPrxTags"` //from module
-	DBTags        []string          `json:"dbServersTags"` //from conf
-	ProxyTags     []string          `json:"proxyServersTags"`
-	WorkingDir    string            `json:"-"` // working dir is the place to generate the all cluster config
+	ClusterConfig         config.Config     `json:"-"`
+	ClusterConfigDiscover config.Config     `json:"-"`
+	DBModule              config.Compliance `json:"-"`
+	ProxyModule           config.Compliance `json:"-"`
+	ConfigDBTags          []v3.Tag          `json:"configTags"`    //from module
+	ConfigPrxTags         []v3.Tag          `json:"configPrxTags"` //from module
+	DBTags                []string          `json:"dbServersTags"` //from conf
+	ProxyTags             []string          `json:"proxyServersTags"`
+	DBTagsDiscover        []string          `json:"dbServersTagsDiscover"` //from conf
+	ProxyTagsDiscover     []string          `json:"proxyServersTagsDiscover"`
+	WorkingDir            string            `json:"-"` // working dir is the place to generate the all cluster config
 }
 
 func (configurator *Configurator) Init(conf config.Config) error {
@@ -117,19 +119,20 @@ func (configurator *Configurator) LoadProxyModules() error {
 	return nil
 }
 
-func (configurator *Configurator) ConfigDiscovery(Variables map[string]string, Plugins map[string]dbhelper.Plugin) error {
-
-	innodbmem, err := strconv.ParseUint(Variables["INNODB_BUFFER_POOL_SIZE"], 10, 64)
+func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, Plugins *config.PluginsMap) error {
+	pmap := Plugins.ToNewMap()
+	vmap := Variables.ToNewMap()
+	innodbmem, err := strconv.ParseUint(Variables.Get("INNODB_BUFFER_POOL_SIZE"), 10, 64)
 	if err != nil {
 		return err
 	}
 	totalmem := innodbmem
-	myisammem, err := strconv.ParseUint(Variables["KEY_BUFFER_SIZE"], 10, 64)
+	myisammem, err := strconv.ParseUint(Variables.Get("KEY_BUFFER_SIZE"), 10, 64)
 	if err != nil {
 		return err
 	}
 	totalmem += myisammem
-	qcmem, err := strconv.ParseUint(Variables["QUERY_CACHE_SIZE"], 10, 64)
+	qcmem, err := strconv.ParseUint(Variables.Get("QUERY_CACHE_SIZE"), 10, 64)
 	if err != nil {
 		return err
 	}
@@ -138,26 +141,26 @@ func (configurator *Configurator) ConfigDiscovery(Variables map[string]string, P
 	}
 	totalmem += qcmem
 	ariamem := uint64(0)
-	if _, ok := Variables["ARIA_PAGECACHE_BUFFER_SIZE"]; ok {
-		ariamem, err = strconv.ParseUint(Variables["ARIA_PAGECACHE_BUFFER_SIZE"], 10, 64)
+	if _, ok := Variables.CheckAndGet("ARIA_PAGECACHE_BUFFER_SIZE"); ok {
+		ariamem, err = strconv.ParseUint(Variables.Get("ARIA_PAGECACHE_BUFFER_SIZE"), 10, 64)
 		if err != nil {
 			return err
 		}
 		totalmem += ariamem
 	}
 	tokumem := uint64(0)
-	if _, ok := Variables["TOKUDB_CACHE_SIZE"]; ok {
+	if _, ok := Variables.CheckAndGet("TOKUDB_CACHE_SIZE"); ok {
 		configurator.AddDBTag("tokudb")
-		tokumem, err = strconv.ParseUint(Variables["TOKUDB_CACHE_SIZE"], 10, 64)
+		tokumem, err = strconv.ParseUint(Variables.Get("TOKUDB_CACHE_SIZE"), 10, 64)
 		if err != nil {
 			return err
 		}
 		totalmem += tokumem
 	}
 	s3mem := uint64(0)
-	if _, ok := Variables["S3_PAGECACHE_BUFFER_SIZE"]; ok {
+	if _, ok := Variables.CheckAndGet("S3_PAGECACHE_BUFFER_SIZE"); ok {
 		configurator.AddDBTag("s3")
-		tokumem, err = strconv.ParseUint(Variables["S3_PAGECACHE_BUFFER_SIZE"], 10, 64)
+		tokumem, err = strconv.ParseUint(Variables.Get("S3_PAGECACHE_BUFFER_SIZE"), 10, 64)
 		if err != nil {
 			return err
 		}
@@ -165,9 +168,9 @@ func (configurator *Configurator) ConfigDiscovery(Variables map[string]string, P
 	}
 
 	rocksmem := uint64(0)
-	if _, ok := Variables["ROCKSDB_BLOCK_CACHE_SIZE"]; ok {
+	if _, ok := Variables.CheckAndGet("ROCKSDB_BLOCK_CACHE_SIZE"); ok {
 		configurator.AddDBTag("myrocks")
-		tokumem, err = strconv.ParseUint(Variables["ROCKSDB_BLOCK_CACHE_SIZE"], 10, 64)
+		tokumem, err = strconv.ParseUint(Variables.Get("ROCKSDB_BLOCK_CACHE_SIZE"), 10, 64)
 		if err != nil {
 			return err
 		}
@@ -177,167 +180,167 @@ func (configurator *Configurator) ConfigDiscovery(Variables map[string]string, P
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
 	totalmem = totalmem + totalmem*uint64(sharedmempcts["threads"])/100
 	configurator.SetDBMemory(strconv.FormatUint((totalmem / 1024 / 1024), 10))
-	configurator.SetDBCores(Variables["THREAD_POOL_SIZE"])
+	configurator.SetDBCores(Variables.Get("THREAD_POOL_SIZE"))
 
-	if Variables["INNODB_DOUBLEWRITE"] == "OFF" {
+	if Variables.Get("INNODB_DOUBLEWRITE") == "OFF" {
 		configurator.AddDBTag("nodoublewrite")
 	}
-	if Variables["INNODB_FLUSH_LOG_AT_TRX_COMMIT"] != "1" && Variables["SYNC_BINLOG"] != "1" {
+	if Variables.Get("INNODB_FLUSH_LOG_AT_TRX_COMMIT") != "1" && Variables.Get("SYNC_BINLOG") != "1" {
 		configurator.AddDBTag("nodurable")
 	}
-	if Variables["INNODB_FLUSH_METHOD"] != "O_DIRECT" {
+	if Variables.Get("INNODB_FLUSH_METHOD") != "O_DIRECT" {
 		configurator.AddDBTag("noodirect")
 	}
-	if Variables["LOG_BIN_COMPRESS"] == "ON" {
+	if Variables.Get("LOG_BIN_COMPRESS") == "ON" {
 		configurator.AddDBTag("compressbinlog")
 	}
-	if Variables["INNODB_DEFRAGMENT"] == "ON" {
+	if Variables.Get("INNODB_DEFRAGMENT") == "ON" {
 		configurator.AddDBTag("autodefrag")
 	}
-	if Variables["INNODB_COMPRESSION_DEFAULT"] == "ON" {
+	if Variables.Get("INNODB_COMPRESSION_DEFAULT") == "ON" {
 		configurator.AddDBTag("compresstable")
 	}
 
-	if configurator.HasInstallPlugin(Plugins, "BLACKHOLE") {
+	if configurator.HasInstallPlugin(pmap, "BLACKHOLE") {
 		configurator.AddDBTag("blackhole")
 	}
-	if configurator.HasInstallPlugin(Plugins, "QUERY_RESPONSE_TIME") {
+	if configurator.HasInstallPlugin(pmap, "QUERY_RESPONSE_TIME") {
 		configurator.AddDBTag("userstats")
 	}
-	if configurator.HasInstallPlugin(Plugins, "SQL_ERROR_LOG") {
+	if configurator.HasInstallPlugin(pmap, "SQL_ERROR_LOG") {
 		configurator.AddDBTag("sqlerror")
 	}
-	if configurator.HasInstallPlugin(Plugins, "METADATA_LOCK_INFO") {
+	if configurator.HasInstallPlugin(pmap, "METADATA_LOCK_INFO") {
 		configurator.AddDBTag("metadatalocks")
 	}
-	if configurator.HasInstallPlugin(Plugins, "SERVER_AUDIT") {
+	if configurator.HasInstallPlugin(pmap, "SERVER_AUDIT") {
 		configurator.AddDBTag("audit")
 	}
-	if Variables["SLOW_QUERY_LOG"] == "ON" {
+	if Variables.Get("SLOW_QUERY_LOG") == "ON" {
 		configurator.AddDBTag("slow")
 	}
-	if Variables["GENERAL_LOG"] == "ON" {
+	if Variables.Get("GENERAL_LOG") == "ON" {
 		configurator.AddDBTag("general")
 	}
-	if Variables["PERFORMANCE_SCHEMA"] == "ON" {
+	if Variables.Get("PERFORMANCE_SCHEMA") == "ON" {
 		configurator.AddDBTag("pfs")
 	}
-	if Variables["LOG_OUTPUT"] == "TABLE" {
+	if Variables.Get("LOG_OUTPUT") == "TABLE" {
 		configurator.AddDBTag("logtotable")
 	}
 
-	if configurator.HasInstallPlugin(Plugins, "CONNECT") {
+	if configurator.HasInstallPlugin(pmap, "CONNECT") {
 		configurator.AddDBTag("connect")
 	}
-	if configurator.HasInstallPlugin(Plugins, "SPIDER") {
+	if configurator.HasInstallPlugin(pmap, "SPIDER") {
 		configurator.AddDBTag("spider")
 	}
-	if configurator.HasInstallPlugin(Plugins, "SPHINX") {
+	if configurator.HasInstallPlugin(pmap, "SPHINX") {
 		configurator.AddDBTag("sphinx")
 	}
-	if configurator.HasInstallPlugin(Plugins, "MROONGA") {
+	if configurator.HasInstallPlugin(pmap, "MROONGA") {
 		configurator.AddDBTag("mroonga")
 	}
-	if configurator.HasWsrep(Variables) {
+	if configurator.HasWsrep(vmap) {
 		configurator.AddDBTag("wsrep")
 	}
 	//missing in compliance
-	if configurator.HasInstallPlugin(Plugins, "ARCHIVE") {
+	if configurator.HasInstallPlugin(pmap, "ARCHIVE") {
 		configurator.AddDBTag("archive")
 	}
 
-	if configurator.HasInstallPlugin(Plugins, "CRACKLIB_PASSWORD_CHECK") {
+	if configurator.HasInstallPlugin(pmap, "CRACKLIB_PASSWORD_CHECK") {
 		configurator.AddDBTag("pwdcheckcracklib")
 	}
-	if configurator.HasInstallPlugin(Plugins, "SIMPLE_PASSWORD_CHECK") {
+	if configurator.HasInstallPlugin(pmap, "SIMPLE_PASSWORD_CHECK") {
 		configurator.AddDBTag("pwdchecksimple")
 	}
 
-	if Variables["LOCAL_INFILE"] == "ON" {
+	if Variables.Get("LOCAL_INFILE") == "ON" {
 		configurator.AddDBTag("localinfile")
 	}
-	if Variables["SKIP_NAME_RESOLVE"] == "OFF" {
+	if Variables.Get("SKIP_NAME_RESOLVE") == "OFF" {
 		configurator.AddDBTag("resolvdns")
 	}
-	if Variables["READ_ONLY"] == "ON" {
+	if Variables.Get("READ_ONLY") == "ON" {
 		configurator.AddDBTag("readonly")
 	}
-	if Variables["HAVE_SSL"] == "YES" {
+	if Variables.Get("HAVE_SSL") == "YES" {
 		configurator.AddDBTag("ssl")
 	}
 
-	if Variables["BINLOG_FORMAT"] == "STATEMENT" {
+	if Variables.Get("BINLOG_FORMAT") == "STATEMENT" {
 		configurator.AddDBTag("statement")
 	}
-	if Variables["BINLOG_FORMAT"] == "ROW" {
+	if Variables.Get("BINLOG_FORMAT") == "ROW" {
 		configurator.AddDBTag("row")
 	}
-	if Variables["LOG_BIN"] == "OFF" {
+	if Variables.Get("LOG_BIN") == "OFF" {
 		configurator.AddDBTag("nobinlog")
 	}
-	if Variables["LOG_BIN"] == "OFF" {
+	if Variables.Get("LOG_BIN") == "OFF" {
 		configurator.AddDBTag("nobinlog")
 	}
-	if Variables["LOG_SLAVE_UPDATES"] == "OFF" {
+	if Variables.Get("LOG_SLAVE_UPDATES") == "OFF" {
 		configurator.AddDBTag("nologslaveupdates")
 	}
-	if Variables["RPL_SEMI_SYNC_MASTER_ENABLED"] == "ON" {
+	if Variables.Get("RPL_SEMI_SYNC_MASTER_ENABLED") == "ON" {
 		configurator.AddDBTag("semisync")
 	}
-	if Variables["GTID_STRICT_MODE"] == "ON" {
+	if Variables.Get("GTID_STRICT_MODE") == "ON" {
 		configurator.AddDBTag("gtidstrict")
 	}
-	if strings.Contains(Variables["SLAVE_TYPE_COVERSIONS"], "ALL_NON_LOSSY") || strings.Contains(Variables["SLAVE_TYPE_COVERSIONS"], "ALL_LOSSY") {
+	if strings.Contains(Variables.Get("SLAVE_TYPE_COVERSIONS"), "ALL_NON_LOSSY") || strings.Contains(Variables.Get("SLAVE_TYPE_COVERSIONS"), "ALL_LOSSY") {
 		configurator.AddDBTag("lossyconv")
 	}
-	if Variables["SLAVE_EXEC_MODE"] == "IDEMPOTENT" {
+	if Variables.Get("SLAVE_EXEC_MODE") == "IDEMPOTENT" {
 		configurator.AddDBTag("idempotent")
 	}
 
 	//missing in compliance
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "SUBQUERY_CACHE=ON") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "SUBQUERY_CACHE=ON") {
 		configurator.AddDBTag("subquerycache")
 	}
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "SEMIJOIN_WITH_CACHE=ON") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "SEMIJOIN_WITH_CACHE=ON") {
 		configurator.AddDBTag("semijoincache")
 	}
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "FIRSTMATCH=ON") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "FIRSTMATCH=ON") {
 		configurator.AddDBTag("firstmatch")
 	}
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "EXTENDED_KEYS=ON") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "EXTENDED_KEYS=ON") {
 		configurator.AddDBTag("extendedkeys")
 	}
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "LOOSESCAN=ON") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "LOOSESCAN=ON") {
 		configurator.AddDBTag("loosescan")
 	}
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "INDEX_CONDITION_PUSHDOWN=OFF") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "INDEX_CONDITION_PUSHDOWN=OFF") {
 		configurator.AddDBTag("noicp")
 	}
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "IN_TO_EXISTS=OFF") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "IN_TO_EXISTS=OFF") {
 		configurator.AddDBTag("nointoexists")
 	}
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "DERIVED_MERGE=OFF") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "DERIVED_MERGE=OFF") {
 		configurator.AddDBTag("noderivedmerge")
 	}
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "DERIVED_WITH_KEYS=OFF") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "DERIVED_WITH_KEYS=OFF") {
 		configurator.AddDBTag("noderivedwithkeys")
 	}
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "MRR=OFF") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "MRR=OFF") {
 		configurator.AddDBTag("nomrr")
 	}
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "OUTER_JOIN_WITH_CACHE=OFF") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "OUTER_JOIN_WITH_CACHE=OFF") {
 		configurator.AddDBTag("noouterjoincache")
 	}
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "SEMI_JOIN_WITH_CACHE=OFF") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "SEMI_JOIN_WITH_CACHE=OFF") {
 		configurator.AddDBTag("nosemijoincache")
 	}
-	if strings.Contains(Variables["OPTIMIZER_SWITCH"], "TABLE_ELIMINATION=OFF") {
+	if strings.Contains(Variables.Get("OPTIMIZER_SWITCH"), "TABLE_ELIMINATION=OFF") {
 		configurator.AddDBTag("notableelimination")
 	}
-	if strings.Contains(Variables["SQL_MODE"], "ORACLE") {
+	if strings.Contains(Variables.Get("SQL_MODE"), "ORACLE") {
 		configurator.AddDBTag("sqlmodeoracle")
 	}
-	if Variables["SQL_MODE"] == "" {
+	if Variables.Get("SQL_MODE") == "" {
 		configurator.AddDBTag("sqlmodeunstrict")
 	}
 	//index_merge=on
@@ -363,45 +366,45 @@ func (configurator *Configurator) ConfigDiscovery(Variables map[string]string, P
 	//rowid_filter=on
 	//condition_pushdown_from_having=on
 
-	if Variables["TX_ISOLATION"] == "READ-COMMITTED" {
+	if Variables.Get("TX_ISOLATION") == "READ-COMMITTED" {
 		configurator.AddDBTag("readcommitted")
 	}
 	//missing
-	if Variables["TX_ISOLATION"] == "READ-UNCOMMITTED" {
+	if Variables.Get("TX_ISOLATION") == "READ-UNCOMMITTED" {
 		configurator.AddDBTag("readuncommitted")
 	}
-	if Variables["TX_ISOLATION"] == "REPEATABLE-READ" {
+	if Variables.Get("TX_ISOLATION") == "REPEATABLE-READ" {
 		configurator.AddDBTag("reapeatableread")
 	}
-	if Variables["TX_ISOLATION"] == "SERIALIZED" {
+	if Variables.Get("TX_ISOLATION") == "SERIALIZED" {
 		configurator.AddDBTag("serialized")
 	}
 
-	if Variables["JOIN_CACHE_LEVEL"] == "8" {
+	if Variables.Get("JOIN_CACHE_LEVEL") == "8" {
 		configurator.AddDBTag("hashjoin")
 	}
-	if Variables["JOIN_CACHE_LEVEL"] == "6" {
+	if Variables.Get("JOIN_CACHE_LEVEL") == "6" {
 		configurator.AddDBTag("mrrjoin")
 	}
-	if Variables["JOIN_CACHE_LEVEL"] == "2" {
+	if Variables.Get("JOIN_CACHE_LEVEL") == "2" {
 		configurator.AddDBTag("nestedjoin")
 	}
-	if Variables["LOWER_CASE_TABLE_NAMES"] == "1" {
+	if Variables.Get("LOWER_CASE_TABLE_NAMES") == "1" {
 		configurator.AddDBTag("lowercasetable")
 	}
-	if Variables["USER_STAT_TABLES"] == "PREFERABLY_FOR_QUERIES" {
+	if Variables.Get("USER_STAT_TABLES") == "PREFERABLY_FOR_QUERIES" {
 		configurator.AddDBTag("eits")
 	}
 
-	if Variables["CHARACTER_SET_SERVER"] == "UTF8MB4" {
-		if strings.Contains(Variables["COLLATION_SERVER"], "_ci") {
+	if Variables.Get("CHARACTER_SET_SERVER") == "UTF8MB4" {
+		if strings.Contains(Variables.Get("COLLATION_SERVER"), "_ci") {
 			configurator.AddDBTag("bm4ci")
 		} else {
 			configurator.AddDBTag("bm4cs")
 		}
 	}
-	if Variables["CHARACTER_SET_SERVER"] == "UTF8" {
-		if strings.Contains(Variables["COLLATION_SERVER"], "_ci") {
+	if Variables.Get("CHARACTER_SET_SERVER") == "UTF8" {
+		if strings.Contains(Variables.Get("COLLATION_SERVER"), "_ci") {
 			configurator.AddDBTag("utf8ci")
 		} else {
 			configurator.AddDBTag("utf8cs")
@@ -411,11 +414,11 @@ func (configurator *Configurator) ConfigDiscovery(Variables map[string]string, P
 	//slave_parallel_mode = optimistic
 	/*
 
-		tmpmem, err := strconv.ParseUint(Variables["TMP_TABLE_SIZE"], 10, 64)
+		tmpmem, err := strconv.ParseUint(Variables.Get("TMP_TABLE_SIZE"), 10, 64)
 		if err != nil {
 			return err
 		}
-			qttmp, err := strconv.ParseUint(Variables["MAX_TMP_TABLES"], 10, 64)
+			qttmp, err := strconv.ParseUint(Variables.Get("MAX_TMP_TABLES"), 10, 64)
 			if err != nil {
 				return err
 			}

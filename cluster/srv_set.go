@@ -187,9 +187,11 @@ func (server *ServerMonitor) SetReadWrite() error {
 }
 
 func (server *ServerMonitor) SetMaintenance() {
-	server.Lock()
 	server.IsMaintenance = true
-	server.Unlock()
+}
+
+func (server *ServerMonitor) SetBinaryLogFiles(files map[string]uint) {
+	server.BinaryLogFiles = config.FromNormalUIntsMap(server.BinaryLogFiles, files)
 }
 
 func (server *ServerMonitor) SetDSN() {
@@ -415,7 +417,7 @@ func (server *ServerMonitor) SetReplicationCredentialsRotation(ss *dbhelper.Slav
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rejoin slave change password error: %s", err)
 		}
 		if server.GetCluster().Conf.VaultMode == VaultConfigStoreV2 {
-			for _, u := range server.GetCluster().master.Users {
+			for _, u := range server.GetCluster().master.Users.ToNewMap() {
 				if u.User == server.GetCluster().GetRplUser() {
 					logs, err := dbhelper.SetUserPassword(server.GetCluster().master.Conn, server.GetCluster().master.DBVersion, u.Host, u.User, server.GetCluster().GetRplPass())
 					cluster.LogSQL(logs, err, server.URL, "Security", config.LvlErr, "Alter user : %s", err)

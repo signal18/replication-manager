@@ -677,6 +677,16 @@ type Config struct {
 
 }
 
+type WorkLoad struct {
+	DBTableSize   int64   `json:"dbTableSize"`
+	DBIndexSize   int64   `json:"dbIndexSize"`
+	Connections   int     `json:"connections"`
+	QPS           int64   `json:"qps"`
+	CpuThreadPool float64 `json:"cpuThreadPool"`
+	CpuUserStats  float64 `json:"cpuUserStats"`
+	BusyTime      string
+}
+
 type ConfigVariableType struct {
 	Id        int    `json:"id"`
 	Name      string `json:"name"`
