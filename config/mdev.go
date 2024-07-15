@@ -113,7 +113,7 @@ func (issue *MDevIssue) parseContent(line []string, idx *MDevIssueIndex) error {
 	vers := make([]string, 0)
 	for i := idx.Versions.Min; i <= idx.Versions.Max; i++ {
 		if len(line[i]) > 0 {
-			comps = append(comps, line[i])
+			vers = append(vers, line[i])
 		}
 	}
 	issue.Versions = vers
@@ -121,7 +121,7 @@ func (issue *MDevIssue) parseContent(line []string, idx *MDevIssueIndex) error {
 	fixs := make([]string, 0)
 	for i := idx.FixVersions.Min; i <= idx.FixVersions.Max; i++ {
 		if len(line[i]) > 0 {
-			comps = append(comps, line[i])
+			fixs = append(fixs, line[i])
 		}
 	}
 	issue.FixVersions = fixs
@@ -232,6 +232,8 @@ func FromMDevIssueMap(m *MDevIssueMap, c *MDevIssueMap) *MDevIssueMap {
 }
 
 func (m *MDevIssueMap) MDevParseCSV(filename string, replace bool) error {
+	log.WithFields(log.Fields{"cluster": "none", "module": "mdev"}).Infof("[MDEV-Parser] Opening csv in shared repo dir : %s", filename)
+
 	file, err := os.Open(filename)
 	if err != nil {
 		log.WithFields(log.Fields{"cluster": "none", "module": "mdev"}).Errorf("[MDEV-Parser] failed to open csv in shared repo dir : %s", err.Error())
@@ -253,10 +255,12 @@ func (m *MDevIssueMap) MDevParseCSV(filename string, replace bool) error {
 			}
 			break
 		}
+		ln, _ := csvr.FieldPos(0)
 
 		if header {
 			//Parse Header
 			idx.parseHeader(line)
+			log.WithFields(log.Fields{"cluster": "none", "module": "mdev"}).Infof("[MDEV-Parser] Indexes : %v", idx)
 			header = false
 		} else {
 			//Parse Content
@@ -267,8 +271,13 @@ func (m *MDevIssueMap) MDevParseCSV(filename string, replace bool) error {
 				} else {
 					m.LoadOrStore(issue.Key, issue)
 				}
+				if log.GetLevel() == log.DebugLevel {
+					jsline, _ := json.MarshalIndent(issue, "", "\t")
+					log.WithFields(log.Fields{"cluster": "none", "module": "mdev"}).Debugf("[MDEV-Parser] Line:%d source:(%v)", ln, line)
+					log.WithFields(log.Fields{"cluster": "none", "module": "mdev"}).Debugf("[MDEV-Parser] Line:%d result:(%s)", ln, jsline)
+				}
 			} else {
-				ln, _ := csvr.FieldPos(0)
+
 				log.WithFields(log.Fields{"cluster": "none", "module": "mdev"}).Errorf("[MDEV-Parser] Skip line number: %d", ln)
 			}
 		}
@@ -312,24 +321,33 @@ func (m *MDevIssueMap) MDevLoadJSONFile(filename string) error {
 			return err
 		}
 	}
-	tmp := make(map[string]interface{})
-	err = json.Unmarshal(content, &tmp)
-	if err != nil {
-		log.WithFields(log.Fields{"cluster": "none", "module": "mdev"}).Errorf("[MDEV-Parser] failed to parse JSON : %s", err.Error())
-		return err
-	}
+	tmp := make(map[string]MDevIssue)
+	if len(content) > 0 {
+		err = json.Unmarshal(content, &tmp)
+		if err != nil {
+			log.WithFields(log.Fields{"cluster": "none", "module": "mdev"}).Errorf("[MDEV-Parser] failed to parse JSON : %s", err.Error())
+			return err
+		}
 
-	for k, v := range tmp {
-		m.Store(k, v)
+		for k, v := range tmp {
+			m.Store(k, &v)
+		}
+	} else {
+		log.WithFields(log.Fields{"cluster": "none", "module": "mdev"}).Warn("[MDEV-Parser] Skip parsing empty JSON file")
 	}
 
 	return nil
 }
 
-func (conf *Config) UpdateMDevJSONFile(csvfile string, replace bool) error {
+func (conf *Config) UpdateMDevJSONFile(csvfile string, replace bool, verbose bool) error {
 	var mdev *MDevIssueMap = NewMDevIssueMap()
 	var err error
 	var jsonfile string = conf.WorkingDir + "/mdev.json"
+
+	if verbose {
+		log.Info("Log Verbose")
+		log.SetLevel(log.DebugLevel)
+	}
 
 	conf.InitMDevJSONFile(jsonfile)
 	//Populate existing list from JSON
