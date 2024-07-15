@@ -12,7 +12,6 @@ package cluster
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -44,13 +43,7 @@ func (server *ServerMonitor) SearchMDevIssue(issue *config.MDevIssue) bool {
 	var hasIssue bool
 	cluster := server.ClusterGroup
 	ver := server.DBVersion
-
-	strState := issue.Key
-	parts := strings.Split(issue.Key, "-")
-	if num, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
-		strState = fmt.Sprintf("MD%06d", num)
-	}
-
+	strState := strings.Replace(issue.Key, "-", "", 1)
 	mdstate := state.State{
 		ErrType:   "WARNING",
 		ErrFrom:   "MDEV",
