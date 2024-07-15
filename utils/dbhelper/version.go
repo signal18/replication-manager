@@ -102,6 +102,12 @@ func (mv *MySQLVersion) GreaterEqualRelease(vstring string) bool {
 	return mv.Major == v.Major && mv.Minor == v.Minor && mv.Release >= v.Release
 }
 
+// This will check if the Major and Minor is same, but release is lower e.g. 10.6.4 lower than 10.6.8 but not apply to 10.5.xx
+func (mv *MySQLVersion) LowerRelease(vstring string) bool {
+	v, _ := NewMySQLVersion(vstring, mv.Flavor)
+	return mv.Major == v.Major && mv.Minor == v.Minor && mv.Release < v.Release
+}
+
 func (mv *MySQLVersion) Lower(vstring string) bool {
 	v, tokens := NewMySQLVersion(vstring, mv.Flavor)
 	return mv.ToInt(tokens) < v.ToInt(tokens)
@@ -121,11 +127,30 @@ func (mv *MySQLVersion) Between(minvstring string, maxvstring string) bool {
 	return mv.GreaterEqual(minvstring) && mv.LowerEqual(maxvstring)
 }
 
-// Will check set of versions with GreaterEqualRelease
+/*
+Will check set of versions with Greater Equal Release.
+This will check if the Major and Minor is same, but release is greater e.g. 10.6.4 until 10.6.xx but not 10.7.xx
+For 10.6.4 vs 10.6.4 will be resulted to `true`
+*/
 func (mv *MySQLVersion) GreaterEqualReleaseList(vstrings ...string) bool {
 	for _, vstr := range vstrings {
 		// return if found without checking the rest
 		if mv.GreaterEqualRelease(vstr) {
+			return true
+		}
+	}
+	return false
+}
+
+/*
+Will check set of versions with Lower Release.
+This will check if the Major and Minor is same, but release is lower e.g. 10.6.1 lower than 10.6.4 but not apply to 10.5.xx.
+For 10.6.4 vs 10.6.4 will be resulted to `false`
+*/
+func (mv *MySQLVersion) LowerReleaseList(vstrings ...string) bool {
+	for _, vstr := range vstrings {
+		// return if found without checking the rest
+		if mv.LowerRelease(vstr) {
 			return true
 		}
 	}
