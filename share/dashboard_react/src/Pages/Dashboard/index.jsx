@@ -9,6 +9,7 @@ import AccordionComponent from '../../components/AccordionComponent'
 import ClusterLogs from './components/Logs'
 import ClusterTests from './components/ClusterTests'
 import Logs from './components/Logs'
+import DBServers from './components/DBServers'
 
 function Dashboard({ selectedCluster }) {
   const {
@@ -29,6 +30,7 @@ function Dashboard({ selectedCluster }) {
         heading={'Cluster Workload'}
         body={<ClusterWorkload workload={selectedCluster?.workLoad} />}
       />
+      <AccordionComponent heading={'Databasr servers'} body={<DBServers />} />
       <AccordionComponent heading={'Cluster Logs'} body={<Logs logs={selectedCluster?.log?.buffer} />} />
       <AccordionComponent heading={'Job Logs'} body={<Logs logs={selectedCluster?.logTask?.buffer} />} />
       <AccordionComponent heading={'Tests'} body={<ClusterTests />} />

@@ -29,26 +29,25 @@ function Logs({ logs }) {
   return (
     <Box w='100%' maxH='500px' overflow='auto'>
       <table style={styles.table}>
-        {logs?.map((log, index) => {
-          if (!log.timestamp) {
-            return null
-          }
-          const levelColor =
-            log.level === 'INFO' ? 'blue' : log.level === 'WARN' ? 'orange' : log.level === 'ERROR' ? 'red' : 'gray'
-          return (
-            <tr style={styles.tr}>
-              <td style={{ ...styles.td, ...styles.timestamp }}>
-                <Code bg='transparent'>{log.timestamp}</Code>{' '}
-              </td>
-              <td style={styles.td}>
-                <TagPill text={log.level} colorScheme={levelColor} />
-              </td>
-              <td style={{ ...styles.td, ...styles.text }}>
-                <Code bg='transparent'>{log.text}</Code>
-              </td>
-            </tr>
-          )
-        })}
+        {logs
+          ?.filter((log) => log.timestamp)
+          .map((log, index) => {
+            const levelColor =
+              log.level === 'INFO' ? 'blue' : log.level === 'WARN' ? 'orange' : log.level === 'ERROR' ? 'red' : 'gray'
+            return (
+              <tr key={index} style={styles.tr}>
+                <td style={{ ...styles.td, ...styles.timestamp }}>
+                  <Code bg='transparent'>{log.timestamp}</Code>{' '}
+                </td>
+                <td style={styles.td}>
+                  <TagPill text={log.level} colorScheme={levelColor} />
+                </td>
+                <td style={{ ...styles.td, ...styles.text }}>
+                  <Code bg='transparent'>{log.text}</Code>
+                </td>
+              </tr>
+            )
+          })}
       </table>
     </Box>
   )
