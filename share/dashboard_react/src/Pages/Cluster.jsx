@@ -5,8 +5,8 @@ import { Box } from '@chakra-ui/react'
 import BackLink from '../components/BackLink'
 import { useDispatch, useSelector } from 'react-redux'
 import Dashboard from './Dashboard'
-import { getClusterAlerts, getClusterData, getClusterMaster, setRefreshInterval } from '../redux/clusterSlice'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { getClusterAlerts, getClusterData, getClusterMaster, getClusterServers } from '../redux/clusterSlice'
+import { useParams } from 'react-router-dom'
 
 function Cluster(props) {
   const dispatch = useDispatch()
@@ -43,6 +43,7 @@ function Cluster(props) {
       dispatch(getClusterData({ clusterName }))
       dispatch(getClusterAlerts({ clusterName }))
       dispatch(getClusterMaster({ clusterName }))
+      dispatch(getClusterServers({ clusterName }))
     }
   }
 
