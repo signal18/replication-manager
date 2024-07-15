@@ -1235,6 +1235,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchDynamicTopology()
 	case "replication-no-relay":
 		mycluster.SwitchReplicationNoRelay()
+	case "failover-check-blocker":
+		mycluster.SwitchFailoverCheckBlocker()
 	}
 }
 

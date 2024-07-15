@@ -609,3 +609,11 @@ func (cluster *Cluster) SwitchDynamicTopology() {
 func (cluster *Cluster) SwitchReplicationNoRelay() {
 	cluster.Conf.ReplicationNoRelay = !cluster.Conf.ReplicationNoRelay
 }
+
+func (cluster *Cluster) SwitchFailoverCheckBlocker() {
+	if cluster.Conf.Cloud18 {
+		cluster.Conf.FailoverCheckBlocker = !cluster.Conf.FailoverCheckBlocker
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Sorry. Failover Check Blocker is only available for Cloud18 Users")
+	}
+}
