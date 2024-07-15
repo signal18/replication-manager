@@ -48,7 +48,7 @@ func (server *ServerMonitor) SearchMDevIssue(issue *config.MDevIssue) bool {
 	strState := issue.Key
 	parts := strings.Split(issue.Key, "-")
 	if num, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
-		strState = fmt.Sprintf("MD%6d", num)
+		strState = fmt.Sprintf("MD%06d", num)
 	}
 
 	mdstate := state.State{
