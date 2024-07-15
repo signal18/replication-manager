@@ -799,16 +799,10 @@ func (cluster *Cluster) StateProcessing() {
 			//		cluster.statecloseChan <- s
 			cluster.BashScriptCloseSate(s)
 		}
-		var states []string
-		if cluster.runOnceAfterTopology {
-			states = cluster.StateMachine.GetFirstStates()
 
-		} else {
-			states = cluster.StateMachine.GetStates()
-		}
-		for i := range states {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "STATE", states[i])
-		}
+		//Replace old state print
+		cluster.LogPrintAllStates()
+
 		// trigger action on resolving states
 		ostates := cluster.StateMachine.GetOpenStates()
 		for _, s := range ostates {

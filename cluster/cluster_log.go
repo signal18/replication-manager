@@ -25,6 +25,7 @@ import (
 	"github.com/nsf/termbox-go"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -411,6 +412,86 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 
 			default:
 				log.WithFields(log.Fields{"cluster": cluster.Name, "type": "log", "module": tag}).Printf(cliformat, args...)
+			}
+		}
+	}
+
+	return line
+}
+
+/*
+This function is for printing state
+*/
+func (cluster *Cluster) LogPrintAllStates() {
+	SM := cluster.GetStateMachine()
+	if cluster.runOnceAfterTopology == false {
+		for _, st := range SM.GetLastResolvedStates() {
+			cluster.LogPrintState(st, true)
+		}
+	}
+	for _, st := range SM.GetLastOpenedStates() {
+		cluster.LogPrintState(st, false)
+	}
+}
+
+/*
+This function is for printing state
+*/
+func (cluster *Cluster) LogPrintState(st state.State, resolved bool) int {
+	var format string
+	level := "STATE"
+	line := 0
+	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
+	padright := func(str, pad string, lenght int) string {
+		for {
+			str += pad
+			if len(str) > lenght {
+				return str[0:lenght]
+			}
+		}
+	}
+
+	if resolved {
+		format = fmt.Sprintf("RESOLV %s : %s", st.ErrKey, st.ErrDesc)
+	} else {
+		format = fmt.Sprintf("OPENED %s : %s", st.ErrKey, st.ErrDesc)
+	}
+
+	tag := config.GetTagsForLog(config.ConstLogModGeneral)
+	cliformat := format
+	format = "[" + cluster.Name + "] [" + tag + "] " + padright(level, " ", 5) + " - " + format
+
+	if cluster.tlog != nil && cluster.tlog.Len > 0 {
+		cluster.tlog.Add(format)
+	}
+
+	if cluster.Conf.HttpServ {
+		httpformat := fmt.Sprintf("[%s] %s", tag, cliformat)
+		msg := s18log.HttpMessage{
+			Group:     cluster.Name,
+			Level:     level,
+			Timestamp: stamp,
+			Text:      fmt.Sprintf(httpformat),
+		}
+		line = cluster.htlog.Add(msg)
+		cluster.Log.Add(msg)
+	}
+
+	if cluster.Conf.Daemon {
+		// wrap logrus levels
+		if resolved {
+			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warnf(st.ErrDesc)
+		} else {
+			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warnf(st.ErrDesc)
+		}
+
+		if cluster.Conf.TeamsUrl != "" && cluster.Conf.TeamsAlertState != "" {
+			stateList := strings.Split(cluster.Conf.TeamsAlertState, ",")
+			for _, alertcode := range stateList {
+				if strings.Contains(st.ErrKey, alertcode) {
+					go cluster.sendMsTeams(level, format)
+					break
+				}
 			}
 		}
 	}
