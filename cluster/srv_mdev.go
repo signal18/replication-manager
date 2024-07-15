@@ -52,23 +52,24 @@ func (server *ServerMonitor) SearchMDevIssue(issue *config.MDevIssue) bool {
 	// Will also check unresolved cases
 	if ver.GreaterEqualReleaseList(issue.Versions...) && (issue.Status == "Unresolved" || ver.LowerReleaseList(issue.FixVersions...)) {
 
+		feature := "replication"
 		//Blocker Area (Can break replication integrity)
 		switch issue.Key {
 		case "MDEV-27512":
-			// if server.Variables.Get(strings.ToUpper("slave_skip_errors")) == "ALL" {
-			// 	server.MDevIssues.Replication = append(server.MDevIssues.Replication, issue.Key)
-			// 	mdstate.ErrDesc = fmt.Sprintf(config.BugString, issue.GetURL())
-			// 	cluster.SetState(strState, mdstate)
-			// }
-			server.MDevIssues.Replication = append(server.MDevIssues.Replication, issue.Key)
-			mdstate.ErrDesc = fmt.Sprintf(config.BugString, issue.GetURL())
-			cluster.SetState(strState, mdstate)
+			if server.Variables.Get(strings.ToUpper("slave_skip_errors")) == "ALL" {
+				server.MDevIssues.Replication = append(server.MDevIssues.Replication, issue.Key)
+				mdstate.ErrDesc = fmt.Sprintf(config.BugString, feature, issue.GetURL())
+				cluster.SetState(strState, mdstate)
+			}
 		}
 
+		feature = "service"
 		//Critical Area (Can affect replication or service due to locking/crash)
 		switch issue.Key {
 		case "MDEV-31779":
 			server.MDevIssues.Service = append(server.MDevIssues.Service, issue.Key)
+			mdstate.ErrDesc = fmt.Sprintf(config.BugString, feature, issue.GetURL())
+			cluster.SetState(strState, mdstate)
 		}
 	}
 
