@@ -20,24 +20,6 @@ const showErrorBanner = (message, error, thunkAPI) => {
   )
 }
 
-const showSuccessBanner = (message, responseStatus, thunkAPI) => {
-  thunkAPI.dispatch(
-    showSuccessToast({
-      status: 'success',
-      title: message
-    })
-  )
-}
-const showErrorBanner = (message, error, thunkAPI) => {
-  thunkAPI.dispatch(
-    showErrorToast({
-      status: 'error',
-      title: message,
-      description: error
-    })
-  )
-}
-
 export const getClusters = createAsyncThunk('cluster/getClusters', async ({}, thunkAPI) => {
   try {
     const { data, status } = await clusterService.getClusters()
