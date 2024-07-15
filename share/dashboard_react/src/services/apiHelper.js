@@ -30,17 +30,14 @@ export async function getRequest(apiUrl, params, authValue = 1) {
   let data = null
   if (contentType && contentType.includes('application/json')) {
     data = await response.json()
+  } else if (contentType && contentType.includes('text/plain')) {
+    data = await response.text()
+    data = JSON.parse(data)
   }
   return {
     data,
     status: response.status
   }
-
-  // return fetch(`/api/${apiUrl}`, {
-  //   method: 'GET',
-  //   headers: authHeader(authValue),
-  //   ...(params ? { body: JSON.stringify(params) } : {})
-  // }).then((response) => response.json())
 }
 
 export function getRequestAll(urls, params, authValue = 1) {
