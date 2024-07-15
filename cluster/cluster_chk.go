@@ -869,9 +869,15 @@ func (cluster *Cluster) CheckBlockerState(sl *ServerMonitor, forcingLog bool) bo
 		return true
 	}
 
-	// https://jira.mariadb.org/browse/MDEV-28310
-	if sl.DBVersion.IsMariaDB() && !sl.HasBinlogRow() && sl.DBVersion.LowerReleaseList("10.2.44", "10.3.35", "10.4.25", "10.5.16", "10.6.8", "10.7.4", "10.8.3", "10.9.1") {
-		cluster.StateMachine.AddState("WARN0113", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0113"], sl.URL), ErrFrom: "CLUSTER", ServerUrl: sl.URL})
+	// If server has MDEV Blocker for Replication
+	if len(sl.MDevIssues.Replication) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, fmt.Sprintf("Candidate [%s] has MDEV blocker for replication: (%s)", sl.Name, strings.Join(sl.MDevIssues.Replication, ",")))
+		return false
+	}
+
+	// If server has MDEV Blocker for Service
+	if len(sl.MDevIssues.Service) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, fmt.Sprintf("Candidate [%s] has MDEV blocker for service: (%s)", sl.Name, strings.Join(sl.MDevIssues.Service, ",")))
 		return false
 	}
 	return true
