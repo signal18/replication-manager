@@ -73,6 +73,7 @@ function Dashboard({ selectedCluster, user }) {
         panelSX={{ overflowX: 'auto', p: 0 }}
         body={<Proxies selectedCluster={selectedCluster} />}
       />
+      <AccordionComponent heading={'Databasr servers'} body={<DBServers />} />
       <AccordionComponent heading={'Cluster Logs'} body={<Logs logs={selectedCluster?.log?.buffer} />} />
       <AccordionComponent heading={'Job Logs'} body={<Logs logs={selectedCluster?.logTask?.buffer} />} />
     </Flex>
