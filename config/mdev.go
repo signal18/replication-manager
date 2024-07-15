@@ -308,6 +308,8 @@ func (m *MDevIssueMap) MDevWriteJSONFile(filename string) error {
 func (m *MDevIssueMap) MDevLoadJSONFile(filename string) error {
 	var err error
 	var content []byte = make([]byte, 0)
+
+	log.WithFields(log.Fields{"cluster": "none", "module": "mdev"}).Infof("[MDEV-Parser] Loading JSON MDev file at %s", filename)
 	content, err = os.ReadFile(filename)
 	if err != nil {
 		if os.IsNotExist(err) {

@@ -1588,6 +1588,7 @@ func (repman *ReplicationManager) Run() error {
 	log.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
 	log.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
 
+	repman.InitMDevIssues()
 	// If there's an existing encryption key, decrypt the passwords
 
 	for _, gl := range repman.ClusterList {
@@ -1595,8 +1596,8 @@ func (repman *ReplicationManager) Run() error {
 	}
 	for _, cluster := range repman.Clusters {
 		cluster.SetClusterList(repman.Clusters)
-
 		cluster.SetCarbonLogger(repman.clog)
+		cluster.SetMDevList(repman.MDevIssues)
 	}
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)

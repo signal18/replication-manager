@@ -217,7 +217,8 @@ type Cluster struct {
 	crcTable               *crc64.Table
 	SlavesOldestMasterFile SlavesOldestMasterFile
 	SlavesConnected        int
-	clog                   *clog.Logger `json:"-"`
+	clog                   *clog.Logger         `json:"-"`
+	MDevIssues             *config.MDevIssueMap `json:"-"`
 	*ClusterGraphite
 }
 
