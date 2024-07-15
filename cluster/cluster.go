@@ -322,6 +322,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.runUUID = runUUID
 	cluster.repmgrHostname = repmgrHostname
 	cluster.repmgrVersion = repmgrVersion
+	cluster.MDevIssues = config.NewMDevIssueMap()
 
 	cluster.InitFromConf()
 	cluster.NewClusterGraphite()

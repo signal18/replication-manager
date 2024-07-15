@@ -36,6 +36,11 @@ func (server *ServerMonitor) CheckVersion() {
 	if server.DBVersion.IsMariaDB() && server.DBVersion.LowerReleaseList("10.4.12", "10.5.1") {
 		cluster.SetState("WARN0099", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0099"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
 	}
+
+	//Only check once
+	if !server.IsCheckedForMDevIssues {
+		server.CheckMDevIssues()
+	}
 }
 
 // CheckDisks check mariadb disk plugin ti see if it get free space
