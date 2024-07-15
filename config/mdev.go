@@ -13,6 +13,7 @@ import (
 )
 
 var JiraURL string = "https://jira.mariadb.org/browse/"
+var BugString string = "The MariaDB version has bug for this version, source: %s"
 
 const labelKey string = "Issue key"
 const labelStatus string = "Status"
@@ -56,7 +57,7 @@ type MDevIssueIndex struct {
 	Found       MDevIssueExists
 }
 
-func (issue *MDevIssue) getURL() string {
+func (issue *MDevIssue) GetURL() string {
 	return JiraURL + issue.Key
 }
 

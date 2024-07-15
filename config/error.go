@@ -171,5 +171,4 @@ var ClusterError = map[string]string{
 	"WARN0110": "Pending %s backup using %s for [%s] due to another job. Waiting...",
 	"WARN0111": "Cluster does not have logical backup",
 	"WARN0112": "Cluster does not have physical backup",
-	"WARN0113": "MariaDB version has replication issue with MIXED format https://jira.mariadb.org/browse/MDEV-28310",
 }

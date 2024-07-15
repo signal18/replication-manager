@@ -186,7 +186,7 @@ type ServerMonitor struct {
 	WorkLoad                    *config.WorkLoadsMap    `json:"workLoad"`
 	DelayStat                   *ServerDelayStat        `json:"delayStat"`
 	SlaveVariables              SlaveVariables          `json:"slaveVariables"`
-	MDevIssues                  []string                `json:"mdevIssues"`
+	MDevIssues                  ServerBug               `json:"mdevIssues"`
 	IsCheckedForMDevIssues      bool                    `json:"isCheckedForMdevIssues"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
@@ -196,6 +196,11 @@ type ServerMonitor struct {
 	ActiveTasks                 sync.Map
 	BinaryLogDir                string
 	DBDataDir                   string
+}
+
+type ServerBug struct {
+	Replication []string
+	Service     []string
 }
 
 type SlaveVariables struct {
@@ -781,7 +786,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.CurrentWorkLoad()
 			server.AvgWorkLoad()
 			server.MaxWorkLoad()
-
+			cluster.StateMachine.PreserveGroup("MDEV")
 		} // end not postgress
 
 		// get Users

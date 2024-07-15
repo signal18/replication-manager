@@ -10,21 +10,26 @@
 // See LICENSE in this directory for the integral text.
 package cluster
 
-import "github.com/signal18/replication-manager/config"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
+)
 
 func (server *ServerMonitor) CheckMDevIssues() {
-	ver := server.DBVersion
+
 	cluster := server.ClusterGroup
 
-	if server.MDevIssues == nil {
-		server.MDevIssues = make([]string, 0)
+	if server.MDevIssues.Replication == nil {
+		server.MDevIssues.Replication = make([]string, 0)
+		server.MDevIssues.Service = make([]string, 0)
 	}
 
 	if !server.IsSuspect() && !server.IsFailed() {
 		chkf := func(key string, issue *config.MDevIssue) bool {
-			if ver.GreaterEqualReleaseList(issue.Versions...) && ver.LowerReleaseList(issue.FixVersions...) {
-				server.MDevIssues = append(server.MDevIssues, key)
-			}
+			server.SearchMDevIssue(issue)
 
 			//Always true
 			return true
@@ -32,4 +37,40 @@ func (server *ServerMonitor) CheckMDevIssues() {
 		cluster.MDevIssues.Callback(chkf)
 		server.IsCheckedForMDevIssues = true
 	}
+}
+
+func (server *ServerMonitor) SearchMDevIssue(issue *config.MDevIssue) bool {
+	var hasIssue bool
+	cluster := server.ClusterGroup
+	ver := server.DBVersion
+	strState := strings.Replace(issue.Key, "-", "", 1)
+	mdstate := state.State{
+		ErrType:   "WARNING",
+		ErrFrom:   "MDEV",
+		ServerUrl: server.URL,
+	}
+	// Will also check unresolved cases
+	if ver.GreaterEqualReleaseList(issue.Versions...) && (issue.Status == "Unresolved" || ver.LowerReleaseList(issue.FixVersions...)) {
+
+		//Blocker Area (Can break replication integrity)
+		switch issue.Key {
+		case "MDEV-27512":
+			// if server.Variables.Get(strings.ToUpper("slave_skip_errors")) == "ALL" {
+			// 	server.MDevIssues.Replication = append(server.MDevIssues.Replication, issue.Key)
+			// 	mdstate.ErrDesc = fmt.Sprintf(config.BugString, issue.GetURL())
+			// 	cluster.SetState(strState, mdstate)
+			// }
+			server.MDevIssues.Replication = append(server.MDevIssues.Replication, issue.Key)
+			mdstate.ErrDesc = fmt.Sprintf(config.BugString, issue.GetURL())
+			cluster.SetState(strState, mdstate)
+		}
+
+		//Critical Area (Can affect replication or service due to locking/crash)
+		switch issue.Key {
+		case "MDEV-31779":
+			server.MDevIssues.Service = append(server.MDevIssues.Service, issue.Key)
+		}
+	}
+
+	return hasIssue
 }

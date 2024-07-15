@@ -14,6 +14,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -79,7 +80,6 @@ func (m Map) Search(key string) bool {
 	} else {
 		return false
 	}
-
 }
 
 type StateMachine struct {
@@ -427,6 +427,14 @@ func (SM *StateMachine) PreserveState(key string) {
 	if SM.OldState.Search(key) {
 		value := (*SM.OldState)[key]
 		SM.AddState(key, value)
+	}
+}
+
+func (SM *StateMachine) PreserveGroup(prefix string) {
+	for key, value := range *SM.OldState {
+		if strings.HasPrefix(key, prefix) {
+			SM.AddState(key, value)
+		}
 	}
 }
 
