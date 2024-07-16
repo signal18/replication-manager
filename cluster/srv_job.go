@@ -961,17 +961,18 @@ func (server *ServerMonitor) JobBackupMyDumper() error {
 	dumpCmd.Start()
 
 	var wg sync.WaitGroup
+	var valid bool = true
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlDbg)
+		server.myDumperCopyLogs(stdoutIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
+		valid = server.myDumperCopyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	wg.Wait()
-	if err = dumpCmd.Wait(); err != nil {
+	if err = dumpCmd.Wait(); err != nil && !valid {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyDumper: %s", err)
 	} else {
 		server.SetBackupLogicalCookie()
@@ -1104,6 +1105,29 @@ func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, s.Text())
 		}
 	}
+}
+
+func (server *ServerMonitor) myDumperCopyLogs(r io.Reader, module int, level string) bool {
+	cluster := server.ClusterGroup
+	valid := true
+	//	buf := make([]byte, 1024)
+	s := bufio.NewScanner(r)
+	for {
+		if !s.Scan() {
+			break
+		} else {
+			stream := s.Text()
+			if strings.Contains(stream, "Error") {
+				if !strings.Contains(stream, "#mysql50#") {
+					valid = false
+				}
+				cluster.LogModulePrintf(cluster.Conf.Verbose, module, config.LvlErr, "[%s] %s", server.Name, stream)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, stream)
+			}
+		}
+	}
+	return valid
 }
 
 func (server *ServerMonitor) BackupRestic(tags ...string) error {
