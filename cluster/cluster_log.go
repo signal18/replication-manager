@@ -459,18 +459,22 @@ func (cluster *Cluster) LogPrintState(st state.State, resolved bool) int {
 
 	tag := config.GetTagsForLog(config.ConstLogModGeneral)
 	cliformat := format
-	sURL := "none"
+	prefix := "[" + cluster.Name + "][" + tag + "] " + padright(level, " ", 5)
 	if st.ServerUrl != "" {
-		sURL = st.ServerUrl
+		prefix = prefix + " [" + st.ServerUrl + "] "
 	}
-	format = "[" + cluster.Name + "][" + tag + "] " + padright(level, " ", 5) + " [" + sURL + "] " + format
+	format = prefix + format
 
 	if cluster.tlog != nil && cluster.tlog.Len > 0 {
 		cluster.tlog.Add(format)
 	}
 
 	if cluster.Conf.HttpServ {
-		httpformat := fmt.Sprintf("[%s][%s] - %s", tag, sURL, cliformat)
+
+		httpformat := fmt.Sprintf("[%s] - %s", tag, cliformat)
+		if st.ServerUrl != "" {
+			httpformat = fmt.Sprintf("[%s][%s] - %s", tag, st.ServerUrl, cliformat)
+		}
 		msg := s18log.HttpMessage{
 			Group:     cluster.Name,
 			Level:     level,
@@ -482,6 +486,10 @@ func (cluster *Cluster) LogPrintState(st state.State, resolved bool) int {
 	}
 
 	if cluster.Conf.Daemon {
+		sURL := "none"
+		if st.ServerUrl != "" {
+			sURL = st.ServerUrl
+		}
 		// wrap logrus levels
 		if resolved {
 			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut", "server": sURL}).Warnf(st.ErrDesc)

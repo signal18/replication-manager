@@ -65,7 +65,8 @@ func (m Map) Add(key string, s State) {
 		m[key] = s
 	} else {
 		if !strings.Contains(ms.ServerUrl, s.ServerUrl) {
-			m[key] = s
+			ms.ServerUrl = ms.ServerUrl + "," + s.ServerUrl
+			m[key] = ms
 		}
 	}
 }
@@ -392,30 +393,24 @@ func (SM *StateMachine) GetLastOpenedStates() map[string]State {
 	return opened
 }
 
+// The serverURL splitted in order to be used in GetServerFromURL function later
+// This will get the resolved states for each server
 func (SM *StateMachine) GetResolvedStates() []State {
 	var log []State
 	SM.Lock()
 	for key, state := range *SM.OldState {
-		if cs, ok := (*SM.CurState)[key]; !ok {
-			log = append(log, state)
-		} else if len(cs.ServerUrl) != len(state.ServerUrl) {
-			svUrl := ""
+		if cs, ok := (*SM.CurState)[key]; !ok || len(cs.ServerUrl) != len(state.ServerUrl) {
 			for _, sUrl := range strings.Split(state.ServerUrl, ",") {
-				if !strings.Contains(cs.ServerUrl, sUrl) {
-					if svUrl == "" {
-						svUrl = sUrl
-					} else {
-						svUrl = svUrl + "," + sUrl
-					}
+				if !ok || !strings.Contains(cs.ServerUrl, sUrl) {
+					log = append(log, State{
+						ErrFrom:   state.ErrFrom,
+						ErrKey:    state.ErrKey,
+						ErrDesc:   state.ErrDesc,
+						ErrType:   state.ErrType,
+						ServerUrl: sUrl,
+					})
 				}
 			}
-			log = append(log, State{
-				ErrFrom:   state.ErrFrom,
-				ErrKey:    state.ErrKey,
-				ErrDesc:   state.ErrDesc,
-				ErrType:   state.ErrType,
-				ServerUrl: svUrl,
-			})
 		}
 	}
 
