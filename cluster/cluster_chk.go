@@ -91,10 +91,10 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		return false
 	}
 
-	// If cluster have bug in replication
-	if cluster.Conf.FailoverCheckBlocker && cluster.CheckBlockerState(sl, forcingLog) == false {
-		return false
-	}
+	// // If cluster have bug in replication
+	// if !cluster.runOnceAfterTopology && cluster.Conf.FailoverCheckBlocker && cluster.CheckBlockerState(sl, forcingLog) == false {
+	// 	return false
+	// }
 
 	if cluster.Conf.SwitchGtidCheck && cluster.IsCurrentGTIDSync(sl, cluster.master) == false && cluster.Conf.RplChecks == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
@@ -207,7 +207,7 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				// }
 				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
-					cluster.SetState("ERR00028", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.URL), ErrFrom: "CHECK"})
+					cluster.SetState("ERR00028", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00028"], ErrFrom: "CHECK", ServerUrl: s.URL})
 					return true
 				}
 			}
@@ -642,7 +642,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 				if slaveSeq >= masterSeq {
 					break
 				} else {
-					cluster.SetState("WARN0086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0086"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
+					cluster.SetState("WARN0086", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0086"], ErrFrom: "MON", ServerUrl: s.URL})
 				}
 				time.Sleep(1 * time.Second)
 			}
@@ -871,13 +871,17 @@ func (cluster *Cluster) CheckBlockerState(sl *ServerMonitor, forcingLog bool) bo
 
 	// If server has MDEV Blocker for Replication
 	if len(sl.MDevIssues.Replication) > 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, fmt.Sprintf("Candidate [%s] has MDEV blocker for replication: (%s)", sl.Name, strings.Join(sl.MDevIssues.Replication, ",")))
+		if forcingLog {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, fmt.Sprintf("Candidate [%s] has MDEV blocker for replication: (%s)", sl.Name, strings.Join(sl.MDevIssues.Replication, ",")))
+		}
 		return false
 	}
 
 	// If server has MDEV Blocker for Service
 	if len(sl.MDevIssues.Service) > 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, fmt.Sprintf("Candidate [%s] has MDEV blocker for service: (%s)", sl.Name, strings.Join(sl.MDevIssues.Service, ",")))
+		if forcingLog {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, fmt.Sprintf("Candidate [%s] has MDEV blocker for service: (%s)", sl.Name, strings.Join(sl.MDevIssues.Service, ",")))
+		}
 		return false
 	}
 	return true

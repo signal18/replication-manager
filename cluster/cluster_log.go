@@ -459,14 +459,18 @@ func (cluster *Cluster) LogPrintState(st state.State, resolved bool) int {
 
 	tag := config.GetTagsForLog(config.ConstLogModGeneral)
 	cliformat := format
-	format = "[" + cluster.Name + "] [" + tag + "] " + padright(level, " ", 5) + " - " + format
+	sURL := "none"
+	if st.ServerUrl != "" {
+		sURL = st.ServerUrl
+	}
+	format = "[" + cluster.Name + "][" + tag + "] " + padright(level, " ", 5) + " [" + sURL + "] " + format
 
 	if cluster.tlog != nil && cluster.tlog.Len > 0 {
 		cluster.tlog.Add(format)
 	}
 
 	if cluster.Conf.HttpServ {
-		httpformat := fmt.Sprintf("[%s] %s", tag, cliformat)
+		httpformat := fmt.Sprintf("[%s][%s] - %s", tag, sURL, cliformat)
 		msg := s18log.HttpMessage{
 			Group:     cluster.Name,
 			Level:     level,
@@ -480,9 +484,9 @@ func (cluster *Cluster) LogPrintState(st state.State, resolved bool) int {
 	if cluster.Conf.Daemon {
 		// wrap logrus levels
 		if resolved {
-			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warnf(st.ErrDesc)
+			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut", "server": sURL}).Warnf(st.ErrDesc)
 		} else {
-			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warnf(st.ErrDesc)
+			log.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut", "server": sURL}).Warnf(st.ErrDesc)
 		}
 
 		if cluster.Conf.TeamsUrl != "" && cluster.Conf.TeamsAlertState != "" {

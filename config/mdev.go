@@ -13,7 +13,7 @@ import (
 )
 
 var JiraURL string = "https://jira.mariadb.org/browse/"
-var BugString string = "The MariaDB version has bug in %s for this version, source: %s"
+var BugString string = "The MariaDB version has bug in [%s] for this version, source: (%s)"
 
 const labelKey string = "Issue key"
 const labelStatus string = "Status"

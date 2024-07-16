@@ -63,7 +63,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 
 	if cluster.master != nil {
 		if server.URL != cluster.master.URL {
-			cluster.SetState("WARN0022", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0022"], server.URL, cluster.master.URL), ErrFrom: "REJOIN"})
+			cluster.SetState("WARN0022", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0022"], cluster.master.URL), ErrFrom: "REJOIN", ServerUrl: server.URL})
 			server.RejoinScript()
 			if cluster.Conf.MultiMasterGrouprep {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Group replication rejoin  %s server to PRIMARY ", server.URL)
@@ -77,7 +77,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 				}
 				crash := cluster.getCrashFromJoiner(server.URL)
 				if crash == nil {
-					cluster.SetState("ERR00066", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00066"], server.URL, cluster.master.URL), ErrFrom: "REJOIN"})
+					cluster.SetState("ERR00066", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00066"], cluster.master.URL), ErrFrom: "REJOIN", ServerUrl: server.URL})
 					if cluster.oldMaster != nil {
 						if cluster.oldMaster.URL == server.URL {
 							server.RejoinMasterSST()
@@ -511,7 +511,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 			if server.HasGTIDReplication() {
 				crash := cluster.getCrashFromMaster(cluster.master.URL)
 				if crash == nil {
-					cluster.SetState("ERR00065", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00065"], server.URL, cluster.master.URL), ErrFrom: "REJOIN"})
+					cluster.SetState("ERR00065", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00065"], cluster.master.URL), ErrFrom: "REJOIN", ServerUrl: server.URL})
 					return errors.New("No Crash info on current master")
 				}
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Crash info on current master %s", crash)

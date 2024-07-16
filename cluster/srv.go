@@ -758,7 +758,7 @@ func (server *ServerMonitor) Refresh() error {
 			server.EventStatus, logs, err = dbhelper.GetEventStatus(server.Conn, server.DBVersion)
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get events status %s %s", server.URL, err)
 			if err != nil {
-				cluster.SetState("ERR00073", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00073"], server.URL), ErrFrom: "MON"})
+				cluster.SetState("ERR00073", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00073"], ErrFrom: "MON", ServerUrl: server.URL})
 			}
 			if cluster.StateMachine.GetHeartbeats()%30 == 0 {
 				server.SaveInfos()
@@ -806,7 +806,7 @@ func (server *ServerMonitor) Refresh() error {
 		}
 	}
 	if server.InCaptureMode {
-		cluster.SetState("WARN0085", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["WARN0085"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
+		cluster.SetState("WARN0085", state.State{ErrType: config.LvlInfo, ErrDesc: clusterError["WARN0085"], ServerUrl: server.URL, ErrFrom: "MON"})
 	}
 
 	logs := ""
