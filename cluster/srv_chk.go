@@ -37,9 +37,10 @@ func (server *ServerMonitor) CheckVersion() {
 		cluster.SetState("MDEV20821", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["MDEV20821"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
 	}
 
-	if server.DBVersion.IsMariaDB() && !server.HasBinlogRow() && server.DBVersion.LowerReleaseList("10.2.44", "10.3.35", "10.4.25", "10.5.16", "10.6.8", "10.7.4", "10.8.3", "10.9.1") {
-		cluster.SetState("MDEV28310", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["MDEV28310"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
-	}
+	// Already logged with srv_mdev
+	// if server.DBVersion.IsMariaDB() && !server.HasBinlogRow() && server.DBVersion.LowerReleaseList("10.2.44", "10.3.35", "10.4.25", "10.5.16", "10.6.8", "10.7.4", "10.8.3", "10.9.1") {
+	// 	cluster.SetState("MDEV28310", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["MDEV28310"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
+	// }
 
 	//Only check once
 	if !server.IsCheckedForMDevIssues {

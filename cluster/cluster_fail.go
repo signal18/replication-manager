@@ -1068,10 +1068,10 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		return false
 	}
 
-	// // If cluster have bug in replication
-	// if !cluster.runOnceAfterTopology && cluster.Conf.FailoverCheckBlocker && cluster.CheckBlockerState(sl, forcingLog) == false {
-	// 	return false
-	// }
+	// If cluster have bug in replication
+	if !cluster.runOnceAfterTopology && cluster.Conf.FailoverCheckBlocker && !cluster.CheckBlockerState(sl, forcingLog) {
+		return false
+	}
 
 	//if master is alived and connection issues, we have to refetch password from vault
 	if ss.SlaveIORunning.String == "Connecting" && !cluster.IsMasterFailed() {

@@ -91,10 +91,10 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		return false
 	}
 
-	// // If cluster have bug in replication
-	// if !cluster.runOnceAfterTopology && cluster.Conf.FailoverCheckBlocker && cluster.CheckBlockerState(sl, forcingLog) == false {
-	// 	return false
-	// }
+	// If cluster have bug in replication
+	if !cluster.runOnceAfterTopology && cluster.Conf.FailoverCheckBlocker && !cluster.CheckBlockerState(sl, forcingLog) {
+		return false
+	}
 
 	if cluster.Conf.SwitchGtidCheck && cluster.IsCurrentGTIDSync(sl, cluster.master) == false && cluster.Conf.RplChecks == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
@@ -869,20 +869,15 @@ func (cluster *Cluster) CheckBlockerState(sl *ServerMonitor, forcingLog bool) bo
 		return true
 	}
 
-	// If server has MDEV Blocker for Replication
-	if len(sl.MDevIssues.Replication) > 0 {
-		if forcingLog {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, fmt.Sprintf("Candidate [%s] has MDEV blocker for replication: (%s)", sl.Name, strings.Join(sl.MDevIssues.Replication, ",")))
-		}
-		return false
+	blockers := []string{
+		"MDEV-28310",
 	}
 
-	// If server has MDEV Blocker for Service
-	if len(sl.MDevIssues.Service) > 0 {
-		if forcingLog {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, fmt.Sprintf("Candidate [%s] has MDEV blocker for service: (%s)", sl.Name, strings.Join(sl.MDevIssues.Service, ",")))
+	for _, mdev := range blockers {
+		if sl.MDevIssues.HasMdevBug(mdev) {
+			return false
 		}
-		return false
 	}
+
 	return true
 }

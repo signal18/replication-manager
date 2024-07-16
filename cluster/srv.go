@@ -203,6 +203,22 @@ type ServerBug struct {
 	Service     []string
 }
 
+func (sb *ServerBug) HasMdevBug(key string) bool {
+	for _, r := range sb.Replication {
+		if r == key {
+			return true
+		}
+	}
+
+	for _, s := range sb.Service {
+		if s == key {
+			return true
+		}
+	}
+
+	return false
+}
+
 type SlaveVariables struct {
 	SlaveParallelMaxQueued int    `json:"slaveParallelMaxQueued"`
 	SlaveParallelMode      string `json:"slaveParallelMode"`

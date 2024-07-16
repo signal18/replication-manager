@@ -80,6 +80,10 @@ func (server *ServerMonitor) SearchMDevIssue(issue *config.MDevIssue) bool {
 					if server.Variables.Get(strings.ToUpper("slave_skip_errors")) == "ALL" {
 						found = true
 					}
+				case "MDEV-28310":
+					if server.HasBinlogMixed() {
+						found = true
+					}
 				default:
 					found = true
 				}
