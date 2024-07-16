@@ -19,7 +19,7 @@ func (regtest *RegTest) TestFailoverManual(cluster *cluster.Cluster, conf string
 	SaveMaster := cluster.GetMaster()
 	SaveMasterURL := SaveMaster.URL
 	cluster.FailoverNow()
-	if cluster.GetMaster().URL != SaveMasterURL {
+	if cluster.GetMaster() != nil && cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", " Old master %s !=  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}

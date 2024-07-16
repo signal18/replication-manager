@@ -202,6 +202,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAdd)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/actions/dropserver/{host}/{port}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDrop)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/dropserver/{host}/{port}/{type}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDrop)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/actions/rolling", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRolling)),
@@ -1719,6 +1729,33 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 					mycluster.Conf.ProvDbImg = "mysql:latest"
 				}
 				mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+			}
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+
+}
+
+func (repman *ReplicationManager) handlerMuxServerDrop(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("HANDLER MUX SERVER ADD\n")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive drop %s monitor command for %s", vars["type"], vars["host"]+":"+vars["port"])
+		if vars["type"] == "" {
+			mycluster.RemoveServerMonitor(vars["host"], vars["port"])
+		} else {
+			if mycluster.MonitorType[vars["type"]] == "proxy" {
+				mycluster.RemoveProxyMonitor(vars["type"], vars["host"], vars["port"])
+			} else if mycluster.MonitorType[vars["type"]] == "database" {
+				mycluster.RemoveServerMonitor(vars["host"], vars["port"])
 			}
 		}
 	} else {

@@ -44,7 +44,7 @@ func (regtest *RegTest) TestSwitchoverLongTransactionNoRplCheckNoSemiSync(cluste
 		return false
 	}
 	time.Sleep(2 * time.Second)
-	if cluster.GetMaster().URL != SaveMasterURL {
+	if cluster.GetMaster() != nil && cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Saved  master %s <> from master  %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}

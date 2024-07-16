@@ -168,7 +168,7 @@ func (proxy *MaxscaleProxy) Init() {
 	if master == nil {
 		return
 	}
-	if cluster.GetMaster().MxsServerName == "" {
+	if cluster.GetMaster() != nil && cluster.GetMaster().MxsServerName == "" {
 		return
 	}
 
