@@ -33,8 +33,12 @@ func (server *ServerMonitor) CheckMaxConnections() {
 
 func (server *ServerMonitor) CheckVersion() {
 	cluster := server.ClusterGroup
-	if server.DBVersion.IsMariaDB() && ((server.DBVersion.Major == 10 && server.DBVersion.Minor == 4 && server.DBVersion.Release < 12) || (server.DBVersion.Major == 10 && server.DBVersion.Minor == 5 && server.DBVersion.Release < 1)) {
-		cluster.SetState("WARN0099", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0099"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
+	if server.DBVersion.IsMariaDB() && server.DBVersion.LowerReleaseList("10.4.12", "10.5.1") {
+		cluster.SetState("MDEV20821", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["MDEV20821"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
+	}
+
+	if server.DBVersion.IsMariaDB() && !server.HasBinlogRow() && server.DBVersion.LowerReleaseList("10.2.44", "10.3.35", "10.4.25", "10.5.16", "10.6.8", "10.7.4", "10.8.3", "10.9.1") {
+		cluster.SetState("MDEV28310", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["MDEV28310"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
 	}
 
 }
