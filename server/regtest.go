@@ -197,6 +197,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testMasterSuspect" {
 			res = regtest.TestMasterSuspect(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testMasterNil" {
+			res = regtest.TestMasterNil(cl, test.ConfigFile, &test)
+		}
 		test.Result = regtest.GetTestResultLabel(res)
 		if testExp == "SUITE" {
 			cl.CloseTestCluster(test.ConfigFile, &test)
