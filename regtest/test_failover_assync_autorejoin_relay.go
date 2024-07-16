@@ -35,7 +35,7 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinRelay(cluster *cluster.Clust
 	wg.Wait()
 	/// give time to start the failover
 
-	if cluster.GetMaster().URL == SaveMasterURL {
+	if cluster.GetMaster() != nil && cluster.GetMaster().URL == SaveMasterURL {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", " Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 
 		return false

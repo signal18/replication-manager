@@ -31,7 +31,7 @@ func (regtest *RegTest) TestSwitchoverBackPreferedMasterNoRplCheckSemiSync(clust
 		cluster.SwitchoverWaitTest()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s ", cluster.GetMaster().URL)
 	}
-	if cluster.GetMaster().URL != SaveMasterURL {
+	if cluster.GetMaster() != nil && cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Saved Prefered master %s <>  from saved %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
