@@ -190,6 +190,7 @@ type ServerMonitor struct {
 	IsInPFSQueryCapture         bool
 	InPurgingBinaryLog          bool
 	IsBackingUpBinaryLog        bool
+	IsReseeding                 bool
 	IsRefreshingBinlog          bool
 	ActiveTasks                 sync.Map
 	BinaryLogDir                string
