@@ -185,22 +185,21 @@ func (cluster *Cluster) newProxyList() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "New Maxscale proxy created: %s %s", prx.GetHost(), prx.GetPort())
 		}
 	}
-	if cluster.Conf.HaproxyOn {
+	if cluster.Conf.HaproxyHosts != "" && cluster.Conf.HaproxyOn {
 		for k, proxyHost := range strings.Split(cluster.Conf.HaproxyHosts, ",") {
 			prx := NewHaproxyProxy(k, cluster, proxyHost)
 			cluster.AddProxy(prx)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "New HA Proxy created: %s %s", prx.GetHost(), prx.GetPort())
 		}
 	}
-	if cluster.Conf.ExtProxyOn {
+	if cluster.Conf.ExtProxyVIP != "" && cluster.Conf.ExtProxyOn {
 		for k, proxyHost := range strings.Split(cluster.Conf.ExtProxyVIP, ",") {
 			prx := NewExternalProxy(k, cluster, proxyHost)
 			cluster.AddProxy(prx)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "New external proxy created: %s %s", prx.GetHost(), prx.GetPort())
 		}
-
 	}
-	if cluster.Conf.ProxysqlOn {
+	if cluster.Conf.ProxysqlHosts != "" && cluster.Conf.ProxysqlOn {
 		for k, proxyHost := range strings.Split(cluster.Conf.ProxysqlHosts, ",") {
 			prx := NewProxySQLProxy(k, cluster, proxyHost)
 			cluster.AddProxy(prx)
