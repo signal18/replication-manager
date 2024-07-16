@@ -186,6 +186,7 @@ type ServerMonitor struct {
 	WorkLoad                    *config.WorkLoadsMap    `json:"workLoad"`
 	DelayStat                   *ServerDelayStat        `json:"delayStat"`
 	SlaveVariables              SlaveVariables          `json:"slaveVariables"`
+	IsReseeding                 bool                    `json:"isReseeding"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 	InPurgingBinaryLog          bool
