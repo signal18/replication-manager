@@ -47,28 +47,61 @@ func (server *ServerMonitor) SearchMDevIssue(issue *config.MDevIssue) bool {
 	mdstate := state.State{
 		ErrType:   "WARNING",
 		ErrFrom:   "MDEV",
+		ErrDesc:   fmt.Sprintf(config.BugString, strings.Join(issue.Components, ","), issue.GetURL()),
 		ServerUrl: server.URL,
 	}
 	// Will also check unresolved cases
 	if ver.GreaterEqualReleaseList(issue.Versions...) && (issue.Status == "Unresolved" || ver.LowerReleaseList(issue.FixVersions...)) {
-
-		feature := "replication"
-		//Blocker Area (Can break replication integrity)
-		switch issue.Key {
-		case "MDEV-27512":
-			if server.Variables.Get(strings.ToUpper("slave_skip_errors")) == "ALL" {
-				server.MDevIssues.Replication = append(server.MDevIssues.Replication, issue.Key)
-				mdstate.ErrDesc = fmt.Sprintf(config.BugString, feature, issue.GetURL())
-				cluster.SetState(strState, mdstate)
+		found := false
+		isReplication := false
+		isGalera := false
+		isSpider := false
+		for _, c := range issue.Components {
+			if c == "Replication" {
+				isReplication = true
+			}
+			if c == "Storage Engine - Spider" {
+				isSpider = true
+			}
+			if strings.Contains(c, "Galera") {
+				isGalera = true
 			}
 		}
 
-		feature = "service"
-		//Critical Area (Can affect replication or service due to locking/crash)
-		switch issue.Key {
-		case "MDEV-31779":
-			server.MDevIssues.Service = append(server.MDevIssues.Service, issue.Key)
-			mdstate.ErrDesc = fmt.Sprintf(config.BugString, feature, issue.GetURL())
+		// Replication Bug
+		if isReplication {
+			if isSpider && cluster.Conf.Spider {
+				found = true
+			} else if isGalera && server.HaveWsrep {
+				found = true
+			} else {
+				switch issue.Key {
+				case "MDEV-27512":
+					if server.Variables.Get(strings.ToUpper("slave_skip_errors")) == "ALL" {
+						found = true
+					}
+				default:
+					found = true
+				}
+			}
+			// Append to slices
+			if found {
+				server.MDevIssues.Replication = append(server.MDevIssues.Replication, issue.Key)
+			}
+		} else {
+			//Critical Area (Can affect service due to locking/crash)
+			switch issue.Key {
+			default:
+				found = true
+			}
+			//Append to slices
+			if found {
+				server.MDevIssues.Service = append(server.MDevIssues.Service, issue.Key)
+			}
+		}
+
+		// Set state for Server
+		if found {
 			cluster.SetState(strState, mdstate)
 		}
 	}

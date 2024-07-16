@@ -459,11 +459,10 @@ func (cluster *Cluster) LogPrintState(st state.State, resolved bool) int {
 
 	tag := config.GetTagsForLog(config.ConstLogModGeneral)
 	cliformat := format
-	prefix := "[" + cluster.Name + "][" + tag + "] " + padright(level, " ", 5)
+	format = "[" + cluster.Name + "][" + tag + "] " + padright(level, " ", 5) + " - " + format
 	if st.ServerUrl != "" {
-		prefix = prefix + " [" + st.ServerUrl + "] "
+		format = format + " [" + st.ServerUrl + "]"
 	}
-	format = prefix + format
 
 	if cluster.tlog != nil && cluster.tlog.Len > 0 {
 		cluster.tlog.Add(format)
@@ -471,9 +470,9 @@ func (cluster *Cluster) LogPrintState(st state.State, resolved bool) int {
 
 	if cluster.Conf.HttpServ {
 
-		httpformat := fmt.Sprintf("[%s] - %s", tag, cliformat)
+		httpformat := fmt.Sprintf("[%s] %s", tag, cliformat)
 		if st.ServerUrl != "" {
-			httpformat = fmt.Sprintf("[%s][%s] - %s", tag, st.ServerUrl, cliformat)
+			httpformat = fmt.Sprintf("[%s] %s. Servers: [%s]", tag, cliformat, st.ServerUrl)
 		}
 		msg := s18log.HttpMessage{
 			Group:     cluster.Name,
