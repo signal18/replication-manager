@@ -339,12 +339,19 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 	cluster := server.ClusterGroup
 	var err3 error
 
+	if server.IsReseeding {
+		return errors.New("Server is in reseeding state")
+	}
+
+	server.SetInReseedBackup(true)
+
 	realmaster := cluster.master
 	if cluster.Conf.MxsBinlogOn || cluster.Conf.MultiTierSlave {
 		realmaster = cluster.GetRelayServer()
 	}
 
 	if realmaster == nil {
+		server.SetInReseedBackup(false)
 		return errors.New("No master defined exiting rejoin direct dump ")
 	}
 	// done change master just to set the host and port before dump
@@ -369,6 +376,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 		cluster.LogSQL(logs, err3, server.URL, "Rejoin", config.LvlErr, "Failed change master maxscale on %s: %s", server.URL, err3)
 	}
 	if err3 != nil {
+		server.SetInReseedBackup(false)
 		return err3
 	}
 	// dump here

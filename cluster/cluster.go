@@ -710,17 +710,22 @@ func (cluster *Cluster) StateProcessing() {
 			if s.ErrKey == "WARN0074" {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
 				if master != nil {
-					backupext := ".xbtream"
-					task := "reseed" + cluster.Conf.BackupPhysicalType
-
-					if cluster.Conf.CompressBackups {
-						backupext = backupext + ".gz"
-					}
-
-					if mybcksrv != nil {
-						go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed, task)
+					if servertoreseed.IsReseeding {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel backup reseeding, %s is already reseeding", s.ServerUrl)
 					} else {
-						go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed, task)
+						servertoreseed.SetInReseedBackup(true)
+						backupext := ".xbtream"
+						task := "reseed" + cluster.Conf.BackupPhysicalType
+
+						if cluster.Conf.CompressBackups {
+							backupext = backupext + ".gz"
+						}
+
+						if mybcksrv != nil {
+							go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed, task)
+						} else {
+							go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed, task)
+						}
 					}
 				} else {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
@@ -744,12 +749,18 @@ func (cluster *Cluster) StateProcessing() {
 				// }
 			}
 			if s.ErrKey == "WARN0076" {
-				task := "flashback" + cluster.Conf.BackupPhysicalType
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending server physical backup to flashback reseed %s", s.ServerUrl)
-				if mybcksrv != nil {
-					go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed, task)
+				if servertoreseed.IsReseeding {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel backup reseeding, %s is already reseeding", s.ServerUrl)
 				} else {
-					go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed, task)
+					servertoreseed.SetInReseedBackup(true)
+					task := "flashback" + cluster.Conf.BackupPhysicalType
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending server physical backup to flashback reseed %s", s.ServerUrl)
+
+					if mybcksrv != nil {
+						go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed, task)
+					} else {
+						go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed, task)
+					}
 				}
 			}
 			if s.ErrKey == "WARN0077" {
