@@ -61,11 +61,12 @@ func NewMap() *Map {
 }
 
 func (m Map) Add(key string, s State) {
-
-	_, ok := m[key]
-	if !ok {
+	if ms, ok := m[key]; !ok {
 		m[key] = s
-
+	} else {
+		if !strings.Contains(ms.ServerUrl, s.ServerUrl) {
+			m[key] = s
+		}
 	}
 }
 
@@ -334,8 +335,26 @@ func (SM *StateMachine) GetLastResolvedStates() map[string]State {
 	SM.Lock()
 	//every thing in  OldState that can't be found in curstate
 	for key, state := range *SM.OldState {
-		if !SM.CurState.Search(key) {
+		if cs, ok := (*SM.CurState)[key]; !ok {
 			resolved[key] = state
+		} else if len(cs.ServerUrl) != len(state.ServerUrl) {
+			svUrl := ""
+			for _, sUrl := range strings.Split(state.ServerUrl, ",") {
+				if !strings.Contains(cs.ServerUrl, sUrl) {
+					if svUrl == "" {
+						svUrl = sUrl
+					} else {
+						svUrl = svUrl + "," + sUrl
+					}
+				}
+			}
+			resolved[key] = State{
+				ErrFrom:   state.ErrFrom,
+				ErrKey:    state.ErrKey,
+				ErrDesc:   state.ErrDesc,
+				ErrType:   state.ErrType,
+				ServerUrl: svUrl,
+			}
 		}
 	}
 	SM.Unlock()
@@ -345,10 +364,28 @@ func (SM *StateMachine) GetLastResolvedStates() map[string]State {
 func (SM *StateMachine) GetLastOpenedStates() map[string]State {
 	opened := make(map[string]State)
 	SM.Lock()
-	//every thing in  OldState that can't be found in curstate
+	//every thing in  Curstate that can't be found in Oldstate
 	for key, state := range *SM.CurState {
-		if !SM.OldState.Search(key) {
+		if old, ok := (*SM.OldState)[key]; !ok {
 			opened[key] = state
+		} else if len(old.ServerUrl) != len(state.ServerUrl) {
+			svUrl := ""
+			for _, sUrl := range strings.Split(state.ServerUrl, ",") {
+				if !strings.Contains(old.ServerUrl, sUrl) {
+					if svUrl == "" {
+						svUrl = sUrl
+					} else {
+						svUrl = svUrl + "," + sUrl
+					}
+				}
+			}
+			opened[key] = State{
+				ErrFrom:   state.ErrFrom,
+				ErrKey:    state.ErrKey,
+				ErrDesc:   state.ErrDesc,
+				ErrType:   state.ErrType,
+				ServerUrl: svUrl,
+			}
 		}
 	}
 	SM.Unlock()
@@ -359,8 +396,26 @@ func (SM *StateMachine) GetResolvedStates() []State {
 	var log []State
 	SM.Lock()
 	for key, state := range *SM.OldState {
-		if !SM.CurState.Search(key) {
+		if cs, ok := (*SM.CurState)[key]; !ok {
 			log = append(log, state)
+		} else if len(cs.ServerUrl) != len(state.ServerUrl) {
+			svUrl := ""
+			for _, sUrl := range strings.Split(state.ServerUrl, ",") {
+				if !strings.Contains(cs.ServerUrl, sUrl) {
+					if svUrl == "" {
+						svUrl = sUrl
+					} else {
+						svUrl = svUrl + "," + sUrl
+					}
+				}
+			}
+			log = append(log, State{
+				ErrFrom:   state.ErrFrom,
+				ErrKey:    state.ErrKey,
+				ErrDesc:   state.ErrDesc,
+				ErrType:   state.ErrType,
+				ServerUrl: svUrl,
+			})
 		}
 	}
 
