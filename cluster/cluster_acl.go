@@ -482,6 +482,11 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterDropMonitor] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/dropserver") {
+			return true
+		}
+	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterSwitchover] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/switchover") {
 			return true

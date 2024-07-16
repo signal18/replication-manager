@@ -201,5 +201,11 @@
             </md-menu-item>
       </md-menu>
    </md-menu-item>
+   <md-menu-item ng-click="dropmonitor(server.host,server.port)">
+      <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-drop-monitor']==false">
+         <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
+         Remove Monitor
+      </md-button>
+   </md-menu-item>
    </md-menu-content>
 </md-menu>
