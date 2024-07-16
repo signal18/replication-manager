@@ -444,3 +444,7 @@ func (server *ServerMonitor) SetInCaptureMode(value bool) {
 func (server *ServerMonitor) SetInRefreshBinlog(value bool) {
 	server.IsRefreshingBinlog = value
 }
+
+func (server *ServerMonitor) SetInReseedBackup(value bool) {
+	server.IsReseeding = value
+}

@@ -40,5 +40,11 @@
               </md-menu-content>
            </md-menu>
         </md-menu-item>
+        <md-menu-item ng-click="dropmonitor(proxy.host,proxy.port,proxy.type)">
+         <md-button ng-disabled="selectedCluster.apiUsers[user].grants['cluster-drop-monitor']==false">
+            <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
+            Remove From Monitor
+         </md-button>
+      </md-menu-item>
      </md-menu-content>
   </md-menu>

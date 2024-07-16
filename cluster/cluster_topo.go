@@ -259,6 +259,12 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						cluster.master = cluster.Servers[k]
 						cluster.master.SetMaster()
 					}
+
+					// Set master when master reconnect after become suspect
+					if cluster.master == cluster.Servers[k] && cluster.master.State == stateSuspect {
+						cluster.master.SetMaster()
+					}
+
 					if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
 						cluster.master.SetReadWrite()
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)

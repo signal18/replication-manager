@@ -57,14 +57,15 @@ func (proxy *Proxy) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions st
 }
 
 func (proxy *Proxy) SetDataDir() {
-
-	proxy.Datadir = proxy.ClusterGroup.Conf.WorkingDir + "/" + proxy.ClusterGroup.Name + "/" + proxy.Host + "_" + proxy.Port
-	if _, err := os.Stat(proxy.Datadir); os.IsNotExist(err) {
-		os.MkdirAll(proxy.Datadir, os.ModePerm)
-		os.MkdirAll(proxy.Datadir+"/log", os.ModePerm)
-		os.MkdirAll(proxy.Datadir+"/var", os.ModePerm)
-		os.MkdirAll(proxy.Datadir+"/init", os.ModePerm)
-		os.MkdirAll(proxy.Datadir+"/bck", os.ModePerm)
+	if proxy.Host != "" {
+		proxy.Datadir = proxy.ClusterGroup.Conf.WorkingDir + "/" + proxy.ClusterGroup.Name + "/" + proxy.Host + "_" + proxy.Port
+		if _, err := os.Stat(proxy.Datadir); os.IsNotExist(err) {
+			os.MkdirAll(proxy.Datadir, os.ModePerm)
+			os.MkdirAll(proxy.Datadir+"/log", os.ModePerm)
+			os.MkdirAll(proxy.Datadir+"/var", os.ModePerm)
+			os.MkdirAll(proxy.Datadir+"/init", os.ModePerm)
+			os.MkdirAll(proxy.Datadir+"/bck", os.ModePerm)
+		}
 	}
 }
 

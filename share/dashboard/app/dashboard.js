@@ -1245,6 +1245,14 @@ app.controller('DashboardController', function (
     if (confirm("Unprovision operation will destroy your existing data. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/unprovision');
   };
 
+  $scope.dropmonitor = function(host, port, type="") {
+    let url = getClusterUrl() + '/actions/dropserver/' + host + '/' + port 
+    if (type != "") {
+      url = url + "/" + type
+    }
+    if (confirm("Confirm remove "+ type +"monitor on server " + host + ":" + port)) httpGetWithoutResponse(url);
+  }
+
   $scope.clusterRotateCredentials = function () {
     if (confirm("Rotate database and replication monitoring user credentials. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/actions/rotate-passwords');
   };
