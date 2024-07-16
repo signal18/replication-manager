@@ -1242,11 +1242,16 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	res := new(JobResult)
 	val := reflect.ValueOf(res).Elem()
 	for i := 0; i < val.NumField(); i++ {
-		if strings.Contains(strings.ToLower(string(out)), strings.ToLower("no "+val.Type().Field(i).Name)) {
+		jobname := val.Type().Field(i).Name
+		if strings.Contains(strings.ToLower(string(out)), strings.ToLower("no "+jobname)) {
 			val.Field(i).SetBool(false)
 		} else {
 			val.Field(i).SetBool(true)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Database jobs run via SSH: %s", val.Type().Field(i).Name)
+			lower := strings.ToLower(jobname)
+			if strings.HasPrefix(lower, "reseed") || strings.HasPrefix(lower, "flashback") {
+				server.SetInReseedBackup(false)
+			}
 		}
 	}
 
@@ -1272,6 +1277,11 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	}
 	if !cluster.Conf.BackupBinlogs {
 		err = errors.New("Copy binlog not enable")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s", err.Error())
+		return err
+	}
+	if server.IsReseeding {
+		err = errors.New("Cancel job copy binlog during reseed")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s", err.Error())
 		return err
 	}
