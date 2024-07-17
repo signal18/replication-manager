@@ -84,6 +84,10 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
                   {...(enableSorting ? { onClick: header.column.getToggleSortingHandler() } : {})}
                   isNumeric={meta?.isNumeric}>
                   {flexRender(header.column.columnDef.header, header.getContext())}
+                  {{
+                    asc: ' 🔼',
+                    desc: ' 🔽'
+                  }[header.column.getIsSorted()] ?? null}
 
                   {{
                     asc: ' 🔼',
