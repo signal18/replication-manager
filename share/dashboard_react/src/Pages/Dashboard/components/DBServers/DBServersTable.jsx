@@ -34,9 +34,11 @@ import {
   toggleSlowQueryCapture,
   unprovisionDatabase
 } from '../../../../redux/clusterSlice'
-import { Box, IconButton } from '@chakra-ui/react'
+import { Box, Button, Icon, IconButton, Tooltip } from '@chakra-ui/react'
 import TagPill from '../../../../components/TagPill'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
+import { SiMariadbfoundation } from 'react-icons/si'
+import { GrMysql } from 'react-icons/gr'
 
 function DBServersTable({ selectedCluster }) {
   const {
@@ -49,11 +51,24 @@ function DBServersTable({ selectedCluster }) {
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [user, setUser] = useState(null)
   const [viewType, setViewType] = useState('table')
+  const [hasMariadbGtid, setHasMariadbGtid] = useState(false)
+  const [hasMysqlGtid, setHasMysqlGtid] = useState(false)
 
   const dispatch = useDispatch()
   useEffect(() => {
     if (clusterServers?.length > 0) {
       setData(clusterServers)
+
+      setHasMariadbGtid(
+        clusterServers.some(function (currentServer) {
+          return currentServer.haveMariadbGtid
+        })
+      )
+      setHasMysqlGtid(
+        clusterServers.some(function (currentServer) {
+          return currentServer.haveMysqlGtid
+        })
+      )
     }
   }, [clusterServers])
 
@@ -66,10 +81,14 @@ function DBServersTable({ selectedCluster }) {
   }, [selectedCluster])
 
   const styles = {
-    gtid: {
-      fontSize: '14px',
-      width: '100px',
-      display: 'block'
+    gtid: {},
+    serverName: {
+      backgroundColor: 'transparent',
+      display: 'flex',
+      padding: '0',
+      justifyContent: 'center',
+      width: '100%',
+      _hover: {}
     }
   }
 
@@ -453,17 +472,35 @@ function DBServersTable({ selectedCluster }) {
     )
   }
 
+  const getDbFlavor = (rowData) => {
+    const dbFlavor = rowData.dbVersion.flavor
+    return (
+      <Tooltip label={dbFlavor}>
+        {dbFlavor === 'MariaDB' ? (
+          <Icon as={SiMariadbfoundation} fill={'blue.400'} fontSize={'2rem'} />
+        ) : dbFlavor === 'MySQL' ? (
+          <Icon as={GrMysql} fill={'blue.400'} fontSize={'2rem'} />
+        ) : null}
+      </Tooltip>
+    )
+  }
+
   const getServerName = (rowData) => {
     return (
-      <button type='button'>
-        <span>{`${rowData.host}:${rowData.port}`}</span>
-      </button>
+      <Button type='button' sx={styles.serverName}>
+        <Box
+          as='span'
+          maxWidth='100%'
+          whiteSpace='break-spaces'
+          textAlign='start'
+          overflowWrap='break-word'>{`${rowData.host}:${rowData.port}`}</Box>
+      </Button>
     )
   }
 
   const getStatusValue = (rowData) => {
     const isVirtual = rowData.isVirtualMaster ? '-VMaster' : ''
-    let colorScheme = ''
+    let colorScheme = 'gray'
     let stateValue = rowData.state
     switch (rowData.state) {
       case 'SlaveErr':
@@ -498,20 +535,20 @@ function DBServersTable({ selectedCluster }) {
   }
 
   const getUsingGtid = (rowData) => {
-    if (rowData.haveMariadbGtid) {
+    if (hasMariadbGtid) {
       return rowData.replications?.length > 0 && rowData.replications[0].usingGtid.String
-    } else if (rowData.haveMysqlGtid) {
+    } else if (hasMysqlGtid) {
       return rowData.gtidExecuted
     }
   }
 
   const getCurrentGtid = (rowData) => {
     let result = ''
-    if (rowData.haveMariadbGtid) {
+    if (hasMariadbGtid) {
       result = gtidstring(rowData.currentGtid)
     }
 
-    if (!rowData.haveMariadbGtid && !rowData.haveMysqlGtid) {
+    if (!hasMariadbGtid && !hasMysqlGtid) {
       if (rowData.isSlave && rowData.replications?.length > 0) {
         result += rowData.replications[0].masterLogFile.String
       } else {
@@ -524,10 +561,10 @@ function DBServersTable({ selectedCluster }) {
 
   const getSlaveGtid = (rowData) => {
     let result = ''
-    if (rowData.haveMariadbGtid) {
+    if (hasMariadbGtid) {
       result = gtidstring(rowData.slaveGtid)
     }
-    if (!rowData.haveMariadbGtid && !rowData.haveMysqlGtid) {
+    if (!hasMariadbGtid && !hasMysqlGtid) {
       if (rowData.isSlave && rowData.replications?.length > 0) {
         result += rowData.replications[0].execMasterLogPos.String
       } else {
@@ -541,20 +578,29 @@ function DBServersTable({ selectedCluster }) {
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor((row) => renderOptions(row), {
+      columnHelper.accessor((row) => selectedCluster?.name && renderOptions(row), {
         cell: (info) => info.getValue(),
         id: 'options',
         header: () => {
-          return <IconButton onClick={showGridView} size='small' icon={<HiViewGrid />} />
+          return (
+            <Tooltip label='Show grid view'>
+              <IconButton onClick={showGridView} size='small' icon={<HiViewGrid />} />
+            </Tooltip>
+          )
         },
-        enableSorting: false,
-        width: 20
+        enableSorting: false
+      }),
+      columnHelper.accessor((row) => getDbFlavor(row), {
+        cell: (info) => info.getValue(),
+        header: 'Db',
+        maxWidth: 40
       }),
       columnHelper.accessor((row) => getServerName(row), {
         cell: (info) => info.getValue(),
         header: 'Server',
-        width: 20
+        maxWidth: 250
       }),
+
       columnHelper.accessor((row) => getStatusValue(row), {
         cell: (info) => info.getValue(),
         header: 'Status'
@@ -565,7 +611,10 @@ function DBServersTable({ selectedCluster }) {
       }),
       columnHelper.accessor((row) => getUsingGtid(row), {
         cell: (info) => info.getValue(),
-        header: 'Using GTID'
+        header: () => {
+          return `${hasMariadbGtid && 'Using GTID'} ${hasMariadbGtid && hasMysqlGtid ? '/' : ''} ${hasMysqlGtid ? 'Executed GTID Set' : ''}`
+        },
+        id: 'using_gtid'
       }),
       columnHelper.accessor(
         (row) => (
@@ -575,7 +624,10 @@ function DBServersTable({ selectedCluster }) {
         ),
         {
           cell: (info) => info.getValue(),
-          header: 'Current GTID'
+          header: () => {
+            return hasMariadbGtid ? 'Current GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'File' : ''
+          },
+          id: 'current_gtid'
         }
       ),
       columnHelper.accessor(
@@ -586,7 +638,10 @@ function DBServersTable({ selectedCluster }) {
         ),
         {
           cell: (info) => info.getValue(),
-          header: 'Slave GTID'
+          header: () => {
+            return hasMariadbGtid ? 'Slave GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'Pos' : ''
+          },
+          id: 'slave_gtid'
         }
       ),
       columnHelper.accessor((row) => row.replications?.length > 0 && row.replications[0].secondsBehindMaster.Int64, {
@@ -606,7 +661,8 @@ function DBServersTable({ selectedCluster }) {
           ) : null,
         {
           cell: (info) => info.getValue(),
-          header: 'Prf Ign'
+          header: 'Prf Ign',
+          maxWidth: 40
         }
       ),
       columnHelper.accessor(
@@ -618,7 +674,8 @@ function DBServersTable({ selectedCluster }) {
           ),
         {
           cell: (info) => info.getValue(),
-          header: 'IO Thr'
+          header: 'IO Thr',
+          maxWidth: 40
         }
       ),
       columnHelper.accessor(
@@ -630,7 +687,8 @@ function DBServersTable({ selectedCluster }) {
           ),
         {
           cell: (info) => info.getValue(),
-          header: 'SQL Thr'
+          header: 'SQL Thr',
+          maxWidth: 40
         }
       ),
       columnHelper.accessor(
@@ -638,14 +696,16 @@ function DBServersTable({ selectedCluster }) {
           row.readOnly == 'ON' ? <CustomIcon icon={HiCheck} color='green' /> : <CustomIcon icon={HiX} color='red' />,
         {
           cell: (info) => info.getValue(),
-          header: 'Ro Sts'
+          header: 'Ro Sts',
+          maxWidth: 40
         }
       ),
       columnHelper.accessor(
         (row) => (row.ignoredRO ? <CustomIcon icon={HiCheck} color='green' /> : <CustomIcon icon={HiX} color='red' />),
         {
           cell: (info) => info.getValue(),
-          header: 'Ign RO'
+          header: 'Ign RO',
+          maxWidth: 40
         }
       ),
       columnHelper.accessor(
@@ -653,7 +713,8 @@ function DBServersTable({ selectedCluster }) {
           row.eventScheduler ? <CustomIcon icon={HiCheck} color='green' /> : <CustomIcon icon={HiX} color='red' />,
         {
           cell: (info) => info.getValue(),
-          header: 'Evt Sch'
+          header: 'Evt Sch',
+          maxWidth: 40
         }
       ),
       columnHelper.accessor(
@@ -665,7 +726,8 @@ function DBServersTable({ selectedCluster }) {
           ),
         {
           cell: (info) => info.getValue(),
-          header: 'Mst Syn'
+          header: 'Mst Syn',
+          maxWidth: 40
         }
       ),
       columnHelper.accessor(
@@ -673,16 +735,18 @@ function DBServersTable({ selectedCluster }) {
           row.semiSyncSlaveStatus ? <CustomIcon icon={HiCheck} color='green' /> : <CustomIcon icon={HiX} color='red' />,
         {
           cell: (info) => info.getValue(),
-          header: 'Rep Syn'
+          header: 'Rep Syn',
+          maxWidth: 40
         }
       )
     ],
-    []
+    [hasMariadbGtid, hasMysqlGtid, selectedCluster?.name]
   )
-  return (
+
+  return clusterServers?.length > 0 ? (
     <>
       {viewType === 'table' ? (
-        <DataTable columns={columns} data={data} fixedColumnIndex={1} />
+        <DataTable columns={columns} data={data} />
       ) : (
         <div>
           grid view goes here <IconButton size='small' icon={<HiTable onClick={showTableView} />} />
@@ -701,7 +765,7 @@ function DBServersTable({ selectedCluster }) {
         />
       )}
     </>
-  )
+  ) : null
 }
 
 export default DBServersTable
