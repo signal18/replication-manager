@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Table, Thead, Tbody, Tr, Th, Td, chakra, useColorMode } from '@chakra-ui/react'
+import { Table, Thead, Tbody, Tr, Th, Td, chakra, useColorMode, background } from '@chakra-ui/react'
 import { useReactTable, flexRender, getCoreRowModel, getSortedRowModel } from '@tanstack/react-table'
 import { HiOutlineSortAscending, HiOutlineSortDescending } from 'react-icons/hi'
 import { useTheme } from '@emotion/react'
@@ -22,11 +22,35 @@ export function DataTable({ data, columns, fixedColumnIndex }) {
   const styles = {
     table: {
       overflowX: 'auto',
-      width: '100%'
+      width: '100%',
+      paddingLeft: '8px'
+      // borderCollapse: 'collapse'
+    },
+    headerRow: {
+      backgroundColor: colorMode === 'light' ? `blue.100` : `blue.900`
+    },
+    tableHeader: {
+      paddingTop: '8px',
+      paddingBottom: '8px',
+      paddingLeft: '4px',
+      paddingRight: '4px',
+      textAlign: 'center',
+      border: '1px solid',
+      color: theme.colors.primary.text,
+      borderColor: colorMode === 'light' ? `white` : `blue.900`
     },
     tableColumn: {
       paddingTop: '8px',
-      paddingBottom: '8px'
+      paddingBottom: '8px',
+      paddingLeft: '4px',
+      paddingRight: '4px',
+      textAlign: 'center',
+      borderRight: '1px solid',
+      borderColor: colorMode === 'light' ? `blue.100` : `blue.900`,
+      borderBottom: 'none'
+    },
+    tableColumnEven: {
+      backgroundColor: colorMode === 'light' ? '#f7f8fe' : '#2A3048'
     },
 
     fixedColumn: {
@@ -41,7 +65,7 @@ export function DataTable({ data, columns, fixedColumnIndex }) {
     <Table sx={styles.table}>
       <Thead>
         {table.getHeaderGroups().map((headerGroup) => (
-          <Tr key={headerGroup.id}>
+          <Tr key={headerGroup.id} sx={styles.headerRow}>
             {headerGroup.headers.map((header, index) => {
               const meta = header.column.columnDef.meta
               return (
@@ -49,14 +73,18 @@ export function DataTable({ data, columns, fixedColumnIndex }) {
                   sx={{
                     ...styles.tableHeader,
                     ...(index === fixedColumnIndex ? styles.fixedColumn : {}),
-                    width: `${header.column.columnDef.width}px`
+                    maxWidth: `${header.column.columnDef.maxWidth}px`
                   }}
                   key={header.id}
                   onClick={header.column.getToggleSortingHandler()}
                   isNumeric={meta?.isNumeric}>
                   {flexRender(header.column.columnDef.header, header.getContext())}
+                  {{
+                    asc: ' 🔼',
+                    desc: ' 🔽'
+                  }[header.column.getIsSorted()] ?? null}
 
-                  <chakra.span pl='4'>
+                  {/* <chakra.span pl='4'>
                     {header.column.getIsSorted() ? (
                       header.column.getIsSorted() === 'desc' ? (
                         <HiOutlineSortDescending aria-label='sorted descending' />
@@ -64,7 +92,7 @@ export function DataTable({ data, columns, fixedColumnIndex }) {
                         <HiOutlineSortAscending aria-label='sorted ascending' />
                       )
                     ) : null}
-                  </chakra.span>
+                  </chakra.span> */}
                 </Th>
               )
             })}
@@ -72,8 +100,8 @@ export function DataTable({ data, columns, fixedColumnIndex }) {
         ))}
       </Thead>
       <Tbody>
-        {table.getRowModel().rows.map((row) => (
-          <Tr key={row.id}>
+        {table.getRowModel().rows.map((row, index) => (
+          <Tr key={row.id} sx={index % 2 !== 0 && styles.tableColumnEven}>
             {row.getVisibleCells().map((cell, index) => {
               const meta = cell.column.columnDef.meta
               return (
@@ -81,7 +109,7 @@ export function DataTable({ data, columns, fixedColumnIndex }) {
                   sx={{
                     ...styles.tableColumn,
                     ...(index === fixedColumnIndex ? styles.fixedColumn : {}),
-                    width: `${cell.column.columnDef.width}px`
+                    maxWidth: `${cell.column.columnDef.maxWidth}px`
                   }}
                   key={cell.id}
                   isNumeric={meta?.isNumeric}>
