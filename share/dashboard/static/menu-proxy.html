@@ -13,25 +13,25 @@
               </md-button>
               <md-menu-content>
 
-                 <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'" ng-click="prxprovision(proxy.id)">
+                 <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'" ng-click="prxprovision(proxy.id,proxy.host,proxy.port)">
                     <md-button ng-disabled="selectedCluster.apiUsers[user].grants['prov-proxy-provision']==false">
                        <md-icon md-menu-align-target class="fas fa-cogs"></md-icon>
                        Provision Proxy
                     </md-button>
                  </md-menu-item>
-                 <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'"  ng-click="prxunprovision(proxy.id)">
+                 <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'"  ng-click="prxunprovision(proxy.id,proxy.host,proxy.port)">
                     <md-button ng-disabled="selectedCluster.apiUsers[user].grants['prov-proxy-unprovision']==false">
                        <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
                        Unprovision Proxy
                     </md-button>
                  </md-menu-item>
-                 <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'"  ng-click="prxstart(proxy.id)">
+                 <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'"  ng-click="prxstart(proxy.id,proxy.host,proxy.port)">
                     <md-button ng-disabled="selectedCluster.apiUsers[user].grants['proxy-start']==false">
                        <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
                        start Proxy
                     </md-button>
                  </md-menu-item>
-                 <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'"  ng-click="prxstop(proxy.id)">
+                 <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'"  ng-click="prxstop(proxy.id,proxy.host,proxy.port)">
                     <md-button ng-disabled="selectedCluster.apiUsers[user].grants['proxy-stop']==false">
                        <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
                        Stop Proxy
