@@ -130,8 +130,6 @@ app.controller('DashboardController', function (
     { id: 'maxscale', name: 'MaxScale' },
     { id: 'sphinx', name: 'SphinxProxy' },
     { id: 'extvip', name: 'VIP' },];
-  $scope.selectedMonitor = { id: 'mariadb', name: 'MariaDB' };
-
 
   $scope.schedulersecondes = [
     { id: undefined, name: '' },
@@ -1942,9 +1940,9 @@ app.controller('DashboardController', function (
       parent: angular.element(document.body),
     });
   };
-  $scope.closeNewServerDialog = function (dlgServerName, dlgServerPort) {
+  $scope.closeNewServerDialog = function (dlgServerName, dlgServerPort, selectedMonitor) {
     $mdDialog.hide({ contentElement: '#myNewServerDialog', });
-    if (confirm("Confirm adding new server " + dlgServerName + ":" + dlgServerPort + "  " + $scope.selectedMonitor.id)) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' + dlgServerName + '/' + dlgServerPort + "/" + $scope.selectedMonitor.id);
+    if (confirm("Confirm adding new server " + dlgServerName + ":" + dlgServerPort + "  " + selectedMonitor)) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' + dlgServerName + '/' + dlgServerPort + "/" + selectedMonitor);
   };
   $scope.cancelNewServerDialog = function () {
     $mdDialog.hide({ contentElement: '#myNewServerDialog', });
