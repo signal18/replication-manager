@@ -696,8 +696,6 @@ func (cluster *Cluster) StateProcessing() {
 	if !cluster.StateMachine.IsInFailover() {
 		// trigger action on resolving states
 		cstates := cluster.StateMachine.GetResolvedStates()
-		mybcksrv := cluster.GetBackupServer()
-		master := cluster.GetMaster()
 		for _, s := range cstates {
 			//Remove from captured state if already resolved, so it will capture next occurence
 			cluster.GetStateMachine().CapturedState.Delete(s.ErrKey)
@@ -708,27 +706,9 @@ func (cluster *Cluster) StateProcessing() {
 				}
 			}
 			if s.ErrKey == "WARN0074" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
-				if master != nil {
-					if servertoreseed.IsReseeding {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel backup reseeding, %s is already reseeding", s.ServerUrl)
-					} else {
-						servertoreseed.SetInReseedBackup(true)
-						backupext := ".xbtream"
-						task := "reseed" + cluster.Conf.BackupPhysicalType
-
-						if cluster.Conf.CompressBackups {
-							backupext = backupext + ".gz"
-						}
-
-						if mybcksrv != nil {
-							go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed, task)
-						} else {
-							go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed, task)
-						}
-					}
-				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
+				err := servertoreseed.ProcessReseedPhysical()
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
 				}
 			}
 			if s.ErrKey == "WARN0075" {
@@ -749,18 +729,9 @@ func (cluster *Cluster) StateProcessing() {
 				// }
 			}
 			if s.ErrKey == "WARN0076" {
-				if servertoreseed.IsReseeding {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel backup reseeding, %s is already reseeding", s.ServerUrl)
-				} else {
-					servertoreseed.SetInReseedBackup(true)
-					task := "flashback" + cluster.Conf.BackupPhysicalType
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending server physical backup to flashback reseed %s", s.ServerUrl)
-
-					if mybcksrv != nil {
-						go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed, task)
-					} else {
-						go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed, task)
-					}
+				err := servertoreseed.ProcessFlashbackPhysical()
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing flashback for %s: %s", servertoreseed.URL, err)
 				}
 			}
 			if s.ErrKey == "WARN0077" {

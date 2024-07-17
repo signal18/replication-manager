@@ -1755,3 +1755,57 @@ func (server *ServerMonitor) JobWriteLogAPI(task string) error {
 
 	return nil
 }
+
+func (server *ServerMonitor) ProcessReseedPhysical() error {
+	var err error
+	cluster := server.ClusterGroup
+	master := cluster.GetMaster()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", server.URL)
+	if master != nil {
+		if server.IsReseeding {
+			err = errors.New("Server is already reseeding")
+			return err
+		} else {
+			mybcksrv := cluster.GetBackupServer()
+			server.SetInReseedBackup(true)
+			backupext := ".xbtream"
+			task := "reseed" + cluster.Conf.BackupPhysicalType
+
+			if cluster.Conf.CompressBackups {
+				backupext = backupext + ".gz"
+			}
+
+			if mybcksrv != nil {
+				go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
+			} else {
+				go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
+			}
+		}
+	} else {
+		err = errors.New("No master found")
+		return err
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) ProcessFlashbackPhysical() error {
+	var err error
+	cluster := server.ClusterGroup
+	if server.IsReseeding {
+		err = errors.New("Server is already reseeding")
+		return err
+	} else {
+		mybcksrv := cluster.GetBackupServer()
+		server.SetInReseedBackup(true)
+		task := "flashback" + cluster.Conf.BackupPhysicalType
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending server physical backup to flashback reseed %s", server.URL)
+
+		if mybcksrv != nil {
+			go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", server, task)
+		} else {
+			go cluster.SSTRunSender(server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", server, task)
+		}
+	}
+	return nil
+}
