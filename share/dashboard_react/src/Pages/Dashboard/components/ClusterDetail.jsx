@@ -356,7 +356,11 @@ function ClusterDetail({ selectedCluster }) {
       )}
 
       {isNewServerModalOpen && (
-        <NewServerModal isOpen={isNewServerModalOpen} closeModal={() => setIsNewServerModalOpen(false)} />
+        <NewServerModal
+          clusterName={selectedCluster?.name}
+          isOpen={isNewServerModalOpen}
+          closeModal={() => setIsNewServerModalOpen(false)}
+        />
       )}
     </>
   )
