@@ -1120,17 +1120,17 @@ app.controller('DashboardController', function (
   $scope.dbunprovision = function (server, host, port) {
     if (confirm("Confirm unprovision for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/unprovision');
   };
-  $scope.prxprovision = function (id) {
-    if (confirm("Confirm provision proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/provision');
+  $scope.prxprovision = function (id, host, port) {
+    if (confirm("Confirm provision proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/provision');
   };
-  $scope.prxunprovision = function (id) {
-    if (confirm("Confirm unprovision proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
+  $scope.prxunprovision = function (id, host, port) {
+    if (confirm("Confirm unprovision proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
   };
-  $scope.prxstop = function (id) {
-    if (confirm("Confirm stop proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/stop');
+  $scope.prxstop = function (id, host, port) {
+    if (confirm("Confirm stop proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/stop');
   };
-  $scope.prxstart = function (id) {
-    if (confirm("Confirm start proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/start');
+  $scope.prxstart = function (id, host, port) {
+    if (confirm("Confirm start proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/start');
   };
   $scope.dbreseedphysicalbackup = function (server, host, port) {
     if (confirm("Confirm reseed with physical backup (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
