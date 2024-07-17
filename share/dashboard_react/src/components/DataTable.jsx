@@ -1,10 +1,13 @@
 import React, { useState } from 'react'
-import { Table, Thead, Tbody, Tr, Th, Td, chakra } from '@chakra-ui/react'
+import { Table, Thead, Tbody, Tr, Th, Td, chakra, useColorMode } from '@chakra-ui/react'
 import { useReactTable, flexRender, getCoreRowModel, getSortedRowModel } from '@tanstack/react-table'
 import { HiOutlineSortAscending, HiOutlineSortDescending } from 'react-icons/hi'
+import { useTheme } from '@emotion/react'
 
-export function DataTable({ data, columns }) {
+export function DataTable({ data, columns, fixedColumnIndex }) {
   const [sorting, setSorting] = useState([])
+  const theme = useTheme()
+  const { colorMode } = useColorMode()
   const table = useReactTable({
     columns,
     data,
@@ -15,22 +18,39 @@ export function DataTable({ data, columns }) {
       sorting
     }
   })
+
   const styles = {
-    tableHeader: {
-      //bg: `blue.300`
+    table: {
+      overflowX: 'auto',
+      width: '100%'
+    },
+    tableColumn: {
+      paddingTop: '8px',
+      paddingBottom: '8px'
+    },
+
+    fixedColumn: {
+      position: 'sticky',
+      left: '-16px',
+      zIndex: '2',
+      backgroundColor: colorMode === 'light' ? theme.colors.primary.light : theme.colors.primary.dark
     }
   }
 
   return (
-    <Table>
+    <Table sx={styles.table}>
       <Thead>
         {table.getHeaderGroups().map((headerGroup) => (
           <Tr key={headerGroup.id}>
-            {headerGroup.headers.map((header) => {
+            {headerGroup.headers.map((header, index) => {
               const meta = header.column.columnDef.meta
               return (
                 <Th
-                  sx={styles.tableHeader}
+                  sx={{
+                    ...styles.tableHeader,
+                    ...(index === fixedColumnIndex ? styles.fixedColumn : {}),
+                    width: `${header.column.columnDef.width}px`
+                  }}
                   key={header.id}
                   onClick={header.column.getToggleSortingHandler()}
                   isNumeric={meta?.isNumeric}>
@@ -54,10 +74,17 @@ export function DataTable({ data, columns }) {
       <Tbody>
         {table.getRowModel().rows.map((row) => (
           <Tr key={row.id}>
-            {row.getVisibleCells().map((cell) => {
+            {row.getVisibleCells().map((cell, index) => {
               const meta = cell.column.columnDef.meta
               return (
-                <Td key={cell.id} isNumeric={meta?.isNumeric}>
+                <Td
+                  sx={{
+                    ...styles.tableColumn,
+                    ...(index === fixedColumnIndex ? styles.fixedColumn : {}),
+                    width: `${cell.column.columnDef.width}px`
+                  }}
+                  key={cell.id}
+                  isNumeric={meta?.isNumeric}>
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </Td>
               )
