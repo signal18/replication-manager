@@ -1,6 +1,5 @@
-import { Box, Flex, Text } from '@chakra-ui/react'
+import { Flex } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
-import GaugeComponent from 'react-gauge-component'
 import Gauge from '../../../components/Gauge'
 
 function ClusterWorkload({ workload }) {
@@ -19,10 +18,10 @@ function ClusterWorkload({ workload }) {
   }, [workload])
 
   return (
-    <Flex wrap='wrap' gap='0'>
+    <Flex wrap='wrap' gap='0' align='center'>
       {types.length > 0 &&
         types.map((type, index) => {
-          return <Gauge key={index} value={type.value} text={type.key} />
+          return <Gauge key={index} value={type.value} text={type.key} width={230} containerSx={{ flexBasis: 1 / 6 }} />
         })}
     </Flex>
   )
