@@ -33,7 +33,7 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster
 	cluster.FailoverAndWait()
 	/// give time to start the failover
 
-	if cluster.GetMaster().URL == SaveMasterURL {
+	if cluster.GetMaster() != nil && cluster.GetMaster().URL == SaveMasterURL {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 
 		return false

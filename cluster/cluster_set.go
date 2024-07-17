@@ -1766,3 +1766,7 @@ func (cluster *Cluster) SetMonitorCaptureTrigger(value string) {
 	cluster.Conf.MonitorCaptureTrigger = value
 	cluster.Unlock()
 }
+
+func (cluster *Cluster) SetMasterNil() {
+	cluster.master = nil
+}

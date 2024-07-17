@@ -202,6 +202,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAdd)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/actions/dropserver/{host}/{port}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDrop)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/dropserver/{host}/{port}/{type}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDrop)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/actions/rolling", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRolling)),
@@ -1694,21 +1704,23 @@ func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter
 }
 
 func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("HANDLER MUX SERVER ADD\n")
+	var err error
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if !repman.IsValidClusterACL(r, mycluster) {
-			http.Error(w, "No valid ACL", 403)
+			w.WriteHeader(403)
+			w.Write([]byte(`{"msg":"No valid ACL"}`))
 			return
 		}
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive new %s monitor to be added %s", vars["type"], vars["host"]+":"+vars["port"])
 		if vars["type"] == "" {
-			mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+			err = mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 		} else {
 			if mycluster.MonitorType[vars["type"]] == "proxy" {
-				mycluster.AddSeededProxy(vars["type"], vars["host"], vars["port"], "", "")
+				err = mycluster.AddSeededProxy(vars["type"], vars["host"], vars["port"], "", "")
 			} else if mycluster.MonitorType[vars["type"]] == "database" {
 				switch vars["type"] {
 				case "mariadb":
@@ -1718,7 +1730,47 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 				case "mysql":
 					mycluster.Conf.ProvDbImg = "mysql:latest"
 				}
-				mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+				err = mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+			}
+		}
+
+		// This will only return duplicate error
+		if err != nil {
+			errStr := fmt.Sprintf("Error adding new %s monitor of %s: %s", vars["type"], vars["host"]+":"+vars["port"], err.Error())
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, errStr)
+			w.WriteHeader(409)
+			w.Write([]byte(`{"msg":"` + errStr + `"}`))
+			return
+		} else {
+			w.WriteHeader(200)
+			w.Write([]byte(`{"msg":"Monitor added"}`))
+			return
+		}
+	} else {
+		w.WriteHeader(500)
+		w.Write([]byte(`{"msg":"Cluster Not Found"}`))
+		return
+	}
+
+}
+
+func (repman *ReplicationManager) handlerMuxServerDrop(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if !repman.IsValidClusterACL(r, mycluster) {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive drop %s monitor command for %s", vars["type"], vars["host"]+":"+vars["port"])
+		if vars["type"] == "" {
+			mycluster.RemoveServerMonitor(vars["host"], vars["port"])
+		} else {
+			if mycluster.MonitorType[vars["type"]] == "proxy" {
+				mycluster.RemoveProxyMonitor(vars["type"], vars["host"], vars["port"])
+			} else if mycluster.MonitorType[vars["type"]] == "database" {
+				mycluster.RemoveServerMonitor(vars["host"], vars["port"])
 			}
 		}
 	} else {

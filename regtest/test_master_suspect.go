@@ -7,20 +7,23 @@
 package regtest
 
 import (
+	"time"
+
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 )
 
-func (regtest *RegTest) TestFailoverManual(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
+func (regtest *RegTest) TestMasterSuspect(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
 	cluster.SetFailSync(false)
 	cluster.SetInteractive(true)
 	cluster.SetRplChecks(true)
-	SaveMaster := cluster.GetMaster()
-	SaveMasterURL := SaveMaster.URL
-	cluster.FailoverNow()
-	if cluster.GetMaster() != nil && cluster.GetMaster().URL != SaveMasterURL {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", " Old master %s !=  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
+	cluster.GetMaster().FailCount = 1
+	cluster.GetMaster().SetState("Suspect")
+	cluster.GetMaster().PrevState = "Suspect"
+	time.Sleep(10 * time.Second)
+	if cluster.GetMaster().State == "Suspect" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", " Master state not refresh %s: %s  ", cluster.GetMaster().URL, cluster.GetMaster().State)
 		return false
 	}
 

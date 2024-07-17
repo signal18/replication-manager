@@ -55,6 +55,8 @@ var tests = []string{
 	"testFailoverSemisyncSlavekilledAutoRejoin",
 	"testSlaReplAllSlavesStopNoSemiSync",
 	"testSlaReplAllSlavesDelayNoSemiSync",
+	"testMasterSuspect",
+	"testMasterNil",
 }
 
 const recoverTime = 8

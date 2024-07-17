@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -18,13 +19,19 @@ import (
 
 func (cluster *Cluster) AddSeededServer(srv string) error {
 	fmt.Printf("ADD SEEDED SERVER\n")
-	if cluster.Conf.Hosts != "" {
-		cluster.Conf.Hosts = cluster.Conf.Hosts + "," + srv
-	} else {
-		cluster.Conf.Hosts = srv
+	newHosts := cluster.Conf.Hosts
+	if strings.Contains(newHosts, srv) {
+		return errors.New("Server already exists")
 	}
+
+	if newHosts != "" {
+		newHosts = strings.ReplaceAll(newHosts+","+srv, ",,", ",")
+	} else {
+		newHosts = srv
+	}
+
 	cluster.StateMachine.SetFailoverState()
-	cluster.SetDbServerHosts(cluster.Conf.Hosts)
+	cluster.SetDbServerHosts(newHosts)
 	cluster.newServerList()
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
@@ -77,7 +84,9 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 	switch prx {
 	case config.ConstProxyHaproxy:
 		cluster.Conf.HaproxyOn = true
-
+		if strings.Contains(cluster.Conf.HaproxyHosts, srv) {
+			return errors.New("Proxy already exists")
+		}
 		if cluster.Conf.HaproxyHosts != "" {
 			cluster.Conf.HaproxyHosts = cluster.Conf.HaproxyHosts + "," + srv
 		} else {
@@ -86,6 +95,9 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 	case config.ConstProxyMaxscale:
 		cluster.Conf.MxsOn = true
 		cluster.Conf.MxsPort = port
+		if strings.Contains(cluster.Conf.MxsHost, srv) {
+			return errors.New("Proxy already exists")
+		}
 		if user != "" || password != "" {
 			cluster.Conf.MxsUser = user
 			cluster.Conf.MxsPass = password
@@ -98,6 +110,9 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 	case config.ConstProxySqlproxy:
 		cluster.Conf.ProxysqlOn = true
 		cluster.Conf.ProxysqlPort = port
+		if strings.Contains(cluster.Conf.ProxysqlHosts, srv) {
+			return errors.New("Proxy already exists")
+		}
 		if user != "" || password != "" {
 			cluster.Conf.ProxysqlUser = user
 			cluster.Conf.ProxysqlPassword = password
@@ -109,6 +124,9 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 			cluster.Conf.ProxysqlHosts = srv
 		}
 	case config.ConstProxySpider:
+		if strings.Contains(cluster.Conf.MdbsProxyHosts, srv+":"+port) {
+			return errors.New("Proxy already exists")
+		}
 		if user != "" || password != "" {
 			cluster.Conf.MdbsProxyCredential = user + ":" + password
 		}

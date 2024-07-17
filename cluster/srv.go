@@ -186,6 +186,7 @@ type ServerMonitor struct {
 	WorkLoad                    *config.WorkLoadsMap    `json:"workLoad"`
 	DelayStat                   *ServerDelayStat        `json:"delayStat"`
 	SlaveVariables              SlaveVariables          `json:"slaveVariables"`
+	IsReseeding                 bool                    `json:"isReseeding"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 	InPurgingBinaryLog          bool
@@ -403,7 +404,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			}
 			if cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL && server.GetCluster().GetTopology() != topoUnknown {
 				server.FailSuspectHeartbeat = cluster.StateMachine.GetHeartbeats()
-				if cluster.GetMaster().FailCount <= cluster.Conf.MaxFail {
+				if cluster.GetMaster() != nil && cluster.GetMaster().FailCount <= cluster.Conf.MaxFail {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Master Failure detected! Retry %d/%d", cluster.GetMaster().FailCount, cluster.Conf.MaxFail)
 				}
 				if server.FailCount >= cluster.Conf.MaxFail {

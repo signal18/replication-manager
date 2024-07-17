@@ -55,7 +55,6 @@ func (cluster *Cluster) newServerList() error {
 	// split("")  return len = 1
 
 	if cluster.Conf.Hosts != "" {
-
 		for k, url := range cluster.hostList {
 			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), false, cluster.GetDomain())
 			if err != nil {
@@ -259,6 +258,12 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						cluster.master = cluster.Servers[k]
 						cluster.master.SetMaster()
 					}
+
+					// Set master when master reconnect after become suspect
+					if cluster.master == cluster.Servers[k] && cluster.master.State == stateSuspect {
+						cluster.master.SetMaster()
+					}
+
 					if cluster.master.IsReadOnly() && !cluster.master.IsRelay {
 						cluster.master.SetReadWrite()
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s disable read only as last non slave", cluster.master.URL)

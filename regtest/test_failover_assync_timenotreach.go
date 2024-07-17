@@ -36,7 +36,7 @@ func (regtest *RegTest) TestFailoverTimeNotReach(cluster *cluster.Cluster, conf 
 	time.Sleep(4 * time.Second)
 	cluster.FailoverAndWait()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "New Master  %s ", cluster.GetMaster().URL)
-	if cluster.GetMaster().URL != SaveMasterURL {
+	if cluster.GetMaster() != nil && cluster.GetMaster().URL != SaveMasterURL {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Old master %s ==  Next master %s  ", SaveMasterURL, cluster.GetMaster().URL)
 		return false
 	}
