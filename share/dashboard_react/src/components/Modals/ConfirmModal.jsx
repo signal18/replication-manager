@@ -6,15 +6,15 @@ function ConfirmModal({ title, isOpen, closeModal, onConfirmClick }) {
     <Modal isOpen={isOpen} onClose={closeModal}>
       <ModalOverlay />
       <ModalContent>
-        <ModalHeader>{title}</ModalHeader>
+        <ModalHeader whiteSpace='pre-line'>{title}</ModalHeader>
         <ModalCloseButton />
 
         <ModalFooter>
-          <Button colorScheme='blue' mr={3} onClick={closeModal}>
-            No
+          <Button variant='outline' mr={3} onClick={closeModal}>
+            Cancel
           </Button>
-          <Button variant='ghost' onClick={onConfirmClick}>
-            Yes
+          <Button colorScheme='blue' onClick={onConfirmClick}>
+            Confirm
           </Button>
         </ModalFooter>
       </ModalContent>

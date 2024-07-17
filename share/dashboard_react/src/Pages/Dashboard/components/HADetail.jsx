@@ -10,7 +10,7 @@ import ConfirmModal from '../../../components/Modals/ConfirmModal'
 function HADetail({ selectedCluster }) {
   const {
     cluster: {
-      clusteraMaster,
+      clusterMaster,
       loadingStates: { switchOver: switchOverLoading, failOver: failOverLoading }
     },
     common: { theme, isDesktop }
@@ -55,9 +55,9 @@ function HADetail({ selectedCluster }) {
 
   const handleConfirm = () => {
     if (selectedCluster) {
-      if (clusteraMaster?.state === 'Failed') {
+      if (clusterMaster?.state === 'Failed') {
         dispatch(failOverCluster({ clusterName: selectedCluster.name }))
-      } else if (clusteraMaster?.state !== 'Failed') {
+      } else if (clusterMaster?.state !== 'Failed') {
         dispatch(switchOverCluster({ clusterName: selectedCluster.name }))
       }
     }
@@ -93,7 +93,7 @@ function HADetail({ selectedCluster }) {
         headerAction='button'
         isLoading={switchOverLoading || failOverLoading}
         loadingText={'Processing'}
-        buttonText={clusteraMaster?.state === 'Failed' ? 'Failover' : 'Switchover'}
+        buttonText={clusterMaster?.state === 'Failed' ? 'Failover' : 'Switchover'}
       />
       {isModalOpen && (
         <ConfirmModal

@@ -1,31 +1,6 @@
 import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import { clusterService } from '../services/clusterService'
-import { showErrorToast, showSuccessToast } from './toastSlice'
-
-const handleError = (error, thunkAPI) => {
-  const errorMessage = error.message || 'Request failed'
-  const errorStatus = error.errorStatus || 500 // Default error status if not provided
-  // Handle errors (including custom errorStatus)
-  return thunkAPI.rejectWithValue({ errorMessage, errorStatus }) // Pass the entire Error object to the rejected action
-}
-
-const showSuccessBanner = (message, responseStatus, thunkAPI) => {
-  thunkAPI.dispatch(
-    showSuccessToast({
-      status: 'success',
-      title: message
-    })
-  )
-}
-const showErrorBanner = (message, error, thunkAPI) => {
-  thunkAPI.dispatch(
-    showErrorToast({
-      status: 'error',
-      title: message,
-      description: error
-    })
-  )
-}
+import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
 
 export const getClusters = createAsyncThunk('cluster/getClusters', async ({}, thunkAPI) => {
   try {
@@ -213,20 +188,10 @@ export const rotateDBCredential = createAsyncThunk('cluster/rotateDBCredential',
 export const rollingOptimize = createAsyncThunk('cluster/rollingOptimize', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.rollingOptimize(clusterName)
-    thunkAPI.dispatch(
-      showSuccessToast({
-        status: 'success',
-        title: 'Rolling optimize successful!'
-      })
-    )
+    showSuccessBanner('Rolling optimize successful!', status, thunkAPI)
     return { data, status }
   } catch (error) {
-    thunkAPI.dispatch(
-      showErrorToast({
-        status: 'error',
-        title: 'Rolling optimize failed!'
-      })
-    )
+    showErrorBanner('Rolling optimize failed!', error, thunkAPI)
     handleError(error, thunkAPI)
   }
 })
@@ -234,20 +199,10 @@ export const rollingOptimize = createAsyncThunk('cluster/rollingOptimize', async
 export const rollingRestart = createAsyncThunk('cluster/rollingRestart', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.rollingRestart(clusterName)
-    thunkAPI.dispatch(
-      showSuccessToast({
-        status: 'success',
-        title: 'Rolling restart successful!'
-      })
-    )
+    showSuccessBanner('Rolling restart successful!', status, thunkAPI)
     return { data, status }
   } catch (error) {
-    thunkAPI.dispatch(
-      showErrorToast({
-        status: 'error',
-        title: 'Rolling restart failed!'
-      })
-    )
+    showErrorBanner('Rolling restart failed!', error, thunkAPI)
     handleError(error, thunkAPI)
   }
 })
@@ -255,20 +210,10 @@ export const rollingRestart = createAsyncThunk('cluster/rollingRestart', async (
 export const rotateCertificates = createAsyncThunk('cluster/rotateCertificates', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.rotateCertificates(clusterName)
-    thunkAPI.dispatch(
-      showSuccessToast({
-        status: 'success',
-        title: 'Rotate certificates successful!'
-      })
-    )
+    showSuccessBanner('Rotate certificates successful!', status, thunkAPI)
     return { data, status }
   } catch (error) {
-    thunkAPI.dispatch(
-      showErrorToast({
-        status: 'error',
-        title: 'Rotate certificates failed!'
-      })
-    )
+    showErrorBanner('Rotate certificates failed!', error, thunkAPI)
     handleError(error, thunkAPI)
   }
 })
@@ -276,20 +221,10 @@ export const rotateCertificates = createAsyncThunk('cluster/rotateCertificates',
 export const reloadCertificates = createAsyncThunk('cluster/reloadCertificates', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.reloadCertificates(clusterName)
-    thunkAPI.dispatch(
-      showSuccessToast({
-        status: 'success',
-        title: 'Reload certificates successful!'
-      })
-    )
+    showSuccessBanner('Reload certificates successful!', status, thunkAPI)
     return { data, status }
   } catch (error) {
-    thunkAPI.dispatch(
-      showErrorToast({
-        status: 'error',
-        title: 'Reload certificates failed!'
-      })
-    )
+    showErrorBanner('Reload certificates failed!', error, thunkAPI)
     handleError(error, thunkAPI)
   }
 })
@@ -299,20 +234,10 @@ export const cancelRollingRestart = createAsyncThunk(
   async ({ clusterName }, thunkAPI) => {
     try {
       const { data, status } = await clusterService.cancelRollingRestart(clusterName)
-      thunkAPI.dispatch(
-        showSuccessToast({
-          status: 'success',
-          title: 'Rolling restart cancelled!'
-        })
-      )
+      showSuccessBanner('Rolling restart cancelled!', status, thunkAPI)
       return { data, status }
     } catch (error) {
-      thunkAPI.dispatch(
-        showErrorToast({
-          status: 'error',
-          title: 'Rolling restart cancellation failed!'
-        })
-      )
+      showErrorBanner('Rolling restart cancellation failed!', error, thunkAPI)
       handleError(error, thunkAPI)
     }
   }
@@ -323,24 +248,434 @@ export const cancelRollingReprov = createAsyncThunk(
   async ({ clusterName }, thunkAPI) => {
     try {
       const { data, status } = await clusterService.cancelRollingReprov(clusterName)
-      thunkAPI.dispatch(
-        showSuccessToast({
-          status: 'success',
-          title: 'Rolling reprov cancelled!'
-        })
-      )
+      showSuccessBanner('Rolling reprov cancelled!', status, thunkAPI)
       return { data, status }
     } catch (error) {
-      thunkAPI.dispatch(
-        showErrorToast({
-          status: 'error',
-          title: 'Rolling reprov cancellation failed!'
-        })
-      )
+      showErrorBanner('Rolling reprov cancellation failed!', error, thunkAPI)
       handleError(error, thunkAPI)
     }
   }
 )
+
+export const bootstrapMasterSlave = createAsyncThunk(
+  'cluster/bootstrapMasterSlave',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.bootstrapMasterSlave(clusterName)
+      showSuccessBanner('Master slave bootstrap successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Master slave bootstrap failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const bootstrapMasterSlaveNoGtid = createAsyncThunk(
+  'cluster/bootstrapMasterSlaveNoGtid',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.bootstrapMasterSlaveNoGtid(clusterName)
+      showSuccessBanner('Master slave positional bootstrap successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Master slave positional bootstrap failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const bootstrapMultiMaster = createAsyncThunk(
+  'cluster/bootstrapMultiMaster',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.bootstrapMultiMaster(clusterName)
+      showSuccessBanner('Multi master bootstrap successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Multi master bootstrap failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const bootstrapMultiMasterRing = createAsyncThunk(
+  'cluster/bootstrapMultiMasterRing',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.bootstrapMultiMasterRing(clusterName)
+      showSuccessBanner('Multi master ring bootstrap successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Multi master ring bootstrap failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const bootstrapMultiTierSlave = createAsyncThunk(
+  'cluster/bootstrapMultiTierSlave',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.bootstrapMultiTierSlave(clusterName)
+      showSuccessBanner('Multitier slave bootstrap successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Multitier slave bootstrap failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const configReload = createAsyncThunk('cluster/configReload', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.configReload(clusterName)
+    showSuccessBanner('Config is reloaded!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Config reload failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const configDiscoverDB = createAsyncThunk('cluster/configDiscoverDB', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.configDiscoverDB(clusterName)
+    showSuccessBanner('Databse discover config successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Databse discover config failed!', error.message, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const configDynamic = createAsyncThunk('cluster/configDynamic', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.configDynamic(clusterName)
+    showSuccessBanner('Databse apply dynamic config successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Databse apply dynamic config failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const setMaintenanceMode = createAsyncThunk(
+  'cluster/setMaintenanceMode',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.setMaintenanceMode(clusterName, serverId)
+      showSuccessBanner('Maintenance mode is set!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Setting Maintenance mode failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+export const promoteToLeader = createAsyncThunk(
+  'cluster/promoteToLeader',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.promoteToLeader(clusterName, serverId)
+      showSuccessBanner('Promote to leader successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Promote to leader failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const setAsUnrated = createAsyncThunk('cluster/setAsUnrated', async ({ clusterName, serverId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.setAsUnrated(clusterName, serverId)
+    showSuccessBanner('Failover candidate set as unrated!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Failover candidate failed to set as unrated', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const setAsPreferred = createAsyncThunk(
+  'cluster/setAsPreferred',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.setAsPreferred(clusterName, serverId)
+      showSuccessBanner('Failover candidate set as preferred!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Failover candidate failed to set as preferred', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const setAsIgnored = createAsyncThunk('cluster/setAsIgnored', async ({ clusterName, serverId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.setAsIgnored(clusterName, serverId)
+    showSuccessBanner('Failover candidate set as ignored!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Failover candidate failed to set as ignored', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const reseedLogicalFromBackup = createAsyncThunk(
+  'cluster/reseedLogicalFromBackup',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.reseedLogicalFromBackup(clusterName, serverId)
+      showSuccessBanner('Reseed logical from backup successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Reseed logical from backup failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const reseedLogicalFromMaster = createAsyncThunk(
+  'cluster/reseedLogicalFromMaster',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.reseedLogicalFromMaster(clusterName, serverId)
+      showSuccessBanner('Reseed logical from master successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Reseed logical from master failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const reseedPhysicalFromBackup = createAsyncThunk(
+  'cluster/reseedPhysicalFromBackup',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.reseedPhysicalFromBackup(clusterName, serverId)
+      showSuccessBanner('Reseed physical from backup successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Reseed physical from backup failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const flushLogs = createAsyncThunk('cluster/flushLogs', async ({ clusterName, serverId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.flushLogs(clusterName, serverId)
+    showSuccessBanner('Logs flush successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Logs flush failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const physicalBackupMaster = createAsyncThunk(
+  'cluster/physicalBackupMaster',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.physicalBackupMaster(clusterName, serverId)
+      showSuccessBanner('Physical master backup successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Physical master backup failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const logicalBackup = createAsyncThunk('cluster/logicalBackup', async ({ clusterName, serverId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.logicalBackup(clusterName, serverId)
+    showSuccessBanner('Logical backup successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Logical backup failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const stopDatabase = createAsyncThunk('cluster/stopDatabase', async ({ clusterName, serverId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.stopDatabase(clusterName, serverId)
+    showSuccessBanner('Database is stopped!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Stopping database failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const startDatabase = createAsyncThunk('cluster/startDatabase', async ({ clusterName, serverId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.startDatabase(clusterName, serverId)
+    showSuccessBanner('Database has started!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    console.log('error in startDatabase::', error)
+    showErrorBanner('Starting database failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const provisionDatabase = createAsyncThunk(
+  'cluster/provisionDatabase',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.provisionDatabase(clusterName, serverId)
+      showSuccessBanner('Provision database successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Provision database failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const unprovisionDatabase = createAsyncThunk(
+  'cluster/unprovisionDatabase',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.unprovisionDatabase(clusterName, serverId)
+      showSuccessBanner('Unprovision database successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Unprovision database failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const runRemoteJobs = createAsyncThunk('cluster/runRemoteJobs', async ({ clusterName, serverId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.runRemoteJobs(clusterName, serverId)
+    showSuccessBanner('Remote jobs started!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Remote jobs failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const optimizeServer = createAsyncThunk(
+  'cluster/optimizeServer',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.optimizeServer(clusterName, serverId)
+      showSuccessBanner('Database optimize successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Database optimize failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const skip1ReplicationEvent = createAsyncThunk(
+  'cluster/skip1ReplicationEvent',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.skip1ReplicationEvent(clusterName, serverId)
+      showSuccessBanner('Replication event skipped!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Skipping Replication event failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const toggleInnodbMonitor = createAsyncThunk(
+  'cluster/toggleInnodbMonitor',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.toggleInnodbMonitor(clusterName, serverId)
+      showSuccessBanner('Toggle Innodb Monitor successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Toggle Innodb Monitor failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const toggleSlowQueryCapture = createAsyncThunk(
+  'cluster/toggleSlowQueryCapture',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.toggleSlowQueryCapture(clusterName, serverId)
+      showSuccessBanner('Toggle Slow Query Capture successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Toggle Slow Query Capture failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const startSlave = createAsyncThunk('cluster/startSlave', async ({ clusterName, serverId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.startSlave(clusterName, serverId)
+    showSuccessBanner('Slave has started!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Starting slave failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const stopSlave = createAsyncThunk('cluster/stopSlave', async ({ clusterName, serverId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.stopSlave(clusterName, serverId)
+    showSuccessBanner('Slave has stopped!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Starting slave failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const toggleReadOnly = createAsyncThunk(
+  'cluster/toggleReadOnly',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.toggleReadOnly(clusterName, serverId)
+      showSuccessBanner('Toggle readonly successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Toggle readonly failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const resetMaster = createAsyncThunk('cluster/resetMaster', async ({ clusterName, serverId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.resetMaster(clusterName, serverId)
+    showSuccessBanner('Reset Master successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Reset Master failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const resetSlave = createAsyncThunk('cluster/resetSlave', async ({ clusterName, serverId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.resetSlave(clusterName, serverId)
+    showSuccessBanner('Reset Slave successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Reset Slave failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
 
 export const clusterSlice = createSlice({
   name: 'cluster',
@@ -351,7 +686,7 @@ export const clusterSlice = createSlice({
     monitor: null,
     clusterData: null,
     clusterAlerts: null,
-    clusteraMaster: null,
+    clusterMaster: null,
     clusterServers: null,
     refreshInterval: 0,
     loadingStates: {
@@ -400,7 +735,7 @@ export const clusterSlice = createSlice({
         } else if (action.type.includes('getClusterAlerts')) {
           state.clusterAlerts = action.payload.data
         } else if (action.type.includes('getClusterMaster')) {
-          state.clusteraMaster = action.payload.data
+          state.clusterMaster = action.payload.data
         } else if (action.type.includes('getClusterServers')) {
           state.clusterServers = action.payload.data
         }
@@ -425,7 +760,40 @@ export const clusterSlice = createSlice({
         rotateCertificates.pending,
         reloadCertificates.pending,
         cancelRollingRestart.pending,
-        cancelRollingReprov.pending
+        cancelRollingReprov.pending,
+        bootstrapMasterSlave.pending,
+        bootstrapMasterSlaveNoGtid.pending,
+        bootstrapMultiMaster.pending,
+        bootstrapMultiMasterRing.pending,
+        bootstrapMultiTierSlave.pending,
+        configReload.pending,
+        configDiscoverDB.pending,
+        configDynamic.pending,
+        setMaintenanceMode.pending,
+        promoteToLeader.pending,
+        setAsUnrated.pending,
+        setAsPreferred.pending,
+        setAsIgnored.pending,
+        reseedLogicalFromBackup.pending,
+        reseedLogicalFromMaster.pending,
+        reseedPhysicalFromBackup.pending,
+        flushLogs.pending,
+        physicalBackupMaster.pending,
+        logicalBackup.pending,
+        stopDatabase.pending,
+        startDatabase.pending,
+        provisionDatabase.pending,
+        unprovisionDatabase.pending,
+        runRemoteJobs.pending,
+        optimizeServer.pending,
+        skip1ReplicationEvent.pending,
+        toggleInnodbMonitor.pending,
+        toggleSlowQueryCapture.pending,
+        startSlave.pending,
+        stopSlave.pending,
+        toggleReadOnly.pending,
+        resetMaster.pending,
+        resetSlave.pending
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -455,7 +823,40 @@ export const clusterSlice = createSlice({
         rotateCertificates.fulfilled,
         reloadCertificates.fulfilled,
         cancelRollingRestart.fulfilled,
-        cancelRollingReprov.fulfilled
+        cancelRollingReprov.fulfilled,
+        bootstrapMasterSlave.fulfilled,
+        bootstrapMasterSlaveNoGtid.fulfilled,
+        bootstrapMultiMaster.fulfilled,
+        bootstrapMultiMasterRing.fulfilled,
+        bootstrapMultiTierSlave.fulfilled,
+        configReload.fulfilled,
+        configDiscoverDB.fulfilled,
+        configDynamic.fulfilled,
+        setMaintenanceMode.fulfilled,
+        promoteToLeader.fulfilled,
+        setAsUnrated.fulfilled,
+        setAsPreferred.fulfilled,
+        setAsIgnored.fulfilled,
+        reseedLogicalFromBackup.fulfilled,
+        reseedLogicalFromMaster.fulfilled,
+        reseedPhysicalFromBackup.fulfilled,
+        flushLogs.fulfilled,
+        physicalBackupMaster.fulfilled,
+        logicalBackup.fulfilled,
+        stopDatabase.fulfilled,
+        startDatabase.fulfilled,
+        provisionDatabase.fulfilled,
+        unprovisionDatabase.fulfilled,
+        runRemoteJobs.fulfilled,
+        optimizeServer.fulfilled,
+        skip1ReplicationEvent.fulfilled,
+        toggleInnodbMonitor.fulfilled,
+        toggleSlowQueryCapture.fulfilled,
+        startSlave.fulfilled,
+        stopSlave.fulfilled,
+        toggleReadOnly.fulfilled,
+        resetMaster.fulfilled,
+        resetSlave.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -485,7 +886,40 @@ export const clusterSlice = createSlice({
         rotateCertificates.rejected,
         reloadCertificates.rejected,
         cancelRollingRestart.rejected,
-        cancelRollingReprov.rejected
+        cancelRollingReprov.rejected,
+        bootstrapMasterSlave.rejected,
+        bootstrapMasterSlaveNoGtid.rejected,
+        bootstrapMultiMaster.rejected,
+        bootstrapMultiMasterRing.rejected,
+        bootstrapMultiTierSlave.rejected,
+        configReload.rejected,
+        configDiscoverDB.rejected,
+        configDynamic.rejected,
+        setMaintenanceMode.rejected,
+        promoteToLeader.rejected,
+        setAsUnrated.rejected,
+        setAsPreferred.rejected,
+        setAsIgnored.rejected,
+        reseedLogicalFromBackup.rejected,
+        reseedLogicalFromMaster.rejected,
+        reseedPhysicalFromBackup.rejected,
+        flushLogs.rejected,
+        physicalBackupMaster.rejected,
+        logicalBackup.rejected,
+        stopDatabase.rejected,
+        startDatabase.rejected,
+        provisionDatabase.rejected,
+        unprovisionDatabase.rejected,
+        runRemoteJobs.rejected,
+        optimizeServer.rejected,
+        skip1ReplicationEvent.rejected,
+        toggleInnodbMonitor.rejected,
+        toggleSlowQueryCapture.rejected,
+        startSlave.rejected,
+        stopSlave.rejected,
+        toggleReadOnly.rejected,
+        resetMaster.rejected,
+        resetSlave.rejected
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {

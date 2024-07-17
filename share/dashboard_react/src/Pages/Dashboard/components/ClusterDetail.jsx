@@ -6,8 +6,16 @@ import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../../components/TableType2'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import {
+  bootstrapMasterSlave,
+  bootstrapMasterSlaveNoGtid,
+  bootstrapMultiMaster,
+  bootstrapMultiMasterRing,
+  bootstrapMultiTierSlave,
   cancelRollingReprov,
   cancelRollingRestart,
+  configDiscoverDB,
+  configDynamic,
+  configReload,
   failOverCluster,
   provisionCluster,
   reloadCertificates,
@@ -37,6 +45,8 @@ function ClusterDetail({ selectedCluster }) {
   const [isNewServerModalOpen, setIsNewServerModalOpen] = useState(false)
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [confirmTitle, setConfirmTitle] = useState('')
+  const confirmBootrapMessage =
+    'Bootstrap operation will destroy your existing replication setup. \n Are you really sure?'
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
@@ -201,16 +211,76 @@ function ClusterDetail({ selectedCluster }) {
     {
       name: 'Replication Bootstrap',
       subMenu: [
-        { name: 'Master Slave' },
-        { name: 'Master Slave Positional' },
-        { name: 'Multi Master' },
-        { name: 'Multi Master Ring' },
-        { name: 'Multi Tier Slave' }
+        {
+          name: 'Master Slave',
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle(confirmBootrapMessage)
+            setConfirmHandler(() => () => dispatch(bootstrapMasterSlave({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Master Slave Positional',
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle(confirmBootrapMessage)
+            setConfirmHandler(() => () => dispatch(bootstrapMasterSlaveNoGtid({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Multi Master',
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle(confirmBootrapMessage)
+            setConfirmHandler(() => () => dispatch(bootstrapMultiMaster({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Multi Master Ring',
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle(confirmBootrapMessage)
+            setConfirmHandler(() => () => dispatch(bootstrapMultiMasterRing({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Multi Tier Slave',
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle(confirmBootrapMessage)
+            setConfirmHandler(() => () => dispatch(bootstrapMultiTierSlave({ clusterName: selectedCluster?.name })))
+          }
+        }
       ]
     },
     {
       name: 'Config',
-      subMenu: [{ name: 'Reload' }, { name: 'Database discover config' }, { name: 'Database apply dynamic config' }]
+      subMenu: [
+        {
+          name: 'Reload',
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Confirm reload config?')
+            setConfirmHandler(() => () => dispatch(configReload({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Database discover config',
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Confirm database discover config?')
+            setConfirmHandler(() => () => dispatch(configDiscoverDB({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Database apply dynamic config',
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Confirm database apply config?')
+            setConfirmHandler(() => () => dispatch(configDynamic({ clusterName: selectedCluster?.name })))
+          }
+        }
+      ]
     },
     {
       name: 'Debug',
@@ -229,18 +299,22 @@ function ClusterDetail({ selectedCluster }) {
             <>
               {selectedCluster.config.testInjectTraffic && <TagPill type='success' text='PrxTraffic' />}
               {selectedCluster.isProvision ? (
-                <TagPill type='success' text='IsProvision' />
+                <TagPill colorScheme='green' text='IsProvision' />
               ) : (
-                <TagPill type='warning' text='NeedProvision' />
+                <TagPill colorScheme='orange' text='NeedProvision' />
               )}
-              {selectedCluster.isNeedDatabasesRollingRestart && <TagPill type='warning' text='NeedRollingRestart' />}
-              {selectedCluster.isNeedDatabasesRollingReprov && <TagPill type='warning' text='NeedRollingReprov' />}
-              {selectedCluster.isNeedDatabasesRestart && <TagPill type='warning' text='NeedDabaseRestart' />}
-              {selectedCluster.isNeedDatabasesReprov && <TagPill type='warning' text='NeedDatabaseReprov' />}
-              {selectedCluster.isNeedProxiesRestart && <TagPill type='warning' text='NeedProxyRestart' />}
-              {selectedCluster.isNeedProxiesReprov && <TagPill type='warning' text='NeedProxyReprov' />}
-              {selectedCluster.isNotMonitoring && <TagPill type='warning' text='UnMonitored' />}
-              {selectedCluster.isCapturing && <TagPill type='warning' text='Capturing' />}
+              {selectedCluster.isNeedDatabasesRollingRestart && (
+                <TagPill colorScheme='orange' text='NeedRollingRestart' />
+              )}
+              {selectedCluster.isNeedDatabasesRollingReprov && (
+                <TagPill colorScheme='orange' text='NeedRollingReprov' />
+              )}
+              {selectedCluster.isNeedDatabasesRestart && <TagPill colorScheme='orange' text='NeedDabaseRestart' />}
+              {selectedCluster.isNeedDatabasesReprov && <TagPill colorScheme='orange' text='NeedDatabaseReprov' />}
+              {selectedCluster.isNeedProxiesRestart && <TagPill colorScheme='orange' text='NeedProxyRestart' />}
+              {selectedCluster.isNeedProxiesReprov && <TagPill colorScheme='orange' text='NeedProxyReprov' />}
+              {selectedCluster.isNotMonitoring && <TagPill colorScheme='orange' text='UnMonitored' />}
+              {selectedCluster.isCapturing && <TagPill colorScheme='orange' text='Capturing' />}
             </>
           }
         </Wrap>
