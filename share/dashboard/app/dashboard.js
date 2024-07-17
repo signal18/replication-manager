@@ -343,6 +343,27 @@ app.controller('DashboardController', function (
     }
   };
 
+  $scope.roApiTokenTimeout = true
+  $scope.selectedApiTokenTimeout = 48
+
+  $scope.SetApiTokenTimeout = function (val) {
+    if ($scope.roApiTokenTimeout) {
+      $scope.selectedApiTokenTimeout = Number(val)
+      angular.element(document.querySelector('#selectedApiTokenTimeout')).get(0).value = Number(val)
+    }
+  }
+
+  $scope.addTokenExpireHour = function (val) {
+    if (!$scope.roApiTokenTimeout) {
+    $scope.selectedApiTokenTimeout += Number(val);
+    angular.element(document.querySelector('#selectedApiTokenTimeout')).get(0).value = Number($scope.selectedApiTokenTimeout)
+    }
+  };
+
+  $scope.toggleApiTokenTimeout = function () {
+    $scope.roApiTokenTimeout = !$scope.roApiTokenTimeout
+    $scope.SetApiTokenTimeout($scope.selectedCluster.config.apiTokenTimeout)
+  }
 
   $scope.callServices = function () {
 
@@ -428,6 +449,7 @@ app.controller('DashboardController', function (
           return passedTest;
         }
         $scope.agents = data.agents;
+        $scope.SetApiTokenTimeout(data.config.apiTokenTimeout);
         $scope.missingDBTags = isInTags(data.configurator.configTags, data.configurator.dbServersTags, function (currentTag, dbTags) { return (dbTags.indexOf(currentTag) == -1); });
         $scope.missingProxyTags = isInTags(data.configurator.configPrxTags, data.configurator.proxyServersTags, function (currentTag, proxyTags) { return (proxyTags.indexOf(currentTag) == -1); });
         $scope.SetIgnoreErrors(data.config.monitoringIgnoreErrors);
@@ -1778,7 +1800,7 @@ app.controller('DashboardController', function (
   };
 
   $scope.setsettings = function (setting, value) {
-    if (confirm("Confirm change " + setting.toString() + "to " + value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
+    if (confirm("Confirm change '" + setting.toString() + "' to: " + value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
   };
 
   $scope.setsettingsnullable = function (setting, value) {
@@ -1790,7 +1812,10 @@ app.controller('DashboardController', function (
   };
 
 
-
+  $scope.saveApiTokenTimeout = function (to) {
+    $scope.setsettings("api-token-timeout",to)
+    $scope.toggleApiTokenTimeout()
+  };
 
   $scope.openCluster = function (clusterName) {
     $timeout.cancel($scope.promise);

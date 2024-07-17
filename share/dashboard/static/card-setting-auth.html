@@ -1,0 +1,36 @@
+<md-card>
+    <table ng-if="settings" class="table">
+        <tr>
+            <th>API Token Timeout in Hours</th>
+            <th width="10%">
+                <span ng-if="roApiTokenTimeout" style="display:inline-block;;margin: 2px;" ng-click="toggleApiTokenTimeout()">
+                    <i style="display:inline-block;;margin: 2px;" class="fa fa-edit"></i>
+                </span>
+                <span ng-if="!roApiTokenTimeout" style="display:inline-block;;margin: 2px;" ng-click="toggleApiTokenTimeout()">
+                    <i style="display:inline-block;;margin: 2px;" class="fa fa-times"></i>
+                </span>
+                <span style="display:inline-block;;margin: 2px;" ng-click="saveApiTokenTimeout(selectedApiTokenTimeout)">
+                    <i style="display:inline-block;;margin: 2px;" class="fa fa-save"></i>
+                </span>
+            </th>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <div class="input-group number-spinner">
+                    <span class="input-group-btn data-dwn">
+                        <button class="btn btn-default " data-dir="dwn" ng-click="addTokenExpireHour(-1)" ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || refreshInterval <= 1" style="color:#468cc5">
+                            <span class="glyphicon glyphicon-minus"></span>
+                        </button>
+                    </span>
+                    <input type="number" class="form-control text-center" ng-show="!roApiTokenTimeout && selectedCluster.apiUsers[user].grants['cluster-settings']==true" id="selectedApiTokenTimeout" name="selectedApiTokenTimeout" ng-model="selectedApiTokenTimeout" />
+                    <input type="number" class="form-control text-center" ng-show="roApiTokenTimeout || selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-model="selectedCluster.config.apiTokenTimeout" readonly/>
+                    <span class="input-group-btn data-up">
+                        <button class="btn btn-default" data-dir="up" ng-click="addTokenExpireHour(1)" ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" style="color:#468cc5">
+                            <span class="glyphicon glyphicon-plus"></span>
+                        </button>
+                    </span>
+                </div>
+            </td>
+        </tr>
+    </table>
+</md-card>

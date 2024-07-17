@@ -1483,6 +1483,9 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetMonitorIgnoreErrors(value)
 	case "monitoring-capture-trigger":
 		mycluster.SetMonitorCaptureTrigger(value)
+	case "api-token-timeout":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetApiTokenTimeout(val)
 	}
 
 }
