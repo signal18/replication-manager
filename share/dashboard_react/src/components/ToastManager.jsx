@@ -15,7 +15,7 @@ const ToastManager = () => {
         title,
         description,
         status: status,
-        duration: 3000,
+        duration: status === 'error' ? 5000 : 3000,
         isClosable: true,
         position: 'top-right'
       })

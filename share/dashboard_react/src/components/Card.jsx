@@ -40,7 +40,7 @@ function Card({ header, body, headerAction, menuOptions, buttonText, isLoading, 
             {buttonText}
           </Button>
         )}
-        {headerAction !== 'button' && isLoading && <Spinner label={loadingText} />}
+        {headerAction !== 'button' && isLoading && <Spinner label={loadingText} speed='1s' />}
         {header}
       </HStack>
       {body}
