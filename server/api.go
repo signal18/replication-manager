@@ -272,16 +272,16 @@ func (repman *ReplicationManager) apiserver() {
 /////////////ENDPOINT HANDLERS////////////
 /////////////////////////////////////////
 
-func (repman *ReplicationManager) isValidRequest(r *http.Request) bool {
+func (repman *ReplicationManager) isValidRequest(r *http.Request) (bool, error) {
 
 	_, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
 		return vk, nil
 	})
 	if err == nil {
-		return true
+		return true, nil
 	}
-	return false
+	return false, err
 }
 
 func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) bool {
@@ -568,7 +568,7 @@ func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *ht
 //	  200: clusters
 func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if repman.isValidRequest(r) {
+	if ok, err := repman.isValidRequest(r); ok {
 
 		var clusters []*cluster.Cluster
 
@@ -599,7 +599,7 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 		w.Write(cl)
 
 	} else {
-		http.Error(w, "Unauthenticated", 401)
+		http.Error(w, "Unauthenticated resource: "+err.Error(), 401)
 		return
 	}
 }
@@ -622,7 +622,7 @@ func (repman *ReplicationManager) validateTokenMiddleware(w http.ResponseWriter,
 		}
 	} else {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, "Unauthorised access to this resource"+err.Error())
+		fmt.Fprint(w, "Unauthorised access to this resource: "+err.Error())
 	}
 }
 
