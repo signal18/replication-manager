@@ -32,7 +32,7 @@ function MenuOptions({ options = [], placement = 'bottom', subMenuPlacement = 'b
         sx={styles.menuButton}
         as={IconButton}
         icon={<HiDotsVertical />}></MenuButton>
-      <MenuList>
+      <MenuList zIndex={3}>
         {menuOptions?.map((option, index) => {
           return option.subMenu ? (
             <Menu key={index} placement={subMenuPlacement}>
@@ -41,7 +41,7 @@ function MenuOptions({ options = [], placement = 'bottom', subMenuPlacement = 'b
                   <span>{option.name}</span> <Spacer /> <HiChevronRight fontSize={'1.5rem'} />
                 </HStack>
               </MenuItem>
-              <MenuList>
+              <MenuList zIndex={3}>
                 {option.subMenu.map((subMenuOption, subIndex) => (
                   <MenuItem
                     onClick={() => {
@@ -55,7 +55,17 @@ function MenuOptions({ options = [], placement = 'bottom', subMenuPlacement = 'b
               </MenuList>
             </Menu>
           ) : (
-            <MenuItem>{option.name}</MenuItem>
+            <MenuItem
+              {...(option.onClick
+                ? {
+                    onClick: () => {
+                      option.onClick()
+                      handleMenuClose()
+                    }
+                  }
+                : {})}>
+              {option.name}
+            </MenuItem>
           )
         })}
       </MenuList>

@@ -1,7 +1,7 @@
 import React from 'react'
 import { Accordion, AccordionButton, AccordionIcon, AccordionItem, AccordionPanel, Box } from '@chakra-ui/react'
 
-function AccordionComponent({ heading, body }) {
+function AccordionComponent({ heading, body, panelSX }) {
   return (
     <Accordion allowToggle={true} defaultIndex={0}>
       <AccordionItem>
@@ -13,7 +13,9 @@ function AccordionComponent({ heading, body }) {
             <AccordionIcon />
           </AccordionButton>
         </h2>
-        <AccordionPanel pb={4}>{body}</AccordionPanel>
+        <AccordionPanel sx={panelSX} pb={4}>
+          {body}
+        </AccordionPanel>
       </AccordionItem>
     </Accordion>
   )
