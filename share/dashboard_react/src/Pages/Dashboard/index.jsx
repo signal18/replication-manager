@@ -27,15 +27,19 @@ function Dashboard({ selectedCluster }) {
           </Flex>
         )}
       </Flex>
+
       <AccordionComponent
         heading={'Cluster Workload'}
         body={<ClusterWorkload workload={selectedCluster?.workLoad} />}
       />
-      <AccordionComponent
-        heading={'Database servers'}
-        panelSX={{ overflowX: 'auto' }}
-        body={<DBServersTable selectedCluster={selectedCluster} />}
-      />
+      {selectedCluster && (
+        <AccordionComponent
+          heading={'Database servers'}
+          panelSX={{ overflowX: 'auto', p: 0 }}
+          body={<DBServersTable selectedCluster={selectedCluster} />}
+        />
+      )}
+
       <AccordionComponent heading={'Cluster Logs'} body={<Logs logs={selectedCluster?.log?.buffer} />} />
       <AccordionComponent heading={'Job Logs'} body={<Logs logs={selectedCluster?.logTask?.buffer} />} />
       <AccordionComponent heading={'Tests'} body={<ClusterTests />} />

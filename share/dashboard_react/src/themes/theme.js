@@ -38,7 +38,7 @@ const theme = extendTheme({
         bg: props.colorMode === 'dark' ? 'primary.dark' : 'primary.light',
         color: props.colorMode === 'dark' ? 'text.dark' : 'text.light'
       },
-      'html, body,p, label, span, [role="menu"] > button,  button[class*="accordion"]': {
+      'html, body,p, label, span,th, [role="menu"] > button,  button[class*="accordion"]': {
         color: props.colorMode === 'dark' ? 'text.dark' : 'text.light'
       },
       text: {

@@ -1,12 +1,12 @@
-import { Box, Text } from '@chakra-ui/react'
+import { Box, Flex, Text } from '@chakra-ui/react'
 import { useTheme } from '@emotion/react'
 import React from 'react'
 import GaugeComponent from 'react-gauge-component'
 
-function Gauge({ value, text }) {
+function Gauge({ value, text, width, containerSx }) {
   const styles = {
     container: {
-      // width: '200px'
+      width: `${width}px`
     },
     textValue: {
       textShadow: 'none'
@@ -14,19 +14,19 @@ function Gauge({ value, text }) {
   }
 
   return (
-    <Box>
+    <Flex direction='column' justify='center'>
       <GaugeComponent
         style={styles.container}
-        pointer={{ type: 'needle', color: 'red', length: 0.7 }}
         value={value}
         labels={{
-          valueLabel: { formatTextValue: (value) => value, style: styles.textValue, maxDecimalDigits: 3 }
+          valueLabel: { formatTextValue: (value) => value, style: styles.textValue, maxDecimalDigits: 3 },
+          tickLabels: { hideMinMax: true }
         }}
       />
       <Text textAlign='center' fontWeight='500'>
         {text}
       </Text>
-    </Box>
+    </Flex>
   )
 }
 
