@@ -55,7 +55,6 @@ func (cluster *Cluster) newServerList() error {
 	// split("")  return len = 1
 
 	if cluster.Conf.Hosts != "" {
-
 		for k, url := range cluster.hostList {
 			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), false, cluster.GetDomain())
 			if err != nil {
