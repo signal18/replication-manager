@@ -1,27 +1,32 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useSelector } from 'react-redux'
-import CustomIcon from '../../../../components/CustomIcon'
-import { HiCheck, HiThumbDown, HiThumbUp, HiViewGrid, HiX } from 'react-icons/hi'
-import { gtidstring } from '../../../../utility/common'
-import { Box, Button, Icon, IconButton, Tooltip } from '@chakra-ui/react'
-import TagPill from '../../../../components/TagPill'
-import { SiMariadbfoundation } from 'react-icons/si'
-import { GrMysql } from 'react-icons/gr'
+import CustomIcon from '../../../../components/Icons/CustomIcon'
+import { HiThumbDown, HiThumbUp, HiViewGrid } from 'react-icons/hi'
+import { Box, IconButton, Tooltip, useColorMode } from '@chakra-ui/react'
 import { DataTable } from '../../../../components/DataTable'
+import TagPill from '../../../../components/TagPill'
 import { createColumnHelper } from '@tanstack/react-table'
 import ServerMenu from './ServerMenu'
 import DBServersGrid from './DBServersGrid'
+import CompareModal from '../../../../components/Modals/CompareModal'
+import { getCurrentGtid, getDelay, getFailCount, getSlaveGtid, getStatusValue, getUsingGtid } from './utils'
+import CheckOrCrossIcon from '../../../../components/Icons/CheckOrCrossIcon'
+import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
+import ServerName from './ServerName'
 
 function DBServers({ selectedCluster }) {
   const {
-    common: { theme, isDesktop },
+    common: { isDesktop },
     cluster: { clusterServers, clusterMaster }
   } = useSelector((state) => state)
+  const { colorMode } = useColorMode()
   const [data, setData] = useState([])
   const [user, setUser] = useState(null)
   const [viewType, setViewType] = useState('table')
   const [hasMariadbGtid, setHasMariadbGtid] = useState(false)
   const [hasMysqlGtid, setHasMysqlGtid] = useState(false)
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState(false)
+  const [compareServer, setCompareServer] = useState(null)
 
   useEffect(() => {
     if (clusterServers?.length > 0) {
@@ -48,17 +53,6 @@ function DBServers({ selectedCluster }) {
     }
   }, [selectedCluster])
 
-  const styles = {
-    gtid: {},
-    serverName: {
-      backgroundColor: 'transparent',
-      display: 'flex',
-      padding: '0',
-      width: '100%',
-      _hover: {}
-    }
-  }
-
   const showGridView = () => {
     setViewType('grid')
   }
@@ -66,106 +60,13 @@ function DBServers({ selectedCluster }) {
     setViewType('table')
   }
 
-  const getDbFlavor = (rowData) => {
-    const dbFlavor = rowData.dbVersion.flavor
-    return (
-      <Tooltip label={dbFlavor}>
-        {dbFlavor === 'MariaDB' ? (
-          <Icon as={SiMariadbfoundation} fill={'blue.400'} fontSize={'2rem'} />
-        ) : dbFlavor === 'MySQL' ? (
-          <Icon as={GrMysql} fill={'blue.400'} fontSize={'2rem'} />
-        ) : null}
-      </Tooltip>
-    )
+  const openCompareModal = (rowData) => {
+    setIsCompareModalOpen(true)
+    setCompareServer(rowData)
   }
-
-  const getServerName = (rowData) => {
-    return (
-      <Button type='button' sx={styles.serverName}>
-        <Box
-          as='span'
-          maxWidth='100%'
-          whiteSpace='break-spaces'
-          textAlign='start'
-          overflowWrap='break-word'>{`${rowData.host}:${rowData.port}`}</Box>
-      </Button>
-    )
-  }
-
-  const getStatusValue = (rowData) => {
-    const isVirtual = rowData.isVirtualMaster ? '-VMaster' : ''
-    let colorScheme = 'gray'
-    let stateValue = rowData.state
-    switch (rowData.state) {
-      case 'SlaveErr':
-        stateValue = 'Slave Error'
-        colorScheme = 'orange'
-        break
-      case 'StandAlone':
-        stateValue = 'Standalone'
-        colorScheme = 'gray'
-        break
-      case 'Master':
-        colorScheme = 'blue'
-        break
-      case 'Slave':
-        colorScheme = 'gray'
-        break
-      case 'Suspect':
-        colorScheme = 'orange'
-        break
-      case 'Failed':
-        colorScheme = 'red'
-        break
-      default:
-        stateValue = rowData.state
-        break
-    }
-    return <TagPill colorScheme={colorScheme} text={`${stateValue}${isVirtual}`} />
-  }
-
-  const getMaintenanceValue = (rowData) => {
-    return rowData.isMaintenance ? <CustomIcon icon={HiCheck} color='green' /> : <CustomIcon icon={HiX} color='red' />
-  }
-
-  const getUsingGtid = (rowData) => {
-    if (hasMariadbGtid) {
-      return rowData.replications?.length > 0 && rowData.replications[0].usingGtid.String
-    } else if (hasMysqlGtid) {
-      return rowData.gtidExecuted
-    }
-  }
-
-  const getCurrentGtid = (rowData) => {
-    let result = ''
-    if (hasMariadbGtid) {
-      result = gtidstring(rowData.currentGtid)
-    }
-
-    if (!hasMariadbGtid && !hasMysqlGtid) {
-      if (rowData.isSlave && rowData.replications?.length > 0) {
-        result += rowData.replications[0].masterLogFile.String
-      } else {
-        result += rowData.binaryLogFile
-      }
-    }
-
-    return result
-  }
-
-  const getSlaveGtid = (rowData) => {
-    let result = ''
-    if (hasMariadbGtid) {
-      result = gtidstring(rowData.slaveGtid)
-    }
-    if (!hasMariadbGtid && !hasMysqlGtid) {
-      if (rowData.isSlave && rowData.replications?.length > 0) {
-        result += rowData.replications[0].execMasterLogPos.String
-      } else {
-        result += rowData.binaryLogPos
-      }
-    }
-    return result
+  const closeCompareModal = () => {
+    setIsCompareModalOpen(false)
+    setCompareServer(null)
   }
 
   const columnHelper = createColumnHelper()
@@ -181,6 +82,7 @@ function DBServers({ selectedCluster }) {
               row={row}
               user={user}
               isDesktop={isDesktop}
+              openCompareModal={openCompareModal}
             />
           ) : null,
         {
@@ -196,81 +98,65 @@ function DBServers({ selectedCluster }) {
           enableSorting: false
         }
       ),
-      columnHelper.accessor((row) => getDbFlavor(row), {
+      columnHelper.accessor((row) => <DBFlavourIcon dbFlavor={row.dbVersion.flavor} />, {
         cell: (info) => info.getValue(),
         header: 'Db',
         maxWidth: 40,
         id: 'dbFlavor'
       }),
-      columnHelper.accessor((row) => getServerName(row), {
+      columnHelper.accessor((row) => <ServerName rowData={row} />, {
         cell: (info) => info.getValue(),
         header: 'Server',
         maxWidth: 250,
         id: 'serverName'
       }),
 
-      columnHelper.accessor((row) => getStatusValue(row), {
-        cell: (info) => info.getValue(),
-        header: 'Status',
-        id: 'status'
-      }),
-      columnHelper.accessor((row) => getMaintenanceValue(row), {
+      columnHelper.accessor(
+        (row) => <TagPill colorScheme={getStatusValue(row).split('|')[0]} text={getStatusValue(row).split('|')[1]} />,
+        {
+          cell: (info) => info.getValue(),
+          header: 'Status',
+          id: 'status'
+        }
+      ),
+      columnHelper.accessor((row) => <CheckOrCrossIcon isValid={row.isMaintenance} />, {
         cell: (info) => info.getValue(),
         header: 'In Mnt',
         id: 'inMaintenance'
       }),
-      columnHelper.accessor((row) => getUsingGtid(row), {
+      columnHelper.accessor((row) => getUsingGtid(row, hasMariadbGtid, hasMysqlGtid), {
         cell: (info) => info.getValue(),
         header: () => {
           return `${hasMariadbGtid && 'Using GTID'} ${hasMariadbGtid && hasMysqlGtid ? '/' : ''} ${hasMysqlGtid ? 'Executed GTID Set' : ''}`
         },
         id: 'usingGtid'
       }),
-      columnHelper.accessor(
-        (row) => (
-          <Box as='span' sx={styles.gtid}>
-            {getCurrentGtid(row)}
-          </Box>
-        ),
-        {
-          cell: (info) => info.getValue(),
-          header: () => {
-            return hasMariadbGtid ? 'Current GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'File' : ''
-          },
-          id: 'currentGtid'
-        }
-      ),
-      columnHelper.accessor(
-        (row) => (
-          <Box as='span' sx={styles.gtid}>
-            {getSlaveGtid(row)}
-          </Box>
-        ),
-        {
-          cell: (info) => info.getValue(),
-          header: () => {
-            return hasMariadbGtid ? 'Slave GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'Pos' : ''
-          },
-          id: 'slaveGtid'
-        }
-      ),
-      columnHelper.accessor((row) => row.replications?.length > 0 && row.replications[0].secondsBehindMaster.Int64, {
+      columnHelper.accessor((row) => <Box as='span'>{getCurrentGtid(row, hasMariadbGtid, hasMysqlGtid)}</Box>, {
+        cell: (info) => info.getValue(),
+        header: () => {
+          return hasMariadbGtid ? 'Current GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'File' : ''
+        },
+        id: 'currentGtid'
+      }),
+      columnHelper.accessor((row) => <Box as='span'>{getSlaveGtid(row, hasMariadbGtid, hasMysqlGtid)}</Box>, {
+        cell: (info) => info.getValue(),
+        header: () => {
+          return hasMariadbGtid ? 'Slave GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'Pos' : ''
+        },
+        id: 'slaveGtid'
+      }),
+      columnHelper.accessor((row) => getDelay(row), {
         cell: (info) => info.getValue(),
         header: 'Delay',
         id: 'delay'
       }),
-      columnHelper.accessor((row) => `${row.failCount}/${row.failSuspectHeartbeat}`, {
+      columnHelper.accessor((row) => getFailCount(row), {
         cell: (info) => info.getValue(),
         header: 'Fail Cnt',
         id: 'failCount'
       }),
       columnHelper.accessor(
-        (row) =>
-          row.ignored ? (
-            <CustomIcon icon={HiThumbDown} color='red' />
-          ) : row.prefered ? (
-            <CustomIcon icon={HiThumbUp} color='green' />
-          ) : null,
+        (row) => <CheckOrCrossIcon isValid={row.prefered} isInvalid={row.ignored} variant='thumb' />,
         {
           cell: (info) => info.getValue(),
           header: 'Prf Ign',
@@ -279,12 +165,11 @@ function DBServers({ selectedCluster }) {
         }
       ),
       columnHelper.accessor(
-        (row) =>
-          row.replications?.length > 0 && row.replications[0].slaveIoRunning.String == 'Yes' ? (
-            <CustomIcon icon={HiCheck} color='green' />
-          ) : (
-            <CustomIcon icon={HiX} color='red' />
-          ),
+        (row) => (
+          <CheckOrCrossIcon
+            isValid={row.replications?.length > 0 && row.replications[0].slaveIoRunning.String == 'Yes'}
+          />
+        ),
         {
           cell: (info) => info.getValue(),
           header: 'IO Thr',
@@ -293,12 +178,11 @@ function DBServers({ selectedCluster }) {
         }
       ),
       columnHelper.accessor(
-        (row) =>
-          row.replications?.length > 0 && row.replications[0].slaveSqlRunning.String == 'Yes' ? (
-            <CustomIcon icon={HiCheck} color='green' />
-          ) : (
-            <CustomIcon icon={HiX} color='red' />
-          ),
+        (row) => (
+          <CheckOrCrossIcon
+            isValid={row.replications?.length > 0 && row.replications[0].slaveSqlRunning.String == 'Yes'}
+          />
+        ),
         {
           cell: (info) => info.getValue(),
           header: 'SQL Thr',
@@ -306,59 +190,36 @@ function DBServers({ selectedCluster }) {
           maxWidth: 40
         }
       ),
-      columnHelper.accessor(
-        (row) =>
-          row.readOnly == 'ON' ? <CustomIcon icon={HiCheck} color='green' /> : <CustomIcon icon={HiX} color='red' />,
-        {
-          cell: (info) => info.getValue(),
-          header: 'Ro Sts',
-          id: 'roSts',
-          maxWidth: 40
-        }
-      ),
-      columnHelper.accessor(
-        (row) => (row.ignoredRO ? <CustomIcon icon={HiCheck} color='green' /> : <CustomIcon icon={HiX} color='red' />),
-        {
-          cell: (info) => info.getValue(),
-          header: 'Ign RO',
-          id: 'ignRO',
-          maxWidth: 40
-        }
-      ),
-      columnHelper.accessor(
-        (row) =>
-          row.eventScheduler ? <CustomIcon icon={HiCheck} color='green' /> : <CustomIcon icon={HiX} color='red' />,
-        {
-          cell: (info) => info.getValue(),
-          header: 'Evt Sch',
-          id: 'evtSch',
-          maxWidth: 40
-        }
-      ),
-      columnHelper.accessor(
-        (row) =>
-          row.semiSyncMasterStatus ? (
-            <CustomIcon icon={HiCheck} color='green' />
-          ) : (
-            <CustomIcon icon={HiX} color='red' />
-          ),
-        {
-          cell: (info) => info.getValue(),
-          header: 'Mst Syn',
-          id: 'mstSyn',
-          maxWidth: 40
-        }
-      ),
-      columnHelper.accessor(
-        (row) =>
-          row.semiSyncSlaveStatus ? <CustomIcon icon={HiCheck} color='green' /> : <CustomIcon icon={HiX} color='red' />,
-        {
-          cell: (info) => info.getValue(),
-          header: 'Rep Syn',
-          id: 'repSyn',
-          maxWidth: 40
-        }
-      )
+      columnHelper.accessor((row) => <CheckOrCrossIcon isValid={row.readOnly == 'ON'} />, {
+        cell: (info) => info.getValue(),
+        header: 'Ro Sts',
+        id: 'roSts',
+        maxWidth: 40
+      }),
+      columnHelper.accessor((row) => <CheckOrCrossIcon isValid={row.ignoredRO} />, {
+        cell: (info) => info.getValue(),
+        header: 'Ign RO',
+        id: 'ignRO',
+        maxWidth: 40
+      }),
+      columnHelper.accessor((row) => <CheckOrCrossIcon isValid={row.eventScheduler} />, {
+        cell: (info) => info.getValue(),
+        header: 'Evt Sch',
+        id: 'evtSch',
+        maxWidth: 40
+      }),
+      columnHelper.accessor((row) => <CheckOrCrossIcon isValid={row.semiSyncMasterStatus} />, {
+        cell: (info) => info.getValue(),
+        header: 'Mst Syn',
+        id: 'mstSyn',
+        maxWidth: 40
+      }),
+      columnHelper.accessor((row) => <CheckOrCrossIcon isValid={row.semiSyncSlaveStatus} />, {
+        cell: (info) => info.getValue(),
+        header: 'Rep Syn',
+        id: 'repSyn',
+        maxWidth: 40
+      })
     ],
     [hasMariadbGtid, hasMysqlGtid, selectedCluster?.name]
   )
@@ -369,12 +230,25 @@ function DBServers({ selectedCluster }) {
         <DataTable data={data} columns={columns} />
       ) : (
         <DBServersGrid
-          data={data}
-          columns={columns}
+          allDBServers={data}
           clusterMasterId={clusterMaster?.id}
           clusterName={selectedCluster?.name}
           user={user}
           showTableView={showTableView}
+          openCompareModal={openCompareModal}
+          hasMariadbGtid={hasMariadbGtid}
+          hasMysqlGtid={hasMysqlGtid}
+        />
+      )}
+
+      {isCompareModalOpen && (
+        <CompareModal
+          isOpen={isCompareModalOpen}
+          closeModal={closeCompareModal}
+          allDBServers={data}
+          compareServer={compareServer}
+          hasMariadbGtid={hasMariadbGtid}
+          hasMysqlGtid={hasMariadbGtid}
         />
       )}
     </>

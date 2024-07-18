@@ -3,7 +3,7 @@ import { Table, Thead, Tbody, Tr, Th, Td, useColorMode } from '@chakra-ui/react'
 import { useReactTable, flexRender, getCoreRowModel, getSortedRowModel } from '@tanstack/react-table'
 import { useTheme } from '@emotion/react'
 
-export function DataTable({ data, columns, fixedColumnIndex }) {
+export function DataTable({ data, columns, fixedColumnIndex, enableSorting = false }) {
   const [sorting, setSorting] = useState([])
   const theme = useTheme()
   const { colorMode } = useColorMode()
@@ -74,23 +74,14 @@ export function DataTable({ data, columns, fixedColumnIndex }) {
                     maxWidth: `${header.column.columnDef.maxWidth}px`
                   }}
                   key={header.id}
-                  onClick={header.column.getToggleSortingHandler()}
+                  {...(enableSorting ? { onClick: header.column.getToggleSortingHandler() } : {})}
                   isNumeric={meta?.isNumeric}>
                   {flexRender(header.column.columnDef.header, header.getContext())}
+
                   {{
                     asc: ' 🔼',
                     desc: ' 🔽'
-                  }[header.column.getIsSorted()] ?? null}
-
-                  {/* <chakra.span pl='4'>
-                    {header.column.getIsSorted() ? (
-                      header.column.getIsSorted() === 'desc' ? (
-                        <HiOutlineSortDescending aria-label='sorted descending' />
-                      ) : (
-                        <HiOutlineSortAscending aria-label='sorted ascending' />
-                      )
-                    ) : null}
-                  </chakra.span> */}
+                  }[enableSorting && header.column.getIsSorted()] ?? null}
                 </Th>
               )
             })}
