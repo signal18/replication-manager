@@ -1,16 +1,13 @@
 import React from 'react'
-import Card from '../../components/Card'
 import ClusterDetail from './components/ClusterDetail'
 import HADetail from './components/HADetail'
 import { useSelector } from 'react-redux'
 import ClusterWorkload from './components/ClusterWorkload'
-import { Flex, Text } from '@chakra-ui/react'
+import { Flex } from '@chakra-ui/react'
 import AccordionComponent from '../../components/AccordionComponent'
-import ClusterLogs from './components/Logs'
 import ClusterTests from './components/ClusterTests'
 import Logs from './components/Logs'
 import DBServers from './components/DBServers'
-import DBServersTable from './components/DBServers/DBServersTable'
 
 function Dashboard({ selectedCluster }) {
   const {
@@ -36,7 +33,7 @@ function Dashboard({ selectedCluster }) {
         <AccordionComponent
           heading={'Database servers'}
           panelSX={{ overflowX: 'auto', p: 0 }}
-          body={<DBServersTable selectedCluster={selectedCluster} />}
+          body={<DBServers selectedCluster={selectedCluster} />}
         />
       )}
 
