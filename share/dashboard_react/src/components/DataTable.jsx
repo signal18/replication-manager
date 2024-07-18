@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
-import { Table, Thead, Tbody, Tr, Th, Td, chakra, useColorMode, background } from '@chakra-ui/react'
+import { Table, Thead, Tbody, Tr, Th, Td, useColorMode } from '@chakra-ui/react'
 import { useReactTable, flexRender, getCoreRowModel, getSortedRowModel } from '@tanstack/react-table'
-import { HiOutlineSortAscending, HiOutlineSortDescending } from 'react-icons/hi'
 import { useTheme } from '@emotion/react'
 
 export function DataTable({ data, columns, fixedColumnIndex }) {
@@ -24,7 +23,6 @@ export function DataTable({ data, columns, fixedColumnIndex }) {
       overflowX: 'auto',
       width: '100%',
       paddingLeft: '8px'
-      // borderCollapse: 'collapse'
     },
     headerRow: {
       backgroundColor: colorMode === 'light' ? `blue.100` : `blue.900`
