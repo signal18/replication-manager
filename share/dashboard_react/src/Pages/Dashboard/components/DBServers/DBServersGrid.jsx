@@ -300,7 +300,6 @@ function DBServersGrid({
                         key: 'Delay',
                         value: getDelay(rowData)
                       },
-
                       {
                         key: 'SQL error',
                         value: replication?.lastSqlError?.String
