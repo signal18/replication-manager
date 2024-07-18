@@ -8,8 +8,9 @@ import { isAuthorized } from '../utility/common'
 import { Link } from 'react-router-dom'
 import { useTheme } from '@emotion/react'
 
-function Navbar({ username, theme }) {
+function Navbar({ username }) {
   const dispatch = useDispatch()
+  const { colorMode } = useColorMode()
   const {
     common: { isMobile, isTablet, isDesktop }
   } = useSelector((state) => state)
@@ -18,11 +19,11 @@ function Navbar({ username, theme }) {
 
   const styles = {
     navbarContainer: {
-      boxShadow: theme === 'dark' ? 'none' : '0px -1px 8px #BFC1CB',
+      boxShadow: colorMode === 'dark' ? 'none' : '0px -1px 8px #BFC1CB',
       position: 'fixed',
       zIndex: 2,
       width: '100%',
-      background: theme === 'light' ? currentTheme.colors.primary.light : currentTheme.colors.primary.dark
+      background: colorMode === 'light' ? currentTheme.colors.primary.light : currentTheme.colors.primary.dark
     },
     logo: {
       bg: '#eff2fe',
@@ -63,7 +64,7 @@ function Navbar({ username, theme }) {
             </>
           )}
 
-          <ThemeIcon theme={theme} />
+          <ThemeIcon />
         </HStack>
       </Flex>
       {isAuthorized() && !isDesktop && (

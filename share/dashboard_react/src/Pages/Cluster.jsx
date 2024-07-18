@@ -2,7 +2,6 @@ import React, { useEffect } from 'react'
 import PageContainer from './PageContainer'
 import TabItems from '../components/TabItems'
 import { Box } from '@chakra-ui/react'
-import BackLink from '../components/BackLink'
 import { useDispatch, useSelector } from 'react-redux'
 import Dashboard from './Dashboard'
 import { getClusterAlerts, getClusterData, getClusterMaster, getClusterServers } from '../redux/clusterSlice'
@@ -14,7 +13,6 @@ function Cluster(props) {
   const clusterName = queryParams?.name
 
   const {
-    common: { theme },
     cluster: { refreshInterval, clusterData }
   } = useSelector((state) => state)
 
@@ -62,7 +60,7 @@ function Cluster(props) {
             'Queryrules',
             'Shards'
           ]}
-          tabContents={[<Dashboard theme={theme} selectedCluster={clusterData} />]}
+          tabContents={[<Dashboard selectedCluster={clusterData} />]}
         />
       </Box>
     </PageContainer>
