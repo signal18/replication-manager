@@ -1,23 +1,23 @@
-import { Box, Button, HStack, Spinner, Switch } from '@chakra-ui/react'
+import { Box, Button, HStack, Spinner, Switch, useColorMode } from '@chakra-ui/react'
 import React from 'react'
 import { useSelector } from 'react-redux'
 import MenuOptions from './MenuOptions'
 
 function Card({ header, body, headerAction, menuOptions, buttonText, isLoading, loadingText, onClick, width }) {
   const {
-    common: { theme, isDesktop }
+    common: { isDesktop }
   } = useSelector((state) => state)
-
+  const { colorMode } = useColorMode()
   const styles = {
     card: {
       borderRadius: '16px',
       border: '1px solid',
-      borderColor: theme === 'light' ? 'blue.100' : 'blue.800'
+      borderColor: colorMode === 'light' ? 'blue.100' : 'blue.800'
     },
     heading: {
       textAlign: 'center',
       p: '16px',
-      bg: theme === 'light' ? `blue.100` : `blue.800`,
+      bg: colorMode === 'light' ? `blue.100` : `blue.800`,
       borderTopLeftRadius: '16px',
       borderTopRightRadius: '16px',
       color: '#000',

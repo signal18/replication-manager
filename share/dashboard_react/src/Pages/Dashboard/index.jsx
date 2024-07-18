@@ -11,7 +11,7 @@ import DBServers from './components/DBServers'
 
 function Dashboard({ selectedCluster }) {
   const {
-    common: { theme, isDesktop }
+    common: { isDesktop }
   } = useSelector((state) => state)
 
   return (

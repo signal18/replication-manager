@@ -1,4 +1,5 @@
 import {
+  Box,
   Button,
   Flex,
   Modal,
@@ -6,7 +7,8 @@ import {
   ModalCloseButton,
   ModalContent,
   ModalHeader,
-  ModalOverlay
+  ModalOverlay,
+  Text
 } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import Dropdown from '../Dropdown'
@@ -26,6 +28,7 @@ import {
   getVersion
 } from '../../Pages/Dashboard/components/DBServers/utils'
 import CheckOrCrossIcon from '../Icons/CheckOrCrossIcon'
+import DBFlavourIcon from '../Icons/DBFlavourIcon'
 
 function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMariadbGtid, hasMysqlGtid }) {
   const [selectedServer, setSelectedServer] = useState(null)
@@ -70,6 +73,21 @@ function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMari
                 item1Title={`${compareServer.host}:${compareServer.port}`}
                 item2Title={`${selectedServer.host}:${selectedServer.port}`}
                 dataArray={[
+                  {
+                    key: 'DB Flavor',
+                    value1: (
+                      <Box display='flex' alignItems='center' gap='8px'>
+                        <DBFlavourIcon dbFlavor={compareServer.dbVersion.flavor} />
+                        <Text>{compareServer.dbVersion.flavor}</Text>
+                      </Box>
+                    ),
+                    value2: (
+                      <Box display='flex' alignItems='center' gap='8px'>
+                        <DBFlavourIcon dbFlavor={selectedServer.dbVersion.flavor} />
+                        <Text>{selectedServer.dbVersion.flavor}</Text>
+                      </Box>
+                    )
+                  },
                   {
                     key: 'Status',
                     value1: (
