@@ -1,12 +1,9 @@
-import { Button, Menu, MenuButton, MenuItem, MenuList } from '@chakra-ui/react'
+import { Button, Menu, MenuButton, MenuItem, MenuList, useColorMode } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import { HiChevronDown } from 'react-icons/hi'
-import { useSelector } from 'react-redux'
 
 function Dropdown({ options, placeholder = 'Select option', width = '200px', onChange }) {
-  const {
-    common: { theme }
-  } = useSelector((state) => state)
+  const { colorMode } = useColorMode()
   const [selectedOption, setSelectedOption] = useState(null)
 
   const handleOptionClick = (option) => {
@@ -17,9 +14,9 @@ function Dropdown({ options, placeholder = 'Select option', width = '200px', onC
   }
   const styles = {
     menuButton: {
-      bg: theme === 'light' ? `blue.100` : `blue.800`,
+      bg: colorMode === 'light' ? `blue.100` : `blue.800`,
       '&:hover': {
-        bg: theme === 'light' ? `blue.100` : 'blue.800'
+        bg: colorMode === 'light' ? `blue.100` : 'blue.800'
       }
     }
   }

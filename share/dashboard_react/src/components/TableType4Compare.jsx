@@ -16,7 +16,7 @@ function TableType4Compare({ item1Title, item2Title, dataArray }) {
     header: {
       height: '48px',
       bg: colorMode === 'light' ? `blue.100` : `blue.800`,
-      color: theme === 'light' ? theme.colors.primary.light : theme.colors.primary.dark,
+      color: colorMode === 'light' ? theme.colors.primary.light : theme.colors.primary.dark,
       overflow: 'hidden',
       borderBottom: '2px solid',
       borderColor: colorMode === 'light' ? `blue.100` : `blue.800`,

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { getClusters, getMonitoredData, setRefreshInterval } from '../redux/clusterSlice'
-import { HStack, Icon, Link, Text, Wrap } from '@chakra-ui/react'
+import { HStack, Icon, Link, Text, useColorMode, Wrap } from '@chakra-ui/react'
 import NotFound from '../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
 import { HiCheck, HiExclamation, HiX } from 'react-icons/hi'
@@ -12,9 +12,9 @@ import TableType2 from '../components/TableType2'
 
 function ClusterList(props) {
   const dispatch = useDispatch()
+  const { colorMode } = useColorMode()
 
   const {
-    common: { theme, isDesktop },
     cluster: { clusters, loading, refreshInterval }
   } = useSelector((state) => state)
   useEffect(() => {
@@ -56,7 +56,7 @@ function ClusterList(props) {
       fontSize: '1.5rem'
     },
     green: {
-      fill: theme === 'light' ? 'green' : 'lightgreen'
+      fill: colorMode === 'light' ? 'green' : 'lightgreen'
     },
     red: { fill: 'red' },
 
@@ -66,7 +66,7 @@ function ClusterList(props) {
   }
 
   return !loading && clusters?.length === 0 ? (
-    <NotFound text={'No cluster found!'} currentTheme={theme} />
+    <NotFound text={'No cluster found!'} />
   ) : (
     <Wrap>
       {clusters?.map((clusterItem) => {

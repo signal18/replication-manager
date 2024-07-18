@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import Card from '../../../components/Card'
-import { Box, Grid, GridItem, Text } from '@chakra-ui/react'
+import { Box, Grid, GridItem, Text, useColorMode } from '@chakra-ui/react'
 import TagPill from '../../../components/TagPill'
 import { useDispatch, useSelector } from 'react-redux'
 import TableType1 from '../../../components/TableType1'
@@ -8,12 +8,13 @@ import { failOverCluster, switchOverCluster } from '../../../redux/clusterSlice'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
 
 function HADetail({ selectedCluster }) {
+  const { colorMode } = useColorMode()
   const {
     cluster: {
       clusterMaster,
       loadingStates: { switchOver: switchOverLoading, failOver: failOverLoading }
     },
-    common: { theme, isDesktop }
+    common: { isDesktop }
   } = useSelector((state) => state)
   const dispatch = useDispatch()
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -41,7 +42,7 @@ function HADetail({ selectedCluster }) {
       fontWeight: 'bold',
       textAlign: 'center',
       p: '2',
-      bg: theme === 'light' ? 'blue.50' : 'blue.900'
+      bg: colorMode === 'light' ? 'blue.50' : 'blue.900'
     }
   }
 

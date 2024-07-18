@@ -1,12 +1,9 @@
 import React from 'react'
 import TagPill from '../../../components/TagPill'
-import { Box, Code } from '@chakra-ui/react'
-import { useSelector } from 'react-redux'
+import { Box, Code, useColorMode } from '@chakra-ui/react'
 
 function Logs({ logs }) {
-  const {
-    common: { theme }
-  } = useSelector((state) => state)
+  const { colorMode } = useColorMode()
   const styles = {
     table: {
       width: '100%',
@@ -14,7 +11,7 @@ function Logs({ logs }) {
     },
     tr: {
       borderBottom: '1px solid',
-      borderColor: theme === 'light' ? '#E9E9E9' : ''
+      borderColor: colorMode === 'light' ? '#E9E9E9' : ''
     },
     td: {
       paddingTop: '3px',
