@@ -189,7 +189,7 @@ function DBServersGrid({
               </Flex>
               <Flex direction='column' width='100%' mb={2}>
                 <TableType3 dataArray={tableData1} />
-                <TableType2 dataArray={tableData2} templateColumns='20% auto' gap={1} sx={styles.tableType2} />
+                <TableType2 dataArray={tableData2} templateColumns='30% auto' gap={1} sx={styles.tableType2} />
                 <Box sx={styles.replicationTitle}>
                   {rowData.replications?.length > 0
                     ? `Replications (${rowData.replications.length})`
@@ -263,7 +263,7 @@ function DBServersGrid({
                           dataArray={replicationTableData2}
                           sx={styles.tableType2}
                           gap={1}
-                          templateColumns='20% auto'
+                          templateColumns='30% auto'
                         />
                       </Flex>
                     )
