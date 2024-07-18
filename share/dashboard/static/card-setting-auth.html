@@ -9,7 +9,7 @@
                 <span ng-if="!roApiTokenTimeout" style="display:inline-block;;margin: 2px;" ng-click="toggleApiTokenTimeout()">
                     <i style="display:inline-block;;margin: 2px;" class="fa fa-times"></i>
                 </span>
-                <span style="display:inline-block;;margin: 2px;" ng-click="saveApiTokenTimeout(selectedApiTokenTimeout)">
+                <span ng-if="!roApiTokenTimeout" style="display:inline-block;;margin: 2px;" ng-click="saveApiTokenTimeout(selectedApiTokenTimeout)">
                     <i style="display:inline-block;;margin: 2px;" class="fa fa-save"></i>
                 </span>
             </th>

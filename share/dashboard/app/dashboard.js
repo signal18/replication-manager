@@ -117,6 +117,7 @@ app.controller('DashboardController', function (
     schedulers: false,
     logs: false,
     graphs: false,
+    global: false,
   };
 
 

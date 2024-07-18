@@ -284,7 +284,7 @@ func (repman *ReplicationManager) isValidRequest(r *http.Request) (bool, error) 
 	return false, err
 }
 
-func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) bool {
+func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) (bool, string) {
 
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
@@ -301,12 +301,12 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 		if ok {
 			if strings.Contains(mycutinfo["profile"].(string), repman.Conf.OAuthProvider) /*&& strings.Contains(mycutinfo["email_verified"]*/ {
 				meuser = mycutinfo["email"].(string)
-				return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc")
+				return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc"), meuser
 			}
 		}
-		return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "password")
+		return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "password"), meuser
 	}
-	return false
+	return false, ""
 }
 
 func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -523,7 +523,7 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 
 	for _, cluster := range repman.Clusters {
 
-		if repman.IsValidClusterACL(r, cluster) {
+		if valid, _ := repman.IsValidClusterACL(r, cluster); valid {
 			cl = append(cl, cluster.Name)
 		}
 	}
@@ -553,7 +553,7 @@ func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *ht
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	for _, cluster := range repman.Clusters {
-		if repman.IsValidClusterACL(r, cluster) {
+		if valid, _ := repman.IsValidClusterACL(r, cluster); valid {
 			cluster.AddUser(vars["userName"])
 		}
 	}
@@ -573,7 +573,7 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 		var clusters []*cluster.Cluster
 
 		for _, cluster := range repman.Clusters {
-			if repman.IsValidClusterACL(r, cluster) {
+			if valid, _ := repman.IsValidClusterACL(r, cluster); valid {
 				clusters = append(clusters, cluster)
 			}
 		}

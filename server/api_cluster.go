@@ -461,13 +461,12 @@ func (repman *ReplicationManager) handlerMuxRotateKeys(w http.ResponseWriter, r 
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
 		mycluster.KeyRotation()
 	} else {
-
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -479,7 +478,7 @@ func (repman *ReplicationManager) handlerMuxResetSla(w http.ResponseWriter, r *h
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -497,7 +496,7 @@ func (repman *ReplicationManager) handlerMuxFailover(w http.ResponseWriter, r *h
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -516,7 +515,7 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -534,7 +533,7 @@ func (repman *ReplicationManager) handlerMuxRolling(w http.ResponseWriter, r *ht
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -551,7 +550,7 @@ func (repman *ReplicationManager) handlerMuxStartTraffic(w http.ResponseWriter, 
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -569,7 +568,7 @@ func (repman *ReplicationManager) handlerMuxStopTraffic(w http.ResponseWriter, r
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -589,7 +588,7 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplicationCleanup(w http.R
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -611,7 +610,7 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -696,7 +695,7 @@ func (repman *ReplicationManager) handlerMuxServicesBootstrap(w http.ResponseWri
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -718,7 +717,7 @@ func (repman *ReplicationManager) handlerMuxServicesProvision(w http.ResponseWri
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -740,7 +739,7 @@ func (repman *ReplicationManager) handlerMuxServicesUnprovision(w http.ResponseW
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -757,7 +756,7 @@ func (repman *ReplicationManager) handlerMuxServicesCancelRollingRestart(w http.
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -774,7 +773,7 @@ func (repman *ReplicationManager) handlerMuxServicesCancelRollingReprov(w http.R
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -791,7 +790,7 @@ func (repman *ReplicationManager) handlerMuxSetSettingsDiscover(w http.ResponseW
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -812,7 +811,7 @@ func (repman *ReplicationManager) handlerMuxClusterResetFailoverControl(w http.R
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -830,7 +829,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -943,7 +942,7 @@ func (repman *ReplicationManager) handlerMuxClusterBackups(w http.ResponseWriter
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -965,7 +964,7 @@ func (repman *ReplicationManager) handlerMuxClusterShardClusters(w http.Response
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -987,7 +986,7 @@ func (repman *ReplicationManager) handlerMuxClusterQueryRules(w http.ResponseWri
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1010,7 +1009,7 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1253,28 +1252,35 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
 		setting := vars["settingName"]
-		//not immuable
-		if !mycluster.IsVariableImmutable(setting) {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", setting)
-			repman.setSetting(mycluster, setting, vars["settingValue"])
+		if valid, user := repman.IsValidClusterACL(r, mycluster); valid {
+			//Set server scope
+			if config.IsScope(setting, "server") {
+				URL := strings.Replace(r.URL.Path, "/api/clusters/"+vars["clusterName"], "/api/clusters/%s", 1)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
+				repman.setServerSetting(user, URL, setting, vars["settingValue"])
+			} else {
+				repman.setSetting(mycluster, setting, vars["settingValue"])
+			}
 		} else {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Overwriting an immuable parameter defined in config , please use config-merge command to preserve them between restart")
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", setting)
-			repman.setSetting(mycluster, setting, vars["settingValue"])
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), 403)
 		}
+		return
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name string, value string) {
+	//not immutable
+	if !mycluster.IsVariableImmutable(name) {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+	} else {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Overwriting an immutable parameter defined in config , please use config-merge command to preserve them between restart")
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+	}
+
 	switch name {
 	case "replication-credential":
 		mycluster.SetReplicationCredential(value)
@@ -1487,7 +1493,15 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		val, _ := strconv.Atoi(value)
 		mycluster.SetApiTokenTimeout(val)
 	}
+}
 
+func (repman *ReplicationManager) setServerSetting(user string, URL string, name string, value string) {
+	for cname, cl := range repman.Clusters {
+		//Don't print error with no valid ACL
+		if cl.IsURLPassACL(user, fmt.Sprintf(URL, cname), false) {
+			repman.setSetting(cl, name, value)
+		}
+	}
 }
 
 func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *http.Request) {
@@ -1495,7 +1509,7 @@ func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *htt
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1512,7 +1526,7 @@ func (repman *ReplicationManager) handlerMuxAddProxyTag(w http.ResponseWriter, r
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1528,7 +1542,7 @@ func (repman *ReplicationManager) handlerMuxDropTag(w http.ResponseWriter, r *ht
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1545,7 +1559,7 @@ func (repman *ReplicationManager) handlerMuxDropProxyTag(w http.ResponseWriter, 
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1562,7 +1576,7 @@ func (repman *ReplicationManager) handlerMuxSwitchReadOnly(w http.ResponseWriter
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1615,7 +1629,7 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1670,7 +1684,7 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1713,7 +1727,7 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			w.WriteHeader(403)
 			w.Write([]byte(`{"msg":"No valid ACL"}`))
 			return
@@ -1762,7 +1776,7 @@ func (repman *ReplicationManager) handlerMuxServerDrop(w http.ResponseWriter, r 
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1858,7 +1872,7 @@ func (repman *ReplicationManager) handlerMuxClusterMasterPhysicalBackup(w http.R
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1875,7 +1889,7 @@ func (repman *ReplicationManager) handlerMuxClusterOptimize(w http.ResponseWrite
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1898,7 +1912,7 @@ func (repman *ReplicationManager) handlerMuxClusterSSTStop(w http.ResponseWriter
 		return
 	}
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1914,7 +1928,7 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1932,7 +1946,7 @@ func (repman *ReplicationManager) handlerMuxClusterApplyDynamicConfig(w http.Res
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1946,7 +1960,7 @@ func (repman *ReplicationManager) handlerMuxClusterReloadCertificates(w http.Res
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1960,7 +1974,7 @@ func (repman *ReplicationManager) handlerMuxClusterWaitDatabases(w http.Response
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -1979,7 +1993,7 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -2015,7 +2029,7 @@ func (repman *ReplicationManager) handlerMuxClusterSettings(w http.ResponseWrite
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -2040,7 +2054,7 @@ func (repman *ReplicationManager) handlerMuxClusterShared(w http.ResponseWriter,
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -2064,7 +2078,7 @@ func (repman *ReplicationManager) handlerMuxClusterSendVaultToken(w http.Respons
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -2082,7 +2096,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumAllTable(w http
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -2101,7 +2115,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumTable(w http.Re
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -2120,7 +2134,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaUniversalTable(w http.R
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -2143,7 +2157,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaReshardTable(w http.Res
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -2178,7 +2192,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaMoveTable(w http.Respon
 	mycluster := repman.getClusterByName(vars["clusterName"])
 
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -2208,7 +2222,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchema(w http.ResponseWriter,
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -2234,7 +2248,7 @@ func (repman *ReplicationManager) handlerDiffVariables(w http.ResponseWriter, r 
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -2262,7 +2276,7 @@ func (repman *ReplicationManager) handlerRotatePasswords(w http.ResponseWriter, 
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -2302,7 +2316,7 @@ func (repman *ReplicationManager) handlerMuxClusterSetGraphiteFilterList(w http.
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
@@ -2333,7 +2347,7 @@ func (repman *ReplicationManager) handlerMuxClusterReloadGraphiteFilterList(w ht
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
@@ -2351,7 +2365,7 @@ func (repman *ReplicationManager) handlerMuxClusterResetGraphiteFilterList(w htt
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
