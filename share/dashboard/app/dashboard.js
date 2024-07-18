@@ -343,7 +343,7 @@ app.controller('DashboardController', function (
       //   $scope.openedAt = new Date().toLocaleString();
     }
   };
-
+  $scope.addTokenStyle={}
   $scope.roApiTokenTimeout = true
   $scope.selectedApiTokenTimeout = 48
 
@@ -364,6 +364,11 @@ app.controller('DashboardController', function (
   $scope.toggleApiTokenTimeout = function () {
     $scope.roApiTokenTimeout = !$scope.roApiTokenTimeout
     $scope.SetApiTokenTimeout($scope.selectedCluster.config.apiTokenTimeout)
+    if ($scope.roApiTokenTimeout) {
+      $scope.addTokenStyle={}
+    } else {
+      $scope.addTokenStyle={"color":"#468cc5"}
+    }
   }
 
   $scope.callServices = function () {

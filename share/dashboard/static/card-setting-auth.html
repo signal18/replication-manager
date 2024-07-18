@@ -18,14 +18,14 @@
             <td colspan="2">
                 <div class="input-group number-spinner">
                     <span class="input-group-btn data-dwn">
-                        <button class="btn btn-default " data-dir="dwn" ng-click="addTokenExpireHour(-1)" ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || refreshInterval <= 1" style="color:#468cc5">
+                        <button class="btn btn-default " data-dir="dwn" ng-click="addTokenExpireHour(-1)" ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false || refreshInterval <= 1" ng-style="addTokenStyle">
                             <span class="glyphicon glyphicon-minus"></span>
                         </button>
                     </span>
-                    <input type="number" class="form-control text-center" ng-show="!roApiTokenTimeout && selectedCluster.apiUsers[user].grants['cluster-settings']==true" id="selectedApiTokenTimeout" name="selectedApiTokenTimeout" ng-model="selectedApiTokenTimeout" />
                     <input type="number" class="form-control text-center" ng-show="roApiTokenTimeout || selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-model="selectedCluster.config.apiTokenTimeout" readonly/>
+                    <input type="number" class="form-control text-center" ng-show="!roApiTokenTimeout && selectedCluster.apiUsers[user].grants['cluster-settings']==true" id="selectedApiTokenTimeout" name="selectedApiTokenTimeout" ng-model="selectedApiTokenTimeout" />
                     <span class="input-group-btn data-up">
-                        <button class="btn btn-default" data-dir="up" ng-click="addTokenExpireHour(1)" ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" style="color:#468cc5">
+                        <button class="btn btn-default" data-dir="up" ng-click="addTokenExpireHour(1)" ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-style="addTokenStyle">
                             <span class="glyphicon glyphicon-plus"></span>
                         </button>
                     </span>
