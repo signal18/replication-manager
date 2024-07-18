@@ -30,7 +30,7 @@ import {
 } from '../../../../redux/clusterSlice'
 import { useState } from 'react'
 
-function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop }) {
+function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from = 'tableView', openCompareModal }) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
@@ -48,9 +48,13 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop }) {
   return (
     <>
       <MenuOptions
-        placement='right-end'
-        subMenuPlacement={isDesktop ? 'right-end' : 'bottom'}
+        placement={from === 'tableView' ? 'right-end' : 'left-end'}
+        subMenuPlacement={isDesktop ? (from === 'tableView' ? 'right-end' : 'left-end') : 'bottom'}
         options={[
+          {
+            name: 'Compare With',
+            onClick: () => openCompareModal(row)
+          },
           {
             name: 'Maintenance Mode',
             onClick: () => {

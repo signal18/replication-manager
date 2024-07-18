@@ -6,7 +6,7 @@ function TableType3({ dataArray }) {
 
   const styles = {
     tableContainer: {
-      width: '95%',
+      width: '97%',
       borderRadius: '16px',
       border: '2px solid',
       margin: 'auto',
