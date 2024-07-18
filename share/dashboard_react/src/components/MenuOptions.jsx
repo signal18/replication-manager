@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import { Menu, MenuButton, MenuList, MenuItem, IconButton, HStack, Spacer } from '@chakra-ui/react'
+import { Menu, MenuButton, MenuList, MenuItem, IconButton, HStack, Spacer, useDisclosure } from '@chakra-ui/react'
 import { HiChevronRight, HiDotsVertical } from 'react-icons/hi'
 
 function MenuOptions({ options = [], placement = 'bottom', subMenuPlacement = 'bottom', ...rest }) {
   const [menuOptions, setMenuOptions] = useState([])
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const { isOpen, onOpen, onClose } = useDisclosure()
 
   useEffect(() => {
     if (options.length > 0) {
@@ -20,14 +20,10 @@ function MenuOptions({ options = [], placement = 'bottom', subMenuPlacement = 'b
     }
   }
 
-  const handleMenuClose = () => {
-    setIsMenuOpen(false)
-  }
-
   return (
-    <Menu colorScheme='blue' isOpen={isMenuOpen} placement={placement} {...rest}>
+    <Menu colorScheme='blue' isOpen={isOpen} placement={placement} onClose={onClose} {...rest}>
       <MenuButton
-        onClick={() => setIsMenuOpen(!isMenuOpen)}
+        onClick={isOpen ? onClose : onOpen}
         aria-label='Options'
         sx={styles.menuButton}
         as={IconButton}
@@ -46,7 +42,7 @@ function MenuOptions({ options = [], placement = 'bottom', subMenuPlacement = 'b
                   <MenuItem
                     onClick={() => {
                       subMenuOption.onClick()
-                      handleMenuClose()
+                      onClose()
                     }}
                     key={subIndex}>
                     {subMenuOption.name}
@@ -60,7 +56,7 @@ function MenuOptions({ options = [], placement = 'bottom', subMenuPlacement = 'b
                 ? {
                     onClick: () => {
                       option.onClick()
-                      handleMenuClose()
+                      onClose()
                     }
                   }
                 : {})}>
