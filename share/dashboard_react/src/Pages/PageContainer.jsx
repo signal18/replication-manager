@@ -52,12 +52,6 @@ function PageContainer({ children }) {
   }, [clusters])
 
   useEffect(() => {
-    if (clusters?.length > 0) {
-      setFullVersion(clusters[0].config?.fullVersion)
-    }
-  }, [clusters])
-
-  useEffect(() => {
     if (isAuthorized() && user === null) {
       dispatch(setUserData())
     }
