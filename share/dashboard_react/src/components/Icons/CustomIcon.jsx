@@ -1,5 +1,4 @@
 import { Icon, useColorMode } from '@chakra-ui/react'
-import { useTheme } from '@emotion/react'
 import React from 'react'
 
 function CustomIcon({ icon, color, fontSize = '1.5rem' }) {
