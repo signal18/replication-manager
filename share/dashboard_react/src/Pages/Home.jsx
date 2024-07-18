@@ -8,7 +8,7 @@ import { useSelector } from 'react-redux'
 
 function Home() {
   const {
-    common: { theme, isDesktop }
+    common: { isDesktop }
   } = useSelector((state) => state)
   return (
     <PageContainer>

@@ -1,8 +1,8 @@
-import React, { useEffect, lazy } from 'react'
+import React, { useEffect, useState, lazy } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { setUserData } from '../redux/authSlice'
-import { Box, useBreakpointValue } from '@chakra-ui/react'
+import { Box, useBreakpointValue, Text, background } from '@chakra-ui/react'
 import { isAuthorized } from '../utility/common'
 import { setIsMobile, setIsTablet, setIsDesktop } from '../redux/commonSlice'
 const Navbar = lazy(() => import('../components/Navbar'))
@@ -11,9 +11,12 @@ function PageContainer({ children }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
 
+  const [fullVersion, setFullVersion] = useState('')
+
   const {
-    common: { theme, isDesktop },
-    auth: { isLogged, user }
+    common: { isDesktop },
+    auth: { isLogged, user },
+    cluster: { clusters }
   } = useSelector((state) => state)
 
   const currentBreakpoint = useBreakpointValue({
@@ -33,8 +36,21 @@ function PageContainer({ children }) {
     pageContent: {
       zIndex: 1,
       marginTop: isDesktop ? '74px' : '0'
+      // minHeight: 'calc(100vh - 100px)'
+    },
+    footer: {
+      px: '4',
+      py: '2',
+      background: 'blue.100'
     }
   }
+  console.log('fullversion::', fullVersion)
+
+  useEffect(() => {
+    if (clusters?.length > 0) {
+      setFullVersion(clusters[0].config?.fullVersion)
+    }
+  }, [clusters])
 
   useEffect(() => {
     if (isAuthorized() && user === null) {
@@ -66,8 +82,13 @@ function PageContainer({ children }) {
 
   return (
     <Box sx={styles.container}>
-      <Navbar username={user?.username} theme={theme} />
+      <Navbar username={user?.username} />
       <Box sx={styles.pageContent}>{children}</Box>
+      {fullVersion && (
+        <Box as='footer' sx={styles.footer}>
+          <Text>{`Replication-Manager ${fullVersion} © 2017-${new Date().getFullYear()} SIGNAL18 CLOUD SAS`}</Text>
+        </Box>
+      )}
     </Box>
   )
 }
