@@ -21,6 +21,7 @@ function DBServers({ selectedCluster }) {
     common: { isDesktop },
     cluster: { clusterServers, clusterMaster }
   } = useSelector((state) => state)
+  const { colorMode } = useColorMode()
   const [data, setData] = useState([])
   const [user, setUser] = useState(null)
   const [viewType, setViewType] = useState('table')
