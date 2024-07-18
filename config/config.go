@@ -668,7 +668,7 @@ type Config struct {
 	OAuthClientID                             string                 `mapstructure:"api-oauth-client-id" toml:"api-oauth-client-id" json:"apiOAuthClientID"`
 	OAuthClientSecret                         string                 `mapstructure:"api-oauth-client-secret" toml:"api-oauth-client-secret" json:"apiOAuthClientSecret"`
 	CacheStaticMaxAge                         int                    `mapstructure:"cache-static-max-age" toml:"cache-static-max-age" json:"-"`
-	TokenTimeout                              int                    `mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
+	TokenTimeout                              int                    `scope:"server" mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
 	JobLogBatchSize                           int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
@@ -1893,6 +1893,54 @@ func (conf Config) WriteMergeConfig(confPath string, dynMap map[string]interface
 		return err
 	}
 	return nil
+}
+
+type ConfigAttr struct {
+	Key   string
+	Toml  string
+	Type  string
+	Value any
+}
+
+func (conf *Config) GetConfigurationByScope(scope string) map[string]ConfigAttr {
+	var attrs map[string]ConfigAttr = make(map[string]ConfigAttr)
+
+	to := reflect.TypeOf(conf)
+	vo := reflect.ValueOf(conf)
+	for i := 0; i < to.NumField(); i++ {
+		f := to.Field(i)
+		v := vo.Field(i).Interface()
+		if f.Tag.Get("scope") == "server" {
+			attrs[f.Name] = ConfigAttr{
+				Key:   f.Name,
+				Toml:  f.Tag.Get("toml"),
+				Type:  f.Type.Name(),
+				Value: v,
+			}
+		}
+	}
+
+	return attrs
+}
+
+func GetScope(conf Config, toml string) (string, bool) {
+	to := reflect.TypeOf(conf)
+	for i := 0; i < to.NumField(); i++ {
+		f := to.Field(i)
+		if f.Tag.Get("toml") == toml {
+			return f.Tag.Get("scope"), true
+		}
+	}
+
+	return "", false
+}
+
+func IsScope(toml string, scope string) bool {
+	tconfig := Config{}
+	if tscope, ok := GetScope(tconfig, toml); ok {
+		return tscope == scope
+	}
+	return false
 }
 
 func (conf *Config) ReadCloud18Config(viper *viper.Viper) {

@@ -272,19 +272,19 @@ func (repman *ReplicationManager) apiserver() {
 /////////////ENDPOINT HANDLERS////////////
 /////////////////////////////////////////
 
-func (repman *ReplicationManager) isValidRequest(r *http.Request) bool {
+func (repman *ReplicationManager) isValidRequest(r *http.Request) (bool, error) {
 
 	_, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
 		return vk, nil
 	})
 	if err == nil {
-		return true
+		return true, nil
 	}
-	return false
+	return false, err
 }
 
-func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) bool {
+func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cluster.Cluster) (bool, string) {
 
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
@@ -301,12 +301,12 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 		if ok {
 			if strings.Contains(mycutinfo["profile"].(string), repman.Conf.OAuthProvider) /*&& strings.Contains(mycutinfo["email_verified"]*/ {
 				meuser = mycutinfo["email"].(string)
-				return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc")
+				return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "oidc"), meuser
 			}
 		}
-		return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "password")
+		return cluster.IsValidACL(meuser, mepwd, r.URL.Path, "password"), meuser
 	}
-	return false
+	return false, ""
 }
 
 func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -362,7 +362,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			//set claims
 			claims["iss"] = "https://api.replication-manager.signal18.io"
 			claims["iat"] = time.Now().Unix()
-			claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
+			claims["exp"] = time.Now().Add(time.Hour * time.Duration(cluster.Conf.TokenTimeout)).Unix()
 			claims["jti"] = "1" // should be user ID(?)
 			claims["CustomUserInfo"] = struct {
 				Name     string
@@ -523,7 +523,7 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 
 	for _, cluster := range repman.Clusters {
 
-		if repman.IsValidClusterACL(r, cluster) {
+		if valid, _ := repman.IsValidClusterACL(r, cluster); valid {
 			cl = append(cl, cluster.Name)
 		}
 	}
@@ -553,7 +553,7 @@ func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *ht
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	for _, cluster := range repman.Clusters {
-		if repman.IsValidClusterACL(r, cluster) {
+		if valid, _ := repman.IsValidClusterACL(r, cluster); valid {
 			cluster.AddUser(vars["userName"])
 		}
 	}
@@ -568,12 +568,12 @@ func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *ht
 //	  200: clusters
 func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if repman.isValidRequest(r) {
+	if ok, err := repman.isValidRequest(r); ok {
 
 		var clusters []*cluster.Cluster
 
 		for _, cluster := range repman.Clusters {
-			if repman.IsValidClusterACL(r, cluster) {
+			if valid, _ := repman.IsValidClusterACL(r, cluster); valid {
 				clusters = append(clusters, cluster)
 			}
 		}
@@ -599,7 +599,7 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 		w.Write(cl)
 
 	} else {
-		http.Error(w, "Unauthenticated", 401)
+		http.Error(w, "Unauthenticated resource: "+err.Error(), 401)
 		return
 	}
 }
@@ -622,7 +622,7 @@ func (repman *ReplicationManager) validateTokenMiddleware(w http.ResponseWriter,
 		}
 	} else {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, "Unauthorised access to this resource"+err.Error())
+		fmt.Fprint(w, "Unauthorised access to this resource: "+err.Error())
 	}
 }
 

@@ -488,7 +488,11 @@ func (cluster *Cluster) IsVariableDiffFromRepmanDefault(v string) bool {
 func (cluster *Cluster) IsVariableImmutable(v string) bool {
 	_, ok := cluster.Conf.ImmuableFlagMap[v]
 	return ok
+}
 
+func (cluster *Cluster) IsVariableServerLevel(v string) bool {
+	_, ok := cluster.Conf.ImmuableFlagMap[v]
+	return ok
 }
 
 func (cluster *Cluster) IsInBackup() bool {

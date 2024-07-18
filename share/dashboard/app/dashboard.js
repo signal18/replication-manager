@@ -117,6 +117,7 @@ app.controller('DashboardController', function (
     schedulers: false,
     logs: false,
     graphs: false,
+    global: false,
   };
 
 
@@ -342,7 +343,33 @@ app.controller('DashboardController', function (
       //   $scope.openedAt = new Date().toLocaleString();
     }
   };
+  $scope.addTokenStyle={}
+  $scope.roApiTokenTimeout = true
+  $scope.selectedApiTokenTimeout = 48
 
+  $scope.SetApiTokenTimeout = function (val) {
+    if ($scope.roApiTokenTimeout) {
+      $scope.selectedApiTokenTimeout = Number(val)
+      angular.element(document.querySelector('#selectedApiTokenTimeout')).get(0).value = Number(val)
+    }
+  }
+
+  $scope.addTokenExpireHour = function (val) {
+    if (!$scope.roApiTokenTimeout) {
+      $scope.selectedApiTokenTimeout += Number(val);
+      angular.element(document.querySelector('#selectedApiTokenTimeout')).get(0).value = Number($scope.selectedApiTokenTimeout)
+    }
+  };
+
+  $scope.toggleApiTokenTimeout = function () {
+    $scope.roApiTokenTimeout = !$scope.roApiTokenTimeout
+    $scope.SetApiTokenTimeout($scope.selectedCluster.config.apiTokenTimeout)
+    if ($scope.roApiTokenTimeout) {
+      $scope.addTokenStyle={}
+    } else {
+      $scope.addTokenStyle={"color":"#468cc5"}
+    }
+  }
 
   $scope.callServices = function () {
 
@@ -428,6 +455,7 @@ app.controller('DashboardController', function (
           return passedTest;
         }
         $scope.agents = data.agents;
+        $scope.SetApiTokenTimeout(data.config.apiTokenTimeout);
         $scope.missingDBTags = isInTags(data.configurator.configTags, data.configurator.dbServersTags, function (currentTag, dbTags) { return (dbTags.indexOf(currentTag) == -1); });
         $scope.missingProxyTags = isInTags(data.configurator.configPrxTags, data.configurator.proxyServersTags, function (currentTag, proxyTags) { return (proxyTags.indexOf(currentTag) == -1); });
         $scope.SetIgnoreErrors(data.config.monitoringIgnoreErrors);
@@ -1121,16 +1149,16 @@ app.controller('DashboardController', function (
     if (confirm("Confirm unprovision for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/unprovision');
   };
   $scope.prxprovision = function (id, host, port) {
-    if (confirm("Confirm provision proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/provision');
+    if (confirm("Confirm provision proxy: " + host + ":" + port + " (" + id + ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/provision');
   };
   $scope.prxunprovision = function (id, host, port) {
-    if (confirm("Confirm unprovision proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
+    if (confirm("Confirm unprovision proxy: " + host + ":" + port + " (" + id + ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
   };
   $scope.prxstop = function (id, host, port) {
-    if (confirm("Confirm stop proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/stop');
+    if (confirm("Confirm stop proxy: " + host + ":" + port + " (" + id + ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/stop');
   };
   $scope.prxstart = function (id, host, port) {
-    if (confirm("Confirm start proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/start');
+    if (confirm("Confirm start proxy: " + host + ":" + port + " (" + id + ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/start');
   };
   $scope.dbreseedphysicalbackup = function (server, host, port) {
     if (confirm("Confirm reseed with physical backup (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
@@ -1778,7 +1806,7 @@ app.controller('DashboardController', function (
   };
 
   $scope.setsettings = function (setting, value) {
-    if (confirm("Confirm change " + setting.toString() + "to " + value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
+    if (confirm("Confirm change '" + setting.toString() + "' to: " + value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
   };
 
   $scope.setsettingsnullable = function (setting, value) {
@@ -1790,7 +1818,10 @@ app.controller('DashboardController', function (
   };
 
 
-
+  $scope.saveApiTokenTimeout = function (to) {
+    $scope.setsettings("api-token-timeout", to)
+    $scope.toggleApiTokenTimeout()
+  };
 
   $scope.openCluster = function (clusterName) {
     $timeout.cancel($scope.promise);
@@ -2083,6 +2114,9 @@ app.controller('DashboardController', function (
         break;
       case 'graphs':
         $scope.settingsMenu.graphs = true;
+        break;
+      case 'global':
+        $scope.settingsMenu.global = true;
         break;
       default:
         console.log(`Sorry, we are out of ${expr}.`);
