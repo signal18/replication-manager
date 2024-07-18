@@ -77,7 +77,7 @@ function Dashboard({ selectedCluster, user }) {
         <AccordionComponent
           heading={'Database servers'}
           panelSX={{ overflowX: 'auto', p: 0 }}
-          body={<DBServersTable selectedCluster={selectedCluster} />}
+          body={<DBServers selectedCluster={selectedCluster} />}
         />
       )}
 
