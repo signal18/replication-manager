@@ -356,8 +356,8 @@ app.controller('DashboardController', function (
 
   $scope.addTokenExpireHour = function (val) {
     if (!$scope.roApiTokenTimeout) {
-    $scope.selectedApiTokenTimeout += Number(val);
-    angular.element(document.querySelector('#selectedApiTokenTimeout')).get(0).value = Number($scope.selectedApiTokenTimeout)
+      $scope.selectedApiTokenTimeout += Number(val);
+      angular.element(document.querySelector('#selectedApiTokenTimeout')).get(0).value = Number($scope.selectedApiTokenTimeout)
     }
   };
 
@@ -1144,16 +1144,16 @@ app.controller('DashboardController', function (
     if (confirm("Confirm unprovision for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/unprovision');
   };
   $scope.prxprovision = function (id, host, port) {
-    if (confirm("Confirm provision proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/provision');
+    if (confirm("Confirm provision proxy: " + host + ":" + port + " (" + id + ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/provision');
   };
   $scope.prxunprovision = function (id, host, port) {
-    if (confirm("Confirm unprovision proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
+    if (confirm("Confirm unprovision proxy: " + host + ":" + port + " (" + id + ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
   };
   $scope.prxstop = function (id, host, port) {
-    if (confirm("Confirm stop proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/stop');
+    if (confirm("Confirm stop proxy: " + host + ":" + port + " (" + id + ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/stop');
   };
   $scope.prxstart = function (id, host, port) {
-    if (confirm("Confirm start proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/start');
+    if (confirm("Confirm start proxy: " + host + ":" + port + " (" + id + ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/start');
   };
   $scope.dbreseedphysicalbackup = function (server, host, port) {
     if (confirm("Confirm reseed with physical backup (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
@@ -1814,7 +1814,7 @@ app.controller('DashboardController', function (
 
 
   $scope.saveApiTokenTimeout = function (to) {
-    $scope.setsettings("api-token-timeout",to)
+    $scope.setsettings("api-token-timeout", to)
     $scope.toggleApiTokenTimeout()
   };
 
@@ -2109,6 +2109,9 @@ app.controller('DashboardController', function (
         break;
       case 'graphs':
         $scope.settingsMenu.graphs = true;
+        break;
+      case 'global':
+        $scope.settingsMenu.global = true;
         break;
       default:
         console.log(`Sorry, we are out of ${expr}.`);
