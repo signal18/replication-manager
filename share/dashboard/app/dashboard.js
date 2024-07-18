@@ -130,8 +130,6 @@ app.controller('DashboardController', function (
     { id: 'maxscale', name: 'MaxScale' },
     { id: 'sphinx', name: 'SphinxProxy' },
     { id: 'extvip', name: 'VIP' },];
-  $scope.selectedMonitor = { id: 'mariadb', name: 'MariaDB' };
-
 
   $scope.schedulersecondes = [
     { id: undefined, name: '' },
@@ -1092,102 +1090,102 @@ app.controller('DashboardController', function (
     if (confirm("Bootstrap operation will destroy your existing replication setup. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/actions/replication/bootstrap/' + topo);
   };
 
-  $scope.dbmaintenance = function (server) {
-    if (confirm("Confirm maintenance for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/maintenance');
+  $scope.dbmaintenance = function (server, host, port) {
+    if (confirm("Confirm maintenance for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/maintenance');
   };
-  $scope.dbjobs = function (server) {
-    if (confirm("Confirm running remote jobs for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/run-jobs');
+  $scope.dbjobs = function (server, host, port) {
+    if (confirm("Confirm running remote jobs for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/run-jobs');
   };
-  $scope.dbpromote = function (server) {
-    if (confirm("Confirm promotion for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/switchover');
+  $scope.dbpromote = function (server, host, port) {
+    if (confirm("Confirm promotion for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/switchover');
   };
-  $scope.dbsetprefered = function (server) {
-    if (confirm("Confirm set as prefered for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/set-prefered');
+  $scope.dbsetprefered = function (server, host, port) {
+    if (confirm("Confirm set as prefered for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/set-prefered');
   };
-  $scope.dbsetunrated = function (server) {
-    if (confirm("Confirm set as unrated for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/set-unrated');
+  $scope.dbsetunrated = function (server, host, port) {
+    if (confirm("Confirm set as unrated for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/set-unrated');
   };
-  $scope.dbsetignored = function (server) {
-    if (confirm("Confirm set as ignored for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/set-ignored');
+  $scope.dbsetignored = function (server, host, port) {
+    if (confirm("Confirm set as ignored for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/set-ignored');
   };
-  $scope.dbstart = function (server) {
-    if (confirm("Confirm start for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/start');
+  $scope.dbstart = function (server, host, port) {
+    if (confirm("Confirm start for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/start');
   };
-  $scope.dbstop = function (server) {
-    if (confirm("Confirm stop for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/stop');
+  $scope.dbstop = function (server, host, port) {
+    if (confirm("Confirm stop for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/stop');
   };
-  $scope.dbprovision = function (server) {
-    if (confirm("Confirm provision server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/provision');
+  $scope.dbprovision = function (server, host, port) {
+    if (confirm("Confirm provision server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/provision');
   };
-  $scope.dbunprovision = function (server) {
-    if (confirm("Confirm unprovision for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/unprovision');
+  $scope.dbunprovision = function (server, host, port) {
+    if (confirm("Confirm unprovision for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/unprovision');
   };
-  $scope.prxprovision = function (id) {
-    if (confirm("Confirm provision proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/provision');
+  $scope.prxprovision = function (id, host, port) {
+    if (confirm("Confirm provision proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/provision');
   };
-  $scope.prxunprovision = function (id) {
-    if (confirm("Confirm unprovision proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
+  $scope.prxunprovision = function (id, host, port) {
+    if (confirm("Confirm unprovision proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/unprovision');
   };
-  $scope.prxstop = function (id) {
-    if (confirm("Confirm stop proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/stop');
+  $scope.prxstop = function (id, host, port) {
+    if (confirm("Confirm stop proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/stop');
   };
-  $scope.prxstart = function (id) {
-    if (confirm("Confirm start proxy id: " + id)) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/start');
+  $scope.prxstart = function (id, host, port) {
+    if (confirm("Confirm start proxy: " + host + ":" + port + " (" +id+ ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/start');
   };
-  $scope.dbreseedphysicalbackup = function (server) {
-    if (confirm("Confirm reseed with physical backup (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
+  $scope.dbreseedphysicalbackup = function (server, host, port) {
+    if (confirm("Confirm reseed with physical backup (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
   };
-  $scope.dbreseedphysicalmaster = function (server) {
-    if (confirm("Confirm reseed from master (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalmaster');
+  $scope.dbreseedphysicalmaster = function (server, host, port) {
+    if (confirm("Confirm reseed from master (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalmaster');
   };
-  $scope.flushlogs = function (server) {
-    if (confirm("Confirm flush logs for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/flush-logs');
+  $scope.flushlogs = function (server, host, port) {
+    if (confirm("Confirm flush logs for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/flush-logs');
   };
-  $scope.dbreseedlogical = function (server) {
-    if (confirm("Confirm reseed with logical backup (" + $scope.selectedCluster.config.backupLogicalType + ") for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/logicalbackup');
+  $scope.dbreseedlogical = function (server, host, port) {
+    if (confirm("Confirm reseed with logical backup (" + $scope.selectedCluster.config.backupLogicalType + ") for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/logicalbackup');
   };
-  $scope.dbreseedmysqldumpmaster = function (server) {
-    if (confirm("Confirm reseed with mysqldump for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/logicalmaster');
+  $scope.dbreseedmysqldumpmaster = function (server, host, port) {
+    if (confirm("Confirm reseed with mysqldump for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/logicalmaster');
   };
-  $scope.dbphysicalbackup = function (server) {
-    if (confirm("Confirm sending physical backup (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-physical');
+  $scope.dbphysicalbackup = function (server, host, port) {
+    if (confirm("Confirm sending physical backup (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-physical');
   };
-  $scope.dbdump = function (server) {
-    if (confirm("Confirm sending logical backup (" + $scope.selectedCluster.config.backupLogicalType + ") for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-logical');
+  $scope.dbdump = function (server, host, port) {
+    if (confirm("Confirm sending logical backup (" + $scope.selectedCluster.config.backupLogicalType + ") for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/backup-logical');
   };
-  $scope.dbskipreplicationevent = function (server) {
-    if (confirm("Confirm skip replication event for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/skip-replication-event');
+  $scope.dbskipreplicationevent = function (server, host, port) {
+    if (confirm("Confirm skip replication event for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/skip-replication-event');
   };
-  $scope.dbtoogleinnodbmonitor = function (server) {
-    if (confirm("Confirm toogle innodb monitor server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-innodb-monitor');
+  $scope.dbtoogleinnodbmonitor = function (server, host, port) {
+    if (confirm("Confirm toogle innodb monitor server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-innodb-monitor');
   };
-  $scope.dbtooglemetadalocks = function (server) {
-    if (confirm("Confirm toogle metadata lock plugin server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-meta-data-locks');
+  $scope.dbtooglemetadalocks = function (server, host, port) {
+    if (confirm("Confirm toogle metadata lock plugin server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-meta-data-locks');
   };
-  $scope.dbtooglequeryresponsetime = function (server) {
-    if (confirm("Confirm toogle query response time plugin server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-query-response-time');
+  $scope.dbtooglequeryresponsetime = function (server, host, port) {
+    if (confirm("Confirm toogle query response time plugin server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-query-response-time');
   };
-  $scope.dbtoogleslowquerycapture = function (server) {
-    if (confirm("Confirm toogle slow query capture server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-capture');
-  };
-
-
-  $scope.dbtoogleslowquery = function (server) {
-    if (confirm("Confirm toogle slow query log capture: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query');
-  };
-  $scope.dbtooglepfsslowquery = function (server) {
-    if (confirm("Confirm toogle slow query PFS capture: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-pfs-slow-query');
-  };
-  $scope.dbresetpfsslow = function (server) {
-    if (confirm("Confirm toogle slow query PFS capture: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-pfs-queries');
-  };
-  $scope.dbtoogleslowquerytable = function (server) {
-    if (confirm("Confirm toogle slow query mode between TABLE and FILE server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-table');
+  $scope.dbtoogleslowquerycapture = function (server, host, port) {
+    if (confirm("Confirm toogle slow query capture server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-capture');
   };
 
 
-  $scope.dbtooglepfsslow = function (server) {
-    confirm("Confirm toogle digest mode between PFS and SLOW server-id: " + server);
+  $scope.dbtoogleslowquery = function (server, host, port) {
+    if (confirm("Confirm toogle slow query log capture server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query');
+  };
+  $scope.dbtooglepfsslowquery = function (server, host, port) {
+    if (confirm("Confirm toogle slow query PFS capture server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-pfs-slow-query');
+  };
+  $scope.dbresetpfsslow = function (server, host, port) {
+    if (confirm("Confirm toogle slow query PFS capture server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-pfs-queries');
+  };
+  $scope.dbtoogleslowquerytable = function (server, host, port) {
+    if (confirm("Confirm toogle slow query mode between TABLE and FILE server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-table');
+  };
+
+
+  $scope.dbtooglepfsslow = function (server, host, port) {
+    confirm("Confirm toogle digest mode between PFS and SLOW server: " + host + ":" + port + " (" + server + ")");
     if ($scope.digestmode == "slow") {
       $scope.digestmode = "pfs";
     } else {
@@ -1195,27 +1193,27 @@ app.controller('DashboardController', function (
     }
   };
 
-  $scope.dbtooglereadonly = function (server) {
-    if (confirm("Confirm toogle read only on server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-read-only');
+  $scope.dbtooglereadonly = function (server, host, port) {
+    if (confirm("Confirm toogle read only on server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-read-only');
   };
-  $scope.dbstartslave = function (server) {
-    if (confirm("Confirm start slave on server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/start-slave');
-  };
-
-  $scope.dbstopslave = function (server) {
-    if (confirm("Confirm stop slave on server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/stop-slave');
+  $scope.dbstartslave = function (server, host, port) {
+    if (confirm("Confirm start slave on server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/start-slave');
   };
 
-  $scope.dbresetmaster = function (server) {
-    if (confirm("Confirm reset master this may break replication when done on master, server-id : " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-master');
+  $scope.dbstopslave = function (server, host, port) {
+    if (confirm("Confirm stop slave on server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/stop-slave');
   };
 
-  $scope.dbresetslaveall = function (server) {
-    if (confirm("Confirm reset slave this will break replication on, server-id : " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-slave-all');
+  $scope.dbresetmaster = function (server, host, port) {
+    if (confirm("Confirm reset master this may break replication when done on master, server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-master');
   };
 
-  $scope.dboptimize = function (server) {
-    if (confirm("Confirm optimize for server-id: " + server)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/optimize');
+  $scope.dbresetslaveall = function (server, host, port) {
+    if (confirm("Confirm reset slave this will break replication on server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-slave-all');
+  };
+
+  $scope.dboptimize = function (server, host, port) {
+    if (confirm("Confirm optimize for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/optimize');
   };
 
   $scope.toggletraffic = function () {
@@ -1245,12 +1243,12 @@ app.controller('DashboardController', function (
     if (confirm("Unprovision operation will destroy your existing data. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/services/actions/unprovision');
   };
 
-  $scope.dropmonitor = function(host, port, type="") {
-    let url = getClusterUrl() + '/actions/dropserver/' + host + '/' + port 
+  $scope.dropmonitor = function (host, port, type = "") {
+    let url = getClusterUrl() + '/actions/dropserver/' + host + '/' + port
     if (type != "") {
       url = url + "/" + type
     }
-    if (confirm("Confirm remove "+ type +"monitor on server " + host + ":" + port)) httpGetWithoutResponse(url);
+    if (confirm("Confirm remove " + type + "monitor on server " + host + ":" + port)) httpGetWithoutResponse(url);
   }
 
   $scope.clusterRotateCredentials = function () {
@@ -1295,7 +1293,7 @@ app.controller('DashboardController', function (
     httpGetWithoutResponse(getClusterUrl() + '/actions/optimize');
   };
 
-  $scope.backupphysical = function (server) {
+  $scope.backupphysical = function () {
     if (confirm("Confirm master physical (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") backup")) httpGetWithoutResponse(getClusterUrl() + '/actions/master-physical-backup');
   };
 
@@ -1784,11 +1782,11 @@ app.controller('DashboardController', function (
   };
 
   $scope.setsettingsnullable = function (setting, value) {
-    if (value.length == 0){
+    if (value.length == 0) {
       value = "{undefined}"
     }
-    
-    return $scope.setsettings(setting,value)
+
+    return $scope.setsettings(setting, value)
   };
 
 
@@ -1942,9 +1940,9 @@ app.controller('DashboardController', function (
       parent: angular.element(document.body),
     });
   };
-  $scope.closeNewServerDialog = function (dlgServerName, dlgServerPort) {
+  $scope.closeNewServerDialog = function (dlgServerName, dlgServerPort, selectedMonitor) {
     $mdDialog.hide({ contentElement: '#myNewServerDialog', });
-    if (confirm("Confirm adding new server " + dlgServerName + ":" + dlgServerPort + "  " + $scope.selectedMonitor.id)) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' + dlgServerName + '/' + dlgServerPort + "/" + $scope.selectedMonitor.id);
+    if (confirm("Confirm adding new server " + dlgServerName + ":" + dlgServerPort + "  " + selectedMonitor)) httpGetWithoutResponse(getClusterUrl() + '/actions/addserver/' + dlgServerName + '/' + dlgServerPort + "/" + selectedMonitor);
   };
   $scope.cancelNewServerDialog = function () {
     $mdDialog.hide({ contentElement: '#myNewServerDialog', });
@@ -2101,8 +2099,8 @@ app.controller('DashboardController', function (
   $scope.longQueryTime = "0";
 
 
-  $scope.updateLongQueryTime = function (time, name) {
-    if (confirm("Confirm change Long Query Time" + time + " on server " + name)) httpGetWithoutResponse(getClusterUrl() + '/servers/' + name + '/actions/set-long-query-time/' + time);
+  $scope.updateLongQueryTime = function (time, server, host, port) {
+    if (confirm("Confirm change Long Query Time" + time + " on server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/set-long-query-time/' + time);
   };
 
   $scope.explainPlan = undefined;
