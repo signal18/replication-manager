@@ -1,15 +1,5 @@
-import {
-  AccordionPanel,
-  Box,
-  Flex,
-  IconButton,
-  SimpleGrid,
-  Spacer,
-  Tooltip,
-  useColorMode,
-  VStack
-} from '@chakra-ui/react'
-import React from 'react'
+import { Flex, IconButton, SimpleGrid, Spacer, Tooltip, useColorMode, useDisclosure, VStack } from '@chakra-ui/react'
+import React, { useState } from 'react'
 import { useSelector } from 'react-redux'
 import ServerMenu from './ServerMenu'
 import { HiCheck, HiTable, HiX } from 'react-icons/hi'
@@ -30,7 +20,6 @@ import {
   getVersion
 } from './utils'
 import TagPill from '../../../../components/TagPill'
-import CheckOrCrossIcon from '../../../../components/Icons/CheckOrCrossIcon'
 import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
 import ServerName from './ServerName'
 import AccordionComponent from '../../../../components/AccordionComponent'
@@ -49,6 +38,13 @@ function DBServersGrid({
     common: { isDesktop, isTablet, isMobile }
   } = useSelector((state) => state)
   const { colorMode } = useColorMode()
+
+  const { isOpen: isServiceInfoOpen, onToggle: onServiceInfoToggle } = useDisclosure({ defaultIsOpen: true })
+  const { isOpen: isReplicationVarOpen, onToggle: onReplicationVarToggle } = useDisclosure({ defaultIsOpen: true })
+  const { isOpen: isLeaderStatusOpen, onToggle: onLeaderStatusToggle } = useDisclosure({ defaultIsOpen: true })
+  const { isOpen: isReplicationStatusOpen, onToggle: onReplicationStatusToggle } = useDisclosure({
+    defaultIsOpen: true
+  })
 
   const tagPillSize = 'sm'
 
@@ -84,12 +80,12 @@ function DBServersGrid({
     tableType2: {
       padding: '0.5',
       marginTop: '2',
-      fontSize: '14px'
+      fontSize: '15px'
     },
     accordionHeader: {
       borderRadius: '0',
       padding: '6px',
-      fontSize: '14px'
+      fontSize: '15px'
     },
     accordionPanel: {
       borderRadius: '0',
@@ -213,6 +209,8 @@ function DBServersGrid({
                   heading={'Server Information'}
                   headerSX={styles.accordionHeader}
                   panelSX={styles.accordionPanel}
+                  isOpen={isServiceInfoOpen}
+                  onToggle={onServiceInfoToggle}
                   body={
                     <TableType2
                       dataArray={serverInfoData}
@@ -229,6 +227,8 @@ function DBServersGrid({
                   heading={'Replication Variables'}
                   headerSX={styles.accordionHeader}
                   panelSX={styles.accordionPanel}
+                  isOpen={isReplicationVarOpen}
+                  onToggle={onReplicationVarToggle}
                   body={
                     <TableType2
                       dataArray={replicationVariables}
@@ -244,6 +244,8 @@ function DBServersGrid({
                   heading={'Leader status'}
                   headerSX={styles.accordionHeader}
                   panelSX={styles.accordionPanel}
+                  isOpen={isLeaderStatusOpen}
+                  onToggle={onLeaderStatusToggle}
                   body={
                     <TableType2
                       dataArray={leaderStatus}
@@ -323,13 +325,15 @@ function DBServersGrid({
                       <AccordionComponent
                         headerSX={styles.accordionHeader}
                         panelSX={styles.accordionPanel}
+                        isOpen={isReplicationStatusOpen}
+                        onToggle={onReplicationStatusToggle}
                         heading={
                           replication.connectionName.String
                             ? `Replication Status (${replication.connectionName.String})`
                             : 'Unnamed Replication Status'
                         }
                         body={
-                          <Flex key={index} direction='column' mt={4}>
+                          <Flex key={index} direction='column' mt={1}>
                             <TableType3 dataArray={replicationTableData} />
                             <TableType2
                               dataArray={replicationTableData2}

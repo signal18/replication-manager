@@ -677,31 +677,33 @@ export const resetSlave = createAsyncThunk('cluster/resetSlave', async ({ cluste
   }
 })
 
+const initialState = {
+  loading: false,
+  error: null,
+  clusters: null,
+  monitor: null,
+  clusterData: null,
+  clusterAlerts: null,
+  clusterMaster: null,
+  clusterServers: null,
+  refreshInterval: 0,
+  loadingStates: {
+    switchOver: false,
+    failOver: false,
+    menuActions: false
+  }
+}
+
 export const clusterSlice = createSlice({
   name: 'cluster',
-  initialState: {
-    loading: false,
-    error: null,
-    clusters: null,
-    monitor: null,
-    clusterData: null,
-    clusterAlerts: null,
-    clusterMaster: null,
-    clusterServers: null,
-    refreshInterval: 0,
-    loadingStates: {
-      switchOver: false,
-      failOver: false,
-      menuActions: false
-    }
-  },
+  initialState,
   reducers: {
     setRefreshInterval: (state, action) => {
       localStorage.setItem('refresh_interval', action.payload.interval)
       state.refreshInterval = action.payload.interval
     },
     clearCluster: (state, action) => {
-      //state = initialState
+      Object.assign(state, initialState)
     }
   },
   extraReducers: (builder) => {
