@@ -18,11 +18,14 @@ function TableType3({ dataArray }) {
     },
 
     column: {
-      padding: '1',
+      padding: '0',
       whiteSpace: 'break-spaces',
       borderLeft: '2px solid',
       borderColor: colorMode === 'light' ? `blue.100` : `blue.900`,
       textAlign: 'center'
+    },
+    bodyColumn: {
+      lineHeight: '0'
     }
   }
   return (
@@ -40,7 +43,7 @@ function TableType3({ dataArray }) {
         <Tbody>
           <Tr>
             {dataArray.map((dataItem, index) => (
-              <Td key={index} sx={{ ...styles.column }}>
+              <Td key={index} sx={{ ...styles.column, ...styles.bodyColumn }}>
                 {dataItem.value}
               </Td>
             ))}

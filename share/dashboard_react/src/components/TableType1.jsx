@@ -10,11 +10,11 @@ function TableType1({ dataArray }) {
         return (
           <React.Fragment key={index}>
             <GridItem {...borderBottom}>
-              <Text fontSize='14px' p='3' fontWeight='bold'>
+              <Text fontSize='14px' p='1' fontWeight='bold'>
                 {data.key}
               </Text>
             </GridItem>
-            <GridItem p='3' {...borderBottom}>
+            <GridItem p='1' {...borderBottom}>
               {data.value}
             </GridItem>
           </React.Fragment>

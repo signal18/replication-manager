@@ -18,10 +18,10 @@ function ClusterWorkload({ workload }) {
   }, [workload])
 
   return (
-    <Flex wrap='wrap' gap='0' align='center'>
+    <Flex wrap='wrap' gap='0' align='center' justify='space-evenly'>
       {types.length > 0 &&
         types.map((type, index) => {
-          return <Gauge key={index} value={type.value} text={type.key} width={230} containerSx={{ flexBasis: 1 / 6 }} />
+          return <Gauge key={index} value={type.value} text={type.key} width={200} containerSx={{ flexBasis: 1 / 6 }} />
         })}
     </Flex>
   )
