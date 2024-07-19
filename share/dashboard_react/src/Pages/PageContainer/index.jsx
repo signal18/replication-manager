@@ -46,7 +46,6 @@ function PageContainer({ children }) {
       background: colorMode === 'light' ? 'blue.100' : 'blue.900'
     }
   }
-  console.log('fullversion::', fullVersion)
 
   useEffect(() => {
     if (clusters?.length > 0) {
