@@ -15,7 +15,7 @@ function Gauge({ value, text, width, containerSx }) {
     },
     textOverlay: {
       position: 'absolute',
-      bottom: '0%',
+      bottom: '-10px',
       left: '50%',
       transform: 'translate(-50%, -50%)',
       textAlign: 'center'
@@ -26,8 +26,7 @@ function Gauge({ value, text, width, containerSx }) {
     },
     labelText: {
       display: 'block',
-      fontSize: '10px',
-      fontWeight: 'bold'
+      fontSize: '12px'
     }
   }
 
