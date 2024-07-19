@@ -3,14 +3,14 @@ import { gtidstring } from '../../../../utility/common'
 export const getStatusValue = (rowData) => {
   const isVirtual = rowData.isVirtualMaster ? '-VMaster' : ''
   let colorScheme = 'gray'
-  let stateValue = rowData.state
+  let stateValue = rowData.state.toUpperCase()
   switch (rowData.state) {
     case 'SlaveErr':
-      stateValue = 'Slave Error'
+      stateValue = 'SLAVE_ERROR'
       colorScheme = 'orange'
       break
     case 'StandAlone':
-      stateValue = 'Standalone'
+      stateValue = 'STANALONE'
       colorScheme = 'gray'
       break
     case 'Master':
@@ -26,7 +26,7 @@ export const getStatusValue = (rowData) => {
       colorScheme = 'red'
       break
     default:
-      stateValue = rowData.state
+      stateValue = rowData.state.toUpperCase()
       break
   }
   return `${colorScheme}|${stateValue}${isVirtual}`

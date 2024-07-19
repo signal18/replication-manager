@@ -1,9 +1,10 @@
-import React from 'react'
+import React, { useState } from 'react'
 import TagPill from '../../../components/TagPill'
 import { Box, Code, useColorMode } from '@chakra-ui/react'
 
 function Logs({ logs }) {
   const { colorMode } = useColorMode()
+  const [isScrollable, setIsScrollable] = useState(true)
   const styles = {
     table: {
       width: '100%',
@@ -19,12 +20,15 @@ function Logs({ logs }) {
     },
     timestamp: {
       width: '200px'
-    },
-    text: {}
+    }
+  }
+
+  const handleClick = () => {
+    //setIsScrollable(true)
   }
 
   return (
-    <Box w='100%' maxH='500px' overflow='auto'>
+    <Box onClick={handleClick} w='100%' maxH='500px' overflow={isScrollable ? 'auto' : 'hidden'}>
       <table style={styles.table}>
         {logs
           ?.filter((log) => log.timestamp)
