@@ -31,9 +31,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
 		} else {
-			// if cluster.GetLogLevel() > 2 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
-			// }
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
 		}
 	}
 	svc.Host, svc.Port = misc.SplitHostPort(cluster.Conf.ProvHost)
