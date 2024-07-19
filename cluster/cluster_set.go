@@ -1767,6 +1767,12 @@ func (cluster *Cluster) SetMonitorCaptureTrigger(value string) {
 	cluster.Unlock()
 }
 
+func (cluster *Cluster) SetMDevList(value *config.MDevIssueMap) {
+	cluster.Lock()
+	cluster.MDevIssues = value
+	cluster.Unlock()
+}
+
 func (cluster *Cluster) SetMasterNil() {
 	cluster.master = nil
 }

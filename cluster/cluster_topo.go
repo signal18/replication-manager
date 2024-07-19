@@ -296,7 +296,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				if sl.HasCycling() {
 					hasCycling = true
 					if cluster.Conf.MultiMaster == false && len(cluster.Servers) == 2 {
-						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00011"]), ErrFrom: "TOPO", ServerUrl: sl.URL})
+						cluster.SetState("ERR00011", state.State{ErrType: "WARNING", ErrDesc: clusterError["ERR00011"], ErrFrom: "TOPO", ServerUrl: sl.URL})
 						// if cluster.Conf.DynamicTopology {
 						cluster.Conf.MultiMaster = true
 						cluster.Topology = topoMultiMaster
@@ -434,7 +434,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	if cluster.master == nil {
 		// could not detect master
 		if cluster.GetMaster() == nil {
-			cluster.SetState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00012"]), ErrFrom: "TOPO"})
+			cluster.SetState("ERR00012", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00012"], ErrFrom: "TOPO"})
 		}
 	} else {
 		cluster.master.HaveHealthyReplica = false

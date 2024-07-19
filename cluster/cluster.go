@@ -217,7 +217,8 @@ type Cluster struct {
 	crcTable               *crc64.Table
 	SlavesOldestMasterFile SlavesOldestMasterFile
 	SlavesConnected        int
-	clog                   *clog.Logger `json:"-"`
+	clog                   *clog.Logger         `json:"-"`
+	MDevIssues             *config.MDevIssueMap `json:"-"`
 	*ClusterGraphite
 }
 
@@ -321,6 +322,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.runUUID = runUUID
 	cluster.repmgrHostname = repmgrHostname
 	cluster.repmgrVersion = repmgrVersion
+	cluster.MDevIssues = config.NewMDevIssueMap()
 
 	cluster.InitFromConf()
 	cluster.NewClusterGraphite()

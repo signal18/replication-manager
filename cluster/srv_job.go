@@ -94,7 +94,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	cluster := server.ClusterGroup
 
 	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
-		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Physical", cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0110"], "Physical", cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
 
 		return server.JobBackupPhysical()
@@ -691,7 +691,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 		rows.Scan(&task.task, &task.ct, &task.id)
 		if task.ct > 0 {
 			if task.ct > 10 {
-				cluster.SetState("ERR00060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00060"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+				cluster.SetState("ERR00060", state.State{ErrType: "WARNING", ErrDesc: clusterError["ERR00060"], ErrFrom: "JOB", ServerUrl: server.URL})
 				purge := "DELETE from replication_manager_schema.jobs WHERE task='" + task.task + "' AND done=0 AND result IS NULL order by start asc limit  " + strconv.Itoa(task.ct-1)
 				err := server.ExecQueryNoBinLog(purge)
 				if err != nil {
@@ -699,31 +699,31 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 				}
 			} else {
 				if task.task == "optimized" {
-					cluster.SetState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0072"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0072", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0072"], ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "restart" {
-					cluster.SetState("WARN0096", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0096"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0096", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0096"], ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "stop" {
-					cluster.SetState("WARN0097", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0097"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0097", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0097"], ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "xtrabackup" {
-					cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0073"], cluster.Conf.BackupPhysicalType), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "mariabackup" {
-					cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0073"], cluster.Conf.BackupPhysicalType), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedxtrabackup" {
-					cluster.SetState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0074"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0074"], cluster.Conf.BackupPhysicalType), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedmariabackup" {
-					cluster.SetState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0074"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0074"], cluster.Conf.BackupPhysicalType), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedmysqldump" {
-					cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0075"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0075"], cluster.Conf.BackupLogicalType), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "reseedmydumper" {
-					cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0075"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0075", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0075"], cluster.Conf.BackupLogicalType), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "flashbackxtrabackup" {
-					cluster.SetState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0076"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0076"], cluster.Conf.BackupPhysicalType), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "flashbackmariabackup" {
-					cluster.SetState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0076"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0076"], cluster.Conf.BackupPhysicalType), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "flashbackmydumper" {
-					cluster.SetState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0077"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0077"], cluster.Conf.BackupLogicalType), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "flashbackmysqldump" {
-					cluster.SetState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0077"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+					cluster.SetState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0077"], cluster.Conf.BackupLogicalType), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else {
 					//Skip adding to active task if not defined
 					continue
@@ -1059,7 +1059,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	//Wait for previous restic backup
 	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
-		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0110"], "Logical", cluster.Conf.BackupLogicalType), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
 
 		return server.JobBackupLogical()
@@ -1313,7 +1313,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
 		if cluster.IsInBackup() && cluster.Conf.BackupRestic {
-			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode), ErrFrom: "JOB", ServerUrl: server.URL})
 			time.Sleep(1 * time.Second)
 
 			return server.JobBackupBinlog(binlogfile, isPurge)
@@ -1362,7 +1362,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	}
 
 	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
-		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
 
 		return server.JobBackupBinlogPurge(binlogfile)
@@ -1550,7 +1550,7 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
 		if cluster.IsInBackup() && cluster.Conf.BackupRestic {
-			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode), ErrFrom: "JOB", ServerUrl: server.URL})
 			time.Sleep(1 * time.Second)
 
 			return server.JobBackupBinlogSSH(binlogfile, isPurge)

@@ -534,7 +534,7 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 		server.SetDSN()
 		conn, err := sqlx.Connect("mysql", server.DSN)
 		if err == nil {
-			server.ClusterGroup.SetState("ERR00080", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00080"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
+			server.ClusterGroup.SetState("ERR00080", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00080"], ServerUrl: server.URL, ErrFrom: "MON"})
 		} else {
 			server.TLSConfigUsed = ConstTLSNoConfig
 			server.SetDSN()

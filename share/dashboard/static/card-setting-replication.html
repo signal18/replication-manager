@@ -26,6 +26,19 @@
                 </md-switch>
             </td>
         </tr>
+        <tr ng-if="selectedCluster.config.cloud18">
+            <th>Checks MDEV Blocker for failover & switchover</th>
+        </tr>
+        <tr ng-if="selectedCluster.config.cloud18">
+            <td>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.failoverCheckBlocker"
+                           ng-click="switchsettings('failover-check-blocker')"
+                           aria-label="Failover Check Blocker">
+                    <span ng-if="selectedCluster.config.failoverCheckBlocker" class="label label-primary">On</span>
+                    <span ng-if="!selectedCluster.config.failoverCheckBlocker" class="label label-warning">Off</span>
+                </md-switch>
+            </td>
+        </tr>
       </table>
       </md-card>
       <BR>

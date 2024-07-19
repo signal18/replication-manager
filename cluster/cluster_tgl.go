@@ -609,3 +609,7 @@ func (cluster *Cluster) SwitchDynamicTopology() {
 func (cluster *Cluster) SwitchReplicationNoRelay() {
 	cluster.Conf.ReplicationNoRelay = !cluster.Conf.ReplicationNoRelay
 }
+
+func (cluster *Cluster) SwitchFailoverCheckBlocker() {
+	cluster.Conf.FailoverCheckBlocker = !cluster.Conf.FailoverCheckBlocker
+}

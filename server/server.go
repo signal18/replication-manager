@@ -112,6 +112,7 @@ type ReplicationManager struct {
 	v3Config                                         Repmanv3Config                 `json:"-"`
 	cloud18CheckSum                                  hash.Hash                      `json:"-"`
 	clog                                             *clog.Logger                   `json:"-"`
+	MDevIssues                                       *config.MDevIssueMap
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -383,6 +384,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.CheckFalsePositiveExternalPort, "failover-falsepositive-external-port", 80, "Failover checks external port")
 	flags.IntVar(&conf.MaxFail, "failover-falsepositive-ping-counter", 5, "Failover after this number of ping failures (interval 1s)")
 	flags.IntVar(&conf.FailoverLogFileKeep, "failover-log-file-keep", 5, "Purge log files taken during failover")
+	flags.BoolVar(&conf.FailoverCheckBlocker, "failover-check-blocker", true, "Failover checks for replication bug")
+
 	flags.BoolVar(&conf.FailoverCheckDelayStat, "failover-check-delay-stat", false, "Use delay avg statistic for failover decision")
 	flags.BoolVar(&conf.DelayStatCapture, "delay-stat-capture", false, "Capture hourly statistic for delay average")
 	flags.BoolVar(&conf.PrintDelayStat, "print-delay-stat", false, "Print captured delay statistic")
@@ -1266,7 +1269,6 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 		if v != nil {
 			clustImmuableMap[f] = v
 		}
-
 	}
 
 	//set the default config
@@ -1421,6 +1423,16 @@ func (repman *ReplicationManager) InitRestic() error {
 	return nil
 }
 
+func (repman *ReplicationManager) InitMDevIssues() error {
+	repman.MDevIssues = config.NewMDevIssueMap()
+	filename := repman.Conf.WorkingDir + "/mdev.json"
+	//Only for premium users
+	// if repman.Conf.Cloud18 {
+	repman.MDevIssues.MDevLoadJSONFile(filename)
+	// }
+	return nil
+}
+
 func (repman *ReplicationManager) Run() error {
 	var err error
 
@@ -1439,7 +1451,6 @@ func (repman *ReplicationManager) Run() error {
 			log.Fatal(err)
 		}
 		pprof.StartCPUProfile(fcpupprof)
-
 	}
 
 	repman.Clusters = make(map[string]*cluster.Cluster)
@@ -1577,6 +1588,7 @@ func (repman *ReplicationManager) Run() error {
 	log.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
 	log.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
 
+	repman.InitMDevIssues()
 	// If there's an existing encryption key, decrypt the passwords
 
 	for _, gl := range repman.ClusterList {
@@ -1584,8 +1596,8 @@ func (repman *ReplicationManager) Run() error {
 	}
 	for _, cluster := range repman.Clusters {
 		cluster.SetClusterList(repman.Clusters)
-
 		cluster.SetCarbonLogger(repman.clog)
+		cluster.SetMDevList(repman.MDevIssues)
 	}
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)

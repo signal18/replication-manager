@@ -90,6 +90,12 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		// }
 		return false
 	}
+
+	// If cluster have bug in replication
+	if !cluster.runOnceAfterTopology && cluster.Conf.FailoverCheckBlocker && !cluster.CheckBlockerState(sl, forcingLog) {
+		return false
+	}
+
 	if cluster.Conf.SwitchGtidCheck && cluster.IsCurrentGTIDSync(sl, cluster.master) == false && cluster.Conf.RplChecks == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlWarn, "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
@@ -201,7 +207,7 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				// }
 				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
-					cluster.SetState("ERR00028", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.URL), ErrFrom: "CHECK"})
+					cluster.SetState("ERR00028", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00028"], ErrFrom: "CHECK", ServerUrl: s.URL})
 					return true
 				}
 			}
@@ -637,7 +643,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 				if slaveSeq >= masterSeq {
 					break
 				} else {
-					cluster.SetState("WARN0086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0086"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
+					cluster.SetState("WARN0086", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0086"], ErrFrom: "MON", ServerUrl: s.URL})
 				}
 				time.Sleep(1 * time.Second)
 			}
@@ -855,4 +861,24 @@ func (cluster *Cluster) CheckDefaultUser(i bool) {
 		}
 		cluster.SetState("WARN0108", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0108"], out), ErrFrom: "CLUSTER"})
 	}
+}
+
+// This will check replication from bug, return true if valid or not activated
+func (cluster *Cluster) CheckBlockerState(sl *ServerMonitor, forcingLog bool) bool {
+	// If regression check disabled
+	if !cluster.Conf.FailoverCheckBlocker {
+		return true
+	}
+
+	blockers := []string{
+		"MDEV-28310",
+	}
+
+	for _, mdev := range blockers {
+		if sl.MDevIssues.HasMdevBug(mdev) {
+			return false
+		}
+	}
+
+	return true
 }
