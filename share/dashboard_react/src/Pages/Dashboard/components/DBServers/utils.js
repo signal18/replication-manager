@@ -4,7 +4,6 @@ export const getStatusValue = (rowData) => {
   const isVirtual = rowData.isVirtualMaster ? '-VMaster' : ''
   let colorScheme = 'gray'
   let stateValue = rowData.state.toUpperCase()
-
   switch (rowData.state) {
     case 'SlaveErr':
       stateValue = 'SLAVE_ERROR'

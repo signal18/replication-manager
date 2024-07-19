@@ -244,6 +244,16 @@ function DBServersGrid({
                   rowData.replications.map((replication, index) => {
                     const replicationTableData = [
                       {
+                        key: 'Semi Sync',
+                        value:
+                          (rowData.state === 'Slave' && rowData.semiSyncSlaveStatus) ||
+                          (rowData.state === 'Master' && rowData.semiSyncMasterStatus) ? (
+                            <CustomIcon icon={HiCheck} color='green' />
+                          ) : (
+                            <CustomIcon icon={HiX} color='red' />
+                          )
+                      },
+                      {
                         key: 'IO Thread',
                         value:
                           replication.slaveIoRunning?.String == 'Yes' ? (
@@ -298,6 +308,15 @@ function DBServersGrid({
                         key: 'Delay',
                         value: getDelay(rowData)
                       },
+                      {
+                        key: getSlaveGtidHeader(hasMariadbGtid, hasMysqlGtid),
+                        value: getSlaveGtid(rowData, hasMariadbGtid, hasMysqlGtid)
+                      },
+                      {
+                        key: 'Delay',
+                        value: getDelay(rowData)
+                      },
+
                       {
                         key: 'SQL error',
                         value: replication?.lastSqlError?.String
