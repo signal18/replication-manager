@@ -36,8 +36,7 @@ function PageContainer({ children }) {
     },
     pageContent: {
       zIndex: 1,
-      marginTop: isDesktop ? '74px' : '0'
-      // minHeight: 'calc(100vh - 100px)'
+      marginTop: isDesktop ? '58px' : '0'
     },
     footer: {
       px: '4',
