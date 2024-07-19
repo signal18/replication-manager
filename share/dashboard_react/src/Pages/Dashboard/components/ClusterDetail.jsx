@@ -338,7 +338,7 @@ function ClusterDetail({ selectedCluster }) {
             </Box>
           </>
         }
-        body={<TableType2 dataArray={dataObject} />}
+        body={<TableType2 dataArray={dataObject} minHeight='24px' boxPadding={1} />}
         headerAction='menu'
         isLoading={menuActionsLoading}
         menuOptions={menuOptions}

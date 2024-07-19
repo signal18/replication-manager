@@ -15,7 +15,7 @@ function Dashboard({ selectedCluster }) {
   } = useSelector((state) => state)
 
   return (
-    <Flex direction='column' gap='24px'>
+    <Flex direction='column' gap='8px'>
       <Flex gap='24px'>
         {selectedCluster && (
           <Flex w='100%' gap='24px' direction={isDesktop ? 'row' : 'column'}>

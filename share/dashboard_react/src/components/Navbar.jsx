@@ -7,6 +7,7 @@ import RefreshCounter from './RefreshCounter'
 import { isAuthorized } from '../utility/common'
 import { Link } from 'react-router-dom'
 import { useTheme } from '@emotion/react'
+import { clearCluster } from '../redux/clusterSlice'
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
@@ -33,6 +34,7 @@ function Navbar({ username }) {
 
   const handleLogout = () => {
     dispatch(logout())
+    dispatch(clearCluster())
   }
   return (
     <>
