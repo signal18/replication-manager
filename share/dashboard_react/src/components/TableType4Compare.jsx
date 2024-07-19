@@ -25,7 +25,6 @@ function TableType4Compare({ item1Title, item2Title, dataArray }) {
     },
 
     column: {
-      padding: '1',
       whiteSpace: 'break-spaces',
       padding: '8px',
       wordBreak: 'break-all'

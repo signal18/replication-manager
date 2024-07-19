@@ -24,6 +24,7 @@ function Navbar({ username }) {
       position: 'fixed',
       zIndex: 2,
       width: '100%',
+      padding: '4px',
       background: colorMode === 'light' ? currentTheme.colors.primary.light : currentTheme.colors.primary.dark
     },
     logo: {
@@ -38,7 +39,7 @@ function Navbar({ username }) {
   }
   return (
     <>
-      <Flex as='nav' p='10px' sx={styles.navbarContainer} gap='2' align='center'>
+      <Flex as='nav' sx={styles.navbarContainer} gap='2' align='center'>
         <Link to='/'>
           <Image
             loading='lazy'
