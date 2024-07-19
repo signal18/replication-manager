@@ -79,7 +79,7 @@ func (repman *ReplicationManager) httpserver() {
 		// Set up the reverse proxy target for Graphite API
 		graphiteProxy := httputil.NewSingleHostReverseProxy(graphiteURL)
 		// Set up a route that forwards the request to the Graphite API
-		router.PathPrefix("/graphite/").Handler(graphiteProxy)
+		router.PathPrefix("/graphite/").Handler(http.StripPrefix("/graphite/", graphiteProxy))
 	}
 
 	//router.HandleFunc("/", repman.handlerApp)
