@@ -16,7 +16,7 @@ function Card({ header, body, headerAction, menuOptions, buttonText, isLoading, 
     },
     heading: {
       textAlign: 'center',
-      p: '16px',
+      p: '8px',
       bg: colorMode === 'light' ? `blue.100` : `blue.800`,
       borderTopLeftRadius: '16px',
       borderTopRightRadius: '16px',
