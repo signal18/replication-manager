@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -277,7 +276,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 		svccontainer["run_args"] = "--ulimit nofile=262144:262144"
 		svccontainer["#run_args"] = "--user mysql --cap-add SYS_PTRACE --ulimit nofile=262144:262144"
-		svccontainer["#command"]  = "gdb -ex r -ex thread apply all bt -frame-arguments all full --args mariadbd"
+		svccontainer["#command"] = "gdb -ex r -ex thread apply all bt -frame-arguments all full --args mariadbd"
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
 
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/mysql-files:/var/lib/mysql-files:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
@@ -684,8 +683,11 @@ func (server *ServerMonitor) GenerateDBTemplateV2() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	log.Println(svcsectionJson)
-	return string(svcsectionJson), nil
+
+	svcsectionStr := string(svcsectionJson)
+	server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, svcsectionStr)
+
+	return svcsectionStr, nil
 
 }
 
@@ -774,7 +776,7 @@ safe_ssl_key_uuid = ` + server.ClusterGroup.Conf.ProvSSLKeyUUID + `
 server_id = ` + string(server.Id[2:10]) + `
 
 `
-	log.Println(conf)
+	server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, conf)
 
 	return conf, nil
 }
