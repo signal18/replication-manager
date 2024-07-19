@@ -1770,3 +1770,9 @@ func (cluster *Cluster) SetMonitorCaptureTrigger(value string) {
 func (cluster *Cluster) SetMasterNil() {
 	cluster.master = nil
 }
+
+func (cluster *Cluster) SetApiTokenTimeout(value int) {
+	cluster.Lock()
+	cluster.Conf.TokenTimeout = value
+	cluster.Unlock()
+}

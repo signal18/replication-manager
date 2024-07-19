@@ -41,7 +41,7 @@ func (repman *ReplicationManager) handlerMuxProxyStart(w http.ResponseWriter, r 
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -63,7 +63,7 @@ func (repman *ReplicationManager) handlerMuxProxyStop(w http.ResponseWriter, r *
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -84,7 +84,7 @@ func (repman *ReplicationManager) handlerMuxProxyProvision(w http.ResponseWriter
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -106,7 +106,7 @@ func (repman *ReplicationManager) handlerMuxProxyUnprovision(w http.ResponseWrit
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -128,7 +128,7 @@ func (repman *ReplicationManager) handlerMuxSphinxIndexes(w http.ResponseWriter,
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -150,7 +150,7 @@ func (repman *ReplicationManager) handlerMuxProxyNeedRestart(w http.ResponseWrit
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
@@ -178,7 +178,7 @@ func (repman *ReplicationManager) handlerMuxProxyNeedReprov(w http.ResponseWrite
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if !repman.IsValidClusterACL(r, mycluster) {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
