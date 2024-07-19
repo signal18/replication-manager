@@ -32,8 +32,11 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httputil"
 	_ "net/http/pprof"
+	"net/url"
 	"os"
 	"strconv"
 
@@ -66,6 +69,19 @@ func (repman *ReplicationManager) httpserver() {
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
+
+	graphiteHost := repman.Conf.GraphiteCarbonHost
+	if repman.Conf.GraphiteEmbedded {
+		graphiteHost = "127.0.0.1"
+	}
+	graphiteURL, err := url.Parse(fmt.Sprintf("http://%s:%d", graphiteHost, repman.Conf.GraphiteCarbonApiPort))
+	if err == nil {
+		// Set up the reverse proxy target for Graphite API
+		graphiteProxy := httputil.NewSingleHostReverseProxy(graphiteURL)
+		// Set up a route that forwards the request to the Graphite API
+		router.PathPrefix("/graphite/").Handler(graphiteProxy)
+	}
+
 	//router.HandleFunc("/", repman.handlerApp)
 	// page to view which does not need authorization
 	if repman.Conf.Test {
