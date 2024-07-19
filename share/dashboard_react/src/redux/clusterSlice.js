@@ -699,6 +699,9 @@ export const clusterSlice = createSlice({
     setRefreshInterval: (state, action) => {
       localStorage.setItem('refresh_interval', action.payload.interval)
       state.refreshInterval = action.payload.interval
+    },
+    clearCluster: (state, action) => {
+      //state = initialState
     }
   },
   extraReducers: (builder) => {
@@ -934,7 +937,7 @@ export const clusterSlice = createSlice({
   }
 })
 
-export const { setRefreshInterval } = clusterSlice.actions
+export const { setRefreshInterval, clearCluster } = clusterSlice.actions
 
 // this is for configureStore
 export default clusterSlice.reducer
