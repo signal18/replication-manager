@@ -809,12 +809,9 @@ func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
 				server.ExecQueryNoBinLog(fmt.Sprintf(query, "\n"+errStr, JobStateErrorAfter, task.id))
 			}
 			return err
-		} else {
-			server.ExecQueryNoBinLog(fmt.Sprintf(query, errStr, JobStateSuccess, task.id))
 		}
-	default:
-		server.ExecQueryNoBinLog(fmt.Sprintf(query, errStr, JobStateSuccess, task.id))
 	}
+	server.ExecQueryNoBinLog(fmt.Sprintf(query, errStr, JobStateSuccess, task.id))
 	return nil
 }
 
