@@ -565,17 +565,20 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 			if vars["backupMethod"] == "logicalbackup" {
 				_, err := node.JobReseedLogicalBackup()
 				if err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "logical flashback restore failed %s", err)
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "logical reseed restore failed %s", err)
 				}
 			}
 			if vars["backupMethod"] == "logicalmaster" {
 				err := node.RejoinDirectDump()
 				if err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "mysqldump flashback restore failed %s", err)
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "mysqldump reseed restore failed %s", err)
 				}
 			}
 			if vars["backupMethod"] == "physicalbackup" {
-				node.JobReseedPhysicalBackup()
+				_, err := node.JobReseedPhysicalBackup()
+				if err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "mysqldump reseed restore failed %s", err)
+				}
 			}
 
 		} else {
