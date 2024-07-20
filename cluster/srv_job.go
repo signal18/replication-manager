@@ -176,6 +176,14 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	//Delete wait physical backup cookie
 	server.DelWaitPhysicalBackupCookie()
 
+	if server.IsReseeding {
+		err := errors.New("Server is in reseeding state")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
+		return 0, err
+	}
+
+	server.SetInReseedBackup(true)
+
 	jobid, err := server.JobInsertTaks("reseed"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive reseed physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
@@ -201,7 +209,9 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
-
+	if cluster.Conf.ProvOrchestrator == "onpremise" {
+		go server.JobRunViaSSH()
+	}
 	return jobid, err
 }
 
@@ -791,7 +801,7 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 
 func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
 	//Still use done=1 and state=3 to prevent unwanted changes
-	query := "UPDATE replication_manager_schema.jobs SET result=CONCAT(result,%s) state=%d WHERE id=%d AND done=1 AND state=3"
+	query := "UPDATE replication_manager_schema.jobs SET result=CONCAT(result,'%s'), state=%d WHERE id=%d AND done=1 AND state=3"
 	errStr := ""
 	if task.task == "" {
 		return errors.New("Cannot check task. Task name is empty!")
@@ -1826,24 +1836,18 @@ func (server *ServerMonitor) ProcessReseedPhysical() error {
 	master := cluster.GetMaster()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", server.URL)
 	if master != nil {
-		if server.IsReseeding {
-			err = errors.New("Server is already reseeding")
-			return err
+		mybcksrv := cluster.GetBackupServer()
+		backupext := ".xbtream"
+		task := "reseed" + cluster.Conf.BackupPhysicalType
+
+		if cluster.Conf.CompressBackups {
+			backupext = backupext + ".gz"
+		}
+
+		if mybcksrv != nil {
+			go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
 		} else {
-			mybcksrv := cluster.GetBackupServer()
-			server.SetInReseedBackup(true)
-			backupext := ".xbtream"
-			task := "reseed" + cluster.Conf.BackupPhysicalType
-
-			if cluster.Conf.CompressBackups {
-				backupext = backupext + ".gz"
-			}
-
-			if mybcksrv != nil {
-				go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
-			} else {
-				go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
-			}
+			go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
 		}
 	} else {
 		err = errors.New("No master found")
