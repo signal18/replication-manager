@@ -18,6 +18,8 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -148,11 +150,25 @@ func (repman *ReplicationManager) rootHandler(w http.ResponseWriter, r *http.Req
 }
 
 func (repman *ReplicationManager) apiserver() {
+	var err error
 	repman.initKeys()
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
 	//router.HandleFunc("/", repman.handlerApp)
 	// page to view which does not need authorization
+	graphiteHost := repman.Conf.GraphiteCarbonHost
+	if repman.Conf.GraphiteEmbedded {
+		graphiteHost = "127.0.0.1"
+	}
+
+	graphiteURL, err := url.Parse(fmt.Sprintf("http://%s:%d", graphiteHost, repman.Conf.GraphiteCarbonApiPort))
+	if err == nil {
+		// Set up the reverse proxy target for Graphite API
+		graphiteProxy := httputil.NewSingleHostReverseProxy(graphiteURL)
+		// Set up a route that forwards the request to the Graphite API
+		router.PathPrefix("/graphite/").Handler(http.StripPrefix("/graphite/", graphiteProxy))
+	}
+
 	if repman.Conf.Test {
 		router.HandleFunc("/", repman.handlerApp)
 		router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
@@ -209,8 +225,6 @@ func (repman *ReplicationManager) apiserver() {
 	repman.apiClusterUnprotectedHandler(router)
 	repman.apiClusterProtectedHandler(router)
 	repman.apiProxyProtectedHandler(router)
-
-	var err error
 
 	tlsConfig := Repmanv3TLS{
 		Enabled: false,

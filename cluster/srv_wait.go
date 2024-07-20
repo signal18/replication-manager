@@ -52,7 +52,9 @@ func (server *ServerMonitor) WaitDatabaseStart() error {
 			go server.Ping(wg)
 			wg.Wait()
 			err = server.Refresh()
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state refresh on %s failed with error %s ", server.URL, err)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state refresh on %s failed with error %s ", server.URL, err)
+			}
 
 			if cluster.GetTopology() == topoMultiMasterWsrep {
 				if !server.IsConnected() {
