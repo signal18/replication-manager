@@ -619,3 +619,10 @@ func (server *ServerMonitor) HasErrantTransactions() bool {
 	}
 	return false
 }
+
+func (server *ServerMonitor) HasBlockerIssue() bool {
+	if server.ClusterGroup.StateMachine.IsInState("MDEV20821@" + server.URL) {
+		return true
+	}
+	return false
+}
