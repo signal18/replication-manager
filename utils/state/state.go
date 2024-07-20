@@ -189,6 +189,7 @@ func (SM *StateMachine) AddState(key string, s State) {
 	if s.ServerUrl != "" {
 		key = key + "@" + s.ServerUrl
 	}
+	s.ErrKey = key
 	SM.Lock()
 	SM.CurState.Add(key, s)
 	if SM.heartbeats == 0 {
