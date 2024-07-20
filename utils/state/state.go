@@ -186,10 +186,11 @@ func (SM *StateMachine) IsInSchemaMonitor() bool {
 
 // if state is cluster based the key is the error if state is server based then we concat server URL
 func (SM *StateMachine) AddState(key string, s State) {
+	//Retain the state
+	s.ErrKey = key
 	if s.ServerUrl != "" {
 		key = key + "@" + s.ServerUrl
 	}
-	s.ErrKey = key
 	SM.Lock()
 	SM.CurState.Add(key, s)
 	if SM.heartbeats == 0 {
