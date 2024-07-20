@@ -791,16 +791,22 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 
 func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
 	//Still use done=1 and state=3 to prevent unwanted changes
-	query := "UPDATE replication_manager_schema.jobs SET result=CONCAT(result,'\n',%s) state=%d WHERE id=%d done=1 AND state=3"
+	query := "UPDATE replication_manager_schema.jobs SET result=CONCAT(result,%s) state=%d WHERE id=%d AND done=1 AND state=3"
 	errStr := ""
+	if task.task == "" {
+		return errors.New("Cannot check task. Task name is empty!")
+	}
+
 	switch task.task {
+	case "xtrabackup", "mariabackup":
+		server.SetBackupPhysicalCookie()
 	case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
 		if _, err := server.StartSlave(); err != nil {
 			errStr = err.Error()
 			// Only set as failed if no error connection
 			if server.Conn != nil {
 				// Set state as 6 to differ post-job error with in-job error (code: 5)
-				server.ExecQueryNoBinLog(fmt.Sprintf(query, errStr, JobStateErrorAfter, task.id))
+				server.ExecQueryNoBinLog(fmt.Sprintf(query, "\n"+errStr, JobStateErrorAfter, task.id))
 			}
 			return err
 		} else {
