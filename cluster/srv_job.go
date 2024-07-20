@@ -227,6 +227,17 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 		return 0, errors.New("No Physical Backup")
 	}
 
+	//Delete wait physical backup cookie
+	server.DelWaitPhysicalBackupCookie()
+
+	if server.IsReseeding {
+		err := errors.New("Server is in reseeding state")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
+		return 0, err
+	}
+
+	server.SetInReseedBackup(true)
+
 	jobid, err := server.JobInsertTaks("flashback"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
 
 	if err != nil {
