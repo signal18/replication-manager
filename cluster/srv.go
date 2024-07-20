@@ -787,6 +787,9 @@ func (server *ServerMonitor) Refresh() error {
 		users, logs, err := dbhelper.GetUsers(server.Conn, server.DBVersion)
 		server.Users = config.FromNormalGrantsMap(server.Users, users)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database users %s %s", server.URL, err)
+
+		// Job section
+		server.JobsCheckFinished()
 		if cluster.Conf.MonitorScheduler {
 			server.JobsCheckRunning()
 		}
@@ -1187,7 +1190,7 @@ func (server *ServerMonitor) StopAllExtraSourceSlaves() (string, error) {
 
 func (server *ServerMonitor) StartSlave() (string, error) {
 	if server.Conn == nil {
-		return "", errors.New("No databse connection")
+		return "", errors.New("No database connection")
 	}
 	cluster := server.ClusterGroup
 	return dbhelper.StartSlave(server.Conn, cluster.Conf.MasterConn, server.DBVersion)

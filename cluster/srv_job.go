@@ -37,6 +37,16 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+var (
+	JobStateAvailable  int = 0
+	JobStateRunning    int = 1
+	JobStateHalted     int = 2
+	JobStateFinished   int = 3
+	JobStateSuccess    int = 4
+	JobStateErrorExec  int = 5
+	JobStateErrorAfter int = 6
+)
+
 func (server *ServerMonitor) JobRun() {
 
 }
@@ -51,8 +61,22 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task)) engine=innodb")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't create table replication_manager_schema.jobs")
-		// }
+		return err
 	}
+
+	//Add column instead of changing create table for compatibility
+	err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD COLUMN IF NOT EXISTS state tinyint not null default 0 AFTER `done`")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
+		return err
+	}
+
+	//Add index
+	err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD INDEX IF NOT EXISTS idx3 (task, state)")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
+	}
+
 	return err
 }
 
@@ -734,6 +758,57 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 
 	}
 
+	return nil
+}
+
+func (server *ServerMonitor) JobsCheckFinished() error {
+	var err error
+
+	cluster := server.ClusterGroup
+	if server.IsDown() {
+		return nil
+	}
+	//server.JobInsertTaks("", "", "")
+	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE done=1 AND state=3 group by task")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
+		server.JobsCreateTable()
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var task DBTask
+		rows.Scan(&task.task, &task.ct, &task.id)
+		if task.ct > 0 {
+			if err := server.AfterJobProcess(task); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
+			}
+		}
+	}
+	return err
+}
+
+func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
+	//Still use done=1 and state=3 to prevent unwanted changes
+	query := "UPDATE replication_manager_schema.jobs SET result=CONCAT(result,'\n',%s) state=%d WHERE id=%d done=1 AND state=3"
+	errStr := ""
+	switch task.task {
+	case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
+		if _, err := server.StartSlave(); err != nil {
+			errStr = err.Error()
+			// Only set as failed if no error connection
+			if server.Conn != nil {
+				// Set state as 6 to differ post-job error with in-job error (code: 5)
+				server.ExecQueryNoBinLog(fmt.Sprintf(query, errStr, JobStateErrorAfter, task.id))
+			}
+			return err
+		} else {
+			server.ExecQueryNoBinLog(fmt.Sprintf(query, errStr, JobStateSuccess, task.id))
+		}
+	default:
+		server.ExecQueryNoBinLog(fmt.Sprintf(query, errStr, JobStateSuccess, task.id))
+	}
 	return nil
 }
 
