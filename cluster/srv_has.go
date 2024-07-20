@@ -612,3 +612,10 @@ func (server *ServerMonitor) IsSlaveOrSync() bool {
 func (server *ServerMonitor) IsPurgingBinlog() bool {
 	return server.InPurgingBinaryLog
 }
+
+func (server *ServerMonitor) HasErrantTransactions() bool {
+	if server.ClusterGroup.StateMachine.IsInState("WARN0091@" + server.URL) {
+		return true
+	}
+	return false
+}

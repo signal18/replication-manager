@@ -184,8 +184,11 @@ func (SM *StateMachine) IsInSchemaMonitor() bool {
 	return SM.InSchemaMonitor
 }
 
+// if state is cluster based the key is the error if state is server based then we concat server URL
 func (SM *StateMachine) AddState(key string, s State) {
-	s.ErrKey = key
+	if s.ServerUrl != "" {
+		key = key + "@" + s.ServerUrl
+	}
 	SM.Lock()
 	SM.CurState.Add(key, s)
 	if SM.heartbeats == 0 {
@@ -196,9 +199,9 @@ func (SM *StateMachine) AddState(key string, s State) {
 
 func (SM *StateMachine) IsInState(key string) bool {
 	SM.Lock()
-	//log.Printf("%s,%s", key, SM.OldState.Search(key))
+	//fmt.Printf("%s,%s", key, SM.OldState.Search(key))
 	//CurState may not be valid depending when it's call because empty at every ticker so may have not collected the state yet
-
+	//	fmt.Println(SM.OldState)
 	if SM.OldState.Search(key) == false {
 		SM.Unlock()
 		return false
