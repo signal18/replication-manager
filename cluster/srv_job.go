@@ -37,6 +37,11 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+/*
+- 0-2	Indicates Job still not done yet
+- 3		Indicate it's finished recently and check if there is post-job task
+- 4-6	Job completed, either success or failed
+*/
 var (
 	JobStateAvailable  int = 0
 	JobStateRunning    int = 1
@@ -75,9 +80,10 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD INDEX IF NOT EXISTS idx3 (task, state)")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
+		return err
 	}
 
-	return err
+	return nil
 }
 
 func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost string) (int64, error) {
@@ -93,21 +99,41 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 		return 0, err
 	}
 	defer conn.Close()
+
+	/** This will be used later when state already used within scripts **/
+	// if task == "" {
+	// 	err = errors.New("Job can't insert empty task")
+	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't insert empty task")
+	// 	return 0, err
+	// }
+
+	// var dbtask DBTask
+	// // Find previous task
+	// err = server.Conn.Get(&dbtask, "SELECT task, count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE task='?' and state <= 3", task)
+	// if err != nil {
+	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err.Error())
+	// 	server.JobsCreateTable()
+	// 	return 0, err
+	// }
+
+	// if dbtask.ct > 0 {
+	// 	err = errors.New(fmt.Sprintf("Can't insert task, previous task is still running with id: %d", dbtask.id))
+	// 	return 0, err
+	// }
+
 	_, err = conn.Exec("set sql_log_bin=0")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't disable binlog for session")
 		return 0, err
 	}
 
-	if task != "" {
-		res, err := conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('" + task + "'," + port + ",'" + repmanhost + "', NOW())")
-		if err == nil {
-			return res.LastInsertId()
-		}
+	res, err := conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('" + task + "'," + port + ",'" + repmanhost + "', NOW())")
+	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't insert job %s", err)
 		return 0, err
 	}
-	return 0, nil
+
+	return res.LastInsertId()
 }
 
 func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
