@@ -115,6 +115,12 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		// }
 		return false
 	}
+
+	if sl.HasErrantTransactions() {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlWarn, "Slave %s has errent transactions. Skipping", sl.URL)
+		return false
+	}
+
 	return true
 }
 
