@@ -189,6 +189,7 @@ type ServerMonitor struct {
 	DelayStat                   *ServerDelayStat        `json:"delayStat"`
 	SlaveVariables              SlaveVariables          `json:"slaveVariables"`
 	IsReseeding                 bool                    `json:"isReseeding"`
+	ReplicationTags             string                  `json:"replicationTags"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 	InPurgingBinaryLog          bool
@@ -197,7 +198,6 @@ type ServerMonitor struct {
 	ActiveTasks                 sync.Map
 	BinaryLogDir                string
 	DBDataDir                   string
-	ReplicationTags             string
 }
 
 type SlaveVariables struct {
@@ -686,52 +686,54 @@ func (server *ServerMonitor) Refresh() error {
 		if !server.DBVersion.IsPostgreSQL() {
 
 			server.Strict = server.Variables.Get("GTID_STRICT_MODE")
-			server.ReplicationTags = server.Strict
 			server.HaveEventScheduler = server.HasEventScheduler()
-			server.AddReplicationTag(server.HaveEventScheduler, "SCHEDULER")
-
 			server.ReadOnly = server.Variables.Get("READ_ONLY")
 			server.LongQueryTime = server.Variables.Get("LONG_QUERY_TIME")
 			server.LogOutput = server.Variables.Get("LOG_OUTPUT")
 			server.SlowQueryLog = server.Variables.Get("SLOW_QUERY_LOG")
 			server.HaveReadOnly = server.HasReadOnly()
-			server.AddReplicationTag(server.HaveReadOnly, "READ_ONLY")
 			server.HaveSlaveIdempotent = server.HasSlaveIndempotent()
-			server.AddReplicationTag(server.HaveSlaveIdempotent, "IDEMPOTENT")
 			server.HaveSlaveOptimistic = server.HasSlaveParallelOptimistic()
-			server.AddReplicationTag(server.HaveSlaveOptimistic && server.IsMariaDB(), "OPTIMISTIC")
 			server.HaveSlaveSerialized = server.HasSlaveParallelSerialized()
-			server.AddReplicationTag(server.HaveSlaveSerialized && server.IsMariaDB(), "SERIALIZED")
 			server.HaveSlaveAggressive = server.HasSlaveParallelAggressive()
-			server.AddReplicationTag(server.HaveSlaveAggressive && server.IsMariaDB(), "AGFRESSIVE")
 			server.HaveSlaveMinimal = server.HasSlaveParallelMinimal()
-			server.AddReplicationTag(server.HaveSlaveMinimal && server.IsMariaDB(), "MINIMAL")
 			server.HaveSlaveConservative = server.HasSlaveParallelConservative()
-			server.AddReplicationTag(server.HaveSlaveConservative && server.IsMariaDB(), "CONSERVATIVE")
 			server.HaveBinlog = server.HasBinlog()
-			server.AddReplicationTag(!server.HaveBinlog, "NO_BINLOG")
 			server.HaveBinlogRow = server.HasBinlogRow()
-			server.AddReplicationTag(server.HaveBinlogRow, "ROW")
 			server.HaveBinlogMixed = server.HasBinlogMixed()
-			server.AddReplicationTag(server.HaveBinlogMixed, "MIXED")
 			server.HaveBinlogStatement = server.HasBinlogStatement()
-			server.AddReplicationTag(server.HaveBinlogStatement, "STATEMENT")
 			server.HaveBinlogAnnotate = server.HasBinlogRowAnnotate()
-			server.AddReplicationTag(!server.HaveBinlogRow, "NO_ANNOTATE")
 			server.HaveBinlogSync = server.HasBinlogDurable()
-			server.AddReplicationTag(!server.HaveBinlogSync, "NO_SYNC")
 			server.HaveBinlogCompress = server.HasBinlogCompress()
-			server.AddReplicationTag(server.HaveBinlogCompress && server.IsMariaDB(), "COMPRESS")
 			server.HaveBinlogSlaveUpdates = server.HasBinlogSlaveUpdates()
-			server.AddReplicationTag(!server.HaveBinlogSlaveUpdates, "NO_SLAVE_UPDATES")
 			server.HaveBinlogSlowqueries = server.HasBinlogSlowSlaveQueries()
-			server.AddReplicationTag(!server.HaveBinlogSlowqueries, "NO_IN_SLOW_QUERY_LOG")
 			server.HaveGtidStrictMode = server.HasGtidStrictMode()
-			server.AddReplicationTag(!server.HaveGtidStrictMode && server.IsMariaDB(), "NO_STRICT_MODE")
 			server.HaveInnodbTrxCommit = server.HasInnoDBRedoLogDurable()
 			server.HaveChecksum = server.HasInnoDBChecksum()
 			server.HaveWsrep = server.HasWsrep()
+
+			server.ReplicationTags = ""
+			server.AddReplicationTag(server.HaveReadOnly, "READ_ONLY")
+			server.AddReplicationTag(server.HaveEventScheduler, "SCHEDULER")
+			server.AddReplicationTag(server.Strict == "ON" && server.IsMariaDB(), "GTID_STRICT_MODE")
+			server.AddReplicationTag(server.HaveSlaveIdempotent, "IDEMPOTENT")
+			server.AddReplicationTag(server.HaveSlaveOptimistic && server.IsMariaDB(), "OPTIMISTIC")
+			server.AddReplicationTag(server.HaveSlaveSerialized && server.IsMariaDB(), "SERIALIZED")
+			server.AddReplicationTag(server.HaveSlaveAggressive && server.IsMariaDB(), "AGFRESSIVE")
+			server.AddReplicationTag(server.HaveSlaveMinimal && server.IsMariaDB(), "MINIMAL")
+			server.AddReplicationTag(server.HaveSlaveConservative && server.IsMariaDB(), "CONSERVATIVE")
+			server.AddReplicationTag(!server.HaveBinlog, "NO_BINLOG")
+			server.AddReplicationTag(server.HaveBinlogRow, "ROW")
+			server.AddReplicationTag(server.HaveBinlogMixed, "MIXED")
+			server.AddReplicationTag(server.HaveBinlogStatement, "STATEMENT")
+			server.AddReplicationTag(!server.HaveBinlogSync, "NO_SYNC")
+			server.AddReplicationTag(!server.HaveBinlogRow, "NO_ANNOTATE")
+			server.AddReplicationTag(server.HaveBinlogCompress && server.IsMariaDB(), "COMPRESS")
+			server.AddReplicationTag(!server.HaveBinlogSlaveUpdates, "NO_SLAVE_UPDATES")
+			server.AddReplicationTag(!server.HaveBinlogSlowqueries, "NO_IN_SLOW_QUERY_LOG")
+			server.AddReplicationTag(!server.HaveGtidStrictMode && server.IsMariaDB(), "NO_STRICT_MODE")
 			server.AddReplicationTag(server.HaveWsrep && server.IsMariaDB(), "WSREP")
+
 			server.HaveSlowQueryLog = server.HasLogSlowQuery()
 			server.HavePFS = server.HasLogPFS()
 			if server.HavePFS {
@@ -923,12 +925,12 @@ func (server *ServerMonitor) Refresh() error {
 			if server.DBVersion.IsMySQLOrPerconaGreater57() && server.HasGTIDReplication() {
 				server.SlaveGtid = gtid.NewList(server.SlaveStatus.ExecutedGtidSet.String)
 			}
-			server.AddReplicationTag(server.SlaveStatus.ReplicateDoTable.String == "" &&
+			server.AddReplicationTag(!(server.SlaveStatus.ReplicateDoTable.String == "" &&
 				server.SlaveStatus.ReplicateDoDB.String == "" &&
 				server.SlaveStatus.ReplicateIgnoreDB.String == "" &&
 				server.SlaveStatus.ReplicateIgnoreTable.String == "" &&
 				server.SlaveStatus.ReplicateWildIgnoreTable.String == "" &&
-				server.SlaveStatus.ReplicateWildDoTable.String == "",
+				server.SlaveStatus.ReplicateWildDoTable.String == ""),
 				"NO_ALL_SCHEMA")
 		}
 	}
