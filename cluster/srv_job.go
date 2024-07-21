@@ -127,12 +127,6 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 	defer conn.Close()
 
 	/** This will be used later when state already used within scripts **/
-	// if task == "" {
-	// 	err = errors.New("Job can't insert empty task")
-	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't insert empty task")
-	// 	return 0, err
-	// }
-
 	// var dbtask DBTask
 	// // Find previous task
 	// err = server.Conn.Get(&dbtask, "SELECT task, count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE task='?' and state <= 3", task)
@@ -146,6 +140,12 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 	// 	err = errors.New(fmt.Sprintf("Can't insert task, previous task is still running with id: %d", dbtask.id))
 	// 	return 0, err
 	// }
+
+	if task == "" {
+		err = errors.New("Job can't insert empty task")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't insert empty task")
+		return 0, err
+	}
 
 	_, err = conn.Exec("set sql_log_bin=0")
 	if err != nil {
