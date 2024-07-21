@@ -58,10 +58,40 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	}
 
 	server.ExecQueryNoBinLog("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
-	err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task)) engine=innodb")
+	err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state)) engine=innodb")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't create table replication_manager_schema.jobs")
 		return err
+	}
+
+	//Add nullable column for compatibility
+	err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD COLUMN IF NOT EXISTS id INT NULL FIRST")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
+		return err
+	}
+
+	var pk int
+	server.Conn.Get(&pk, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'PRI' THEN 1 END) AS num_primary_keys FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
+
+	if pk == 0 {
+		err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs_tmp(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state)) engine=innodb")
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't create table replication_manager_schema.jobs_tmp")
+			return err
+		}
+
+		err = server.ExecQueryNoBinLog("INSERT INTO replication_manager_schema.jobs_tmp(task, port, server, done, result , start, end) SELECT task, port, server, done, result , start, end FROM replication_manager_schema.jobs")
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't populate table replication_manager_schema.jobs_tmp")
+			return err
+		}
+
+		err = server.ExecQueryNoBinLog("RENAME TABLE replication_manager_schema.jobs TO replication_manager_schema.jobs_old, replication_manager_schema.jobs_tmp TO replication_manager_schema.jobs")
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't rename tables replication_manager_schema.jobs_tmp")
+			return err
+		}
 	}
 
 	//Add column instead of changing create table for compatibility
@@ -176,13 +206,23 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	//Delete wait physical backup cookie
 	server.DelWaitPhysicalBackupCookie()
 
+	if server.IsReseeding {
+		err := errors.New("Server is in reseeding state")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
+		return 0, err
+	}
+
+	server.SetInReseedBackup(true)
+
 	jobid, err := server.JobInsertTaks("reseed"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive reseed physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 		return jobid, err
 	}
+
 	logs, err := server.StopSlave()
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+
 	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      cluster.master.Host,
 		Port:      cluster.master.Port,
@@ -195,12 +235,17 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 		Channel:   cluster.Conf.MasterConn,
 	}, server.DBVersion)
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
-
 	if err != nil {
 		return jobid, err
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
+
+	if cluster.Conf.ProvOrchestrator == "onpremise" && cluster.Conf.OnPremiseSSH {
+		go server.JobRunViaSSH()
+	}
+
+	cluster.SetState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0074"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 
 	return jobid, err
 }
@@ -211,6 +256,17 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 		server.SetWaitPhysicalBackupCookie()
 		return 0, errors.New("No Physical Backup")
 	}
+
+	//Delete wait physical backup cookie
+	server.DelWaitPhysicalBackupCookie()
+
+	if server.IsReseeding {
+		err := errors.New("Server is in reseeding state")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
+		return 0, err
+	}
+
+	server.SetInReseedBackup(true)
 
 	jobid, err := server.JobInsertTaks("flashback"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
 
@@ -239,6 +295,11 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
+	if cluster.Conf.ProvOrchestrator == "onpremise" && cluster.Conf.OnPremiseSSH {
+		go server.JobRunViaSSH()
+	}
+
+	cluster.SetState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0076"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "REJOIN", ServerUrl: server.URL})
 
 	return jobid, err
 }
@@ -791,24 +852,27 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 
 func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
 	//Still use done=1 and state=3 to prevent unwanted changes
-	query := "UPDATE replication_manager_schema.jobs SET result=CONCAT(result,'\n',%s) state=%d WHERE id=%d done=1 AND state=3"
+	query := "UPDATE replication_manager_schema.jobs SET result=CONCAT(result,'%s'), state=%d WHERE id=%d AND done=1 AND state=3"
 	errStr := ""
+	if task.task == "" {
+		return errors.New("Cannot check task. Task name is empty!")
+	}
+
 	switch task.task {
+	case "xtrabackup", "mariabackup":
+		server.SetBackupPhysicalCookie()
 	case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
 		if _, err := server.StartSlave(); err != nil {
 			errStr = err.Error()
 			// Only set as failed if no error connection
 			if server.Conn != nil {
 				// Set state as 6 to differ post-job error with in-job error (code: 5)
-				server.ExecQueryNoBinLog(fmt.Sprintf(query, errStr, JobStateErrorAfter, task.id))
+				server.ExecQueryNoBinLog(fmt.Sprintf(query, "\n"+errStr, JobStateErrorAfter, task.id))
 			}
 			return err
-		} else {
-			server.ExecQueryNoBinLog(fmt.Sprintf(query, errStr, JobStateSuccess, task.id))
 		}
-	default:
-		server.ExecQueryNoBinLog(fmt.Sprintf(query, errStr, JobStateSuccess, task.id))
 	}
+	server.ExecQueryNoBinLog(fmt.Sprintf(query, errStr, JobStateSuccess, task.id))
 	return nil
 }
 
@@ -1714,24 +1778,6 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 	return errors.New("Wrong configuration for Backup Binlog Method!")
 }
 
-func (server *ServerMonitor) RunTaskCallback(task string) error {
-	cluster := server.ClusterGroup
-	var err error
-
-	if v, ok := server.ActiveTasks.Load(task); ok {
-		dt := v.(DBTask)
-		switch dt.task {
-		case "reseedmysqldump", "flashbackmysqldump":
-			go server.CallbackMysqldump(dt)
-		}
-	} else {
-		err = errors.New("No active task found!")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error executing callback, %s", err.Error())
-	}
-
-	return err
-}
-
 func (server *ServerMonitor) CallbackMysqldump(dt DBTask) error {
 	cluster := server.ClusterGroup
 	var err error
@@ -1814,5 +1860,53 @@ func (server *ServerMonitor) JobWriteLogAPI(task string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, errstr)
 	}
 
+	return nil
+}
+
+func (server *ServerMonitor) ProcessReseedPhysical() error {
+	var err error
+	cluster := server.ClusterGroup
+	master := cluster.GetMaster()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", server.URL)
+	if master != nil {
+		mybcksrv := cluster.GetBackupServer()
+		backupext := ".xbtream"
+		task := "reseed" + cluster.Conf.BackupPhysicalType
+
+		if cluster.Conf.CompressBackups {
+			backupext = backupext + ".gz"
+		}
+
+		if mybcksrv != nil {
+			go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
+		} else {
+			go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
+		}
+	} else {
+		err = errors.New("No master found")
+		return err
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) ProcessFlashbackPhysical() error {
+	var err error
+	cluster := server.ClusterGroup
+	if server.IsReseeding {
+		err = errors.New("Server is already reseeding")
+		return err
+	} else {
+		mybcksrv := cluster.GetBackupServer()
+		server.SetInReseedBackup(true)
+		task := "flashback" + cluster.Conf.BackupPhysicalType
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending server physical backup to flashback reseed %s", server.URL)
+
+		if mybcksrv != nil {
+			go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", server, task)
+		} else {
+			go cluster.SSTRunSender(server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", server, task)
+		}
+	}
 	return nil
 }
