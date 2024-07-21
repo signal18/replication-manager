@@ -88,6 +88,8 @@ type ServerMonitor struct {
 	HaveBinlog                  bool                    `json:"haveBinlog"`
 	HaveBinlogSync              bool                    `json:"haveBinLogSync"`
 	HaveBinlogRow               bool                    `json:"haveBinlogRow"`
+	HaveBinlogMixed             bool                    `json:"haveBinlogMixed"`
+	HaveBinlogStatement         bool                    `json:"haveBinlogStatement"`
 	HaveBinlogAnnotate          bool                    `json:"haveBinlogAnnotate"`
 	HaveBinlogSlowqueries       bool                    `json:"haveBinlogSlowqueries"`
 	HaveBinlogCompress          bool                    `json:"haveBinlogCompress"`
@@ -187,6 +189,7 @@ type ServerMonitor struct {
 	DelayStat                   *ServerDelayStat        `json:"delayStat"`
 	SlaveVariables              SlaveVariables          `json:"slaveVariables"`
 	IsReseeding                 bool                    `json:"isReseeding"`
+	ReplicationTags             string                  `json:"replicationTags"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 	InPurgingBinaryLog          bool
@@ -681,15 +684,9 @@ func (server *ServerMonitor) Refresh() error {
 			return nil
 		}
 		if !server.DBVersion.IsPostgreSQL() {
-			if cluster.Conf.MultiMasterGrouprep {
-				server.IsGroupReplicationMaster, err = dbhelper.IsGroupReplicationMaster(server.Conn, server.DBVersion, server.Host)
-				server.IsGroupReplicationSlave, err = dbhelper.IsGroupReplicationSlave(server.Conn, server.DBVersion, server.Host)
-				if server.IsGroupReplicationSlave && server.State == stateUnconn {
-					server.SetState(stateSlave)
-				}
-			}
-			server.HaveEventScheduler = server.HasEventScheduler()
+
 			server.Strict = server.Variables.Get("GTID_STRICT_MODE")
+			server.HaveEventScheduler = server.HasEventScheduler()
 			server.ReadOnly = server.Variables.Get("READ_ONLY")
 			server.LongQueryTime = server.Variables.Get("LONG_QUERY_TIME")
 			server.LogOutput = server.Variables.Get("LOG_OUTPUT")
@@ -703,6 +700,8 @@ func (server *ServerMonitor) Refresh() error {
 			server.HaveSlaveConservative = server.HasSlaveParallelConservative()
 			server.HaveBinlog = server.HasBinlog()
 			server.HaveBinlogRow = server.HasBinlogRow()
+			server.HaveBinlogMixed = server.HasBinlogMixed()
+			server.HaveBinlogStatement = server.HasBinlogStatement()
 			server.HaveBinlogAnnotate = server.HasBinlogRowAnnotate()
 			server.HaveBinlogSync = server.HasBinlogDurable()
 			server.HaveBinlogCompress = server.HasBinlogCompress()
@@ -712,6 +711,29 @@ func (server *ServerMonitor) Refresh() error {
 			server.HaveInnodbTrxCommit = server.HasInnoDBRedoLogDurable()
 			server.HaveChecksum = server.HasInnoDBChecksum()
 			server.HaveWsrep = server.HasWsrep()
+
+			server.ReplicationTags = ""
+			server.AddReplicationTag(server.HaveReadOnly, "READ_ONLY")
+			server.AddReplicationTag(server.HaveEventScheduler, "SCHEDULER")
+			server.AddReplicationTag(server.Strict == "ON" && server.IsMariaDB(), "GTID_STRICT_MODE")
+			server.AddReplicationTag(server.HaveSlaveIdempotent, "IDEMPOTENT")
+			server.AddReplicationTag(server.HaveSlaveOptimistic && server.IsMariaDB(), "OPTIMISTIC")
+			server.AddReplicationTag(server.HaveSlaveSerialized && server.IsMariaDB(), "SERIALIZED")
+			server.AddReplicationTag(server.HaveSlaveAggressive && server.IsMariaDB(), "AGFRESSIVE")
+			server.AddReplicationTag(server.HaveSlaveMinimal && server.IsMariaDB(), "MINIMAL")
+			server.AddReplicationTag(server.HaveSlaveConservative && server.IsMariaDB(), "CONSERVATIVE")
+			server.AddReplicationTag(!server.HaveBinlog, "NO_BINLOG")
+			server.AddReplicationTag(server.HaveBinlogRow, "ROW")
+			server.AddReplicationTag(server.HaveBinlogMixed, "MIXED")
+			server.AddReplicationTag(server.HaveBinlogStatement, "STATEMENT")
+			server.AddReplicationTag(!server.HaveBinlogSync, "NO_SYNC")
+			server.AddReplicationTag(!server.HaveBinlogRow, "NO_ANNOTATE")
+			server.AddReplicationTag(server.HaveBinlogCompress && server.IsMariaDB(), "COMPRESS")
+			server.AddReplicationTag(!server.HaveBinlogSlaveUpdates, "NO_SLAVE_UPDATES")
+			server.AddReplicationTag(!server.HaveBinlogSlowqueries, "NO_IN_SLOW_QUERY_LOG")
+			server.AddReplicationTag(!server.HaveGtidStrictMode && server.IsMariaDB(), "NO_STRICT_MODE")
+			server.AddReplicationTag(server.HaveWsrep && server.IsMariaDB(), "WSREP")
+
 			server.HaveSlowQueryLog = server.HasLogSlowQuery()
 			server.HavePFS = server.HasLogPFS()
 			if server.HavePFS {
@@ -732,7 +754,13 @@ func (server *ServerMonitor) Refresh() error {
 				} else {
 					server.DomainID = uint64(sid)
 				}
-
+				if cluster.Conf.MultiMasterGrouprep {
+					server.IsGroupReplicationMaster, err = dbhelper.IsGroupReplicationMaster(server.Conn, server.DBVersion, server.Host)
+					server.IsGroupReplicationSlave, err = dbhelper.IsGroupReplicationSlave(server.Conn, server.DBVersion, server.Host)
+					if server.IsGroupReplicationSlave && server.State == stateUnconn {
+						server.SetState(stateSlave)
+					}
+				}
 			} else {
 				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables.Get("GTID_EXECUTED"), server.GetCluster().GetCrcTable())
 				server.GTIDExecuted = server.Variables.Get("GTID_EXECUTED")
@@ -761,12 +789,7 @@ func (server *ServerMonitor) Refresh() error {
 				}
 
 			} else {
-				cluster.StateMachine.PreserveState("ERR00007")
-				cluster.StateMachine.PreserveState("ERR00006")
-				cluster.StateMachine.PreserveState("ERR00008")
-				cluster.StateMachine.PreserveState("ERR00015")
-				cluster.StateMachine.PreserveState("ERR00078")
-				cluster.StateMachine.PreserveState("ERR00009")
+				cluster.StateMachine.PreserveState("ERR00007", "ERR00006", "ERR00008", "ERR00015", "ERR00078", "ERR00009")
 			}
 			if cluster.Conf.FailEventScheduler && server.IsMaster() && !server.HasEventScheduler() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Enable Event Scheduler on master")
@@ -902,6 +925,13 @@ func (server *ServerMonitor) Refresh() error {
 			if server.DBVersion.IsMySQLOrPerconaGreater57() && server.HasGTIDReplication() {
 				server.SlaveGtid = gtid.NewList(server.SlaveStatus.ExecutedGtidSet.String)
 			}
+			server.AddReplicationTag(!(server.SlaveStatus.ReplicateDoTable.String == "" &&
+				server.SlaveStatus.ReplicateDoDB.String == "" &&
+				server.SlaveStatus.ReplicateIgnoreDB.String == "" &&
+				server.SlaveStatus.ReplicateIgnoreTable.String == "" &&
+				server.SlaveStatus.ReplicateWildIgnoreTable.String == "" &&
+				server.SlaveStatus.ReplicateWildDoTable.String == ""),
+				"NO_ALL_SCHEMA")
 		}
 	}
 
@@ -914,11 +944,15 @@ func (server *ServerMonitor) Refresh() error {
 	server.Status = config.FromNormalStringMap(server.Status, status)
 
 	server.HaveSemiSync = server.HasSemiSync()
+	server.AddReplicationTag(server.HaveGtidStrictMode, "SEMISYNC")
 	server.SemiSyncMasterStatus = server.IsSemiSyncMaster()
 	server.SemiSyncSlaveStatus = server.IsSemiSyncReplica()
 	server.IsWsrepSync = server.HasWsrepSync()
+	server.AddReplicationTag(server.IsWsrepSync && server.IsMariaDB(), "WSREPSYNC")
 	server.IsWsrepDonor = server.HasWsrepDonor()
+	server.AddReplicationTag(server.IsWsrepDonor && server.IsMariaDB(), "DONOR")
 	server.IsWsrepPrimary = server.HasWsrepPrimary()
+	server.AddReplicationTag(server.IsWsrepPrimary && server.IsMariaDB(), "PRIMARY")
 
 	server.ReplicationHealth = server.CheckReplication()
 

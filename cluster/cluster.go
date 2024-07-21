@@ -633,14 +633,7 @@ func (cluster *Cluster) Run() {
 							cluster.CheckIsOverwrite()
 
 						} else {
-							cluster.StateMachine.PreserveState("WARN0093")
-							cluster.StateMachine.PreserveState("WARN0084")
-							cluster.StateMachine.PreserveState("WARN0095")
-							cluster.StateMachine.PreserveState("WARN0101")
-							cluster.StateMachine.PreserveState("WARN0111")
-							cluster.StateMachine.PreserveState("WARN0112")
-							cluster.StateMachine.PreserveState("ERR00090")
-							cluster.StateMachine.PreserveState("WARN0102")
+							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102")
 						}
 						if !cluster.CanInitNodes {
 							cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
@@ -696,8 +689,6 @@ func (cluster *Cluster) StateProcessing() {
 	if !cluster.StateMachine.IsInFailover() {
 		// trigger action on resolving states
 		cstates := cluster.StateMachine.GetResolvedStates()
-		mybcksrv := cluster.GetBackupServer()
-		master := cluster.GetMaster()
 		for _, s := range cstates {
 			//Remove from captured state if already resolved, so it will capture next occurence
 			cluster.GetStateMachine().CapturedState.Delete(s.ErrKey)
@@ -708,27 +699,9 @@ func (cluster *Cluster) StateProcessing() {
 				}
 			}
 			if s.ErrKey == "WARN0074" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", s.ServerUrl)
-				if master != nil {
-					if servertoreseed.IsReseeding {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel backup reseeding, %s is already reseeding", s.ServerUrl)
-					} else {
-						servertoreseed.SetInReseedBackup(true)
-						backupext := ".xbtream"
-						task := "reseed" + cluster.Conf.BackupPhysicalType
-
-						if cluster.Conf.CompressBackups {
-							backupext = backupext + ".gz"
-						}
-
-						if mybcksrv != nil {
-							go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed, task)
-						} else {
-							go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, servertoreseed, task)
-						}
-					}
-				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
+				err := servertoreseed.ProcessReseedPhysical()
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
 				}
 			}
 			if s.ErrKey == "WARN0075" {
@@ -749,18 +722,9 @@ func (cluster *Cluster) StateProcessing() {
 				// }
 			}
 			if s.ErrKey == "WARN0076" {
-				if servertoreseed.IsReseeding {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel backup reseeding, %s is already reseeding", s.ServerUrl)
-				} else {
-					servertoreseed.SetInReseedBackup(true)
-					task := "flashback" + cluster.Conf.BackupPhysicalType
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending server physical backup to flashback reseed %s", s.ServerUrl)
-
-					if mybcksrv != nil {
-						go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed, task)
-					} else {
-						go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", servertoreseed, task)
-					}
+				err := servertoreseed.ProcessFlashbackPhysical()
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing flashback for %s: %s", servertoreseed.URL, err)
 				}
 			}
 			if s.ErrKey == "WARN0077" {
@@ -800,7 +764,7 @@ func (cluster *Cluster) StateProcessing() {
 			if s.ErrKey == "WARN0112" {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have physical backup")
 				for _, srv := range cluster.Servers {
-					if srv.HasWaitLogicalBackupCookie() {
+					if srv.HasWaitPhysicalBackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for physical backup", srv.URL)
 						go srv.JobReseedPhysicalBackup()
 					}

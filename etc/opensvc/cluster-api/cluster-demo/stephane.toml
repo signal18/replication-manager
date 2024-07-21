@@ -37,8 +37,8 @@ cloud18-sub-domain = "ovh-dev"
 cloud18-sub-domain-zone = "fr-1"
 
 
-proxyjanitor-servers = "51.68.2.60"
-proxyjanitor-password = "hash_c3fbd75e68b9f08db04620b592d48b9ac154bd97901e9064ea8dd2938f4a6a8e"
+#proxyjanitor-servers = "51.68.2.60"
+#proxyjanitor-password = "hash_c3fbd75e68b9f08db04620b592d48b9ac154bd97901e9064ea8dd2938f4a6a8e"
 
 monitoring-save-config=true
 #git-url="https://gitlab.signal18.io/signal18/ovh-fr-1"
