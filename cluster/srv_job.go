@@ -69,17 +69,10 @@ func (server *ServerMonitor) JobsCreateTable() error {
 		return err
 	}
 
-	//Add nullable column for compatibility
-	err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD COLUMN IF NOT EXISTS id INT NULL FIRST")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
-		return err
-	}
+	var exist int
+	server.Conn.Get(&exist, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'PRI' THEN 1 END) AS num_primary_keys FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
 
-	var pk int
-	server.Conn.Get(&pk, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'PRI' THEN 1 END) AS num_primary_keys FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
-
-	if pk == 0 {
+	if exist == 0 {
 		err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs_tmp(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state)) engine=innodb")
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't create table replication_manager_schema.jobs_tmp")
@@ -99,18 +92,21 @@ func (server *ServerMonitor) JobsCreateTable() error {
 		}
 	}
 
-	//Add column instead of changing create table for compatibility
-	err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD COLUMN IF NOT EXISTS state tinyint not null default 0 AFTER `done`")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
-		return err
-	}
+	server.Conn.Get(&exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'state'")
+	if exist == 0 {
+		//Add column instead of changing create table for compatibility
+		err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD COLUMN state tinyint not null default 0 AFTER `done`")
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
+			return err
+		}
 
-	//Add index
-	err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD INDEX IF NOT EXISTS idx3 (task, state)")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
-		return err
+		//Add index
+		err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD INDEX idx3 (task, state)")
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
+			return err
+		}
 	}
 
 	return nil
