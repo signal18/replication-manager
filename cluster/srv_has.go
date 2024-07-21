@@ -189,6 +189,14 @@ func (server *ServerMonitor) HasBinlogRow() bool {
 	return server.Variables.Get("BINLOG_FORMAT") == "ROW"
 }
 
+func (server *ServerMonitor) HasBinlogStatement() bool {
+	return server.Variables.Get("BINLOG_FORMAT") == "STATEMENT"
+}
+
+func (server *ServerMonitor) HasBinlogMixed() bool {
+	return server.Variables.Get("BINLOG_FORMAT") == "MIXED"
+}
+
 func (server *ServerMonitor) HasBinlogRowAnnotate() bool {
 	return server.Variables.Get("BINLOG_ANNOTATE_ROW_EVENTS") == "ON"
 }
