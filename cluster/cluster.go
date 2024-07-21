@@ -633,14 +633,7 @@ func (cluster *Cluster) Run() {
 							cluster.CheckIsOverwrite()
 
 						} else {
-							cluster.StateMachine.PreserveState("WARN0093")
-							cluster.StateMachine.PreserveState("WARN0084")
-							cluster.StateMachine.PreserveState("WARN0095")
-							cluster.StateMachine.PreserveState("WARN0101")
-							cluster.StateMachine.PreserveState("WARN0111")
-							cluster.StateMachine.PreserveState("WARN0112")
-							cluster.StateMachine.PreserveState("ERR00090")
-							cluster.StateMachine.PreserveState("WARN0102")
+							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102")
 						}
 						if !cluster.CanInitNodes {
 							cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})

@@ -787,12 +787,7 @@ func (server *ServerMonitor) Refresh() error {
 				}
 
 			} else {
-				cluster.StateMachine.PreserveState("ERR00007")
-				cluster.StateMachine.PreserveState("ERR00006")
-				cluster.StateMachine.PreserveState("ERR00008")
-				cluster.StateMachine.PreserveState("ERR00015")
-				cluster.StateMachine.PreserveState("ERR00078")
-				cluster.StateMachine.PreserveState("ERR00009")
+				cluster.StateMachine.PreserveState("ERR00007", "ERR00006", "ERR00008", "ERR00015", "ERR00078", "ERR00009")
 			}
 			if cluster.Conf.FailEventScheduler && server.IsMaster() && !server.HasEventScheduler() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Enable Event Scheduler on master")

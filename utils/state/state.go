@@ -429,10 +429,12 @@ func (SM *StateMachine) CopyOldStateFromUnknowServer(Url string) {
 
 }
 
-func (SM *StateMachine) PreserveState(key string) {
+func (SM *StateMachine) PreserveState(key ...string) {
 	for oldkey, value := range *SM.OldState {
-		if strings.HasPrefix(oldkey, key) {
-			SM.AddState(oldkey, value)
+		for _, k := range key {
+			if strings.HasPrefix(oldkey, k) {
+				SM.AddState(oldkey, value)
+			}
 		}
 	}
 }
