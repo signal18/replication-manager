@@ -37,6 +37,11 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+/*
+- 0-2	Indicates Job still not done yet
+- 3		Indicate it's finished recently and check if there is post-job task
+- 4-6	Job completed, either success or failed
+*/
 var (
 	JobStateAvailable  int = 0
 	JobStateRunning    int = 1
@@ -64,17 +69,10 @@ func (server *ServerMonitor) JobsCreateTable() error {
 		return err
 	}
 
-	//Add nullable column for compatibility
-	err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD COLUMN IF NOT EXISTS id INT NULL FIRST")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
-		return err
-	}
+	var exist int
+	server.Conn.Get(&exist, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'PRI' THEN 1 END) AS num_primary_keys FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
 
-	var pk int
-	server.Conn.Get(&pk, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'PRI' THEN 1 END) AS num_primary_keys FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
-
-	if pk == 0 {
+	if exist == 0 {
 		err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs_tmp(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state)) engine=innodb")
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't create table replication_manager_schema.jobs_tmp")
@@ -94,20 +92,24 @@ func (server *ServerMonitor) JobsCreateTable() error {
 		}
 	}
 
-	//Add column instead of changing create table for compatibility
-	err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD COLUMN IF NOT EXISTS state tinyint not null default 0 AFTER `done`")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
-		return err
+	server.Conn.Get(&exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'state'")
+	if exist == 0 {
+		//Add column instead of changing create table for compatibility
+		err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD COLUMN state tinyint not null default 0 AFTER `done`")
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
+			return err
+		}
+
+		//Add index
+		err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD INDEX idx3 (task, state)")
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
+			return err
+		}
 	}
 
-	//Add index
-	err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD INDEX IF NOT EXISTS idx3 (task, state)")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
-	}
-
-	return err
+	return nil
 }
 
 func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost string) (int64, error) {
@@ -123,21 +125,41 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 		return 0, err
 	}
 	defer conn.Close()
+
+	/** This will be used later when state already used within scripts **/
+	// var dbtask DBTask
+	// // Find previous task
+	// err = server.Conn.Get(&dbtask, "SELECT task, count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE task='?' and state <= 3", task)
+	// if err != nil {
+	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err.Error())
+	// 	server.JobsCreateTable()
+	// 	return 0, err
+	// }
+
+	// if dbtask.ct > 0 {
+	// 	err = errors.New(fmt.Sprintf("Can't insert task, previous task is still running with id: %d", dbtask.id))
+	// 	return 0, err
+	// }
+
+	if task == "" {
+		err = errors.New("Job can't insert empty task")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't insert empty task")
+		return 0, err
+	}
+
 	_, err = conn.Exec("set sql_log_bin=0")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't disable binlog for session")
 		return 0, err
 	}
 
-	if task != "" {
-		res, err := conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('" + task + "'," + port + ",'" + repmanhost + "', NOW())")
-		if err == nil {
-			return res.LastInsertId()
-		}
+	res, err := conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('" + task + "'," + port + ",'" + repmanhost + "', NOW())")
+	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't insert job %s", err)
 		return 0, err
 	}
-	return 0, nil
+
+	return res.LastInsertId()
 }
 
 func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
