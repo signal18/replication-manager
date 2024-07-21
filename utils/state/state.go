@@ -14,6 +14,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -429,9 +430,10 @@ func (SM *StateMachine) CopyOldStateFromUnknowServer(Url string) {
 }
 
 func (SM *StateMachine) PreserveState(key string) {
-	if SM.OldState.Search(key) {
-		value := (*SM.OldState)[key]
-		SM.AddState(key, value)
+	for oldkey, value := range *SM.OldState {
+		if strings.HasPrefix(oldkey, key) {
+			SM.AddState(oldkey, value)
+		}
 	}
 }
 
