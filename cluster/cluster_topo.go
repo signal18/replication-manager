@@ -238,8 +238,26 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				//sv.State = stateUnconn
 				//transition to standalone may happen despite server have never connect successfully when default to suspect
 				// if cluster.Conf.LogLevel > 2 {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Server %s has no slaves ", sv.URL)
 				// }
+
+				//Already checked topology once
+				if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && len(cluster.slaves) > 0 && cluster.Conf.TopologyTarget == topoMasterSlave {
+					numSlaves := 0
+					for _, sl := range cluster.slaves {
+						if sl.GetReplicationMasterHost() == sv.Host && sl.GetReplicationMasterPort() == sv.Port {
+							numSlaves++
+						}
+					}
+
+					if numSlaves == len(cluster.slaves) {
+						cluster.master = cluster.Servers[k]
+						cluster.master.SetMaster()
+					}
+				}
+
+				if cluster.GetMaster() != sv {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Server %s has no slaves ", sv.URL)
+				}
 			} else {
 				master := cluster.GetMaster()
 				if cluster.IsActive() && master != nil && cluster.GetTopology() == topoMasterSlave && cluster.Servers[k].URL != master.URL {
