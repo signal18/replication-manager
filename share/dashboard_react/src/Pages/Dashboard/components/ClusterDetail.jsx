@@ -48,6 +48,14 @@ function ClusterDetail({ selectedCluster }) {
   const confirmBootrapMessage =
     'Bootstrap operation will destroy your existing replication setup. \n Are you really sure?'
 
+  const styles = {
+    tableType2: {
+      padding: '0.5',
+      marginTop: '2',
+      fontSize: '15px'
+    }
+  }
+
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
   }
@@ -338,7 +346,7 @@ function ClusterDetail({ selectedCluster }) {
             </Box>
           </>
         }
-        body={<TableType2 dataArray={dataObject} minHeight='24px' boxPadding={1} />}
+        body={<TableType2 dataArray={dataObject} minHeight='24px' gap={1} boxPadding={1} sx={styles.tableType2} />}
         headerAction='menu'
         isLoading={menuActionsLoading}
         menuOptions={menuOptions}
