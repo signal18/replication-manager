@@ -41,7 +41,7 @@ function HADetail({ selectedCluster }) {
     headerColumn: {
       fontWeight: 'bold',
       textAlign: 'center',
-      p: '1',
+      p: '0',
       bg: colorMode === 'light' ? 'blue.50' : 'blue.900'
     }
   }
