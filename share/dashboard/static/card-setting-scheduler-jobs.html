@@ -5,7 +5,7 @@
 <tr>
     <td>
         <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.schedulerJobsSsh"
-                   ng-click="switchsettings('scheduler-alert-disable')" aria-label="Physical Backup">
+                   ng-click="switchsettings('scheduler-jobs-ssh')" aria-label="Physical Backup">
             <span ng-if="selectedCluster.config.schedulerJobsSsh" class="label label-primary">On</span><span
                 ng-if="!selectedCluster.config.schedulerJobsSsh" class="label label-warning">Off</span>
     </md-switch>

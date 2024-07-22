@@ -1,31 +1,44 @@
-<md-card ng-if="settings.config.schedulerJobsSsh" >
+<md-card>
+  <table ng-if="servers" class="table" style="margin-bottom: 0px;">
+    <tr>
+      <th>
+        Database Jobs
+        <span class="pull-right">
+          <button ng-click="togglePanel('jobs')">
+            <span ng-show="showJobs">Hide</span>
+            <span ng-show="!showJobs">Show</span>
+          </button>
+        </span>
+      </th>
+    </tr>
+  </table>
+  <div ng-repeat="(server, jobs) in entries.tasks">
     <table class="table">
-      <tr >
-
-          <th>
-              Databases Jobs
+      <thead>
+        <tr>
+          <th colspan="6">
+            {{server}}
           </th>
-        </tr >
-      </table>
-      <div  ng-repeat="(server, jobs) in selectedCluster.jobResults"  >
-
-      <table class="table">
-        <tr ng-if="$first">
-         <td ng-repeat="(job, jobs) in jobs">
-           <span style="writing-mode: sideways-lr;text-align: left;padding:10px 5px 0;">{{job}}</span>
-         </td>
-         </tr>
-          <tr>
-            <td colspan="13">{{server}}</td>
-          </tr>
-
-            <tr>
-            <td  ng-repeat="(job, value) in jobs">
-              <md-icon md-menu-align-target ng-if="value==false"   class="fa fa-2x fa-power-off"  style="color:gray"></md-icon>
-              <md-icon md-menu-align-target ng-if="value==true"   class="fa fa-2x fa-power-off"  style="color:green"></md-icon>
-            </td>
         </tr>
-
+        <tr>
+          <th>Task</th>
+          <th>Done</th>
+          <th>State</th>
+          <th>Desc</th>
+          <th>Start</th>
+          <th>End</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr ng-repeat="(i, t) in jobs.tasks">
+          <td>{{t.task}}</td>
+          <td>{{t.done}}</td>
+          <td>{{t.state}}</td>
+          <td>{{t.result}}</td>
+          <td>{{t.start}}</td>
+          <td>{{t.end}}</td>
+        </tr>
+      </tbody>
     </table>
-    </div>
+  </div>
 </md-card>

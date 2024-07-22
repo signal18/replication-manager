@@ -407,6 +407,10 @@ func (server *ServerMonitor) SetBackupLogicalCookie() error {
 	return server.createCookie("cookie_logicalbackup")
 }
 
+func (server *ServerMonitor) SetLoadingJobList(val bool) {
+	server.IsLoadingJobList = val
+}
+
 func (server *ServerMonitor) SetReplicationCredentialsRotation(ss *dbhelper.SlaveStatus) {
 	cluster := server.ClusterGroup
 	if server.GetCluster().Conf.IsVaultUsed() {
@@ -447,4 +451,8 @@ func (server *ServerMonitor) SetInRefreshBinlog(value bool) {
 
 func (server *ServerMonitor) SetInReseedBackup(value bool) {
 	server.IsReseeding = value
+}
+
+func (server *ServerMonitor) SetNeedRefreshJobs(value bool) {
+	server.NeedRefreshJobs = value
 }

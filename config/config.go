@@ -2089,6 +2089,85 @@ func (conf *Config) GetGraphiteTemplateList() map[string]bool {
 	}
 }
 
+type JobResult struct {
+	Xtrabackup            bool `json:"xtrabackup"`
+	Mariabackup           bool `json:"mariabackup"`
+	Zfssnapback           bool `json:"zfssnapback"`
+	Optimize              bool `json:"optimize"`
+	Reseedxtrabackup      bool `json:"reseedxtrabackup"`
+	Reseedmariabackup     bool `json:"reseedmariabackup"`
+	Reseedmysqldump       bool `json:"reseedmysqldump"`
+	Flashbackxtrabackup   bool `json:"flashbackxtrabackup"`
+	Flashbackmariadbackup bool `json:"flashbackmariadbackup"`
+	Flashbackmysqldump    bool `json:"flashbackmysqldump"`
+	Stop                  bool `json:"stop"`
+	Start                 bool `json:"start"`
+	Restart               bool `json:"restart"`
+}
+
+type Task struct {
+	Id     int64  `json:"id"`
+	Task   string `json:"task"`
+	Port   int    `json:"port"`
+	Server string `json:"server"`
+	Done   int    `json:"done"`
+	State  int    `json:"state"`
+	Result string `json:"result"`
+	Start  int64  `json:"start"`
+	End    int64  `json:"end"`
+}
+
+type TaskSorter []Task
+
+func (a TaskSorter) Len() int           { return len(a) }
+func (a TaskSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a TaskSorter) Less(i, j int) bool { return a[i].Task < a[j].Task }
+
+func GetLabels(v any) []string {
+	t := reflect.TypeOf(v)
+	labels := make([]string, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		jsonTag := field.Tag.Get("json")
+		if jsonTag != "" {
+			labels[i] = jsonTag
+		} else {
+			labels[i] = field.Name
+		}
+	}
+	return labels
+}
+
+func GetLabelsAsMap(v any) map[string]bool {
+	t := reflect.TypeOf(v)
+	labels := make(map[string]bool, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		jsonTag := field.Tag.Get("json")
+		if jsonTag != "" {
+			labels[jsonTag] = true
+		} else {
+			labels[field.Name] = true
+		}
+	}
+	return labels
+}
+
+type ServerTaskList struct {
+	ServerURL string `json:"serverUrl"`
+	Tasks     []Task `json:"tasks"`
+}
+
+type JobEntries struct {
+	Header map[string]bool           `json:"header"`
+	Tasks  map[string]ServerTaskList `json:"tasks"`
+}
+
+func (conf *Config) GetJobTypes() map[string]bool {
+	var res = JobResult{}
+	return GetLabelsAsMap(res)
+}
+
 func GetTagsForLog(module int) string {
 	switch module {
 	case ConstLogModGeneral:

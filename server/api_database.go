@@ -565,17 +565,20 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 			if vars["backupMethod"] == "logicalbackup" {
 				_, err := node.JobReseedLogicalBackup()
 				if err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "logical flashback restore failed %s", err)
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "logical reseed restore failed %s", err)
 				}
 			}
 			if vars["backupMethod"] == "logicalmaster" {
 				err := node.RejoinDirectDump()
 				if err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "mysqldump flashback restore failed %s", err)
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "mysqldump reseed restore failed %s", err)
 				}
 			}
 			if vars["backupMethod"] == "physicalbackup" {
-				node.JobReseedPhysicalBackup()
+				_, err := node.JobReseedPhysicalBackup()
+				if err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "mysqldump reseed restore failed %s", err)
+				}
 			}
 
 		} else {
@@ -2482,6 +2485,24 @@ func (repman *ReplicationManager) handlerMuxGetDatabaseServiceConfig(w http.Resp
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerGetJobEntries(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		entries, _ := mycluster.JobsGetEntries()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(entries)
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }

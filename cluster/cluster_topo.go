@@ -277,6 +277,23 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// If no cluster.slaves are detected, generate an error
 	if len(cluster.slaves) == 0 && cluster.GetTopology() != topoMultiMasterWsrep && cluster.GetTopology() != topoMultiMasterGrouprep && cluster.GetTopology() != topoActivePassive {
 		cluster.SetState("ERR00010", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00010"]), ErrFrom: "TOPO"})
+	} else {
+		for k, sv := range cluster.Servers {
+			//Already checked topology once
+			if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && len(cluster.slaves) > 0 && cluster.Conf.TopologyTarget == topoMasterSlave {
+				numSlaves := 0
+				for _, sl := range cluster.slaves {
+					if sl.GetReplicationMasterHost() == sv.Host && sl.GetReplicationMasterPort() == sv.Port {
+						numSlaves++
+					}
+				}
+
+				if numSlaves == len(cluster.slaves) {
+					cluster.master = cluster.Servers[k]
+					cluster.master.SetMaster()
+				}
+			}
+		}
 	}
 
 	hasRelay := false
