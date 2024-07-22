@@ -28,13 +28,20 @@ import {
   toggleSlowQueryCapture,
   unprovisionDatabase
 } from '../../../../redux/clusterSlice'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from = 'tableView', openCompareModal }) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
+  const [serverName, setServerName] = useState('')
+
+  useEffect(() => {
+    if (row?.id) {
+      setServerName(`server ${row.host}:${row.port} (${row.id})`)
+    }
+  }, [row])
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
@@ -59,7 +66,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
             name: 'Maintenance Mode',
             onClick: () => {
               openConfirmModal()
-              setConfirmTitle(`Confirm maintenance for server-id: ${row.id}?`)
+              setConfirmTitle(`Confirm maintenance for ${serverName}?`)
               setConfirmHandler(() => () => dispatch(setMaintenanceMode({ clusterName, serverId: row.id })))
             }
           },
@@ -69,7 +76,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                   name: 'Promote To Leader',
                   onClick: () => {
                     openConfirmModal()
-                    setConfirmTitle(`Confirm promotion for server-id: ${row.id}?`)
+                    setConfirmTitle(`Confirm promotion for ${serverName}?`)
                     setConfirmHandler(() => () => dispatch(promoteToLeader({ clusterName, serverId: row.id })))
                   }
                 }
@@ -84,7 +91,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Set as Preferred',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm set as unrated for server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm set as unrated for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(setAsPreferred({ clusterName, serverId: row.id })))
                       }
                     },
@@ -92,7 +99,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Set as Ignored',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm set as unrated for server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm set as unrated for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(setAsIgnored({ clusterName, serverId: row.id })))
                       }
                     }
@@ -104,7 +111,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Set as unrated',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm set as unrated for server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm set as unrated for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(setAsUnrated({ clusterName, serverId: row.id })))
                       }
                     }
@@ -129,7 +136,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Logical Backup',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm sending logical backup (mysqldump) for server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm sending logical backup (mysqldump) for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(logicalBackup({ clusterName, serverId: row.id })))
                       }
                     }
@@ -140,7 +147,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                         name: 'Reseed Logical From Backup',
                         onClick: () => {
                           openConfirmModal()
-                          setConfirmTitle(`Confirm reseed with logical backup (mysqldump) for servr-id: ${row.id}?`)
+                          setConfirmTitle(`Confirm reseed with logical backup (mysqldump) for ${serverName}?`)
                           setConfirmHandler(
                             () => () => dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id }))
                           )
@@ -150,7 +157,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                         name: 'Reseed Logical From Master',
                         onClick: () => {
                           openConfirmModal()
-                          setConfirmTitle(`Confirm reseed with mysqldump for server-id: ${row.id}?`)
+                          setConfirmTitle(`Confirm reseed with mysqldump for ${serverName}?`)
                           setConfirmHandler(
                             () => () => dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id }))
                           )
@@ -161,7 +168,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                         onClick: () => {
                           openConfirmModal()
                           setConfirmTitle(
-                            `Confirm reseed with physical backup (xtrabackup compressed) for server-id: ${row.id}?`
+                            `Confirm reseed with physical backup (xtrabackup compressed) for ${serverName}?`
                           )
                           setConfirmHandler(
                             () => () => dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id }))
@@ -176,7 +183,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Flush logs',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm flush logs for server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm flush logs for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(flushLogs({ clusterName, serverId: row.id })))
                       }
                     }
@@ -193,7 +200,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Stop Database',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm stop for server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm stop for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(stopDatabase({ clusterName, serverId: row.id })))
                       }
                     }
@@ -205,7 +212,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Start Database',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm start for server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm start for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(startDatabase({ clusterName, serverId: row.id })))
                       }
                     }
@@ -217,7 +224,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Provision Database',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm provision server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm provision ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(provisionDatabase({ clusterName, serverId: row.id })))
                       }
                     }
@@ -229,7 +236,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Unprovision Database',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm unprovision for server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm unprovision for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(unprovisionDatabase({ clusterName, serverId: row.id })))
                       }
                     },
@@ -237,7 +244,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Run Remote Jobs',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm running remote jobs for server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm running remote jobs for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(runRemoteJobs({ clusterName, serverId: row.id })))
                       }
                     }
@@ -254,7 +261,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Optimize',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm optimize for server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm optimize for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(optimizeServer({ clusterName, serverId: row.id })))
                       }
                     }
@@ -266,7 +273,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Skip 1 Replication Event',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm skip replication event for server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm skip replication event for ${serverName}?`)
                         setConfirmHandler(
                           () => () => dispatch(skip1ReplicationEvent({ clusterName, serverId: row.id }))
                         )
@@ -280,7 +287,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Toggle InnoDB Monitor',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm toggle innodb monitor server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm toggle innodb monitor ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(toggleInnodbMonitor({ clusterName, serverId: row.id })))
                       }
                     }
@@ -293,7 +300,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Toggle Slow Query Capture',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm toggle slow query capture server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm toggle slow query capture ${serverName}?`)
                         setConfirmHandler(
                           () => () => dispatch(toggleSlowQueryCapture({ clusterName, serverId: row.id }))
                         )
@@ -307,7 +314,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Start Slave',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm start slave on server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm start slave on ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(startSlave({ clusterName, serverId: row.id })))
                       }
                     },
@@ -315,7 +322,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Stop Slave',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm stop slave on server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm stop slave on ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(stopSlave({ clusterName, serverId: row.id })))
                       }
                     },
@@ -324,7 +331,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       onClick: () => {
                         openConfirmModal()
                         setConfirmTitle(
-                          `Confirm reset master this may break replication when done on master, server-id: ${row.id}?`
+                          `Confirm reset master this may break replication when done on master, ${serverName}?`
                         )
                         setConfirmHandler(() => () => dispatch(resetMaster({ clusterName, serverId: row.id })))
                       }
@@ -333,7 +340,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Reset Slave',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm reset slave this will break replication on, server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm reset slave this will break replication on, ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(resetSlave({ clusterName, serverId: row.id })))
                       }
                     }
@@ -345,7 +352,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
                       name: 'Toggle Readonly',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm toggle read only on server-id: ${row.id}?`)
+                        setConfirmTitle(`Confirm toggle read only on ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(toggleReadOnly({ clusterName, serverId: row.id })))
                       }
                     }
