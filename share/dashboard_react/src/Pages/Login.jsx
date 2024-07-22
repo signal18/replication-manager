@@ -110,12 +110,14 @@ function Login(props) {
               </Stack>
             </Stack>
             <Box
+              as='form'
               sx={styles.loginContainer}
               py={{ base: '8', sm: '8' }}
               px={{ base: '4', sm: '10' }}
               bg={{ base: 'transparent', sm: 'bg.surface' }}
               boxShadow={{ base: 'none', sm: 'md' }}
-              borderRadius={{ base: 'none', sm: 'xl' }}>
+              borderRadius={{ base: 'none', sm: 'xl' }}
+              onSubmit={onButtonClick}>
               <Stack spacing='6'>
                 <Stack spacing='5'>
                   <FormControl isInvalid={usernameError}>
@@ -132,7 +134,7 @@ function Login(props) {
                 {error && <Text color='red.500'>{error}</Text>}
 
                 <Stack spacing='6'>
-                  <Button type='button' onClick={onButtonClick} isLoading={loading} loadingText={'Signing in'}>
+                  <Button type='submit' onClick={onButtonClick} isLoading={loading} loadingText={'Signing in'}>
                     Sign in
                   </Button>
                   <Button type='button' onClick={onGitButtonClick} isLoading={false}>
