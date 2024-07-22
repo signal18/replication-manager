@@ -3,7 +3,7 @@ import { Table, Thead, Tbody, Tr, Th, Td, useColorMode } from '@chakra-ui/react'
 import { useReactTable, flexRender, getCoreRowModel, getSortedRowModel } from '@tanstack/react-table'
 import { useTheme } from '@emotion/react'
 
-export function DataTable({ data, columns, fixedColumnIndex, enableSorting = false }) {
+export function DataTable({ data, columns, fixedColumnIndex, enableSorting = false, cellValueAlign = 'center' }) {
   const [sorting, setSorting] = useState([])
   const theme = useTheme()
   const { colorMode } = useColorMode()
@@ -42,7 +42,7 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
       paddingBottom: '8px',
       paddingLeft: '4px',
       paddingRight: '4px',
-      textAlign: 'center',
+      textAlign: cellValueAlign,
       borderRight: '1px solid',
       borderColor: colorMode === 'light' ? `blue.100` : `blue.900`,
       borderBottom: 'none'

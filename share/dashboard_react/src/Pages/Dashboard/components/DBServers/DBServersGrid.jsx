@@ -35,7 +35,7 @@ function DBServersGrid({
   hasMysqlGtid
 }) {
   const {
-    common: { isDesktop, isTablet, isMobile }
+    common: { isDesktop }
   } = useSelector((state) => state)
   const { colorMode } = useColorMode()
 
@@ -97,6 +97,7 @@ function DBServersGrid({
     <SimpleGrid columns={{ base: 1, sm: 1, md: 2, lg: 3 }} spacing={2} spacingY={6} spacingX={6} marginTop='4px'>
       {allDBServers?.length > 0 &&
         allDBServers.map((rowData) => {
+          const replicationTags = rowData.replicationTags?.length > 0 ? rowData.replicationTags.split(' ') : []
           const serverInfoData = [
             {
               key: 'Version',
@@ -181,29 +182,16 @@ function DBServersGrid({
                     colorScheme={getStatusValue(rowData).split('|')[0]}
                     text={getStatusValue(rowData).split('|')[1]}
                   />
-                  {rowData.isMaintenance && <TagPill colorScheme='red' text={'IN_MAINTENANCE'} />}
-
-                  {(rowData.prefered || rowData.ignored) && (
-                    <TagPill
-                      size={tagPillSize}
-                      colorScheme={rowData.prefered ? 'green' : 'red'}
-                      text={rowData.prefered ? 'PREFERRED' : 'IGNORED'}
-                    />
-                  )}
-                  {rowData.readOnly === 'ON' && (
-                    <TagPill size={tagPillSize} colorScheme={rowData.isSlave ? 'green' : 'red'} text={'READ_ONLY'} />
-                  )}
-
-                  {rowData.ignoredRO && rowData.isSlave && (
-                    <TagPill size={tagPillSize} colorScheme='green' text={'FORCE_WRITE'} />
-                  )}
-
-                  {rowData.eventScheduler && (
-                    <TagPill size={tagPillSize} colorScheme={rowData.isSlave ? 'red' : 'green'} text={'SCHEDULER'} />
-                  )}
-
-                  <TagPill size={tagPillSize} text={rowData?.slaveVariables?.slaveParallelMode} />
-                  <TagPill size={tagPillSize} text={rowData?.slaveVariables?.slaveTypeConversions} />
+                  {replicationTags
+                    .filter((tag) => tag.length > 0)
+                    .map((tag, index) => (
+                      <TagPill
+                        key={index}
+                        size={'sm'}
+                        colorScheme={tag.startsWith('NO_') ? 'red' : 'green'}
+                        text={tag}
+                      />
+                    ))}
                 </Flex>
                 <AccordionComponent
                   heading={'Server Information'}
@@ -323,6 +311,7 @@ function DBServersGrid({
                     ]
                     return (
                       <AccordionComponent
+                        key={index}
                         headerSX={styles.accordionHeader}
                         panelSX={styles.accordionPanel}
                         isOpen={isReplicationStatusOpen}
