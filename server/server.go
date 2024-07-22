@@ -95,6 +95,7 @@ type ReplicationManager struct {
 	BackupBinlogList                                 map[string]bool             `json:"backupBinlogList"`
 	BinlogParseList                                  map[string]bool             `json:"binlogParseList"`
 	GraphiteTemplateList                             map[string]bool             `json:"graphiteTemplateList"`
+	JobTypes                                         map[string]bool             `json:"jobTypes"`
 	currentCluster                                   *cluster.Cluster            `json:"-"`
 	UserAuthTry                                      sync.Map                    `json:"-"`
 	OAuthAccessToken                                 *oauth2.Token               `json:"-"`
@@ -1520,6 +1521,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.BackupBinlogList = repman.Conf.GetBackupBinlogType()
 	repman.BinlogParseList = repman.Conf.GetBinlogParseMode()
 	repman.GraphiteTemplateList = repman.Conf.GetGraphiteTemplateList()
+	repman.JobTypes = repman.Conf.GetJobTypes()
 
 	if repman.Conf.ProvOrchestrator == "opensvc" {
 		repman.Agents = []opensvc.Host{}

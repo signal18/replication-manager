@@ -16,6 +16,7 @@ app.controller('DashboardController', function (
   Cluster,
   AppService,
   Processlist,
+  Jobs,
   Tables,
   VTables,
   Status,
@@ -65,13 +66,17 @@ app.controller('DashboardController', function (
   $scope.showTable = false
   $scope.showLog = true
   $scope.showLogTask = true
+  $scope.showJobs = false
 
-  $scope.toggleLog = function (panel) {
+  $scope.togglePanel = function (panel) {
     if (panel == "log") {
       $scope.showLog = !$scope.showLog
     }
     if (panel == "task") {
       $scope.showLogTask = !$scope.showLogTask
+    }
+    if (panel == "jobs") {
+      $scope.showJobs = !$scope.showJobs
     }
   }
 
@@ -120,6 +125,10 @@ app.controller('DashboardController', function (
     global: false,
   };
 
+  $scope.entries = {
+    header: [],
+    tasks: []
+  }
 
   $scope.monitors = [
     { id: 'mariadb', name: 'MariaDB' },
@@ -343,7 +352,7 @@ app.controller('DashboardController', function (
       //   $scope.openedAt = new Date().toLocaleString();
     }
   };
-  $scope.addTokenStyle={}
+  $scope.addTokenStyle = {}
   $scope.roApiTokenTimeout = true
   $scope.selectedApiTokenTimeout = 48
 
@@ -365,10 +374,14 @@ app.controller('DashboardController', function (
     $scope.roApiTokenTimeout = !$scope.roApiTokenTimeout
     $scope.SetApiTokenTimeout($scope.selectedCluster.config.apiTokenTimeout)
     if ($scope.roApiTokenTimeout) {
-      $scope.addTokenStyle={}
+      $scope.addTokenStyle = {}
     } else {
-      $scope.addTokenStyle={"color":"#468cc5"}
+      $scope.addTokenStyle = { "color": "#468cc5" }
     }
+  }
+
+  $scope.setTask = function (val) {
+    $scope.selectedTask = val
   }
 
   $scope.callServices = function () {
@@ -465,6 +478,15 @@ app.controller('DashboardController', function (
       }, function () {
         $scope.reserror = true;
       });
+
+      Jobs.get($scope.selectedClusterName)
+          .then(function (jobEntries) {
+            $scope.entries.header = jobEntries.header;
+            $scope.entries.tasks = jobEntries.tasks;
+          })
+          .catch(function (error) {
+            console.error('Error getting job entries:', error);
+          });
 
 
 
@@ -657,7 +679,6 @@ app.controller('DashboardController', function (
           $scope.reserror = true;
         });
       }
-
     } // End Selected Server
 
     $scope.bsTableStatus = {
