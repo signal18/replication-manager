@@ -49,17 +49,7 @@ function Cluster(props) {
     <PageContainer>
       <Box m='4'>
         <TabItems
-          options={[
-            'Dashboard',
-            'Alerts',
-            'Proxies',
-            'Settings',
-            'Configs',
-            'Agents',
-            'Certificates',
-            'Queryrules',
-            'Shards'
-          ]}
+          options={['Dashboard', 'Proxies', 'Settings', 'Configs', 'Agents', 'Certificates', 'Queryrules', 'Shards']}
           tabContents={[<Dashboard selectedCluster={clusterData} />]}
         />
       </Box>
