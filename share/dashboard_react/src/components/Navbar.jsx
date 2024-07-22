@@ -101,6 +101,24 @@ function Navbar({ username }) {
           )}
 
           {isAuthorized() && (
+            <Flex sx={styles.alerts}>
+              <AlertBadge
+                isBlocking={true}
+                text='Blockers'
+                count={clusterAlerts?.errors?.length || 0}
+                onClick={() => openAlertModal('error')}
+                showText={!isMobile}
+              />
+              <AlertBadge
+                text='Warnings'
+                count={clusterAlerts?.warnings?.length || 0}
+                onClick={() => openAlertModal('warning')}
+                showText={!isMobile}
+              />
+            </Flex>
+          )}
+
+          {isAuthorized() && (
             <>
               {username && isDesktop && <Text>{`Welcome, ${username}`}</Text>}
               {isMobile ? (
