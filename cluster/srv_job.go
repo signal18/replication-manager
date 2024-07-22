@@ -12,6 +12,7 @@ package cluster
 import (
 	"bufio"
 	"bytes"
+	"database/sql"
 
 	"errors"
 	"fmt"
@@ -37,10 +38,17 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+type DBTask struct {
+	task string
+	ct   int
+	id   int64
+}
+
 /*
-- 0-2	Indicates Job still not done yet
-- 3		Indicate it's finished recently and check if there is post-job task
-- 4-6	Job completed, either success or failed
+  - 0-2	Indicates Job still not done yet
+  - 3		Indicate it's finished recently and check if there is post-job task
+  - 4-6	Job completed
+    either success or failed
 */
 var (
 	JobStateAvailable  int = 0
@@ -63,31 +71,20 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	}
 
 	server.ExecQueryNoBinLog("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
-	err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state)) engine=innodb")
+	err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't create table replication_manager_schema.jobs")
 		return err
 	}
 
 	var exist int
-	server.Conn.Get(&exist, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'PRI' THEN 1 END) AS num_primary_keys FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
+	server.Conn.Get(&exist, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
 
 	if exist == 0 {
-		err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs_tmp(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state)) engine=innodb")
+		server.ExecQueryNoBinLog("DROP TABLE IF EXISTS replication_manager_schema.jobs")
+		err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't create table replication_manager_schema.jobs_tmp")
-			return err
-		}
-
-		err = server.ExecQueryNoBinLog("INSERT INTO replication_manager_schema.jobs_tmp(task, port, server, done, result , start, end) SELECT task, port, server, done, result , start, end FROM replication_manager_schema.jobs")
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't populate table replication_manager_schema.jobs_tmp")
-			return err
-		}
-
-		err = server.ExecQueryNoBinLog("RENAME TABLE replication_manager_schema.jobs TO replication_manager_schema.jobs_old, replication_manager_schema.jobs_tmp TO replication_manager_schema.jobs")
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't rename tables replication_manager_schema.jobs_tmp")
 			return err
 		}
 	}
@@ -112,13 +109,47 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	return nil
 }
 
-func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost string) (int64, error) {
+func (server *ServerMonitor) JobsUpdateEntries() error {
+	cluster := server.ClusterGroup
+	if server.IsLoadingJobList {
+		return errors.New("Waiting for previous update")
+	}
+
+	server.SetLoadingJobList(true)
+	defer server.SetLoadingJobList(false)
+
+	if server.IsDown() {
+		return errors.New("Node is down")
+	}
+
+	query := "SELECT id, task, port, server, done, state, result, UNIX_TIMESTAMP(start) utc_start, UNIX_TIMESTAMP(end) utc_end FROM replication_manager_schema.jobs"
+
+	rows, err := server.Conn.Queryx(query)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't retrieve jobs data from server %s", server.URL)
+		server.JobsCreateTable()
+		return err
+	}
+	defer rows.Close()
+	defer server.SetNeedRefreshJobs(false)
+
+	for rows.Next() {
+		var t config.Task
+		rows.Scan(&t.Id, &t.Task, &t.Port, &t.Server, &t.Done, &t.State, &t.Result, &t.Start, &t.End)
+
+		cluster.JobResults.Set(server.URL+"--"+t.Task, &t)
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost string) (int64, error) {
 	cluster := server.ClusterGroup
 	if cluster.IsInFailover() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancel job %s during failover", task)
 		return 0, errors.New("In failover can't insert job")
 	}
-	server.JobsCreateTable()
+
 	conn, err := server.GetNewDBConn()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't connect")
@@ -126,20 +157,8 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 	}
 	defer conn.Close()
 
-	/** This will be used later when state already used within scripts **/
-	// var dbtask DBTask
-	// // Find previous task
-	// err = server.Conn.Get(&dbtask, "SELECT task, count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE task='?' and state <= 3", task)
-	// if err != nil {
-	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err.Error())
-	// 	server.JobsCreateTable()
-	// 	return 0, err
-	// }
-
-	// if dbtask.ct > 0 {
-	// 	err = errors.New(fmt.Sprintf("Can't insert task, previous task is still running with id: %d", dbtask.id))
-	// 	return 0, err
-	// }
+	// Better to create after connection established
+	server.JobsCreateTable()
 
 	if task == "" {
 		err = errors.New("Job can't insert empty task")
@@ -147,18 +166,52 @@ func (server *ServerMonitor) JobInsertTaks(task string, port string, repmanhost 
 		return 0, err
 	}
 
+	rows, err := conn.Queryx("SELECT id, task, state FROM replication_manager_schema.jobs WHERE id = (SELECT max(id) FROM replication_manager_schema.jobs WHERE task = '" + task + "')")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs: %s", err)
+		server.JobsCreateTable()
+		return 0, err
+	}
+	defer rows.Close()
+
+	var t config.Task
+	nr := 0
+	for rows.Next() {
+		nr = 1
+		rows.Scan(&t.Id, &t.Task, &t.State)
+
+		if t.State <= 3 {
+			err = errors.New("Previous job with same type is still running. Exiting")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error: %s", err.Error())
+			rows.Close()
+			return 0, err
+		}
+	}
+	rows.Close()
+
 	_, err = conn.Exec("set sql_log_bin=0")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't disable binlog for session")
 		return 0, err
 	}
 
-	res, err := conn.Exec("INSERT INTO replication_manager_schema.jobs(task, port,server,start) VALUES('" + task + "'," + port + ",'" + repmanhost + "', NOW())")
+	var res sql.Result
+	if nr > 0 {
+		res, err = conn.Exec(fmt.Sprintf("DELETE FROM replication_manager_schema.jobs WHERE ID = %d", t.Id))
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't delete job: %s", err)
+			return 0, err
+		}
+	}
+
+	//Reuse the same id
+	res, err = conn.Exec(fmt.Sprintf("INSERT INTO replication_manager_schema.jobs(id, task, port,server,start) VALUES(%d,'%s',%s,'%s', NOW())", t.Id, task, port, repmanhost))
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't insert job %s", err)
 		return 0, err
 	}
 
+	server.SetNeedRefreshJobs(true)
 	return res.LastInsertId()
 }
 
@@ -189,7 +242,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 			if err != nil {
 				return 0, nil
 			}
-			jobid, err := server.JobInsertTaks(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
+			jobid, err := server.JobInsertTask(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
 			return jobid, err
 		} else {
 	*/
@@ -209,10 +262,11 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 		}
 	}
 
-	jobid, err := server.JobInsertTaks(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTask(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
 	if err == nil {
 		go server.JobRunViaSSH()
 	}
+
 	return jobid, err
 	//	}
 	//return 0, nil
@@ -236,7 +290,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 
 	server.SetInReseedBackup(true)
 
-	jobid, err := server.JobInsertTaks("reseed"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTask("reseed"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive reseed physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 		return jobid, err
@@ -290,7 +344,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 
 	server.SetInReseedBackup(true)
 
-	jobid, err := server.JobInsertTaks("flashback"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTask("flashback"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
 
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive reseed physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
@@ -329,7 +383,6 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 	cluster := server.ClusterGroup
 	task := "reseed" + cluster.Conf.BackupLogicalType
-	var dt DBTask = DBTask{task: task}
 	if cluster.master != nil && !cluster.GetBackupServer().HasBackupLogicalCookie() {
 		server.SetWaitLogicalBackupCookie()
 		return 0, errors.New("No Logical Backup")
@@ -346,19 +399,11 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 	//Delete wait logical backup cookie
 	server.DelWaitLogicalBackupCookie()
 
-	if v, ok := server.ActiveTasks.Load(task); ok {
-		dt = v.(DBTask)
-	}
-
-	jobid, err := server.JobInsertTaks(task, server.SSTPort, cluster.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive reseed logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
 		server.SetInReseedBackup(false)
 		return jobid, err
-	} else {
-		dt.ct++
-		dt.id = jobid
-		server.ActiveTasks.Store(task, dt)
 	}
 
 	logs, err := server.StopSlave()
@@ -392,7 +437,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 
 func (server *ServerMonitor) JobServerStop() (int64, error) {
 	cluster := server.ClusterGroup
-	jobid, err := server.JobInsertTaks("stop", server.SSTPort, cluster.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTask("stop", server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Stop server: %s %s", server.URL, err)
 		return jobid, err
@@ -402,7 +447,7 @@ func (server *ServerMonitor) JobServerStop() (int64, error) {
 
 func (server *ServerMonitor) JobServerRestart() (int64, error) {
 	cluster := server.ClusterGroup
-	jobid, err := server.JobInsertTaks("restart", server.SSTPort, cluster.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTask("restart", server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restart server: %s %s", server.URL, err)
 		return jobid, err
@@ -413,7 +458,6 @@ func (server *ServerMonitor) JobServerRestart() (int64, error) {
 func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 	cluster := server.ClusterGroup
 	task := "flashback" + cluster.Conf.BackupLogicalType
-	var dt DBTask = DBTask{task: task}
 	var err error
 	if cluster.master != nil && !cluster.GetBackupServer().HasBackupLogicalCookie() {
 		server.SetWaitLogicalBackupCookie()
@@ -428,18 +472,12 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 
 	server.SetInReseedBackup(true)
 
-	if v, ok := server.ActiveTasks.Load(task); ok {
-		dt = v.(DBTask)
-	}
-	jobid, err := server.JobInsertTaks(task, server.SSTPort, cluster.Conf.MonitorAddress)
+	jobid, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive flashback logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
 		return jobid, err
-	} else {
-		dt.ct++
-		dt.id = jobid
-		server.ActiveTasks.Store(task, dt)
 	}
+
 	logs, err := server.StopSlave()
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 
@@ -480,7 +518,7 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	if err != nil {
 		return 0, nil
 	}
-	return server.JobInsertTaks("error", port, cluster.Conf.MonitorAddress)
+	return server.JobInsertTask("error", port, cluster.Conf.MonitorAddress)
 }
 
 // ErrorLogWatcher monitor the tail of the log and populate ring buffer
@@ -547,7 +585,7 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 	if err != nil {
 		return 0, nil
 	}
-	return server.JobInsertTaks("slowquery", port, cluster.Conf.MonitorAddress)
+	return server.JobInsertTask("slowquery", port, cluster.Conf.MonitorAddress)
 }
 
 func (server *ServerMonitor) JobOptimize() (int64, error) {
@@ -555,7 +593,7 @@ func (server *ServerMonitor) JobOptimize() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	return server.JobInsertTaks("optimize", "0", cluster.Conf.MonitorAddress)
+	return server.JobInsertTask("optimize", "0", cluster.Conf.MonitorAddress)
 }
 
 func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
@@ -563,7 +601,7 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	return server.JobInsertTaks("zfssnapback", "0", cluster.Conf.MonitorAddress)
+	return server.JobInsertTask("zfssnapback", "0", cluster.Conf.MonitorAddress)
 }
 
 func (server *ServerMonitor) JobReseedMyLoader() {
@@ -774,18 +812,12 @@ func (server *ServerMonitor) JobMyLoaderParseMeta(dir string) (config.MyDumperMe
 	return m, nil
 }
 
-type DBTask struct {
-	task string
-	ct   int
-	id   int64
-}
-
 func (server *ServerMonitor) JobsCheckRunning() error {
 	cluster := server.ClusterGroup
 	if server.IsDown() {
 		return nil
 	}
-	//server.JobInsertTaks("", "", "")
+	//server.JobInsertTask("", "", "")
 	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE done=0 AND result IS NULL group by task ")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
@@ -831,11 +863,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 					cluster.SetState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0077"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 				} else if task.task == "flashbackmysqldump" {
 					cluster.SetState("WARN0077", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0077"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-				} else {
-					//Skip adding to active task if not defined
-					continue
 				}
-				server.ActiveTasks.Store(task.task, task)
 			}
 		}
 
@@ -851,7 +879,7 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 	if server.IsDown() {
 		return nil
 	}
-	//server.JobInsertTaks("", "", "")
+
 	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE done=1 AND state=3 group by task")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
@@ -867,6 +895,7 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 			if err := server.AfterJobProcess(task); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
 			}
+			server.SetNeedRefreshJobs(true)
 		}
 	}
 	return err
@@ -1374,7 +1403,6 @@ func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, e
 			return out, err
 		}
 	}
-
 }
 
 func (server *ServerMonitor) JobRunViaSSH() error {
@@ -1439,8 +1467,6 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 			}
 		}
 	}
-
-	cluster.JobResults[server.URL] = res
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Exec via ssh  : %s", res)
 	return nil

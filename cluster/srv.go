@@ -195,7 +195,8 @@ type ServerMonitor struct {
 	InPurgingBinaryLog          bool
 	IsBackingUpBinaryLog        bool
 	IsRefreshingBinlog          bool
-	ActiveTasks                 sync.Map
+	IsLoadingJobList            bool
+	NeedRefreshJobs             bool
 	BinaryLogDir                string
 	DBDataDir                   string
 }
@@ -253,6 +254,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	server.IsGroupReplicationSlave = false
 	server.IsGroupReplicationMaster = false
+	server.NeedRefreshJobs = true
 	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		// OpenSVC and Sharding proxy monitoring
 		if server.IsCompute {
@@ -813,6 +815,11 @@ func (server *ServerMonitor) Refresh() error {
 
 		// Job section
 		server.JobsCheckFinished()
+
+		if server.NeedRefreshJobs {
+			server.JobsUpdateEntries()
+		}
+
 		if cluster.Conf.MonitorScheduler {
 			server.JobsCheckRunning()
 		}

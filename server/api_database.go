@@ -2488,3 +2488,21 @@ func (repman *ReplicationManager) handlerMuxGetDatabaseServiceConfig(w http.Resp
 		return
 	}
 }
+
+func (repman *ReplicationManager) handlerMuxServerGetJobEntries(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		entries, _ := mycluster.JobsGetEntries()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(entries)
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}

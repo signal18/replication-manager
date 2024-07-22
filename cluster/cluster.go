@@ -69,73 +69,73 @@ type ClusterResponse struct {
 }
 
 type Cluster struct {
-	Name                          string                `json:"name"`
-	Tenant                        string                `json:"tenant"`
-	WorkingDir                    string                `json:"workingDir"`
-	Servers                       serverList            `json:"-"`
-	LogSlaveServers               []string              `json:"-"` //To store slave with log-slave-updates
-	ServerIdList                  []string              `json:"dbServers"`
-	Crashes                       crashList             `json:"dbServersCrashes"`
-	Proxies                       proxyList             `json:"-"`
-	ProxyIdList                   []string              `json:"proxyServers"`
-	FailoverCtr                   int                   `json:"failoverCounter"`
-	FailoverTs                    int64                 `json:"failoverLastTime"`
-	Status                        string                `json:"activePassiveStatus"`
-	IsSplitBrain                  bool                  `json:"isSplitBrain"`
-	IsSplitBrainBck               bool                  `json:"-"`
-	IsFailedArbitrator            bool                  `json:"isFailedArbitrator"`
-	IsLostMajority                bool                  `json:"isLostMajority"`
-	IsDown                        bool                  `json:"isDown"`
-	IsClusterDown                 bool                  `json:"isClusterDown"`
-	IsAllDbUp                     bool                  `json:"isAllDbUp"`
-	IsFailable                    bool                  `json:"isFailable"`
-	IsPostgres                    bool                  `json:"isPostgres"`
-	IsProvision                   bool                  `json:"isProvision"`
-	IsNeedProxiesRestart          bool                  `json:"isNeedProxyRestart"`
-	IsNeedProxiesReprov           bool                  `json:"isNeedProxiesRestart"`
-	IsNeedDatabasesRestart        bool                  `json:"isNeedDatabasesRestart"`
-	IsNeedDatabasesRollingRestart bool                  `json:"isNeedDatabasesRollingRestart"`
-	IsNeedDatabasesRollingReprov  bool                  `json:"isNeedDatabasesRollingReprov"`
-	IsNeedDatabasesReprov         bool                  `json:"isNeedDatabasesReprov"`
-	IsValidBackup                 bool                  `json:"isValidBackup"`
-	IsNotMonitoring               bool                  `json:"isNotMonitoring"`
-	IsCapturing                   bool                  `json:"isCapturing"`
-	IsGitPull                     bool                  `json:"isGitPull"`
-	IsAlertDisable                bool                  `json:"isAlertDisable"`
-	Conf                          config.Config         `json:"config"`
-	Confs                         *config.ConfVersion   `json:"-"`
-	CleanAll                      bool                  `json:"cleanReplication"` //used in testing
-	Topology                      string                `json:"topology"`
-	Uptime                        string                `json:"uptime"`
-	UptimeFailable                string                `json:"uptimeFailable"`
-	UptimeSemiSync                string                `json:"uptimeSemisync"`
-	MonitorSpin                   string                `json:"monitorSpin"`
-	WorkLoad                      config.WorkLoad       `json:"workLoad"`
-	LogPushover                   *log.Logger           `json:"-"`
-	Log                           s18log.HttpLog        `json:"log"`
-	LogTask                       s18log.HttpLog        `json:"logTask"`
-	LogSlack                      *log.Logger           `json:"-"`
-	JobResults                    map[string]*JobResult `json:"jobResults"`
-	Grants                        map[string]string     `json:"-"`
-	tlog                          *s18log.TermLog       `json:"-"`
-	htlog                         *s18log.HttpLog       `json:"-"`
-	SQLGeneralLog                 s18log.HttpLog        `json:"sqlGeneralLog"`
-	SQLErrorLog                   s18log.HttpLog        `json:"sqlErrorLog"`
-	MonitorType                   map[string]string     `json:"monitorType"`
-	TopologyType                  map[string]string     `json:"topologyType"`
-	FSType                        map[string]bool       `json:"fsType"`
-	DiskType                      map[string]string     `json:"diskType"`
-	VMType                        map[string]bool       `json:"vmType"`
-	Agents                        []Agent               `json:"agents"`
-	hostList                      []string              `json:"-"`
-	proxyList                     []string              `json:"-"`
-	clusterList                   map[string]*Cluster   `json:"-"`
-	slaves                        serverList            `json:"slaves"`
-	master                        *ServerMonitor        `json:"master"`
-	oldMaster                     *ServerMonitor        `json:"oldmaster"`
-	vmaster                       *ServerMonitor        `json:"vmaster"`
-	mxs                           *maxscale.MaxScale    `json:"-"`
-	CheckSumConfig                map[string]hash.Hash  `json:"-"`
+	Name                          string               `json:"name"`
+	Tenant                        string               `json:"tenant"`
+	WorkingDir                    string               `json:"workingDir"`
+	Servers                       serverList           `json:"-"`
+	LogSlaveServers               []string             `json:"-"` //To store slave with log-slave-updates
+	ServerIdList                  []string             `json:"dbServers"`
+	Crashes                       crashList            `json:"dbServersCrashes"`
+	Proxies                       proxyList            `json:"-"`
+	ProxyIdList                   []string             `json:"proxyServers"`
+	FailoverCtr                   int                  `json:"failoverCounter"`
+	FailoverTs                    int64                `json:"failoverLastTime"`
+	Status                        string               `json:"activePassiveStatus"`
+	IsSplitBrain                  bool                 `json:"isSplitBrain"`
+	IsSplitBrainBck               bool                 `json:"-"`
+	IsFailedArbitrator            bool                 `json:"isFailedArbitrator"`
+	IsLostMajority                bool                 `json:"isLostMajority"`
+	IsDown                        bool                 `json:"isDown"`
+	IsClusterDown                 bool                 `json:"isClusterDown"`
+	IsAllDbUp                     bool                 `json:"isAllDbUp"`
+	IsFailable                    bool                 `json:"isFailable"`
+	IsPostgres                    bool                 `json:"isPostgres"`
+	IsProvision                   bool                 `json:"isProvision"`
+	IsNeedProxiesRestart          bool                 `json:"isNeedProxyRestart"`
+	IsNeedProxiesReprov           bool                 `json:"isNeedProxiesRestart"`
+	IsNeedDatabasesRestart        bool                 `json:"isNeedDatabasesRestart"`
+	IsNeedDatabasesRollingRestart bool                 `json:"isNeedDatabasesRollingRestart"`
+	IsNeedDatabasesRollingReprov  bool                 `json:"isNeedDatabasesRollingReprov"`
+	IsNeedDatabasesReprov         bool                 `json:"isNeedDatabasesReprov"`
+	IsValidBackup                 bool                 `json:"isValidBackup"`
+	IsNotMonitoring               bool                 `json:"isNotMonitoring"`
+	IsCapturing                   bool                 `json:"isCapturing"`
+	IsGitPull                     bool                 `json:"isGitPull"`
+	IsAlertDisable                bool                 `json:"isAlertDisable"`
+	Conf                          config.Config        `json:"config"`
+	Confs                         *config.ConfVersion  `json:"-"`
+	CleanAll                      bool                 `json:"cleanReplication"` //used in testing
+	Topology                      string               `json:"topology"`
+	Uptime                        string               `json:"uptime"`
+	UptimeFailable                string               `json:"uptimeFailable"`
+	UptimeSemiSync                string               `json:"uptimeSemisync"`
+	MonitorSpin                   string               `json:"monitorSpin"`
+	WorkLoad                      config.WorkLoad      `json:"workLoad"`
+	LogPushover                   *log.Logger          `json:"-"`
+	Log                           s18log.HttpLog       `json:"log"`
+	LogTask                       s18log.HttpLog       `json:"logTask"`
+	LogSlack                      *log.Logger          `json:"-"`
+	JobResults                    *config.TasksMap     `json:"jobResults"`
+	Grants                        map[string]string    `json:"-"`
+	tlog                          *s18log.TermLog      `json:"-"`
+	htlog                         *s18log.HttpLog      `json:"-"`
+	SQLGeneralLog                 s18log.HttpLog       `json:"sqlGeneralLog"`
+	SQLErrorLog                   s18log.HttpLog       `json:"sqlErrorLog"`
+	MonitorType                   map[string]string    `json:"monitorType"`
+	TopologyType                  map[string]string    `json:"topologyType"`
+	FSType                        map[string]bool      `json:"fsType"`
+	DiskType                      map[string]string    `json:"diskType"`
+	VMType                        map[string]bool      `json:"vmType"`
+	Agents                        []Agent              `json:"agents"`
+	hostList                      []string             `json:"-"`
+	proxyList                     []string             `json:"-"`
+	clusterList                   map[string]*Cluster  `json:"-"`
+	slaves                        serverList           `json:"slaves"`
+	master                        *ServerMonitor       `json:"master"`
+	oldMaster                     *ServerMonitor       `json:"oldmaster"`
+	vmaster                       *ServerMonitor       `json:"vmaster"`
+	mxs                           *maxscale.MaxScale   `json:"-"`
+	CheckSumConfig                map[string]hash.Hash `json:"-"`
 	//dbUser                        string                      `json:"-"`
 	//oldDbUser string `json:"-"`
 	//dbPass                        string                      `json:"-"`
@@ -260,21 +260,7 @@ type Alerts struct {
 	Warnings []state.StateHttp `json:"warnings"`
 }
 
-type JobResult struct {
-	Xtrabackup            bool `json:"xtrabackup"`
-	Mariabackup           bool `json:"mariabackup"`
-	Zfssnapback           bool `json:"zfssnapback"`
-	Optimize              bool `json:"optimize"`
-	Reseedxtrabackup      bool `json:"reseedxtrabackup"`
-	Reseedmariabackup     bool `json:"reseedmariabackup"`
-	Reseedmysqldump       bool `json:"reseedmysqldump"`
-	Flashbackxtrabackup   bool `json:"flashbackxtrabackup"`
-	Flashbackmariadbackup bool `json:"flashbackmariadbackup"`
-	Flashbackmysqldump    bool `json:"flashbackmysqldump"`
-	Stop                  bool `json:"stop"`
-	Start                 bool `json:"start"`
-	Restart               bool `json:"restart"`
-}
+type JobResult config.JobResult
 
 type Diff struct {
 	Server        string `json:"serverName"`
@@ -367,7 +353,7 @@ func (cluster *Cluster) InitFromConf() {
 
 	cluster.QueryRules = make(map[uint32]config.QueryRule)
 	cluster.Schedule = make(map[string]cron.Entry)
-	cluster.JobResults = make(map[string]*JobResult)
+	cluster.JobResults = config.NewTasksMap()
 	cluster.SstAvailablePorts = make(map[string]string)
 	cluster.CheckSumConfig = make(map[string]hash.Hash)
 	lstPort := strings.Split(cluster.Conf.SchedulerSenderPorts, ",")
