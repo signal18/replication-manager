@@ -8,11 +8,26 @@ import AccordionComponent from '../../components/AccordionComponent'
 import ClusterTests from './components/ClusterTests'
 import Logs from './components/Logs'
 import DBServers from './components/DBServers'
+import { css } from '@emotion/react'
 
 function Dashboard({ selectedCluster }) {
   const {
     common: { isDesktop }
   } = useSelector((state) => state)
+
+  const styles = {
+    workloadPanel: {
+      position: 'relative',
+      minHeight: '125px',
+      top: '-25px'
+    },
+    workloadAccordion: {
+      // '& .chakra-collapse': {
+      //   height: '100px !important',
+      //   overflow: 'visible'
+      // }
+    }
+  }
 
   return (
     <Flex direction='column' gap='8px'>
@@ -28,6 +43,8 @@ function Dashboard({ selectedCluster }) {
       <AccordionComponent
         heading={'Cluster Workload'}
         body={<ClusterWorkload workload={selectedCluster?.workLoad} />}
+        sx={styles.workloadAccordion}
+        // panelSX={styles.workloadPanel}
       />
       {selectedCluster && (
         <AccordionComponent
