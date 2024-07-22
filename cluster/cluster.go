@@ -1360,6 +1360,10 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		"DATADIR":             true,
 		"THREAD_POOL_SIZE":    true,
 		"RELAY_LOG":           true,
+		"RELAY_LOG_BASENAME":  true,
+		"RELAY_LOG_INDEX":     true,
+		"LOG_SLOW_QUERY_FILE": true,
+		"PLUGIN_DIR":          true,
 	}
 	variablesdiff := ""
 	var alldiff []VariableDiff
