@@ -10,6 +10,10 @@ export const getStatusValue = (rowData) => {
       stateValue = 'SLAVE_ERROR'
       colorScheme = 'orange'
       break
+    case 'SlaveLate':
+      stateValue = 'SLAVE_LATE'
+      colorScheme = 'yellow'
+      break
     case 'StandAlone':
       stateValue = 'STANALONE'
       colorScheme = 'gray'
