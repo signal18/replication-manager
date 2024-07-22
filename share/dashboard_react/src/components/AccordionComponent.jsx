@@ -1,14 +1,14 @@
 import React from 'react'
 import { Accordion, AccordionButton, AccordionIcon, AccordionItem, AccordionPanel, Box } from '@chakra-ui/react'
 
-function AccordionComponent({ heading, body, panelSX, headerSX, isOpen = null, onToggle }) {
+function AccordionComponent({ heading, body, sx, panelSX, headerSX, isOpen = null, onToggle }) {
   const styles = {
     panel: {
       padding: 0
     }
   }
   return (
-    <Accordion allowToggle={true} defaultIndex={0} {...(isOpen !== null ? { index: isOpen ? [0] : [] } : {})}>
+    <Accordion allowToggle={true} sx={sx} defaultIndex={0} {...(isOpen !== null ? { index: isOpen ? [0] : [] } : {})}>
       <AccordionItem>
         <h2>
           <AccordionButton sx={headerSX} {...(onToggle ? { onClick: onToggle } : {})}>
