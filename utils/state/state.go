@@ -433,7 +433,7 @@ func (SM *StateMachine) PreserveState(key ...string) {
 	for oldkey, value := range *SM.OldState {
 		for _, k := range key {
 			if strings.HasPrefix(oldkey, k) {
-				SM.AddState(oldkey, value)
+				SM.AddState(value.ErrKey, value)
 			}
 		}
 	}
