@@ -325,9 +325,9 @@ func (cluster *Cluster) SetProxyServerMaintenance(serverid uint64) {
 // called  by server monitor if state change
 func (cluster *Cluster) backendStateChangeProxies() {
 	for _, pr := range cluster.Proxies {
-		pr.SetLock()
+		//	pr.SetLock()
 		pr.BackendsStateChange()
-		pr.DelLock()
+		//	pr.DelLock()
 	}
 }
 
@@ -340,7 +340,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 	for _, pr := range cluster.Proxies {
 		if pr != nil {
 			var err error
-			pr.SetLock()
+			//	pr.SetLock()
 
 			err = pr.Refresh()
 			if err == nil {
@@ -373,7 +373,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 			if cluster.Conf.GraphiteMetrics {
 				pr.SendStats()
 			}
-			pr.DelLock()
+			//	pr.DelLock()
 		}
 	}
 	// if cluster.Conf.LogLevel > 2 {
