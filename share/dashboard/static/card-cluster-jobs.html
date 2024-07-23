@@ -1,44 +1,79 @@
+<style>
+  td.task-task {
+    width: 20%;
+  }
+
+  td.task-state {
+    width: 10%;
+  }
+
+  td.task-desc {
+    text-wrap: wrap;
+  }
+
+  td.task-dt {
+    width: 15%;
+  }
+</style>
 <md-card>
   <table ng-if="servers" class="table" style="margin-bottom: 0px;">
     <tr>
       <th>
         Database Jobs
-        <span class="pull-right">
-          <button ng-click="togglePanel('jobs')">
-            <span ng-show="showJobs">Hide</span>
-            <span ng-show="!showJobs">Show</span>
-          </button>
-        </span>
       </th>
     </tr>
   </table>
-  <div ng-repeat="(server, jobs) in entries.tasks">
-    <table class="table">
-      <thead>
-        <tr>
-          <th colspan="6">
-            {{server}}
-          </th>
-        </tr>
-        <tr>
-          <th>Task</th>
-          <th>Done</th>
-          <th>State</th>
-          <th>Desc</th>
-          <th>Start</th>
-          <th>End</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr ng-repeat="(i, t) in jobs.tasks">
-          <td>{{t.task}}</td>
-          <td>{{t.done}}</td>
-          <td>{{t.state}}</td>
-          <td>{{t.result}}</td>
-          <td>{{t.start}}</td>
-          <td>{{t.end}}</td>
-        </tr>
-      </tbody>
-    </table>
+  <div ng-if="showJobs" ng-repeat="server in servers">
+    <div ng-repeat="(s, jobs) in entries.tasks">
+      <div ng-if="server.url==s">
+        <md-card>
+          <table ng-if="servers" class="table" style="margin-bottom: 0px;">
+            <tr>
+              <th colspan="6">
+                {{server.url}}
+                <span ng-switch="server.state">
+                  <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="Suspect" class="label label-warning">Suspect<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="StandAlone" class="label label-info">Standalone<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-default class="label label-default">{{server.state}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                </span>
+                <span class="pull-right">
+                  <button ng-click="togglePanel('jobs',server.url)">
+                    <span ng-show="showJobs[server.url]">Hide</span>
+                    <span ng-show="!showJobs[server.url]">Show</span>
+                  </button>
+                </span>
+              </th>
+            </tr>
+            </table>
+            <table ng-if="showJobs[server.url]" class="table" style="margin-top: 0px;">
+            <tr>
+              <th class="task-task">Task</th>
+              <th class="task-state">State</th>
+              <th class="task-desc">Desc</th>
+              <th class="task-dt">Start</th>
+              <th class="task-dt">End</th>
+            </tr>
+            <tr ng-repeat="(i, t) in jobs.tasks">
+              <td class="task-task">{{t.task}}</td>
+              <td class="task-state" ng-switch="t.state">
+                <span ng-switch-when="0" class="label label-default">Init</span>
+                <span ng-switch-when="1" class="label label-info">Running</span>
+                <span ng-switch-when="2" class="label label-warning">Halted</span>
+                <span ng-switch-when="3" class="label label-info">Done</span>
+                <span ng-switch-when="4" class="label label-success">Success</span>
+                <span ng-switch-when="5" class="label label-danger">Error</span>
+                <span ng-switch-when="6" class="label label-danger">"PTError"</span>
+              </td>
+              <td class="task-desc">{{t.result}}</td>
+              <td class="task-dt">{{1000*t.start | date:"yyyy-MM-dd HH:mm"}}</td>
+              <td class="task-dt">{{1000*t.end | date:"yyyy-MM-dd HH:mm"}}</td>
+            </tr>
+          </table>
+        </md-card>
+      </div>
+    </div>
   </div>
 </md-card>

@@ -66,9 +66,9 @@ app.controller('DashboardController', function (
   $scope.showTable = false
   $scope.showLog = true
   $scope.showLogTask = true
-  $scope.showJobs = false
+  $scope.showJobs = {}
 
-  $scope.togglePanel = function (panel) {
+  $scope.togglePanel = function (panel, srv) {
     if (panel == "log") {
       $scope.showLog = !$scope.showLog
     }
@@ -76,7 +76,11 @@ app.controller('DashboardController', function (
       $scope.showLogTask = !$scope.showLogTask
     }
     if (panel == "jobs") {
-      $scope.showJobs = !$scope.showJobs
+      if ($scope.showJobs[srv] === undefined) {
+        $scope.showJobs[srv] = true
+      } else {
+        $scope.showJobs[srv] = !$scope.showJobs[srv]
+      }
     }
   }
 
