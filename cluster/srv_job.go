@@ -166,7 +166,7 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 		return 0, err
 	}
 
-	rows, err := conn.Queryx("SELECT id, task, state FROM replication_manager_schema.jobs WHERE id = (SELECT max(id) FROM replication_manager_schema.jobs WHERE task = '" + task + "')")
+	rows, err := conn.Queryx("SELECT id, task, done, state FROM replication_manager_schema.jobs WHERE id = (SELECT max(id) FROM replication_manager_schema.jobs WHERE task = '" + task + "')")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs: %s", err)
 		server.JobsCreateTable()
@@ -178,9 +178,9 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 	nr := 0
 	for rows.Next() {
 		nr = 1
-		rows.Scan(&t.Id, &t.Task, &t.State)
+		rows.Scan(&t.Id, &t.Task, &t.Done, &t.State)
 
-		if t.State <= 3 {
+		if t.State <= 3 && t.Done == 0 {
 			err = errors.New("Previous job with same type is still running. Exiting")
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error: %s", err.Error())
 			rows.Close()
@@ -894,6 +894,8 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 		if task.ct > 0 {
 			if err := server.AfterJobProcess(task); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finished %s successfully", task.task)
 			}
 			server.SetNeedRefreshJobs(true)
 		}
@@ -1416,6 +1418,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 		return err
 	}
 	defer client.Close()
+	go server.JobWriteLogAPI()
 
 	var (
 		stdout bytes.Buffer
@@ -1859,19 +1862,19 @@ func (server *ServerMonitor) CallbackMysqldump(dt DBTask) error {
 	return err
 }
 
-func (server *ServerMonitor) JobWriteLogAPI(task string) error {
+func (server *ServerMonitor) JobWriteLogAPI() error {
 	cluster := server.ClusterGroup
 	if cluster.IsInFailover() {
 		return errors.New("Cancel dbjob via ssh during failover")
 	}
 	client, err := server.GetCluster().OnPremiseConnect(server)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "OnPremise run  job  %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "OnPremise run  job  %s", err)
 		return err
 	}
 	defer client.Close()
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Write-Log connected")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Write-Log connected")
 
 	var (
 		stdout bytes.Buffer
@@ -1885,7 +1888,7 @@ func (server *ServerMonitor) JobWriteLogAPI(task string) error {
 
 	filerc, err2 := os.Open(scriptpath)
 	if err2 != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Parse job's log %s, scriptpath : %s", err2, scriptpath)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Parse job's log %s, scriptpath : %s", err2, scriptpath)
 		return errors.New("Cancel parselog can't open script")
 	}
 	defer filerc.Close()
@@ -1893,19 +1896,18 @@ func (server *ServerMonitor) JobWriteLogAPI(task string) error {
 	buf.ReadFrom(filerc)
 
 	buf2 := strings.NewReader(server.GetSshEnv())
-	buf3 := strings.NewReader(server.GetSshLogEnv(task))
-	r := io.MultiReader(buf2, buf3, buf)
+	r := io.MultiReader(buf2, buf)
 
 	if err := client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Parse job's log: %s", stderr.String())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Parse job's log: %s", stderr.String())
 	}
 
 	//only parse if debug
-	if cluster.Conf.IsEligibleForPrinting(config.ConstLogModBackupStream, config.LvlDbg) {
+	if cluster.Conf.IsEligibleForPrinting(config.ConstLogModTask, config.LvlDbg) {
 		out := stdout.String()
 		errstr := stderr.String()
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlDbg, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, errstr)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, errstr)
 	}
 
 	return nil

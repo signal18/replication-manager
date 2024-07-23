@@ -64,7 +64,7 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{module}/{level}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
 	))
 }
@@ -335,6 +335,9 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/queries/{queryDigest}/actions/analyze-slowlog", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxQueryAnalyzePFS)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
 	))
 }
 
@@ -1771,73 +1774,70 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 	}
 }
 
+type LogEntry struct {
+	Log string `json:"log"`
+}
+
 func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		// if mycluster.Conf.APISecureConfig {
-		// 	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-		// 		http.Error(w, "No valid ACL", 403)
-		// 		return
-		// 	}
-		// }
-
-		// Decode the request body
-		var msg struct {
-			Message string `json:"message"`
-		}
-		err := json.NewDecoder(r.Body).Decode(&msg)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		var mod int
+		switch vars["task"] {
+		case "mariabackup", "xtrabackup":
+			mod = config.ConstLogModBackupStream
+		case "error", "slowquery", "zfssnapback", "optimize", "reseedxtrabackup", "reseedmariabackup", "reseedmysqldump", "flashbackxtrabackup", "flashbackmariadbackup", "flashbackmysqldump", "stop", "restart", "start":
+			mod = config.ConstLogModTask
+		default:
+			http.Error(w, "Bad request: Task is not registered", http.StatusBadRequest)
 			return
 		}
 
-		if mod := config.GetIndexFromModuleName(vars["module"]); mod > -1 {
-			if config.IsValidLogLevel(vars["level"]) {
-				node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
-				proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
-				if node != nil || proxy != nil {
-					raddr := strings.Split(r.RemoteAddr, ":")
-					var valid bool
-					if node != nil && node.IP == raddr[0] {
-						valid = true
-						messages := strings.Split(msg.Message, "\n")
-						for _, m := range messages {
-							// Prevent empty lines
-							if m != "" {
-								mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, vars["level"], "[%s] %s", node.Name, m)
-							}
-						}
-					}
-					if proxy != nil {
-						if myip, err := dbhelper.CheckHostAddr(proxy.GetHost()); err == nil && myip == raddr[0] {
-							valid = true
-							messages := strings.Split(msg.Message, "\n")
-							for _, m := range messages {
-								// Prevent empty lines
-								if m != "" {
-									mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, vars["level"], "[%s] %s", proxy.GetName(), m)
-								}
-							}
-						}
-					}
-
-					if valid {
-
-						w.Header().Set("Content-Type", "application/json")
-						json.NewEncoder(w).Encode(ApiResponse{Data: "Message logged", Success: true})
-					} else {
-						http.Error(w, "The requester address is not same with node/proxy address", 500)
-					}
-				} else {
-					http.Error(w, "No server", 500)
+		// Decode the request body
+		var logEntry LogEntry
+		decoder := json.NewDecoder(r.Body)
+		if err := decoder.Decode(&logEntry); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var nodename string
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil || proxy != nil {
+			raddr := strings.Split(r.RemoteAddr, ":")
+			var valid bool
+			if node != nil && node.IP == raddr[0] {
+				nodename = node.Name
+				valid = true
+			} else if proxy != nil {
+				if myip, err := dbhelper.CheckHostAddr(proxy.GetHost()); err == nil && myip == raddr[0] {
+					nodename = proxy.GetName()
+					valid = true
 				}
+			}
+
+			if valid {
+				lines := strings.Split(strings.ReplaceAll(logEntry.Log, "\\n", "\n"), "\n")
+				// Process each line
+				for _, line := range lines {
+					if strings.TrimSpace(line) != "" {
+						// Process the individual log line (e.g., write to file, send to a logging system, etc.)
+						if strings.Contains(line, "ERROR") {
+							mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, config.LvlErr, "[%s] %s", nodename, line)
+						} else {
+							mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, config.LvlDbg, "[%s] %s", nodename, line)
+						}
+					}
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(ApiResponse{Data: "Message logged", Success: true})
 			} else {
-				http.Error(w, "Invalid Log Module Level", 500)
+				http.Error(w, "The requester address is not same with node/proxy address", 500)
 			}
 		} else {
-			http.Error(w, "Invalid Log Module Name", 500)
+			http.Error(w, "No server", 500)
 		}
 	} else {
 		http.Error(w, "No cluster", 500)

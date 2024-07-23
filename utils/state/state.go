@@ -189,7 +189,7 @@ func (SM *StateMachine) IsInSchemaMonitor() bool {
 func (SM *StateMachine) AddState(key string, s State) {
 	//Retain the state
 	s.ErrKey = key
-	if s.ServerUrl != "" {
+	if s.ServerUrl != "" && !strings.Contains(key, "@") {
 		key = key + "@" + s.ServerUrl
 	}
 	SM.Lock()

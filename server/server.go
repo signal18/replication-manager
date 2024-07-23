@@ -519,6 +519,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.PRXServersBackendCompression, "proxy-servers-backend-compression", false, "Proxy communicate with backends with compression")
 	flags.IntVar(&conf.PRXServersBackendMaxReplicationLag, "proxy-servers-backend-max-replication-lag", 30, "Max lag to send query to read  backends ")
 	flags.IntVar(&conf.PRXServersBackendMaxConnections, "proxy-servers-backend-max-connections", 1000, "Max connections on backends ")
+	flags.StringVar(&conf.PRXServersChangeStateScript, "proxy-servers-state-change-script", "", "Proxy state change script")
 
 	externalprx := new(cluster.ExternalProxy)
 	externalprx.AddFlags(flags, conf)
