@@ -166,7 +166,7 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 		return 0, err
 	}
 
-	rows, err := conn.Queryx("SELECT id, task, state FROM replication_manager_schema.jobs WHERE id = (SELECT max(id) FROM replication_manager_schema.jobs WHERE task = '" + task + "')")
+	rows, err := conn.Queryx("SELECT id, task, done, state FROM replication_manager_schema.jobs WHERE id = (SELECT max(id) FROM replication_manager_schema.jobs WHERE task = '" + task + "')")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs: %s", err)
 		server.JobsCreateTable()
@@ -178,9 +178,9 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 	nr := 0
 	for rows.Next() {
 		nr = 1
-		rows.Scan(&t.Id, &t.Task, &t.State)
+		rows.Scan(&t.Id, &t.Task, &t.Done, &t.State)
 
-		if t.State <= 3 {
+		if t.State <= 3 && t.Done == 0 {
 			err = errors.New("Previous job with same type is still running. Exiting")
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error: %s", err.Error())
 			rows.Close()
