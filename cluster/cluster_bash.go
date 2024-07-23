@@ -73,6 +73,24 @@ func (cluster *Cluster) BashScriptDbServersChangeState(srv *ServerMonitor, newSt
 	return nil
 }
 
+func (cluster *Cluster) BashScriptPrxServersChangeState(srv DatabaseProxy, newState string, oldState string) error {
+	if cluster.Conf.PRXServersChangeStateScript != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling proxy change state script")
+		var out []byte
+		master := cluster.GetMaster()
+		if master == nil {
+			return errors.New("No leader found in bash script Proxy Servers Change State ")
+		}
+		out, err := exec.Command(cluster.Conf.PRXServersChangeStateScript, cluster.Name, srv.GetHost(), srv.GetPort(), newState, oldState, master.State).CombinedOutput()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Proxy change state script %s:", string(out))
+	}
+	return nil
+}
+
 func (cluster *Cluster) failoverPostScript(fail bool) {
 	if cluster.Conf.PostScript != "" {
 

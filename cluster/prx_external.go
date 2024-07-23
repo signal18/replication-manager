@@ -82,14 +82,13 @@ func (proxy *ExternalProxy) Refresh() error {
 			Port:           srv.Port,
 			PrxName:        srv.Host + ":" + srv.Port,
 			Status:         srv.State,
+			PrxLatency:     "0",
 			PrxConnections: proxyCnx,
 			PrxByteIn:      proxyByteOut,
 			PrxByteOut:     proxyByteIn,
 			PrxStatus:      "ONLINE",
 			PrxHostgroup:   "WRITE",
 		}
-
-		//PrxLatency:     strconv.Itoa(proxysqlLatency),
 
 		proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
 
@@ -98,6 +97,7 @@ func (proxy *ExternalProxy) Refresh() error {
 			Port:           srv.Port,
 			PrxName:        srv.Host + ":" + proxy.Port,
 			Status:         srv.State,
+			PrxLatency:     "0",
 			PrxConnections: proxyCnx,
 			PrxByteIn:      proxyByteOut,
 			PrxByteOut:     proxyByteIn,
