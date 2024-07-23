@@ -1,13 +1,18 @@
 import { Box, Button } from '@chakra-ui/react'
 import React from 'react'
 
-function ServerName({ rowData }) {
+function ServerName({ rowData, isBlocking }) {
   const styles = {
     serverName: {
       backgroundColor: 'transparent',
       display: 'flex',
       padding: '0',
       width: '100%',
+      fontSize: '15px',
+
+      span: {
+        color: isBlocking ? 'white' : ''
+      },
       _hover: {}
     }
   }

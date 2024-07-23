@@ -59,7 +59,8 @@ export const getCurrentGtid = (rowData, hasMariadbGtid, hasMysqlGtid) => {
     }
   }
 
-  return result
+  const array = result.split(', ')
+  return array.join(',\r\n')
 }
 
 export const getSlaveGtid = (rowData, hasMariadbGtid, hasMysqlGtid) => {
@@ -74,7 +75,8 @@ export const getSlaveGtid = (rowData, hasMariadbGtid, hasMysqlGtid) => {
       result += rowData.binaryLogPos
     }
   }
-  return result
+  const array = result.split(', ')
+  return array.join(',\r\n')
 }
 
 export const getUsingGtidHeader = (hasMariadbGtid, hasMysqlGtid) => {

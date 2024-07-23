@@ -64,6 +64,7 @@ function HADetail({ selectedCluster }) {
     }
     closeModal()
   }
+  console.log('clusterMaster?.state::', clusterMaster?.state)
   return (
     <>
       <Card
@@ -91,10 +92,16 @@ function HADetail({ selectedCluster }) {
           </Grid>
         }
         onClick={openConfirmModal}
-        headerAction='button'
-        isLoading={switchOverLoading || failOverLoading}
-        loadingText={'Processing'}
-        buttonText={clusterMaster?.state === 'Failed' ? 'Failover' : 'Switchover'}
+        {...(clusterMaster?.state
+          ? {
+              headerAction: 'button',
+              isLoading: switchOverLoading || failOverLoading,
+              loadingText: 'Processing',
+              isButtonBlinking: clusterMaster.state === 'Failed',
+              buttonColorScheme: clusterMaster.state === 'Failed' ? 'red' : 'blue',
+              buttonText: clusterMaster.state === 'Failed' ? 'Failover' : 'Switchover'
+            }
+          : {})}
       />
       {isModalOpen && (
         <ConfirmModal

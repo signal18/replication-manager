@@ -13,13 +13,13 @@ import { getCurrentGtid, getDelay, getFailCount, getSlaveGtid, getStatusValue, g
 import CheckOrCrossIcon from '../../../../components/Icons/CheckOrCrossIcon'
 import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
 import ServerName from './ServerName'
+import GTID from '../../../../components/GTID'
 
 function DBServers({ selectedCluster }) {
   const {
     common: { isDesktop },
     cluster: { clusterServers, clusterMaster }
   } = useSelector((state) => state)
-  const { colorMode } = useColorMode()
   const [data, setData] = useState([])
   const [user, setUser] = useState(null)
   const [viewType, setViewType] = useState('table')
@@ -112,18 +112,22 @@ function DBServers({ selectedCluster }) {
       }),
 
       columnHelper.accessor(
-        (row) => <TagPill colorScheme={getStatusValue(row).split('|')[0]} text={getStatusValue(row).split('|')[1]} />,
+        (row) => {
+          const [color, value] = getStatusValue(row).split('|')
+          return (
+            <TagPill
+              colorScheme={color}
+              text={value}
+              isBlinking={color === 'red' || color === 'orange' || color === 'yellow'}
+            />
+          )
+        },
         {
           cell: (info) => info.getValue(),
           header: 'Status',
           id: 'status'
         }
       ),
-      columnHelper.accessor((row) => <CheckOrCrossIcon isValid={row.isMaintenance} />, {
-        cell: (info) => info.getValue(),
-        header: 'In Mnt',
-        id: 'inMaintenance'
-      }),
       columnHelper.accessor((row) => getUsingGtid(row, hasMariadbGtid, hasMysqlGtid), {
         cell: (info) => info.getValue(),
         header: () => {
@@ -131,14 +135,20 @@ function DBServers({ selectedCluster }) {
         },
         id: 'usingGtid'
       }),
-      columnHelper.accessor((row) => <Box as='span'>{getCurrentGtid(row, hasMariadbGtid, hasMysqlGtid)}</Box>, {
-        cell: (info) => info.getValue(),
-        header: () => {
-          return hasMariadbGtid ? 'Current GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'File' : ''
+      columnHelper.accessor(
+        (row) => {
+          const gtids = getCurrentGtid(row, hasMariadbGtid, hasMysqlGtid)
+          return <GTID text={gtids} />
         },
-        id: 'currentGtid'
-      }),
-      columnHelper.accessor((row) => <Box as='span'>{getSlaveGtid(row, hasMariadbGtid, hasMysqlGtid)}</Box>, {
+        {
+          cell: (info) => info.getValue(),
+          header: () => {
+            return hasMariadbGtid ? 'Current GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'File' : ''
+          },
+          id: 'currentGtid'
+        }
+      ),
+      columnHelper.accessor((row) => <GTID text={getSlaveGtid(row, hasMariadbGtid, hasMysqlGtid)} />, {
         cell: (info) => info.getValue(),
         header: () => {
           return hasMariadbGtid ? 'Slave GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'Pos' : ''
@@ -164,6 +174,11 @@ function DBServers({ selectedCluster }) {
           id: 'prfIgn'
         }
       ),
+      columnHelper.accessor((row) => <CheckOrCrossIcon isValid={row.isMaintenance} />, {
+        cell: (info) => info.getValue(),
+        header: 'In Mnt',
+        id: 'inMaintenance'
+      }),
       columnHelper.accessor(
         (row) => (
           <CheckOrCrossIcon
