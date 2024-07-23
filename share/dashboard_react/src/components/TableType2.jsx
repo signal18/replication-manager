@@ -4,8 +4,14 @@ import React from 'react'
 function TableType2({ dataArray, sx, gap = 2, boxPadding = 2, minHeight = '40px', templateColumns = '150px auto' }) {
   const { colorMode } = useColorMode()
 
+  const styles = {
+    container: {
+      fontSize: '15px'
+    }
+  }
+
   return (
-    <Grid templateColumns={templateColumns} gap={gap} p={2} sx={sx}>
+    <Grid templateColumns={templateColumns} gap={gap} p={2} sx={{ ...styles.container, ...sx }}>
       {dataArray.map((item, index) => (
         <React.Fragment key={index}>
           <GridItem>
@@ -17,6 +23,7 @@ function TableType2({ dataArray, sx, gap = 2, boxPadding = 2, minHeight = '40px'
             <Box
               bg={colorMode === 'light' ? 'gray.50' : 'gray.700'}
               p={boxPadding}
+              textAlign='start'
               minHeight={minHeight}
               borderRadius='md'>
               {item.value}

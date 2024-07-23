@@ -1,5 +1,16 @@
-import { Flex, IconButton, SimpleGrid, Spacer, Tooltip, useColorMode, useDisclosure, VStack } from '@chakra-ui/react'
-import React, { useState } from 'react'
+import {
+  Flex,
+  HStack,
+  IconButton,
+  keyframes,
+  SimpleGrid,
+  Spacer,
+  Tooltip,
+  useColorMode,
+  useDisclosure,
+  VStack
+} from '@chakra-ui/react'
+import React from 'react'
 import { useSelector } from 'react-redux'
 import ServerMenu from './ServerMenu'
 import { HiCheck, HiTable, HiX } from 'react-icons/hi'
@@ -23,6 +34,8 @@ import TagPill from '../../../../components/TagPill'
 import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
 import ServerName from './ServerName'
 import AccordionComponent from '../../../../components/AccordionComponent'
+import NotFound from '../../../../components/NotFound'
+import GTID from '../../../../components/GTID'
 
 function DBServersGrid({
   allDBServers,
@@ -39,14 +52,24 @@ function DBServersGrid({
   } = useSelector((state) => state)
   const { colorMode } = useColorMode()
 
-  const { isOpen: isServiceInfoOpen, onToggle: onServiceInfoToggle } = useDisclosure({ defaultIsOpen: true })
-  const { isOpen: isReplicationVarOpen, onToggle: onReplicationVarToggle } = useDisclosure({ defaultIsOpen: true })
-  const { isOpen: isLeaderStatusOpen, onToggle: onLeaderStatusToggle } = useDisclosure({ defaultIsOpen: true })
+  const { isOpen: isServiceInfoOpen, onToggle: onServiceInfoToggle } = useDisclosure({ defaultIsOpen: false })
+  const { isOpen: isReplicationVarOpen, onToggle: onReplicationVarToggle } = useDisclosure({ defaultIsOpen: false })
+  const { isOpen: isLeaderStatusOpen, onToggle: onLeaderStatusToggle } = useDisclosure({ defaultIsOpen: false })
   const { isOpen: isReplicationStatusOpen, onToggle: onReplicationStatusToggle } = useDisclosure({
     defaultIsOpen: true
   })
 
-  const tagPillSize = 'sm'
+  // const redBlinking = keyframes`
+  //  0% { background-color: rgba(255, 0, 0, 0.1); } /* Red color */
+  // 50% { background-color: rgba(255, 0, 0, 0.3); } /* More visible */
+  // 100% { background-color: rgba(255, 0, 0, 0.1); } /* Red color */
+  // `
+
+  // const orangeBlinking = keyframes`
+  //  0% { background-color: rgba(255, 165, 0, 0.1); } /* Red color */
+  // 50% { background-color: rgba(255, 165, 0, 0.3); } /* More visible */
+  // 100% { background-color: rgba(255, 165, 0, 0.1); } /* Red color */
+  // `
 
   const styles = {
     card: {
@@ -93,11 +116,44 @@ function DBServersGrid({
     }
   }
 
+  function getStyles(baseStyles, gridColor, element) {
+    const colorWeight = element === 'accordionHeader' ? '300' : element === 'gridBody' ? '100' : '500'
+    const colorStyles = {
+      red: {
+        backgroundColor: `red.${colorWeight}`,
+        ...(element !== 'gridBody' ? { color: 'white' } : {}),
+        _hover: {}
+      },
+      orange: {
+        backgroundColor: `orange.${colorWeight}`,
+        ...(element !== 'gridBody' ? { color: 'white' } : {}),
+        _hover: {}
+      }
+    }
+
+    return {
+      ...baseStyles,
+      ...(colorStyles[gridColor] || {})
+    }
+  }
+
   return (
     <SimpleGrid columns={{ base: 1, sm: 1, md: 2, lg: 3 }} spacing={2} spacingY={6} spacingX={6} marginTop='4px'>
       {allDBServers?.length > 0 &&
         allDBServers.map((rowData) => {
           const replicationTags = rowData.replicationTags?.length > 0 ? rowData.replicationTags.split(' ') : []
+          let gridColor = ''
+          switch (rowData.state) {
+            case 'SlaveErr':
+              gridColor = 'orange'
+              break
+            case 'SlaveLate':
+              gridColor = 'orange'
+              break
+            case 'Failed':
+              gridColor = 'red'
+              break
+          }
           const serverInfoData = [
             {
               key: 'Version',
@@ -147,10 +203,10 @@ function DBServersGrid({
           ]
 
           return (
-            <VStack width='100%' key={rowData.id} sx={styles.card}>
-              <Flex as='header' width='100%' sx={styles.header} align='center'>
-                <DBFlavourIcon dbFlavor={rowData.dbVersion.flavor} />
-                <ServerName rowData={rowData} />
+            <VStack width='100%' key={rowData.id} sx={{ ...styles.card }}>
+              <Flex as='header' width='100%' sx={getStyles(styles.header, gridColor, 'gridHeader')} align='center'>
+                <DBFlavourIcon dbFlavor={rowData.dbVersion.flavor} isBlocking={gridColor.length > 0} />
+                <ServerName rowData={rowData} isBlocking={gridColor.length > 0} />
                 <Spacer />
                 <Tooltip label='Compare servers'>
                   <IconButton
@@ -159,10 +215,18 @@ function DBServersGrid({
                     size='sm'
                     fontSize='1.5rem'
                     marginRight={2}
+                    {...(gridColor.length > 0 ? { colorScheme: gridColor } : {})}
                   />
                 </Tooltip>
                 <Tooltip label='Show table view'>
-                  <IconButton icon={<HiTable />} onClick={showTableView} size='sm' fontSize='1.5rem' marginRight={2} />
+                  <IconButton
+                    icon={<HiTable />}
+                    onClick={showTableView}
+                    size='sm'
+                    fontSize='1.5rem'
+                    marginRight={2}
+                    {...(gridColor.length > 0 ? { colorScheme: gridColor } : {})}
+                  />
                 </Tooltip>
                 <ServerMenu
                   from='gridView'
@@ -172,92 +236,26 @@ function DBServersGrid({
                   isDesktop={isDesktop}
                   user={user}
                   openCompareModal={openCompareModal}
+                  {...(gridColor.length > 0 ? { colorScheme: gridColor } : {})}
                 />
               </Flex>
 
-              <Flex direction='column' width='100%' mb={2} gap='0'>
+              <Flex direction='column' width='100%' mb={2} gap='0' sx={getStyles({}, gridColor, 'gridBody')}>
                 <Flex gap='1' wrap='wrap' p='2'>
                   <TagPill
-                    size={tagPillSize}
                     colorScheme={getStatusValue(rowData).split('|')[0]}
                     text={getStatusValue(rowData).split('|')[1]}
+                    isBlinking={gridColor.length > 0}
                   />
                   {replicationTags
-                    .filter((tag) => tag.length > 0)
+                    .filter((tag) => tag === 'READ_ONLY' || tag === 'NO_READ_ONLY')
                     .map((tag, index) => (
-                      <TagPill
-                        key={index}
-                        size={'sm'}
-                        colorScheme={tag.startsWith('NO_') ? 'red' : 'green'}
-                        text={tag}
-                      />
+                      <TagPill key={index} colorScheme={tag.startsWith('NO_') ? 'red' : 'green'} text={tag} />
                     ))}
                 </Flex>
-                <AccordionComponent
-                  heading={'Server Information'}
-                  headerSX={styles.accordionHeader}
-                  panelSX={styles.accordionPanel}
-                  isOpen={isServiceInfoOpen}
-                  onToggle={onServiceInfoToggle}
-                  body={
-                    <TableType2
-                      dataArray={serverInfoData}
-                      templateColumns='30% auto'
-                      gap={1}
-                      boxPadding={1}
-                      minHeight='24px'
-                      sx={styles.tableType2}
-                    />
-                  }
-                />
-
-                <AccordionComponent
-                  heading={'Replication Variables'}
-                  headerSX={styles.accordionHeader}
-                  panelSX={styles.accordionPanel}
-                  isOpen={isReplicationVarOpen}
-                  onToggle={onReplicationVarToggle}
-                  body={
-                    <TableType2
-                      dataArray={replicationVariables}
-                      templateColumns='30% auto'
-                      gap={1}
-                      boxPadding={1}
-                      minHeight='24px'
-                      sx={styles.tableType2}
-                    />
-                  }
-                />
-                <AccordionComponent
-                  heading={'Leader status'}
-                  headerSX={styles.accordionHeader}
-                  panelSX={styles.accordionPanel}
-                  isOpen={isLeaderStatusOpen}
-                  onToggle={onLeaderStatusToggle}
-                  body={
-                    <TableType2
-                      dataArray={leaderStatus}
-                      boxPadding={1}
-                      templateColumns='30% auto'
-                      gap={1}
-                      minHeight='24px'
-                      sx={styles.tableType2}
-                    />
-                  }
-                />
-                {rowData.replications?.length > 0 &&
+                {rowData.replications?.length > 0 ? (
                   rowData.replications.map((replication, index) => {
                     const replicationTableData = [
-                      {
-                        key: 'Semi Sync',
-                        value:
-                          (rowData.state === 'Slave' && rowData.semiSyncSlaveStatus) ||
-                          (rowData.state === 'Master' && rowData.semiSyncMasterStatus) ? (
-                            <CustomIcon icon={HiCheck} color='green' />
-                          ) : (
-                            <CustomIcon icon={HiX} color='red' />
-                          )
-                      },
                       {
                         key: 'IO Thread',
                         value:
@@ -271,6 +269,16 @@ function DBServersGrid({
                         key: 'SQL Thread',
                         value:
                           replication.slaveSqlRunning?.String == 'Yes' ? (
+                            <CustomIcon icon={HiCheck} color='green' />
+                          ) : (
+                            <CustomIcon icon={HiX} color='red' />
+                          )
+                      },
+                      {
+                        key: 'Semi Sync',
+                        value:
+                          (rowData.state === 'Slave' && rowData.semiSyncSlaveStatus) ||
+                          (rowData.state === 'Master' && rowData.semiSyncMasterStatus) ? (
                             <CustomIcon icon={HiCheck} color='green' />
                           ) : (
                             <CustomIcon icon={HiX} color='red' />
@@ -289,11 +297,15 @@ function DBServersGrid({
                       },
                       {
                         key: getCurrentGtidHeader(hasMariadbGtid, hasMysqlGtid),
-                        value: getCurrentGtid(rowData, hasMariadbGtid, hasMysqlGtid)
+                        value: (
+                          <GTID text={getCurrentGtid(rowData, hasMariadbGtid, hasMysqlGtid)} copyIconPosition='end' />
+                        )
                       },
                       {
                         key: getSlaveGtidHeader(hasMariadbGtid, hasMysqlGtid),
-                        value: getSlaveGtid(rowData, hasMariadbGtid, hasMysqlGtid)
+                        value: (
+                          <GTID text={getSlaveGtid(rowData, hasMariadbGtid, hasMysqlGtid)} copyIconPosition='end' />
+                        )
                       },
                       {
                         key: 'Delay',
@@ -312,7 +324,7 @@ function DBServersGrid({
                     return (
                       <AccordionComponent
                         key={index}
-                        headerSX={styles.accordionHeader}
+                        headerSX={getStyles(styles.accordionHeader, gridColor, 'accordionHeader')}
                         panelSX={styles.accordionPanel}
                         isOpen={isReplicationStatusOpen}
                         onToggle={onReplicationStatusToggle}
@@ -323,7 +335,11 @@ function DBServersGrid({
                         }
                         body={
                           <Flex key={index} direction='column' mt={1}>
-                            <TableType3 dataArray={replicationTableData} />
+                            <TableType3
+                              dataArray={replicationTableData}
+                              isBlocking={gridColor.length > 0}
+                              color={gridColor}
+                            />
                             <TableType2
                               dataArray={replicationTableData2}
                               sx={styles.tableType2}
@@ -336,7 +352,82 @@ function DBServersGrid({
                         }
                       />
                     )
-                  })}
+                  })
+                ) : (
+                  <AccordionComponent
+                    headerSX={getStyles(styles.accordionHeader, gridColor, 'accordionHeader')}
+                    panelSX={styles.accordionPanel}
+                    isOpen={isReplicationStatusOpen}
+                    onToggle={onReplicationStatusToggle}
+                    heading={'No Replication Status'}
+                    body={
+                      <Flex direction='column' mt={1} minHeight='295px' align='center' justify='center'>
+                        <NotFound text={'No replication status data found'} />
+                      </Flex>
+                    }
+                  />
+                )}
+                <AccordionComponent
+                  heading={'Server Information'}
+                  headerSX={getStyles(styles.accordionHeader, gridColor, 'accordionHeader')}
+                  panelSX={styles.accordionPanel}
+                  isOpen={isServiceInfoOpen}
+                  onToggle={onServiceInfoToggle}
+                  body={
+                    <TableType2
+                      dataArray={serverInfoData}
+                      templateColumns='30% auto'
+                      gap={1}
+                      boxPadding={1}
+                      minHeight='24px'
+                      sx={styles.tableType2}
+                    />
+                  }
+                />
+
+                <AccordionComponent
+                  heading={'Replication Variables'}
+                  headerSX={getStyles(styles.accordionHeader, gridColor, 'accordionHeader')}
+                  panelSX={styles.accordionPanel}
+                  isOpen={isReplicationVarOpen}
+                  onToggle={onReplicationVarToggle}
+                  body={
+                    <Flex direction='column'>
+                      <Flex gap='1' wrap='wrap' p='2'>
+                        {replicationTags
+                          .filter((tag) => tag.length > 0)
+                          .map((tag, index) => (
+                            <TagPill key={index} colorScheme={tag.startsWith('NO_') ? 'red' : 'green'} text={tag} />
+                          ))}
+                      </Flex>
+                      <TableType2
+                        dataArray={replicationVariables}
+                        templateColumns='30% auto'
+                        gap={1}
+                        boxPadding={1}
+                        minHeight='24px'
+                        sx={styles.tableType2}
+                      />
+                    </Flex>
+                  }
+                />
+                <AccordionComponent
+                  heading={'Leader status'}
+                  headerSX={getStyles(styles.accordionHeader, gridColor, 'accordionHeader')}
+                  panelSX={styles.accordionPanel}
+                  isOpen={isLeaderStatusOpen}
+                  onToggle={onLeaderStatusToggle}
+                  body={
+                    <TableType2
+                      dataArray={leaderStatus}
+                      boxPadding={1}
+                      templateColumns='30% auto'
+                      gap={1}
+                      minHeight='24px'
+                      sx={styles.tableType2}
+                    />
+                  }
+                />
               </Flex>
             </VStack>
           )

@@ -1,7 +1,7 @@
 import React from 'react'
 import { Tabs, TabList, Tab, TabPanels, TabPanel } from '@chakra-ui/react'
 
-function TabItems({ variant = 'enclosed', options, tabContents }) {
+function TabItems({ variant = 'enclosed', options, tabContents, tabIndex, onChange }) {
   const styles = {
     tabList: {
       overflowX: 'auto',
@@ -12,12 +12,13 @@ function TabItems({ variant = 'enclosed', options, tabContents }) {
       }
     },
     tab: {
-      borderTopLeftRadius: '32px',
-      borderTopRightRadius: '32px'
+      p: '8px 24px',
+      borderTopLeftRadius: '16px',
+      borderTopRightRadius: '16px'
     }
   }
   return (
-    <Tabs variant={variant} size='lg'>
+    <Tabs variant={variant} size='lg' index={tabIndex} onChange={onChange}>
       <TabList sx={styles.tabList}>
         {options.map((option, index) => (
           <Tab key={index} sx={styles.tab}>
@@ -27,7 +28,7 @@ function TabItems({ variant = 'enclosed', options, tabContents }) {
       </TabList>
       <TabPanels>
         {tabContents.map((content, index) => (
-          <TabPanel key={index} px='0' py='4'>
+          <TabPanel key={index} px='0' py='2'>
             {content}
           </TabPanel>
         ))}
