@@ -30,7 +30,16 @@ import {
 } from '../../../../redux/clusterSlice'
 import { useState, useEffect } from 'react'
 
-function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from = 'tableView', openCompareModal }) {
+function ServerMenu({
+  clusterName,
+  clusterMasterId,
+  row,
+  user,
+  isDesktop,
+  from = 'tableView',
+  openCompareModal,
+  colorScheme
+}) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
@@ -55,6 +64,7 @@ function ServerMenu({ clusterName, clusterMasterId, row, user, isDesktop, from =
   return (
     <>
       <MenuOptions
+        colorScheme={colorScheme}
         placement={from === 'tableView' ? 'right-end' : 'left-end'}
         subMenuPlacement={isDesktop ? (from === 'tableView' ? 'right-end' : 'left-end') : 'bottom'}
         options={[

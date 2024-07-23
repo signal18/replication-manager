@@ -20,7 +20,7 @@ function Navbar({ username }) {
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const {
     common: { isMobile, isTablet, isDesktop },
-    cluster: { clusterAlerts }
+    cluster: { clusterAlerts, clusterData }
   } = useSelector((state) => state)
 
   const currentTheme = useTheme()
@@ -82,7 +82,7 @@ function Navbar({ username }) {
 
         <Spacer />
         <HStack spacing='4'>
-          {isAuthorized() && (
+          {isAuthorized() && clusterData && (
             <Flex sx={styles.alerts}>
               <AlertBadge
                 isBlocking={true}
@@ -123,7 +123,7 @@ function Navbar({ username }) {
         </HStack>
       </Flex>
       {isAuthorized() && !isDesktop && (
-        <Box mx='auto' p='16px' marginTop='80px'>
+        <Box mx='auto' p='8px' marginTop='60px'>
           <RefreshCounter />
         </Box>
       )}

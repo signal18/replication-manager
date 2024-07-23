@@ -3,13 +3,13 @@ import React from 'react'
 import { GrMysql } from 'react-icons/gr'
 import { SiMariadbfoundation } from 'react-icons/si'
 
-function DBFlavourIcon({ dbFlavor }) {
+function DBFlavourIcon({ dbFlavor, isBlocking }) {
   const { colorMode } = useColorMode()
   const styles = {
     dbFlavor: {
       backgroundColor: 'transparent',
       svg: {
-        fill: colorMode === 'light' ? `blue.900` : `blue.100`,
+        fill: isBlocking ? 'white' : colorMode === 'light' ? `blue.900` : `blue.100`,
         fontSize: '2rem'
       },
       _hover: {}
