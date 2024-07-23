@@ -59,18 +59,6 @@ function DBServersGrid({
     defaultIsOpen: true
   })
 
-  // const redBlinking = keyframes`
-  //  0% { background-color: rgba(255, 0, 0, 0.1); } /* Red color */
-  // 50% { background-color: rgba(255, 0, 0, 0.3); } /* More visible */
-  // 100% { background-color: rgba(255, 0, 0, 0.1); } /* Red color */
-  // `
-
-  // const orangeBlinking = keyframes`
-  //  0% { background-color: rgba(255, 165, 0, 0.1); } /* Red color */
-  // 50% { background-color: rgba(255, 165, 0, 0.3); } /* More visible */
-  // 100% { background-color: rgba(255, 165, 0, 0.1); } /* Red color */
-  // `
-
   const styles = {
     card: {
       borderRadius: '16px',
@@ -117,15 +105,16 @@ function DBServersGrid({
   }
 
   function getStyles(baseStyles, gridColor, element) {
-    const colorWeight = element === 'accordionHeader' ? '300' : element === 'gridBody' ? '100' : '500'
+    const colorWeightLight = element === 'accordionHeader' ? '300' : element === 'gridBody' ? '100' : '500'
+    const colorWeightDark = element === 'accordionHeader' ? '800' : element === 'gridBody' ? '900' : '700'
     const colorStyles = {
       red: {
-        backgroundColor: `red.${colorWeight}`,
+        backgroundColor: colorMode === 'light' ? `red.${colorWeightLight}` : `red.${colorWeightDark}`,
         ...(element !== 'gridBody' ? { color: 'white' } : {}),
         _hover: {}
       },
       orange: {
-        backgroundColor: `orange.${colorWeight}`,
+        backgroundColor: colorMode === 'light' ? `orange.${colorWeightLight}` : `orange.${colorWeightDark}`,
         ...(element !== 'gridBody' ? { color: 'white' } : {}),
         _hover: {}
       }

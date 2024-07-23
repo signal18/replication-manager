@@ -18,18 +18,6 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
     }
   })
 
-  const redBlinking = keyframes`
-   0% { background-color: rgba(255, 0, 0, 0.1); } /* Red color */
-  50% { background-color: rgba(255, 0, 0, 0.3); } /* More visible */
-  100% { background-color: rgba(255, 0, 0, 0.1); } /* Red color */
-  `
-
-  const orangeBlinking = keyframes`
-   0% { background-color: rgba(255, 165, 0, 0.1); } /* Red color */
-  50% { background-color: rgba(255, 165, 0, 0.3); } /* More visible */
-  100% { background-color: rgba(255, 165, 0, 0.1); } /* Red color */
-  `
-
   const styles = {
     table: {
       overflowX: 'auto',
@@ -71,12 +59,10 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
       backgroundColor: colorMode === 'light' ? theme.colors.primary.light : theme.colors.primary.dark
     },
     redBlinking: {
-      backgroundColor: 'red.200'
-      //animation: `${redBlinking} 1s infinite`
+      backgroundColor: colorMode === 'light' ? 'red.200' : 'red.700'
     },
     orangeBlinking: {
-      backgroundColor: 'orange.200'
-      //animation: `${orangeBlinking} 1s infinite`
+      backgroundColor: colorMode === 'light' ? 'orange.200' : 'orange.700'
     }
   }
 
