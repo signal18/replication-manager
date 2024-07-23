@@ -894,6 +894,8 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 		if task.ct > 0 {
 			if err := server.AfterJobProcess(task); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finished %s successfully", task.task)
 			}
 			server.SetNeedRefreshJobs(true)
 		}
