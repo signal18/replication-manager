@@ -2,7 +2,13 @@ import React, { useEffect, useState } from 'react'
 import { Menu, MenuButton, MenuList, MenuItem, IconButton, HStack, Spacer, useDisclosure } from '@chakra-ui/react'
 import { HiChevronRight, HiDotsVertical } from 'react-icons/hi'
 
-function MenuOptions({ options = [], placement = 'bottom', subMenuPlacement = 'bottom', ...rest }) {
+function MenuOptions({
+  options = [],
+  placement = 'bottom',
+  colorScheme = 'blue',
+  subMenuPlacement = 'bottom',
+  ...rest
+}) {
   const [menuOptions, setMenuOptions] = useState([])
   const { isOpen, onOpen, onClose } = useDisclosure()
 
@@ -25,8 +31,9 @@ function MenuOptions({ options = [], placement = 'bottom', subMenuPlacement = 'b
   }
 
   return (
-    <Menu colorScheme='blue' isOpen={isOpen} placement={placement} onClose={onClose} {...rest}>
+    <Menu colorScheme={colorScheme} isOpen={isOpen} placement={placement} onClose={onClose} {...rest}>
       <MenuButton
+        colorScheme={colorScheme}
         onClick={isOpen ? onClose : onOpen}
         aria-label='Options'
         sx={styles.menuButton}

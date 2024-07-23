@@ -20,7 +20,6 @@ function DBServers({ selectedCluster, user }) {
     common: { isDesktop },
     cluster: { clusterServers, clusterMaster }
   } = useSelector((state) => state)
-  const { colorMode } = useColorMode()
   const [data, setData] = useState([])
   const [viewType, setViewType] = useState('table')
   const [hasMariadbGtid, setHasMariadbGtid] = useState(false)
