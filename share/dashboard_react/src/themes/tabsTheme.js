@@ -10,17 +10,19 @@ const baseStyle = definePartsStyle((props) => {
   const theme = useTheme()
   return {
     tab: {
-      px: '24px',
       bg: 'transparent',
-      borderRadius: '16px 16px 0 0',
       borderBottom: 'none',
+      px: '24px',
+      py: '4px',
+      // borderRadius: '0',
+      // borderTopLeftRadius: '24px',
+      // borderTopRightRadius: '24px',
+      // height: '32px',
       _selected: {
         bg: mode('#3182ce', theme.colors.primary.light)(props),
         color: mode(`#fff`, theme.colors.text.light)(props),
         borderBottom: 'none',
         mb: '-2px',
-        px: '32px',
-        fontSize: '18px',
         fontWeight: '700'
       },
       _hover: {

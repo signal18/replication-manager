@@ -1,7 +1,7 @@
 import React from 'react'
 import { Box, Table, TableContainer, Tbody, Td, Th, Thead, Tr, useColorMode } from '@chakra-ui/react'
 
-function TableType3({ dataArray }) {
+function TableType3({ dataArray, isBlocking, color }) {
   const { colorMode } = useColorMode()
 
   const styles = {
@@ -10,7 +10,15 @@ function TableType3({ dataArray }) {
       borderRadius: '16px',
       border: '2px solid',
       margin: 'auto',
-      borderColor: colorMode === 'light' ? `blue.100` : `blue.900`,
+      borderColor: isBlocking
+        ? color === 'red'
+          ? 'red.300'
+          : color === 'orange'
+            ? 'orange.300'
+            : ''
+        : colorMode === 'light'
+          ? `blue.100`
+          : `blue.900`,
       overflow: 'hidden'
     },
     table: {
@@ -21,7 +29,15 @@ function TableType3({ dataArray }) {
       padding: '0',
       whiteSpace: 'break-spaces',
       borderLeft: '2px solid',
-      borderColor: colorMode === 'light' ? `blue.100` : `blue.900`,
+      borderColor: isBlocking
+        ? color === 'red'
+          ? 'red.300'
+          : color === 'orange'
+            ? 'orange.300'
+            : ''
+        : colorMode === 'light'
+          ? `blue.100`
+          : `blue.900`,
       textAlign: 'center'
     },
     bodyColumn: {

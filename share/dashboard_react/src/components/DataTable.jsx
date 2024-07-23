@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Table, Thead, Tbody, Tr, Th, Td, useColorMode } from '@chakra-ui/react'
+import { Table, Thead, Tbody, Tr, Th, Td, useColorMode, keyframes, background } from '@chakra-ui/react'
 import { useReactTable, flexRender, getCoreRowModel, getSortedRowModel } from '@tanstack/react-table'
 import { useTheme } from '@emotion/react'
 
@@ -18,11 +18,24 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
     }
   })
 
+  const redBlinking = keyframes`
+   0% { background-color: rgba(255, 0, 0, 0.1); } /* Red color */
+  50% { background-color: rgba(255, 0, 0, 0.3); } /* More visible */
+  100% { background-color: rgba(255, 0, 0, 0.1); } /* Red color */
+  `
+
+  const orangeBlinking = keyframes`
+   0% { background-color: rgba(255, 165, 0, 0.1); } /* Red color */
+  50% { background-color: rgba(255, 165, 0, 0.3); } /* More visible */
+  100% { background-color: rgba(255, 165, 0, 0.1); } /* Red color */
+  `
+
   const styles = {
     table: {
       overflowX: 'auto',
       width: '100%',
-      paddingLeft: '8px'
+      paddingLeft: '8px',
+      fontSize: '15px'
     },
     headerRow: {
       backgroundColor: colorMode === 'light' ? `blue.100` : `blue.900`
@@ -56,6 +69,14 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
       left: '-16px',
       zIndex: '2',
       backgroundColor: colorMode === 'light' ? theme.colors.primary.light : theme.colors.primary.dark
+    },
+    redBlinking: {
+      backgroundColor: 'red.200'
+      //animation: `${redBlinking} 1s infinite`
+    },
+    orangeBlinking: {
+      backgroundColor: 'orange.200'
+      //animation: `${orangeBlinking} 1s infinite`
     }
   }
 
@@ -89,25 +110,46 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
         ))}
       </Thead>
       <Tbody>
-        {table.getRowModel().rows.map((row, index) => (
-          <Tr key={row.id} sx={index % 2 !== 0 && styles.tableColumnEven}>
-            {row.getVisibleCells().map((cell, index) => {
-              const meta = cell.column.columnDef.meta
-              return (
-                <Td
-                  sx={{
-                    ...styles.tableColumn,
-                    ...(index === fixedColumnIndex ? styles.fixedColumn : {}),
-                    maxWidth: `${cell.column.columnDef.maxWidth}px`
-                  }}
-                  key={cell.id}
-                  isNumeric={meta?.isNumeric}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </Td>
-              )
-            })}
-          </Tr>
-        ))}
+        {table.getRowModel().rows.map((row, index) => {
+          let rowColor = ''
+
+          switch (row.original.state) {
+            case 'SlaveErr':
+              rowColor = 'orange'
+              break
+            case 'SlaveLate':
+              rowColor = 'orange'
+              break
+            case 'Failed':
+              rowColor = 'red'
+              break
+          }
+
+          return (
+            <Tr
+              key={row.id}
+              sx={{
+                ...(index % 2 !== 0 ? styles.tableColumnEven : {}),
+                ...(rowColor === 'red' ? styles.redBlinking : rowColor === 'orange' ? styles.orangeBlinking : {})
+              }}>
+              {row.getVisibleCells().map((cell, index) => {
+                const meta = cell.column.columnDef.meta
+                return (
+                  <Td
+                    sx={{
+                      ...styles.tableColumn,
+                      ...(index === fixedColumnIndex ? styles.fixedColumn : {}),
+                      maxWidth: `${cell.column.columnDef.maxWidth}px`
+                    }}
+                    key={cell.id}
+                    isNumeric={meta?.isNumeric}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </Td>
+                )
+              })}
+            </Tr>
+          )
+        })}
       </Tbody>
     </Table>
   )

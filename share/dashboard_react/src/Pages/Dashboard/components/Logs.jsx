@@ -19,7 +19,7 @@ function Logs({ logs }) {
       paddingBottom: '3px'
     },
     timestamp: {
-      width: '200px'
+      minWidth: '200px'
     }
   }
 

@@ -7,21 +7,31 @@ const baseStyle = defineStyle((props) => {
   }
 })
 
-const outline = defineStyle({
-  border: '2px solid',
-  borderColor: 'blue.500',
-  color: 'blue.500',
-  _hover: {
-    bg: 'blue.50'
+const outline = defineStyle((props) => {
+  const { colorScheme: c } = props
+  return {
+    border: '2px solid',
+    borderColor: `${c}.500`,
+    color: `${c}.500`,
+    _hover: {
+      bg: `${c}.50`
+    }
   }
 })
 
-const solid = defineStyle({
-  bg: 'blue.500',
-  color: 'white',
-  _hover: {
-    bg: 'blue.600'
+const solid = defineStyle((props) => {
+  const { colorScheme: c } = props
+  return {
+    bg: `${c}.500`,
+    color: 'white',
+    _hover: {
+      bg: `${c}.600`
+    }
   }
 })
 
-export const buttonTheme = defineStyleConfig({ baseStyle, variants: { solid, outline } })
+const defaultProps = {
+  colorScheme: 'blue'
+}
+
+export const buttonTheme = defineStyleConfig({ baseStyle, variants: { solid, outline }, defaultProps })
