@@ -244,16 +244,6 @@ function DBServersGrid({
                   rowData.replications.map((replication, index) => {
                     const replicationTableData = [
                       {
-                        key: 'Semi Sync',
-                        value:
-                          (rowData.state === 'Slave' && rowData.semiSyncSlaveStatus) ||
-                          (rowData.state === 'Master' && rowData.semiSyncMasterStatus) ? (
-                            <CustomIcon icon={HiCheck} color='green' />
-                          ) : (
-                            <CustomIcon icon={HiX} color='red' />
-                          )
-                      },
-                      {
                         key: 'IO Thread',
                         value:
                           replication.slaveIoRunning?.String == 'Yes' ? (
@@ -266,6 +256,16 @@ function DBServersGrid({
                         key: 'SQL Thread',
                         value:
                           replication.slaveSqlRunning?.String == 'Yes' ? (
+                            <CustomIcon icon={HiCheck} color='green' />
+                          ) : (
+                            <CustomIcon icon={HiX} color='red' />
+                          )
+                      },
+                      {
+                        key: 'Semi Sync',
+                        value:
+                          (rowData.state === 'Slave' && rowData.semiSyncSlaveStatus) ||
+                          (rowData.state === 'Master' && rowData.semiSyncMasterStatus) ? (
                             <CustomIcon icon={HiCheck} color='green' />
                           ) : (
                             <CustomIcon icon={HiX} color='red' />
@@ -310,7 +310,9 @@ function DBServersGrid({
                       },
                       {
                         key: getSlaveGtidHeader(hasMariadbGtid, hasMysqlGtid),
-                        value: getSlaveGtid(rowData, hasMariadbGtid, hasMysqlGtid)
+                        value: (
+                          <GTID text={getSlaveGtid(rowData, hasMariadbGtid, hasMysqlGtid)} copyIconPosition='end' />
+                        )
                       },
                       {
                         key: 'Delay',
