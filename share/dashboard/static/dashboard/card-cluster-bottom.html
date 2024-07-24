@@ -1,7 +1,7 @@
-<div ng-if="selectedCluster.conf.schedulerJobsSsh" layout="column" layout-gt-xs="row">
+<div ng-if="selectedCluster.config.schedulerJobsSsh" layout="column" layout-gt-xs="row">
   <div flex-gt-xs="40" ng-include src="'static/card-cluster-test.html'"></div>
   <div flex-gt-xs="60" ng-include src="'static/card-cluster-jobs.html'"></div>
 </div>
-<div ng-if="!selectedCluster.conf.schedulerJobsSsh" layout="column" layout-gt-xs="row">
+<div ng-if="!selectedCluster.config.schedulerJobsSsh" layout="column" layout-gt-xs="row">
   <div flex-gt-xs="50" ng-include src="'static/card-cluster-test.html'"></div>
 </div>
