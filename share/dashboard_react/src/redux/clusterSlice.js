@@ -2,24 +2,6 @@ import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import { clusterService } from '../services/clusterService'
 import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
 
-const showSuccessBanner = (message, responseStatus, thunkAPI) => {
-  thunkAPI.dispatch(
-    showSuccessToast({
-      status: 'success',
-      title: message
-    })
-  )
-}
-const showErrorBanner = (message, error, thunkAPI) => {
-  thunkAPI.dispatch(
-    showErrorToast({
-      status: 'error',
-      title: message,
-      description: error
-    })
-  )
-}
-
 export const getClusters = createAsyncThunk('cluster/getClusters', async ({}, thunkAPI) => {
   try {
     const { data, status } = await clusterService.getClusters()
@@ -704,6 +686,53 @@ export const resetSlave = createAsyncThunk('cluster/resetSlave', async ({ cluste
   }
 })
 
+export const provisionProxy = createAsyncThunk('cluster/provisionProxy', async ({ clusterName, proxyId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.provisionProxy(clusterName, proxyId)
+    showSuccessBanner('Provision proxy successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Provision proxy failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const unprovisionProxy = createAsyncThunk(
+  'cluster/unprovisionProxy',
+  async ({ clusterName, proxyId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.unprovisionProxy(clusterName, proxyId)
+      showSuccessBanner('Unprovision proxy successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Unprovision proxy failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const startProxy = createAsyncThunk('cluster/startProxy', async ({ clusterName, proxyId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.startProxy(clusterName, proxyId)
+    showSuccessBanner('Starting proxy successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Starting proxy failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const stopProxy = createAsyncThunk('cluster/stopProxy', async ({ clusterName, proxyId }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.stopProxy(clusterName, proxyId)
+    showSuccessBanner('Stopping proxy successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Stopping proxy failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 const initialState = {
   loading: false,
   error: null,
@@ -832,7 +861,11 @@ export const clusterSlice = createSlice({
         stopSlave.pending,
         toggleReadOnly.pending,
         resetMaster.pending,
-        resetSlave.pending
+        resetSlave.pending,
+        provisionProxy.pending,
+        unprovisionProxy.pending,
+        startProxy.pending,
+        stopProxy.pending
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -895,7 +928,11 @@ export const clusterSlice = createSlice({
         stopSlave.fulfilled,
         toggleReadOnly.fulfilled,
         resetMaster.fulfilled,
-        resetSlave.fulfilled
+        resetSlave.fulfilled,
+        provisionProxy.fulfilled,
+        unprovisionProxy.fulfilled,
+        startProxy.fulfilled,
+        stopProxy.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -958,7 +995,11 @@ export const clusterSlice = createSlice({
         stopSlave.rejected,
         toggleReadOnly.rejected,
         resetMaster.rejected,
-        resetSlave.rejected
+        resetSlave.rejected,
+        provisionProxy.rejected,
+        unprovisionProxy.rejected,
+        startProxy.rejected,
+        stopProxy.rejected
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {

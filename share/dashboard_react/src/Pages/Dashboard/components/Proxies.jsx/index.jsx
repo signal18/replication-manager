@@ -1,20 +1,50 @@
 import { VStack } from '@chakra-ui/react'
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
-import ProxyInfoTable from './ProxyInfoTable'
-import BackendReadTable from './BackendReadTable'
+import ProxyTable from './ProxyTable'
+import ProxyGrid from './ProxyGrid'
 
-function Proxies() {
+function Proxies({ selectedCluster }) {
   const {
     common: { isDesktop },
     cluster: { clusterProxies }
   } = useSelector((state) => state)
 
+  const [viewType, setViewType] = useState('table')
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+    const loggedUser = localStorage.getItem('username')
+    if (loggedUser && selectedCluster?.apiUsers[loggedUser]) {
+      const apiUser = selectedCluster.apiUsers[loggedUser]
+      setUser(apiUser)
+    }
+  }, [selectedCluster])
+
+  const showGridView = () => {
+    setViewType('grid')
+  }
+  const showTableView = () => {
+    setViewType('table')
+  }
+
   return clusterProxies ? (
-    <VStack>
-      <ProxyInfoTable proxies={clusterProxies} isDesktop={isDesktop} />
-      {/* <BackendReadTable backendReadData={clusterProxies?.backendsRead} /> */}
-    </VStack>
+    viewType === 'table' ? (
+      <ProxyTable
+        proxies={clusterProxies}
+        isDesktop={isDesktop}
+        clusterName={selectedCluster?.name}
+        showGridView={showGridView}
+      />
+    ) : (
+      <ProxyGrid
+        proxies={clusterProxies}
+        isDesktop={isDesktop}
+        clusterName={selectedCluster?.name}
+        showTableView={showTableView}
+        user={user}
+      />
+    )
   ) : null
 }
 

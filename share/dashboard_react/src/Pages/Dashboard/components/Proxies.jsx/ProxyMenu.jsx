@@ -2,12 +2,20 @@ import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import { useState, useEffect } from 'react'
+import { provisionProxy, startProxy, stopProxy, unprovisionProxy } from '../../../../redux/clusterSlice'
 
-function ProxyMenu({ row, isDesktop, colorScheme, from = 'tableView' }) {
+function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView' }) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
+  const [proxyName, setProxyName] = useState('')
+
+  useEffect(() => {
+    if (row?.proxyId) {
+      setProxyName(`${row.server} (${row.proxyId})`)
+    }
+  }, [row])
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
@@ -26,16 +34,36 @@ function ProxyMenu({ row, isDesktop, colorScheme, from = 'tableView' }) {
         subMenuPlacement={isDesktop ? (from === 'tableView' ? 'right-end' : 'left-end') : 'bottom'}
         options={[
           {
-            name: 'Provision Proxy'
+            name: 'Provision Proxy',
+            onClick: () => {
+              openConfirmModal()
+              setConfirmTitle(`Confirm provision proxy ${proxyName}?`)
+              setConfirmHandler(() => () => dispatch(provisionProxy({ clusterName, proxyId: row.proxyId })))
+            }
           },
           {
-            name: 'Unprovision Proxy'
+            name: 'Unprovision Proxy',
+            onClick: () => {
+              openConfirmModal()
+              setConfirmTitle(`Confirm unprovision proxy ${proxyName}?`)
+              setConfirmHandler(() => () => dispatch(unprovisionProxy({ clusterName, proxyId: row.proxyId })))
+            }
           },
           {
-            name: 'Start Proxy'
+            name: 'Start Proxy',
+            onClick: () => {
+              openConfirmModal()
+              setConfirmTitle(`Confirm start proxy ${proxyName}?`)
+              setConfirmHandler(() => () => dispatch(startProxy({ clusterName, proxyId: row.proxyId })))
+            }
           },
           {
-            name: 'Stop Proxy'
+            name: 'Stop Proxy',
+            onClick: () => {
+              openConfirmModal()
+              setConfirmTitle(`Confirm stop proxy ${proxyName}?`)
+              setConfirmHandler(() => () => dispatch(stopProxy({ clusterName, proxyId: row.proxyId })))
+            }
           }
         ]}
       />

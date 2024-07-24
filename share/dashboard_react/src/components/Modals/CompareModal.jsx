@@ -29,6 +29,7 @@ import {
 } from '../../Pages/Dashboard/components/DBServers/utils'
 import CheckOrCrossIcon from '../Icons/CheckOrCrossIcon'
 import DBFlavourIcon from '../Icons/DBFlavourIcon'
+import ServerStatus from '../ServerStatus'
 
 function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMariadbGtid, hasMysqlGtid }) {
   const [selectedServer, setSelectedServer] = useState(null)
@@ -91,16 +92,10 @@ function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMari
                   {
                     key: 'Status',
                     value1: (
-                      <TagPill
-                        colorScheme={getStatusValue(compareServer).split('|')[0]}
-                        text={getStatusValue(compareServer).split('|')[1]}
-                      />
+                      <ServerStatus state={compareServer.state} isVirtualMaster={compareServer.isVirtualMaster} />
                     ),
                     value2: (
-                      <TagPill
-                        colorScheme={getStatusValue(selectedServer).split('|')[0]}
-                        text={getStatusValue(selectedServer).split('|')[1]}
-                      />
+                      <ServerStatus state={selectedServer.state} isVirtualMaster={selectedServer.isVirtualMaster} />
                     )
                   },
                   {
