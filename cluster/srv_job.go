@@ -229,6 +229,12 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 		return server.JobBackupPhysical()
 	}
 
+	// Prevent backing up with incompatible tools
+	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") && cluster.Conf.BackupPhysicalType == "xtrabackup" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Master %s MariaDB version is greater than 10.1. Changing from xtrabackup to mariabackup as physical backup tools", server.URL)
+		cluster.Conf.BackupPhysicalType = config.ConstBackupPhysicalTypeMariaBackup
+	}
+
 	cluster.SetInPhysicalBackupState(true)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
