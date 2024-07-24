@@ -29,8 +29,8 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
       backgroundColor: colorMode === 'light' ? `blue.100` : `blue.900`
     },
     tableHeader: {
-      paddingTop: '8px',
-      paddingBottom: '8px',
+      paddingTop: '4px',
+      paddingBottom: '4px',
       paddingLeft: '4px',
       paddingRight: '4px',
       textAlign: 'center',
@@ -39,8 +39,8 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
       borderColor: colorMode === 'light' ? `white` : `blue.900`
     },
     tableColumn: {
-      paddingTop: '8px',
-      paddingBottom: '8px',
+      paddingTop: '2px',
+      paddingBottom: '2px',
       paddingLeft: '4px',
       paddingRight: '4px',
       textAlign: cellValueAlign,

@@ -95,8 +95,7 @@ function DBServers({ selectedCluster }) {
                 <IconButton onClick={showGridView} size='small' icon={<HiViewGrid />} />
               </Tooltip>
             )
-          },
-          enableSorting: false
+          }
         }
       ),
       columnHelper.accessor((row) => <DBFlavourIcon dbFlavor={row.dbVersion.flavor} />, {

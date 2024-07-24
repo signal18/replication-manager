@@ -74,6 +74,15 @@ export const getClusterServers = createAsyncThunk('cluster/getClusterServers', a
   }
 })
 
+export const getClusterProxies = createAsyncThunk('cluster/getClusterProxies', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.getClusterProxies(clusterName)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
 export const switchOverCluster = createAsyncThunk('cluster/switchOverCluster', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.switchOverCluster(clusterName)
@@ -704,6 +713,7 @@ const initialState = {
   clusterAlerts: null,
   clusterMaster: null,
   clusterServers: null,
+  clusterProxies: null,
   refreshInterval: 0,
   loadingStates: {
     switchOver: false,
@@ -753,7 +763,8 @@ export const clusterSlice = createSlice({
         getClusterData.fulfilled,
         getClusterAlerts.fulfilled,
         getClusterMaster.fulfilled,
-        getClusterServers.fulfilled
+        getClusterServers.fulfilled,
+        getClusterProxies.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('getClusterData')) {
@@ -764,6 +775,8 @@ export const clusterSlice = createSlice({
           state.clusterMaster = action.payload.data
         } else if (action.type.includes('getClusterServers')) {
           state.clusterServers = action.payload.data
+        } else if (action.type.includes('getClusterProxies')) {
+          state.clusterProxies = action.payload.data
         }
       }
     )
