@@ -64,7 +64,6 @@ function HADetail({ selectedCluster }) {
     }
     closeModal()
   }
-
   return (
     <>
       <Card
