@@ -36,6 +36,7 @@ import ServerName from './ServerName'
 import AccordionComponent from '../../../../components/AccordionComponent'
 import NotFound from '../../../../components/NotFound'
 import GTID from '../../../../components/GTID'
+import ServerStatus from '../../../../components/ServerStatus'
 
 function DBServersGrid({
   allDBServers,
@@ -232,11 +233,7 @@ function DBServersGrid({
 
               <Flex direction='column' width='100%' mb={2} gap='0' sx={getStyles({}, gridColor, 'gridBody')}>
                 <Flex gap='1' wrap='wrap' p='2'>
-                  <TagPill
-                    colorScheme={getStatusValue(rowData).split('|')[0]}
-                    text={getStatusValue(rowData).split('|')[1]}
-                    isBlinking={gridColor.length > 0}
-                  />
+                  <ServerStatus state={rowData.state} isVirtualMaster={rowData.isVirtualMaster} />
                   {replicationTags
                     .filter((tag) => tag === 'READ_ONLY' || tag === 'NO_READ_ONLY')
                     .map((tag, index) => (
