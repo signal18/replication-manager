@@ -2160,8 +2160,8 @@ type ServerTaskList struct {
 }
 
 type JobEntries struct {
-	Header map[string]bool           `json:"header"`
-	Tasks  map[string]ServerTaskList `json:"tasks"`
+	Header  map[string]bool           `json:"header"`
+	Servers map[string]ServerTaskList `json:"servers"`
 }
 
 func (conf *Config) GetJobTypes() map[string]bool {

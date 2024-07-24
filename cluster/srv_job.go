@@ -137,7 +137,7 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 		var t config.Task
 		rows.Scan(&t.Id, &t.Task, &t.Port, &t.Server, &t.Done, &t.State, &t.Result, &t.Start, &t.End)
 
-		cluster.JobResults.Set(server.URL+"--"+t.Task, &t)
+		server.JobResults.Set(t.Task, &t)
 	}
 
 	return nil
