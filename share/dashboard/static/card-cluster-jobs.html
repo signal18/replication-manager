@@ -23,32 +23,30 @@
       </th>
     </tr>
   </table>
-  <div ng-if="showJobs" ng-repeat="server in servers">
-    <div ng-repeat="(s, jobs) in entries.tasks">
-      <div ng-if="server.url==s">
+  <div ng-if="showJobs" ng-repeat="s in servers">
         <md-card>
           <table ng-if="servers" class="table" style="margin-bottom: 0px;">
             <tr>
               <th colspan="6">
-                {{server.url}}
-                <span ng-switch="server.state">
-                  <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
-                  <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
-                  <span ng-switch-when="Suspect" class="label label-warning">Suspect<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
-                  <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
-                  <span ng-switch-when="StandAlone" class="label label-info">Standalone<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
-                  <span ng-switch-default class="label label-default">{{server.state}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
+                {{s.url}}
+                <span ng-switch="s.state">
+                  <span ng-switch-when="Master" class="label label-primary">Master<label ng-if="s.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="Failed" class="label label-danger">Failed<label ng-if="s.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="Suspect" class="label label-warning">Suspect<label ng-if="s.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error<label ng-if="s.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-when="StandAlone" class="label label-info">Standalone<label ng-if="s.isVirtualMaster==true">-VMaster</label></span>
+                  <span ng-switch-default class="label label-default">{{s.state}}<label ng-if="s.isVirtualMaster==true">-VMaster</label></span>
                 </span>
                 <span class="pull-right">
-                  <button ng-click="togglePanel('jobs',server.url)">
-                    <span ng-show="showJobs[server.url]">Hide</span>
-                    <span ng-show="!showJobs[server.url]">Show</span>
+                  <button ng-click="togglePanel('jobs',s.id)">
+                    <span ng-show="showJobs[s.id]">Hide</span>
+                    <span ng-show="!showJobs[s.id]">Show</span>
                   </button>
                 </span>
               </th>
             </tr>
             </table>
-            <table ng-if="showJobs[server.url]" class="table" style="margin-top: 0px;">
+            <table ng-if="showJobs[s.id]" class="table" style="margin-top: 0px;">
             <tr>
               <th class="task-task">Task</th>
               <th class="task-state">State</th>
@@ -56,7 +54,7 @@
               <th class="task-dt">Start</th>
               <th class="task-dt">End</th>
             </tr>
-            <tr ng-repeat="(i, t) in jobs.tasks">
+            <tr ng-repeat="(i, t) in entries.servers[s.id].tasks">
               <td class="task-task">{{t.task}}</td>
               <td class="task-state" ng-switch="t.state">
                 <span ng-switch-when="0" class="label label-default">Init</span>

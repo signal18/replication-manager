@@ -9,7 +9,6 @@ package cluster
 import (
 	"errors"
 	"sort"
-	"strings"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -55,8 +54,8 @@ func (cluster *Cluster) JobAnalyzeSQL() error {
 func (cluster *Cluster) JobsGetEntries() (config.JobEntries, error) {
 	var t config.Task
 	var entries config.JobEntries = config.JobEntries{
-		Header: config.GetLabelsAsMap(t),
-		Tasks:  make(map[string]config.ServerTaskList),
+		Header:  config.GetLabelsAsMap(t),
+		Servers: make(map[string]config.ServerTaskList),
 	}
 
 	for _, s := range cluster.Servers {
@@ -65,15 +64,12 @@ func (cluster *Cluster) JobsGetEntries() (config.JobEntries, error) {
 			Tasks:     make([]config.Task, 0),
 		}
 
-		cluster.JobResults.Range(func(k, v any) bool {
-			keys := strings.Split(k.(string), "--")
-			if s.URL == keys[0] {
-				sTask.Tasks = append(sTask.Tasks, *v.(*config.Task))
-			}
+		s.JobResults.Range(func(k, v any) bool {
+			sTask.Tasks = append(sTask.Tasks, *v.(*config.Task))
 			return true
 		})
 		sort.Sort(config.TaskSorter(sTask.Tasks))
-		entries.Tasks[s.URL] = sTask
+		entries.Servers[s.Id] = sTask
 	}
 
 	return entries, nil

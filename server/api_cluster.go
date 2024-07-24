@@ -54,7 +54,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 
 	router.Handle("/api/clusters/{clusterName}/jobs", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerGetJobEntries)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGetJobEntries)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/backups", negroni.New(
@@ -2384,4 +2384,22 @@ func (repman *ReplicationManager) handlerMuxClusterResetGraphiteFilterList(w htt
 		return
 	}
 	return
+}
+
+func (repman *ReplicationManager) handlerMuxClusterGetJobEntries(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		entries, _ := mycluster.JobsGetEntries()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(entries)
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
 }

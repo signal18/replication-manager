@@ -131,7 +131,7 @@ app.controller('DashboardController', function (
 
   $scope.entries = {
     header: [],
-    tasks: []
+    servers: []
   }
 
   $scope.monitors = [
@@ -486,7 +486,7 @@ app.controller('DashboardController', function (
       Jobs.get($scope.selectedClusterName)
           .then(function (jobEntries) {
             $scope.entries.header = jobEntries.header;
-            $scope.entries.tasks = jobEntries.tasks;
+            $scope.entries.servers = jobEntries.servers;
           })
           .catch(function (error) {
             console.error('Error getting job entries:', error);
