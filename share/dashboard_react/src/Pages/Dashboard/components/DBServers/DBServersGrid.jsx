@@ -91,7 +91,8 @@ function DBServersGrid({
     tableType2: {
       padding: '0.5',
       marginTop: '2',
-      fontSize: '15px'
+      fontSize: '15px',
+      width: '100%'
     },
     accordionHeader: {
       borderRadius: '0',
@@ -349,8 +350,39 @@ function DBServersGrid({
                     onToggle={onReplicationStatusToggle}
                     heading={'No Replication Status'}
                     body={
-                      <Flex direction='column' mt={1} minHeight='295px' align='center' justify='center'>
+                      <Flex direction='column' mt={4} minHeight='295px' align='center' justify='flex-start'>
                         <NotFound text={'No replication status data found'} />
+                        <TableType2
+                          dataArray={[
+                            {
+                              key: getUsingGtidHeader(hasMariadbGtid, hasMysqlGtid),
+                              value: getUsingGtid(rowData, hasMariadbGtid, hasMysqlGtid)
+                            },
+                            {
+                              key: getCurrentGtidHeader(hasMariadbGtid, hasMysqlGtid),
+                              value: (
+                                <GTID
+                                  text={getCurrentGtid(rowData, hasMariadbGtid, hasMysqlGtid)}
+                                  copyIconPosition='end'
+                                />
+                              )
+                            },
+                            {
+                              key: getSlaveGtidHeader(hasMariadbGtid, hasMysqlGtid),
+                              value: (
+                                <GTID
+                                  text={getSlaveGtid(rowData, hasMariadbGtid, hasMysqlGtid)}
+                                  copyIconPosition='end'
+                                />
+                              )
+                            }
+                          ]}
+                          sx={{ ...styles.tableType2 }}
+                          gap={1}
+                          boxPadding={1}
+                          minHeight='24px'
+                          templateColumns='30% auto'
+                        />
                       </Flex>
                     }
                   />
