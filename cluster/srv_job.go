@@ -1408,7 +1408,6 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 		return err
 	}
 	defer client.Close()
-	go server.JobWriteLogAPI()
 
 	var (
 		stdout bytes.Buffer
@@ -1850,57 +1849,6 @@ func (server *ServerMonitor) CallbackMysqldump(dt DBTask) error {
 	}
 
 	return err
-}
-
-func (server *ServerMonitor) JobWriteLogAPI() error {
-	cluster := server.ClusterGroup
-	if cluster.IsInFailover() {
-		return errors.New("Cancel dbjob via ssh during failover")
-	}
-	client, err := server.GetCluster().OnPremiseConnect(server)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "OnPremise run  job  %s", err)
-		return err
-	}
-	defer client.Close()
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Write-Log connected")
-
-	var (
-		stdout bytes.Buffer
-		stderr bytes.Buffer
-	)
-	scriptpath := server.Datadir + "/init/init/parselog"
-
-	if _, err := os.Stat(scriptpath); os.IsNotExist(err) && !server.IsConfigGen {
-		server.GetDatabaseConfig()
-	}
-
-	filerc, err2 := os.Open(scriptpath)
-	if err2 != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Parse job's log %s, scriptpath : %s", err2, scriptpath)
-		return errors.New("Cancel parselog can't open script")
-	}
-	defer filerc.Close()
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(filerc)
-
-	buf2 := strings.NewReader(server.GetSshEnv())
-	r := io.MultiReader(buf2, buf)
-
-	if err := client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Parse job's log: %s", stderr.String())
-	}
-
-	//only parse if debug
-	if cluster.Conf.IsEligibleForPrinting(config.ConstLogModTask, config.LvlDbg) {
-		out := stdout.String()
-		errstr := stderr.String()
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, errstr)
-	}
-
-	return nil
 }
 
 func (server *ServerMonitor) ProcessReseedPhysical() error {
