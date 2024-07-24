@@ -108,7 +108,7 @@ type ServerMonitor struct {
 	HaveReadOnly                bool                    `json:"haveReadOnly"`
 	HaveNoMasterOnStart         bool                    `json:"haveNoMasterOnStart"`
 	HaveSlaveIdempotent         bool                    `json:"haveSlaveIdempotent"`
-	HaveSlaveOptimistic         bool                    `json:"haveSlaveOptimistic "`
+	HaveSlaveOptimistic         bool                    `json:"haveSlaveOptimistic"`
 	HaveSlaveSerialized         bool                    `json:"haveSlaveSerialized"`
 	HaveSlaveAggressive         bool                    `json:"haveSlaveAggressive"`
 	HaveSlaveMinimal            bool                    `json:"haveSlaveMinimal"`
@@ -190,6 +190,7 @@ type ServerMonitor struct {
 	SlaveVariables              SlaveVariables          `json:"slaveVariables"`
 	IsReseeding                 bool                    `json:"isReseeding"`
 	ReplicationTags             string                  `json:"replicationTags"`
+	JobResults                  *config.TasksMap        `json:"jobResults"`
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 	InPurgingBinaryLog          bool
@@ -254,6 +255,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	server.IsGroupReplicationSlave = false
 	server.IsGroupReplicationMaster = false
+	server.JobResults = config.NewTasksMap()
 	server.NeedRefreshJobs = true
 	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		// OpenSVC and Sharding proxy monitoring
