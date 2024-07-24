@@ -14,8 +14,6 @@ function PageContainer({ children }) {
 
   const [fullVersion, setFullVersion] = useState('')
 
-  const [fullVersion, setFullVersion] = useState('')
-
   const {
     common: { isDesktop },
     auth: { isLogged, user },
@@ -46,7 +44,6 @@ function PageContainer({ children }) {
       background: colorMode === 'light' ? 'blue.100' : 'blue.900'
     }
   }
-  console.log('fullversion::', fullVersion)
 
   useEffect(() => {
     if (clusters?.length > 0) {
