@@ -263,9 +263,6 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	}
 
 	jobid, err := server.JobInsertTask(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
-	if err == nil {
-		go server.JobRunViaSSH()
-	}
 
 	return jobid, err
 	//	}
@@ -317,10 +314,6 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
 
-	if cluster.Conf.ProvOrchestrator == "onpremise" && cluster.Conf.OnPremiseSSH {
-		go server.JobRunViaSSH()
-	}
-
 	cluster.SetState("WARN0074", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0074"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 
 	return jobid, err
@@ -371,9 +364,6 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
-	if cluster.Conf.ProvOrchestrator == "onpremise" && cluster.Conf.OnPremiseSSH {
-		go server.JobRunViaSSH()
-	}
 
 	cluster.SetState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0076"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "REJOIN", ServerUrl: server.URL})
 
