@@ -1,10 +1,11 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Table, Thead, Tbody, Tr, Th, Td, useColorMode, keyframes, background } from '@chakra-ui/react'
 import { useReactTable, flexRender, getCoreRowModel, getSortedRowModel } from '@tanstack/react-table'
 import { useTheme } from '@emotion/react'
 
 export function DataTable({ data, columns, fixedColumnIndex, enableSorting = false, cellValueAlign = 'center' }) {
   const [sorting, setSorting] = useState([])
+  const [hiddenColumns, setHiddenColumns] = useState([])
   const theme = useTheme()
   const { colorMode } = useColorMode()
   const table = useReactTable({
@@ -13,10 +14,19 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
     getCoreRowModel: getCoreRowModel(),
     onSortingChange: setSorting,
     getSortedRowModel: getSortedRowModel(),
+    initialState: {
+      columnVisibility: {
+        proxyId: false
+      }
+    },
     state: {
       sorting
     }
   })
+
+  useEffect(() => {
+    setHiddenColumns(['proxyId'])
+  }, [])
 
   const styles = {
     table: {
@@ -46,7 +56,8 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
       textAlign: cellValueAlign,
       borderRight: '1px solid',
       borderColor: colorMode === 'light' ? `blue.100` : `blue.900`,
-      borderBottom: 'none'
+      borderBottom: 'none',
+      height: '36px'
     },
     tableColumnEven: {
       backgroundColor: colorMode === 'light' ? '#f7f8fe' : '#2A3048'
@@ -103,7 +114,6 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
       <Tbody>
         {table.getRowModel().rows.map((row, index) => {
           let rowColor = ''
-
           switch (row.original.state) {
             case 'SlaveErr':
               rowColor = 'orange'

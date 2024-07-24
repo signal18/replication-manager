@@ -8,6 +8,7 @@ export const clusterService = {
   getClusterMaster,
   getClusterServers,
   getClusterProxies,
+  //cluster apis
   switchOverCluster,
   failOverCluster,
   resetFailOverCounter,
@@ -33,6 +34,7 @@ export const clusterService = {
   configReload,
   configDiscoverDB,
   configDynamic,
+  //db server apis
   setMaintenanceMode,
   promoteToLeader,
   setAsUnrated,
@@ -57,7 +59,12 @@ export const clusterService = {
   stopSlave,
   toggleReadOnly,
   resetMaster,
-  resetSlave
+  resetSlave,
+  //proxy apis
+  provisionProxy,
+  unprovisionProxy,
+  startProxy,
+  stopProxy
 }
 
 //#region main
@@ -291,3 +298,22 @@ function resetSlave(clusterName, serverId) {
   return getRequest(`clusters/${clusterName}/servers/${serverId}/actions/reset-slave-all`)
 }
 //#endregion cluster>servers apis
+
+//#region cluster>proxy apis
+function provisionProxy(clusterName, proxyId) {
+  return getRequest(`clusters/${clusterName}/proxies/${proxyId}/actions/provision`)
+}
+
+function unprovisionProxy(clusterName, proxyId) {
+  return getRequest(`clusters/${clusterName}/proxies/${proxyId}/actions/unprovision`)
+}
+
+function startProxy(clusterName, proxyId) {
+  return getRequest(`clusters/${clusterName}/proxies/${proxyId}/actions/start`)
+}
+
+function stopProxy(clusterName, proxyId) {
+  return getRequest(`clusters/${clusterName}/proxies/${proxyId}/actions/stop`)
+}
+
+//#endregion cluster>proxy apis

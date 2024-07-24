@@ -14,13 +14,13 @@ import CheckOrCrossIcon from '../../../../components/Icons/CheckOrCrossIcon'
 import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
 import ServerName from './ServerName'
 import GTID from '../../../../components/GTID'
+import ServerStatus from '../../../../components/ServerStatus'
 
 function DBServers({ selectedCluster }) {
   const {
     common: { isDesktop },
     cluster: { clusterServers, clusterMaster }
   } = useSelector((state) => state)
-  const { colorMode } = useColorMode()
   const [data, setData] = useState([])
   const [user, setUser] = useState(null)
   const [viewType, setViewType] = useState('table')
@@ -111,23 +111,11 @@ function DBServers({ selectedCluster }) {
         id: 'serverName'
       }),
 
-      columnHelper.accessor(
-        (row) => {
-          const [color, value] = getStatusValue(row).split('|')
-          return (
-            <TagPill
-              colorScheme={color}
-              text={value}
-              isBlinking={color === 'red' || color === 'orange' || color === 'yellow'}
-            />
-          )
-        },
-        {
-          cell: (info) => info.getValue(),
-          header: 'Status',
-          id: 'status'
-        }
-      ),
+      columnHelper.accessor((row) => <ServerStatus state={row.state} />, {
+        cell: (info) => info.getValue(),
+        header: 'Status',
+        id: 'status'
+      }),
       columnHelper.accessor((row) => getUsingGtid(row, hasMariadbGtid, hasMysqlGtid), {
         cell: (info) => info.getValue(),
         header: () => {
