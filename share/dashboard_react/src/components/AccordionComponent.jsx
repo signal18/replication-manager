@@ -3,6 +3,10 @@ import { Accordion, AccordionButton, AccordionIcon, AccordionItem, AccordionPane
 
 function AccordionComponent({ heading, body, sx, panelSX, headerSX, isOpen = null, onToggle }) {
   const styles = {
+    header: {
+      paddingTop: '6px',
+      paddingBottom: '6px'
+    },
     panel: {
       padding: 0
     }
@@ -11,7 +15,7 @@ function AccordionComponent({ heading, body, sx, panelSX, headerSX, isOpen = nul
     <Accordion allowToggle={true} sx={sx} defaultIndex={0} {...(isOpen !== null ? { index: isOpen ? [0] : [] } : {})}>
       <AccordionItem>
         <h2>
-          <AccordionButton sx={headerSX} {...(onToggle ? { onClick: onToggle } : {})}>
+          <AccordionButton sx={{ ...styles.header, ...headerSX }} {...(onToggle ? { onClick: onToggle } : {})}>
             <Box as='span' flex='1' textAlign='left'>
               {heading}
             </Box>

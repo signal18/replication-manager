@@ -9,6 +9,7 @@ import {
   getClusterAlerts,
   getClusterData,
   getClusterMaster,
+  getClusterProxies,
   getClusters,
   getClusterServers,
   getMonitoredData,
@@ -61,6 +62,7 @@ function Home() {
       dispatch(getClusterAlerts({ clusterName: selectedClusterNameRef.current }))
       dispatch(getClusterMaster({ clusterName: selectedClusterNameRef.current }))
       dispatch(getClusterServers({ clusterName: selectedClusterNameRef.current }))
+      dispatch(getClusterProxies({ clusterName: selectedClusterNameRef.current }))
     }
   }
   const handleTabChange = (tabIndex) => {
