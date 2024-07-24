@@ -401,7 +401,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	}
 
 	//Purge binlog on restore
-	if cluster.Conf.ForceBinlogPurgeOnRestore {
+	if cluster.Conf.ForceBinlogPurgeOnRestore && server.IsReseeding {
 
 		//Only purge if oldest master binlog has more than 2 files
 		prevbinlog := cluster.SlavesOldestMasterFile.Suffix - 1
