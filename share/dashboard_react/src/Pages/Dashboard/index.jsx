@@ -9,6 +9,7 @@ import ClusterTests from './components/ClusterTests'
 import Logs from './components/Logs'
 import DBServers from './components/DBServers'
 import { css } from '@emotion/react'
+import Proxies from './components/Proxies.jsx'
 
 function Dashboard({ selectedCluster }) {
   const {
@@ -54,6 +55,7 @@ function Dashboard({ selectedCluster }) {
         />
       )}
 
+      <AccordionComponent heading={'Proxies'} panelSX={{ overflowX: 'auto', p: 0 }} body={<Proxies />} />
       <AccordionComponent heading={'Cluster Logs'} body={<Logs logs={selectedCluster?.log?.buffer} />} />
       <AccordionComponent heading={'Job Logs'} body={<Logs logs={selectedCluster?.logTask?.buffer} />} />
     </Flex>
