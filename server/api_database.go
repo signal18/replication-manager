@@ -1811,7 +1811,7 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 		if node != nil {
 			// Decrypt the encrypted data
 			key := crypto.GetSHA256Hash(node.Pass)
-			iv := crypto.GetMD5Hash("signal18")
+			iv := crypto.GetMD5Hash(node.Pass)
 
 			err := node.WriteJobLogs(mod, decodedData.Data, key, iv)
 			if err != nil {
