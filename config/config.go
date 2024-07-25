@@ -2271,3 +2271,8 @@ func IsValidLogLevel(lvl string) bool {
 	}
 	return false
 }
+
+type LogEntry struct {
+	Server string `json:"server"`
+	Log    string `json:"log"`
+}
