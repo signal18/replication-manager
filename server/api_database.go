@@ -9,6 +9,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -16,7 +17,7 @@ import (
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/crypto"
 )
 
 func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Router) {
@@ -1774,10 +1775,6 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 	}
 }
 
-type LogEntry struct {
-	Log string `json:"log"`
-}
-
 func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1785,57 +1782,46 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 	if mycluster != nil {
 		var mod int
 		switch vars["task"] {
-		case "mariabackup", "xtrabackup":
+		case "mariabackup", "xtrabackup", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup":
 			mod = config.ConstLogModBackupStream
-		case "error", "slowquery", "zfssnapback", "optimize", "reseedxtrabackup", "reseedmariabackup", "reseedmysqldump", "flashbackxtrabackup", "flashbackmariadbackup", "flashbackmysqldump", "stop", "restart", "start":
+		case "error", "slowquery", "zfssnapback", "optimize", "reseedmysqldump", "flashbackmysqldump", "stop", "restart", "start":
 			mod = config.ConstLogModTask
 		default:
 			http.Error(w, "Bad request: Task is not registered", http.StatusBadRequest)
 			return
 		}
 
-		// Decode the request body
-		var logEntry LogEntry
-		decoder := json.NewDecoder(r.Body)
-		if err := decoder.Decode(&logEntry); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		var decodedData struct {
+			Data string `json:"data"`
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Decode reading body :%s", err.Error()), http.StatusBadRequest)
 			return
 		}
-		var nodename string
+
+		err = json.Unmarshal(body, &decodedData)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Decode body :%s. Err: %s", string(body), err.Error()), http.StatusBadRequest)
+			return
+		}
+
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		if node != nil || proxy != nil {
-			raddr := strings.Split(r.RemoteAddr, ":")
-			var valid bool
-			if node != nil && node.IP == raddr[0] {
-				nodename = node.Name
-				valid = true
-			} else if proxy != nil {
-				if myip, err := dbhelper.CheckHostAddr(proxy.GetHost()); err == nil && myip == raddr[0] {
-					nodename = proxy.GetName()
-					valid = true
-				}
+		if node != nil {
+			// Decrypt the encrypted data
+			key := crypto.GetSHA256Hash(node.Pass)
+			iv := crypto.GetMD5Hash("signal18")
+
+			err := node.WriteJobLogs(mod, decodedData.Data, key, iv)
+			if err != nil {
+				http.Error(w, "Error decrypting data : "+err.Error(), http.StatusInternalServerError)
+				return
 			}
 
-			if valid {
-				lines := strings.Split(strings.ReplaceAll(logEntry.Log, "\\n", "\n"), "\n")
-				// Process each line
-				for _, line := range lines {
-					if strings.TrimSpace(line) != "" {
-						// Process the individual log line (e.g., write to file, send to a logging system, etc.)
-						if strings.Contains(line, "ERROR") {
-							mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, config.LvlErr, "[%s] %s", nodename, line)
-						} else {
-							mycluster.LogModulePrintf(mycluster.Conf.Verbose, mod, config.LvlDbg, "[%s] %s", nodename, line)
-						}
-					}
-				}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(ApiResponse{Data: "Message logged", Success: true})
 
-				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(ApiResponse{Data: "Message logged", Success: true})
-			} else {
-				http.Error(w, "The requester address is not same with node/proxy address", 500)
-			}
 		} else {
 			http.Error(w, "No server", 500)
 		}
