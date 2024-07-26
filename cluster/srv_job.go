@@ -1977,7 +1977,7 @@ func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv string) er
 
 func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int) error {
 	cluster := server.ClusterGroup
-	if entry.Server != server.Host {
+	if entry.Server != server.URL {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Log entries and source mismatch: %s", server.URL)
 		return errors.New("Log entries and source mismatch: %s")
 	}
