@@ -6,7 +6,7 @@ button.serverName {
   font-size: 15px;
 
   .text {
-    color: var(--white-color);
+    color: var(--white-color) !important;
   }
   &:hover {
     background-color: transparent;

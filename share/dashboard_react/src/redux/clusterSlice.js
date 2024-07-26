@@ -777,6 +777,13 @@ export const clusterSlice = createSlice({
       localStorage.setItem('refresh_interval', action.payload.interval)
       state.refreshInterval = action.payload.interval
     },
+    pauseAutoReload: (state, action) => {
+      if (action.payload.isPaused) {
+        localStorage.setItem('pause_auto_reload', true)
+      } else {
+        localStorage.removeItem('pause_auto_reload')
+      }
+    },
     setCluster: (state, action) => {
       state.clusterData = action.payload.data
     },
@@ -1032,7 +1039,7 @@ export const clusterSlice = createSlice({
   }
 })
 
-export const { setRefreshInterval, setCluster, clearCluster } = clusterSlice.actions
+export const { setRefreshInterval, setCluster, clearCluster, pauseAutoReload } = clusterSlice.actions
 
 // this is for configureStore
 export default clusterSlice.reducer

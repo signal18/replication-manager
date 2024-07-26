@@ -58,11 +58,14 @@ function Home() {
       dispatch(getClusters({}))
       dispatch(getMonitoredData({}))
     } else if (selectedClusterNameRef.current) {
-      dispatch(getClusterData({ clusterName: selectedClusterNameRef.current }))
-      dispatch(getClusterAlerts({ clusterName: selectedClusterNameRef.current }))
-      dispatch(getClusterMaster({ clusterName: selectedClusterNameRef.current }))
-      dispatch(getClusterServers({ clusterName: selectedClusterNameRef.current }))
-      dispatch(getClusterProxies({ clusterName: selectedClusterNameRef.current }))
+      const isAutoReloadPaused = localStorage.getItem('pause_auto_reload')
+      if (!isAutoReloadPaused) {
+        dispatch(getClusterData({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getClusterAlerts({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getClusterMaster({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getClusterServers({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getClusterProxies({ clusterName: selectedClusterNameRef.current }))
+      }
     }
   }
   const handleTabChange = (tabIndex) => {

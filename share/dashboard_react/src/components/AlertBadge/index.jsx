@@ -13,7 +13,7 @@ function AlertBadge({ isBlocking = false, count, text, onClick, showText }) {
       className={styles.badge}>
       <Box
         as='span'
-        className={`${styles.alertCount} ${isBlocking ? styles.blocker : styles.warning} ${isBlocking && count > 0 ? styles.blinking : {}}`}>
+        className={`alertCount ${styles.alertCount} ${isBlocking ? styles.blocker : styles.warning} ${isBlocking && count > 0 ? styles.blinking : {}}`}>
         {count}
       </Box>
       <CustomIcon icon={isBlocking ? HiBan : HiExclamation} />

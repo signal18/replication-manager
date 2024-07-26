@@ -109,7 +109,7 @@ function DBServers({ selectedCluster }) {
         id: 'serverName'
       }),
 
-      columnHelper.accessor((row) => <ServerStatus state={row.state} />, {
+      columnHelper.accessor((row) => <ServerStatus state={row.state} isBlinking={true} />, {
         cell: (info) => info.getValue(),
         header: 'Status',
         id: 'status'

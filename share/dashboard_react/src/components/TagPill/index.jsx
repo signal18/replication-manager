@@ -8,7 +8,7 @@ function TagPill({ size = 'sm', text, variant = 'solid', colorScheme, isBlinking
       size={size}
       variant={variant}
       colorScheme={colorScheme}
-      className={`${styles.tag} ${isBlinking && styles.blinking}`}>
+      className={`tagpill ${styles.tag} ${isBlinking && styles.blinking}`}>
       {text}
     </Tag>
   )
