@@ -912,6 +912,7 @@ func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
 	case "xtrabackup", "mariabackup":
 		server.SetBackupPhysicalCookie()
 	case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
+		defer server.SetInReseedBackup(false)
 		if _, err := server.StartSlave(); err != nil {
 			errStr = err.Error()
 			// Only set as failed if no error connection
