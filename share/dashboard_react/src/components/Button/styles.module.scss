@@ -1,0 +1,40 @@
+@keyframes blink {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+button.button {
+  &.defaultColor {
+    background-color: var(--secondary-color);
+    color: var(--white-color);
+    &:hover {
+      background-color: var(--primary-color);
+    }
+  }
+
+  &.small {
+    font-size: rem(14);
+    height: rem(32);
+    padding: rem(8) rem(12);
+  }
+  &.medium {
+    font-size: rem(16);
+    height: rem(36);
+    padding: rem(10) rem(12);
+  }
+  &.large {
+    font-size: rem(18);
+    height: rem(40);
+    padding: rem(12);
+  }
+  &.blinking {
+    animation: blink 1s infinite;
+  }
+}

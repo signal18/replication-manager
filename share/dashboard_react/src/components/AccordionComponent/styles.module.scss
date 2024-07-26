@@ -1,0 +1,25 @@
+.accordionItem {
+  border-bottom-width: 0 !important;
+  border-top-width: 0 !important;
+  .button {
+    padding-top: rem(6);
+    padding-bottom: rem(6);
+    background-color: var(--tertiary-color);
+    border-top-left-radius: $border-radius-sm;
+    border-top-right-radius: $border-radius-sm;
+    font-weight: bold;
+    &:hover {
+      background-color: var(--tertiary-color) !important;
+    }
+    .icon {
+      font-size: rem(24);
+    }
+  }
+  .panel {
+    padding: 0;
+    border-bottom-left-radius: $border-radius-sm;
+    border-bottom-right-radius: $border-radius-sm;
+    border: 1px solid;
+    border-color: var(--tertiary-color);
+  }
+}

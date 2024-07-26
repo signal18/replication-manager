@@ -3,7 +3,6 @@ import {
   FormControl,
   FormLabel,
   FormErrorMessage,
-  IconButton,
   InputGroup,
   InputRightElement,
   useDisclosure,
@@ -11,6 +10,7 @@ import {
   Input
 } from '@chakra-ui/react'
 import { HiEye, HiEyeOff } from 'react-icons/hi'
+import IconButton from './IconButton'
 
 const PasswordControl = forwardRef((props, ref) => {
   const { isOpen, onToggle } = useDisclosure()
@@ -30,10 +30,10 @@ const PasswordControl = forwardRef((props, ref) => {
       <InputGroup>
         <InputRightElement>
           <IconButton
-            sx={props.styles.revealButton}
+            className={props.className}
             variant='text'
             aria-label={isOpen ? 'Mask password' : 'Reveal password'}
-            icon={isOpen ? <HiEyeOff /> : <HiEye />}
+            icon={isOpen ? HiEyeOff : HiEye}
             onClick={onClickReveal}
           />
         </InputRightElement>
@@ -48,7 +48,7 @@ const PasswordControl = forwardRef((props, ref) => {
           {...props}
         />
       </InputGroup>
-      <FormErrorMessage sx={props.styles.errorMessage}>{props.passwordError}</FormErrorMessage>
+      <FormErrorMessage className={props.errorMessage}>{props.passwordError}</FormErrorMessage>
     </FormControl>
   )
 })

@@ -1,0 +1,46 @@
+@keyframes blink {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.badge {
+  border-radius: $border-radius-sm !important;
+  padding: rem(4);
+  position: relative;
+  padding-right: rem(16) !important;
+  padding-left: rem(8);
+  display: flex !important;
+  align-items: center;
+  gap: rem(4);
+}
+.alertCount {
+  width: rem(24);
+  height: rem(24);
+  border-radius: 50%;
+  background-color: var(--white-color);
+  position: absolute;
+  right: rem(-10);
+  top: rem(-10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.blocker {
+  background: var(--danger-color);
+  color: var(--white-color) !important;
+}
+.blinking {
+  animation: blink 1s infinite;
+}
+
+.warning {
+  background: var(--warning-color);
+  color: var(--white-color) !important;
+}

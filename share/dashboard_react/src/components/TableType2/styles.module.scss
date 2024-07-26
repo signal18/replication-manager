@@ -1,0 +1,8 @@
+.container {
+  font-size: rem(15);
+  .valueContainer {
+    text-align: start;
+    background-color: var(--gray-color);
+    border-radius: rem(6);
+  }
+}

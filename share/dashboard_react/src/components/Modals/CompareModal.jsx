@@ -1,6 +1,5 @@
 import {
   Box,
-  Button,
   Flex,
   Modal,
   ModalBody,
@@ -30,6 +29,7 @@ import {
 import CheckOrCrossIcon from '../Icons/CheckOrCrossIcon'
 import DBFlavourIcon from '../Icons/DBFlavourIcon'
 import ServerStatus from '../ServerStatus'
+import Button from '../Button'
 
 function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMariadbGtid, hasMysqlGtid }) {
   const [selectedServer, setSelectedServer] = useState(null)
@@ -67,7 +67,7 @@ function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMari
         <ModalBody>
           {selectedServer ? (
             <Flex direction={'column'} gap={4} maxHeight='80vh' overflow='auto'>
-              <Button width='fit-content' p='3' onClick={() => setSelectedServer(null)}>
+              <Button width='fit-content' onClick={() => setSelectedServer(null)}>
                 Change
               </Button>
               <TableType4Compare
@@ -198,15 +198,6 @@ function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMari
             <Dropdown options={serverOptions} onChange={(server) => setSelectedServer(server.data)} />
           )}
         </ModalBody>
-
-        {/* <ModalFooter>
-          <Button variant='outline' mr={3} onClick={closeModal}>
-            Cancel
-          </Button>
-          <Button colorScheme='blue' onClick={onConfirmClick}>
-            Confirm
-          </Button>
-        </ModalFooter> */}
       </ModalContent>
     </Modal>
   )

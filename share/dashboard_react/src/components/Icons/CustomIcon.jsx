@@ -1,15 +1,16 @@
-import { Icon, useColorMode } from '@chakra-ui/react'
+import { Icon } from '@chakra-ui/react'
 import React from 'react'
+import { useTheme } from '../../ThemeProvider'
 
-function CustomIcon({ icon, color, fontSize = '1.5rem' }) {
-  const { colorMode } = useColorMode()
+function CustomIcon({ icon, color, fontSize = '1.5rem', fill }) {
+  const { theme } = useTheme()
 
   const styles = {
     icon: {
       fontSize: fontSize
     },
     green: {
-      fill: colorMode === 'light' ? 'green' : 'lightgreen'
+      fill: theme === 'light' ? 'green' : 'lightgreen'
     },
     red: { fill: 'red' },
 
@@ -17,7 +18,7 @@ function CustomIcon({ icon, color, fontSize = '1.5rem' }) {
       fill: 'orange'
     }
   }
-  return <Icon sx={{ ...styles.icon, ...styles[color] }} as={icon} />
+  return <Icon sx={{ ...styles.icon, ...styles[color] }} as={icon} fill={fill} />
 }
 
 export default CustomIcon

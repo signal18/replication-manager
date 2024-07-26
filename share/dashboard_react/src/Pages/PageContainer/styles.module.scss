@@ -1,0 +1,20 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+
+  .pageContent {
+    z-index: 1;
+    // margin-top: rem(54);
+    margin-top: 0;
+    @include breakpoint('xl') {
+      margin-top: rem(54) !important;
+    }
+  }
+  .footer {
+    padding: rem(8) rem(16);
+    background-color: var(--tertiary-color) !important;
+    color: var(--text-color) !important;
+  }
+}
