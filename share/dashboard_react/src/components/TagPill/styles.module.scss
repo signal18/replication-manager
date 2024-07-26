@@ -9,10 +9,10 @@
     opacity: 1;
   }
 }
-.blinking {
-  animation: blink 1s infinite;
-}
 
-.tag {
+span.tag {
   color: var(--white-color) !important;
+  &.blinking {
+    animation: blink 1s infinite;
+  }
 }

@@ -130,6 +130,9 @@ function DBServersGrid({
             case 'SlaveLate':
               gridColor = 'orange'
               break
+            case 'Suspect':
+              gridColor = 'orange'
+              break
             case 'Failed':
               gridColor = 'red'
               break
@@ -219,7 +222,7 @@ function DBServersGrid({
 
               <Flex direction='column' width='100%' mb={2} gap='0' sx={getStyles({}, gridColor, 'gridBody')}>
                 <Flex gap='1' wrap='wrap' p='2'>
-                  <ServerStatus state={rowData.state} isVirtualMaster={rowData.isVirtualMaster} />
+                  <ServerStatus state={rowData.state} isVirtualMaster={rowData.isVirtualMaster} isBlinking={true} />
                   {replicationTags
                     .filter((tag) => tag === 'READ_ONLY' || tag === 'NO_READ_ONLY')
                     .map((tag, index) => (

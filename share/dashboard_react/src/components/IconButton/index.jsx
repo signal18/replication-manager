@@ -13,17 +13,19 @@ function IconButton({
   tooltip,
   style,
   className,
+  colorScheme,
   ...rest
 }) {
   return tooltip ? (
     <Tooltip label={tooltip}>
       <ChakraIconButton
         style={style}
-        className={`${styles.button} ${className}`}
+        className={`${colorScheme ? '' : styles.button} ${className}`}
         onClick={onClick}
         icon={<CustomIcon icon={icon} fontSize={iconFontsize} fill={iconFillColor} />}
         size={size}
         variant={variant}
+        colorScheme={colorScheme}
         {...rest}
       />
     </Tooltip>

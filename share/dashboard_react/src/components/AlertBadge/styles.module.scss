@@ -31,16 +31,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-}
-.blocker {
-  background: var(--danger-color);
-  color: var(--white-color) !important;
-}
-.blinking {
-  animation: blink 1s infinite;
+  &.blocker {
+    background: var(--danger-color);
+    color: var(--white-color) !important;
+  }
+  &.warning {
+    background: var(--warning-color);
+    color: var(--white-color) !important;
+  }
 }
 
-.warning {
-  background: var(--warning-color);
-  color: var(--white-color) !important;
+.blinking {
+  animation: blink 1s infinite;
 }

@@ -7,7 +7,10 @@ function AccordionComponent({ heading, body, sx, panelSX, headerSX, isOpen = nul
     <Accordion allowToggle={true} sx={sx} defaultIndex={0} {...(isOpen !== null ? { index: isOpen ? [0] : [] } : {})}>
       <AccordionItem className={styles.accordionItem}>
         <h2>
-          <AccordionButton className={styles.button} sx={headerSX} {...(onToggle ? { onClick: onToggle } : {})}>
+          <AccordionButton
+            className={`${styles.button} ${headerSX ? '' : styles.baseColor}`}
+            sx={headerSX}
+            {...(onToggle ? { onClick: onToggle } : {})}>
             <Box as='span' flex='1' textAlign='left'>
               {heading}
             </Box>

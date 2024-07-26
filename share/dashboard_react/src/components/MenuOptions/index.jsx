@@ -26,7 +26,7 @@ function MenuOptions({
         colorScheme={colorScheme}
         onClick={isOpen ? onClose : onOpen}
         aria-label='Options'
-        className={styles.menuButton}
+        className={`${styles.menuButton} ${colorScheme === 'blue' ? styles.baseColor : ''}`}
         as={IconButton}
         icon={<HiDotsVertical />}></MenuButton>
       <MenuList className={styles.menuList}>

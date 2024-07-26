@@ -15,6 +15,7 @@ import {
   getClusterMaster,
   getClusterProxies,
   getClusterServers,
+  pauseAutoReload,
   setRefreshInterval
 } from '../redux/clusterSlice'
 import { getRefreshInterval } from '../utility/common'
@@ -36,6 +37,10 @@ function RefreshCounter({ clusterName }) {
       dispatch(setRefreshInterval({ interval: AppSettings.DEFAULT_INTERVAL }))
     }
   }, [])
+
+  useEffect(() => {
+    dispatch(pauseAutoReload({ isPaused }))
+  }, [isPaused])
 
   const handleCountChange = (value, number) => {
     setSeconds(number)

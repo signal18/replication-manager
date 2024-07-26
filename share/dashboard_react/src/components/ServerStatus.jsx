@@ -8,6 +8,7 @@ function ServerStatus({ state, isVirtualMaster, isBlinking = false }) {
 
   useEffect(() => {
     if (state) {
+      setStateValue(state.toUpperCase())
       switch (state) {
         case 'SlaveErr':
           setStateValue('SLAVE_ERROR')
@@ -44,7 +45,7 @@ function ServerStatus({ state, isVirtualMaster, isBlinking = false }) {
     <TagPill
       colorScheme={colorScheme}
       text={`${stateValue}${isVirtual}`}
-      isBlinking={isBlinking && (color === 'red' || color === 'orange' || color === 'yellow')}
+      isBlinking={isBlinking && (colorScheme === 'red' || colorScheme === 'orange' || colorScheme === 'yellow')}
     />
   )
 }
