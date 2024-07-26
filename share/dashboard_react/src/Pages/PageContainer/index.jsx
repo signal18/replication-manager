@@ -13,7 +13,6 @@ function PageContainer({ children }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { colorMode } = useColorMode()
-
   const [fullVersion, setFullVersion] = useState('')
 
   const {
@@ -28,6 +27,12 @@ function PageContainer({ children }) {
     md: 'tablet',
     lg: 'desktop'
   })
+
+  useEffect(() => {
+    if (clusters?.length > 0) {
+      setFullVersion(clusters[0].config?.fullVersion)
+    }
+  }, [clusters])
 
   const styles = {
     container: {
