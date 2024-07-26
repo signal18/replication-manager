@@ -1,5 +1,4 @@
 import {
-  Button,
   FormControl,
   FormErrorMessage,
   FormLabel,
@@ -16,8 +15,8 @@ import {
 import React, { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { addServer } from '../../redux/clusterSlice'
-import { Select } from '@chakra-ui/react'
 import Dropdown from '../Dropdown'
+import Button from '../Button'
 
 function NewServerModal({ clusterName, isOpen, closeModal }) {
   const dispatch = useDispatch()
@@ -92,11 +91,11 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
           </Stack>
         </ModalBody>
 
-        <ModalFooter>
-          <Button colorScheme='blue' mr={3} onClick={closeModal}>
+        <ModalFooter gap={3} margin='auto'>
+          <Button colorScheme='blue' size='medium' variant='outline' onClick={closeModal}>
             No
           </Button>
-          <Button variant='ghost' onClick={handleCreateNewServer}>
+          <Button onClick={handleCreateNewServer} size='medium'>
             Yes
           </Button>
         </ModalFooter>

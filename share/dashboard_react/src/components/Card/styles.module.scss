@@ -1,0 +1,14 @@
+.card {
+  border-radius: $border-radius-sm;
+  border: rem(1) solid;
+  border-color: var(--tertiary-color);
+  .heading {
+    text-align: center;
+    padding: rem(4) rem(8);
+    background-color: var(--tertiary-color);
+    border-top-left-radius: $border-radius-sm;
+    border-top-right-radius: $border-radius-sm;
+    color: var(--text-color);
+    font-weight: bold;
+  }
+}

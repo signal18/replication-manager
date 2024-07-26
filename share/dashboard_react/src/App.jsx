@@ -3,8 +3,10 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
 import Cluster from './Pages/Cluster'
 import ToastManager from './components/ToastManager'
-const Login = lazy(() => import('./Pages/Login'))
-const Home = lazy(() => import('./Pages/Home'))
+import Login from './Pages/Login'
+// const Login = lazy(() => import('./Pages/Login'))
+// const Home = lazy(() => import('./Pages/Home'))
+import Home from './Pages/Home'
 
 function App() {
   return (

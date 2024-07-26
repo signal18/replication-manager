@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useSelector } from 'react-redux'
 import CustomIcon from '../../../../components/Icons/CustomIcon'
 import { HiThumbDown, HiThumbUp, HiViewGrid } from 'react-icons/hi'
-import { Box, IconButton, Tooltip, useColorMode } from '@chakra-ui/react'
+import { Box, Tooltip, useColorMode } from '@chakra-ui/react'
 import { DataTable } from '../../../../components/DataTable'
 import TagPill from '../../../../components/TagPill'
 import { createColumnHelper } from '@tanstack/react-table'
@@ -15,6 +15,7 @@ import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
 import ServerName from './ServerName'
 import GTID from '../../../../components/GTID'
 import ServerStatus from '../../../../components/ServerStatus'
+import IconButton from '../../../../components/IconButton'
 
 function DBServers({ selectedCluster }) {
   const {
@@ -90,11 +91,7 @@ function DBServers({ selectedCluster }) {
           cell: (info) => info.getValue(),
           id: 'options',
           header: () => {
-            return (
-              <Tooltip label='Show grid view'>
-                <IconButton onClick={showGridView} size='small' icon={<HiViewGrid />} />
-              </Tooltip>
-            )
+            return <IconButton onClick={showGridView} icon={HiViewGrid} tooltip='Show grid view' />
           }
         }
       ),

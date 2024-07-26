@@ -1,0 +1,19 @@
+.navbarContainer {
+  width: 100%;
+  box-shadow: $box-shadow-md;
+  position: fixed;
+  z-index: 2;
+  width: '100%';
+  padding: rem(8);
+  background: var(--body-bg-color);
+  display: flex;
+  align-items: center;
+  gap: rem(24);
+}
+.logo {
+  background-color: #eff2fe;
+  border-radius: 4px;
+}
+.alerts {
+  gap: rem(16);
+}

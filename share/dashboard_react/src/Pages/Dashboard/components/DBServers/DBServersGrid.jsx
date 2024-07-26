@@ -1,15 +1,4 @@
-import {
-  Flex,
-  HStack,
-  IconButton,
-  keyframes,
-  SimpleGrid,
-  Spacer,
-  Tooltip,
-  useColorMode,
-  useDisclosure,
-  VStack
-} from '@chakra-ui/react'
+import { Flex, SimpleGrid, Spacer, Tooltip, useColorMode, useDisclosure, VStack } from '@chakra-ui/react'
 import React from 'react'
 import { useSelector } from 'react-redux'
 import ServerMenu from './ServerMenu'
@@ -25,7 +14,6 @@ import {
   getFailCount,
   getSlaveGtid,
   getSlaveGtidHeader,
-  getStatusValue,
   getUsingGtid,
   getUsingGtidHeader,
   getVersion
@@ -37,6 +25,7 @@ import AccordionComponent from '../../../../components/AccordionComponent'
 import NotFound from '../../../../components/NotFound'
 import GTID from '../../../../components/GTID'
 import ServerStatus from '../../../../components/ServerStatus'
+import IconButton from '../../../../components/IconButton'
 
 function DBServersGrid({
   allDBServers,
@@ -199,26 +188,23 @@ function DBServersGrid({
                 <DBFlavourIcon dbFlavor={rowData.dbVersion.flavor} isBlocking={gridColor.length > 0} />
                 <ServerName rowData={rowData} isBlocking={gridColor.length > 0} />
                 <Spacer />
-                <Tooltip label='Compare servers'>
-                  <IconButton
-                    icon={<MdCompare />}
-                    onClick={() => openCompareModal(rowData)}
-                    size='sm'
-                    fontSize='1.5rem'
-                    marginRight={2}
-                    {...(gridColor.length > 0 ? { colorScheme: gridColor } : {})}
-                  />
-                </Tooltip>
-                <Tooltip label='Show table view'>
-                  <IconButton
-                    icon={<HiTable />}
-                    onClick={showTableView}
-                    size='sm'
-                    fontSize='1.5rem'
-                    marginRight={2}
-                    {...(gridColor.length > 0 ? { colorScheme: gridColor } : {})}
-                  />
-                </Tooltip>
+
+                <IconButton
+                  icon={MdCompare}
+                  onClick={() => openCompareModal(rowData)}
+                  marginRight={2}
+                  tooltip='Compare servers'
+                  {...(gridColor.length > 0 ? { colorScheme: gridColor } : {})}
+                />
+
+                <IconButton
+                  icon={HiTable}
+                  onClick={showTableView}
+                  marginRight={2}
+                  tooltip='Show table view'
+                  {...(gridColor.length > 0 ? { colorScheme: gridColor } : {})}
+                />
+
                 <ServerMenu
                   from='gridView'
                   clusterMasterId={clusterMasterId}

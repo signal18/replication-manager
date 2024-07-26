@@ -1,0 +1,13 @@
+.menuButton {
+  width: rem(32);
+  height: rem(32) !important;
+  min-width: rem(32) !important;
+  background-color: var(--secondary-color) !important;
+  &:hover {
+    background-color: var(--primary-color);
+  }
+}
+.menuList {
+  z-index: 3;
+  position: absolute;
+}

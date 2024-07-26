@@ -1,4 +1,4 @@
-import { Flex, IconButton, SimpleGrid, Spacer, Tooltip, useColorMode, VStack, Text, Box } from '@chakra-ui/react'
+import { Flex, SimpleGrid, Spacer, Tooltip, useColorMode, VStack, Text, Box } from '@chakra-ui/react'
 import React from 'react'
 import ProxyMenu from './ProxyMenu'
 import { HiTable } from 'react-icons/hi'
@@ -8,6 +8,7 @@ import AccordionComponent from '../../../../components/AccordionComponent'
 import ProxyStatus from './ProxyStatus'
 import ServerStatus from '../../../../components/ServerStatus'
 import TagPill from '../../../../components/TagPill'
+import IconButton from '../../../../components/IconButton'
 
 function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop }) {
   const { colorMode } = useColorMode()
@@ -78,9 +79,9 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop }) {
                 <ProxyLogo proxyName={rowData.type} />
                 <Text margin='auto' w='100%'>{`${rowData.host}:${rowData.port}`}</Text>
                 <Spacer />
-                <Tooltip label='Show table view'>
-                  <IconButton icon={<HiTable />} onClick={showTableView} size='sm' fontSize='1.5rem' marginRight={2} />
-                </Tooltip>
+
+                <IconButton icon={HiTable} onClick={showTableView} marginRight={2} tooltip='Show table view' />
+
                 <ProxyMenu from='gridView' row={rowData} clusterName={clusterName} isDesktop={isDesktop} user={user} />
               </Flex>
 
