@@ -1,15 +1,14 @@
 import React, { useMemo, useEffect, useState } from 'react'
 import { DataTable } from '../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
-import { Box, Heading, IconButton, Tooltip } from '@chakra-ui/react'
+import { Box, Tooltip } from '@chakra-ui/react'
 import ProxyMenu from './ProxyMenu'
-import { HiExclamation, HiViewGrid } from 'react-icons/hi'
-import CheckOrCrossIcon from '../../../../components/Icons/CheckOrCrossIcon'
-import CustomIcon from '../../../../components/Icons/CustomIcon'
+import { HiViewGrid } from 'react-icons/hi'
 import TagPill from '../../../../components/TagPill'
 import ServerStatus from '../../../../components/ServerStatus'
 import ProxyLogo from './ProxyLogo'
 import ProxyStatus from './ProxyStatus'
+import IconButton from '../../../../components/IconButton'
 
 function ProxyTable({ proxies, isDesktop, clusterName, showGridView }) {
   const [tableData, setTableData] = useState([])
@@ -70,11 +69,7 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView }) {
           cell: (info) => info.getValue(),
           id: 'options',
           header: () => {
-            return (
-              <Tooltip label='Show grid view'>
-                <IconButton onClick={showGridView} size='small' icon={<HiViewGrid />} />
-              </Tooltip>
-            )
+            return <IconButton onClick={showGridView} icon={HiViewGrid} tooltip='Show grid view' />
           }
         }
       ),

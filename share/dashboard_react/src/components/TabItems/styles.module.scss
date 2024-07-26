@@ -1,0 +1,23 @@
+.tabList {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  &::-webkit-scrollbar {
+    display: 'none';
+  }
+
+  .tab {
+    padding: rem(8) rem(24);
+    border-top-left-radius: $border-radius-sm;
+    border-top-right-radius: $border-radius-sm;
+    color: var(--text-color);
+    &:hover {
+      border: rem(1) solid var(--text-color) !important;
+    }
+  }
+  [aria-selected='true'] {
+    background-color: var(--primary-color) !important;
+    color: var(--white-color) !important;
+    font-weight: bold;
+  }
+}
