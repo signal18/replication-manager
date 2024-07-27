@@ -1688,9 +1688,7 @@ func (cluster *Cluster) SetForceBinlogPurgeMinReplica(value int) {
 }
 
 func (cluster *Cluster) SetCarbonLogger(value *logrus.Logger) {
-	cluster.Lock()
 	cluster.clog = value
-	cluster.Unlock()
 }
 
 func (cluster *Cluster) SetLogGraphiteLevel(value int) {
@@ -1714,57 +1712,41 @@ func (cluster *Cluster) SetLogBinlogPurgeLevel(value int) {
 }
 
 func (cluster *Cluster) SetInPhysicalBackupState(value bool) {
-	cluster.Lock()
 	cluster.InPhysicalBackup = value
-	cluster.Unlock()
 }
 
 func (cluster *Cluster) SetInLogicalBackupState(value bool) {
-	cluster.Lock()
 	cluster.InLogicalBackup = value
-	cluster.Unlock()
 }
 
 func (cluster *Cluster) SetInBinlogBackupState(value bool) {
-	cluster.Lock()
 	cluster.InBinlogBackup = value
-	cluster.Unlock()
 }
 
 func (cluster *Cluster) SetInResticBackupState(value bool) {
-	cluster.Lock()
 	cluster.InResticBackup = value
-	cluster.Unlock()
 }
 
 func (cluster *Cluster) SetGraphiteWhitelistTemplate(value string) {
-	cluster.Lock()
 	cluster.Conf.GraphiteWhitelistTemplate = value
-	cluster.Unlock()
 }
 
 func (cluster *Cluster) SetTopologyTarget(value string) {
-	cluster.Lock()
 	cluster.Conf.TopologyTarget = value
-	cluster.Unlock()
 }
 
 func (cluster *Cluster) SetMonitorIgnoreErrors(value string) {
 	if value == "{undefined}" {
 		value = ""
 	}
-	cluster.Lock()
 	cluster.Conf.MonitorIgnoreErrors = value
-	cluster.Unlock()
 }
 
 func (cluster *Cluster) SetMonitorCaptureTrigger(value string) {
 	if value == "{undefined}" {
 		value = ""
 	}
-	cluster.Lock()
 	cluster.Conf.MonitorCaptureTrigger = value
-	cluster.Unlock()
 }
 
 func (cluster *Cluster) SetMasterNil() {
@@ -1772,7 +1754,5 @@ func (cluster *Cluster) SetMasterNil() {
 }
 
 func (cluster *Cluster) SetApiTokenTimeout(value int) {
-	cluster.Lock()
 	cluster.Conf.TokenTimeout = value
-	cluster.Unlock()
 }
