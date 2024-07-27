@@ -9,3 +9,4 @@ maxscale*.rpm
 .idea
 googleapis/
 .vscode/
+.vscode-server/
