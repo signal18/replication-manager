@@ -117,7 +117,6 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 	}
 
 	server.SetLoadingJobList(true)
-	server.SetNeedRefreshJobs(false)
 	defer server.SetLoadingJobList(false)
 
 	if server.IsDown() {
@@ -140,6 +139,8 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 
 		server.JobResults.Set(t.Task, &t)
 	}
+
+	server.SetNeedRefreshJobs(false)
 
 	return nil
 }
