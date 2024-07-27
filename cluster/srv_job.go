@@ -134,10 +134,16 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 	defer rows.Close()
 
 	for rows.Next() {
-		t := new(config.Task)
-		rows.Scan(&t.Id, &t.Task, &t.Port, &t.Server, &t.Done, &t.State, &t.Result, &t.Start, &t.End)
-
-		server.JobResults.Set(t.Task, t)
+		var t config.Task
+		var res sql.NullString
+		var end sql.NullInt64
+		err := rows.Scan(&t.Id, &t.Task, &t.Port, &t.Server, &t.Done, &t.State, &res, &t.Start, &end)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error retrieving job data from %s: %s", server.URL, err.Error())
+		}
+		t.Result = res.String
+		t.End = end.Int64
+		server.JobResults.Set(t.Task, &t)
 	}
 
 	server.SetNeedRefreshJobs(false)
