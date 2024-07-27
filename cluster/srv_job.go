@@ -134,10 +134,10 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 	defer rows.Close()
 
 	for rows.Next() {
-		var t config.TaskSQL
+		t := new(config.Task)
 		rows.Scan(&t.Id, &t.Task, &t.Port, &t.Server, &t.Done, &t.State, &t.Result, &t.Start, &t.End)
 
-		server.JobResults.Set(t.Task, t.Convert())
+		server.JobResults.Set(t.Task, t)
 	}
 
 	server.SetNeedRefreshJobs(false)
