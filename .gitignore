@@ -10,3 +10,4 @@ maxscale*.rpm
 googleapis/
 .vscode/
 .vscode-server/
+.cache/
