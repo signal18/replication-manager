@@ -117,13 +117,14 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 	}
 
 	server.SetLoadingJobList(true)
+	server.SetNeedRefreshJobs(false)
 	defer server.SetLoadingJobList(false)
 
 	if server.IsDown() {
 		return errors.New("Node is down")
 	}
 
-	query := "SELECT id, task, port, server, done, state, result, UNIX_TIMESTAMP(start) utc_start, UNIX_TIMESTAMP(end) utc_end FROM replication_manager_schema.jobs"
+	query := "SELECT id, task, port, server, done, state, result, floor(UNIX_TIMESTAMP(start)) start, floor(UNIX_TIMESTAMP(end)) end FROM replication_manager_schema.jobs"
 
 	rows, err := server.Conn.Queryx(query)
 	if err != nil {
@@ -132,7 +133,6 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 		return err
 	}
 	defer rows.Close()
-	defer server.SetNeedRefreshJobs(false)
 
 	for rows.Next() {
 		var t config.Task
