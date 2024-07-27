@@ -8,3 +8,4 @@ build*
 maxscale*.rpm
 .idea
 googleapis/
+.vscode/
