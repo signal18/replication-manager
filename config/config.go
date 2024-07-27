@@ -2107,15 +2107,41 @@ type JobResult struct {
 }
 
 type Task struct {
-	Id     int64  `json:"id"`
-	Task   string `json:"task"`
-	Port   int    `json:"port"`
-	Server string `json:"server"`
-	Done   int    `json:"done"`
-	State  int    `json:"state"`
-	Result string `json:"result"`
-	Start  int64  `json:"start"`
-	End    int64  `json:"end"`
+	Id     int64  `json:"id" db:"id"`
+	Task   string `json:"task" db:"task"`
+	Port   int    `json:"port" db:"port"`
+	Server string `json:"server" db:"server"`
+	Done   int    `json:"done" db:"done"`
+	State  int    `json:"state" db:"state"`
+	Result string `json:"result" db:"result"`
+	Start  int64  `json:"start" db:"utc_start"`
+	End    int64  `json:"end" db:"utc_end"`
+}
+
+type TaskSQL struct {
+	Id     sql.NullInt64 `json:"id" db:"id"`
+	Task   string        `json:"task" db:"task"`
+	Port   int           `json:"port" db:"port"`
+	Server string        `json:"server" db:"server"`
+	Done   int           `json:"done" db:"done"`
+	State  int           `json:"state" db:"state"`
+	Result string        `json:"result" db:"result"`
+	Start  sql.NullInt64 `json:"start" db:"start"`
+	End    sql.NullInt64 `json:"end" db:"end"`
+}
+
+func (ts *TaskSQL) Convert() *Task {
+	return &Task{
+		Id:     ts.Id.Int64,
+		Task:   ts.Task,
+		Port:   ts.Port,
+		Server: ts.Server,
+		Done:   ts.Done,
+		State:  ts.State,
+		Result: ts.Result,
+		Start:  ts.Start.Int64,
+		End:    ts.End.Int64,
+	}
 }
 
 type TaskSorter []Task
