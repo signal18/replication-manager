@@ -876,6 +876,41 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 	return nil
 }
 
+func (server *ServerMonitor) JobsCheckErrors() error {
+	var err error
+
+	cluster := server.ClusterGroup
+	if server.IsDown() {
+		return nil
+	}
+
+	rows, err := server.Conn.Queryx("SELECT task, result FROM replication_manager_schema.jobs WHERE done=0 AND state=5")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
+		server.JobsCreateTable()
+		return err
+	}
+	defer rows.Close()
+
+	ct := 0
+	p := make([]string, 0)
+	for rows.Next() {
+		ct++
+		var task, result sql.NullString
+		rows.Scan(&task, &result)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job %s ended with ERROR: %s", task.String, result.String)
+		p = append(p, "'"+task.String+"'")
+	}
+
+	if ct > 0 {
+		query := "UPDATE replication_manager_schema.jobs SET done=1 WHERE done=0 AND state=5 and task in (%s)"
+		server.ExecQueryNoBinLog(fmt.Sprintf(query, strings.Join(p, ",")))
+		server.SetNeedRefreshJobs(true)
+	}
+
+	return err
+}
+
 func (server *ServerMonitor) JobsCheckFinished() error {
 	var err error
 
@@ -884,7 +919,7 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 		return nil
 	}
 
-	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE done=1 AND state=3 group by task")
+	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE done=1 AND state=3")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
 		server.JobsCreateTable()
