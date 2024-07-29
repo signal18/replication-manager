@@ -884,6 +884,7 @@ func (server *ServerMonitor) JobsCheckPending() error {
 	if server.IsReseeding {
 		return nil
 	}
+
 	//server.JobInsertTask("", "", "")
 	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE state=2 group by task ")
 	if err != nil {
@@ -900,7 +901,7 @@ func (server *ServerMonitor) JobsCheckPending() error {
 			case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
 				res := "Replication-manager is down while preparing task, cancelling operation for data safety."
 				query := "UPDATE replication_manager_schema.jobs SET state=5, result='%s' where task = '%s'"
-				server.ExecQueryNoBinLog(fmt.Sprintf(query, res, task))
+				server.ExecQueryNoBinLog(fmt.Sprintf(query, res, task.task))
 				server.SetNeedRefreshJobs(true)
 			}
 		}
