@@ -6,17 +6,9 @@ import styles from './styles.module.scss'
 
 function DBFlavourIcon({ dbFlavor, isBlocking }) {
   return dbFlavor === 'MariaDB' ? (
-    <IconButton
-      icon={SiMariadbfoundation}
-      className={`${styles.dbFlavor} ${isBlocking ? styles.whiteIcon : styles.primaryIcon}`}
-      tooltip={dbFlavor}
-    />
+    <IconButton icon={SiMariadbfoundation} className={`${styles.dbFlavor} ${styles.whiteIcon}`} tooltip={dbFlavor} />
   ) : dbFlavor === 'MySQL' ? (
-    <IconButton
-      icon={GrMysql}
-      className={`${styles.dbFlavor} ${isBlocking ? styles.whiteIcon : styles.primaryIcon}`}
-      tooltip={dbFlavor}
-    />
+    <IconButton icon={GrMysql} className={`${styles.dbFlavor} ${styles.whiteIcon}`} tooltip={dbFlavor} />
   ) : null
 }
 

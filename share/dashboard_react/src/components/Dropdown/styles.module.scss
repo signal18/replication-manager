@@ -2,10 +2,11 @@
   height: fit-content;
   padding: rem(16);
   white-space: break-spaces;
-  background-color: var(--tertiary-color) !important;
+  background-color: var(--quaternary-color) !important;
+  box-shadow: $box-shadow-md;
   &:hover,
   &[data-active] {
-    background-color: var(--tertiary-color);
+    background-color: var(--quaternary-color);
   }
 }
 .lightMenuItem {

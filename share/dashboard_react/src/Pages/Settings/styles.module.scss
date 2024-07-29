@@ -1,6 +1,30 @@
-.settingsContainer {
+div.settingsContainer {
   margin-top: rem(16);
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: rem(8);
+  button.accordionHeader {
+    background-color: var(--gray-color) !important;
+    &[aria-expanded='true'] {
+      background-color: var(--secondary-color) !important;
+      &:hover {
+        background-color: var(--secondary-color) !important;
+      }
+
+      h4,
+      svg {
+        color: var(--white-color);
+      }
+    }
+    h4 {
+      text-transform: uppercase;
+      text-align: center;
+    }
+    &:hover {
+      background-color: var(--tertiary-color) !important;
+    }
+  }
   .listContainer {
     flex-basis: 10%;
     @include breakpoint('md', 'lg') {

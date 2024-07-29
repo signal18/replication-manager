@@ -1,14 +1,15 @@
 import { Flex, SimpleGrid, Spacer, Tooltip, useColorMode, VStack, Text, Box } from '@chakra-ui/react'
 import React from 'react'
-import ProxyMenu from './ProxyMenu'
+import ProxyMenu from '../ProxyMenu'
 import { HiTable } from 'react-icons/hi'
-import ProxyLogo from './ProxyLogo'
-import TableType2 from '../../../../components/TableType2'
-import AccordionComponent from '../../../../components/AccordionComponent'
-import ProxyStatus from './ProxyStatus'
-import ServerStatus from '../../../../components/ServerStatus'
-import TagPill from '../../../../components/TagPill'
-import IconButton from '../../../../components/IconButton'
+import ProxyLogo from '../ProxyLogo'
+import TableType2 from '../../../../../components/TableType2'
+import AccordionComponent from '../../../../../components/AccordionComponent'
+import ProxyStatus from '../ProxyStatus'
+import ServerStatus from '../../../../../components/ServerStatus'
+import TagPill from '../../../../../components/TagPill'
+import IconButton from '../../../../../components/IconButton'
+import cssStyles from './styles.module.scss'
 
 function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMenuOptionsVisible }) {
   const { colorMode } = useColorMode()
@@ -35,15 +36,6 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMen
       marginTop: '2',
       fontSize: '15px',
       width: '100%'
-    },
-    accordionHeader: {
-      borderRadius: '0',
-      padding: '6px',
-      fontSize: '15px'
-    },
-    accordionPanel: {
-      borderRadius: '0',
-      border: 'none'
     }
   }
 
@@ -137,8 +129,8 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMen
                           <Text>{`${object.data.host}:${object.data.port}`}</Text>
                         </Flex>
                       }
-                      headerSX={styles.accordionHeader}
-                      panelSX={styles.accordionPanel}
+                      headerClassName={styles.accordionHeader}
+                      panelClassName={styles.accordionPanel}
                       body={
                         <TableType2
                           dataArray={readWriteTableData}

@@ -3,11 +3,11 @@ import React from 'react'
 import Button from '../../../../../components/Button'
 import styles from './styles.module.scss'
 
-function ServerName({ rowData, isBlocking }) {
+function ServerName({ rowData, isBlocking, as = 'span' }) {
   return (
     <Button className={styles.serverName}>
       <Box
-        as='span'
+        as={as}
         className={isBlocking && styles.text}
         maxWidth='100%'
         whiteSpace='break-spaces'

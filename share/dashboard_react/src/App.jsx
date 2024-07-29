@@ -30,14 +30,6 @@ function App() {
           }
         />
 
-        <Route
-          path='/clusters/:name'
-          element={
-            <PrivateRoute>
-              <Cluster />
-            </PrivateRoute>
-          }
-        />
         <Route path='/login' element={<Login />} />
       </Routes>
     </BrowserRouter>

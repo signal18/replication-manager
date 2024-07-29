@@ -5,9 +5,14 @@ import Settings from './Settings'
 
 function Cluster({ tab }) {
   const [user, setUser] = useState(null)
+  const [currentTab, setCurrentTab] = useState('')
   const {
     cluster: { clusterData }
   } = useSelector((state) => state)
+
+  useEffect(() => {
+    setCurrentTab(tab)
+  }, [tab])
 
   useEffect(() => {
     if (clusterData?.apiUsers) {
@@ -19,9 +24,9 @@ function Cluster({ tab }) {
     }
   }, [clusterData?.apiUsers])
 
-  return tab === 'dashboard' ? (
+  return currentTab === 'dashboard' ? (
     <Dashboard selectedCluster={clusterData} user={user} />
-  ) : tab === 'settings' ? (
+  ) : currentTab === 'settings' ? (
     <Settings selectedCluster={clusterData} user={user} />
   ) : null
 }
