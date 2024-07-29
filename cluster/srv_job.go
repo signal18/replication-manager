@@ -1870,7 +1870,7 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 	return errors.New("Wrong configuration for Backup Binlog Method!")
 }
 
-func (server *ServerMonitor) WaitAndSendSST(task string, filename string) error {
+func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop int) error {
 	cluster := server.ClusterGroup
 	var err error
 
@@ -1892,11 +1892,12 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string) error 
 	//Check if id exists
 	if count > 0 {
 		time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
-		if done == 1 {
-			go cluster.SSTRunSender(filename, server, task)
-			return nil
-		} else {
-			return server.WaitAndSendSST(filename, task)
+		go cluster.SSTRunSender(filename, server, task)
+		return nil
+	} else {
+		if loop < 10 {
+			loop++
+			return server.WaitAndSendSST(task, filename, loop)
 		}
 	}
 
@@ -1922,7 +1923,7 @@ func (server *ServerMonitor) ProcessReseedPhysical() error {
 			filename = mybcksrv.GetMyBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
 		}
 
-		go server.WaitAndSendSST(task, filename)
+		go server.WaitAndSendSST(task, filename, 0)
 	} else {
 		err = errors.New("No master found")
 		return err
@@ -1951,7 +1952,7 @@ func (server *ServerMonitor) ProcessFlashbackPhysical() error {
 			filename = mybcksrv.GetMyBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
 		}
 
-		go server.WaitAndSendSST(task, filename)
+		go server.WaitAndSendSST(task, filename, 0)
 	}
 	return nil
 }
