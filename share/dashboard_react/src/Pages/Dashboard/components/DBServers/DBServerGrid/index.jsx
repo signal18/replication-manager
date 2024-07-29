@@ -1,12 +1,12 @@
 import { Flex, SimpleGrid, Spacer, Tooltip, useColorMode, useDisclosure, VStack } from '@chakra-ui/react'
 import React from 'react'
 import { useSelector } from 'react-redux'
-import ServerMenu from './ServerMenu'
+import ServerMenu from '../ServerMenu'
 import { HiCheck, HiTable, HiX } from 'react-icons/hi'
 import { MdCompare } from 'react-icons/md'
-import TableType3 from '../../../../components/TableType3'
-import CustomIcon from '../../../../components/Icons/CustomIcon'
-import TableType2 from '../../../../components/TableType2'
+import TableType3 from '../../../../../components/TableType3'
+import CustomIcon from '../../../../../components/Icons/CustomIcon'
+import TableType2 from '../../../../../components/TableType2'
 import {
   getCurrentGtid,
   getCurrentGtidHeader,
@@ -17,15 +17,16 @@ import {
   getUsingGtid,
   getUsingGtidHeader,
   getVersion
-} from './utils'
-import TagPill from '../../../../components/TagPill'
-import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
-import ServerName from './ServerName'
-import AccordionComponent from '../../../../components/AccordionComponent'
-import NotFound from '../../../../components/NotFound'
-import GTID from '../../../../components/GTID'
-import ServerStatus from '../../../../components/ServerStatus'
-import IconButton from '../../../../components/IconButton'
+} from '../utils'
+import TagPill from '../../../../../components/TagPill'
+import DBFlavourIcon from '../../../../../components/Icons/DBFlavourIcon'
+import ServerName from '../ServerName'
+import AccordionComponent from '../../../../../components/AccordionComponent'
+import NotFound from '../../../../../components/NotFound'
+import GTID from '../../../../../components/GTID'
+import ServerStatus from '../../../../../components/ServerStatus'
+import IconButton from '../../../../../components/IconButton'
+import cssStyles from './styles.module.scss'
 
 function DBServersGrid({
   allDBServers,
@@ -58,15 +59,6 @@ function DBServersGrid({
       borderColor: colorMode === 'light' ? `blue.200` : `blue.900`
     },
 
-    header: {
-      textAlign: 'center',
-      p: '4px',
-      bg: colorMode === 'light' ? `blue.200` : `blue.900`,
-      borderTopLeftRadius: '16px',
-      borderTopRightRadius: '16px',
-      color: '#000',
-      fontWeight: 'bold'
-    },
     replicationTitle: {
       textAlign: 'center',
       fontWeight: 'bold',
@@ -83,37 +75,6 @@ function DBServersGrid({
       marginTop: '2',
       fontSize: '15px',
       width: '100%'
-    },
-    accordionHeader: {
-      borderRadius: '0',
-      padding: '6px',
-      fontSize: '15px'
-    },
-    accordionPanel: {
-      borderRadius: '0',
-      border: 'none'
-    }
-  }
-
-  function getStyles(baseStyles, gridColor, element) {
-    const colorWeightLight = element === 'accordionHeader' ? '300' : element === 'gridBody' ? '100' : '500'
-    const colorWeightDark = element === 'accordionHeader' ? '800' : element === 'gridBody' ? '900' : '700'
-    const colorStyles = {
-      red: {
-        backgroundColor: colorMode === 'light' ? `red.${colorWeightLight}` : `red.${colorWeightDark}`,
-        ...(element !== 'gridBody' ? { color: 'white' } : {}),
-        _hover: {}
-      },
-      orange: {
-        backgroundColor: colorMode === 'light' ? `orange.${colorWeightLight}` : `orange.${colorWeightDark}`,
-        ...(element !== 'gridBody' ? { color: 'white' } : {}),
-        _hover: {}
-      }
-    }
-
-    return {
-      ...baseStyles,
-      ...(colorStyles[gridColor] || {})
     }
   }
 
@@ -187,9 +148,9 @@ function DBServersGrid({
 
           return (
             <VStack width='100%' key={rowData.id} sx={{ ...styles.card }}>
-              <Flex as='header' width='100%' sx={getStyles(styles.header, gridColor, 'gridHeader')} align='center'>
+              <Flex as='header' width='100%' className={`${cssStyles.header} ${cssStyles[gridColor]}`} align='center'>
                 <DBFlavourIcon dbFlavor={rowData.dbVersion.flavor} isBlocking={gridColor.length > 0} />
-                <ServerName rowData={rowData} isBlocking={gridColor.length > 0} />
+                <ServerName as='h4' rowData={rowData} isBlocking={gridColor.length > 0} />
                 <Spacer />
 
                 <IconButton
@@ -220,7 +181,12 @@ function DBServersGrid({
                 />
               </Flex>
 
-              <Flex direction='column' width='100%' mb={2} gap='0' sx={getStyles({}, gridColor, 'gridBody')}>
+              <Flex
+                direction='column'
+                width='100%'
+                mb={2}
+                gap='0'
+                className={`${cssStyles.body} ${cssStyles[gridColor]}`}>
                 <Flex gap='1' wrap='wrap' p='2'>
                   <ServerStatus state={rowData.state} isVirtualMaster={rowData.isVirtualMaster} isBlinking={true} />
                   {replicationTags
@@ -320,8 +286,8 @@ function DBServersGrid({
                     return (
                       <AccordionComponent
                         key={index}
-                        headerSX={getStyles(styles.accordionHeader, gridColor, 'accordionHeader')}
-                        panelSX={styles.accordionPanel}
+                        headerClassName={`${cssStyles.accordionHeader} ${cssStyles[gridColor]}`}
+                        panelClassName={cssStyles.accordionPanel}
                         isOpen={isReplicationStatusOpen}
                         onToggle={onReplicationStatusToggle}
                         heading={
@@ -351,8 +317,8 @@ function DBServersGrid({
                   })
                 ) : (
                   <AccordionComponent
-                    headerSX={getStyles(styles.accordionHeader, gridColor, 'accordionHeader')}
-                    panelSX={styles.accordionPanel}
+                    headerClassName={`${cssStyles.accordionHeader} ${cssStyles[gridColor]}`}
+                    panelClassName={cssStyles.accordionPanel}
                     isOpen={isReplicationStatusOpen}
                     onToggle={onReplicationStatusToggle}
                     heading={'No Replication Status'}
@@ -396,8 +362,8 @@ function DBServersGrid({
                 )}
                 <AccordionComponent
                   heading={'Server Information'}
-                  headerSX={getStyles(styles.accordionHeader, gridColor, 'accordionHeader')}
-                  panelSX={styles.accordionPanel}
+                  headerClassName={`${cssStyles.accordionHeader} ${cssStyles[gridColor]}`}
+                  panelClassName={cssStyles.accordionPanel}
                   isOpen={isServiceInfoOpen}
                   onToggle={onServiceInfoToggle}
                   body={
@@ -414,8 +380,8 @@ function DBServersGrid({
 
                 <AccordionComponent
                   heading={'Replication Variables'}
-                  headerSX={getStyles(styles.accordionHeader, gridColor, 'accordionHeader')}
-                  panelSX={styles.accordionPanel}
+                  headerClassName={`${cssStyles.accordionHeader} ${cssStyles[gridColor]}`}
+                  panelClassName={cssStyles.accordionPanel}
                   isOpen={isReplicationVarOpen}
                   onToggle={onReplicationVarToggle}
                   body={
@@ -440,8 +406,8 @@ function DBServersGrid({
                 />
                 <AccordionComponent
                   heading={'Leader status'}
-                  headerSX={getStyles(styles.accordionHeader, gridColor, 'accordionHeader')}
-                  panelSX={styles.accordionPanel}
+                  headerClassName={`${cssStyles.accordionHeader} ${cssStyles[gridColor]}`}
+                  panelClassName={cssStyles.accordionPanel}
                   isOpen={isLeaderStatusOpen}
                   onToggle={onLeaderStatusToggle}
                   body={

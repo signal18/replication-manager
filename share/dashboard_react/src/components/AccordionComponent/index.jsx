@@ -2,24 +2,35 @@ import React from 'react'
 import styles from './styles.module.scss'
 import { Accordion, AccordionButton, AccordionIcon, AccordionItem, AccordionPanel, Box } from '@chakra-ui/react'
 
-function AccordionComponent({ heading, body, sx, panelSX, headerSX, isOpen = null, onToggle }) {
+function AccordionComponent({
+  heading,
+  body,
+  sx,
+  className,
+  headerClassName,
+  panelClassName,
+  isOpen = null,
+  onToggle
+}) {
   return (
-    <Accordion allowToggle={true} sx={sx} defaultIndex={0} {...(isOpen !== null ? { index: isOpen ? [0] : [] } : {})}>
+    <Accordion
+      className={className}
+      allowToggle={true}
+      sx={sx}
+      defaultIndex={0}
+      {...(isOpen !== null ? { index: isOpen ? [0] : [] } : {})}>
       <AccordionItem className={styles.accordionItem}>
         <h2>
           <AccordionButton
-            className={`${styles.button} ${headerSX ? '' : styles.baseColor}`}
-            sx={headerSX}
+            className={`${styles.button} ${styles.baseColor} ${headerClassName}`}
             {...(onToggle ? { onClick: onToggle } : {})}>
-            <Box as='span' flex='1' textAlign='left'>
+            <Box as='h4' flex='1' textAlign='left'>
               {heading}
             </Box>
             <AccordionIcon className={styles.icon} />
           </AccordionButton>
         </h2>
-        <AccordionPanel className={styles.panel} sx={panelSX}>
-          {body}
-        </AccordionPanel>
+        <AccordionPanel className={`${styles.panel} ${panelClassName}`}>{body}</AccordionPanel>
       </AccordionItem>
     </Accordion>
   )
