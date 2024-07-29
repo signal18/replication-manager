@@ -874,6 +874,41 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 	return nil
 }
 
+func (server *ServerMonitor) JobsCheckPending() error {
+	cluster := server.ClusterGroup
+	if server.IsDown() {
+		return nil
+	}
+
+	//Only cancel if not reseeding status
+	if server.IsReseeding {
+		return nil
+	}
+	//server.JobInsertTask("", "", "")
+	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE state=2 group by task ")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
+		server.JobsCreateTable()
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var task DBTask
+		rows.Scan(&task.task, &task.ct, &task.id)
+		if task.ct > 0 {
+			switch task.task {
+			case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
+				res := "Replication-manager is down while preparing task, cancelling operation for data safety."
+				query := "UPDATE replication_manager_schema.jobs SET state=5, result='%s' where task = '%s'"
+				server.ExecQueryNoBinLog(fmt.Sprintf(query, res, task))
+				server.SetNeedRefreshJobs(true)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (server *ServerMonitor) JobsCheckErrors() error {
 	var err error
 
@@ -1889,9 +1924,11 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 		count++
 	}
 
+	time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
 	//Check if id exists
 	if count > 0 {
-		time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
+		query := "UPDATE replication_manager_schema.jobs SET state=1, result='processing' where task = '%s'"
+		server.ExecQueryNoBinLog(fmt.Sprintf(query, task))
 		go cluster.SSTRunSender(filename, server, task)
 		return nil
 	} else {
@@ -1901,7 +1938,10 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 		}
 	}
 
-	return err
+	query := "UPDATE replication_manager_schema.jobs SET state=5, result='Waiting more than max loop' where task = '%s'"
+	server.ExecQueryNoBinLog(fmt.Sprintf(query, task))
+	server.SetNeedRefreshJobs(true)
+	return errors.New("Error: waiting for " + task + " more than max loop.")
 }
 
 func (server *ServerMonitor) ProcessReseedPhysical() error {
