@@ -818,6 +818,7 @@ func (server *ServerMonitor) Refresh() error {
 		// Job section
 		server.JobsCheckFinished()
 		server.JobsCheckErrors()
+		server.JobsCheckPending()
 
 		if server.NeedRefreshJobs {
 			server.JobsUpdateEntries()
