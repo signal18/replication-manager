@@ -326,7 +326,7 @@ app.controller('DashboardController', function (
     return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
   }
 
-  $scope.bufferList = [ 4096, 8192, 16384, 32768, 65536, 1048576]
+  $scope.bufferList = [1024, 2048, 4096, 8192, 16384, 32768, 65536, 1048576]
 
   if (git_data["user"] && git_data["token"] && !AppService.hasAuthHeaders()) {
     git_user.username = git_data["user"];

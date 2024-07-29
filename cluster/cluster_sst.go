@@ -445,8 +445,8 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, task 
 	}
 
 	defer client.Close()
-	file, err := os.Open(backupfile)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST sending file: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
+	file, err := os.Open(backupfile)
 	if os.IsNotExist(err) && cluster.Conf.CompressBackups {
 		backupfile = strings.Replace(backupfile, "xbtream", "gz", 1)
 		file, err = os.Open(backupfile)
