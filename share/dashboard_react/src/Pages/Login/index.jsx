@@ -67,7 +67,7 @@ function Login(props) {
   return (
     <PageContainer>
       {/* <Suspense fallback={<div>Loading...</div>}> */}
-      <Container maxWidth='lg' py={{ base: '12', md: '24' }} px={{ base: '0', sm: '8' }}>
+      <Container maxWidth='lg' py={{ base: '24', md: '24' }} px={{ base: '0', sm: '8' }}>
         <Stack spacing='8'>
           <Stack spacing='6'>
             <Stack spacing={{ base: '2', md: '3' }} textAlign='center'>

@@ -44,17 +44,8 @@ export const handleError = (error, thunkAPI) => {
   return thunkAPI.rejectWithValue({ errorMessage, errorStatus }) // Pass the entire Error object to the rejected action
 }
 
-export const formatTimeStamp = (timestamp = 1626883200, format = 'yyyy-MM-dd HH:mm:ss') => {
-  let date = new Date(timestamp * 1000)
-  date = date
-    .toLocaleString('en-GB', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    })
-    .replace(',', '')
-  console.log('date::,', date)
+export const convertObjectToArray = (inputObject) => {
+  return Object.keys(inputObject).map((key) => {
+    return { name: key, value: inputObject[key] }
+  })
 }

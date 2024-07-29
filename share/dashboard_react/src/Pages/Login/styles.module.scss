@@ -3,10 +3,7 @@
   padding: rem(32) rem(24);
   border-radius: $border-radius-md;
   box-shadow: $box-shadow-md;
-  // @include breakpoint(md) {
-  //   padding: rem(16);
-  // }
-  @include breakpoint('sm') {
+  @include breakpoint('sm', 'md') {
     padding: rem(16);
     box-shadow: none;
     border-radius: 0;

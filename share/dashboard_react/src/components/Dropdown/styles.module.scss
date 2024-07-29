@@ -1,0 +1,17 @@
+.menuButton {
+  height: fit-content;
+  padding: rem(16);
+  white-space: break-spaces;
+  background-color: var(--tertiary-color) !important;
+  &:hover,
+  &[data-active] {
+    background-color: var(--tertiary-color);
+  }
+}
+.lightMenuItem {
+  background-color: var(--white-color);
+}
+
+.darkMenuItem {
+  background-color: var(--gray-color);
+}

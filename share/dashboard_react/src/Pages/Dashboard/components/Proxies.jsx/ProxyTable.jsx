@@ -10,7 +10,7 @@ import ProxyLogo from './ProxyLogo'
 import ProxyStatus from './ProxyStatus'
 import IconButton from '../../../../components/IconButton'
 
-function ProxyTable({ proxies, isDesktop, clusterName, showGridView }) {
+function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMenuOptionsVisible }) {
   const [tableData, setTableData] = useState([])
   useEffect(() => {
     if (proxies?.length > 0) {
@@ -34,7 +34,7 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView }) {
     return {
       logo: isNewProxy && <ProxyLogo proxyName={proxy.type} />,
       proxyId: proxy.id,
-      showMenu: isNewProxy,
+      showMenu: isNewProxy && isMenuOptionsVisible,
       server: isNewProxy ? `${proxy.host}:${proxy.port}` : '',
       status: isNewProxy ? <ProxyStatus status={proxy.state} /> : '',
       group: <TagPill text={readWriteType} />,
@@ -64,7 +64,7 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView }) {
   const columns = useMemo(
     () => [
       columnHelper.accessor(
-        (row) => row.showMenu && <ProxyMenu row={row} isDesktop={isDesktop} clusterName={clusterName} />,
+        (row) => row.showMenu && <ProxyMenu row={row} isDesktop={isDesktop} clusterName={clusterName} user={user} />,
         {
           cell: (info) => info.getValue(),
           id: 'options',
