@@ -9,6 +9,7 @@ maxscale*.rpm
 .idea
 googleapis/
 share/dashboard/node_modules/
+.vscode/
 .vscode-server/
 .viminfo
 .bash_history

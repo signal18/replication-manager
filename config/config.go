@@ -2107,15 +2107,15 @@ type JobResult struct {
 }
 
 type Task struct {
-	Id     int64  `json:"id"`
-	Task   string `json:"task"`
-	Port   int    `json:"port"`
-	Server string `json:"server"`
-	Done   int    `json:"done"`
-	State  int    `json:"state"`
-	Result string `json:"result"`
-	Start  int64  `json:"start"`
-	End    int64  `json:"end"`
+	Id     int64  `json:"id" db:"id"`
+	Task   string `json:"task" db:"task"`
+	Port   int    `json:"port" db:"port"`
+	Server string `json:"server" db:"server"`
+	Done   int    `json:"done" db:"done"`
+	State  int    `json:"state" db:"state"`
+	Result string `json:"result,omitempty" db:"result"`
+	Start  int64  `json:"start" db:"utc_start"`
+	End    int64  `json:"end,omitempty" db:"utc_end"`
 }
 
 type TaskSorter []Task
@@ -2270,4 +2270,9 @@ func IsValidLogLevel(lvl string) bool {
 		return true
 	}
 	return false
+}
+
+type LogEntry struct {
+	Server string `json:"server"`
+	Log    string `json:"log"`
 }

@@ -1308,11 +1308,6 @@ app.controller('DashboardController', function (
     if (confirm("Rotate database and replication monitoring user credentials. \n Are you really sure?")) httpGetWithoutResponse(getClusterUrl() + '/actions/rotate-passwords');
   };
 
-  $scope.rolling = function () {
-    httpGetWithoutResponse(getClusterUrl() + '/actions/rolling');
-  };
-
-
   $scope.gtidstring = function (arr) {
     var output = [];
     if (arr != null) {
