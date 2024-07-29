@@ -1876,7 +1876,7 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string) error 
 	cluster := server.ClusterGroup
 	var err error
 
-	rows, err := server.Conn.Queryx("SELECT done FROM replication_manager_schema.jobs WHERE task='?' and state=2", task)
+	rows, err := server.Conn.Queryx(fmt.Sprintf("SELECT done FROM replication_manager_schema.jobs WHERE task='%s' and state=%d", task, 2))
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
 		server.JobsCreateTable()
