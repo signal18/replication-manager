@@ -900,6 +900,10 @@ func (server *ServerMonitor) JobsCheckErrors() error {
 		rows.Scan(&task, &result)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job %s ended with ERROR: %s", task.String, result.String)
 		p = append(p, "'"+task.String+"'")
+		switch task.String {
+		case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
+			defer server.SetInReseedBackup(false)
+		}
 	}
 
 	if ct > 0 {
