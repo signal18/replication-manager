@@ -685,3 +685,98 @@ func FromWorkLoadsMap(m *WorkLoadsMap, c *WorkLoadsMap) *WorkLoadsMap {
 
 	return m
 }
+
+type TasksMap struct {
+	*sync.Map
+}
+
+func NewTasksMap() *TasksMap {
+	s := new(sync.Map)
+	m := &TasksMap{Map: s}
+	return m
+}
+
+func (m *TasksMap) Get(key string) *Task {
+	if v, ok := m.Load(key); ok {
+		return v.(*Task)
+	}
+	return nil
+}
+
+func (m *TasksMap) CheckAndGet(key string) (*Task, bool) {
+	v, ok := m.Load(key)
+	if ok {
+		return v.(*Task), true
+	}
+	return nil, false
+}
+
+func (m *TasksMap) Set(key string, value *Task) {
+	m.Store(key, value)
+}
+
+func (m *TasksMap) ToNormalMap(c map[string]*Task) {
+	// Clear the old values in the output map
+	for k := range c {
+		delete(c, k)
+	}
+
+	// Insert all values from the TasksMap to the output map
+	m.Callback(func(key string, value *Task) bool {
+		c[key] = value
+		return true
+	})
+}
+
+func (m *TasksMap) ToNewMap() map[string]*Task {
+	result := make(map[string]*Task)
+	m.Range(func(k, v any) bool {
+		result[k.(string)] = v.(*Task)
+		return true
+	})
+	return result
+}
+
+func (m *TasksMap) Callback(f func(key string, value *Task) bool) {
+	m.Range(func(k, v any) bool {
+		return f(k.(string), v.(*Task))
+	})
+}
+
+func (m *TasksMap) Clear() {
+	m.Range(func(key, value any) bool {
+		m.Delete(key.(string))
+		return true
+	})
+}
+
+func FromNormalTasksMap(m *TasksMap, c map[string]*Task) *TasksMap {
+	if m == nil {
+		m = NewTasksMap()
+	} else {
+		m.Clear()
+	}
+
+	for k, v := range c {
+		m.Set(k, v)
+	}
+
+	return m
+}
+
+func FromTasksMap(m *TasksMap, c *TasksMap) *TasksMap {
+	if m == nil {
+		m = NewTasksMap()
+	} else {
+		m.Clear()
+	}
+
+	if c != nil {
+		c.Callback(func(key string, value *Task) bool {
+			m.Set(key, value)
+			return true
+		})
+	}
+
+	return m
+}

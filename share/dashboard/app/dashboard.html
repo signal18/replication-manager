@@ -22,7 +22,6 @@
                 <md-tab ng-if="!selectedServer"  ng-click="onTabClicked('Alerts')" md-select-id="Alerts" md-on-select="onTabSelected" label="Alerts ^{{alerts.errors.length}}">
                     <div ng-if="selectedTab=='Alerts'" ng-include src="'static/tab-cluster-alerts.html'"></div>
                 </md-tab>
-
                 <md-tab ng-if="!selectedServer" ng-click="onTabClicked('Proxies')"  md-select-id="Proxies" md-on-select="onTabSelected" label="Proxies">
                     <div ng-if="selectedTab=='Proxies'" ng-include src="'static/tab-cluster-proxies.html'"></div>
                 </md-tab>
@@ -47,7 +46,6 @@
                 <md-tab md-select-id="QueryRules" ng-click="onTabClicked('QueryRules')" md-on-select="onTabSelected" label="QueryRules" ng-if="selectedCluster.config.proxysql && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-agents']==true">
                     <div  ng-if="selectedTab=='QueryRules'" ng-include src="'static/tab-cluster-queryrules.html'"></div>
                 </md-tab>
-
                 <md-tab ng-if="selectedServer && !selectedQuery && selectedCluster.apiUsers[user].grants['db-show-process']==true" ng-click="onTabClicked('Processlist')"  md-select-id="Processlist" md-on-select="onTabSelected" label="Processlist" >
                     <div  ng-if="selectedTab=='Processlist'" style="min-height:800px"  ng-include src="'static/tab-server-process.html'"></div>
                 </md-tab>

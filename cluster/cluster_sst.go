@@ -461,7 +461,6 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, task 
 	var total uint64
 
 	defer file.Close()
-	defer sv.RunTaskCallback(task)
 
 	for {
 		if strings.HasSuffix(backupfile, "gz") {
@@ -511,7 +510,6 @@ func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor, ta
 	var total uint64
 
 	defer file.Close()
-	defer sv.RunTaskCallback(task)
 	for {
 		_, err = file.Read(sendBuffer)
 		if err == io.EOF {

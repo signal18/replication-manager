@@ -189,6 +189,14 @@ func (server *ServerMonitor) HasBinlogRow() bool {
 	return server.Variables.Get("BINLOG_FORMAT") == "ROW"
 }
 
+func (server *ServerMonitor) HasBinlogStatement() bool {
+	return server.Variables.Get("BINLOG_FORMAT") == "STATEMENT"
+}
+
+func (server *ServerMonitor) HasBinlogMixed() bool {
+	return server.Variables.Get("BINLOG_FORMAT") == "MIXED"
+}
+
 func (server *ServerMonitor) HasBinlogRowAnnotate() bool {
 	return server.Variables.Get("BINLOG_ANNOTATE_ROW_EVENTS") == "ON"
 }
@@ -611,4 +619,18 @@ func (server *ServerMonitor) IsSlaveOrSync() bool {
 
 func (server *ServerMonitor) IsPurgingBinlog() bool {
 	return server.InPurgingBinaryLog
+}
+
+func (server *ServerMonitor) HasErrantTransactions() bool {
+	if server.ClusterGroup.StateMachine.IsInState("WARN0091@" + server.URL) {
+		return true
+	}
+	return false
+}
+
+func (server *ServerMonitor) HasBlockerIssue() bool {
+	if server.ClusterGroup.StateMachine.IsInState("MDEV20821@" + server.URL) {
+		return true
+	}
+	return false
 }

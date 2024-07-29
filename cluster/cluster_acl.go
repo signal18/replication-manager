@@ -39,7 +39,7 @@ func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL strin
 	if user, ok := cluster.APIUsers[strUser]; ok {
 		//		fmt.Printf("password :" + user.Password)
 		if user.Password == strPassword || AuthMethod == "oidc" {
-			return cluster.IsURLPassACL(strUser, URL)
+			return cluster.IsURLPassACL(strUser, URL, true)
 		}
 		return false
 	}
@@ -416,7 +416,7 @@ func (cluster *Cluster) IsURLPassProxiesACL(strUser string, URL string) bool {
 	return false
 }
 
-func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
+func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool) bool {
 	switch URL {
 	case "/api/login":
 		return true
@@ -444,6 +444,11 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return true
 		}
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/shardclusters") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterProcess] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/jobs") {
 			return true
 		}
 	}
@@ -642,6 +647,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string) bool {
 			return false
 	*/
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL check failed for user %s : %s ", strUser, URL)
+	// Print error with no valid ACL
+	if errorPrint {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL check failed for user %s : %s ", strUser, URL)
+	}
 	return false
 }

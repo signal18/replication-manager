@@ -29,7 +29,7 @@
                 .clientDelay(5e3)
                  .step(1e4) // ten seconds
                  .size(720); // four hours
-                graphite = context.graphite("http://"+window.location.hostname+":10002");
+                graphite = context.graphite("/graphite");
 
                //  var foo = graphite.metric("sumSeries(nonNegativeDerivative(exclude(mysql.*.mysql_global_status_queries),'idle','idle')))").alias("Queries");
                 var dataQps = graphite.metric("perSecond(mysql.*.mysql_global_status_queries)").alias("Qps");

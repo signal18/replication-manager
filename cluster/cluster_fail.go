@@ -786,17 +786,20 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 	var maxseq uint64
 	var maxpos uint64
 	type Trackpos struct {
-		URL                string
-		Indice             int
-		Pos                uint64
-		Seq                uint64
-		Prefered           bool
-		Ignoredconf        bool
-		Ignoredrelay       bool
-		Ignoredmultimaster bool
-		Ignoredreplication bool
-		Weight             uint
-		DelayStat          DelayStat
+		URL                 string
+		Indice              int
+		Pos                 uint64
+		Seq                 uint64
+		Prefered            bool
+		Ignoredconf         bool
+		Ignoredrelay        bool
+		Ignoredmultimaster  bool
+		Ignoredreplication  bool
+		IgnoredMinorVersion bool
+		IgnoredErrantTrx    bool
+		IgnoredBlocker      bool
+		Weight              uint
+		DelayStat           DelayStat
 	}
 
 	// HaveOneValidReader is used to state that at least one replicat is available for reading via proxies
@@ -812,6 +815,8 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		trackposList[i].Ignoredconf = sl.IsIgnored()
 		trackposList[i].Ignoredrelay = sl.IsRelay
 		trackposList[i].DelayStat = sl.DelayStat.Total
+		trackposList[i].IgnoredErrantTrx = sl.HasErrantTransactions()
+		trackposList[i].IgnoredBlocker = sl.HasBlockerIssue()
 
 		//Need comment//
 		if sl.IsRelay {

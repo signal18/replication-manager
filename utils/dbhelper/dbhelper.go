@@ -186,34 +186,40 @@ type MasterStatus struct {
 }
 
 type SlaveStatus struct {
-	ConnectionName       sql.NullString `db:"Connection_name" json:"connectionName"`
-	ChannelName          sql.NullString `db:"Channel_Name" json:"channelName"`
-	MasterHost           sql.NullString `db:"Master_Host" json:"masterHost"`
-	MasterUser           sql.NullString `db:"Master_User" json:"masterUser"`
-	MasterPort           sql.NullString `db:"Master_Port" json:"masterPort"`
-	MasterLogFile        sql.NullString `db:"Master_Log_File" json:"masterLogFile"`
-	ReadMasterLogPos     sql.NullString `db:"Read_Master_Log_Pos" json:"readMasterLogPos"`
-	RelayMasterLogFile   sql.NullString `db:"Relay_Master_Log_File" json:"relayMasterLogFile"`
-	SlaveIORunning       sql.NullString `db:"Slave_IO_Running" json:"slaveIoRunning"`
-	SlaveSQLRunning      sql.NullString `db:"Slave_SQL_Running" json:"slaveSqlRunning"`
-	ExecMasterLogPos     sql.NullString `db:"Exec_Master_Log_Pos" json:"execMasterLogPos"`
-	SecondsBehindMaster  sql.NullInt64  `db:"Seconds_Behind_Master" json:"secondsBehindMaster"`
-	LastIOErrno          sql.NullString `db:"Last_IO_Errno" json:"lastIoErrno"`
-	LastIOError          sql.NullString `db:"Last_IO_Error" json:"lastIoError"`
-	LastSQLErrno         sql.NullString `db:"Last_SQL_Errno" json:"lastSqlErrno"`
-	LastSQLError         sql.NullString `db:"Last_SQL_Error" json:"lastSqlError"`
-	MasterServerID       uint64         `db:"Master_Server_Id" json:"masterServerId"`
-	UsingGtid            sql.NullString `db:"Using_Gtid" json:"usingGtid"`
-	GtidIOPos            sql.NullString `db:"Gtid_IO_Pos" json:"gtidIoPos"`
-	GtidSlavePos         sql.NullString `db:"Gtid_Slave_Pos" json:"gtidSlavePos"`
-	SlaveHeartbeatPeriod float64        `db:"Slave_Heartbeat_Period" json:"slaveHeartbeatPeriod"`
-	ExecutedGtidSet      sql.NullString `db:"Executed_Gtid_Set" json:"executedGtidSet"`
-	RetrievedGtidSet     sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
-	SlaveSQLRunningState sql.NullString `db:"Slave_SQL_Running_State" json:"slaveSQLRunningState"`
-	PGExternalID         sql.NullString `db:"external_id" json:"postgresExternalId"`
-	DoDomainIds          sql.NullString `db:"Replicate_Do_Domain_Ids" json:"eeplicateDoDomainIds"`
-	IgnoreDomainIds      sql.NullString `db:"Replicate_Ignore_Domain_Ids" json:"replicateIgnoreDomainIds"`
-	IgnoreServerIds      sql.NullString `db:"Replicate_Ignore_Server_Ids" json:"replicateIgnoreServerIds"`
+	ConnectionName           sql.NullString `db:"Connection_name" json:"connectionName"`
+	ChannelName              sql.NullString `db:"Channel_Name" json:"channelName"`
+	MasterHost               sql.NullString `db:"Master_Host" json:"masterHost"`
+	MasterUser               sql.NullString `db:"Master_User" json:"masterUser"`
+	MasterPort               sql.NullString `db:"Master_Port" json:"masterPort"`
+	MasterLogFile            sql.NullString `db:"Master_Log_File" json:"masterLogFile"`
+	ReadMasterLogPos         sql.NullString `db:"Read_Master_Log_Pos" json:"readMasterLogPos"`
+	RelayMasterLogFile       sql.NullString `db:"Relay_Master_Log_File" json:"relayMasterLogFile"`
+	SlaveIORunning           sql.NullString `db:"Slave_IO_Running" json:"slaveIoRunning"`
+	SlaveSQLRunning          sql.NullString `db:"Slave_SQL_Running" json:"slaveSqlRunning"`
+	ExecMasterLogPos         sql.NullString `db:"Exec_Master_Log_Pos" json:"execMasterLogPos"`
+	SecondsBehindMaster      sql.NullInt64  `db:"Seconds_Behind_Master" json:"secondsBehindMaster"`
+	LastIOErrno              sql.NullString `db:"Last_IO_Errno" json:"lastIoErrno"`
+	LastIOError              sql.NullString `db:"Last_IO_Error" json:"lastIoError"`
+	LastSQLErrno             sql.NullString `db:"Last_SQL_Errno" json:"lastSqlErrno"`
+	LastSQLError             sql.NullString `db:"Last_SQL_Error" json:"lastSqlError"`
+	MasterServerID           uint64         `db:"Master_Server_Id" json:"masterServerId"`
+	UsingGtid                sql.NullString `db:"Using_Gtid" json:"usingGtid"`
+	GtidIOPos                sql.NullString `db:"Gtid_IO_Pos" json:"gtidIoPos"`
+	GtidSlavePos             sql.NullString `db:"Gtid_Slave_Pos" json:"gtidSlavePos"`
+	SlaveHeartbeatPeriod     float64        `db:"Slave_Heartbeat_Period" json:"slaveHeartbeatPeriod"`
+	ExecutedGtidSet          sql.NullString `db:"Executed_Gtid_Set" json:"executedGtidSet"`
+	RetrievedGtidSet         sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
+	SlaveSQLRunningState     sql.NullString `db:"Slave_SQL_Running_State" json:"slaveSQLRunningState"`
+	PGExternalID             sql.NullString `db:"external_id" json:"postgresExternalId"`
+	DoDomainIds              sql.NullString `db:"Replicate_Do_Domain_Ids" json:"eeplicateDoDomainIds"`
+	IgnoreDomainIds          sql.NullString `db:"Replicate_Ignore_Domain_Ids" json:"replicateIgnoreDomainIds"`
+	IgnoreServerIds          sql.NullString `db:"Replicate_Ignore_Server_Ids" json:"replicateIgnoreServerIds"`
+	ReplicateDoDB            sql.NullString `db:"Replicate_Do_DB" json:"replicateDoDb"`
+	ReplicateIgnoreDB        sql.NullString `db:"Replicate_Ignore_DB" json:"replicateIgnoreDb"`
+	ReplicateDoTable         sql.NullString `db:"Replicate_Do_Table" json:"replicateDoTable"`
+	ReplicateIgnoreTable     sql.NullString `db:"Replicate_Ignore_Table" json:"replicateIgnoreTable"`
+	ReplicateWildDoTable     sql.NullString `db:"Replicate_Do_Wild_Table" json:"replicateWildDoTable"`
+	ReplicateWildIgnoreTable sql.NullString `db:"Replicate_Wild_Ignore_Table" json:"replicateWildIgnoreTable"`
 }
 
 type Privileges struct {

@@ -143,3 +143,44 @@ app.factory('Test', function ($resource) {
         }
     );
 });
+
+app.factory('Jobs', ['$resource', '$q', function($resource, $q) {
+    var resource = $resource('api/clusters/:clusterName/jobs', {
+      clusterName: '@clusterName'
+    }, {
+      get: {
+        method: 'GET',
+        isArray: false
+      }
+    });
+  
+    var pendingRequests = [];
+  
+    var service = {
+      get: function(clusterName) {
+        var deferred = $q.defer();
+        var request = resource.get({ clusterName: clusterName }, function(data) {
+          deferred.resolve(data);
+        }, function(error) {
+          deferred.reject(error);
+        });
+        pendingRequests.push(request);
+        deferred.promise.finally(function() {
+          var index = pendingRequests.indexOf(request);
+          if (index !== -1) {
+            pendingRequests.splice(index, 1);
+          }
+        });
+        return deferred.promise;
+      },
+      cancelPendingRequests: function() {
+        pendingRequests.forEach(function(request) {
+          request.$cancel();
+        });
+        pendingRequests = [];
+      }
+    };
+  
+    return service;
+  }]);
+  

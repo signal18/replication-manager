@@ -14,6 +14,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -184,8 +185,13 @@ func (SM *StateMachine) IsInSchemaMonitor() bool {
 	return SM.InSchemaMonitor
 }
 
+// if state is cluster based the key is the error if state is server based then we concat server URL
 func (SM *StateMachine) AddState(key string, s State) {
+	//Retain the state
 	s.ErrKey = key
+	if s.ServerUrl != "" && !strings.Contains(key, "@") {
+		key = key + "@" + s.ServerUrl
+	}
 	SM.Lock()
 	SM.CurState.Add(key, s)
 	if SM.heartbeats == 0 {
@@ -196,9 +202,9 @@ func (SM *StateMachine) AddState(key string, s State) {
 
 func (SM *StateMachine) IsInState(key string) bool {
 	SM.Lock()
-	//log.Printf("%s,%s", key, SM.OldState.Search(key))
+	//fmt.Printf("%s,%s", key, SM.OldState.Search(key))
 	//CurState may not be valid depending when it's call because empty at every ticker so may have not collected the state yet
-
+	//	fmt.Println(SM.OldState)
 	if SM.OldState.Search(key) == false {
 		SM.Unlock()
 		return false
@@ -423,10 +429,13 @@ func (SM *StateMachine) CopyOldStateFromUnknowServer(Url string) {
 
 }
 
-func (SM *StateMachine) PreserveState(key string) {
-	if SM.OldState.Search(key) {
-		value := (*SM.OldState)[key]
-		SM.AddState(key, value)
+func (SM *StateMachine) PreserveState(key ...string) {
+	for oldkey, value := range *SM.OldState {
+		for _, k := range key {
+			if strings.HasPrefix(oldkey, k) {
+				SM.AddState(value.ErrKey, value)
+			}
+		}
 	}
 }
 

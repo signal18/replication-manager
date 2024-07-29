@@ -148,6 +148,7 @@ type Config struct {
 	PRXServersBackendCompression              bool                   `mapstructure:"proxy-servers-backend-compression" toml:"proxy-servers-backend-compression" json:"proxyServersBackendCompression"`
 	PRXServersBackendMaxReplicationLag        int                    `mapstructure:"proxy-servers-backend-max-replication-lag" toml:"proxy-servers-backend--max-replication-lag" json:"proxyServersBackendMaxReplicationLag"`
 	PRXServersBackendMaxConnections           int                    `mapstructure:"proxy-servers-backend-max-connections" toml:"proxy-servers-backend--max-connections" json:"proxyServersBackendMaxConnections"`
+	PRXServersChangeStateScript               string                 `mapstructure:"proxy-servers-change-state-script" toml:"proxy-servers-change-state-script" json:"proxyServersChangeStateScript"`
 	ClusterHead                               string                 `mapstructure:"cluster-head" toml:"cluster-head" json:"clusterHead"`
 	ReplicationMultisourceHeadClusters        string                 `mapstructure:"replication-multisource-head-clusters" toml:"replication-multisource-head-clusters" json:"replicationMultisourceHeadClusters"`
 	MasterConnectRetry                        int                    `mapstructure:"replication-master-connect-retry" toml:"replication-master-connect-retry" json:"replicationMasterConnectRetry"`
@@ -668,7 +669,7 @@ type Config struct {
 	OAuthClientID                             string                 `mapstructure:"api-oauth-client-id" toml:"api-oauth-client-id" json:"apiOAuthClientID"`
 	OAuthClientSecret                         string                 `mapstructure:"api-oauth-client-secret" toml:"api-oauth-client-secret" json:"apiOAuthClientSecret"`
 	CacheStaticMaxAge                         int                    `mapstructure:"cache-static-max-age" toml:"cache-static-max-age" json:"-"`
-	TokenTimeout                              int                    `mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
+	TokenTimeout                              int                    `scope:"server" mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
 	JobLogBatchSize                           int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
@@ -1895,6 +1896,54 @@ func (conf Config) WriteMergeConfig(confPath string, dynMap map[string]interface
 	return nil
 }
 
+type ConfigAttr struct {
+	Key   string
+	Toml  string
+	Type  string
+	Value any
+}
+
+func (conf *Config) GetConfigurationByScope(scope string) map[string]ConfigAttr {
+	var attrs map[string]ConfigAttr = make(map[string]ConfigAttr)
+
+	to := reflect.TypeOf(conf)
+	vo := reflect.ValueOf(conf)
+	for i := 0; i < to.NumField(); i++ {
+		f := to.Field(i)
+		v := vo.Field(i).Interface()
+		if f.Tag.Get("scope") == "server" {
+			attrs[f.Name] = ConfigAttr{
+				Key:   f.Name,
+				Toml:  f.Tag.Get("toml"),
+				Type:  f.Type.Name(),
+				Value: v,
+			}
+		}
+	}
+
+	return attrs
+}
+
+func GetScope(conf Config, toml string) (string, bool) {
+	to := reflect.TypeOf(conf)
+	for i := 0; i < to.NumField(); i++ {
+		f := to.Field(i)
+		if f.Tag.Get("toml") == toml {
+			return f.Tag.Get("scope"), true
+		}
+	}
+
+	return "", false
+}
+
+func IsScope(toml string, scope string) bool {
+	tconfig := Config{}
+	if tscope, ok := GetScope(tconfig, toml); ok {
+		return tscope == scope
+	}
+	return false
+}
+
 func (conf *Config) ReadCloud18Config(viper *viper.Viper) {
 	viper = viper.Sub("default")
 	viper.SetConfigType("toml")
@@ -2041,6 +2090,85 @@ func (conf *Config) GetGraphiteTemplateList() map[string]bool {
 	}
 }
 
+type JobResult struct {
+	Xtrabackup            bool `json:"xtrabackup"`
+	Mariabackup           bool `json:"mariabackup"`
+	Zfssnapback           bool `json:"zfssnapback"`
+	Optimize              bool `json:"optimize"`
+	Reseedxtrabackup      bool `json:"reseedxtrabackup"`
+	Reseedmariabackup     bool `json:"reseedmariabackup"`
+	Reseedmysqldump       bool `json:"reseedmysqldump"`
+	Flashbackxtrabackup   bool `json:"flashbackxtrabackup"`
+	Flashbackmariadbackup bool `json:"flashbackmariadbackup"`
+	Flashbackmysqldump    bool `json:"flashbackmysqldump"`
+	Stop                  bool `json:"stop"`
+	Start                 bool `json:"start"`
+	Restart               bool `json:"restart"`
+}
+
+type Task struct {
+	Id     int64  `json:"id" db:"id"`
+	Task   string `json:"task" db:"task"`
+	Port   int    `json:"port" db:"port"`
+	Server string `json:"server" db:"server"`
+	Done   int    `json:"done" db:"done"`
+	State  int    `json:"state" db:"state"`
+	Result string `json:"result,omitempty" db:"result"`
+	Start  int64  `json:"start" db:"utc_start"`
+	End    int64  `json:"end,omitempty" db:"utc_end"`
+}
+
+type TaskSorter []Task
+
+func (a TaskSorter) Len() int           { return len(a) }
+func (a TaskSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a TaskSorter) Less(i, j int) bool { return a[i].Task < a[j].Task }
+
+func GetLabels(v any) []string {
+	t := reflect.TypeOf(v)
+	labels := make([]string, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		jsonTag := field.Tag.Get("json")
+		if jsonTag != "" {
+			labels[i] = jsonTag
+		} else {
+			labels[i] = field.Name
+		}
+	}
+	return labels
+}
+
+func GetLabelsAsMap(v any) map[string]bool {
+	t := reflect.TypeOf(v)
+	labels := make(map[string]bool, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		jsonTag := field.Tag.Get("json")
+		if jsonTag != "" {
+			labels[jsonTag] = true
+		} else {
+			labels[field.Name] = true
+		}
+	}
+	return labels
+}
+
+type ServerTaskList struct {
+	ServerURL string `json:"serverUrl"`
+	Tasks     []Task `json:"tasks"`
+}
+
+type JobEntries struct {
+	Header  map[string]bool           `json:"header"`
+	Servers map[string]ServerTaskList `json:"servers"`
+}
+
+func (conf *Config) GetJobTypes() map[string]bool {
+	var res = JobResult{}
+	return GetLabelsAsMap(res)
+}
+
 func GetTagsForLog(module int) string {
 	switch module {
 	case ConstLogModGeneral:
@@ -2142,4 +2270,9 @@ func IsValidLogLevel(lvl string) bool {
 		return true
 	}
 	return false
+}
+
+type LogEntry struct {
+	Server string `json:"server"`
+	Log    string `json:"log"`
 }
