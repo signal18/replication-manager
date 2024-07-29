@@ -379,8 +379,6 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
 
-	cluster.SetState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0076"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "REJOIN", ServerUrl: server.URL})
-
 	return jobid, err
 }
 
@@ -1941,15 +1939,19 @@ func (server *ServerMonitor) ProcessFlashbackPhysical() error {
 		return err
 	} else {
 		mybcksrv := cluster.GetBackupServer()
-		server.SetInReseedBackup(true)
+		backupext := ".xbtream"
 		task := "flashback" + cluster.Conf.BackupPhysicalType
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending server physical backup to flashback reseed %s", server.URL)
 
-		if mybcksrv != nil {
-			go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", server, task)
-		} else {
-			go cluster.SSTRunSender(server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", server, task)
+		if cluster.Conf.CompressBackups {
+			backupext = backupext + ".gz"
 		}
+
+		filename := server.GetMasterBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
+		if mybcksrv != nil {
+			filename = mybcksrv.GetMyBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
+		}
+
+		go server.WaitAndSendSST(task, filename)
 	}
 	return nil
 }
