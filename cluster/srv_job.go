@@ -822,7 +822,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 		return nil
 	}
 	//server.JobInsertTask("", "", "")
-	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE done=0 AND result IS NULL group by task ")
+	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE state=0 group by task ")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
 		server.JobsCreateTable()
@@ -1872,11 +1872,11 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 	return errors.New("Wrong configuration for Backup Binlog Method!")
 }
 
-func (server *ServerMonitor) CallbackMysqldump(dt DBTask) error {
+func (server *ServerMonitor) WaitAndSendSST(task string, filename string) error {
 	cluster := server.ClusterGroup
 	var err error
 
-	rows, err := server.Conn.Queryx("SELECT done FROM replication_manager_schema.jobs WHERE id=?", dt.id)
+	rows, err := server.Conn.Queryx("SELECT done FROM replication_manager_schema.jobs WHERE task='?' and state=2", task)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
 		server.JobsCreateTable()
@@ -1893,12 +1893,12 @@ func (server *ServerMonitor) CallbackMysqldump(dt DBTask) error {
 
 	//Check if id exists
 	if count > 0 {
+		time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
 		if done == 1 {
-			server.StartSlave()
+			go cluster.SSTRunSender(filename, server, task)
 			return nil
 		} else {
-			time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
-			return server.CallbackMysqldump(dt)
+			return server.WaitAndSendSST(filename, task)
 		}
 	}
 
@@ -1919,11 +1919,12 @@ func (server *ServerMonitor) ProcessReseedPhysical() error {
 			backupext = backupext + ".gz"
 		}
 
+		filename := master.GetMasterBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
 		if mybcksrv != nil {
-			go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
-		} else {
-			go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
+			filename = mybcksrv.GetMyBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
 		}
+
+		go server.WaitAndSendSST(task, filename)
 	} else {
 		err = errors.New("No master found")
 		return err
