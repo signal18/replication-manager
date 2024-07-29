@@ -11,7 +11,7 @@ import DBServers from './components/DBServers'
 import { css } from '@emotion/react'
 import Proxies from './components/Proxies.jsx'
 
-function Dashboard({ selectedCluster }) {
+function Dashboard({ selectedCluster, user }) {
   const {
     common: { isDesktop }
   } = useSelector((state) => state)
@@ -51,7 +51,7 @@ function Dashboard({ selectedCluster }) {
         <AccordionComponent
           heading={'Database servers'}
           panelSX={{ overflowX: 'auto', p: 0 }}
-          body={<DBServers selectedCluster={selectedCluster} />}
+          body={<DBServers selectedCluster={selectedCluster} user={user} />}
         />
       )}
 

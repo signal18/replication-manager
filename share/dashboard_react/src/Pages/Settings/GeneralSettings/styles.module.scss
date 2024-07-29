@@ -1,0 +1,13 @@
+.grid {
+  width: 100%;
+  height: max-content;
+  gap: rem(32);
+
+  // templateColumns='repeat(2, 1fr)'
+  @include breakpoint('sm', 'md') {
+    grid-template-columns: repeat(1, 1fr);
+  }
+  @include breakpoint('md') {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

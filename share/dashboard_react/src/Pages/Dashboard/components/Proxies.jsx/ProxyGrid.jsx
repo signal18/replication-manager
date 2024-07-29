@@ -10,7 +10,7 @@ import ServerStatus from '../../../../components/ServerStatus'
 import TagPill from '../../../../components/TagPill'
 import IconButton from '../../../../components/IconButton'
 
-function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop }) {
+function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMenuOptionsVisible }) {
   const { colorMode } = useColorMode()
   const styles = {
     card: {
@@ -81,8 +81,15 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop }) {
                 <Spacer />
 
                 <IconButton icon={HiTable} onClick={showTableView} marginRight={2} tooltip='Show table view' />
-
-                <ProxyMenu from='gridView' row={rowData} clusterName={clusterName} isDesktop={isDesktop} user={user} />
+                {isMenuOptionsVisible && (
+                  <ProxyMenu
+                    from='gridView'
+                    row={rowData}
+                    clusterName={clusterName}
+                    isDesktop={isDesktop}
+                    user={user}
+                  />
+                )}
               </Flex>
 
               <Flex direction='column' width='100%' mb={2} gap='0'>

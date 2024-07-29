@@ -1,15 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useSelector } from 'react-redux'
-import CustomIcon from '../../../../components/Icons/CustomIcon'
-import { HiThumbDown, HiThumbUp, HiViewGrid } from 'react-icons/hi'
-import { Box, Tooltip, useColorMode } from '@chakra-ui/react'
+import { HiViewGrid } from 'react-icons/hi'
 import { DataTable } from '../../../../components/DataTable'
-import TagPill from '../../../../components/TagPill'
 import { createColumnHelper } from '@tanstack/react-table'
 import ServerMenu from './ServerMenu'
 import DBServersGrid from './DBServersGrid'
 import CompareModal from '../../../../components/Modals/CompareModal'
-import { getCurrentGtid, getDelay, getFailCount, getSlaveGtid, getStatusValue, getUsingGtid } from './utils'
+import { getCurrentGtid, getDelay, getFailCount, getSlaveGtid, getUsingGtid } from './utils'
 import CheckOrCrossIcon from '../../../../components/Icons/CheckOrCrossIcon'
 import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
 import ServerName from './ServerName'
@@ -17,14 +14,13 @@ import GTID from '../../../../components/GTID'
 import ServerStatus from '../../../../components/ServerStatus'
 import IconButton from '../../../../components/IconButton'
 
-function DBServers({ selectedCluster }) {
+function DBServers({ selectedCluster, user }) {
   const {
     common: { isDesktop },
     cluster: { clusterServers, clusterMaster }
   } = useSelector((state) => state)
   const { colorMode } = useColorMode()
   const [data, setData] = useState([])
-  const [user, setUser] = useState(null)
   const [viewType, setViewType] = useState('table')
   const [hasMariadbGtid, setHasMariadbGtid] = useState(false)
   const [hasMysqlGtid, setHasMysqlGtid] = useState(false)
@@ -47,14 +43,6 @@ function DBServers({ selectedCluster }) {
       )
     }
   }, [clusterServers])
-
-  useEffect(() => {
-    const loggedUser = localStorage.getItem('username')
-    if (loggedUser && selectedCluster?.apiUsers[loggedUser]) {
-      const apiUser = selectedCluster.apiUsers[loggedUser]
-      setUser(apiUser)
-    }
-  }, [selectedCluster])
 
   const showGridView = () => {
     setViewType('grid')

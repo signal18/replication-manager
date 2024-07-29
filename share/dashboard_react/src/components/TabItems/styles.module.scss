@@ -19,5 +19,9 @@
     background-color: var(--primary-color) !important;
     color: var(--white-color) !important;
     font-weight: bold;
+    border: rem(1) solid var(--primary-color) !important;
+    &:hover {
+      border: rem(1) solid var(--primary-color) !important;
+    }
   }
 }

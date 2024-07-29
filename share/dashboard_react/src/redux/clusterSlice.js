@@ -751,6 +751,33 @@ export const stopProxy = createAsyncThunk('cluster/stopProxy', async ({ clusterN
   }
 })
 
+export const switchSetting = createAsyncThunk('cluster/switchSetting', async ({ clusterName, setting }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.switchSettings(clusterName, setting)
+    thunkAPI.dispatch(getClusterData({ clusterName }))
+    showSuccessBanner(`Switching ${setting} successful!`, status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner(`Switching ${setting} failed!`, error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const changeTopology = createAsyncThunk(
+  'cluster/changeTopology',
+  async ({ clusterName, topology }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.changeTopology(clusterName, topology)
+      thunkAPI.dispatch(getClusterData({ clusterName }))
+      showSuccessBanner(`Topology changed to ${topology} successfully!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Changing topology to ${setting} failed!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   error: null,
@@ -890,7 +917,8 @@ export const clusterSlice = createSlice({
         provisionProxy.pending,
         unprovisionProxy.pending,
         startProxy.pending,
-        stopProxy.pending
+        stopProxy.pending,
+        switchSetting.pending
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -957,7 +985,8 @@ export const clusterSlice = createSlice({
         provisionProxy.fulfilled,
         unprovisionProxy.fulfilled,
         startProxy.fulfilled,
-        stopProxy.fulfilled
+        stopProxy.fulfilled,
+        switchSetting.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -1024,7 +1053,8 @@ export const clusterSlice = createSlice({
         provisionProxy.rejected,
         unprovisionProxy.rejected,
         startProxy.rejected,
-        stopProxy.rejected
+        stopProxy.rejected,
+        switchSetting.rejected
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {

@@ -1,0 +1,33 @@
+.gridItem {
+  width: 100%;
+  box-shadow: $box-shadow-md;
+  background-color: var(--secondary-gray-color);
+  border-radius: $border-radius-sm;
+  overflow: hidden;
+  max-height: rem(140);
+
+  .heading {
+    font-size: rem(14);
+    min-height: rem(40);
+    padding: rem(8);
+    text-align: center;
+    background-color: var(--tertiary-color);
+    // color: var(--white-color);
+    @include flex-center;
+
+    @include breakpoint('sm', 'md') {
+      font-size: rem(12);
+    }
+    @include breakpoint('md', 'lg') {
+      font-size: rem(16);
+    }
+  }
+  .body {
+    height: calc(100% - 40px);
+    padding: rem(24) rem(4);
+    @include flex-center;
+    @include breakpoint('lg') {
+      padding: rem(24);
+    }
+  }
+}

@@ -21,7 +21,6 @@ import {
   getFailCount,
   getSlaveGtid,
   getSlaveGtidHeader,
-  getStatusValue,
   getUsingGtid,
   getUsingGtidHeader,
   getVersion
