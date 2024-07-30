@@ -6,7 +6,6 @@ import GridItemContainer from '../GridItemContainer'
 import Dropdown from '../../../components/Dropdown'
 import { convertObjectToArray } from '../../../utility/common'
 import { useDispatch } from 'react-redux'
-import { changeTopology, switchSetting } from '../../../redux/clusterSlice'
 
 function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
   const [topologyOptions, setTopologyOptions] = useState([])

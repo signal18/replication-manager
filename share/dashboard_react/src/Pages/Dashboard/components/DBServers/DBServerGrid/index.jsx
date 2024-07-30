@@ -69,12 +69,6 @@ function DBServersGrid({
       margin: 'auto',
       borderRadius: '16px',
       marginTop: '8px'
-    },
-    tableType2: {
-      padding: '0.5',
-      marginTop: '2',
-      fontSize: '15px',
-      width: '100%'
     }
   }
 
@@ -149,7 +143,7 @@ function DBServersGrid({
           return (
             <VStack width='100%' key={rowData.id} sx={{ ...styles.card }}>
               <Flex as='header' width='100%' className={`${cssStyles.header} ${cssStyles[gridColor]}`} align='center'>
-                <DBFlavourIcon dbFlavor={rowData.dbVersion.flavor} isBlocking={gridColor.length > 0} />
+                <DBFlavourIcon dbFlavor={rowData.dbVersion.flavor} isBlocking={gridColor.length > 0} from='gridView' />
                 <ServerName as='h4' rowData={rowData} isBlocking={gridColor.length > 0} />
                 <Spacer />
 
@@ -302,14 +296,7 @@ function DBServersGrid({
                               isBlocking={gridColor.length > 0}
                               color={gridColor}
                             />
-                            <TableType2
-                              dataArray={replicationTableData2}
-                              sx={styles.tableType2}
-                              gap={1}
-                              boxPadding={1}
-                              minHeight='24px'
-                              templateColumns='30% auto'
-                            />
+                            <TableType2 dataArray={replicationTableData2} templateColumns='30% auto' />
                           </Flex>
                         }
                       />
@@ -350,10 +337,6 @@ function DBServersGrid({
                               )
                             }
                           ]}
-                          sx={{ ...styles.tableType2 }}
-                          gap={1}
-                          boxPadding={1}
-                          minHeight='24px'
                           templateColumns='30% auto'
                         />
                       </Flex>
@@ -366,16 +349,7 @@ function DBServersGrid({
                   panelClassName={cssStyles.accordionPanel}
                   isOpen={isServiceInfoOpen}
                   onToggle={onServiceInfoToggle}
-                  body={
-                    <TableType2
-                      dataArray={serverInfoData}
-                      templateColumns='30% auto'
-                      gap={1}
-                      boxPadding={1}
-                      minHeight='24px'
-                      sx={styles.tableType2}
-                    />
-                  }
+                  body={<TableType2 dataArray={serverInfoData} templateColumns='30% auto' />}
                 />
 
                 <AccordionComponent
@@ -393,14 +367,7 @@ function DBServersGrid({
                             <TagPill key={index} colorScheme={tag.startsWith('NO_') ? 'red' : 'green'} text={tag} />
                           ))}
                       </Flex>
-                      <TableType2
-                        dataArray={replicationVariables}
-                        templateColumns='30% auto'
-                        gap={1}
-                        boxPadding={1}
-                        minHeight='24px'
-                        sx={styles.tableType2}
-                      />
+                      <TableType2 dataArray={replicationVariables} templateColumns='30% auto' />
                     </Flex>
                   }
                 />
@@ -410,16 +377,7 @@ function DBServersGrid({
                   panelClassName={cssStyles.accordionPanel}
                   isOpen={isLeaderStatusOpen}
                   onToggle={onLeaderStatusToggle}
-                  body={
-                    <TableType2
-                      dataArray={leaderStatus}
-                      boxPadding={1}
-                      templateColumns='30% auto'
-                      gap={1}
-                      minHeight='24px'
-                      sx={styles.tableType2}
-                    />
-                  }
+                  body={<TableType2 dataArray={leaderStatus} templateColumns='30% auto' />}
                 />
               </Flex>
             </VStack>

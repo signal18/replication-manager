@@ -10,6 +10,7 @@ function Dropdown({
   selectedValue,
   width = '200px',
   onChange,
+  buttonClassName,
   askConfirmation = false
 }) {
   const [selectedOption, setSelectedOption] = useState(null)
@@ -36,7 +37,7 @@ function Dropdown({
       <MenuButton
         width={width}
         as={Button}
-        className={styles.menuButton}
+        className={`${styles.menuButton} ${buttonClassName}`}
         rightIcon={<HiChevronDown fontSize={'1.5rem'} />}>
         {selectedOption ? selectedOption.name : placeholder}
       </MenuButton>

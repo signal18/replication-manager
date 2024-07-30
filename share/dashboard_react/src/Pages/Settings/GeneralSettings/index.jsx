@@ -1,16 +1,27 @@
-import { Grid } from '@chakra-ui/react'
+import { Flex, Spinner } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
-import styles from './styles.module.scss'
+import parentStyles from '../styles.module.scss'
 import RMSwitch from '../../../components/RMSwitch'
-import GridItemContainer from '../GridItemContainer'
 import Dropdown from '../../../components/Dropdown'
 import { convertObjectToArray } from '../../../utility/common'
-import { useDispatch } from 'react-redux'
-import { changeTopology, switchSetting } from '../../../redux/clusterSlice'
+import { useDispatch, useSelector } from 'react-redux'
+import TableType2 from '../../../components/TableType2'
+import { changeTopology, switchSetting } from '../../../redux/settingsSlice'
 
 function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
   const [topologyOptions, setTopologyOptions] = useState([])
   const dispatch = useDispatch()
+
+  const {
+    settings: {
+      failoverLoading,
+      targetTopologyLoading,
+      allowUnsafeClusterLoading,
+      allowMultitierSlaveLoading,
+      testLoading,
+      verboseLoading
+    }
+  } = useSelector((state) => state)
 
   useEffect(() => {
     if (selectedCluster?.topologyType) {
@@ -18,9 +29,10 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
     }
   }, [selectedCluster?.topologyType])
 
-  return (
-    <Grid className={styles.grid}>
-      <GridItemContainer title='Failover Mode (interactive)'>
+  const dataObject = [
+    {
+      key: 'Failover Mode (interactive)',
+      value: (
         <RMSwitch
           onText='On-call (manual)'
           offText='On-leave (auto)'
@@ -32,25 +44,37 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
           }
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.interactive}
+          loading={failoverLoading}
         />
-      </GridItemContainer>
-      <GridItemContainer title='Target Topology'>
-        <Dropdown
-          options={topologyOptions}
-          width='100%'
-          selectedValue={selectedCluster?.config?.topologyTarget}
-          askConfirmation={true}
-          onChange={(topology) => {
-            openConfirmModal(`This will set preferred topology to ${topology.value}. Confirm?`, () => () => {
-              dispatch(changeTopology({ clusterName: selectedCluster?.name, topology: topology.value }))
-            })
-          }}
-        />
-      </GridItemContainer>
-      <GridItemContainer title='Allow multi-master-ring topology on unsafe cluster'>
+      )
+    },
+    {
+      key: 'Target Topology',
+      value: (
+        <Flex align='center' gap='2'>
+          <Dropdown
+            options={topologyOptions}
+            buttonClassName={parentStyles.dropdownButton}
+            // width='200px'
+            selectedValue={selectedCluster?.config?.topologyTarget}
+            askConfirmation={true}
+            onChange={(topology) => {
+              openConfirmModal(`This will set preferred topology to ${topology.value}. Confirm?`, () => () => {
+                dispatch(changeTopology({ clusterName: selectedCluster?.name, topology: topology.value }))
+              })
+            }}
+          />
+          {targetTopologyLoading && <Spinner />}
+        </Flex>
+      )
+    },
+    {
+      key: 'Allow multi-master-ring topology on unsafe cluster',
+      value: (
         <RMSwitch
           isChecked={selectedCluster?.config?.replicationMultiMasterRingUnsafe}
           isDisabled={user?.grants['cluster-settings'] == false}
+          loading={allowUnsafeClusterLoading}
           onChange={() =>
             openConfirmModal(
               'Confirm switch settings for multi-master-ring-unsafe?',
@@ -59,11 +83,15 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
             )
           }
         />
-      </GridItemContainer>
-      <GridItemContainer title='Allow Multi-Tier Slave'>
+      )
+    },
+    {
+      key: 'Allow Multi-Tier Slave',
+      value: (
         <RMSwitch
           isChecked={!selectedCluster?.config?.replicationMasterSlaveNeverRelay}
           isDisabled={user?.grants['cluster-settings'] == false}
+          loading={allowMultitierSlaveLoading}
           onChange={() =>
             openConfirmModal(
               'Confirm switch settings for replication-no-relay?',
@@ -72,11 +100,15 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
             )
           }
         />
-      </GridItemContainer>
-      <GridItemContainer title='Test Mode'>
+      )
+    },
+    {
+      key: 'Test Mode',
+      value: (
         <RMSwitch
           isChecked={selectedCluster?.config?.test}
           isDisabled={user?.grants['cluster-settings'] == false}
+          loading={testLoading}
           onChange={() =>
             openConfirmModal(
               'Confirm switch settings for test?',
@@ -84,11 +116,15 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
             )
           }
         />
-      </GridItemContainer>
-      <GridItemContainer title='Verbose'>
+      )
+    },
+    {
+      key: 'Verbose',
+      value: (
         <RMSwitch
           isChecked={selectedCluster?.config?.verbose}
           isDisabled={user?.grants['cluster-settings'] == false}
+          loading={verboseLoading}
           onChange={() =>
             openConfirmModal(
               'Confirm switch settings for verbose?',
@@ -96,8 +132,37 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
             )
           }
         />
-      </GridItemContainer>
-    </Grid>
+      )
+    }
+  ]
+
+  return (
+    <Flex justify='space-between' gap='0'>
+      <TableType2
+        dataArray={dataObject}
+        className={parentStyles.table}
+        labelClassName={parentStyles.label}
+        valueClassName={parentStyles.value}
+        rowDivider={true}
+        rowClassName={parentStyles.row}
+      />
+    </Flex>
+    // <Grid className={styles.grid}>
+    //   <GridItemContainer title='Failover Mode (interactive)'>
+    //     <RMSwitch
+    //       onText='On-call (manual)'
+    //       offText='On-leave (auto)'
+    //       onChange={() =>
+    //         openConfirmModal(
+    //           'Confirm switch settings for failover-mode?',
+    //           () => () => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'failover-mode' }))
+    //         )
+    //       }
+    //       isDisabled={user?.grants['cluster-settings'] == false}
+    //       isChecked={selectedCluster?.config?.interactive}
+    //     />
+    //   </GridItemContainer>
+    // </Grid>
   )
 }
 

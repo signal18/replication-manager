@@ -1,6 +1,5 @@
 import { Flex, List, ListItem, useDisclosure } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
-import Button from '../../components/Button'
 import styles from './styles.module.scss'
 import GeneralSettings from './GeneralSettings'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
@@ -8,24 +7,9 @@ import MonitoringSettings from './MonitoringSettings'
 import AccordionComponent from '../../components/AccordionComponent'
 
 function Settings({ selectedCluster, user }) {
-  // const [selected, setSelected] = useState('General')
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [confirmTitle, setConfirmTitle] = useState('')
-
-  const [items, _] = useState([
-    'General',
-    'Monitoring',
-    'Logs',
-    'Replication',
-    'Rejoin',
-    'Backups',
-    'Schedulers',
-    'Proxies',
-    'Graphs',
-    'Cloud18',
-    'Global'
-  ])
 
   const { isOpen: isGeneralOpen, onToggle: onGeneralToggle } = useDisclosure({ defaultIsOpen: true })
   const { isOpen: isMonitoringOpen, onToggle: onMonitoringToggle } = useDisclosure()
@@ -55,28 +39,12 @@ function Settings({ selectedCluster, user }) {
   }
   return (
     <Flex className={styles.settingsContainer}>
-      {/* {items.map((item) => {
-        return (
-          <AccordionComponent
-            heading={item}
-            onToggle={onGeneralToggle}
-            isOpen={isGeneralOpen}
-            headerClassName={styles.accordionHeader}
-            body={
-              item === 'General' ? (
-                <GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />
-              ) : (
-                item === 'Monitoring'?
-              )
-            }
-          />
-        )
-      })} */}
       <AccordionComponent
         heading={'General'}
         onToggle={onGeneralToggle}
         isOpen={isGeneralOpen}
         headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
         body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
@@ -84,6 +52,7 @@ function Settings({ selectedCluster, user }) {
         onToggle={onMonitoringToggle}
         isOpen={isMonitoringOpen}
         headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
         body={<MonitoringSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
@@ -91,54 +60,63 @@ function Settings({ selectedCluster, user }) {
         onToggle={onLogsToggle}
         isOpen={isLogsOpen}
         headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
       />
       <AccordionComponent
         heading={'Replication'}
         onToggle={onReplicationToggle}
         isOpen={isReplicationOpen}
         headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
       />
       <AccordionComponent
         heading={'Rejoin'}
         onToggle={onRejoinToggle}
         isOpen={isRejoinOpen}
         headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
       />
       <AccordionComponent
         heading={'Backups'}
         onToggle={onBackupsToggle}
         isOpen={isBackupsOpen}
         headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
       />
       <AccordionComponent
         heading={'Schedulers'}
         onToggle={onSchedulersToggle}
         isOpen={isSchedulersOpen}
         headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
       />
       <AccordionComponent
         heading={'Proxies'}
         onToggle={onProxiesToggle}
         isOpen={isProxiesOpen}
         headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
       />
       <AccordionComponent
         heading={'Graphs'}
         onToggle={onGraphsToggle}
         isOpen={isGraphsOpen}
         headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
       />
       <AccordionComponent
         heading={'Cloud18'}
         onToggle={onCloud18Toggle}
         isOpen={isCloud18Open}
         headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
       />
       <AccordionComponent
         heading={'Global'}
         onToggle={onGlobalToggle}
         isOpen={isGlobalOpen}
         headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
       />
 
       {/* <List className={styles.listContainer} spacing={2}>

@@ -1,8 +1,25 @@
 .container {
   font-size: rem(15);
-  .valueContainer {
+  gap: rem(4);
+  padding: rem(2);
+  margin-top: rem(4);
+  width: 100%;
+  .label,
+  .value {
+    padding: rem(4);
+  }
+  .label {
+    font-weight: 500;
+  }
+  .value {
     text-align: start;
     background-color: var(--gray-color);
     border-radius: rem(6);
+    min-height: rem(24);
+  }
+
+  .divider {
+    height: rem(2);
+    background-color: var(--gray-color);
   }
 }

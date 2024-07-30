@@ -4,11 +4,19 @@ import { SiMariadbfoundation } from 'react-icons/si'
 import IconButton from '../../IconButton'
 import styles from './styles.module.scss'
 
-function DBFlavourIcon({ dbFlavor, isBlocking }) {
+function DBFlavourIcon({ dbFlavor, isBlocking, from }) {
   return dbFlavor === 'MariaDB' ? (
-    <IconButton icon={SiMariadbfoundation} className={`${styles.dbFlavor} ${styles.whiteIcon}`} tooltip={dbFlavor} />
+    <IconButton
+      icon={SiMariadbfoundation}
+      className={`${styles.dbFlavor} ${isBlocking || from === 'gridView' ? styles.whiteIcon : styles.primaryIcon}`}
+      tooltip={dbFlavor}
+    />
   ) : dbFlavor === 'MySQL' ? (
-    <IconButton icon={GrMysql} className={`${styles.dbFlavor} ${styles.whiteIcon}`} tooltip={dbFlavor} />
+    <IconButton
+      icon={GrMysql}
+      className={`${styles.dbFlavor} ${isBlocking || from === 'gridView' ? styles.whiteIcon : styles.primaryIcon}`}
+      tooltip={dbFlavor}
+    />
   ) : null
 }
 

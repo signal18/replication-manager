@@ -25,7 +25,6 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
     setConfirmHandler(null)
     setConfirmTitle('')
   }
-  console.log('user::', user)
 
   return (
     <>

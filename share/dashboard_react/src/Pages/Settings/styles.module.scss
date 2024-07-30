@@ -19,11 +19,14 @@ div.settingsContainer {
     }
     h4 {
       text-transform: uppercase;
-      text-align: center;
+      //  text-align: center;
     }
     &:hover {
       background-color: var(--tertiary-color) !important;
     }
+  }
+  .accordionPanel {
+    overflow: hidden;
   }
   .listContainer {
     flex-basis: 10%;
@@ -79,6 +82,49 @@ div.settingsContainer {
       @include breakpoint('lg') {
         margin-left: rem(24);
         margin-right: rem(24);
+      }
+    }
+  }
+
+  .table {
+    padding: 0;
+    gap: 0;
+    align-items: center;
+    overflow: hidden;
+
+    @include breakpoint('sm', 'md') {
+      grid-template-columns: 1fr !important;
+    }
+    @include breakpoint('md', 'lg') {
+      grid-template-columns: 320px auto !important;
+    }
+    @include breakpoint('lg') {
+      grid-template-columns: 380px auto !important;
+    }
+    .row {
+      height: 100%;
+    }
+    .label {
+      font-weight: 600;
+      background-color: var(--tertiary-color);
+      height: 100%;
+      padding-left: rem(16);
+    }
+    .value {
+      background-color: transparent;
+      padding-left: rem(16);
+    }
+    button.dropdownButton {
+      width: 160px;
+      white-space: break-spaces;
+      padding: 0;
+      padding-left: rem(8);
+      text-align: start;
+      @include breakpoint('md', 'lg') {
+        width: 200px;
+      }
+      @include breakpoint('lg') {
+        width: 250px;
       }
     }
   }
