@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { lazy, useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import Dashboard from './Dashboard'
-import Settings from './Settings'
+const Settings = lazy(() => import('./Settings'))
 
 function Cluster({ tab }) {
   const [user, setUser] = useState(null)
