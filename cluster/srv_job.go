@@ -379,8 +379,6 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
 
-	cluster.SetState("WARN0076", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0076"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "REJOIN", ServerUrl: server.URL})
-
 	return jobid, err
 }
 
@@ -822,7 +820,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 		return nil
 	}
 	//server.JobInsertTask("", "", "")
-	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE done=0 AND result IS NULL group by task ")
+	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE state=0 group by task ")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
 		server.JobsCreateTable()
@@ -871,6 +869,42 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 			}
 		}
 
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) JobsCheckPending() error {
+	cluster := server.ClusterGroup
+	if server.IsDown() {
+		return nil
+	}
+
+	//Only cancel if not reseeding status
+	if server.IsReseeding {
+		return nil
+	}
+
+	//server.JobInsertTask("", "", "")
+	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE state=2 group by task ")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
+		server.JobsCreateTable()
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var task DBTask
+		rows.Scan(&task.task, &task.ct, &task.id)
+		if task.ct > 0 {
+			switch task.task {
+			case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
+				res := "Replication-manager is down while preparing task, cancelling operation for data safety."
+				query := "UPDATE replication_manager_schema.jobs SET state=5, result='%s' where task = '%s'"
+				server.ExecQueryNoBinLog(fmt.Sprintf(query, res, task.task))
+				server.SetNeedRefreshJobs(true)
+			}
+		}
 	}
 
 	return nil
@@ -1872,11 +1906,11 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 	return errors.New("Wrong configuration for Backup Binlog Method!")
 }
 
-func (server *ServerMonitor) CallbackMysqldump(dt DBTask) error {
+func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop int) error {
 	cluster := server.ClusterGroup
 	var err error
 
-	rows, err := server.Conn.Queryx("SELECT done FROM replication_manager_schema.jobs WHERE id=?", dt.id)
+	rows, err := server.Conn.Queryx(fmt.Sprintf("SELECT done FROM replication_manager_schema.jobs WHERE task='%s' and state=%d", task, 2))
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
 		server.JobsCreateTable()
@@ -1891,18 +1925,24 @@ func (server *ServerMonitor) CallbackMysqldump(dt DBTask) error {
 		count++
 	}
 
+	time.Sleep(time.Second * 15)
 	//Check if id exists
 	if count > 0 {
-		if done == 1 {
-			server.StartSlave()
-			return nil
-		} else {
-			time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
-			return server.CallbackMysqldump(dt)
+		query := "UPDATE replication_manager_schema.jobs SET state=1, result='processing' where task = '%s'"
+		server.ExecQueryNoBinLog(fmt.Sprintf(query, task))
+		go cluster.SSTRunSender(filename, server)
+		return nil
+	} else {
+		if loop < 10 {
+			loop++
+			return server.WaitAndSendSST(task, filename, loop)
 		}
 	}
 
-	return err
+	query := "UPDATE replication_manager_schema.jobs SET state=5, result='Waiting more than max loop' where task = '%s'"
+	server.ExecQueryNoBinLog(fmt.Sprintf(query, task))
+	server.SetNeedRefreshJobs(true)
+	return errors.New("Error: waiting for " + task + " more than max loop.")
 }
 
 func (server *ServerMonitor) ProcessReseedPhysical() error {
@@ -1919,11 +1959,12 @@ func (server *ServerMonitor) ProcessReseedPhysical() error {
 			backupext = backupext + ".gz"
 		}
 
+		filename := master.GetMasterBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
 		if mybcksrv != nil {
-			go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
-		} else {
-			go cluster.SSTRunSender(master.GetMasterBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, server, task)
+			filename = mybcksrv.GetMyBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
 		}
+
+		go server.WaitAndSendSST(task, filename, 0)
 	} else {
 		err = errors.New("No master found")
 		return err
@@ -1940,15 +1981,19 @@ func (server *ServerMonitor) ProcessFlashbackPhysical() error {
 		return err
 	} else {
 		mybcksrv := cluster.GetBackupServer()
-		server.SetInReseedBackup(true)
+		backupext := ".xbtream"
 		task := "flashback" + cluster.Conf.BackupPhysicalType
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending server physical backup to flashback reseed %s", server.URL)
 
-		if mybcksrv != nil {
-			go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", server, task)
-		} else {
-			go cluster.SSTRunSender(server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+".xbtream", server, task)
+		if cluster.Conf.CompressBackups {
+			backupext = backupext + ".gz"
 		}
+
+		filename := server.GetMasterBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
+		if mybcksrv != nil {
+			filename = mybcksrv.GetMyBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
+		}
+
+		go server.WaitAndSendSST(task, filename, 0)
 	}
 	return nil
 }
@@ -2023,8 +2068,9 @@ func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv string) er
 func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int) error {
 	cluster := server.ClusterGroup
 	if entry.Server != server.URL {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Log entries and source mismatch: %s", server.URL)
-		return errors.New("Log entries and source mismatch: %s")
+		err := errors.New(fmt.Sprintf("Log entries and source mismatch: %s with %s", entry.Server, server.URL))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, err.Error())
+		return err
 	}
 
 	lines := strings.Split(strings.ReplaceAll(entry.Log, "\\n", "\n"), "\n")

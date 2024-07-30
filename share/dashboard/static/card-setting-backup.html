@@ -69,6 +69,17 @@
             </td>
         </tr>
         <tr>
+            <td colspan=4>
+                Backup Buffer Size: <span style="display:inline-block;;margin: 2px;"
+                    class="label label-success">{{ formatBytes(selectedCluster.config.sstSendBuffer,0) }}</span>
+                    <span class="pull-right" ng-click="setsettings('sst-send-buffer',selectedBufferSize)"><i
+                        style="display:inline-block;;margin: 2px;" class="fa fa-save" ></i></span>
+                <md-select name="selectedBufferSize" ng-model="selectedBufferSize">
+                    <md-option ng-selected="{{size ==  selectedCluster.config.sstSendBuffer}}"
+                        ng-repeat="size in bufferList" ng-value="size">{{ formatBytes(size,0) }}</md-option>
+                </md-select>
+            </td>
+        <tr>
             <th colspan=4>Backup Binlogs</th>
         </tr>
         <tr>
