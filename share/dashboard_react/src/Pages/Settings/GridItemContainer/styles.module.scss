@@ -18,7 +18,7 @@
     @include breakpoint('sm', 'md') {
       font-size: rem(12);
     }
-    @include breakpoint('md', 'lg') {
+    @include breakpoint('md') {
       font-size: rem(16);
     }
   }

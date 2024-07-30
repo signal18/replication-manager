@@ -64,10 +64,7 @@ export const clusterService = {
   provisionProxy,
   unprovisionProxy,
   startProxy,
-  stopProxy,
-  //settings
-  switchSettings,
-  changeTopology
+  stopProxy
 }
 
 //#region main
@@ -320,12 +317,3 @@ function stopProxy(clusterName, proxyId) {
 }
 
 //#endregion cluster>proxy apis
-
-//#region cluster>settings apis
-function switchSettings(clusterName, setting) {
-  return getRequest(`clusters/${clusterName}/settings/actions/switch/${setting}`)
-}
-
-function changeTopology(clusterName, topology) {
-  return getRequest(`clusters/${clusterName}/settings/actions/set/topology-target/${topology}`)
-}

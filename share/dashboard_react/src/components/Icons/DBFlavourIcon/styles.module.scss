@@ -11,7 +11,7 @@
   }
   &.primaryIcon {
     svg {
-      fill: var(--primary-color);
+      fill: var(--primary-color) !important;
     }
   }
   &.hover {

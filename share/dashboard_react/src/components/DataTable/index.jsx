@@ -83,7 +83,7 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
     <Table className={styles.table}>
       <Thead>
         {table.getHeaderGroups().map((headerGroup) => (
-          <Tr key={headerGroup.id} className={styles.headerRow}>
+          <Tr key={headerGroup.id} sx={styles.headerRow}>
             {headerGroup.headers.map((header, index) => {
               const meta = header.column.columnDef.meta
               return (
