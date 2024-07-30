@@ -316,7 +316,17 @@ app.controller('DashboardController', function (
 
   var timeFrame = $routeParams.timeFrame;
 
+  $scope.formatBytes = function(bytes, decimals = 2) {
+    if (bytes === 0) return '0 Bytes';
+  
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
+  }
 
+  $scope.bufferList = [1024, 2048, 4096, 8192, 16384, 32768, 65536, 1048576]
 
   if (git_data["user"] && git_data["token"] && !AppService.hasAuthHeaders()) {
     git_user.username = git_data["user"];

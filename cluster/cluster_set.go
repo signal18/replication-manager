@@ -1772,7 +1772,9 @@ func (cluster *Cluster) SetMasterNil() {
 }
 
 func (cluster *Cluster) SetApiTokenTimeout(value int) {
-	cluster.Lock()
 	cluster.Conf.TokenTimeout = value
-	cluster.Unlock()
+}
+
+func (cluster *Cluster) SetSSTBufferSize(value int) {
+	cluster.Conf.SSTSendBuffer = value
 }
