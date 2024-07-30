@@ -59,8 +59,8 @@ app.controller('DashboardController', function (
   $scope.grafanaConfigs = []
   $scope.showGC = false
 
-  $scope.missingDBTags = undefined;
-  $scope.missingProxyTags = undefined;
+  $scope.missingDBTags = [];
+  $scope.missingProxyTags = [];
   $scope.promise = undefined;
 
   $scope.showTable = false
@@ -472,11 +472,11 @@ app.controller('DashboardController', function (
           return passedTest;
         }
         $scope.agents = data.agents;
-        $scope.SetApiTokenTimeout(data.config.apiTokenTimeout);
         $scope.missingDBTags = isInTags(data.configurator.configTags, data.configurator.dbServersTags, function (currentTag, dbTags) { return (dbTags.indexOf(currentTag) == -1); });
         $scope.missingProxyTags = isInTags(data.configurator.configPrxTags, data.configurator.proxyServersTags, function (currentTag, proxyTags) { return (proxyTags.indexOf(currentTag) == -1); });
         $scope.SetIgnoreErrors(data.config.monitoringIgnoreErrors);
         $scope.SetCaptureTrigger(data.config.monitoringCaptureTrigger);
+        $scope.SetApiTokenTimeout(data.config.apiTokenTimeout);
 
         $scope.reserror = false;
       }, function () {
