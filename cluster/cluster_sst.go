@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -428,13 +429,14 @@ func (sst *SST) stream_copy_to_restic() <-chan int {
 	return sync_channel
 }
 
-func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, task string) {
+func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) {
+	var err error
 	port, _ := strconv.Atoi(sv.SSTPort)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlWarn, "SST Reseed to port %s server %s", sv.SSTPort, sv.Host)
 
 	if cluster.Conf.SchedulerReceiverUseSSL {
-		cluster.SSTRunSenderSSL(backupfile, sv, task)
+		cluster.SSTRunSenderSSL(backupfile, sv)
 		return
 	}
 
@@ -443,17 +445,71 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, task 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST Reseed failed connection to port %s server %s %s ", sv.SSTPort, sv.Host, err)
 		return
 	}
-
 	defer client.Close()
+
+	if strings.HasSuffix(backupfile, "gz") {
+		err = cluster.SSTRunSendGzip(client, backupfile, sv)
+	} else {
+		err = cluster.SSTRunSendFile(client, backupfile, sv)
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "%s", err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup failed to send, closing connection!")
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup has been sent, closing connection!")
+	}
+}
+
+func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST sending file: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
+	file, err := os.Open(backupfile)
+	if err != nil {
+		return errors.New(fmt.Sprintf("SST to server %s failed to open backup file, err: %s ", sv.URL, err))
+	}
+
+	sendBuffer := make([]byte, cluster.Conf.SSTSendBuffer)
+	//fmt.Println("Start sending file!")
+	var total uint64
+
+	defer file.Close()
+
+	fz, err := gzip.NewReaderN(file, cluster.Conf.SSTSendBuffer, 4)
+	if err != nil {
+		return errors.New(fmt.Sprintf("SST to server %s failed in init gzip reader, err: %s", sv.URL, err))
+	}
+	defer fz.Close()
+
+	// Read and send data in chunks
+	for {
+		n, err := fz.Read(sendBuffer)
+		if err != nil && err != io.EOF {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to read decompressed data: %v", err)
+		}
+		if n > 0 {
+			// Send the chunk to the network connection
+			if bts, err := client.Write(sendBuffer[:n]); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to write chunk at position %d: %v", total, err)
+			} else {
+				total = total + uint64(bts)
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup has been sent, closing connection!")
+
+	return nil
+}
+
+func (cluster *Cluster) SSTRunSendFile(client net.Conn, backupfile string, sv *ServerMonitor) error {
 	file, err := os.Open(backupfile)
 	if os.IsNotExist(err) && cluster.Conf.CompressBackups {
 		backupfile = strings.Replace(backupfile, "xbtream", "gz", 1)
-		file, err = os.Open(backupfile)
+		return cluster.SSTRunSendGzip(client, backupfile, sv)
 	}
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
-		return
+		return errors.New(fmt.Sprintf("SST to server %s failed to open backup file, err: %s ", sv.URL, err))
 	}
 
 	sendBuffer := make([]byte, cluster.Conf.SSTSendBuffer)
@@ -463,18 +519,9 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, task 
 	defer file.Close()
 
 	for {
-		if strings.HasSuffix(backupfile, "gz") {
-			fz, err := gzip.NewReader(file)
-			if err != nil {
-				return
-			}
-			defer fz.Close()
-			fz.Read(sendBuffer)
-		} else {
-			_, err = file.Read(sendBuffer)
-			if err == io.EOF {
-				break
-			}
+		_, err = file.Read(sendBuffer)
+		if err == io.EOF {
+			break
 		}
 
 		bts, err := client.Write(sendBuffer)
@@ -485,9 +532,10 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, task 
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup has been sent, closing connection!")
 
+	return nil
 }
 
-func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor, task string) {
+func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor) {
 	var (
 		client *tls.Conn
 		err    error
@@ -500,28 +548,18 @@ func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor, ta
 		return
 	}
 	defer client.Close()
-	file, err := os.Open(backupfile)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST sending file via SSL: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to open backup file server %s %s ", sv.URL, err)
-		return
-	}
-	sendBuffer := make([]byte, 16384)
-	var total uint64
 
-	defer file.Close()
-	for {
-		_, err = file.Read(sendBuffer)
-		if err == io.EOF {
-			break
-		}
-		bts, err := client.Write(sendBuffer)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to write chunk %s at position %d", err, total)
-		}
-		total = total + uint64(bts)
+	if strings.HasSuffix(backupfile, "gz") {
+		err = cluster.SSTRunSendGzip(client, backupfile, sv)
+	} else {
+		err = cluster.SSTRunSendFile(client, backupfile, sv)
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup has been sent via SSL , closing connection!")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "%s", err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup failed to send, closing connection!")
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup has been sent via SSL, closing connection!")
+	}
 }
 
 func (cluster *Cluster) SSTGetSenderPort() string {

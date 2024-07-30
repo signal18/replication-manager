@@ -1925,12 +1925,12 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 		count++
 	}
 
-	time.Sleep(time.Second * time.Duration(cluster.Conf.MonitoringTicker))
+	time.Sleep(time.Second * 15)
 	//Check if id exists
 	if count > 0 {
 		query := "UPDATE replication_manager_schema.jobs SET state=1, result='processing' where task = '%s'"
 		server.ExecQueryNoBinLog(fmt.Sprintf(query, task))
-		go cluster.SSTRunSender(filename, server, task)
+		go cluster.SSTRunSender(filename, server)
 		return nil
 	} else {
 		if loop < 10 {
@@ -2068,8 +2068,9 @@ func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv string) er
 func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int) error {
 	cluster := server.ClusterGroup
 	if entry.Server != server.URL {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Log entries and source mismatch: %s", server.URL)
-		return errors.New("Log entries and source mismatch: %s")
+		err := errors.New(fmt.Sprintf("Log entries and source mismatch: %s with %s", entry.Server, server.URL))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, err.Error())
+		return err
 	}
 
 	lines := strings.Split(strings.ReplaceAll(entry.Log, "\\n", "\n"), "\n")
