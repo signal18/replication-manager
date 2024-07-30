@@ -18,9 +18,32 @@ function TableType2({
           <GridItem className={rowClassName}>
             <Box className={`${styles.label} ${labelClassName}`}>{item.key}</Box>
           </GridItem>
-          <GridItem className={rowClassName}>
+          {Array.isArray(item.value) ? (
+            <GridItem className={rowClassName} colSpan={2}></GridItem>
+          ) : (
+            <GridItem className={rowClassName}>
+              <Box className={`${styles.value} ${valueClassName}`}>{item.value}</Box>
+            </GridItem>
+          )}
+          {Array.isArray(item.value) &&
+            item.value.map((subItem, subIndex) => {
+              return (
+                <React.Fragment key={subIndex}>
+                  <GridItem className={rowClassName}>
+                    <Box className={`${styles.label} ${styles.subLabel}`} pl={3}>
+                      {subItem.key}
+                    </Box>
+                  </GridItem>
+                  <GridItem className={rowClassName}>
+                    <Box className={`${styles.value} ${valueClassName}`}>{subItem.value}</Box>
+                  </GridItem>
+                </React.Fragment>
+              )
+            })}
+
+          {/* <GridItem className={rowClassName}>
             <Box className={`${styles.value} ${valueClassName}`}>{item.value}</Box>
-          </GridItem>
+          </GridItem> */}
           {rowDivider && index < dataArray.length - 1 && (
             <GridItem colSpan={2}>
               <Box className={styles.divider} />

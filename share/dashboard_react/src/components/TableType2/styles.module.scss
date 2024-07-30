@@ -10,6 +10,10 @@
   }
   .label {
     font-weight: 500;
+    text-align: start;
+  }
+  .subLabel {
+    padding-left: rem(32);
   }
   .value {
     text-align: start;

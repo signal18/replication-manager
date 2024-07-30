@@ -1,114 +1,216 @@
-import { Grid } from '@chakra-ui/react'
-import React, { useState, useEffect } from 'react'
-import styles from './styles.module.scss'
+import { Flex, Text } from '@chakra-ui/react'
+import React from 'react'
+import parentStyles from '../styles.module.scss'
 import RMSwitch from '../../../components/RMSwitch'
-import GridItemContainer from '../GridItemContainer'
-import Dropdown from '../../../components/Dropdown'
-import { convertObjectToArray } from '../../../utility/common'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
+import TableType2 from '../../../components/TableType2'
+import { setSettingsNullable, switchSetting } from '../../../redux/settingsSlice'
+import TextForm from '../TextForm'
 
 function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
-  const [topologyOptions, setTopologyOptions] = useState([])
   const dispatch = useDispatch()
 
-  useEffect(() => {
-    if (selectedCluster?.topologyType) {
-      setTopologyOptions(convertObjectToArray(selectedCluster.topologyType))
+  const {
+    settings: {
+      monSaveConfigLoading,
+      monPauseLoading,
+      monCaptureLoading,
+      monSchemaChangeLoading,
+      monInnoDBLoading,
+      monVarDiffLoading,
+      monProcessListLoading,
+      captureTriggerLoading,
+      monIgnoreErrLoading
     }
-  }, [selectedCluster?.topologyType])
+  } = useSelector((state) => state)
+
+  const dataObject = [
+    {
+      key: 'Monitoring Save Config',
+      value: [
+        {
+          key: 'Monitoring Save Config',
+          value: (
+            <RMSwitch
+              onChange={() =>
+                openConfirmModal(
+                  'Confirm switch settings for monitoring-save-config?',
+                  () => () =>
+                    dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-save-config' }))
+                )
+              }
+              isDisabled={user?.grants['cluster-settings'] == false}
+              isChecked={selectedCluster?.config?.monitoringSaveConfig}
+              loading={monSaveConfigLoading}
+            />
+          )
+        },
+        {
+          key: 'Monitoring Pause',
+          value: (
+            <RMSwitch
+              onChange={() =>
+                openConfirmModal(
+                  'Confirm switch settings for monitoring-pause?',
+                  () => () =>
+                    dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-pause' }))
+                )
+              }
+              isDisabled={user?.grants['cluster-settings'] == false}
+              isChecked={selectedCluster?.config?.monitoringPause}
+              loading={monPauseLoading}
+            />
+          )
+        }
+      ]
+    },
+    {
+      key: 'Capture',
+      value: (
+        <Flex className={parentStyles.valueWithInfo}>
+          <Text className={parentStyles.info}>
+            Stack trace contain show processlist, engine status, slave and master status for
+          </Text>
+          <RMSwitch
+            onChange={() =>
+              openConfirmModal(
+                'Confirm switch settings for monitoring-capture?',
+                () => () =>
+                  dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-capture' }))
+              )
+            }
+            isDisabled={user?.grants['cluster-settings'] == false}
+            isChecked={selectedCluster?.config?.monitoringCapture}
+            loading={monCaptureLoading}
+          />
+        </Flex>
+      )
+    },
+    {
+      key: 'Capture Trigger',
+      value: (
+        <TextForm
+          originalValue={selectedCluster?.config?.monitoringCaptureTrigger}
+          loading={captureTriggerLoading}
+          onConfirm={(captureTriggerValue) =>
+            openConfirmModal(
+              `Confirm change 'monitoring-capture-trigger' to: ${captureTriggerValue || '{undefined}'}?`,
+              () => () =>
+                dispatch(
+                  setSettingsNullable({
+                    clusterName: selectedCluster?.name,
+                    setting: 'monitoring-capture-trigger',
+                    value: captureTriggerValue.length === 0 ? '{undefined}' : captureTriggerValue
+                  })
+                )
+            )
+          }
+        />
+      )
+    },
+    {
+      key: 'Monitoring Ignore Error List',
+      value: (
+        <TextForm
+          originalValue={selectedCluster?.config?.monitoringIgnoreErrors}
+          loading={monIgnoreErrLoading}
+          onConfirm={(errorListValue) =>
+            openConfirmModal(
+              `Confirm change 'monitoring-ignore-errors' to: ${errorListValue || '{undefined}'}?`,
+              () => () =>
+                dispatch(
+                  setSettingsNullable({
+                    clusterName: selectedCluster?.name,
+                    setting: 'monitoring-ignore-errors',
+                    value: errorListValue.length === 0 ? '{undefined}' : errorListValue
+                  })
+                )
+            )
+          }
+        />
+      )
+    },
+    {
+      key: 'Monitoring Schema',
+      value: (
+        <RMSwitch
+          onChange={() =>
+            openConfirmModal(
+              'Confirm switch settings for monitoring-schema-change?',
+              () => () =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-change' }))
+            )
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringSchemaChange}
+          loading={monSchemaChangeLoading}
+        />
+      )
+    },
+    {
+      key: 'Monitoring InnoDB Status',
+      value: (
+        <RMSwitch
+          onChange={() =>
+            openConfirmModal(
+              'Confirm switch settings for monitoring-innodb-status?',
+              () => () =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-innodb-status' }))
+            )
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringInnoDBStatus}
+          loading={monInnoDBLoading}
+        />
+      )
+    },
+    {
+      key: 'Monitoring Variable Diff',
+      value: (
+        <RMSwitch
+          onChange={() =>
+            openConfirmModal(
+              'Confirm switch settings for monitoring-variable-diff?',
+              () => () =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-variable-diff' }))
+            )
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringVariableDiff}
+          loading={monVarDiffLoading}
+        />
+      )
+    },
+    {
+      key: 'Monitoring Processlist',
+      value: (
+        <RMSwitch
+          onChange={() =>
+            openConfirmModal(
+              'Confirm switch settings for monitoring-processlist?',
+              () => () =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-processlist' }))
+            )
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringProcesslist}
+          loading={monProcessListLoading}
+        />
+      )
+    }
+  ]
 
   return (
-    <Grid className={styles.grid} templateColumns='repeat(2, 1fr)'>
-      <GridItemContainer title='Monitoring Save Config'>
-        {/* <RMSwitch
-          onText='On-call (manual)'
-          offText='On-leave (auto)'
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for failover-mode?',
-              () => () => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'failover-mode' }))
-            )
-          }
-          isDisabled={user?.grants['cluster-settings'] == false}
-          isChecked={selectedCluster?.config?.interactive}
-        /> */}
-      </GridItemContainer>
-      <GridItemContainer title='Capture'>
-        {/* <Dropdown
-          options={topologyOptions}
-          width='50%'
-          selectedValue={selectedCluster?.config?.topologyTarget}
-          askConfirmation={true}
-          onChange={(topology) => {
-            openConfirmModal(`This will set preferred topology to ${topology.value}. Confirm?`, () => () => {
-              dispatch(changeTopology({ clusterName: selectedCluster?.name, topology: topology.value }))
-            })
-          }}
-        /> */}
-      </GridItemContainer>
-      <GridItemContainer title='Capture Trigger'>
-        {/* <RMSwitch
-          isChecked={selectedCluster?.config?.replicationMultiMasterRingUnsafe}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for multi-master-ring-unsafe?',
-              () => () =>
-                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'multi-master-ring-unsafe' }))
-            )
-          }
-        /> */}
-      </GridItemContainer>
-      <GridItemContainer title='Monitoring Schema'>
-        {/* <RMSwitch
-          isChecked={!selectedCluster?.config?.replicationMasterSlaveNeverRelay}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for replication-no-relay?',
-              () => () =>
-                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'replication-no-relay' }))
-            )
-          }
-        /> */}
-      </GridItemContainer>
-      <GridItemContainer title='Monitoring InnoDB Status'>
-        {/* <RMSwitch
-          isChecked={selectedCluster?.config?.test}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for test?',
-              () => () => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'test' }))
-            )
-          }
-        /> */}
-      </GridItemContainer>
-      <GridItemContainer title='Monitoring Variable Diff'>
-        {/* <RMSwitch
-          isChecked={selectedCluster?.config?.verbose}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for verbose?',
-              () => () => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'verbose' }))
-            )
-          }
-        /> */}
-      </GridItemContainer>
-      <GridItemContainer title='Monitoring Processlist'>
-        {/* <RMSwitch
-          isChecked={selectedCluster?.config?.verbose}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for verbose?',
-              () => () => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'verbose' }))
-            )
-          }
-        /> */}
-      </GridItemContainer>
-    </Grid>
+    <Flex justify='space-between' gap='0'>
+      <TableType2
+        dataArray={dataObject}
+        className={parentStyles.table}
+        labelClassName={parentStyles.label}
+        valueClassName={parentStyles.value}
+        rowDivider={true}
+        rowClassName={parentStyles.row}
+      />
+    </Flex>
   )
 }
 

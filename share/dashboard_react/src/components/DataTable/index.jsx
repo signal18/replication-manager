@@ -24,6 +24,7 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
     }
   })
   const { colorMode } = useColorMode()
+
   const theme = useTheme()
 
   const styles = {
