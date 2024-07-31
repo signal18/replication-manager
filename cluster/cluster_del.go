@@ -74,7 +74,6 @@ func (cluster *Cluster) DropDBTag(dtag string) {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Dropping database tag %s ", dtag)
 	if cluster.Conf.ProvDBApplyDynamicConfig {
-
 		for _, srv := range cluster.Servers {
 			cmd := "mariadb_default"
 			if !srv.IsMariaDB() {

@@ -97,12 +97,14 @@ func (server *ServerMonitor) GetDatabaseDatadir() string {
 		return server.SlapOSDatadir + "/var/lib/mysql"
 	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorOnPremise {
 		if server.DBDataDir == "" {
-			//Not using Variables[] due to uppercase values
-			if value, _, err := dbhelper.GetVariableByName(server.Conn, "DATADIR", server.DBVersion); err == nil {
-				value, _ := strings.CutSuffix(value, "/")
+			if server.Conn != nil {
+				//Not using Variables[] due to uppercase values
+				if value, _, err := dbhelper.GetVariableByName(server.Conn, "DATADIR", server.DBVersion); err == nil {
+					value, _ := strings.CutSuffix(value, "/")
 
-				server.DBDataDir = value
-				return server.DBDataDir
+					server.DBDataDir = value
+					return server.DBDataDir
+				}
 			}
 		} else {
 			return server.DBDataDir

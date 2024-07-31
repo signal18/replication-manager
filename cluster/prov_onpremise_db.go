@@ -62,12 +62,14 @@ func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Clie
 func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor) {
 	client, err := cluster.OnPremiseConnect(server)
 	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise provision database failed to connect : %s", err)
 		cluster.errorChan <- err
+		return
 	}
 	defer client.Close()
 	err = cluster.OnPremiseSetEnv(client, server)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise start database failed in env setup : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise provision database failed in env setup : %s", err)
 		cluster.errorChan <- err
 	}
 	dbtype := "mariadb"

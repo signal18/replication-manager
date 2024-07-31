@@ -1346,7 +1346,10 @@ func (cluster *Cluster) SetSchedulerAlertDisableCron(value string) error {
 
 func (cluster *Cluster) SetDbServerHosts(value string) error {
 	cluster.Conf.Hosts = value
-	cluster.hostList = strings.Split(value, ",")
+	cluster.hostList = make([]string, 0)
+	if value != "" {
+		cluster.hostList = strings.Split(value, ",")
+	}
 	return nil
 }
 
