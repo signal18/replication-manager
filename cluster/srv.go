@@ -200,6 +200,7 @@ type ServerMonitor struct {
 	NeedRefreshJobs             bool
 	BinaryLogDir                string
 	DBDataDir                   string
+	LastBackupMeta              config.BackupMetadata `json:"-"`
 }
 
 type SlaveVariables struct {

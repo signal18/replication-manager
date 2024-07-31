@@ -780,3 +780,98 @@ func FromTasksMap(m *TasksMap, c *TasksMap) *TasksMap {
 
 	return m
 }
+
+type BackupMetaMap struct {
+	*sync.Map
+}
+
+func NewBackupMetaMap() *BackupMetaMap {
+	s := new(sync.Map)
+	m := &BackupMetaMap{Map: s}
+	return m
+}
+
+func (m *BackupMetaMap) Get(key string) *BackupMetadata {
+	if v, ok := m.Load(key); ok {
+		return v.(*BackupMetadata)
+	}
+	return nil
+}
+
+func (m *BackupMetaMap) CheckAndGet(key string) (*BackupMetadata, bool) {
+	v, ok := m.Load(key)
+	if ok {
+		return v.(*BackupMetadata), true
+	}
+	return nil, false
+}
+
+func (m *BackupMetaMap) Set(key string, value *BackupMetadata) {
+	m.Store(key, value)
+}
+
+func (m *BackupMetaMap) ToNormalMap(c map[string]*BackupMetadata) {
+	// Clear the old values in the output map
+	for k := range c {
+		delete(c, k)
+	}
+
+	// Insert all values from the BackupMetaMap to the output map
+	m.Callback(func(key string, value *BackupMetadata) bool {
+		c[key] = value
+		return true
+	})
+}
+
+func (m *BackupMetaMap) ToNewMap() map[string]*BackupMetadata {
+	result := make(map[string]*BackupMetadata)
+	m.Range(func(k, v any) bool {
+		result[k.(string)] = v.(*BackupMetadata)
+		return true
+	})
+	return result
+}
+
+func (m *BackupMetaMap) Callback(f func(key string, value *BackupMetadata) bool) {
+	m.Range(func(k, v any) bool {
+		return f(k.(string), v.(*BackupMetadata))
+	})
+}
+
+func (m *BackupMetaMap) Clear() {
+	m.Range(func(key, value any) bool {
+		m.Delete(key.(string))
+		return true
+	})
+}
+
+func FromNormalBackupMetaMap(m *BackupMetaMap, c map[string]*BackupMetadata) *BackupMetaMap {
+	if m == nil {
+		m = NewBackupMetaMap()
+	} else {
+		m.Clear()
+	}
+
+	for k, v := range c {
+		m.Set(k, v)
+	}
+
+	return m
+}
+
+func FromBackupMetaMap(m *BackupMetaMap, c *BackupMetaMap) *BackupMetaMap {
+	if m == nil {
+		m = NewBackupMetaMap()
+	} else {
+		m.Clear()
+	}
+
+	if c != nil {
+		c.Callback(func(key string, value *BackupMetadata) bool {
+			m.Set(key, value)
+			return true
+		})
+	}
+
+	return m
+}
