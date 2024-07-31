@@ -219,6 +219,11 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseed)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/cancel-reseed", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseedCancel)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetInnoDBMonitor)),
@@ -585,6 +590,31 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 				}
 			}
 
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerReseedCancel(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			err := node.JobsCancelReseed()
+			if err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "mysqldump reseed restore failed %s", err)
+			}
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

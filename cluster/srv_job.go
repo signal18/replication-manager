@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"slices"
 
 	"errors"
 	"fmt"
@@ -945,6 +946,80 @@ func (server *ServerMonitor) JobsCheckErrors() error {
 		server.ExecQueryNoBinLog(fmt.Sprintf(query, strings.Join(p, ",")))
 		server.SetNeedRefreshJobs(true)
 	}
+
+	return err
+}
+
+func (server *ServerMonitor) JobsCancelReseed() error {
+	var err error
+	var canCancel bool = true
+	cluster := server.ClusterGroup
+
+	//Check for already running task
+	server.JobResults.Range(func(k, v any) bool {
+		key := k.(string)
+		val := v.(*config.Task)
+		if slices.Contains([]string{"reseedmariabackup", "reseedxtrabackup", "flashbackmariabackup", "flashbackxtrabackup"}, key) {
+			if val.State == 1 {
+				canCancel = false
+			}
+		}
+		return true
+	})
+
+	if !canCancel {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel reseed. No rows found or reseed already started", server.URL)
+	}
+
+	if server.IsDown() {
+		if canCancel {
+			server.SetInReseedBackup(false)
+			server.SetNeedRefreshJobs(true)
+		}
+		return nil
+	}
+
+	conn, err := server.GetNewDBConn()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't connect")
+		return err
+	}
+	defer conn.Close()
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancelling reseed and flashback on %s as requested", server.URL)
+	//Using lock to prevent wrong reads
+	_, err = conn.Exec("set sql_log_bin=0;")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't disable binlog for session")
+		return err
+	}
+
+	_, err = conn.Exec("LOCK TABLES replication_manager_schema.jobs WRITE;")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't lock table jobs for cancel reseed")
+		return err
+	}
+
+	defer conn.Exec("UNLOCK TABLES;")
+
+	var res sql.Result
+	res, err = conn.Exec("UPDATE replication_manager_schema.jobs SET done=1, state=5, result='cancelled by user' WHERE done=0 AND state=0 and task in ('reseedmariabackup','reseedxtrabackup','flashbackmariabackup','flashbackxtrabackup');")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't delete job: %s", err)
+		return err
+	}
+
+	aff, err := res.RowsAffected()
+	if err == nil {
+		if aff > 0 {
+			server.SetInReseedBackup(false)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed cancelled successfully on %s. Please start slave manually after checking data integrity.", server.URL)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel reseed on %s. No rows found or reseed already started", server.URL)
+		}
+	}
+
+	server.SetNeedRefreshJobs(true)
 
 	return err
 }
