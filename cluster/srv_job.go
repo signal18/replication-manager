@@ -1985,6 +1985,11 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 	cluster := server.ClusterGroup
 	var err error
 
+	if !server.IsReseeding {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server is not in reseeding state, cancel sending file to %s", server.URL)
+		return nil
+	}
+
 	rows, err := server.Conn.Queryx(fmt.Sprintf("SELECT done FROM replication_manager_schema.jobs WHERE task='%s' and state=%d", task, 2))
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
