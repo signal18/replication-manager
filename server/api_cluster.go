@@ -1497,6 +1497,9 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "api-token-timeout":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetApiTokenTimeout(val)
+	case "sst-send-buffer":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetSSTBufferSize(val)
 	}
 }
 
