@@ -1201,6 +1201,9 @@ app.controller('DashboardController', function (
   $scope.dbreseedphysicalmaster = function (server, host, port) {
     if (confirm("Confirm reseed from master (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalmaster');
   };
+  $scope.dbreseedcancel = function (server, host, port) {
+    if (confirm("Confirm cancel all reseed for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/cancel-reseed');
+  };
   $scope.flushlogs = function (server, host, port) {
     if (confirm("Confirm flush logs for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/flush-logs');
   };

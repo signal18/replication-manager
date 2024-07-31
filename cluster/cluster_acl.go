@@ -245,6 +245,9 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/actions/reseed/") {
 			return true
 		}
+		if strings.Contains(URL, "/actions/cancel-reseed") {
+			return true
+		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBReadOnly] {
 		if strings.Contains(URL, "actions/toogle-read-only") {
