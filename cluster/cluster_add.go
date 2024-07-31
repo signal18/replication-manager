@@ -19,16 +19,25 @@ import (
 
 func (cluster *Cluster) AddSeededServer(srv string) error {
 	fmt.Printf("ADD SEEDED SERVER\n")
-	newHosts := cluster.Conf.Hosts
-	if strings.Contains(newHosts, srv) {
+
+	if strings.Contains(cluster.Conf.Hosts, srv) {
 		return errors.New("Server already exists")
 	}
 
-	if newHosts != "" {
-		newHosts = strings.ReplaceAll(newHosts+","+srv, ",,", ",")
-	} else {
-		newHosts = srv
+	hosts := strings.Split(cluster.Conf.Hosts, ",")
+
+	//Remove empty slices
+	n := 0
+	for i := range hosts {
+		if hosts[i] != "" {
+			hosts[n] = hosts[i]
+			n++
+		}
 	}
+	hosts = hosts[:n]
+	hosts = append(hosts, srv)
+
+	newHosts := strings.Join(hosts, ",")
 
 	cluster.StateMachine.SetFailoverState()
 	cluster.SetDbServerHosts(newHosts)
