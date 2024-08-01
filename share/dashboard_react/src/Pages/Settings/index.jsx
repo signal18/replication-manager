@@ -5,6 +5,8 @@ import GeneralSettings from './GeneralSettings'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import MonitoringSettings from './MonitoringSettings'
 import AccordionComponent from '../../components/AccordionComponent'
+import LogsSettings from './LogsSettings'
+import ReplicationSettings from './ReplicationSettings'
 
 function Settings({ selectedCluster, user }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -22,10 +24,6 @@ function Settings({ selectedCluster, user }) {
   const { isOpen: isGraphsOpen, onToggle: onGraphsToggle } = useDisclosure()
   const { isOpen: isCloud18Open, onToggle: onCloud18Toggle } = useDisclosure()
   const { isOpen: isGlobalOpen, onToggle: onGlobalToggle } = useDisclosure()
-
-  useEffect(() => {
-    console.log('useeffect called')
-  }, [])
 
   const openConfirmModal = (title, handler) => {
     setIsConfirmModalOpen(true)
@@ -61,6 +59,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isLogsOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<LogsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Replication'}
@@ -68,6 +67,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isReplicationOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<ReplicationSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Rejoin'}

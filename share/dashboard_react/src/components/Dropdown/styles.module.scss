@@ -4,10 +4,15 @@
   white-space: break-spaces;
   background-color: var(--quaternary-color) !important;
   box-shadow: $box-shadow-md;
+  width: 100%;
   &:hover,
   &[data-active] {
     background-color: var(--quaternary-color);
   }
+}
+button.lightMenuItem,
+button.darkMenuItem {
+  width: 100%;
 }
 .lightMenuItem {
   background-color: var(--white-color);

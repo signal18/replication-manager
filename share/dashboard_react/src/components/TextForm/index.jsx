@@ -2,7 +2,7 @@ import { Flex, Input, Spinner } from '@chakra-ui/react'
 import React, { useEffect, useState, useRef } from 'react'
 import { HiCheck, HiPencilAlt, HiX } from 'react-icons/hi'
 import styles from './styles.module.scss'
-import IconButton from '../../../components/IconButton'
+import IconButton from '../IconButton'
 
 function TextForm({ onConfirm, originalValue, loading, maxLength = 120 }) {
   const [value, setValue] = useState('')

@@ -32,11 +32,11 @@
   align-items: center;
   justify-content: center;
   &.blocker {
-    background: var(--danger-color);
+    background: var(--danger-primary-color);
     color: var(--white-color) !important;
   }
   &.warning {
-    background: var(--warning-color);
+    background: var(--warning-primary-color);
     color: var(--white-color) !important;
   }
 }
