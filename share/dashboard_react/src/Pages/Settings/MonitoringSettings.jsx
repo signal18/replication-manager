@@ -1,11 +1,11 @@
 import { Flex, Text } from '@chakra-ui/react'
 import React from 'react'
-import parentStyles from '../styles.module.scss'
-import RMSwitch from '../../../components/RMSwitch'
+import styles from './styles.module.scss'
+import RMSwitch from '../../components/RMSwitch'
 import { useDispatch, useSelector } from 'react-redux'
-import TableType2 from '../../../components/TableType2'
-import { setSettingsNullable, switchSetting } from '../../../redux/settingsSlice'
-import TextForm from '../TextForm'
+import TableType2 from '../../components/TableType2'
+import { setSetting, switchSetting } from '../../redux/settingsSlice'
+import TextForm from '../../components/TextForm'
 
 function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
   const dispatch = useDispatch()
@@ -32,12 +32,9 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           key: 'Monitoring Save Config',
           value: (
             <RMSwitch
-              onChange={() =>
-                openConfirmModal(
-                  'Confirm switch settings for monitoring-save-config?',
-                  () => () =>
-                    dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-save-config' }))
-                )
+              confirmTitle={'Confirm switch settings for monitoring-save-config?'}
+              onConfirm={() =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-save-config' }))
               }
               isDisabled={user?.grants['cluster-settings'] == false}
               isChecked={selectedCluster?.config?.monitoringSaveConfig}
@@ -49,12 +46,9 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           key: 'Monitoring Pause',
           value: (
             <RMSwitch
-              onChange={() =>
-                openConfirmModal(
-                  'Confirm switch settings for monitoring-pause?',
-                  () => () =>
-                    dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-pause' }))
-                )
+              confirmTitle={'Confirm switch settings for monitoring-pause?'}
+              onConfirm={() =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-pause' }))
               }
               isDisabled={user?.grants['cluster-settings'] == false}
               isChecked={selectedCluster?.config?.monitoringPause}
@@ -67,17 +61,14 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
     {
       key: 'Capture',
       value: (
-        <Flex className={parentStyles.valueWithInfo}>
-          <Text className={parentStyles.info}>
+        <Flex className={styles.valueWithInfo}>
+          <Text className={styles.info}>
             Stack trace contain show processlist, engine status, slave and master status for
           </Text>
           <RMSwitch
-            onChange={() =>
-              openConfirmModal(
-                'Confirm switch settings for monitoring-capture?',
-                () => () =>
-                  dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-capture' }))
-              )
+            confirmTitle={'Confirm switch settings for monitoring-capture?'}
+            onConfirm={() =>
+              dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-capture' }))
             }
             isDisabled={user?.grants['cluster-settings'] == false}
             isChecked={selectedCluster?.config?.monitoringCapture}
@@ -97,7 +88,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
               `Confirm change 'monitoring-capture-trigger' to: ${captureTriggerValue || '{undefined}'}?`,
               () => () =>
                 dispatch(
-                  setSettingsNullable({
+                  setSetting({
                     clusterName: selectedCluster?.name,
                     setting: 'monitoring-capture-trigger',
                     value: captureTriggerValue.length === 0 ? '{undefined}' : captureTriggerValue
@@ -119,7 +110,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
               `Confirm change 'monitoring-ignore-errors' to: ${errorListValue || '{undefined}'}?`,
               () => () =>
                 dispatch(
-                  setSettingsNullable({
+                  setSetting({
                     clusterName: selectedCluster?.name,
                     setting: 'monitoring-ignore-errors',
                     value: errorListValue.length === 0 ? '{undefined}' : errorListValue
@@ -134,12 +125,9 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       key: 'Monitoring Schema',
       value: (
         <RMSwitch
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for monitoring-schema-change?',
-              () => () =>
-                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-change' }))
-            )
+          confirmTitle={'Confirm switch settings for monitoring-schema-change?'}
+          onConfirm={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-change' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.monitoringSchemaChange}
@@ -151,12 +139,9 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       key: 'Monitoring InnoDB Status',
       value: (
         <RMSwitch
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for monitoring-innodb-status?',
-              () => () =>
-                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-innodb-status' }))
-            )
+          confirmTitle={'Confirm switch settings for monitoring-innodb-status?'}
+          onConfirm={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-innodb-status' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.monitoringInnoDBStatus}
@@ -168,12 +153,9 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       key: 'Monitoring Variable Diff',
       value: (
         <RMSwitch
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for monitoring-variable-diff?',
-              () => () =>
-                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-variable-diff' }))
-            )
+          confirmTitle={'Confirm switch settings for monitoring-variable-diff?'}
+          onConfirm={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-variable-diff' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.monitoringVariableDiff}
@@ -185,12 +167,9 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       key: 'Monitoring Processlist',
       value: (
         <RMSwitch
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for monitoring-processlist?',
-              () => () =>
-                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-processlist' }))
-            )
+          confirmTitle={'Confirm switch settings for monitoring-processlist?'}
+          onConfirm={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-processlist' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.monitoringProcesslist}
@@ -204,11 +183,11 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
     <Flex justify='space-between' gap='0'>
       <TableType2
         dataArray={dataObject}
-        className={parentStyles.table}
-        labelClassName={parentStyles.label}
-        valueClassName={parentStyles.value}
+        className={styles.table}
+        labelClassName={styles.label}
+        valueClassName={styles.value}
         rowDivider={true}
-        rowClassName={parentStyles.row}
+        rowClassName={styles.row}
       />
     </Flex>
   )

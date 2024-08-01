@@ -3,7 +3,7 @@ import { getRequest } from './apiHelper'
 export const settingsService = {
   switchSettings,
   changeTopology,
-  setSettingsNullable
+  setSetting
 }
 
 function switchSettings(clusterName, setting) {
@@ -14,6 +14,6 @@ function changeTopology(clusterName, topology) {
   return getRequest(`clusters/${clusterName}/settings/actions/set/topology-target/${topology}`)
 }
 
-function setSettingsNullable(clusterName, setting, value) {
+function setSetting(clusterName, setting, value) {
   return getRequest(`clusters/${clusterName}/settings/actions/set/${setting}/${value}`)
 }

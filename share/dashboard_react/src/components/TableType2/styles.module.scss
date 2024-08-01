@@ -7,6 +7,9 @@
   .label,
   .value {
     padding: rem(4);
+    height: 100%;
+    display: flex;
+    align-items: center;
   }
   .label {
     font-weight: 500;
@@ -23,7 +26,7 @@
   }
 
   .divider {
-    height: rem(2);
-    background-color: var(--gray-color);
+    height: rem(1);
+    background-color: var(--darkgray-color);
   }
 }

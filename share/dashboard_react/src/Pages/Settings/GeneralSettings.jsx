@@ -1,12 +1,12 @@
 import { Flex, Spinner } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
-import parentStyles from '../styles.module.scss'
-import RMSwitch from '../../../components/RMSwitch'
-import Dropdown from '../../../components/Dropdown'
-import { convertObjectToArray } from '../../../utility/common'
+import styles from './styles.module.scss'
+import RMSwitch from '../../components/RMSwitch'
+import Dropdown from '../../components/Dropdown'
+import { convertObjectToArray } from '../../utility/common'
 import { useDispatch, useSelector } from 'react-redux'
-import TableType2 from '../../../components/TableType2'
-import { changeTopology, switchSetting } from '../../../redux/settingsSlice'
+import TableType2 from '../../components/TableType2'
+import { changeTopology, switchSetting } from '../../redux/settingsSlice'
 
 function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
   const [topologyOptions, setTopologyOptions] = useState([])
@@ -18,8 +18,7 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
       targetTopologyLoading,
       allowUnsafeClusterLoading,
       allowMultitierSlaveLoading,
-      testLoading,
-      verboseLoading
+      testLoading
     }
   } = useSelector((state) => state)
 
@@ -36,12 +35,8 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
         <RMSwitch
           onText='On-call (manual)'
           offText='On-leave (auto)'
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for failover-mode?',
-              () => () => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'failover-mode' }))
-            )
-          }
+          confirmTitle={'Confirm switch settings for failover-mode?'}
+          onConfirm={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'failover-mode' }))}
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.interactive}
           loading={failoverLoading}
@@ -54,7 +49,7 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
         <Flex align='center' gap='2'>
           <Dropdown
             options={topologyOptions}
-            buttonClassName={parentStyles.dropdownButton}
+            buttonClassName={styles.dropdownButton}
             // width='200px'
             selectedValue={selectedCluster?.config?.topologyTarget}
             askConfirmation={true}
@@ -75,12 +70,9 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
           isChecked={selectedCluster?.config?.replicationMultiMasterRingUnsafe}
           isDisabled={user?.grants['cluster-settings'] == false}
           loading={allowUnsafeClusterLoading}
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for multi-master-ring-unsafe?',
-              () => () =>
-                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'multi-master-ring-unsafe' }))
-            )
+          confirmTitle={'Confirm switch settings for multi-master-ring-unsafe?'}
+          onConfirm={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'multi-master-ring-unsafe' }))
           }
         />
       )
@@ -92,12 +84,9 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
           isChecked={!selectedCluster?.config?.replicationMasterSlaveNeverRelay}
           isDisabled={user?.grants['cluster-settings'] == false}
           loading={allowMultitierSlaveLoading}
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for replication-no-relay?',
-              () => () =>
-                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'replication-no-relay' }))
-            )
+          confirmTitle={'Confirm switch settings for replication-no-relay?'}
+          onConfirm={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'replication-no-relay' }))
           }
         />
       )
@@ -109,28 +98,8 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
           isChecked={selectedCluster?.config?.test}
           isDisabled={user?.grants['cluster-settings'] == false}
           loading={testLoading}
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for test?',
-              () => () => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'test' }))
-            )
-          }
-        />
-      )
-    },
-    {
-      key: 'Verbose',
-      value: (
-        <RMSwitch
-          isChecked={selectedCluster?.config?.verbose}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          loading={verboseLoading}
-          onChange={() =>
-            openConfirmModal(
-              'Confirm switch settings for verbose?',
-              () => () => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'verbose' }))
-            )
-          }
+          confirmTitle={'Confirm switch settings for test?'}
+          onConfirm={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'test' }))}
         />
       )
     }
@@ -140,11 +109,11 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
     <Flex justify='space-between' gap='0'>
       <TableType2
         dataArray={dataObject}
-        className={parentStyles.table}
-        labelClassName={parentStyles.label}
-        valueClassName={parentStyles.value}
+        className={styles.table}
+        labelClassName={styles.label}
+        valueClassName={styles.value}
         rowDivider={true}
-        rowClassName={parentStyles.row}
+        rowClassName={styles.row}
       />
     </Flex>
     // <Grid className={styles.grid}>

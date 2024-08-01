@@ -2,13 +2,14 @@ import React from 'react'
 import { Tag } from '@chakra-ui/react'
 import styles from './styles.module.scss'
 
-function TagPill({ size = 'sm', text, variant = 'solid', colorScheme, isBlinking }) {
+function TagPill({ size = 'sm', text, variant = 'solid', customColorScheme = '', colorScheme, isBlinking }) {
   return (
     <Tag
       size={size}
       variant={variant}
-      colorScheme={colorScheme}
-      className={`tagpill ${styles.tag} ${isBlinking && styles.blinking}`}>
+      colorScheme={!customColorScheme && colorScheme}
+      {...(customColorScheme ? { bg: customColorScheme } : {})}
+      className={`tagpill ${styles.tag}   ${isBlinking && styles.blinking}`}>
       {text}
     </Tag>
   )

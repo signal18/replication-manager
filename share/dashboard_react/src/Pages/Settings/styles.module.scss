@@ -110,6 +110,9 @@ div.settingsContainer {
       height: 100%;
       padding-left: rem(16);
     }
+    div[class*='subLabel'] {
+      background-color: var(--quaternary-color);
+    }
     .value {
       background-color: transparent;
       padding-left: rem(16);
