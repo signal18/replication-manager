@@ -2,7 +2,7 @@ import React, { useEffect, useState, lazy } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { setUserData } from '../../redux/authSlice'
-import { Box, useBreakpointValue, Text, background, useColorMode } from '@chakra-ui/react'
+import { Box, useBreakpointValue, Text } from '@chakra-ui/react'
 import { isAuthorized } from '../../utility/common'
 import { setIsMobile, setIsTablet, setIsDesktop } from '../../redux/commonSlice'
 //const Navbar = lazy(() => import('../components/Navbar'))
@@ -27,25 +27,6 @@ function PageContainer({ children }) {
     md: 'tablet',
     lg: 'desktop'
   })
-
-  const styles = {
-    container: {
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-      width: '100%'
-    },
-    pageContent: {
-      zIndex: 1,
-      marginTop: isDesktop ? '54px' : '0'
-    },
-    footer: {
-      px: '4',
-      py: '2',
-      background: colorMode === 'light' ? 'blue.100' : 'blue.900'
-    }
-  }
-  console.log('fullversion::', fullVersion)
 
   useEffect(() => {
     if (isAuthorized() && user === null) {

@@ -2,24 +2,6 @@ import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import { clusterService } from '../services/clusterService'
 import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
 
-const showSuccessBanner = (message, responseStatus, thunkAPI) => {
-  thunkAPI.dispatch(
-    showSuccessToast({
-      status: 'success',
-      title: message
-    })
-  )
-}
-const showErrorBanner = (message, error, thunkAPI) => {
-  thunkAPI.dispatch(
-    showErrorToast({
-      status: 'error',
-      title: message,
-      description: error
-    })
-  )
-}
-
 export const getClusters = createAsyncThunk('cluster/getClusters', async ({}, thunkAPI) => {
   try {
     const { data, status } = await clusterService.getClusters()
