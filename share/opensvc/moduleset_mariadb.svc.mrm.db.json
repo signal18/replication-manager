@@ -2347,7 +2347,9 @@
                 "mariadb.svc.env",
                 "mariadb.svc.mrm.db.cnf.docker",
                 "mariadb.svc.mrm.db.cnf.package",
-                "mariadb.svc.mrm.db.cnf.generic"
+                "mariadb.svc.mrm.db.cnf.generic",
+                "mariadb.svc.mrm.db.cnf.deb",
+                "mariadb.svc.mrm.db.cnf.rpm"
             ],
             "publications": [
                 "replication-manager"
@@ -7219,6 +7221,202 @@
                 "replication-manager"
             ],
             "id": 1155,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "system.deb",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.deb",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"\\n[mysqld]\\n\\n!includedir /etc/mysql/custom.d\\n!includedir /etc/mysql/conf.d\\n\\n\\n\"}",
+                    "var_updated": "2024-08-01 12:29:44",
+                    "var_name": "db_cnf_server",
+                    "id": 6304
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_ssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl\\nssl-ca=/etc/mysql/ssl/ca-cert.pem\\nssl-cert=/etc/mysql/ssl/server-cert.pem\\nssl-key=/etc/mysql/ssl/server-key.pem\"}",
+                    "var_updated": "2024-08-01 12:34:59",
+                    "var_name": "db_cnf_ssl",
+                    "id": 6305
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/MYSQL_ROOT_PASSWORD\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"export MYSQL_ROOT_PASSWORD=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nexport REPLICATION_MANAGER_URL=%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL%%\\nexport REPLICATION_MANAGER_USER=%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_USER%%\\n\"}",
+                    "var_updated": "2024-08-01 11:38:39",
+                    "var_name": "db_cnf_script_password",
+                    "id": 6307
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/post_bootstrap\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_UID%%\"}",
+                    "var_updated": "2024-08-01 11:46:01",
+                    "var_name": "post_bootstrap",
+                    "id": 6309
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [
+                "mariadb.svc.mrm.db.cnf.deb.ssl"
+            ],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1156,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "system.rpm",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.rpm",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"\\n[mysqld]\\n\\n!includedir /etc/mysql/custom.d\\n!includedir /etc/mysql/conf.d\\n\\n\\n\"}",
+                    "var_updated": "2024-08-01 12:43:30",
+                    "var_name": "db_cnf_server",
+                    "id": 6311
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_ssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl\\nssl-ca=/etc/mysql/ssl/ca-cert.pem\\nssl-cert=/etc/mysql/ssl/server-cert.pem\\nssl-key=/etc/mysql/ssl/server-key.pem\"}",
+                    "var_updated": "2024-08-01 12:43:30",
+                    "var_name": "db_cnf_ssl",
+                    "id": 6312
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/MYSQL_ROOT_PASSWORD\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"export MYSQL_ROOT_PASSWORD=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%\\nexport REPLICATION_MANAGER_URL=%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL%%\\nexport REPLICATION_MANAGER_USER=%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_USER%%\\n\"}",
+                    "var_updated": "2024-08-01 12:43:30",
+                    "var_name": "db_cnf_script_password",
+                    "id": 6313
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/post_bootstrap\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_UID%%\"}",
+                    "var_updated": "2024-08-01 12:43:30",
+                    "var_name": "post_bootstrap",
+                    "id": 6314
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [
+                "mariadb.svc.mrm.db.cnf.rpm.ssl"
+            ],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1158,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.security.ssl",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.rpm.ssl",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/01_with_sec_ssl.cnf\",\"target\":\"../replication-manager.d/with_sec_ssl.cnf\"}",
+                    "var_updated": "2024-08-01 13:03:01",
+                    "var_name": "db_link_ssl",
+                    "id": 6315
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl/ca-cert.pem\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"ref\":\"safe://%%ENV:SVC_CONF_ENV_SAFE_SSL_CA_UUID%%\"}",
+                    "var_updated": "2024-08-01 13:03:01",
+                    "var_name": "db_cnf_sslca",
+                    "id": 6316
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl/server-cert.pem\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"ref\":\"safe://%%ENV:SVC_CONF_ENV_SAFE_SSL_CERT_UUID%%\"}",
+                    "var_updated": "2024-08-01 13:03:01",
+                    "var_name": "db_cnf_sslcert",
+                    "id": 6317
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl/server-key.pem\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"ref\":\"safe://%%ENV:SVC_CONF_ENV_SAFE_SSL_KEY_UUID%%\"}",
+                    "var_updated": "2024-08-01 13:03:01",
+                    "var_name": "db_cnf_sslkey",
+                    "id": 6318
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1159,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.security.ssl",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.deb.ssl",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/01_with_sec_ssl.cnf\",\"target\":\"../replication-manager.d/with_sec_ssl.cnf\"}",
+                    "var_updated": "2024-08-01 13:04:47",
+                    "var_name": "db_link_ssl",
+                    "id": 6319
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl/ca-cert.pem\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"ref\":\"safe://%%ENV:SVC_CONF_ENV_SAFE_SSL_CA_UUID%%\"}",
+                    "var_updated": "2024-08-01 13:04:47",
+                    "var_name": "db_cnf_sslca",
+                    "id": 6320
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl/server-cert.pem\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"ref\":\"safe://%%ENV:SVC_CONF_ENV_SAFE_SSL_CERT_UUID%%\"}",
+                    "var_updated": "2024-08-01 13:04:47",
+                    "var_name": "db_cnf_sslcert",
+                    "id": 6321
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/ssl/server-key.pem\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"ref\":\"safe://%%ENV:SVC_CONF_ENV_SAFE_SSL_KEY_UUID%%\"}",
+                    "var_updated": "2024-08-01 13:04:47",
+                    "var_name": "db_cnf_sslkey",
+                    "id": 6322
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1160,
             "responsibles": [
                 "replication-manager"
             ]
