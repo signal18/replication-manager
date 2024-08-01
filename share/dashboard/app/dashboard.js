@@ -114,6 +114,7 @@ app.controller('DashboardController', function (
   $scope.mysqlGtid = false
 
   $scope.user = undefined;
+  $scope.isReseeding = {};
 
   $scope.wait = undefined;
   $scope.settingsMenu = {
@@ -1195,11 +1196,16 @@ app.controller('DashboardController', function (
   $scope.prxstart = function (id, host, port) {
     if (confirm("Confirm start proxy: " + host + ":" + port + " (" + id + ")")) httpGetWithoutResponse(getClusterUrl() + '/proxies/' + id + '/actions/start');
   };
+  // Will immediately show cancel button
   $scope.dbreseedphysicalbackup = function (server, host, port) {
-    if (confirm("Confirm reseed with physical backup (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup');
+    if (confirm("Confirm reseed with physical backup (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) { $scope.isReseeding[server]=true; httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup')};
   };
   $scope.dbreseedphysicalmaster = function (server, host, port) {
     if (confirm("Confirm reseed from master (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalmaster');
+  };
+  // scope reseed is only for fast show button toggle
+  $scope.dbreseedcancel = function (server, host, port) {
+    if (confirm("Confirm cancel all reseed for server: " + host + ":" + port + " (" + server + ")")) { $scope.isReseeding[server]=false; httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/cancel-reseed')};
   };
   $scope.flushlogs = function (server, host, port) {
     if (confirm("Confirm flush logs for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/flush-logs');
