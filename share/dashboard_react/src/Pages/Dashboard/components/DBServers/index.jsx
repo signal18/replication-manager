@@ -14,6 +14,7 @@ import ServerName from './ServerName'
 import GTID from '../../../../components/GTID'
 import ServerStatus from '../../../../components/ServerStatus'
 import IconButton from '../../../../components/IconButton'
+import { useColorMode } from '@chakra-ui/react'
 
 function DBServers({ selectedCluster, user }) {
   const {

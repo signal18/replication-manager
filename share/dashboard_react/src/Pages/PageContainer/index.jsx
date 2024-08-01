@@ -2,7 +2,7 @@ import React, { useEffect, useState, lazy } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { setUserData } from '../../redux/authSlice'
-import { Box, useBreakpointValue, Text, background, useColorMode } from '@chakra-ui/react'
+import { Box, useBreakpointValue, Text } from '@chakra-ui/react'
 import { isAuthorized } from '../../utility/common'
 import { setIsMobile, setIsTablet, setIsDesktop } from '../../redux/commonSlice'
 //const Navbar = lazy(() => import('../components/Navbar'))
