@@ -12,7 +12,6 @@ import styles from './styles.module.scss'
 function PageContainer({ children }) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
-  const { colorMode } = useColorMode()
   const [fullVersion, setFullVersion] = useState('')
 
   const {
@@ -27,36 +26,6 @@ function PageContainer({ children }) {
     md: 'tablet',
     lg: 'desktop'
   })
-
-  useEffect(() => {
-    if (clusters?.length > 0) {
-      setFullVersion(clusters[0].config?.fullVersion)
-    }
-  }, [clusters])
-
-  const styles = {
-    container: {
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-      width: '100%'
-    },
-    pageContent: {
-      zIndex: 1,
-      marginTop: isDesktop ? '54px' : '0'
-    },
-    footer: {
-      px: '4',
-      py: '2',
-      background: colorMode === 'light' ? 'blue.100' : 'blue.900'
-    }
-  }
-
-  useEffect(() => {
-    if (clusters?.length > 0) {
-      setFullVersion(clusters[0].config?.fullVersion)
-    }
-  }, [clusters])
 
   useEffect(() => {
     if (clusters?.length > 0) {
