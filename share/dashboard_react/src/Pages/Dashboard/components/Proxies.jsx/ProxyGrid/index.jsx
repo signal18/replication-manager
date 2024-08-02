@@ -8,7 +8,7 @@ import AccordionComponent from '../../../../../components/AccordionComponent'
 import ProxyStatus from '../ProxyStatus'
 import ServerStatus from '../../../../../components/ServerStatus'
 import TagPill from '../../../../../components/TagPill'
-import IconButton from '../../../../../components/IconButton'
+import RMIconButton from '../../../../../components/RMIconButton'
 import cssStyles from './styles.module.scss'
 
 function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMenuOptionsVisible }) {
@@ -66,7 +66,7 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMen
                 <Text margin='auto' w='100%'>{`${rowData.host}:${rowData.port}`}</Text>
                 <Spacer />
 
-                <IconButton icon={HiTable} onClick={showTableView} marginRight={2} tooltip='Show table view' />
+                <RMIconButton icon={HiTable} onClick={showTableView} marginRight={2} tooltip='Show table view' />
                 {isMenuOptionsVisible && (
                   <ProxyMenu
                     from='gridView'
@@ -113,7 +113,7 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMen
                         <Flex gap='2'>
                           <TagPill text={object.type.toUpperCase()} />
                           <ServerStatus state={object.data.status} />
-                          <Text>{`${object.data.host}:${object.data.port}`}</Text>
+                          <Text className=''>{`${object.data.host}:${object.data.port}`}</Text>
                         </Flex>
                       }
                       headerClassName={styles.accordionHeader}

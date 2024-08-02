@@ -1,6 +1,6 @@
 import { Modal, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay } from '@chakra-ui/react'
 import React from 'react'
-import Button from '../../Button'
+import RMButton from '../../RMButton'
 import styles from './styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
 
@@ -16,12 +16,12 @@ function ConfirmModal({ title, isOpen, closeModal, onConfirmClick }) {
         <ModalCloseButton />
 
         <ModalFooter gap={3}>
-          <Button variant='outline' colorScheme='white' size='medium' onClick={closeModal}>
+          <RMButton variant='outline' colorScheme='white' size='medium' onClick={closeModal}>
             Cancel
-          </Button>
-          <Button colorScheme='blue' size='medium' onClick={onConfirmClick}>
+          </RMButton>
+          <RMButton colorScheme='blue' size='medium' onClick={onConfirmClick}>
             Confirm
-          </Button>
+          </RMButton>
         </ModalFooter>
       </ModalContent>
     </Modal>

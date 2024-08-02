@@ -13,7 +13,7 @@ import TagPill from '../TagPill'
 import styles from './styles.module.scss'
 import ConfirmModal from '../Modals/ConfirmModal'
 
-function LogSlider({ min = 0, max = 4, step = 1, showMark = true, value, onConfirm, confirmTitle, loading }) {
+function LogSlider({ min = 0, max = 4, step = 1, showMark = true, value, onChange, confirmTitle, loading }) {
   const [currentValue, setCurrentValue] = useState(value)
   const [previousValue, setPreviousValue] = useState(value)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -115,7 +115,7 @@ function LogSlider({ min = 0, max = 4, step = 1, showMark = true, value, onConfi
           }}
           title={`${confirmTitle} ${getTextValues()}`}
           onConfirmClick={() => {
-            onConfirm(currentValue)
+            onChange(currentValue)
             closeConfirmModal('')
           }}
         />

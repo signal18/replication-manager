@@ -1,6 +1,7 @@
 import { Box, Grid, GridItem } from '@chakra-ui/react'
 import React from 'react'
 import styles from './styles.module.scss'
+import { useSelector } from 'react-redux'
 
 function TableType2({
   dataArray,
@@ -11,6 +12,9 @@ function TableType2({
   rowDivider = false,
   rowClassName
 }) {
+  // const {
+  //   common: { isDesktop }
+  // } = useSelector((state) => state)
   return (
     <Grid templateColumns={templateColumns} className={`${styles.container} ${className}`}>
       {dataArray.map((item, index) => (
@@ -40,7 +44,7 @@ function TableType2({
                     <Box className={`${styles.value} ${valueClassName}`}>{subItem.value}</Box>
                   </GridItem>
                   {rowDivider && subIndex < item.value.length - 1 && (
-                    <GridItem colSpan={2}>
+                    <GridItem colSpan={2} className={styles.dividerRow}>
                       <Box className={styles.divider} />
                     </GridItem>
                   )}
@@ -52,7 +56,7 @@ function TableType2({
             <Box className={`${styles.value} ${valueClassName}`}>{item.value}</Box>
           </GridItem> */}
           {rowDivider && index < dataArray.length - 1 && (
-            <GridItem colSpan={2}>
+            <GridItem colSpan={2} className={styles.dividerRow}>
               <Box className={styles.divider} />
             </GridItem>
           )}

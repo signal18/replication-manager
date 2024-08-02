@@ -1,5 +1,5 @@
-import { Flex, List, ListItem, useDisclosure } from '@chakra-ui/react'
-import React, { useState, useEffect } from 'react'
+import { Flex, useDisclosure } from '@chakra-ui/react'
+import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import GeneralSettings from './GeneralSettings'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
@@ -7,6 +7,8 @@ import MonitoringSettings from './MonitoringSettings'
 import AccordionComponent from '../../components/AccordionComponent'
 import LogsSettings from './LogsSettings'
 import ReplicationSettings from './ReplicationSettings'
+import RejoinSettings from './RejoinSettings'
+import BackupSettings from './BackupSettings'
 
 function Settings({ selectedCluster, user }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -75,6 +77,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isRejoinOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<RejoinSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Backups'}
@@ -82,6 +85,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isBackupsOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<BackupSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Schedulers'}
@@ -119,24 +123,6 @@ function Settings({ selectedCluster, user }) {
         panelClassName={styles.accordionPanel}
       />
 
-      {/* <List className={styles.listContainer} spacing={2}>
-        {items.map((item) => (
-          <ListItem className={`${styles.listItem} ${selected === item ? styles.selecetdListItem : ''}`}>
-            <Button onClick={() => setSelected(item)}>{item}</Button>
-          </ListItem>
-        ))}
-      </List>
-
-      <Flex className={styles.settingsContent}>
-        <Flex className={styles.content}>
-          {selected === 'General' ? (
-            <GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />
-          ) : selected === 'Monitoring' ? (
-            <MonitoringSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} s />
-          ) : null}
-        </Flex>
-      </Flex>
-      <Flex />*/}
       {isConfirmModalOpen && (
         <ConfirmModal
           isOpen={isConfirmModalOpen}

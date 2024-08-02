@@ -91,10 +91,10 @@ div.settingsContainer {
     gap: 0;
     align-items: center;
     overflow: hidden;
-
-    @include breakpoint('sm', 'md') {
-      grid-template-columns: 1fr !important;
-    }
+    grid-template-columns: auto !important;
+    // @include breakpoint('sm', 'md') {
+    //   grid-template-columns: 1fr !important;
+    // }
     @include breakpoint('md', 'lg') {
       grid-template-columns: 320px auto !important;
     }
@@ -117,17 +117,30 @@ div.settingsContainer {
       background-color: transparent;
       padding-left: rem(16);
     }
-    button.dropdownButton {
-      width: 160px;
-      white-space: break-spaces;
-      padding: 0;
-      padding-left: rem(8);
-      text-align: start;
-      @include breakpoint('md', 'lg') {
-        width: 200px;
+    .dropdownContainer {
+      margin: rem(8) 0;
+      align-items: center;
+      gap: rem(8);
+
+      &.dropdownContainerColumn {
+        flex-direction: column;
+        align-items: flex-start;
       }
-      @include breakpoint('lg') {
-        width: 250px;
+      .scriptTextContainer {
+        width: 100%;
+        margin-top: rem(8);
+      }
+
+      button.dropdownButton {
+        width: 160px;
+        white-space: break-spaces;
+        text-align: start;
+        @include breakpoint('md', 'lg') {
+          width: 200px;
+        }
+        @include breakpoint('lg') {
+          width: 280px;
+        }
       }
     }
     .valueWithInfo {

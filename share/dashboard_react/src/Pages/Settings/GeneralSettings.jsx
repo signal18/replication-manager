@@ -36,7 +36,7 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
           onText='On-call (manual)'
           offText='On-leave (auto)'
           confirmTitle={'Confirm switch settings for failover-mode?'}
-          onConfirm={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'failover-mode' }))}
+          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'failover-mode' }))}
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.interactive}
           loading={failoverLoading}
@@ -46,18 +46,16 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
     {
       key: 'Target Topology',
       value: (
-        <Flex align='center' gap='2'>
+        <Flex className={styles.dropdownContainer}>
           <Dropdown
             options={topologyOptions}
             buttonClassName={styles.dropdownButton}
             // width='200px'
             selectedValue={selectedCluster?.config?.topologyTarget}
-            askConfirmation={true}
-            onChange={(topology) => {
-              openConfirmModal(`This will set preferred topology to ${topology.value}. Confirm?`, () => () => {
-                dispatch(changeTopology({ clusterName: selectedCluster?.name, topology: topology.value }))
-              })
-            }}
+            confirmTitle={`Please confirm if you want to set the preferred topology to`}
+            onChange={(selectedTopology) =>
+              dispatch(changeTopology({ clusterName: selectedCluster?.name, topology: selectedTopology }))
+            }
           />
           {targetTopologyLoading && <Spinner />}
         </Flex>
@@ -71,7 +69,7 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
           isDisabled={user?.grants['cluster-settings'] == false}
           loading={allowUnsafeClusterLoading}
           confirmTitle={'Confirm switch settings for multi-master-ring-unsafe?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'multi-master-ring-unsafe' }))
           }
         />
@@ -85,7 +83,7 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
           isDisabled={user?.grants['cluster-settings'] == false}
           loading={allowMultitierSlaveLoading}
           confirmTitle={'Confirm switch settings for replication-no-relay?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'replication-no-relay' }))
           }
         />
@@ -99,7 +97,7 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
           isDisabled={user?.grants['cluster-settings'] == false}
           loading={testLoading}
           confirmTitle={'Confirm switch settings for test?'}
-          onConfirm={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'test' }))}
+          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'test' }))}
         />
       )
     }
@@ -116,22 +114,6 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
         rowClassName={styles.row}
       />
     </Flex>
-    // <Grid className={styles.grid}>
-    //   <GridItemContainer title='Failover Mode (interactive)'>
-    //     <RMSwitch
-    //       onText='On-call (manual)'
-    //       offText='On-leave (auto)'
-    //       onChange={() =>
-    //         openConfirmModal(
-    //           'Confirm switch settings for failover-mode?',
-    //           () => () => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'failover-mode' }))
-    //         )
-    //       }
-    //       isDisabled={user?.grants['cluster-settings'] == false}
-    //       isChecked={selectedCluster?.config?.interactive}
-    //     />
-    //   </GridItemContainer>
-    // </Grid>
   )
 }
 

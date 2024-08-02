@@ -16,7 +16,7 @@ import React, { useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { addServer } from '../../redux/clusterSlice'
 import Dropdown from '../Dropdown'
-import Button from '../Button'
+import RMButton from '../RMButton'
 
 function NewServerModal({ clusterName, isOpen, closeModal }) {
   const dispatch = useDispatch()
@@ -92,12 +92,12 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
         </ModalBody>
 
         <ModalFooter gap={3} margin='auto'>
-          <Button colorScheme='blue' size='medium' variant='outline' onClick={closeModal}>
+          <RMButton colorScheme='blue' size='medium' variant='outline' onClick={closeModal}>
             No
-          </Button>
-          <Button onClick={handleCreateNewServer} size='medium'>
+          </RMButton>
+          <RMButton onClick={handleCreateNewServer} size='medium'>
             Yes
-          </Button>
+          </RMButton>
         </ModalFooter>
       </ModalContent>
     </Modal>
