@@ -2,7 +2,7 @@ import React from 'react'
 import { Button as ChakraButton } from '@chakra-ui/react'
 import styles from './styles.module.scss'
 
-function Button({
+function RMButton({
   children,
   onClick,
   className,
@@ -26,4 +26,4 @@ function Button({
   )
 }
 
-export default Button
+export default RMButton

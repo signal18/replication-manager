@@ -8,11 +8,11 @@ function RMSlider({
   max = 10,
   step = 1,
   showMark = true,
-  showMarkAtInterval = 1,
+  showMarkAtInterval = 2,
   value,
   loading,
   confirmTitle,
-  onConfirm
+  onChange
 }) {
   const [currentValue, setCurrentValue] = useState(value)
   const [previousValue, setPreviousValue] = useState(value)
@@ -84,7 +84,7 @@ function RMSlider({
           }}
           title={`${confirmTitle} ${currentValue}`}
           onConfirmClick={() => {
-            onConfirm(currentValue)
+            onChange(currentValue)
             closeConfirmModal('')
           }}
         />

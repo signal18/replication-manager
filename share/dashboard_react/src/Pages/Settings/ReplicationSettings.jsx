@@ -55,7 +55,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value={selectedCluster?.config?.failoverLimit}
           loading={failoverLimitLoading}
           confirmTitle={`Confirm change 'failover-limit' to: `}
-          onConfirm={(val) =>
+          onChange={(val) =>
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
@@ -72,7 +72,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for check-replication-state?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'check-replication-state' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}
@@ -86,7 +86,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for failover-at-sync?'}
-          onConfirm={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'failover-at-sync' }))}
+          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'failover-at-sync' }))}
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.failoverAtSync}
           loading={failoverAtSyncLoading}
@@ -98,7 +98,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for failover-restart-unsafe?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'failover-restart-unsafe' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}
@@ -112,7 +112,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for force-slave-no-gtid-mode?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'force-slave-no-gtid-mode' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}
@@ -126,7 +126,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for autorejoin-slave-positional-heartbeat?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(
               switchSetting({
                 clusterName: selectedCluster?.name,
@@ -145,7 +145,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for delay-stat-capture?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(
               switchSetting({
                 clusterName: selectedCluster?.name,
@@ -164,7 +164,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for failover-check-delay-stat?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(
               switchSetting({
                 clusterName: selectedCluster?.name,
@@ -187,7 +187,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           showMarkAtInterval={12}
           loading={delayStatRotateLoading}
           confirmTitle='Confirm change delay stat rotate value to: '
-          onConfirm={(val) =>
+          onChange={(val) =>
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
@@ -204,7 +204,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for print-delay-stat?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(
               switchSetting({
                 clusterName: selectedCluster?.name,
@@ -223,7 +223,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for print-delay-stat-history?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(
               switchSetting({
                 clusterName: selectedCluster?.name,
@@ -246,7 +246,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           showMarkAtInterval={10}
           loading={printDelayStatInvlLoading}
           confirmTitle='Confirm change delay stat rotate value to: '
-          onConfirm={(val) =>
+          onChange={(val) =>
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
@@ -263,7 +263,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for switchover-at-sync?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(
               switchSetting({
                 clusterName: selectedCluster?.name,
@@ -286,7 +286,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           showMarkAtInterval={20}
           loading={failoverMaxSlaveDelayLoading}
           confirmTitle='Confirm change max delay to: '
-          onConfirm={(val) =>
+          onChange={(val) =>
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
@@ -305,7 +305,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value={selectedCluster?.config?.switchoverWaitRouteChange}
           loading={switchoverRouteChngLoading}
           confirmTitle='Confirm change wait change route detection to: '
-          onConfirm={(val) =>
+          onChange={(val) =>
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
@@ -322,7 +322,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for switchover-lower-release?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(
               switchSetting({
                 clusterName: selectedCluster?.name,
@@ -344,7 +344,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-slave-readonly?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -363,7 +363,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-binlog-row?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -382,7 +382,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-binlog-annotate?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -401,7 +401,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-binlog-compress?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -420,7 +420,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-binlog-compress?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -439,7 +439,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-slave-gtid?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -458,7 +458,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-slave-gtid-mode-strict?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -477,7 +477,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-slave-semisync?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -496,7 +496,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-slave-strict?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -515,7 +515,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-slave-idempotent?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -534,7 +534,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-slave-serialized?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -553,7 +553,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-slave-minimal?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -572,7 +572,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-slave-conservative?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -591,7 +591,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-slave-optimistic?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -610,7 +610,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-slave-aggressive?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,
@@ -629,7 +629,7 @@ function ReplicationSettings({ selectedCluster, user, openConfirmModal, closeCon
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for force-slave-heartbeat?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(
                   switchSetting({
                     clusterName: selectedCluster?.name,

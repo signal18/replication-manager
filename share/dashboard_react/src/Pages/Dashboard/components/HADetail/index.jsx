@@ -55,7 +55,7 @@ function HADetail({ selectedCluster }) {
     }
     closeModal()
   }
-  console.log('clusterMaster?.state::', clusterMaster?.state)
+
   return (
     <>
       <Card

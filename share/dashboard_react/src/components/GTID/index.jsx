@@ -3,7 +3,7 @@ import React from 'react'
 import { FaCopy } from 'react-icons/fa'
 import { useDispatch } from 'react-redux'
 import { showErrorToast, showSuccessToast } from '../../redux/toastSlice'
-import IconButton from '../IconButton'
+import RMIconButton from '../RMIconButton'
 import styles from './styles.module.scss'
 
 function GTID({ text, copyIconPosition = 'center' }) {
@@ -76,7 +76,7 @@ function GTID({ text, copyIconPosition = 'center' }) {
     <Box className={styles.container} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
       {text}
       {isOpen && (
-        <IconButton
+        <RMIconButton
           icon={FaCopy}
           onClick={handleCopyClick}
           className={`${styles.btnCopy} ${copyIconPosition === 'end' ? styles.right : styles.center}`}

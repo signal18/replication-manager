@@ -8,7 +8,7 @@ import TagPill from '../../../../components/TagPill'
 import ServerStatus from '../../../../components/ServerStatus'
 import ProxyLogo from './ProxyLogo'
 import ProxyStatus from './ProxyStatus'
-import IconButton from '../../../../components/IconButton'
+import RMIconButton from '../../../../components/RMIconButton'
 
 function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMenuOptionsVisible }) {
   const [tableData, setTableData] = useState([])
@@ -35,10 +35,10 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMen
       logo: isNewProxy && <ProxyLogo proxyName={proxy.type} />,
       proxyId: proxy.id,
       showMenu: isNewProxy && isMenuOptionsVisible,
-      server: isNewProxy ? `${proxy.host}:${proxy.port}` : '',
-      status: isNewProxy ? <ProxyStatus status={proxy.state} /> : '',
+      server: `${proxy.host}:${data.port}`,
+      status: <ProxyStatus status={proxy.state} />,
       group: <TagPill text={readWriteType} />,
-      dbName: `${data.prxName}:${data.port}`,
+      dbName: `${data.prxName}`,
       dbStatus: <ServerStatus state={data.status} />,
       pxStatus: data.prxStatus,
       connections: data.prxConnections,
@@ -69,7 +69,7 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMen
           cell: (info) => info.getValue(),
           id: 'options',
           header: () => {
-            return <IconButton onClick={showGridView} icon={HiViewGrid} tooltip='Show grid view' />
+            return <RMIconButton onClick={showGridView} icon={HiViewGrid} tooltip='Show grid view' />
           }
         }
       ),
@@ -103,6 +103,10 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMen
       columnHelper.accessor((row) => row.dbStatus, {
         cell: (info) => info.getValue(),
         header: 'DB Status'
+      }),
+      columnHelper.accessor((row) => row.pxStatus, {
+        cell: (info) => info.getValue(),
+        header: 'Proxy Status'
       }),
       columnHelper.accessor((row) => row.connections, {
         cell: (info) => info.getValue(),

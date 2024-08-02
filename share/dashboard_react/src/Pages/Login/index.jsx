@@ -7,7 +7,7 @@ import { Box, Container, FormControl, FormLabel, FormErrorMessage, Heading, Inpu
 import PageContainer from '../PageContainer'
 import { isAuthorized } from '../../utility/common'
 import PasswordControl from '../../components/PasswordControl'
-import Button from '../../components/Button'
+import RMButton from '../../components/RMButton'
 
 function Login(props) {
   const [username, setUsername] = useState('')
@@ -91,17 +91,17 @@ function Login(props) {
               {error && <Text color='red.500'>{error}</Text>}
 
               <Stack spacing='6'>
-                <Button
+                <RMButton
                   type='submit'
                   size='medium'
                   onClick={onButtonClick}
                   isLoading={loading}
                   loadingText={'Signing in'}>
                   Sign in
-                </Button>
-                <Button size='medium' onClick={onGitButtonClick} isLoading={false}>
+                </RMButton>
+                <RMButton size='medium' onClick={onGitButtonClick} isLoading={false}>
                   Sign in with cloud18
-                </Button>
+                </RMButton>
               </Stack>
             </Stack>
           </Box>

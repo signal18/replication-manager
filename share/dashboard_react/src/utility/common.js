@@ -46,6 +46,6 @@ export const handleError = (error, thunkAPI) => {
 
 export const convertObjectToArray = (inputObject) => {
   return Object.keys(inputObject).map((key) => {
-    return { name: key, value: inputObject[key] }
+    return { name: key, value: key }
   })
 }

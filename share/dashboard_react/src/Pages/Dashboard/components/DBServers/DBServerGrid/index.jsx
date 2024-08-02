@@ -25,7 +25,7 @@ import AccordionComponent from '../../../../../components/AccordionComponent'
 import NotFound from '../../../../../components/NotFound'
 import GTID from '../../../../../components/GTID'
 import ServerStatus from '../../../../../components/ServerStatus'
-import IconButton from '../../../../../components/IconButton'
+import RMIconButton from '../../../../../components/RMIconButton'
 import cssStyles from './styles.module.scss'
 
 function DBServersGrid({
@@ -147,7 +147,7 @@ function DBServersGrid({
                 <ServerName as='h4' rowData={rowData} isBlocking={gridColor.length > 0} />
                 <Spacer />
 
-                <IconButton
+                <RMIconButton
                   icon={MdCompare}
                   onClick={() => openCompareModal(rowData)}
                   marginRight={2}
@@ -155,7 +155,7 @@ function DBServersGrid({
                   {...(gridColor.length > 0 ? { colorScheme: gridColor } : {})}
                 />
 
-                <IconButton
+                <RMIconButton
                   icon={HiTable}
                   onClick={showTableView}
                   marginRight={2}
