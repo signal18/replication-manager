@@ -1843,7 +1843,7 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 			key := crypto.GetSHA256Hash(node.Pass)
 			iv := crypto.GetMD5Hash(node.Pass)
 
-			err := node.WriteJobLogs(mod, decodedData.Data, key, iv)
+			err := node.WriteJobLogs(mod, decodedData.Data, key, iv, vars["task"])
 			if err != nil {
 				http.Error(w, "Error decrypting data : "+err.Error(), http.StatusInternalServerError)
 				return

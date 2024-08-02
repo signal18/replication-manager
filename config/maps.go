@@ -791,14 +791,14 @@ func NewBackupMetaMap() *BackupMetaMap {
 	return m
 }
 
-func (m *BackupMetaMap) Get(key string) *BackupMetadata {
+func (m *BackupMetaMap) Get(key int64) *BackupMetadata {
 	if v, ok := m.Load(key); ok {
 		return v.(*BackupMetadata)
 	}
 	return nil
 }
 
-func (m *BackupMetaMap) CheckAndGet(key string) (*BackupMetadata, bool) {
+func (m *BackupMetaMap) CheckAndGet(key int64) (*BackupMetadata, bool) {
 	v, ok := m.Load(key)
 	if ok {
 		return v.(*BackupMetadata), true
@@ -806,46 +806,46 @@ func (m *BackupMetaMap) CheckAndGet(key string) (*BackupMetadata, bool) {
 	return nil, false
 }
 
-func (m *BackupMetaMap) Set(key string, value *BackupMetadata) {
+func (m *BackupMetaMap) Set(key int64, value *BackupMetadata) {
 	m.Store(key, value)
 }
 
-func (m *BackupMetaMap) ToNormalMap(c map[string]*BackupMetadata) {
+func (m *BackupMetaMap) ToNormalMap(c map[int64]*BackupMetadata) {
 	// Clear the old values in the output map
 	for k := range c {
 		delete(c, k)
 	}
 
 	// Insert all values from the BackupMetaMap to the output map
-	m.Callback(func(key string, value *BackupMetadata) bool {
+	m.Callback(func(key int64, value *BackupMetadata) bool {
 		c[key] = value
 		return true
 	})
 }
 
-func (m *BackupMetaMap) ToNewMap() map[string]*BackupMetadata {
-	result := make(map[string]*BackupMetadata)
+func (m *BackupMetaMap) ToNewMap() map[int64]*BackupMetadata {
+	result := make(map[int64]*BackupMetadata)
 	m.Range(func(k, v any) bool {
-		result[k.(string)] = v.(*BackupMetadata)
+		result[k.(int64)] = v.(*BackupMetadata)
 		return true
 	})
 	return result
 }
 
-func (m *BackupMetaMap) Callback(f func(key string, value *BackupMetadata) bool) {
+func (m *BackupMetaMap) Callback(f func(key int64, value *BackupMetadata) bool) {
 	m.Range(func(k, v any) bool {
-		return f(k.(string), v.(*BackupMetadata))
+		return f(k.(int64), v.(*BackupMetadata))
 	})
 }
 
 func (m *BackupMetaMap) Clear() {
 	m.Range(func(key, value any) bool {
-		m.Delete(key.(string))
+		m.Delete(key.(int64))
 		return true
 	})
 }
 
-func FromNormalBackupMetaMap(m *BackupMetaMap, c map[string]*BackupMetadata) *BackupMetaMap {
+func FromNormalBackupMetaMap(m *BackupMetaMap, c map[int64]*BackupMetadata) *BackupMetaMap {
 	if m == nil {
 		m = NewBackupMetaMap()
 	} else {
@@ -867,7 +867,7 @@ func FromBackupMetaMap(m *BackupMetaMap, c *BackupMetaMap) *BackupMetaMap {
 	}
 
 	if c != nil {
-		c.Callback(func(key string, value *BackupMetadata) bool {
+		c.Callback(func(key int64, value *BackupMetadata) bool {
 			m.Set(key, value)
 			return true
 		})

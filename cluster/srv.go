@@ -200,7 +200,7 @@ type ServerMonitor struct {
 	NeedRefreshJobs             bool
 	BinaryLogDir                string
 	DBDataDir                   string
-	LastBackupMeta              config.BackupMetadata `json:"-"`
+	LastBackupMeta              *config.BackupMetadata `json:"lastBackupMeta"`
 }
 
 type SlaveVariables struct {
@@ -257,6 +257,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.IsGroupReplicationSlave = false
 	server.IsGroupReplicationMaster = false
 	server.JobResults = config.NewTasksMap()
+	server.LastBackupMeta = new(config.BackupMetadata)
 	server.NeedRefreshJobs = true
 	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		// OpenSVC and Sharding proxy monitoring

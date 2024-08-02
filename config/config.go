@@ -2118,6 +2118,18 @@ type Task struct {
 	End    int64  `json:"end,omitempty" db:"utc_end"`
 }
 
+func (t *Task) Set(nt Task) {
+	t.Id = nt.Id
+	t.Task = nt.Task
+	t.Port = nt.Port
+	t.Server = nt.Server
+	t.Done = nt.Done
+	t.State = nt.State
+	t.Result = nt.Result
+	t.Start = nt.Start
+	t.End = nt.End
+}
+
 type TaskSorter []Task
 
 func (a TaskSorter) Len() int           { return len(a) }

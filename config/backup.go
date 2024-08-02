@@ -5,19 +5,20 @@ import "time"
 type BackupMethod int
 
 const (
-	BackupMethodLogical BackupMethod = iota
-	BackupMethodPhysical
+	BackupMethodLogical  = 1
+	BackupMethodPhysical = 2
 )
 
 type BackupStrategy int
 
 const (
-	BackupStrategyFull BackupStrategy = iota
-	BackupStrategyIncremental
-	BackupStrategyDifferential
+	BackupStrategyFull         = 1
+	BackupStrategyIncremental  = 2
+	BackupStrategyDifferential = 3
 )
 
 type BackupMetadata struct {
+	Id             int64          `json:"id"`
 	StartTime      time.Time      `json:"startTime"`
 	EndTime        time.Time      `json:"endTime"`
 	BackupMethod   BackupMethod   `json:"backupMethod"`
@@ -35,4 +36,5 @@ type BackupMetadata struct {
 	BinLogFileName string         `json:"binLogFileName"`
 	BinLogFilePos  uint64         `json:"binLogFilePos"`
 	BinLogUuid     string         `json:"binLogUuid"`
+	Completed      bool           `json:"completed"`
 }

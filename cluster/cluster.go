@@ -177,7 +177,7 @@ type Cluster struct {
 	QueryRules                map[uint32]config.QueryRule `json:"-"`
 	Backups                   []v3.Backup                 `json:"-"`
 	BackupStat                v3.BackupStat               `json:"backupStat"`
-	BackupMetaMap             *config.BackupMetaMap       `json:"-"`
+	BackupMetaMap             *config.BackupMetaMap       `json:"backupList"`
 	SLAHistory                []state.Sla                 `json:"slaHistory"`
 	APIUsers                  map[string]APIUser          `json:"apiUsers"`
 	Schedule                  map[string]cron.Entry       `json:"-"`

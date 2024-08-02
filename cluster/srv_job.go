@@ -144,7 +144,9 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 		}
 		t.Result = res.String
 		t.End = end.Int64
-		server.JobResults.Set(t.Task, &t)
+		if v, exists := server.JobResults.LoadOrStore(t.Task, &t); exists {
+			v.(*config.Task).Set(t)
+		}
 	}
 
 	server.SetNeedRefreshJobs(false)
@@ -250,40 +252,44 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	if server.IsDown() {
 		return 0, nil
 	}
-	// not  needed to stream internaly using S3 fuse
-	/*
-		if cluster.Conf.BackupRestic {
-			port, err := cluster.SSTRunReceiverToRestic(server.DSN + ".xbtream")
-			if err != nil {
-				return 0, nil
-			}
-			jobid, err := server.JobInsertTask(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
-			return jobid, err
-		} else {
-	*/
+
 	var port string
 	var err error
 	var backupext string = ".xbtream"
+	var dest string = server.GetMyBackupDirectory() + cluster.Conf.BackupPhysicalType
 	if cluster.Conf.CompressBackups {
 		backupext = backupext + ".gz"
-		port, err = cluster.SSTRunReceiverToGZip(server, server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, ConstJobCreateFile)
+		dest = dest + backupext
+		port, err = cluster.SSTRunReceiverToGZip(server, dest, ConstJobCreateFile)
 		if err != nil {
 			return 0, nil
 		}
 	} else {
-		port, err = cluster.SSTRunReceiverToFile(server, server.GetMyBackupDirectory()+cluster.Conf.BackupPhysicalType+backupext, ConstJobCreateFile)
+		dest = dest + backupext
+		port, err = cluster.SSTRunReceiverToFile(server, dest, ConstJobCreateFile)
 		if err != nil {
 			return 0, nil
 		}
 	}
 
+	now := time.Now()
+	// Reset last backup meta
+	server.LastBackupMeta = &config.BackupMetadata{
+		Id:             now.Unix(),
+		StartTime:      now,
+		BackupMethod:   config.BackupMethodPhysical,
+		BackupStrategy: config.BackupStrategyFull,
+		BackupTool:     cluster.Conf.BackupPhysicalType,
+		Source:         server.URL,
+		Dest:           dest,
+		Compressed:     cluster.Conf.CompressBackups,
+	}
+
+	cluster.BackupMetaMap.Set(server.LastBackupMeta.Id, server.LastBackupMeta)
+
 	jobid, err := server.JobInsertTask(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
-	// if err == nil {
-	// 	go server.JobRunViaSSH()
-	// }
+
 	return jobid, err
-	//	}
-	//return 0, nil
 }
 
 func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
@@ -1066,6 +1072,7 @@ func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
 	switch task.task {
 	case "xtrabackup", "mariabackup":
 		server.SetBackupPhysicalCookie()
+		server.LastBackupMeta.Completed = true
 	case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
 		defer server.SetInReseedBackup(false)
 		if _, err := server.StartSlave(); err != nil {
@@ -2078,7 +2085,7 @@ func (server *ServerMonitor) ProcessFlashbackPhysical() error {
 	return nil
 }
 
-func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv string) error {
+func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv, task string) error {
 	cluster := server.ClusterGroup
 	eCmd := exec.Command("echo", encrypted)
 	// Create a pipe for the stdout of lsCmd
@@ -2123,7 +2130,7 @@ func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv string) er
 			continue
 		}
 
-		server.ParseLogEntries(logEntry, mod)
+		server.ParseLogEntries(logEntry, mod, task)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -2145,7 +2152,7 @@ func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv string) er
 	return nil
 }
 
-func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int) error {
+func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, task string) error {
 	cluster := server.ClusterGroup
 	if entry.Server != server.URL {
 		err := errors.New(fmt.Sprintf("Log entries and source mismatch: %s with %s", entry.Server, server.URL))
@@ -2160,9 +2167,62 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int) err
 			if strings.Contains(line, "ERROR") {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlErr, "[%s] %s", server.URL, line)
 			} else {
+				switch task {
+				case "xtrabackup", "mariabackup":
+					if strings.Contains(line, "MySQL binlog position") {
+						//Refresh last backup meta
+						sub := strings.SplitN(line, ":", 2)
+						binlog := strings.Split(strings.ReplaceAll(sub[len(sub)-1], "'", ""), ",")
+						parts := strings.Split(binlog[0], " ")
+						server.LastBackupMeta.BinLogFileName = parts[len(parts)-1]
+						parts = strings.Split(binlog[1], " ")
+						pos, _ := strconv.ParseUint(parts[len(parts)-1], 10, 64)
+						server.LastBackupMeta.BinLogFilePos = pos
+						parts = strings.Split(binlog[2], " ")
+						server.LastBackupMeta.BinLogUuid = parts[len(parts)-1]
+					}
+				}
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlDbg, "[%s] %s", server.URL, line)
 			}
 		}
 	}
 	return nil
+}
+
+func (server *ServerMonitor) WriteBackupMetadata() {
+	cluster := server.ClusterGroup
+
+	if finfo, err := os.Stat(server.LastBackupMeta.Dest); err == nil {
+		server.LastBackupMeta.Size = finfo.Size()
+		server.LastBackupMeta.EndTime = time.Now()
+	}
+
+	task := server.JobResults.Get(server.LastBackupMeta.BackupTool)
+
+	//Wait until job result changed since we're using pointer
+	for task.State < 3 {
+		time.Sleep(time.Second)
+	}
+
+	if task.State == 3 || task.State == 4 {
+		//Wait for binlog metadata sent by writelog API
+		for server.LastBackupMeta.BinLogFileName == "" {
+			time.Sleep(time.Second)
+		}
+		server.LastBackupMeta.Completed = true
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Error occured in backup, writing incomplete metadata for backup in %d", server.URL)
+	}
+
+	bjson, err := json.MarshalIndent(server.LastBackupMeta, "", "\t")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to marshall metadata for backup in %d: %s", server.URL, err.Error())
+	}
+
+	err = os.WriteFile(server.LastBackupMeta.Dest+".meta.json", bjson, 0644)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to write metadata for backup in %d: %s", server.URL, err.Error())
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Created metadata for backup in %d successfully", server.URL)
+	}
 }
