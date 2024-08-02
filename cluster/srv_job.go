@@ -1302,6 +1302,9 @@ func (server *ServerMonitor) JobBackupMyDumper() error {
 	}
 
 	outputdir := server.GetMyBackupDirectory() + "mydumper/"
+	if cluster.Conf.BackupKeepUntilValid {
+		exec.Command("mv", outputdir, outputdir+".old")
+	}
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalDumpThreads)
 	myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyDumperOptions, "  ", " "), " ")
 	myargs = append(myargs, "--outputdir="+outputdir, "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
@@ -1327,6 +1330,9 @@ func (server *ServerMonitor) JobBackupMyDumper() error {
 	if err = dumpCmd.Wait(); err != nil && !valid {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyDumper: %s", err)
 	} else {
+		if cluster.Conf.BackupKeepUntilValid {
+			exec.Command("rm", "-r", outputdir+".old")
+		}
 		server.SetBackupLogicalCookie()
 	}
 	return err
