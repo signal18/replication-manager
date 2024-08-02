@@ -1,49 +1,20 @@
-import React, { useEffect } from 'react'
+import React from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { getClusters, getMonitoredData, setCurrentCluster, setRefreshInterval } from '../redux/clusterSlice'
-import { Box, Grid, GridItem, HStack, Icon, Link, Spinner, Text, Wrap, WrapItem } from '@chakra-ui/react'
+import { setCluster } from '../redux/clusterSlice'
+import { Box, HStack, Icon, Text, useColorMode, Wrap } from '@chakra-ui/react'
 import NotFound from '../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
 import { HiCheck, HiExclamation, HiX } from 'react-icons/hi'
-import { Link as ReactRouterLink } from 'react-router-dom'
 import Card from '../components/Card'
-import { AppSettings } from '../AppSettings'
+import TableType2 from '../components/TableType2'
 
-function ClusterList(props) {
+function ClusterList({ onClick }) {
   const dispatch = useDispatch()
+  const { colorMode } = useColorMode()
 
   const {
-    common: { theme, isDesktop },
-    cluster: { clusters, loading, refreshInterval }
+    cluster: { clusters, loading }
   } = useSelector((state) => state)
-  useEffect(() => {
-    dispatch(getClusters({}))
-  }, [])
-
-  useEffect(() => {
-    let interval = localStorage.getItem('refresh_interval')
-      ? parseInt(localStorage.getItem('refresh_interval'))
-      : AppSettings.DEFAULT_INTERVAL
-
-    dispatch(setRefreshInterval({ interval }))
-    let intervalId = 0
-
-    if (refreshInterval > 0) {
-      callServices()
-      const intervalSeconds = refreshInterval * 1000
-      intervalId = setInterval(() => {
-        callServices()
-      }, intervalSeconds)
-    }
-    return () => {
-      clearInterval(intervalId)
-    }
-  }, [refreshInterval])
-
-  const callServices = () => {
-    dispatch(getClusters({}))
-    dispatch(getMonitoredData({}))
-  }
 
   const styles = {
     linkCard: {
@@ -55,7 +26,7 @@ function ClusterList(props) {
       fontSize: '1.5rem'
     },
     green: {
-      fill: theme === 'light' ? 'green' : 'lightgreen'
+      fill: colorMode === 'light' ? 'green' : 'lightgreen'
     },
     red: { fill: 'red' },
 
@@ -64,11 +35,8 @@ function ClusterList(props) {
     }
   }
 
-  const setSelectedClusterState = (clusterItem) => {
-    dispatch(setCurrentCluster({ cluster: clusterItem }))
-  }
   return !loading && clusters?.length === 0 ? (
-    <NotFound text={'No cluster found!'} currentTheme={theme} />
+    <NotFound text={'No cluster found!'} />
   ) : (
     <Wrap>
       {clusters?.map((clusterItem) => {
@@ -139,12 +107,16 @@ function ClusterList(props) {
           { key: 'SLA', value: clusterItem.uptime }
         ]
         return (
-          <Link
+          <Box
             sx={styles.linkCard}
-            onClick={() => setSelectedClusterState(clusterItem)}
-            as={ReactRouterLink}
+            as={'button'}
             mt='8'
-            to={`/clusters/${clusterItem.name}`}>
+            onClick={() => {
+              dispatch(setCluster({ data: clusterItem }))
+              if (onClick) {
+                onClick(clusterItem)
+              }
+            }}>
             <Card
               width={'400px'}
               header={
@@ -152,26 +124,9 @@ function ClusterList(props) {
                   <Icon fontSize='1.5rem' as={AiOutlineCluster} /> <span>{clusterItem.name}</span>
                 </HStack>
               }
-              body={
-                <Grid templateColumns='repeat(2, 1fr)' gap={2} p={4}>
-                  {dataObject.map((item, index) => (
-                    <React.Fragment key={index}>
-                      <GridItem>
-                        <Box p={2} borderRadius='md'>
-                          {item.key}
-                        </Box>
-                      </GridItem>
-                      <GridItem>
-                        <Box bg={theme === 'light' ? 'gray.50' : 'gray.700'} p={2} borderRadius='md'>
-                          {item.value}
-                        </Box>
-                      </GridItem>
-                    </React.Fragment>
-                  ))}
-                </Grid>
-              }
+              body={<TableType2 dataArray={dataObject} />}
             />
-          </Link>
+          </Box>
         )
       })}
     </Wrap>

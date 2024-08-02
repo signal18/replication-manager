@@ -1,0 +1,42 @@
+.table {
+  overflow-x: auto;
+  width: 100%;
+  padding-left: 8px;
+  font-size: 15px;
+  .headerRow {
+    background-color: var(--tertiary-color);
+
+    .tableHeader {
+      padding: 4px;
+      text-align: center !important;
+      border: 1px solid;
+      color: var(--text-color) !important;
+      border-color: var(--quaternary-color) !important;
+    }
+
+    .tableColumn {
+      padding: 2px 4px;
+      border-right: 1px solid;
+      border-color: var(--tertiary-color);
+      border-bottom: none;
+      height: 36px;
+    }
+    .tableColumnEven {
+      background-color: var(--secondary-gray-color);
+    }
+
+    .fixedColumn {
+      position: sticky;
+      left: -16px;
+      z-index: 2;
+      background-color: var(--primary-color);
+    }
+
+    .redBlinking {
+      background-color: var(--danger-primary-color);
+    }
+    .orangeBlinking {
+      background-color: var(--warning-primary-color);
+    }
+  }
+}

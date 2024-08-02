@@ -1,60 +1,34 @@
-import React, { useEffect } from 'react'
-import PageContainer from './PageContainer'
-import TabItems from '../components/TabItems'
-import { Box } from '@chakra-ui/react'
-import BackLink from '../components/BackLink'
-import { useDispatch, useSelector } from 'react-redux'
+import React, { lazy, useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import Dashboard from './Dashboard'
-import { getClusterAlerts, getClusterData, getClusterMaster } from '../redux/clusterSlice'
+const Settings = lazy(() => import('./Settings'))
 
-function Cluster(props) {
-  const dispatch = useDispatch()
+function Cluster({ tab }) {
+  const [user, setUser] = useState(null)
+  const [currentTab, setCurrentTab] = useState('')
   const {
-    common: { theme },
-    cluster: { selectedCluster, refreshInterval }
+    cluster: { clusterData }
   } = useSelector((state) => state)
 
   useEffect(() => {
-    let intervalId = 0
-    if (refreshInterval > 0) {
-      callServices()
-      intervalId = setInterval(() => {
-        callServices()
-      }, refreshInterval * 1000)
-    }
-    return () => {
-      clearInterval(intervalId)
-    }
-  }, [refreshInterval])
+    setCurrentTab(tab)
+  }, [tab])
 
-  const callServices = () => {
-    if (selectedCluster) {
-      dispatch(getClusterData({ clusterName: selectedCluster.name }))
-      dispatch(getClusterAlerts({ clusterName: selectedCluster.name }))
-      dispatch(getClusterMaster({ clusterName: selectedCluster.name }))
+  useEffect(() => {
+    if (clusterData?.apiUsers) {
+      const loggedUser = localStorage.getItem('username')
+      if (loggedUser && clusterData?.apiUsers[loggedUser]) {
+        const apiUser = clusterData.apiUsers[loggedUser]
+        setUser(apiUser)
+      }
     }
-  }
+  }, [clusterData?.apiUsers])
 
-  return (
-    <PageContainer>
-      <Box m='4'>
-        <TabItems
-          options={[
-            'Dashboard',
-            'Alerts',
-            'Proxies',
-            'Settings',
-            'Configs',
-            'Agents',
-            'Certificates',
-            'Queryrules',
-            'Shards'
-          ]}
-          tabContents={[<Dashboard selectedCluster={selectedCluster} theme={theme} />]}
-        />
-      </Box>
-    </PageContainer>
-  )
+  return currentTab === 'dashboard' ? (
+    <Dashboard selectedCluster={clusterData} user={user} />
+  ) : currentTab === 'settings' ? (
+    <Settings selectedCluster={clusterData} user={user} />
+  ) : null
 }
 
 export default Cluster

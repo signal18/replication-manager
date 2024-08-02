@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
-import { HStack, useNumberInput, Input, IconButton, Tooltip } from '@chakra-ui/react'
+import { useDispatch } from 'react-redux'
+import { HStack, useNumberInput, Input } from '@chakra-ui/react'
 import {
   HiOutlinePlusCircle,
   HiOutlineMinusCircle,
@@ -9,12 +9,21 @@ import {
   HiRefresh,
   HiOutlineInformationCircle
 } from 'react-icons/hi'
-import { setRefreshInterval } from '../redux/clusterSlice'
+import {
+  getClusterAlerts,
+  getClusterData,
+  getClusterMaster,
+  getClusterProxies,
+  getClusterServers,
+  pauseAutoReload,
+  setRefreshInterval
+} from '../redux/clusterSlice'
 import { getRefreshInterval } from '../utility/common'
 import { AppSettings } from '../AppSettings'
+import IconButton from './IconButton'
 
-function RefreshCounter(props) {
-  const defaultSeconds = 4
+function RefreshCounter({ clusterName }) {
+  const defaultSeconds = getRefreshInterval() || AppSettings.DEFAULT_INTERVAL
   const inputRef = useRef(null)
   const [seconds, setSeconds] = useState(defaultSeconds)
   const [isPaused, setIsPaused] = useState(false)
@@ -22,14 +31,16 @@ function RefreshCounter(props) {
 
   useEffect(() => {
     const currentInterval = getRefreshInterval()
+
     if (!currentInterval) {
+      setSeconds(currentInterval)
       dispatch(setRefreshInterval({ interval: AppSettings.DEFAULT_INTERVAL }))
     }
   }, [])
 
-  const {
-    cluster: { refreshInterval }
-  } = useSelector((state) => state)
+  useEffect(() => {
+    dispatch(pauseAutoReload({ isPaused }))
+  }, [isPaused])
 
   const handleCountChange = (value, number) => {
     setSeconds(number)
@@ -38,7 +49,7 @@ function RefreshCounter(props) {
 
   const { getInputProps, getIncrementButtonProps, getDecrementButtonProps } = useNumberInput({
     step: 1,
-    defaultValue: refreshInterval || 4,
+    defaultValue: seconds,
     min: 2,
     max: 120,
     onChange: (valueAsString, valueAsNumber) => handleCountChange(valueAsString, valueAsNumber)
@@ -56,33 +67,40 @@ function RefreshCounter(props) {
     setIsPaused(true)
   }
 
+  const reloadManually = () => {
+    if (clusterName) {
+      dispatch(getClusterData({ clusterName }))
+      dispatch(getClusterAlerts({ clusterName }))
+      dispatch(getClusterMaster({ clusterName }))
+      dispatch(getClusterServers({ clusterName }))
+      dispatch(getClusterProxies({ clusterName }))
+    }
+  }
+
   return (
     <HStack spacing='4'>
-      <Tooltip label='Reload manually' aria-label='A tooltip'>
-        <IconButton icon={<HiRefresh fontSize='1.5rem' />} size='sm' />
-      </Tooltip>
+      <IconButton icon={HiRefresh} tooltip='Reload manually' onClick={reloadManually} />
+
       {isPaused ? (
-        <Tooltip label='Start auto reload' aria-label='A tooltip'>
-          <IconButton onClick={playInterval} icon={<HiPlay fontSize='1.5rem' />} size='sm' />
-        </Tooltip>
+        <IconButton onClick={playInterval} icon={HiPlay} tooltip='Start auto reload' />
       ) : (
-        <Tooltip label='Pause auto reload' aria-label='A tooltip'>
-          <IconButton onClick={pauseInterval} icon={<HiStop fontSize='1.5rem' />} size='sm' />
-        </Tooltip>
+        <IconButton onClick={pauseInterval} icon={HiStop} tooltip='Pause auto reload' />
       )}
 
       {!isPaused && (
         <HStack spacing='3'>
-          <IconButton {...dec} icon={<HiOutlineMinusCircle fontSize='1.5rem' />} size='sm' aria-label='Decrement' />
+          <IconButton {...dec} icon={HiOutlineMinusCircle} aria-label='Decrement' />
           <Input {...input} width='75px' size='sm' ref={inputRef} />
-          <IconButton {...inc} icon={<HiOutlinePlusCircle fontSize='1.5rem' />} size='sm' aria-label='Increment' />
+          <IconButton {...inc} icon={HiOutlinePlusCircle} aria-label='Increment' />
         </HStack>
       )}
-      <Tooltip
-        label={isPaused ? 'Auto reload is currently paused' : `Auto reload every ${seconds} seconds`}
-        aria-label='A tooltip'>
-        <IconButton icon={<HiOutlineInformationCircle fontSize='1.5rem' />} size='sm' variant='ghost' />
-      </Tooltip>
+
+      <IconButton
+        icon={HiOutlineInformationCircle}
+        variant='ghost'
+        style={{ backgroundColor: 'transparent', color: 'unset' }}
+        tooltip={isPaused ? 'Auto reload is currently paused' : `Auto reload every ${seconds} seconds`}
+      />
     </HStack>
   )
 }

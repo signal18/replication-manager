@@ -1,0 +1,15 @@
+.switchContainer {
+  gap: rem(8);
+
+  .text {
+    font-size: rem(16);
+    font-weight: 500;
+
+    &.green {
+      color: var(--success-primary-color) !important;
+    }
+    &.red {
+      color: var(--danger-primary-color) !important;
+    }
+  }
+}

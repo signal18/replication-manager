@@ -1,0 +1,20 @@
+.dbFlavor {
+  background-color: transparent !important;
+  svg {
+    //fill: isBlocking ? 'white' : colorMode === 'light' ? `blue.900` : `blue.100`,
+    font-size: rem(32);
+  }
+  &.whiteIcon {
+    svg {
+      fill: var(--white-color);
+    }
+  }
+  &.primaryIcon {
+    svg {
+      fill: var(--primary-color) !important;
+    }
+  }
+  &.hover {
+    background-color: transparent;
+  }
+}

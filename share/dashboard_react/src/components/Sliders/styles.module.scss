@@ -1,0 +1,80 @@
+.sliderContainer {
+  width: 95%;
+  height: rem(100);
+  justify-content: center;
+  padding-bottom: rem(12);
+  .tags {
+    margin-right: auto;
+    text-transform: uppercase;
+    span[class*='tagpill'] {
+      font-weight: bold;
+    }
+  }
+  .slider {
+    margin-top: rem(18);
+  }
+  .markLabel {
+    font-size: rem(12);
+    margin-top: rem(6);
+    margin-left: rem(-3);
+    font-weight: bold;
+    @include flex-center;
+  }
+  .selectedMarkLabel {
+    margin-top: rem(-32);
+    margin-left: rem(-10);
+    width: rem(24);
+    min-width: rem(24);
+    height: rem(24);
+    border-radius: 50%;
+    color: var(--white-color);
+    font-weight: bold;
+    background-color: var(--primary-color);
+    @include flex-center;
+
+    &.markColor0 {
+      background-color: #718096;
+    }
+    &.markColor1 {
+      background-color: var(--danger-primary-color);
+    }
+    &.markColor2 {
+      background-color: var(--warning-primary-color);
+    }
+    &.markColor3 {
+      background-color: #3e9de9;
+    }
+    &.markColor4 {
+      background-color: #0066b2;
+    }
+  }
+
+  .filledTrack0 {
+    background-color: #718096;
+  }
+  .filledTrack1 {
+    background-image: linear-gradient(to right, #718096, var(--danger-primary-color));
+  }
+  .filledTrack2 {
+    background-image: linear-gradient(to right, #718096, var(--danger-primary-color), var(--warning-primary-color));
+  }
+  .filledTrack3 {
+    background-image: linear-gradient(
+      to right,
+      #718096,
+      var(--danger-primary-color),
+      var(--warning-primary-color),
+      #3e9de9
+    );
+  }
+  .filledTrack4 {
+    background-image: linear-gradient(
+      to right,
+      #718096,
+      var(--danger-primary-color),
+      var(--warning-primary-color),
+      #3e9de9,
+      #0066b2
+    );
+  }
+}

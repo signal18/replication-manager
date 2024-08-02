@@ -1,0 +1,32 @@
+.container {
+  font-size: rem(15);
+  gap: rem(4);
+  padding: rem(2);
+  margin-top: rem(4);
+  width: 100%;
+  .label,
+  .value {
+    padding: rem(4);
+    height: 100%;
+    display: flex;
+    align-items: center;
+  }
+  .label {
+    font-weight: 500;
+    text-align: start;
+  }
+  .subLabel {
+    padding-left: rem(32);
+  }
+  .value {
+    text-align: start;
+    background-color: var(--gray-color);
+    border-radius: rem(6);
+    min-height: rem(24);
+  }
+
+  .divider {
+    height: rem(1);
+    background-color: var(--darkgray-color);
+  }
+}

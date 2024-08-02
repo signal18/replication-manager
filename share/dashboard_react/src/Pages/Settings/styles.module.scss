@@ -1,0 +1,144 @@
+div.settingsContainer {
+  margin-top: rem(16);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: rem(8);
+  button.accordionHeader {
+    background-color: var(--gray-color) !important;
+    &[aria-expanded='true'] {
+      background-color: var(--secondary-color) !important;
+      &:hover {
+        background-color: var(--secondary-color) !important;
+      }
+
+      h4,
+      svg {
+        color: var(--white-color);
+      }
+    }
+    h4 {
+      text-transform: uppercase;
+      //  text-align: center;
+    }
+    &:hover {
+      background-color: var(--tertiary-color) !important;
+    }
+  }
+  .accordionPanel {
+    overflow: hidden;
+  }
+  .listContainer {
+    flex-basis: 10%;
+    @include breakpoint('md', 'lg') {
+      flex-basis: 15%;
+    }
+    @include breakpoint('lg') {
+      flex-basis: 20%;
+    }
+    .listItem {
+      height: rem(40);
+      @include breakpoint('lg') {
+        height: rem(48);
+      }
+      button {
+        width: 100%;
+        height: 100%;
+        background-color: transparent;
+        color: var(--text-color);
+        box-shadow: $box-shadow-md;
+        text-transform: uppercase;
+        &:hover {
+          background-color: var(--secondary-color);
+          color: var(--white-color);
+        }
+      }
+    }
+    .selecetdListItem {
+      button {
+        background-color: var(--primary-color);
+        color: var(--white-color);
+        @include breakpoint('sm', 'md') {
+          transform: scale(1.1); //translateX(25px);
+        }
+        @include breakpoint('md', 'lg') {
+          transform: scale(1.05); //translateX(15px);
+        }
+      }
+    }
+  }
+  .settingsContent {
+    flex-basis: 90%;
+    @include breakpoint('md', 'lg') {
+      flex-basis: 85%;
+    }
+    @include breakpoint('lg') {
+      flex-basis: 80%;
+    }
+    .content {
+      width: 100%;
+      margin-left: rem(12);
+      margin-right: rem(4);
+      @include breakpoint('lg') {
+        margin-left: rem(24);
+        margin-right: rem(24);
+      }
+    }
+  }
+
+  .table {
+    padding: 0;
+    gap: 0;
+    align-items: center;
+    overflow: hidden;
+
+    @include breakpoint('sm', 'md') {
+      grid-template-columns: 1fr !important;
+    }
+    @include breakpoint('md', 'lg') {
+      grid-template-columns: 320px auto !important;
+    }
+    @include breakpoint('lg') {
+      grid-template-columns: 380px auto !important;
+    }
+    .row {
+      height: 100%;
+    }
+    .label {
+      font-weight: 600;
+      background-color: var(--tertiary-color);
+      height: 100%;
+      padding-left: rem(16);
+    }
+    div[class*='subLabel'] {
+      background-color: var(--quaternary-color);
+    }
+    .value {
+      background-color: transparent;
+      padding-left: rem(16);
+    }
+    button.dropdownButton {
+      width: 160px;
+      white-space: break-spaces;
+      padding: 0;
+      padding-left: rem(8);
+      text-align: start;
+      @include breakpoint('md', 'lg') {
+        width: 200px;
+      }
+      @include breakpoint('lg') {
+        width: 250px;
+      }
+    }
+    .valueWithInfo {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: rem(4);
+      .info {
+        font-weight: 500;
+        text-align: start;
+        font-style: italic;
+      }
+    }
+  }
+}
