@@ -36,6 +36,7 @@ function Dropdown({
     } else {
       onChange(option)
     }
+    setIsConfirmModalOpen(false)
   }
 
   const openConfirmModal = () => {
