@@ -12,8 +12,8 @@ import AlertModal from '../Modals/AlertModal'
 import { FaPowerOff } from 'react-icons/fa'
 import ConfirmModal from '../Modals/ConfirmModal'
 import styles from './styles.module.scss'
-import Button from '../Button'
-import IconButton from '../IconButton'
+import RMButton from '../RMButton'
+import RMIconButton from '../RMIconButton'
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
@@ -104,9 +104,9 @@ function Navbar({ username }) {
             <>
               {username && isDesktop && <Text>{`Welcome, ${username}`}</Text>}
               {isMobile ? (
-                <IconButton onClick={openLogoutModal} border='none' icon={FaPowerOff} />
+                <RMIconButton onClick={openLogoutModal} border='none' icon={FaPowerOff} />
               ) : (
-                <Button onClick={openLogoutModal}>Logout</Button>
+                <RMButton onClick={openLogoutModal}>Logout</RMButton>
               )}
             </>
           )}

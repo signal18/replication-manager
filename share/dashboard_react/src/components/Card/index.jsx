@@ -2,7 +2,7 @@ import { Box, HStack, Spinner } from '@chakra-ui/react'
 import React from 'react'
 import { useSelector } from 'react-redux'
 import MenuOptions from '../MenuOptions'
-import Button from '../Button'
+import RMButton from '../RMButton'
 import styles from './styles.module.scss'
 
 function Card({
@@ -29,14 +29,14 @@ function Card({
           <MenuOptions placement='right' options={menuOptions} subMenuPlacement={isDesktop ? 'right' : 'bottom'} />
         )}
         {headerAction === 'button' && (
-          <Button
+          <RMButton
             isBlinking={isButtonBlinking}
             colorScheme={buttonColorScheme}
             onClick={onClick}
             isLoading={isLoading}
             loadingText={loadingText}>
             {buttonText}
-          </Button>
+          </RMButton>
         )}
         {headerAction !== 'button' && isLoading && <Spinner label={loadingText} speed='1s' />}
         {header}

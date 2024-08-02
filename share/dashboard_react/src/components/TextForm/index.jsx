@@ -1,10 +1,10 @@
-import { Flex, Input, Spinner } from '@chakra-ui/react'
+import { Box, Flex, Input, Spinner } from '@chakra-ui/react'
 import React, { useEffect, useState, useRef } from 'react'
 import { HiCheck, HiPencilAlt, HiX } from 'react-icons/hi'
 import styles from './styles.module.scss'
-import IconButton from '../IconButton'
+import RMIconButton from '../RMIconButton'
 
-function TextForm({ onConfirm, originalValue, loading, maxLength = 120 }) {
+function TextForm({ onConfirm, id, label, originalValue, loading, maxLength = 120, className, direction }) {
   const [value, setValue] = useState('')
   const [isEditable, setIsEditable] = useState(false)
   const inputRef = useRef(null)
@@ -20,40 +20,54 @@ function TextForm({ onConfirm, originalValue, loading, maxLength = 120 }) {
   }
 
   return (
-    <Flex className={styles.textContainer}>
-      <Input ref={inputRef} value={value} maxLength={maxLength} readOnly={!isEditable} onChange={handleChange} />
-      {isEditable ? (
-        <>
-          <IconButton
-            icon={HiX}
-            tooltip='Cancel'
-            colorScheme='red'
-            onClick={() => {
-              setIsEditable(false)
-              setValue(originalValue)
-            }}
-          />
-          <IconButton
-            icon={HiCheck}
-            colorScheme='green'
-            tooltip='Save'
-            onClick={() => {
-              onConfirm(value)
-              setIsEditable(false)
-            }}
-          />
-        </>
-      ) : (
-        <IconButton
-          icon={HiPencilAlt}
-          tooltip='Edit'
-          onClick={() => {
-            setIsEditable(true)
-            inputRef.current.focus()
-          }}
-        />
+    <Flex className={`${styles.textContainer} ${className}`} direction={direction}>
+      {label && (
+        <label className={styles.label} htmlFor={id}>
+          {label}
+        </label>
       )}
-      {loading && <Spinner />}
+      <Flex w='100%' gap='2' align='center'>
+        <Input
+          id={id}
+          ref={inputRef}
+          value={value}
+          maxLength={maxLength}
+          readOnly={!isEditable}
+          onChange={handleChange}
+        />
+        {isEditable ? (
+          <>
+            <RMIconButton
+              icon={HiX}
+              tooltip='Cancel'
+              colorScheme='red'
+              onClick={() => {
+                setIsEditable(false)
+                setValue(originalValue)
+              }}
+            />
+            <RMIconButton
+              icon={HiCheck}
+              colorScheme='green'
+              tooltip='Save'
+              onClick={() => {
+                onConfirm(value)
+                setIsEditable(false)
+              }}
+            />
+          </>
+        ) : (
+          <RMIconButton
+            icon={HiPencilAlt}
+            tooltip='Edit'
+            onClick={() => {
+              setIsEditable(true)
+              inputRef.current.focus()
+            }}
+          />
+        )}
+        {loading && <Spinner />}
+      </Flex>
     </Flex>
   )
 }

@@ -3,7 +3,7 @@ import { IconButton as ChakraIconButton, Tooltip } from '@chakra-ui/react'
 import CustomIcon from '../Icons/CustomIcon'
 import styles from './styles.module.scss'
 
-function IconButton({
+function RMIconButton({
   onClick,
   size = 'sm',
   variant = 'solid',
@@ -43,4 +43,4 @@ function IconButton({
   )
 }
 
-export default IconButton
+export default RMIconButton

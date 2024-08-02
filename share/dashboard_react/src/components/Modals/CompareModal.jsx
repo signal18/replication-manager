@@ -28,7 +28,7 @@ import {
 import CheckOrCrossIcon from '../Icons/CheckOrCrossIcon'
 import DBFlavourIcon from '../Icons/DBFlavourIcon'
 import ServerStatus from '../ServerStatus'
-import Button from '../Button'
+import RMButton from '../RMButton'
 
 function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMariadbGtid, hasMysqlGtid }) {
   const [selectedServer, setSelectedServer] = useState(null)
@@ -66,9 +66,9 @@ function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMari
         <ModalBody>
           {selectedServer ? (
             <Flex direction={'column'} gap={4} maxHeight='80vh' overflow='auto'>
-              <Button width='fit-content' onClick={() => setSelectedServer(null)}>
+              <RMButton width='fit-content' onClick={() => setSelectedServer(null)}>
                 Change
-              </Button>
+              </RMButton>
               <TableType4Compare
                 item1Title={`${compareServer.host}:${compareServer.port}`}
                 item2Title={`${selectedServer.host}:${selectedServer.port}`}

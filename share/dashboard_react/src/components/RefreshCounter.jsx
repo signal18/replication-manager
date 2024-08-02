@@ -20,7 +20,7 @@ import {
 } from '../redux/clusterSlice'
 import { getRefreshInterval } from '../utility/common'
 import { AppSettings } from '../AppSettings'
-import IconButton from './IconButton'
+import RMIconButton from './RMIconButton'
 
 function RefreshCounter({ clusterName }) {
   const defaultSeconds = getRefreshInterval() || AppSettings.DEFAULT_INTERVAL
@@ -79,23 +79,23 @@ function RefreshCounter({ clusterName }) {
 
   return (
     <HStack spacing='4'>
-      <IconButton icon={HiRefresh} tooltip='Reload manually' onClick={reloadManually} />
+      <RMIconButton icon={HiRefresh} tooltip='Reload manually' onClick={reloadManually} />
 
       {isPaused ? (
-        <IconButton onClick={playInterval} icon={HiPlay} tooltip='Start auto reload' />
+        <RMIconButton onClick={playInterval} icon={HiPlay} tooltip='Start auto reload' />
       ) : (
-        <IconButton onClick={pauseInterval} icon={HiStop} tooltip='Pause auto reload' />
+        <RMIconButton onClick={pauseInterval} icon={HiStop} tooltip='Pause auto reload' />
       )}
 
       {!isPaused && (
         <HStack spacing='3'>
-          <IconButton {...dec} icon={HiOutlineMinusCircle} aria-label='Decrement' />
+          <RMIconButton {...dec} icon={HiOutlineMinusCircle} aria-label='Decrement' />
           <Input {...input} width='75px' size='sm' ref={inputRef} />
-          <IconButton {...inc} icon={HiOutlinePlusCircle} aria-label='Increment' />
+          <RMIconButton {...inc} icon={HiOutlinePlusCircle} aria-label='Increment' />
         </HStack>
       )}
 
-      <IconButton
+      <RMIconButton
         icon={HiOutlineInformationCircle}
         variant='ghost'
         style={{ backgroundColor: 'transparent', color: 'unset' }}

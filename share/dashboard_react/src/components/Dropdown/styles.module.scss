@@ -1,6 +1,6 @@
 .menuButton {
-  height: fit-content;
-  padding: rem(16);
+  height: rem(40);
+  padding: rem(12);
   white-space: break-spaces;
   background-color: var(--quaternary-color) !important;
   box-shadow: $box-shadow-md;
@@ -10,14 +10,11 @@
     background-color: var(--quaternary-color);
   }
 }
-button.lightMenuItem,
-button.darkMenuItem {
-  width: 100%;
-}
-.lightMenuItem {
-  background-color: var(--white-color);
-}
-
+.lightMenuItem,
 .darkMenuItem {
-  background-color: var(--gray-color);
+  width: 100% !important;
+  &:hover,
+  &:active {
+    background-color: var(--gray-color);
+  }
 }

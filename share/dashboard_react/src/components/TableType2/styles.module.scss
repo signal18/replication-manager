@@ -24,6 +24,12 @@
     border-radius: rem(6);
     min-height: rem(24);
   }
+  .dividerRow {
+    display: none;
+    @include breakpoint('lg') {
+      display: block;
+    }
+  }
 
   .divider {
     height: rem(1);

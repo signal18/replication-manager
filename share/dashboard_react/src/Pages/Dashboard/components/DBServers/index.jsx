@@ -12,7 +12,7 @@ import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
 import ServerName from './ServerName'
 import GTID from '../../../../components/GTID'
 import ServerStatus from '../../../../components/ServerStatus'
-import IconButton from '../../../../components/IconButton'
+import RMIconButton from '../../../../components/RMIconButton'
 import { useColorMode } from '@chakra-ui/react'
 
 function DBServers({ selectedCluster, user }) {
@@ -81,7 +81,7 @@ function DBServers({ selectedCluster, user }) {
           cell: (info) => info.getValue(),
           id: 'options',
           header: () => {
-            return <IconButton onClick={showGridView} icon={HiViewGrid} tooltip='Show grid view' />
+            return <RMIconButton onClick={showGridView} icon={HiViewGrid} tooltip='Show grid view' />
           }
         }
       ),
