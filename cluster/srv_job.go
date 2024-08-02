@@ -260,12 +260,20 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	if cluster.Conf.CompressBackups {
 		backupext = backupext + ".gz"
 		dest = dest + backupext
+		if cluster.Conf.BackupKeepUntilValid {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
+			exec.Command("mv", dest, dest+".old").Run()
+		}
 		port, err = cluster.SSTRunReceiverToGZip(server, dest, ConstJobCreateFile)
 		if err != nil {
 			return 0, nil
 		}
 	} else {
 		dest = dest + backupext
+		if cluster.Conf.BackupKeepUntilValid {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
+			exec.Command("mv", dest, dest+".old").Run()
+		}
 		port, err = cluster.SSTRunReceiverToFile(server, dest, ConstJobCreateFile)
 		if err != nil {
 			return 0, nil
@@ -392,9 +400,10 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 	cluster := server.ClusterGroup
 	task := "reseed" + cluster.Conf.BackupLogicalType
+	bcksrv := cluster.GetBackupServer()
 	if cluster.master != nil && !cluster.GetBackupServer().HasBackupLogicalCookie() {
 		server.SetWaitLogicalBackupCookie()
-		return 0, errors.New("No Logical Backup")
+		return 0, errors.New(fmt.Sprintf("No Logical Backup on backup server %s", bcksrv.URL))
 	}
 
 	if server.IsReseeding {
@@ -468,9 +477,10 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 	cluster := server.ClusterGroup
 	task := "flashback" + cluster.Conf.BackupLogicalType
 	var err error
+	bckserver := cluster.GetBackupServer()
 	if cluster.master != nil && !cluster.GetBackupServer().HasBackupLogicalCookie() {
 		server.SetWaitLogicalBackupCookie()
-		return 0, errors.New("No Logical Backup")
+		return 0, errors.New(fmt.Sprintf("No Logical Backup on backup server %s", bckserver.URL))
 	}
 
 	if server.IsReseeding {
@@ -1172,7 +1182,7 @@ func (server *ServerMonitor) JobBackupScript() error {
 	return err
 }
 
-func (server *ServerMonitor) JobBackupMysqldump() error {
+func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	cluster := server.ClusterGroup
 	var err error
 	var bckConn *sqlx.DB
@@ -1222,7 +1232,7 @@ func (server *ServerMonitor) JobBackupMysqldump() error {
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
-	f, err := os.Create(server.GetMyBackupDirectory() + "mysqldump.sql.gz")
+	f, err := os.Create(filename)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump backup request: %s", err)
 		return err
@@ -1277,13 +1287,22 @@ func (server *ServerMonitor) JobBackupMysqldump() error {
 	return err
 }
 
-func (server *ServerMonitor) JobBackupMyDumper() error {
+func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 	cluster := server.ClusterGroup
 	var err error
 	var bckConn *sqlx.DB
 
+	if cluster.MyDumperVersion == nil {
+		if err = cluster.SetMyDumperVersion(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting MyDumper version: %s", err)
+			return err
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "MyDumper version: %s", cluster.MyDumperVersion.ToString())
+		}
+	}
+
 	//Block DDL For Backup
-	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.4") && cluster.Conf.BackupLockDDL {
+	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.4") && cluster.MyDumperVersion.Lower("0.12.3") && cluster.Conf.BackupLockDDL {
 		bckConn, err = server.GetNewDBConn()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
@@ -1301,13 +1320,9 @@ func (server *ServerMonitor) JobBackupMyDumper() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Blocking DDL via BACKUP STAGE")
 	}
 
-	outputdir := server.GetMyBackupDirectory() + "mydumper/"
-	if cluster.Conf.BackupKeepUntilValid {
-		exec.Command("mv", outputdir, outputdir+".old")
-	}
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalDumpThreads)
 	myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyDumperOptions, "  ", " "), " ")
-	myargs = append(myargs, "--outputdir="+outputdir, "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
+	myargs = append(myargs, "--outputdir="+outputdir, "--threads="+threads, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass(), "--regex='^(?!(replication_manager_schema)\\.).*'")
 	dumpCmd := exec.Command(cluster.GetMyDumperPath(), myargs...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "%s", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", 1))
@@ -1330,15 +1345,12 @@ func (server *ServerMonitor) JobBackupMyDumper() error {
 	if err = dumpCmd.Wait(); err != nil && !valid {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyDumper: %s", err)
 	} else {
-		if cluster.Conf.BackupKeepUntilValid {
-			exec.Command("rm", "-r", outputdir+".old")
-		}
 		server.SetBackupLogicalCookie()
 	}
 	return err
 }
 
-func (server *ServerMonitor) JobBackupDumpling() error {
+func (server *ServerMonitor) JobBackupDumpling(outputdir string) error {
 	var err error
 	cluster := server.ClusterGroup
 
@@ -1352,7 +1364,7 @@ func (server *ServerMonitor) JobBackupDumpling() error {
 	conf.Threads = cluster.Conf.BackupLogicalDumpThreads
 	conf.FileSize = 1000
 	conf.StatementSize = dumplingext.UnspecifiedSize
-	conf.OutputDirPath = server.GetMyBackupDirectory()
+	conf.OutputDirPath = outputdir
 	conf.Consistency = "flush"
 	conf.NoViews = true
 	conf.StatusAddr = ":8281"
@@ -1362,7 +1374,9 @@ func (server *ServerMonitor) JobBackupDumpling() error {
 	conf.LogLevel = config.LvlInfo
 
 	err = dumplingext.Dump(conf)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Dumpling %s", err)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Dumpling %s", err)
+	}
 
 	return err
 }
@@ -1436,11 +1450,67 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		//Change to switch since we only allow one type of backup (for now)
 		switch cluster.Conf.BackupLogicalType {
 		case config.ConstBackupLogicalTypeMysqldump:
-			server.JobBackupMysqldump()
+			filename := server.GetMyBackupDirectory() + "mysqldump.sql.gz"
+			if cluster.Conf.BackupKeepUntilValid {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
+				exec.Command("mv", filename, filename+".old").Run()
+			}
+
+			err := server.JobBackupMysqldump(filename)
+			if err != nil {
+				if cluster.Conf.BackupKeepUntilValid {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rolling back to old backup.")
+					exec.Command("rm", filename, filename+".err").Run()
+					exec.Command("mv", filename+".old", filename).Run()
+					exec.Command("rm", filename+".err").Run()
+				}
+			} else {
+				if cluster.Conf.BackupKeepUntilValid {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
+					exec.Command("rm", filename+".old").Run()
+				}
+			}
 		case config.ConstBackupLogicalTypeDumpling:
-			server.JobBackupDumpling()
+			outputdir := server.GetMyBackupDirectory() + "dumpling/"
+			if cluster.Conf.BackupKeepUntilValid {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
+				exec.Command("mv", outputdir, outputdir+".old").Run()
+			}
+
+			err := server.JobBackupDumpling(outputdir)
+			if err != nil {
+				if cluster.Conf.BackupKeepUntilValid {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rolling back to old backup.")
+					exec.Command("rm", outputdir, outputdir+".err").Run()
+					exec.Command("mv", outputdir+".old", outputdir).Run()
+					exec.Command("rm", "-r", outputdir+".err").Run()
+				}
+			} else {
+				if cluster.Conf.BackupKeepUntilValid {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
+					exec.Command("rm", "-r", outputdir+".old").Run()
+				}
+			}
 		case config.ConstBackupLogicalTypeMydumper:
-			server.JobBackupMyDumper()
+			outputdir := server.GetMyBackupDirectory() + "mydumper/"
+			if cluster.Conf.BackupKeepUntilValid {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
+				exec.Command("mv", outputdir, outputdir+".old").Run()
+			}
+			err := server.JobBackupMyDumper(outputdir)
+			if err != nil {
+				if cluster.Conf.BackupKeepUntilValid {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rolling back to old backup.")
+					exec.Command("rm", outputdir, outputdir+".err").Run()
+					exec.Command("mv", outputdir+".old", outputdir).Run()
+					exec.Command("rm", "-r", outputdir+".err").Run()
+				}
+			} else {
+				if cluster.Conf.BackupKeepUntilValid {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
+					exec.Command("rm", "-r", outputdir+".old").Run()
+				}
+			}
 		case config.ConstBackupLogicalTypeRiver:
 			server.JobBackupRiver()
 		}
@@ -2217,18 +2287,30 @@ func (server *ServerMonitor) WriteBackupMetadata() {
 		}
 		server.LastBackupMeta.Completed = true
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Error occured in backup, writing incomplete metadata for backup in %d", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Error occured in backup, writing incomplete metadata for backup in %s", server.URL)
 	}
 
 	bjson, err := json.MarshalIndent(server.LastBackupMeta, "", "\t")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to marshall metadata for backup in %d: %s", server.URL, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to marshall metadata for backup in %s: %s", server.URL, err.Error())
 	}
 
 	err = os.WriteFile(server.LastBackupMeta.Dest+".meta.json", bjson, 0644)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to write metadata for backup in %d: %s", server.URL, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to write metadata for backup in %s: %s", server.URL, err.Error())
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Created metadata for backup in %d successfully", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Created metadata for backup in %s successfully", server.URL)
+	}
+
+	if cluster.Conf.BackupKeepUntilValid {
+		if server.LastBackupMeta.Completed {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
+			exec.Command("rm", server.LastBackupMeta.Dest+".old").Run()
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Error occured in backup, rolling back to old backup.")
+			exec.Command("rm", server.LastBackupMeta.Dest, server.LastBackupMeta.Dest+".err").Run()
+			exec.Command("mv", server.LastBackupMeta.Dest+".old", server.LastBackupMeta.Dest).Run()
+			exec.Command("rm", server.LastBackupMeta.Dest+".err").Run()
+		}
 	}
 }

@@ -220,6 +220,7 @@ type Cluster struct {
 	SlavesConnected        int
 	clog                   *clog.Logger `json:"-"`
 	*ClusterGraphite
+	MyDumperVersion *dbhelper.MySQLVersion
 }
 
 type SlavesOldestMasterFile struct {
@@ -479,7 +480,15 @@ func (cluster *Cluster) InitFromConf() {
 	//cluster.Conf.PrintConf()
 	cluster.initScheduler()
 	cluster.CheckDefaultUser(true)
-
+	if err = cluster.SetMyDumperVersion(); err != nil {
+		lv := config.LvlWarn
+		if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
+			lv = config.LvlErr
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, lv, "Could not set MyDumper Version: %s", err)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "MyDumper version: %s", cluster.MyDumperVersion.ToString())
+	}
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
