@@ -400,11 +400,22 @@ func (server *ServerMonitor) SetWaitPhysicalBackupCookie() error {
 	return server.createCookie("cookie_waitphysicalbackup")
 }
 
-func (server *ServerMonitor) SetBackupPhysicalCookie() error {
-	return server.createCookie("cookie_physicalbackup")
+func (server *ServerMonitor) SetBackupPhysicalCookie(tool string) error {
+	switch tool {
+	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
+		return server.createCookie("cookie_backup_" + tool)
+	default:
+		return server.createCookie("cookie_physicalbackup")
+	}
 }
-func (server *ServerMonitor) SetBackupLogicalCookie() error {
-	return server.createCookie("cookie_logicalbackup")
+
+func (server *ServerMonitor) SetBackupLogicalCookie(tool string) error {
+	switch tool {
+	case "script", config.ConstBackupLogicalTypeMysqldump, config.ConstBackupLogicalTypeMydumper, config.ConstBackupLogicalTypeDumpling:
+		return server.createCookie("cookie_backup_" + tool)
+	default:
+		return server.createCookie("cookie_logicalbackup")
+	}
 }
 
 func (server *ServerMonitor) SetLoadingJobList(val bool) {

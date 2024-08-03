@@ -1080,8 +1080,8 @@ func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
 	}
 
 	switch task.task {
-	case "xtrabackup", "mariabackup":
-		server.SetBackupPhysicalCookie()
+	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
+		server.SetBackupPhysicalCookie(task.task)
 		server.LastBackupMeta.Physical.Completed = true
 	case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
 		defer server.SetInReseedBackup(false)
@@ -1154,6 +1154,8 @@ func (server *ServerMonitor) JobBackupScript() error {
 	var err error
 	cluster := server.ClusterGroup
 
+	defer cluster.SetInLogicalBackupState(false)
+
 	scriptCmd := exec.Command(cluster.Conf.BackupSaveScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", 1))
 	stdoutIn, _ := scriptCmd.StdoutPipe()
@@ -1176,8 +1178,6 @@ func (server *ServerMonitor) JobBackupScript() error {
 	if err = scriptCmd.Wait(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Backup script error: %s", err)
 		return err
-	} else {
-		server.SetBackupLogicalCookie()
 	}
 	return err
 }
@@ -1186,6 +1186,8 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	cluster := server.ClusterGroup
 	var err error
 	var bckConn *sqlx.DB
+
+	defer cluster.SetInLogicalBackupState(false)
 
 	//Block DDL For Backup
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.4") && cluster.Conf.BackupLockDDL {
@@ -1262,8 +1264,6 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "mysqldump: %s", err)
 			errCh <- fmt.Errorf("Error mysqldump: %w", err) // Send the error through the channel with more context
-		} else {
-			server.SetBackupLogicalCookie()
 		}
 		gw.Flush()
 		gw.Close()
@@ -1291,6 +1291,8 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 	cluster := server.ClusterGroup
 	var err error
 	var bckConn *sqlx.DB
+
+	defer cluster.SetInLogicalBackupState(false)
 
 	if cluster.MyDumperVersion == nil {
 		if err = cluster.SetMyDumperVersion(); err != nil {
@@ -1343,16 +1345,20 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 	}()
 	wg.Wait()
 	if err = dumpCmd.Wait(); err != nil && !valid {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyDumper: %s", err)
-	} else {
-		server.SetBackupLogicalCookie()
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mydumper:  %s", err)
+		return err
 	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Success backup data via mydumper. Setting logical cookie")
+	server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMydumper)
 	return err
 }
 
 func (server *ServerMonitor) JobBackupDumpling(outputdir string) error {
 	var err error
 	cluster := server.ClusterGroup
+
+	defer cluster.SetInLogicalBackupState(false)
 
 	conf := dumplingext.DefaultConfig()
 	conf.Database = ""
@@ -1376,6 +1382,7 @@ func (server *ServerMonitor) JobBackupDumpling(outputdir string) error {
 	err = dumplingext.Dump(conf)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Dumpling %s", err)
+		return err
 	}
 
 	return err
@@ -1384,6 +1391,8 @@ func (server *ServerMonitor) JobBackupDumpling(outputdir string) error {
 func (server *ServerMonitor) JobBackupRiver() error {
 	var err error
 	cluster := server.ClusterGroup
+
+	defer cluster.SetInLogicalBackupState(false)
 
 	cfg := new(river.Config)
 	cfg.MyHost = server.URL
@@ -1405,6 +1414,7 @@ func (server *ServerMonitor) JobBackupRiver() error {
 	cfg.DataDir = cluster.Conf.WorkingDir + "/" + cluster.Name + "/river"
 
 	os.RemoveAll(cfg.DumpPath)
+	server.LastBackupMeta.Logical.Dest = cfg.DumpPath
 
 	//cfg.Sources = []river.SourceConfig{river.SourceConfig{Schema: "test", Tables: []string{"test", "[*]"}}}
 	cfg.Sources = []river.SourceConfig{river.SourceConfig{Schema: "test", Tables: []string{"City"}}}
@@ -1438,19 +1448,35 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 
 	cluster.SetInLogicalBackupState(true)
-	defer cluster.SetInLogicalBackupState(false)
+	start := time.Now()
+	server.LastBackupMeta.Logical = &config.BackupMetadata{
+		Id:             start.Unix(),
+		StartTime:      start,
+		BackupMethod:   config.BackupMethodLogical,
+		BackupTool:     cluster.Conf.BackupLogicalType,
+		BackupStrategy: config.BackupStrategyFull,
+		Source:         server.URL,
+	}
 
 	// Removing previous valid backup state and start
 	server.DelBackupLogicalCookie()
 
 	//Skip other type if using backup script
 	if cluster.Conf.BackupSaveScript != "" {
-		server.JobBackupScript()
+		server.LastBackupMeta.Logical.BackupTool = "script"
+		server.LastBackupMeta.Logical.Dest = cluster.Conf.BackupSaveScript
+		err := server.JobBackupScript()
+		if err == nil {
+			server.LastBackupMeta.Logical.Completed = true
+			server.SetBackupLogicalCookie("script")
+		}
 	} else {
 		//Change to switch since we only allow one type of backup (for now)
 		switch cluster.Conf.BackupLogicalType {
 		case config.ConstBackupLogicalTypeMysqldump:
 			filename := server.GetMyBackupDirectory() + "mysqldump.sql.gz"
+			server.LastBackupMeta.Logical.Dest = filename
+			server.LastBackupMeta.Logical.Compressed = true
 			if cluster.Conf.BackupKeepUntilValid {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 				exec.Command("mv", filename, filename+".old").Run()
@@ -1469,9 +1495,18 @@ func (server *ServerMonitor) JobBackupLogical() error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
 					exec.Command("rm", filename+".old").Run()
 				}
+
+				finfo, err := os.Stat(filename)
+				if err == nil {
+					server.LastBackupMeta.Logical.EndTime = time.Now()
+					server.LastBackupMeta.Logical.Size = finfo.Size()
+					server.LastBackupMeta.Logical.Completed = true
+					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMysqldump)
+				}
 			}
 		case config.ConstBackupLogicalTypeDumpling:
 			outputdir := server.GetMyBackupDirectory() + "dumpling/"
+			server.LastBackupMeta.Logical.Dest = outputdir
 			if cluster.Conf.BackupKeepUntilValid {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 				exec.Command("mv", outputdir, outputdir+".old").Run()
@@ -1490,9 +1525,19 @@ func (server *ServerMonitor) JobBackupLogical() error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
 					exec.Command("rm", "-r", outputdir+".old").Run()
 				}
+
+				finfo, err := os.Stat(outputdir)
+				if err == nil {
+					server.LastBackupMeta.Logical.EndTime = time.Now()
+					server.LastBackupMeta.Logical.Size = finfo.Size()
+					server.LastBackupMeta.Logical.Completed = true
+					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
+				}
 			}
 		case config.ConstBackupLogicalTypeMydumper:
 			outputdir := server.GetMyBackupDirectory() + "mydumper/"
+			server.LastBackupMeta.Logical.Dest = outputdir
+			server.LastBackupMeta.Logical.Compressed = true
 			if cluster.Conf.BackupKeepUntilValid {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 				exec.Command("mv", outputdir, outputdir+".old").Run()
@@ -1510,13 +1555,24 @@ func (server *ServerMonitor) JobBackupLogical() error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
 					exec.Command("rm", "-r", outputdir+".old").Run()
 				}
+
+				finfo, err := os.Stat(outputdir)
+				if err == nil {
+					server.LastBackupMeta.Logical.EndTime = time.Now()
+					server.LastBackupMeta.Logical.Size = finfo.Size()
+					server.LastBackupMeta.Logical.Completed = true
+					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
+				}
 			}
 		case config.ConstBackupLogicalTypeRiver:
+			server.LastBackupMeta.Logical.BackupTool = "river"
 			server.JobBackupRiver()
 		}
 	}
 
+	server.WriteBackupMetadata(config.BackupMethodLogical)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+
 	backtype := "logical"
 	server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupLogicalType)
 	return nil
