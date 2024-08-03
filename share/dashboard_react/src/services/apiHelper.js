@@ -20,12 +20,33 @@ const getContentType = (type) => {
   return {}
 }
 
-export function getRequest(apiUrl, params, authValue = 1) {
-  return fetch(`/api/${apiUrl}`, {
-    method: 'GET',
-    headers: authHeader(authValue),
-    ...(params ? { body: JSON.stringify(params) } : {})
-  }).then((response) => response.json())
+export async function getRequest(apiUrl, params, authValue = 1) {
+  try {
+    const response = await fetch(`/api/${apiUrl}`, {
+      method: 'GET',
+      headers: authHeader(authValue),
+      ...(params ? { body: JSON.stringify(params) } : {})
+    })
+    const contentType = response.headers.get('Content-Type')
+    let data = null
+    if (contentType && contentType.includes('application/json')) {
+      data = await response.json()
+    } else if (contentType && contentType.includes('text/plain')) {
+      data = await response.text()
+      try {
+        data = JSON.parse(data)
+      } catch (e) {
+        throw new Error(data)
+      }
+    }
+    return {
+      data,
+      status: response.status
+    }
+  } catch (error) {
+    console.error('Error occured:', error)
+    throw error
+  }
 }
 
 export function getRequestAll(urls, params, authValue = 1) {

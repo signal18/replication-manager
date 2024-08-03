@@ -1,0 +1,18 @@
+@keyframes blink {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+span.tag {
+  color: var(--white-color) !important;
+  &.blinking {
+    animation: blink 1s infinite;
+  }
+}

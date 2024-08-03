@@ -1,0 +1,11 @@
+.textContainer {
+  gap: rem(8);
+  text-align: start;
+  width: 100%;
+  @include breakpoint('md', 'lg') {
+    width: 90%;
+  }
+  @include breakpoint('lg') {
+    width: 60%;
+  }
+}

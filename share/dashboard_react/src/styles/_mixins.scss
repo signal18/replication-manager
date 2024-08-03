@@ -1,0 +1,54 @@
+@use 'sass:math';
+
+$breakpoints: (
+  'sm': 480px,
+  'md': 767px,
+  'lg': 1023px,
+  'xl': 1279px
+);
+
+@mixin breakpoint($point, $pointMax: null) {
+  $min-width: null;
+  $max-width: null;
+
+  // Get the minimum width
+  @if map-has-key($breakpoints, $point) {
+    $min-width: map-get($breakpoints, $point);
+  }
+
+  // Get the maximum width if $pointMax is provided
+  @if $pointMax != null and map-has-key($breakpoints, $pointMax) {
+    $max-width: map-get($breakpoints, $pointMax);
+  }
+
+  // Apply the media queries
+  @if $min-width != null and $max-width == null {
+    // Only min-width case (lg and above)
+    @media (min-width: ($min-width + 1px)) {
+      @content;
+    }
+  } @else if $min-width != null and $max-width != null {
+    // Min-width and max-width case
+    @media (min-width: ($min-width + 1px)) and (max-width: $max-width) {
+      @content;
+    }
+  } @else if $min-width == null and $max-width != null {
+    // Only max-width case (sm to md-1)
+    @media (max-width: $max-width) {
+      @content;
+    }
+  } @else {
+    // Default case (fallback)
+    @content;
+  }
+}
+
+@function rem($pxValue, $font-size: 16) {
+  @return math.div($pxValue, $font-size) * 1rem;
+}
+
+@mixin flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

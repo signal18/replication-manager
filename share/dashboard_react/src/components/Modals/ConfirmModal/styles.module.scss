@@ -1,0 +1,19 @@
+.modalContent {
+  max-width: 90%;
+  @include breakpoint('md', 'lg') {
+    max-width: 70%;
+  }
+  @include breakpoint('lg') {
+    max-width: 45%;
+  }
+  .modalHeader {
+    white-space: pre-line;
+    font-size: rem(16);
+  }
+  &.modalLightContent {
+    background-color: var(--white-color);
+  }
+  &.modalDarkContent {
+    background-color: var(--primary-color);
+  }
+}

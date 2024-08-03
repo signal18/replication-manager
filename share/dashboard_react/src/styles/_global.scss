@@ -1,0 +1,27 @@
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--body-bg-color) !important;
+  color: var(--text-color);
+}
+
+html,
+body,
+p,
+label,
+span:not([data-status='success']):not([class*='tagpill']):not([class*='alertCount']),
+input,
+th,
+td,
+code,
+[role='menu'] > button,
+button[class*='accordion'] {
+  color: var(--text-color) !important;
+}
+text {
+  fill: var(--text-color);
+}
