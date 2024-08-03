@@ -605,6 +605,7 @@ func (cluster *Cluster) Run() {
 					}
 					go cluster.initOrchetratorNodes()
 					go cluster.ResticFetchRepo()
+					go cluster.FetchLastBackupMetadata()
 					cluster.runOnceAfterTopology = false
 				} else {
 

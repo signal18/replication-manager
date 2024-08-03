@@ -158,11 +158,31 @@ func (server *ServerMonitor) HasUnprovisionCookie() bool {
 }
 
 func (server *ServerMonitor) HasBackupLogicalCookie() bool {
-	return server.hasCookie("cookie_logicalbackup")
+	return server.hasCookie("cookie_logicalbackup") || server.HasBackupMysqldumpCookie() || server.HasBackupMydumperCookie() || server.HasBackupDumplingCookie()
+}
+
+func (server *ServerMonitor) HasBackupMysqldumpCookie() bool {
+	return server.hasCookie("cookie_backup_mysqldump")
+}
+
+func (server *ServerMonitor) HasBackupMydumperCookie() bool {
+	return server.hasCookie("cookie_backup_mydumper")
+}
+
+func (server *ServerMonitor) HasBackupDumplingCookie() bool {
+	return server.hasCookie("cookie_backup_dumpling")
 }
 
 func (server *ServerMonitor) HasBackupPhysicalCookie() bool {
-	return server.hasCookie("cookie_physicalbackup")
+	return server.hasCookie("cookie_physicalbackup") || server.HasBackupXtrabackupCookie() || server.HasBackupMariabackupCookie()
+}
+
+func (server *ServerMonitor) HasBackupXtrabackupCookie() bool {
+	return server.hasCookie("cookie_backup_xtrabackup")
+}
+
+func (server *ServerMonitor) HasBackupMariabackupCookie() bool {
+	return server.hasCookie("cookie_backup_mariabackup")
 }
 
 func (server *ServerMonitor) HasReadOnly() bool {
