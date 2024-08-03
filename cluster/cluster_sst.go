@@ -213,7 +213,7 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor) {
 		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
 
-		server.WriteBackupMetadata()
+		server.WriteBackupMetadata(config.BackupMethodPhysical)
 
 		backtype := "physical"
 		server.BackupRestic(sst.cluster.Conf.Cloud18GitUser, sst.cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, sst.cluster.Conf.BackupPhysicalType)
@@ -255,7 +255,7 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor) {
 		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
 
-		server.WriteBackupMetadata()
+		server.WriteBackupMetadata(config.BackupMethodPhysical)
 
 		backtype := "physical"
 		server.BackupRestic(sst.cluster.Conf.Cloud18GitUser, sst.cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, sst.cluster.Conf.BackupPhysicalType)

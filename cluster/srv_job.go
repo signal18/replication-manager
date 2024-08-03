@@ -282,7 +282,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 
 	now := time.Now()
 	// Reset last backup meta
-	server.LastBackupMeta = &config.BackupMetadata{
+	server.LastBackupMeta.Physical = &config.BackupMetadata{
 		Id:             now.Unix(),
 		StartTime:      now,
 		BackupMethod:   config.BackupMethodPhysical,
@@ -293,7 +293,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 		Compressed:     cluster.Conf.CompressBackups,
 	}
 
-	cluster.BackupMetaMap.Set(server.LastBackupMeta.Id, server.LastBackupMeta)
+	cluster.BackupMetaMap.Set(server.LastBackupMeta.Physical.Id, server.LastBackupMeta.Physical)
 
 	jobid, err := server.JobInsertTask(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
 
@@ -1082,7 +1082,7 @@ func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
 	switch task.task {
 	case "xtrabackup", "mariabackup":
 		server.SetBackupPhysicalCookie()
-		server.LastBackupMeta.Completed = true
+		server.LastBackupMeta.Physical.Completed = true
 	case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
 		defer server.SetInReseedBackup(false)
 		if _, err := server.StartSlave(); err != nil {
@@ -2250,12 +2250,12 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 						sub := strings.SplitN(line, ":", 2)
 						binlog := strings.Split(strings.ReplaceAll(sub[len(sub)-1], "'", ""), ",")
 						parts := strings.Split(binlog[0], " ")
-						server.LastBackupMeta.BinLogFileName = parts[len(parts)-1]
+						server.LastBackupMeta.Physical.BinLogFileName = parts[len(parts)-1]
 						parts = strings.Split(binlog[1], " ")
 						pos, _ := strconv.ParseUint(parts[len(parts)-1], 10, 64)
-						server.LastBackupMeta.BinLogFilePos = pos
+						server.LastBackupMeta.Physical.BinLogFilePos = pos
 						parts = strings.Split(binlog[2], " ")
-						server.LastBackupMeta.BinLogUuid = parts[len(parts)-1]
+						server.LastBackupMeta.Physical.BinLogUuid = parts[len(parts)-1]
 					}
 				}
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlDbg, "[%s] %s", server.URL, line)
@@ -2265,15 +2265,26 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 	return nil
 }
 
-func (server *ServerMonitor) WriteBackupMetadata() {
+func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 	cluster := server.ClusterGroup
+	var lastmeta *config.BackupMetadata
 
-	if finfo, err := os.Stat(server.LastBackupMeta.Dest); err == nil {
-		server.LastBackupMeta.Size = finfo.Size()
-		server.LastBackupMeta.EndTime = time.Now()
+	switch backtype {
+	case config.BackupMethodLogical:
+		lastmeta = server.LastBackupMeta.Logical
+	case config.BackupMethodPhysical:
+		lastmeta = server.LastBackupMeta.Physical
+	default:
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Wrong backup type for metadata in %s", server.URL)
+		return
 	}
 
-	task := server.JobResults.Get(server.LastBackupMeta.BackupTool)
+	if finfo, err := os.Stat(lastmeta.Dest); err == nil {
+		lastmeta.Size = finfo.Size()
+		lastmeta.EndTime = time.Now()
+	}
+
+	task := server.JobResults.Get(lastmeta.BackupTool)
 
 	//Wait until job result changed since we're using pointer
 	for task.State < 3 {
@@ -2282,20 +2293,20 @@ func (server *ServerMonitor) WriteBackupMetadata() {
 
 	if task.State == 3 || task.State == 4 {
 		//Wait for binlog metadata sent by writelog API
-		for server.LastBackupMeta.BinLogFileName == "" {
+		for lastmeta.BinLogFileName == "" {
 			time.Sleep(time.Second)
 		}
-		server.LastBackupMeta.Completed = true
+		lastmeta.Completed = true
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Error occured in backup, writing incomplete metadata for backup in %s", server.URL)
 	}
 
-	bjson, err := json.MarshalIndent(server.LastBackupMeta, "", "\t")
+	bjson, err := json.MarshalIndent(lastmeta, "", "\t")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to marshall metadata for backup in %s: %s", server.URL, err.Error())
 	}
 
-	err = os.WriteFile(server.LastBackupMeta.Dest+".meta.json", bjson, 0644)
+	err = os.WriteFile(server.GetMyBackupDirectory()+lastmeta.BackupTool+".meta.json", bjson, 0644)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to write metadata for backup in %s: %s", server.URL, err.Error())
 	} else {
@@ -2303,14 +2314,14 @@ func (server *ServerMonitor) WriteBackupMetadata() {
 	}
 
 	if cluster.Conf.BackupKeepUntilValid {
-		if server.LastBackupMeta.Completed {
+		if lastmeta.Completed {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
-			exec.Command("rm", server.LastBackupMeta.Dest+".old").Run()
+			exec.Command("rm", lastmeta.Dest+".old").Run()
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Error occured in backup, rolling back to old backup.")
-			exec.Command("rm", server.LastBackupMeta.Dest, server.LastBackupMeta.Dest+".err").Run()
-			exec.Command("mv", server.LastBackupMeta.Dest+".old", server.LastBackupMeta.Dest).Run()
-			exec.Command("rm", server.LastBackupMeta.Dest+".err").Run()
+			exec.Command("rm", lastmeta.Dest, lastmeta.Dest+".err").Run()
+			exec.Command("mv", lastmeta.Dest+".old", lastmeta.Dest).Run()
+			exec.Command("rm", lastmeta.Dest+".err").Run()
 		}
 	}
 }
