@@ -691,11 +691,11 @@ func (cluster *Cluster) StateProcessing() {
 			//Remove from captured state if already resolved, so it will capture next occurence
 			cluster.GetStateMachine().CapturedState.Delete(s.ErrKey)
 			servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
-			if s.ErrKey == "WARN0073" {
-				for _, s := range cluster.Servers {
-					s.SetBackupPhysicalCookie()
-				}
-			}
+			// if s.ErrKey == "WARN0073" {
+			// 	for _, s := range cluster.Servers {
+			// 		s.SetBackupPhysicalCookie()
+			// 	}
+			// }
 			if s.ErrKey == "WARN0074" {
 				err := servertoreseed.ProcessReseedPhysical()
 				if err != nil {
