@@ -400,8 +400,18 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 	cluster := server.ClusterGroup
 	task := "reseed" + cluster.Conf.BackupLogicalType
+	master := cluster.GetMaster()
+	if master == nil {
+		return 0, errors.New("No master found. Unable to reseed.")
+	}
+
 	bcksrv := cluster.GetBackupServer()
-	if cluster.master != nil && !cluster.GetBackupServer().HasBackupLogicalCookie() {
+	if bcksrv == nil {
+		bcksrv = master
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "No backup server found. Using master's backup file")
+	}
+
+	if !bcksrv.HasBackupLogicalCookie() {
 		server.SetWaitLogicalBackupCookie()
 		return 0, errors.New(fmt.Sprintf("No Logical Backup on backup server %s", bcksrv.URL))
 	}
@@ -2499,6 +2509,24 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 }
 
 func (server *ServerMonitor) JobParseMyDumperMeta() error {
+	cluster := server.ClusterGroup
+	if cluster.MyDumperVersion.GreaterEqual("0.14.1") {
+		return server.JobParseMyDumperMetaNew()
+	} else {
+		m, err := server.JobParseMyDumperMetaOld(server.LastBackupMeta.Logical.Dest)
+		if err != nil {
+			return err
+		}
+
+		server.LastBackupMeta.Logical.BinLogGtid = m.BinLogUuid
+		server.LastBackupMeta.Logical.BinLogFilePos = fmt.Sprintf("%d", m.BinLogFilePos)
+		server.LastBackupMeta.Logical.BinLogFileName = m.BinLogFileName
+
+		return nil
+	}
+}
+
+func (server *ServerMonitor) JobParseMyDumperMetaNew() error {
 	filePath := server.LastBackupMeta.Logical.Dest + "/metadata"
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -2546,4 +2574,61 @@ func (server *ServerMonitor) JobParseMyDumperMeta() error {
 	server.LastBackupMeta.Logical.BinLogFileName = binlogFile
 
 	return nil
+}
+
+func (server *ServerMonitor) JobParseMyDumperMetaOld(dir string) (config.MyDumperMetaData, error) {
+
+	var m config.MyDumperMetaData
+	buf := new(bytes.Buffer)
+
+	// metadata file name.
+	meta := dir + "/metadata"
+
+	// open a file.
+	MetaFd, err := os.Open(meta)
+	if err != nil {
+		return m, err
+	}
+	defer MetaFd.Close()
+
+	MetaRd := bufio.NewReader(MetaFd)
+	for {
+		line, err := MetaRd.ReadBytes('\n')
+		if err != nil {
+			break
+		}
+
+		if len(line) > 2 {
+			newline := bytes.TrimLeft(line, "")
+			buf.Write(bytes.Trim(newline, "\n"))
+			line = []byte{}
+		}
+		if strings.Contains(string(buf.Bytes()), "Started") == true {
+			splitbuf := strings.Split(string(buf.Bytes()), ":")
+			m.StartTimestamp, _ = time.ParseInLocation("2006-01-02 15:04:05", strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " "), time.Local)
+		}
+		if strings.Contains(string(buf.Bytes()), "Log") == true {
+			splitbuf := strings.Split(string(buf.Bytes()), ":")
+			m.BinLogFileName = strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " ")
+		}
+		if strings.Contains(string(buf.Bytes()), "Pos") == true {
+			splitbuf := strings.Split(string(buf.Bytes()), ":")
+			pos, _ := strconv.Atoi(strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " "))
+
+			m.BinLogFilePos = uint64(pos)
+		}
+
+		if strings.Contains(string(buf.Bytes()), "GTID") == true {
+			splitbuf := strings.Split(string(buf.Bytes()), ":")
+			m.BinLogUuid = strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " ")
+		}
+		if strings.Contains(string(buf.Bytes()), "Finished") == true {
+			splitbuf := strings.Split(string(buf.Bytes()), ":")
+			m.EndTimestamp, _ = time.ParseInLocation("2006-01-02 15:04:05", strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " "), time.Local)
+		}
+		buf.Reset()
+
+	}
+
+	return m, nil
 }
