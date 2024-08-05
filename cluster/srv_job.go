@@ -890,6 +890,8 @@ func (server *ServerMonitor) JobsCheckPending() error {
 		return nil
 	}
 
+	server.ExecQueryNoBinLog("UPDATE replication_manager_schema.jobs SET state=5, result='Timeout waiting for job to start' where state=0 and start <= DATE_SUB(NOW(), interval 1 hour)")
+
 	//server.JobInsertTask("", "", "")
 	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE state=2 group by task ")
 	if err != nil {
@@ -902,8 +904,7 @@ func (server *ServerMonitor) JobsCheckPending() error {
 		var task DBTask
 		rows.Scan(&task.task, &task.ct, &task.id)
 		if task.ct > 0 {
-			switch task.task {
-			case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
+			if strings.HasPrefix(task.task, "reseed") || strings.HasPrefix(task.task, "flashback") {
 				res := "Replication-manager is down while preparing task, cancelling operation for data safety."
 				query := "UPDATE replication_manager_schema.jobs SET state=5, result='%s' where task = '%s'"
 				server.ExecQueryNoBinLog(fmt.Sprintf(query, res, task.task))
