@@ -464,7 +464,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 0); e2 != nil {
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			}
@@ -478,7 +478,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 0); e2 != nil {
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			}
@@ -1540,7 +1540,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 0); e2 != nil {
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 				finfo, e3 := os.Stat(filename)
@@ -1565,7 +1565,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 0); e2 != nil {
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 				finfo, e3 := os.Stat(outputdir)
@@ -1590,7 +1590,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 0); e2 != nil {
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 
@@ -1610,7 +1610,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 0); e2 != nil {
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			}
