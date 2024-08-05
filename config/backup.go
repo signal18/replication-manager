@@ -34,7 +34,7 @@ type BackupMetadata struct {
 	Checksum       string         `json:"checksum"`
 	RetentionDays  int            `json:"retentionDays"`
 	BinLogFileName string         `json:"binLogFileName"`
-	BinLogFilePos  string         `json:"binLogFilePos"`
+	BinLogFilePos  uint64         `json:"binLogFilePos"`
 	BinLogGtid     string         `json:"binLogUuid"`
 	Completed      bool           `json:"completed"`
 }
