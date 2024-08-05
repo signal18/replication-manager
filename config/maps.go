@@ -715,6 +715,11 @@ func (m *TasksMap) Set(key string, value *Task) {
 	m.Store(key, value)
 }
 
+func (m *TasksMap) LoadOrStore(key string, value *Task) (*Task, bool) {
+	v, ok := m.Map.LoadOrStore(key, value)
+	return v.(*Task), ok
+}
+
 func (m *TasksMap) ToNormalMap(c map[string]*Task) {
 	// Clear the old values in the output map
 	for k := range c {

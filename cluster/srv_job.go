@@ -145,7 +145,7 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 		t.Result = res.String
 		t.End = end.Int64
 		if v, exists := server.JobResults.LoadOrStore(t.Task, &t); exists {
-			v.(*config.Task).Set(t)
+			v.Set(t)
 		}
 	}
 
@@ -185,7 +185,7 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 	}
 	defer rows.Close()
 
-	var t config.Task
+	t, _ := server.JobResults.LoadOrStore(task, new(config.Task))
 	nr := 0
 	for rows.Next() {
 		nr = 1
@@ -446,7 +446,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
-		go server.JobReseedMysqldump(task)
+		go server.JobReseedMysqldump()
 	} else if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
 		go server.JobReseedMyLoader()
 	}
@@ -521,7 +521,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Using script from backup-load-script on %s", server.URL)
 		go server.JobReseedBackupScript()
 	} else if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
-		go server.JobReseedMysqldump(task)
+		go server.JobReseedMysqldump()
 	} else if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
 		go server.JobReseedMyLoader()
 	}
@@ -677,7 +677,7 @@ func (server *ServerMonitor) JobReseedMyLoader() {
 	}
 }
 
-func (server *ServerMonitor) JobReseedMysqldump(task string) {
+func (server *ServerMonitor) JobReseedMysqldump() {
 	cluster := server.ClusterGroup
 	master := cluster.GetMaster()
 	defer server.SetInReseedBackup(false)
@@ -1208,6 +1208,11 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Blocking DDL via BACKUP STAGE")
 	}
 
+	binlogRegex := regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
+	gtidRegex := regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
+
+	var bfile, bpos, bgtid string
+
 	file, err2 := cluster.CreateTmpClientConfFile()
 	if err2 != nil {
 		return err2
@@ -1242,8 +1247,23 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	wf := bufio.NewWriter(f)
 	gw := gzip.NewWriter(wf)
 	//fw := bufio.NewWriter(gw)
-	dumpCmd.Stdout = gw
+	// Get the stdout pipe from the command
+	stdout, err := dumpCmd.StdoutPipe()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting stdout pipe:", err)
+		fmt.Println()
+		return err
+	}
+
+	// Create a buffered reader for the stdout pipe
+	reader := bufio.NewReader(stdout)
+
+	// Create a scanner to read line by line
+	scanner := bufio.NewScanner(reader)
+
+	// dumpCmd.Stdout = gw
 	stderrIn, _ := dumpCmd.StderrPipe()
+
 	err = dumpCmd.Start()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
@@ -1258,17 +1278,50 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	go func() {
+		defer gw.Flush()
+		defer gw.Close()
+		defer wf.Flush()
+		defer f.Close()
 		defer wg.Done()
+
+		// Read from the scanner line by line and write to the gzip writer
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			if server.LastBackupMeta.Logical.BinLogFileName == "" {
+				if matches := binlogRegex.FindStringSubmatch(line); matches != nil {
+					server.LastBackupMeta.Logical.BinLogFileName = matches[1]
+					server.LastBackupMeta.Logical.BinLogFilePos = matches[2]
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog filename:%s, pos: %s", server.LastBackupMeta.Logical.BinLogFileName, server.LastBackupMeta.Logical.BinLogFilePos)
+				}
+			}
+
+			if server.LastBackupMeta.Logical.BinLogGtid == "" && server.IsMariaDB() {
+				if matches := gtidRegex.FindStringSubmatch(line); matches != nil {
+					server.LastBackupMeta.Logical.BinLogGtid = matches[1]
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "GTID:%s", server.LastBackupMeta.Logical.BinLogGtid)
+				}
+			}
+
+			// Write the line to the gzip writer
+			if _, err := gw.Write([]byte(line + "\n")); err != nil {
+				errCh <- fmt.Errorf("Error writing to gzip writer: %w", err) // Send the error through the channel with more context
+				return
+			}
+		}
+
+		// Check for errors during scanning
+		if err := scanner.Err(); err != nil {
+			errCh <- fmt.Errorf("Error reading from stdout: %w", err) // Send the error through the channel with more context
+			return
+		}
+
 		err := dumpCmd.Wait()
 
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "mysqldump: %s", err)
 			errCh <- fmt.Errorf("Error mysqldump: %w", err) // Send the error through the channel with more context
 		}
-		gw.Flush()
-		gw.Close()
-		wf.Flush()
-		f.Close()
 	}()
 
 	// Wait for goroutines to finish
@@ -1283,6 +1336,10 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 		// No errors occurred
 		fmt.Println("No errors occurred")
 	}
+
+	server.LastBackupMeta.Logical.BinLogGtid = bgtid
+	server.LastBackupMeta.Logical.BinLogFilePos = bpos
+	server.LastBackupMeta.Logical.BinLogFileName = bfile
 
 	return err
 }
@@ -1349,8 +1406,13 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 		return err
 	}
 
+	if e2 := server.JobParseMyDumperMeta(); e2 != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error parsing mydumper metadata: %s", err.Error())
+	}
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Success backup data via mydumper. Setting logical cookie")
 	server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMydumper)
+
 	return err
 }
 
@@ -1428,6 +1490,7 @@ func (server *ServerMonitor) JobBackupRiver() error {
 }
 
 func (server *ServerMonitor) JobBackupLogical() error {
+	var err error
 	//server can be nil as no dicovered master
 	if server == nil {
 		return errors.New("No server defined")
@@ -1465,7 +1528,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	if cluster.Conf.BackupSaveScript != "" {
 		server.LastBackupMeta.Logical.BackupTool = "script"
 		server.LastBackupMeta.Logical.Dest = cluster.Conf.BackupSaveScript
-		err := server.JobBackupScript()
+		err = server.JobBackupScript()
 		if err == nil {
 			server.LastBackupMeta.Logical.Completed = true
 			server.SetBackupLogicalCookie("script")
@@ -1482,22 +1545,17 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				exec.Command("mv", filename, filename+".old").Run()
 			}
 
-			err := server.JobBackupMysqldump(filename)
+			err = server.JobBackupMysqldump(filename)
 			if err != nil {
-				if cluster.Conf.BackupKeepUntilValid {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rolling back to old backup.")
-					exec.Command("rm", filename, filename+".err").Run()
-					exec.Command("mv", filename+".old", filename).Run()
-					exec.Command("rm", filename+".err").Run()
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, err.Error(), 5, 1); e2 != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if cluster.Conf.BackupKeepUntilValid {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
-					exec.Command("rm", filename+".old").Run()
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 0); e2 != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
-
-				finfo, err := os.Stat(filename)
-				if err == nil {
+				finfo, e3 := os.Stat(filename)
+				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
 					server.LastBackupMeta.Logical.Size = finfo.Size()
 					server.LastBackupMeta.Logical.Completed = true
@@ -1505,29 +1563,24 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				}
 			}
 		case config.ConstBackupLogicalTypeDumpling:
-			outputdir := server.GetMyBackupDirectory() + "dumpling/"
+			outputdir := server.GetMyBackupDirectory() + "dumpling"
 			server.LastBackupMeta.Logical.Dest = outputdir
 			if cluster.Conf.BackupKeepUntilValid {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 				exec.Command("mv", outputdir, outputdir+".old").Run()
 			}
 
-			err := server.JobBackupDumpling(outputdir)
+			err = server.JobBackupDumpling(outputdir + "/")
 			if err != nil {
-				if cluster.Conf.BackupKeepUntilValid {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rolling back to old backup.")
-					exec.Command("rm", outputdir, outputdir+".err").Run()
-					exec.Command("mv", outputdir+".old", outputdir).Run()
-					exec.Command("rm", "-r", outputdir+".err").Run()
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, err.Error(), 5, 1); e2 != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if cluster.Conf.BackupKeepUntilValid {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
-					exec.Command("rm", "-r", outputdir+".old").Run()
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 0); e2 != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
-
-				finfo, err := os.Stat(outputdir)
-				if err == nil {
+				finfo, e3 := os.Stat(outputdir)
+				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
 					server.LastBackupMeta.Logical.Size = finfo.Size()
 					server.LastBackupMeta.Logical.Completed = true
@@ -1535,29 +1588,25 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				}
 			}
 		case config.ConstBackupLogicalTypeMydumper:
-			outputdir := server.GetMyBackupDirectory() + "mydumper/"
+			outputdir := server.GetMyBackupDirectory() + "mydumper"
 			server.LastBackupMeta.Logical.Dest = outputdir
 			server.LastBackupMeta.Logical.Compressed = true
 			if cluster.Conf.BackupKeepUntilValid {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 				exec.Command("mv", outputdir, outputdir+".old").Run()
 			}
-			err := server.JobBackupMyDumper(outputdir)
+			err = server.JobBackupMyDumper(outputdir + "/")
 			if err != nil {
-				if cluster.Conf.BackupKeepUntilValid {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rolling back to old backup.")
-					exec.Command("rm", outputdir, outputdir+".err").Run()
-					exec.Command("mv", outputdir+".old", outputdir).Run()
-					exec.Command("rm", "-r", outputdir+".err").Run()
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, err.Error(), 5, 1); e2 != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if cluster.Conf.BackupKeepUntilValid {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
-					exec.Command("rm", "-r", outputdir+".old").Run()
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 0); e2 != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 
-				finfo, err := os.Stat(outputdir)
-				if err == nil {
+				finfo, e3 := os.Stat(outputdir)
+				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
 					server.LastBackupMeta.Logical.Size = finfo.Size()
 					server.LastBackupMeta.Logical.Completed = true
@@ -1565,13 +1614,26 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				}
 			}
 		case config.ConstBackupLogicalTypeRiver:
-			server.LastBackupMeta.Logical.BackupTool = "river"
-			server.JobBackupRiver()
+			//No change on river
+			err = server.JobBackupRiver()
+			if err != nil {
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, err.Error(), 5, 1); e2 != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+				}
+			} else {
+				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 0); e2 != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+				}
+			}
 		}
 	}
 
 	server.WriteBackupMetadata(config.BackupMethodLogical)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	if err == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[SUCCESS] Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "[ERROR] Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	}
 
 	backtype := "logical"
 	server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupLogicalType)
@@ -2308,10 +2370,9 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 						parts := strings.Split(binlog[0], " ")
 						server.LastBackupMeta.Physical.BinLogFileName = parts[len(parts)-1]
 						parts = strings.Split(binlog[1], " ")
-						pos, _ := strconv.ParseUint(parts[len(parts)-1], 10, 64)
-						server.LastBackupMeta.Physical.BinLogFilePos = pos
+						server.LastBackupMeta.Physical.BinLogFilePos = binlog[1]
 						parts = strings.Split(binlog[2], " ")
-						server.LastBackupMeta.Physical.BinLogUuid = parts[len(parts)-1]
+						server.LastBackupMeta.Physical.BinLogGtid = parts[len(parts)-1]
 					}
 				}
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlDbg, "[%s] %s", server.URL, line)
@@ -2331,7 +2392,7 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 	case config.BackupMethodPhysical:
 		lastmeta = server.LastBackupMeta.Physical
 	default:
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Wrong backup type for metadata in %s", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Wrong backup type for metadata in %s", server.URL)
 		return
 	}
 
@@ -2347,37 +2408,142 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 		time.Sleep(time.Second)
 	}
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for writing metadata", server.URL)
+
 	if task.State == 3 || task.State == 4 {
 		//Wait for binlog metadata sent by writelog API
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Waiting for binlog info: %v", server.LastBackupMeta.Logical)
 		for lastmeta.BinLogFileName == "" {
 			time.Sleep(time.Second)
 		}
 		lastmeta.Completed = true
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Metadata completed: %v", server.LastBackupMeta.Logical)
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Error occured in backup, writing incomplete metadata for backup in %s", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Error occured in backup, writing incomplete metadata for backup in %s", server.URL)
 	}
 
 	bjson, err := json.MarshalIndent(lastmeta, "", "\t")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to marshall metadata for backup in %s: %s", server.URL, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to marshall metadata for backup in %s: %s", server.URL, err.Error())
 	}
 
 	err = os.WriteFile(server.GetMyBackupDirectory()+lastmeta.BackupTool+".meta.json", bjson, 0644)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to write metadata for backup in %s: %s", server.URL, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write metadata for backup in %s: %s", server.URL, err.Error())
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Created metadata for backup in %s successfully", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Created metadata for backup in %s successfully", server.URL)
 	}
 
-	if cluster.Conf.BackupKeepUntilValid {
+	//Don't change river
+	if cluster.Conf.BackupKeepUntilValid && lastmeta.BackupTool != config.ConstBackupLogicalTypeRiver {
 		if lastmeta.Completed {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
-			exec.Command("rm", lastmeta.Dest+".old").Run()
+			exec.Command("rm", "-r", lastmeta.Dest+".old").Run()
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Error occured in backup, rolling back to old backup.")
-			exec.Command("rm", lastmeta.Dest, lastmeta.Dest+".err").Run()
+			exec.Command("mv", lastmeta.Dest, lastmeta.Dest+".err").Run()
 			exec.Command("mv", lastmeta.Dest+".old", lastmeta.Dest).Run()
-			exec.Command("rm", lastmeta.Dest+".err").Run()
+			exec.Command("rm", "-r", lastmeta.Dest+".err").Run()
 		}
 	}
+}
+
+// Job state always updated in replication-manager runtime.
+func (server *ServerMonitor) JobsUpdateState(task, result string, state, done int) error {
+	var err error
+	cluster := server.ClusterGroup
+
+	if t, exists := server.JobResults.LoadOrStore(task, &config.Task{
+		Task:   task,
+		State:  state,
+		Result: result,
+		Done:   done,
+	}); exists {
+		t.State = state
+		t.Done = done
+		t.Result = result
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job state updated in runtime. Continue to update state in jobs table.")
+
+	conn, err := server.GetNewDBConn()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't connect")
+		return err
+	}
+	defer conn.Close()
+
+	//Using lock to prevent wrong reads
+	_, err = conn.Exec("set sql_log_bin=0;")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't disable binlog for session")
+		return err
+	}
+
+	_, err = conn.Exec("LOCK TABLES replication_manager_schema.jobs WRITE;")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't lock table jobs for cancel reseed")
+		return err
+	}
+
+	defer conn.Exec("UNLOCK TABLES;")
+
+	_, err = conn.Exec("UPDATE replication_manager_schema.jobs SET done=?, state=?, result=? WHERE task =?;", done, state, result, task)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't update job: %s", err)
+		return err
+	}
+
+	server.SetNeedRefreshJobs(true)
+
+	return err
+}
+
+func (server *ServerMonitor) JobParseMyDumperMeta() error {
+	filePath := server.LastBackupMeta.Logical.Dest + "/metadata"
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	var binlogFile, position, gtidSet string
+
+	reFile := regexp.MustCompile(`^File\s*=\s*(.*)`)
+	rePos := regexp.MustCompile(`^Position\s*=\s*(\d+)`)
+	reGTID := regexp.MustCompile(`^Executed_Gtid_Set\s*=\s*(.*)`)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if binlogFile == "" {
+			if matches := reFile.FindStringSubmatch(line); matches != nil {
+				binlogFile = matches[1]
+			}
+		}
+
+		if position == "" {
+			if matches := rePos.FindStringSubmatch(line); matches != nil {
+				position = matches[1]
+			}
+		}
+
+		if gtidSet == "" {
+			if matches := reGTID.FindStringSubmatch(line); matches != nil {
+				gtidSet = matches[1]
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading file:", err)
+		return err
+	}
+
+	server.LastBackupMeta.Logical.BinLogGtid = gtidSet
+	server.LastBackupMeta.Logical.BinLogFilePos = position
+	server.LastBackupMeta.Logical.BinLogFileName = binlogFile
+
+	return nil
 }

@@ -35,7 +35,7 @@ func (server *ServerMonitor) FetchLastBackupMetadata() {
 		if logical > 0 {
 			server.LastBackupMeta.Logical = cluster.BackupMetaMap.Get(logical)
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "No logical backup metadata found")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "No logical backup metadata, but cookie found on %s", server.URL)
 		}
 	}
 
@@ -51,7 +51,7 @@ func (server *ServerMonitor) FetchLastBackupMetadata() {
 		if physical > 0 {
 			server.LastBackupMeta.Physical = cluster.BackupMetaMap.Get(physical)
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "No physical backup metadata found")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "No physical backup metadata, but cookie found on %s", server.URL)
 		}
 	}
 }
@@ -64,13 +64,13 @@ func (server *ServerMonitor) AppendLastMetadata(method string, latest *int64) {
 			*latest = meta.Id
 		}
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reading %s meta: %s", method, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Error reading %s meta: %s", method, err.Error())
 	}
 }
 
 func (server *ServerMonitor) ReadLastMetadata(method string) (*config.BackupMetadata, error) {
 	var filename string = method
-	var ext string = "meta.json"
+	var ext string = ".meta.json"
 
 	filename = server.GetMyBackupDirectory() + filename + ext
 	_, err := os.Stat(filename)
