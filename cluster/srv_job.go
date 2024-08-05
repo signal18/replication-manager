@@ -302,7 +302,22 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 
 func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	cluster := server.ClusterGroup
-	if cluster.master != nil && !cluster.GetBackupServer().HasBackupPhysicalCookie() {
+
+	if !cluster.IsDiscovered() {
+		return 0, errors.New("Cluster not discovered yet")
+	}
+
+	master := cluster.GetMaster()
+	if cluster.master == nil {
+		return 0, errors.New("No master found. Cancel reseed physical backup")
+	}
+
+	bcksrv := cluster.GetBackupServer()
+	if bcksrv == nil {
+		bcksrv = master
+	}
+
+	if !bcksrv.HasBackupPhysicalCookie() {
 		server.SetWaitPhysicalBackupCookie()
 		return 0, errors.New("No Physical Backup")
 	}
@@ -350,11 +365,25 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 
 func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 	cluster := server.ClusterGroup
-	if cluster.master != nil && !cluster.GetBackupServer().HasBackupPhysicalCookie() {
+
+	if !cluster.IsDiscovered() {
+		return 0, errors.New("Cluster not discovered yet")
+	}
+
+	master := cluster.GetMaster()
+	if cluster.master == nil {
+		return 0, errors.New("No master found. Cancel reseed physical backup")
+	}
+
+	bcksrv := cluster.GetBackupServer()
+	if bcksrv == nil {
+		bcksrv = master
+	}
+
+	if !bcksrv.HasBackupPhysicalCookie() {
 		server.SetWaitPhysicalBackupCookie()
 		return 0, errors.New("No Physical Backup")
 	}
-
 	//Delete wait physical backup cookie
 	server.DelWaitPhysicalBackupCookie()
 
