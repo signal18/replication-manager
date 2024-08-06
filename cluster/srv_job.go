@@ -72,7 +72,7 @@ func (server *ServerMonitor) JobsCreateTable() error {
 		return nil
 	}
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL {
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
@@ -166,7 +166,7 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 		return 0, errors.New("In failover can't insert job")
 	}
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL {
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return 0, nil
 	}
@@ -555,7 +555,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup() error {
 	//Delete wait logical backup cookie
 	server.DelWaitLogicalBackupCookie()
 
-	_, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
+	_, err := server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive reseed logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
 		server.SetInReseedBackup(false)
@@ -1160,7 +1160,7 @@ func (server *ServerMonitor) JobsCheckPending() error {
 		return nil
 	}
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL {
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
@@ -1235,7 +1235,7 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 	var canCancel bool = true
 	cluster := server.ClusterGroup
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL {
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
@@ -1330,7 +1330,7 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 		return nil
 	}
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL {
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
@@ -2506,7 +2506,7 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 	cluster := server.ClusterGroup
 	var err error
 
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL {
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
