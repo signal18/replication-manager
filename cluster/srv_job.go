@@ -984,7 +984,7 @@ func (server *ServerMonitor) JobsCheckErrors() error {
 	return err
 }
 
-func (server *ServerMonitor) JobsCancelReseed() error {
+func (server *ServerMonitor) JobsCancelTasks(tasks ...string) error {
 	var err error
 	var canCancel bool = true
 	cluster := server.ClusterGroup
@@ -993,8 +993,8 @@ func (server *ServerMonitor) JobsCancelReseed() error {
 	server.JobResults.Range(func(k, v any) bool {
 		key := k.(string)
 		val := v.(*config.Task)
-		if slices.Contains([]string{"reseedmariabackup", "reseedxtrabackup", "flashbackmariabackup", "flashbackxtrabackup"}, key) {
-			if val.State == 1 {
+		if slices.Contains(tasks, key) {
+			if val.State > 0 {
 				canCancel = false
 			}
 		}
@@ -1002,7 +1002,7 @@ func (server *ServerMonitor) JobsCancelReseed() error {
 	})
 
 	if !canCancel {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel reseed. No rows found or reseed already started", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel tasks. No rows found or tasks already started", server.URL)
 	}
 
 	if server.IsDown() {
@@ -1020,7 +1020,7 @@ func (server *ServerMonitor) JobsCancelReseed() error {
 	}
 	defer conn.Close()
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancelling reseed and flashback on %s as requested", server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancelling tasks on %s as requested", server.URL)
 	//Using lock to prevent wrong reads
 	_, err = conn.Exec("set sql_log_bin=0;")
 	if err != nil {
@@ -1035,11 +1035,20 @@ func (server *ServerMonitor) JobsCancelReseed() error {
 	}
 
 	defer conn.Exec("UNLOCK TABLES;")
+	query := "UPDATE replication_manager_schema.jobs SET done=1, state=5, result='cancelled by user' WHERE done=0 AND state=0 and task in (?);"
+
+	query, args, err := sqlx.In(query, tasks)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't process tasks args")
+	}
+
+	// Rebind the query to match the database's bind type
+	query = conn.Rebind(query)
 
 	var res sql.Result
-	res, err = conn.Exec("UPDATE replication_manager_schema.jobs SET done=1, state=5, result='cancelled by user' WHERE done=0 AND state=0 and task in ('reseedmariabackup','reseedxtrabackup','flashbackmariabackup','flashbackxtrabackup');")
+	res, err = conn.Exec(query, args...)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't delete job: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error can't cancel job: %s", err)
 		return err
 	}
 

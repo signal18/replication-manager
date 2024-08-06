@@ -317,13 +317,13 @@ app.controller('DashboardController', function (
 
   var timeFrame = $routeParams.timeFrame;
 
-  $scope.formatBytes = function(bytes, decimals = 2) {
+  $scope.formatBytes = function (bytes, decimals = 2) {
     if (bytes === 0) return '0 Bytes';
-  
+
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
     return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
   }
 
@@ -495,13 +495,13 @@ app.controller('DashboardController', function (
       });
 
       Jobs.get($scope.selectedClusterName)
-          .then(function (jobEntries) {
-            $scope.entries.header = jobEntries.header;
-            $scope.entries.servers = jobEntries.servers;
-          })
-          .catch(function (error) {
-            console.error('Error getting job entries:', error);
-          });
+        .then(function (jobEntries) {
+          $scope.entries.header = jobEntries.header;
+          $scope.entries.servers = jobEntries.servers;
+        })
+        .catch(function (error) {
+          console.error('Error getting job entries:', error);
+        });
 
 
 
@@ -1198,14 +1198,14 @@ app.controller('DashboardController', function (
   };
   // Will immediately show cancel button
   $scope.dbreseedphysicalbackup = function (server, host, port) {
-    if (confirm("Confirm reseed with physical backup (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) { $scope.isReseeding[server]=true; httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup')};
+    if (confirm("Confirm reseed with physical backup (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) { $scope.isReseeding[server] = true; httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalbackup') };
   };
   $scope.dbreseedphysicalmaster = function (server, host, port) {
     if (confirm("Confirm reseed from master (" + $scope.selectedCluster.config.backupPhysicalType + " " + ($scope.selectedCluster.config.compressBackups ? 'compressed' : '') + ") for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed/physicalmaster');
   };
   // scope reseed is only for fast show button toggle
   $scope.dbreseedcancel = function (server, host, port) {
-    if (confirm("Confirm cancel all reseed for server: " + host + ":" + port + " (" + server + ")")) { $scope.isReseeding[server]=false; httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/cancel-reseed')};
+    if (confirm("Confirm cancel all reseed for server: " + host + ":" + port + " (" + server + ")")) { $scope.isReseeding[server] = false; httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reseed-cancel') };
   };
   $scope.flushlogs = function (server, host, port) {
     if (confirm("Confirm flush logs for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/flush-logs');
@@ -1378,7 +1378,9 @@ app.controller('DashboardController', function (
     if (confirm("Confirm reload config")) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/reload');
   };
 
-
+  $scope.cancelJob = function (server, host, port, task) {
+    if (confirm("Confirm cancel task '" + task + "' on server " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/job-cancel/'+ task);
+  }
 
   $scope.clsetdbcore = function (base, add) {
     value = Number(base) + add;

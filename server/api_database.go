@@ -219,9 +219,14 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseed)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/cancel-reseed", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseedCancel)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/job-cancel/{task}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersTaskCancel)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor", negroni.New(
@@ -613,9 +618,10 @@ func (repman *ReplicationManager) handlerMuxServerReseedCancel(w http.ResponseWr
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			err := node.JobsCancelReseed()
+			tasks := []string{"reseedmariabackup", "reseedxtrabackup", "flashbackmariabackup", "flashbackxtrabackup"}
+			err := node.JobsCancelTasks(tasks...)
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "mysqldump reseed restore failed %s", err)
+				http.Error(w, fmt.Sprintf("Error canceling %s task: %s", vars["task"], err.Error()), 500)
 			}
 		} else {
 			http.Error(w, "Server Not Found", 500)
@@ -2504,5 +2510,28 @@ func (repman *ReplicationManager) handlerMuxGetDatabaseServiceConfig(w http.Resp
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServersTaskCancel(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			err := node.JobsCancelTasks(vars["task"])
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error canceling %s task: %s", vars["task"], err.Error()), 500)
+			}
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
 	}
 }
