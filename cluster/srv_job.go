@@ -303,6 +303,12 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	cluster := server.ClusterGroup
 
+	// Prevent backing up with incompatible tools
+	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") && cluster.Conf.BackupPhysicalType == "xtrabackup" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Master %s MariaDB version is greater than 10.1. Changing from xtrabackup to mariabackup as physical backup tools", server.URL)
+		cluster.Conf.BackupPhysicalType = config.ConstBackupPhysicalTypeMariaBackup
+	}
+
 	if !cluster.IsDiscovered() {
 		return 0, errors.New("Cluster not discovered yet")
 	}
