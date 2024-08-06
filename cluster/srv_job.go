@@ -1215,7 +1215,7 @@ func (server *ServerMonitor) JobsCheckErrors() error {
 	return err
 }
 
-func (server *ServerMonitor) JobsCancelTasks(tasks ...string) error {
+func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error {
 	var err error
 	var canCancel bool = true
 	cluster := server.ClusterGroup
@@ -1232,12 +1232,12 @@ func (server *ServerMonitor) JobsCancelTasks(tasks ...string) error {
 		return true
 	})
 
-	if !canCancel {
+	if !canCancel || force {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel tasks. No rows found or tasks already started", server.URL)
 	}
 
 	if server.IsDown() {
-		if canCancel {
+		if canCancel || force {
 			server.SetInReseedBackup(false)
 			server.SetNeedRefreshJobs(true)
 		}
@@ -1267,6 +1267,10 @@ func (server *ServerMonitor) JobsCancelTasks(tasks ...string) error {
 
 	defer conn.Exec("UNLOCK TABLES;")
 	query := "UPDATE replication_manager_schema.jobs SET done=1, state=5, result='cancelled by user' WHERE done=0 AND state=0 and task in (?);"
+
+	if force {
+		query = "UPDATE replication_manager_schema.jobs SET done=1, state=5, result='cancelled by user' WHERE task in (?);"
+	}
 
 	query, args, err := sqlx.In(query, tasks)
 	if err != nil {
@@ -1341,6 +1345,7 @@ func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		server.SetBackupPhysicalCookie(task.task)
 		server.LastBackupMeta.Physical.Completed = true
+		errStr = "Backup completed"
 	case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
 		defer server.SetInReseedBackup(false)
 		if _, err := server.StartSlave(); err != nil {

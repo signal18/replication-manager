@@ -619,7 +619,7 @@ func (repman *ReplicationManager) handlerMuxServerReseedCancel(w http.ResponseWr
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			tasks := []string{"reseedmariabackup", "reseedxtrabackup", "flashbackmariabackup", "flashbackxtrabackup"}
-			err := node.JobsCancelTasks(tasks...)
+			err := node.JobsCancelTasks(false, tasks...)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Error canceling %s task: %s", vars["task"], err.Error()), 500)
 			}
@@ -2524,7 +2524,7 @@ func (repman *ReplicationManager) handlerMuxServersTaskCancel(w http.ResponseWri
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			err := node.JobsCancelTasks(vars["task"])
+			err := node.JobsCancelTasks(true, vars["task"])
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Error canceling %s task: %s", vars["task"], err.Error()), 500)
 			}

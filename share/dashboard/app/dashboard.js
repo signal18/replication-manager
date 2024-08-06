@@ -371,6 +371,10 @@ app.controller('DashboardController', function (
   $scope.roApiTokenTimeout = true
   $scope.selectedApiTokenTimeout = 48
 
+  $scope.canCancel = function (t) {
+    return t.state === 0 || (t.start < Math.floor((Date.now() - 300000) / 1000) && !t.end)
+  }
+
   $scope.SetApiTokenTimeout = function (val) {
     if ($scope.roApiTokenTimeout) {
       $scope.selectedApiTokenTimeout = Number(val)
@@ -1379,7 +1383,7 @@ app.controller('DashboardController', function (
   };
 
   $scope.cancelJob = function (server, host, port, task) {
-    if (confirm("Confirm cancel task '" + task + "' on server " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/job-cancel/'+ task);
+    if (confirm("Warning! This action will forcefully cancel the job. Ensure the job is not currently running. Confirm to proceed with the cancellation of '" + task + "' on server " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/job-cancel/'+ task);
   }
 
   $scope.clsetdbcore = function (base, add) {
