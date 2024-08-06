@@ -1670,6 +1670,9 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalDumpThreads)
 	myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyDumperOptions, "  ", " "), " ")
+	if cluster.MyDumperVersion.GreaterEqual("0.15.3") {
+		myargs = append(myargs, "--clear")
+	}
 	myargs = append(myargs, "--outputdir", outputdir, "--threads", threads, "--host", misc.Unbracket(server.Host), "--port", server.Port, "--user", cluster.GetDbUser(), "--password", cluster.GetDbPass(), "--regex", "^(?!(replication_manager_schema\\.jobs$)).*")
 	dumpCmd := exec.Command(cluster.GetMyDumperPath(), myargs...)
 
@@ -2785,7 +2788,7 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write metadata for backup in %s: %s", server.URL, err.Error())
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Created metadata for backup in %s successfully", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Created metadata for backup in %s", server.URL)
 	}
 
 	//Don't change river
