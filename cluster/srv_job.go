@@ -178,14 +178,14 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 	}
 
 	rows, err := conn.Queryx("SELECT id, task, done, state FROM replication_manager_schema.jobs WHERE id = (SELECT max(id) FROM replication_manager_schema.jobs WHERE task = '" + task + "')")
-	if err != nil {
+	if err != nil && err != sql.ErrNoRows {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs: %s", err)
 		server.JobsCreateTable()
 		return 0, err
 	}
 	defer rows.Close()
 
-	t, _ := server.JobResults.LoadOrStore(task, new(config.Task))
+	t, _ := server.JobResults.LoadOrStore(task, &config.Task{Task: task, Start: time.Now().Unix()})
 	nr := 0
 	for rows.Next() {
 		nr = 1
@@ -614,7 +614,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup() error {
 	} else if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
 		go func() {
 			useMaster := true
-			dir := "mydumper/"
+			dir := "mydumper"
 			backupdir := cluster.master.GetMyBackupDirectory() + dir
 
 			bckserver := cluster.GetBackupServer()
@@ -801,7 +801,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	} else if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
 		go func() {
 			useSelfBackup := true
-			dir := "mydumper/"
+			dir := "mydumper"
 			backupdir := server.GetMyBackupDirectory() + dir
 
 			bckserver := cluster.GetBackupServer()
@@ -1793,6 +1793,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 			server.SetBackupLogicalCookie("script")
 		}
 	} else {
+
+		//Only for record
+		server.JobInsertTask(cluster.Conf.BackupLogicalType, "0", cluster.Conf.MonitorAddress)
+
 		//Change to switch since we only allow one type of backup (for now)
 		switch cluster.Conf.BackupLogicalType {
 		case config.ConstBackupLogicalTypeMysqldump:
@@ -2797,7 +2801,11 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 
 	defer conn.Exec("UNLOCK TABLES;")
 
-	_, err = conn.Exec("UPDATE replication_manager_schema.jobs SET done=?, state=?, result=? WHERE task =?;", done, state, result, task)
+	if done == 1 {
+		_, err = conn.Exec("UPDATE replication_manager_schema.jobs SET done=?, state=?, result=?, end=NOW() WHERE task =?;", done, state, result, task)
+	} else {
+		_, err = conn.Exec("UPDATE replication_manager_schema.jobs SET done=?, state=?, result=? WHERE task =?;", done, state, result, task)
+	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't update job: %s", err)
 		return err
