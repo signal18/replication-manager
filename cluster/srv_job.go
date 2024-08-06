@@ -1526,16 +1526,7 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
 	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser() /*"--log-error="+server.GetMyBackupDirectory()+"dump_error.log"*/)
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
-
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
-	f, err := os.Create(filename)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump backup request: %s", err)
-		return err
-	}
-	wf := bufio.NewWriter(f)
-	gw := gzip.NewWriter(wf)
-	//fw := bufio.NewWriter(gw)
 	// Get the stdout pipe from the command
 	stdout, err := dumpCmd.StdoutPipe()
 	if err != nil {
@@ -1544,20 +1535,36 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 		return err
 	}
 
-	// Create a buffered reader for the stdout pipe
-	reader := bufio.NewReader(stdout)
-
-	// Create a scanner to read line by line
-	scanner := bufio.NewScanner(reader)
-
 	// dumpCmd.Stdout = gw
 	stderrIn, _ := dumpCmd.StderrPipe()
+
+	f, err := os.Create(filename)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump backup request: %s", err.Error())
+		return err
+	}
+	defer f.Close()
+
+	gw := gzip.NewWriter(f)
+	defer func() {
+		if err := gw.Flush(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flushing gzip: %s", err.Error())
+		}
+		if err := gw.Close(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error closing gzip: %s", err.Error())
+		}
+	}()
+
+	teeReader := io.TeeReader(stdout, gw)
 
 	err = dumpCmd.Start()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
 		return err
 	}
+
+	// Create a scanner to read line by line
+	scanner := bufio.NewScanner(teeReader)
 
 	errCh := make(chan error, 2) // Create a channel to send errors
 	var wg sync.WaitGroup
@@ -1567,10 +1574,6 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
 	go func() {
-		defer gw.Flush()
-		defer gw.Close()
-		defer wf.Flush()
-		defer f.Close()
 		defer wg.Done()
 
 		// Read from the scanner line by line and write to the gzip writer
