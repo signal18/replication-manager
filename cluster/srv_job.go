@@ -1594,12 +1594,6 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "GTID:%s", server.LastBackupMeta.Logical.BinLogGtid)
 				}
 			}
-
-			// Write the line to the gzip writer
-			if _, err := gw.Write([]byte(line + "\n")); err != nil {
-				errCh <- fmt.Errorf("Error writing to gzip writer: %w", err) // Send the error through the channel with more context
-				return
-			}
 		}
 
 		// Check for errors during scanning
