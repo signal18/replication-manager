@@ -1,6 +1,6 @@
 .menuButton {
   height: rem(40);
-  padding: rem(12);
+  padding: rem(8);
   white-space: break-spaces;
   background-color: var(--quaternary-color) !important;
   box-shadow: $box-shadow-md;
@@ -8,6 +8,15 @@
   &:hover,
   &[data-active] {
     background-color: var(--quaternary-color);
+  }
+
+  .inlineLabelValue {
+    display: flex;
+    justify-content: space-between;
+    .inlineLabel {
+      font-weight: 300;
+      font-size: rem(14);
+    }
   }
 }
 .lightMenuItem,

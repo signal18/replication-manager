@@ -9,6 +9,7 @@ import LogsSettings from './LogsSettings'
 import ReplicationSettings from './ReplicationSettings'
 import RejoinSettings from './RejoinSettings'
 import BackupSettings from './BackupSettings'
+import SchedulerSettings from './SchedulerSettings'
 
 function Settings({ selectedCluster, user }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -93,6 +94,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isSchedulersOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<SchedulerSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Proxies'}
