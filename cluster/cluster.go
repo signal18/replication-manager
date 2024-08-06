@@ -697,8 +697,12 @@ func (cluster *Cluster) StateProcessing() {
 			// 	}
 			// }
 			if s.ErrKey == "WARN0074" {
-				err := servertoreseed.ProcessReseedPhysical()
+				task := "reseed" + cluster.Conf.BackupPhysicalType
+
+				err := servertoreseed.ProcessReseedPhysical(task)
 				if err != nil {
+					servertoreseed.JobsUpdateState(task, err.Error(), 2, 1)
+					servertoreseed.SetInReseedBackup(false)
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
 				}
 			}
@@ -720,8 +724,11 @@ func (cluster *Cluster) StateProcessing() {
 				// }
 			}
 			if s.ErrKey == "WARN0076" {
-				err := servertoreseed.ProcessFlashbackPhysical()
+				task := "flashback" + cluster.Conf.BackupPhysicalType
+				err := servertoreseed.ProcessFlashbackPhysical(task)
 				if err != nil {
+					servertoreseed.JobsUpdateState(task, err.Error(), 2, 1)
+					servertoreseed.SetInFlashbackBackup(false)
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing flashback for %s: %s", servertoreseed.URL, err)
 				}
 			}
@@ -764,7 +771,12 @@ func (cluster *Cluster) StateProcessing() {
 				for _, srv := range cluster.Servers {
 					if srv.HasWaitPhysicalBackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for physical backup", srv.URL)
-						go srv.JobReseedPhysicalBackup()
+						go func() {
+							err := srv.JobReseedPhysicalBackup()
+							if err != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, err.Error())
+							}
+						}()
 					}
 				}
 			}

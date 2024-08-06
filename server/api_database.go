@@ -577,7 +577,7 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			if vars["backupMethod"] == "logicalbackup" {
-				_, err := node.JobReseedLogicalBackup()
+				err := node.JobReseedLogicalBackup()
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "logical reseed restore failed %s", err)
 					http.Error(w, "Error reseed logical backup", 500)
@@ -591,7 +591,7 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 				}
 			}
 			if vars["backupMethod"] == "physicalbackup" {
-				_, err := node.JobReseedPhysicalBackup()
+				err := node.JobReseedPhysicalBackup()
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "physical reseed restore failed %s", err)
 				}

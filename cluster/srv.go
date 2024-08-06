@@ -189,6 +189,7 @@ type ServerMonitor struct {
 	DelayStat                   *ServerDelayStat        `json:"delayStat"`
 	SlaveVariables              SlaveVariables          `json:"slaveVariables"`
 	IsReseeding                 bool                    `json:"isReseeding"`
+	IsFlashingBack              bool                    `json:"isFlashingBack"`
 	ReplicationTags             string                  `json:"replicationTags"`
 	JobResults                  *config.TasksMap        `json:"jobResults"`
 	IsInSlowQueryCapture        bool

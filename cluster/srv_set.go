@@ -464,6 +464,10 @@ func (server *ServerMonitor) SetInReseedBackup(value bool) {
 	server.IsReseeding = value
 }
 
+func (server *ServerMonitor) SetInFlashbackBackup(value bool) {
+	server.IsReseeding = value
+}
+
 func (server *ServerMonitor) SetNeedRefreshJobs(value bool) {
 	server.NeedRefreshJobs = value
 }

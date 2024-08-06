@@ -300,7 +300,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	return jobid, err
 }
 
-func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
+func (server *ServerMonitor) JobReseedPhysicalBackup() error {
 	cluster := server.ClusterGroup
 
 	// Prevent backing up with incompatible tools
@@ -310,43 +310,69 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 	}
 
 	if !cluster.IsDiscovered() {
-		return 0, errors.New("Cluster not discovered yet")
+		return errors.New("Cluster not discovered yet")
 	}
 
 	master := cluster.GetMaster()
-	if cluster.master == nil {
-		return 0, errors.New("No master found. Cancel reseed physical backup")
+	if master == nil {
+		return errors.New("No master found. Cancel reseed physical backup")
 	}
 
-	bcksrv := cluster.GetBackupServer()
-	if bcksrv == nil {
-		bcksrv = master
+	useMaster := true
+	backupext := ".xbtream"
+	if cluster.Conf.CompressBackups {
+		backupext = backupext + ".gz"
 	}
 
-	if !bcksrv.HasBackupPhysicalCookie() {
-		server.SetWaitPhysicalBackupCookie()
-		return 0, errors.New("No Physical Backup")
+	file := cluster.Conf.BackupPhysicalType + backupext
+	backupfile := master.GetMyBackupDirectory() + file
+
+	bckserver := cluster.GetBackupServer()
+	if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupPhysicalType) {
+		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
+			backupfile = bckserver.GetMyBackupDirectory() + file
+			useMaster = false
+		} else {
+			//Remove false cookie
+			bckserver.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+		}
+	}
+
+	if useMaster {
+		if _, err := os.Stat(backupfile); err != nil {
+			//Remove false cookie
+			master.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+			return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", cluster.Conf.BackupPhysicalType)
+		}
 	}
 
 	//Delete wait physical backup cookie
 	server.DelWaitPhysicalBackupCookie()
 
+	if server.IsFlashingBack {
+		err := errors.New("Server is in flashback state")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
+		return err
+	}
+
 	if server.IsReseeding {
 		err := errors.New("Server is in reseeding state")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
-		return 0, err
+		return err
 	}
 
 	server.SetInReseedBackup(true)
 
-	jobid, err := server.JobInsertTask("reseed"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
+	_, err := server.JobInsertTask("reseed"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive reseed physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
-		return jobid, err
+		return err
 	}
 
 	logs, err := server.StopSlave()
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+	if err != nil {
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+	}
 
 	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      cluster.master.Host,
@@ -359,58 +385,79 @@ func (server *ServerMonitor) JobReseedPhysicalBackup() (int64, error) {
 		SSL:       cluster.Conf.ReplicationSSL,
 		Channel:   cluster.Conf.MasterConn,
 	}, server.DBVersion)
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 	if err != nil {
-		return jobid, err
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
+		return err
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
 
-	return jobid, err
+	return nil
 }
 
-func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
+func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 	cluster := server.ClusterGroup
 
 	if !cluster.IsDiscovered() {
-		return 0, errors.New("Cluster not discovered yet")
+		return errors.New("Cluster not discovered yet")
 	}
 
 	master := cluster.GetMaster()
-	if cluster.master == nil {
-		return 0, errors.New("No master found. Cancel reseed physical backup")
+	if master == nil {
+		return errors.New("No master found. Cancel reseed physical backup")
 	}
 
-	bcksrv := cluster.GetBackupServer()
-	if bcksrv == nil {
-		bcksrv = master
+	useSelfBackup := true
+	backupext := ".xbtream"
+	if cluster.Conf.CompressBackups {
+		backupext = backupext + ".gz"
 	}
 
-	if !bcksrv.HasBackupPhysicalCookie() {
-		server.SetWaitPhysicalBackupCookie()
-		return 0, errors.New("No Physical Backup")
+	file := cluster.Conf.BackupPhysicalType + backupext
+	backupfile := server.GetMyBackupDirectory() + file
+
+	bckserver := cluster.GetBackupServer()
+	if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupPhysicalType) {
+		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
+			backupfile = bckserver.GetMyBackupDirectory() + file
+			useSelfBackup = false
+		} else {
+			//Remove false cookie
+			bckserver.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+		}
 	}
+
+	if useSelfBackup {
+		if _, err := os.Stat(backupfile); err != nil {
+			//Remove false cookie
+			server.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+			return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", cluster.Conf.BackupPhysicalType)
+		}
+	}
+
 	//Delete wait physical backup cookie
 	server.DelWaitPhysicalBackupCookie()
 
-	if server.IsReseeding {
-		err := errors.New("Server is in reseeding state")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
-		return 0, err
+	if server.IsFlashingBack {
+		return errors.New("Server is in flashback state")
 	}
 
-	server.SetInReseedBackup(true)
+	if server.IsReseeding {
+		return errors.New("Server is in reseeding state")
+	}
 
-	jobid, err := server.JobInsertTask("flashback"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
+	server.SetInFlashbackBackup(true)
+
+	_, err := server.JobInsertTask("flashback"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
 
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive reseed physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
-
-		return jobid, err
+		return err
 	}
 
 	logs, err := server.StopSlave()
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+	if err != nil {
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+	}
 
 	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      cluster.master.Host,
@@ -422,39 +469,75 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() (int64, error) {
 		Mode:      "SLAVE_POS",
 		SSL:       cluster.Conf.ReplicationSSL,
 	}, server.DBVersion)
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 	if err != nil {
-		return jobid, err
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
+		server.SetInReseedBackup(false)
+		return err
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
 
-	return jobid, err
+	return nil
 }
 
-func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
+func (server *ServerMonitor) JobReseedLogicalBackup() error {
 	cluster := server.ClusterGroup
 	task := "reseed" + cluster.Conf.BackupLogicalType
+
+	if !cluster.IsDiscovered() {
+		return errors.New("Cluster not discovered yet")
+	}
+
 	master := cluster.GetMaster()
 	if master == nil {
-		return 0, errors.New("No master found. Unable to reseed.")
+		return errors.New("No master found. Cancel reseed logical backup")
 	}
 
-	bcksrv := cluster.GetBackupServer()
-	if bcksrv == nil {
-		bcksrv = master
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "No backup server found. Using master's backup file")
+	useMaster := true
+	var dest string
+	switch cluster.Conf.BackupLogicalType {
+	case config.ConstBackupLogicalTypeMysqldump:
+		dest = "mysqldump.sql.gz"
+	case config.ConstBackupLogicalTypeMydumper:
+		dest = "mydumper"
+	case config.ConstBackupLogicalTypeDumpling:
+		dest = "dumpling"
 	}
 
-	if !bcksrv.HasBackupLogicalCookie() {
-		server.SetWaitLogicalBackupCookie()
-		return 0, fmt.Errorf("No Logical Backup on backup server %s", bcksrv.URL)
+	// Can't handle script validation, unknown logic
+	if cluster.Conf.BackupLogicalType != "script" {
+		backupfile := master.GetMyBackupDirectory() + dest
+
+		bckserver := cluster.GetBackupServer()
+		if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupLogicalType) {
+			if _, err := os.Stat(bckserver.GetMyBackupDirectory() + dest); err == nil {
+				backupfile = bckserver.GetMyBackupDirectory() + dest
+				useMaster = false
+			} else {
+				//Remove false cookie
+				bckserver.DelBackupTypeCookie(cluster.Conf.BackupLogicalType)
+			}
+		}
+
+		if useMaster {
+			if _, err := os.Stat(backupfile); err != nil {
+				//Remove false cookie
+				master.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+				return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", cluster.Conf.BackupLogicalType)
+			}
+		}
+	}
+
+	if server.IsFlashingBack {
+		err := errors.New("Server is in flashback state")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
+		return err
 	}
 
 	if server.IsReseeding {
 		err := errors.New("Server is in reseeding state")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
-		return 0, err
+		return err
 	}
 
 	server.SetInReseedBackup(true)
@@ -462,15 +545,17 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 	//Delete wait logical backup cookie
 	server.DelWaitLogicalBackupCookie()
 
-	jobid, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
+	_, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive reseed logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
 		server.SetInReseedBackup(false)
-		return jobid, err
+		return err
 	}
 
 	logs, err := server.StopSlave()
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+	if err != nil {
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+	}
 
 	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      cluster.master.Host,
@@ -483,10 +568,10 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 		SSL:       cluster.Conf.ReplicationSSL,
 		Channel:   cluster.Conf.MasterConn,
 	}, server.DBVersion)
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 	if err != nil {
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 		server.SetInReseedBackup(false)
-		return jobid, err
+		return err
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", cluster.Conf.BackupLogicalType, server.URL)
@@ -563,7 +648,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup() (int64, error) {
 			}
 		}()
 	}
-	return jobid, err
+	return err
 }
 
 func (server *ServerMonitor) JobServerStop() (int64, error) {
@@ -586,32 +671,77 @@ func (server *ServerMonitor) JobServerRestart() (int64, error) {
 	return jobid, err
 }
 
-func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
+func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	cluster := server.ClusterGroup
 	task := "flashback" + cluster.Conf.BackupLogicalType
-	var err error
-	bckserver := cluster.GetBackupServer()
-	if cluster.master != nil && !cluster.GetBackupServer().HasBackupLogicalCookie() {
-		server.SetWaitLogicalBackupCookie()
-		return 0, fmt.Errorf("No Logical Backup on backup server %s", bckserver.URL)
+
+	if !cluster.IsDiscovered() {
+		return errors.New("Cluster not discovered yet")
+	}
+
+	master := cluster.GetMaster()
+	if master == nil {
+		return errors.New("No master found. Cancel reseed logical backup")
+	}
+
+	useMaster := true
+	var dest string
+	switch cluster.Conf.BackupLogicalType {
+	case config.ConstBackupLogicalTypeMysqldump:
+		dest = "mysqldump.sql.gz"
+	case config.ConstBackupLogicalTypeMydumper:
+		dest = "mydumper"
+	case config.ConstBackupLogicalTypeDumpling:
+		dest = "dumpling"
+	}
+
+	// Can't handle script validation, unknown logic
+	if cluster.Conf.BackupLogicalType != "script" {
+		backupfile := master.GetMyBackupDirectory() + dest
+
+		bckserver := cluster.GetBackupServer()
+		if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupLogicalType) {
+			if _, err := os.Stat(bckserver.GetMyBackupDirectory() + dest); err == nil {
+				backupfile = bckserver.GetMyBackupDirectory() + dest
+				useMaster = false
+			} else {
+				//Remove false cookie
+				bckserver.DelBackupTypeCookie(cluster.Conf.BackupLogicalType)
+			}
+		}
+
+		if useMaster {
+			if _, err := os.Stat(backupfile); err != nil {
+				//Remove false cookie
+				master.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+				return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", cluster.Conf.BackupLogicalType)
+			}
+		}
+	}
+
+	if server.IsFlashingBack {
+		err := errors.New("Server is in flashback state")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
+		return err
 	}
 
 	if server.IsReseeding {
 		err := errors.New("Server is in reseeding state")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
-		return 0, err
+		return err
 	}
 
-	server.SetInReseedBackup(true)
+	server.SetInFlashbackBackup(true)
 
-	jobid, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
+	_, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive flashback logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
-		return jobid, err
+		return err
 	}
 
 	logs, err := server.StopSlave()
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+	if err != nil {
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+	}
 
 	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      cluster.master.Host,
@@ -624,9 +754,9 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 		SSL:       cluster.Conf.ReplicationSSL,
 		Channel:   cluster.Conf.MasterConn,
 	}, server.DBVersion)
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "flashback can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
 	if err != nil {
-		return jobid, err
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "flashback can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
+		return err
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive flashback logical backup %s request for server: %s", cluster.Conf.BackupLogicalType, server.URL)
@@ -704,7 +834,8 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() (int64, error) {
 			}
 		}()
 	}
-	return jobid, err
+
+	return nil
 }
 
 func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
@@ -2314,9 +2445,15 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 	cluster := server.ClusterGroup
 	var err error
 
-	if !server.IsReseeding {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server is not in reseeding state, cancel sending file to %s", server.URL)
-		return nil
+	switch task {
+	case "reseedmariabackup", "reseedxtrabackup":
+		if !server.IsReseeding {
+			return fmt.Errorf("Server is not in reseeding state, cancel sending file to %s", server.URL)
+		}
+	case "flashbackmariabackup", "flashbackxtrabackup":
+		if !server.IsFlashingBack {
+			return fmt.Errorf("Server is not in flashback state, cancel sending file to %s", server.URL)
+		}
 	}
 
 	rows, err := server.Conn.Queryx(fmt.Sprintf("SELECT done FROM replication_manager_schema.jobs WHERE task='%s' and state=%d", task, 2))
@@ -2337,9 +2474,14 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 	time.Sleep(time.Second * 15)
 	//Check if id exists
 	if count > 0 {
-		query := "UPDATE replication_manager_schema.jobs SET state=1, result='processing' where task = '%s'"
-		server.ExecQueryNoBinLog(fmt.Sprintf(query, task))
-		go cluster.SSTRunSender(filename, server)
+		server.JobsUpdateState(task, "processing", 1, 0)
+		go func() {
+			err := cluster.SSTRunSender(filename, server)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, err.Error())
+				server.JobsUpdateState(task, err.Error(), 5, 0)
+			}
+		}()
 		return nil
 	} else {
 		if loop < 10 {
@@ -2354,56 +2496,100 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 	return errors.New("Error: waiting for " + task + " more than max loop.")
 }
 
-func (server *ServerMonitor) ProcessReseedPhysical() error {
-	var err error
+func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 	cluster := server.ClusterGroup
 	master := cluster.GetMaster()
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", server.URL)
-	if master != nil {
-		mybcksrv := cluster.GetBackupServer()
-		backupext := ".xbtream"
-		task := "reseed" + cluster.Conf.BackupPhysicalType
 
-		if cluster.Conf.CompressBackups {
-			backupext = backupext + ".gz"
-		}
-
-		filename := master.GetMasterBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
-		if mybcksrv != nil {
-			filename = mybcksrv.GetMyBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
-		}
-
-		go server.WaitAndSendSST(task, filename, 0)
-	} else {
-		err = errors.New("No master found")
-		return err
+	//Prevent multiple reseed
+	if server.IsFlashingBack {
+		return errors.New("Server is in flashback state")
 	}
+
+	if master == nil {
+		return errors.New("No master found")
+	}
+
+	useMaster := true
+	backupext := ".xbtream"
+	if cluster.Conf.CompressBackups {
+		backupext = backupext + ".gz"
+	}
+
+	file := cluster.Conf.BackupPhysicalType + backupext
+	backupfile := master.GetMyBackupDirectory() + file
+
+	bckserver := cluster.GetBackupServer()
+	if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupPhysicalType) {
+		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
+			backupfile = bckserver.GetMyBackupDirectory() + file
+			useMaster = false
+		} else {
+			//Remove false cookie
+			bckserver.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+		}
+	}
+
+	if useMaster {
+		if _, err := os.Stat(backupfile); err != nil {
+			//Remove false cookie
+			master.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+			return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", cluster.Conf.BackupPhysicalType)
+		}
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", server.URL)
+
+	go server.WaitAndSendSST(task, backupfile, 0)
 
 	return nil
 }
 
-func (server *ServerMonitor) ProcessFlashbackPhysical() error {
-	var err error
+func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
+
 	cluster := server.ClusterGroup
+	master := cluster.GetMaster()
+
+	//Prevent multiple reseed
 	if server.IsReseeding {
-		err = errors.New("Server is already reseeding")
-		return err
-	} else {
-		mybcksrv := cluster.GetBackupServer()
-		backupext := ".xbtream"
-		task := "flashback" + cluster.Conf.BackupPhysicalType
-
-		if cluster.Conf.CompressBackups {
-			backupext = backupext + ".gz"
-		}
-
-		filename := server.GetMasterBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
-		if mybcksrv != nil {
-			filename = mybcksrv.GetMyBackupDirectory() + cluster.Conf.BackupPhysicalType + backupext
-		}
-
-		go server.WaitAndSendSST(task, filename, 0)
+		return errors.New("Server is in reseeding state")
 	}
+
+	if master == nil {
+		return errors.New("No master found")
+	}
+
+	useSelfBackup := true
+	backupext := ".xbtream"
+	if cluster.Conf.CompressBackups {
+		backupext = backupext + ".gz"
+	}
+
+	file := cluster.Conf.BackupPhysicalType + backupext
+	backupfile := server.GetMyBackupDirectory() + file
+
+	bckserver := cluster.GetBackupServer()
+	if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupPhysicalType) {
+		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
+			backupfile = bckserver.GetMyBackupDirectory() + file
+			useSelfBackup = false
+		} else {
+			//Remove false cookie
+			bckserver.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+		}
+	}
+
+	if useSelfBackup {
+		if _, err := os.Stat(backupfile); err != nil {
+			//Remove false cookie
+			server.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+			return fmt.Errorf("Cancelling flashback. No backup file found for %s", cluster.Conf.BackupPhysicalType)
+		}
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending physical backup to flashback %s", server.URL)
+
+	go server.WaitAndSendSST(task, backupfile, 0)
+
 	return nil
 }
 

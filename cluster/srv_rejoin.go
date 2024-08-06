@@ -155,9 +155,17 @@ func (server *ServerMonitor) RejoinMasterSST() error {
 			return errors.New("Dump from master failed")
 		}
 	} else if cluster.Conf.AutorejoinLogicalBackup {
-		server.JobFlashbackLogicalBackup()
+		err := server.JobFlashbackLogicalBackup()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "logical backup flashback restore failed %s", err)
+			return errors.New("Restore from logical backup failed")
+		}
 	} else if cluster.Conf.AutorejoinPhysicalBackup {
-		server.JobFlashbackPhysicalBackup()
+		err := server.JobFlashbackPhysicalBackup()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "physical backup flashback restore failed %s", err)
+			return errors.New("Restore from physical backup failed")
+		}
 	} else if cluster.Conf.AutorejoinZFSFlashback {
 		server.RejoinPreviousSnapshot()
 	} else if cluster.Conf.BackupLoadScript != "" {
