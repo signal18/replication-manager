@@ -14,6 +14,9 @@
   td.task-dt {
     width: 15%;
   }
+  td.task-action {
+    min-width:0%;
+  }
 </style>
 <md-card>
   <table ng-if="servers" class="table" style="margin-bottom: 0px;">
@@ -53,6 +56,7 @@
               <th class="task-desc">Desc</th>
               <th class="task-dt">Start</th>
               <th class="task-dt">End</th>
+              <th class="task-action"><i style="display:inline-block;;margin: 2px;" class="fa fa-cogs"></i></th>
             </tr>
             <tr ng-repeat="(i, t) in entries.servers[s.id].tasks">
               <td class="task-task">{{t.task}}</td>
@@ -68,6 +72,11 @@
               <td class="task-desc">{{t.result}}</td>
               <td class="task-dt">{{1000*t.start | date:"yyyy-MM-dd HH:mm"}}</td>
               <td class="task-dt">{{1000*t.end | date:"yyyy-MM-dd HH:mm"}}</td>
+              <td class="task-action">
+                <span ng-if="canCancel(t)" ng-disabled="selectedCluster.apiUsers[user].grants['cluster-process']==false" style="display:inline-block;;margin: 2px;"
+                    ng-click="cancelJob(s.id, s.host, s.port, t.task)"><i
+                        style="display:inline-block;;margin: 2px;" class="fa fa-trash"></i></span>
+              </td>
             </tr>
           </table>
         </md-card>

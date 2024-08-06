@@ -2014,10 +2014,18 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 		for crkey, _ := range mycluster.Conf.Secrets {
 			cl, err = jsonparser.Set(cl, []byte(`"*:*" `), "config", strcase.ToLowerCamel(crkey))
 		}
-
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
+		}
+
+		list, _ := json.Marshal(mycluster.BackupMetaMap.ToNewMap())
+		if len(list) > 0 {
+			cl, err = jsonparser.Set(cl, list, "backupList")
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+				return
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")

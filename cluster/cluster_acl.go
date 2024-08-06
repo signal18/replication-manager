@@ -245,7 +245,15 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/actions/reseed/") {
 			return true
 		}
-		if strings.Contains(URL, "/actions/cancel-reseed") {
+		if strings.Contains(URL, "/actions/reseed-cancel") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterProcess] {
+		if strings.Contains(URL, "/actions/job-cancel/") {
+			return true
+		}
+		if strings.Contains(URL, "/actions/reseed-cancel") {
 			return true
 		}
 	}

@@ -158,11 +158,54 @@ func (server *ServerMonitor) HasUnprovisionCookie() bool {
 }
 
 func (server *ServerMonitor) HasBackupLogicalCookie() bool {
-	return server.hasCookie("cookie_logicalbackup")
+	return server.hasCookie("cookie_logicalbackup") || server.HasBackupMysqldumpCookie() || server.HasBackupMydumperCookie() || server.HasBackupDumplingCookie()
+}
+
+func (server *ServerMonitor) HasBackupTypeCookie(backtype string) bool {
+	switch backtype {
+	case config.ConstBackupLogicalTypeMysqldump:
+		return server.HasBackupMysqldumpCookie()
+	case config.ConstBackupLogicalTypeMydumper:
+		return server.HasBackupMydumperCookie()
+	case config.ConstBackupLogicalTypeDumpling:
+		return server.HasBackupDumplingCookie()
+	case config.ConstBackupPhysicalTypeXtrabackup:
+		return server.HasBackupXtrabackupCookie()
+	case config.ConstBackupPhysicalTypeMariaBackup:
+		return server.HasBackupMariabackupCookie()
+	case "script":
+		return server.HasBackupScriptCookie()
+	}
+
+	return false
+}
+
+func (server *ServerMonitor) HasBackupScriptCookie() bool {
+	return server.hasCookie("cookie_backup_script")
+}
+
+func (server *ServerMonitor) HasBackupMysqldumpCookie() bool {
+	return server.hasCookie("cookie_backup_mysqldump")
+}
+
+func (server *ServerMonitor) HasBackupMydumperCookie() bool {
+	return server.hasCookie("cookie_backup_mydumper")
+}
+
+func (server *ServerMonitor) HasBackupDumplingCookie() bool {
+	return server.hasCookie("cookie_backup_dumpling")
 }
 
 func (server *ServerMonitor) HasBackupPhysicalCookie() bool {
-	return server.hasCookie("cookie_physicalbackup")
+	return server.hasCookie("cookie_physicalbackup") || server.HasBackupXtrabackupCookie() || server.HasBackupMariabackupCookie()
+}
+
+func (server *ServerMonitor) HasBackupXtrabackupCookie() bool {
+	return server.hasCookie("cookie_backup_xtrabackup")
+}
+
+func (server *ServerMonitor) HasBackupMariabackupCookie() bool {
+	return server.hasCookie("cookie_backup_mariabackup")
 }
 
 func (server *ServerMonitor) HasReadOnly() bool {

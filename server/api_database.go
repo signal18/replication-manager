@@ -219,9 +219,14 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseed)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/cancel-reseed", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseedCancel)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/job-cancel/{task}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersTaskCancel)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor", negroni.New(
@@ -572,9 +577,11 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			if vars["backupMethod"] == "logicalbackup" {
-				_, err := node.JobReseedLogicalBackup()
+				err := node.JobReseedLogicalBackup()
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "logical reseed restore failed %s", err)
+					http.Error(w, "Error reseed logical backup", 500)
+					return
 				}
 			}
 			if vars["backupMethod"] == "logicalmaster" {
@@ -584,7 +591,7 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 				}
 			}
 			if vars["backupMethod"] == "physicalbackup" {
-				_, err := node.JobReseedPhysicalBackup()
+				err := node.JobReseedPhysicalBackup()
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "physical reseed restore failed %s", err)
 				}
@@ -611,9 +618,10 @@ func (repman *ReplicationManager) handlerMuxServerReseedCancel(w http.ResponseWr
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			err := node.JobsCancelReseed()
+			tasks := []string{"reseedmariabackup", "reseedxtrabackup", "flashbackmariabackup", "flashbackxtrabackup"}
+			err := node.JobsCancelTasks(false, tasks...)
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "mysqldump reseed restore failed %s", err)
+				http.Error(w, fmt.Sprintf("Error canceling %s task: %s", vars["task"], err.Error()), 500)
 			}
 		} else {
 			http.Error(w, "Server Not Found", 500)
@@ -1843,7 +1851,7 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 			key := crypto.GetSHA256Hash(node.Pass)
 			iv := crypto.GetMD5Hash(node.Pass)
 
-			err := node.WriteJobLogs(mod, decodedData.Data, key, iv)
+			err := node.WriteJobLogs(mod, decodedData.Data, key, iv, vars["task"])
 			if err != nil {
 				http.Error(w, "Error decrypting data : "+err.Error(), http.StatusInternalServerError)
 				return
@@ -2502,5 +2510,28 @@ func (repman *ReplicationManager) handlerMuxGetDatabaseServiceConfig(w http.Resp
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServersTaskCancel(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			err := node.JobsCancelTasks(true, vars["task"])
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error canceling %s task: %s", vars["task"], err.Error()), 500)
+			}
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
 	}
 }

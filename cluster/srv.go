@@ -189,6 +189,7 @@ type ServerMonitor struct {
 	DelayStat                   *ServerDelayStat        `json:"delayStat"`
 	SlaveVariables              SlaveVariables          `json:"slaveVariables"`
 	IsReseeding                 bool                    `json:"isReseeding"`
+	IsFlashingBack              bool                    `json:"isFlashingBack"`
 	ReplicationTags             string                  `json:"replicationTags"`
 	JobResults                  *config.TasksMap        `json:"jobResults"`
 	IsInSlowQueryCapture        bool
@@ -200,6 +201,12 @@ type ServerMonitor struct {
 	NeedRefreshJobs             bool
 	BinaryLogDir                string
 	DBDataDir                   string
+	LastBackupMeta              ServerBackupMeta `json:"lastBackupMeta"`
+}
+
+type ServerBackupMeta struct {
+	Logical  *config.BackupMetadata `json:"logical"`
+	Physical *config.BackupMetadata `json:"physical"`
 }
 
 type SlaveVariables struct {

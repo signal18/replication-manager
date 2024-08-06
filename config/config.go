@@ -603,6 +603,7 @@ type Config struct {
 	BackupLogicalDumpThreads                  int                    `mapstructure:"backup-logical-dump-threads" toml:"backup-logical-dump-threads" json:"backupLogicalDumpThreads"`
 	BackupLogicalDumpSystemTables             bool                   `mapstructure:"backup-logical-dump-system-tables" toml:"backup-logical-dump-system-tables" json:"backupLogicalDumpSystemTables"`
 	BackupPhysicalType                        string                 `mapstructure:"backup-physical-type" toml:"backup-physical-type" json:"backupPhysicalType"`
+	BackupKeepUntilValid                      bool                   `mapstructure:"backup-keep-until-valid" toml:"backup-keep-until-valid" json:"backupKeepUntilValid"`
 	BackupKeepHourly                          int                    `mapstructure:"backup-keep-hourly" toml:"backup-keep-hourly" json:"backupKeepHourly"`
 	BackupKeepDaily                           int                    `mapstructure:"backup-keep-daily" toml:"backup-keep-daily" json:"backupKeepDaily"`
 	BackupKeepWeekly                          int                    `mapstructure:"backup-keep-weekly" toml:"backup-keep-weekly" json:"backupKeepWeekly"`
@@ -2116,6 +2117,18 @@ type Task struct {
 	Result string `json:"result,omitempty" db:"result"`
 	Start  int64  `json:"start" db:"utc_start"`
 	End    int64  `json:"end,omitempty" db:"utc_end"`
+}
+
+func (t *Task) Set(nt Task) {
+	t.Id = nt.Id
+	t.Task = nt.Task
+	t.Port = nt.Port
+	t.Server = nt.Server
+	t.Done = nt.Done
+	t.State = nt.State
+	t.Result = nt.Result
+	t.Start = nt.Start
+	t.End = nt.End
 }
 
 type TaskSorter []Task
