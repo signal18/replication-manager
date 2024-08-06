@@ -171,6 +171,7 @@ var ClusterError = map[string]string{
 	"WARN0111":  "Cluster does not have logical backup",
 	"WARN0112":  "Cluster does not have physical backup",
 	"WARN0113":  "Failed to reseed physical backup on server %s, please check %s.out",
+	"WARN0114":  "Unable to process job on slave %s due to SUPER READ ONLY",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-28310",
 }
