@@ -72,6 +72,11 @@ func (server *ServerMonitor) JobsCreateTable() error {
 		return nil
 	}
 
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL {
+		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
+		return nil
+	}
+
 	server.ExecQueryNoBinLog("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
 	err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
 	if err != nil {
@@ -157,6 +162,11 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 	if cluster.IsInFailover() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancel job %s during failover", task)
 		return 0, errors.New("In failover can't insert job")
+	}
+
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL {
+		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
+		return 0, nil
 	}
 
 	conn, err := server.GetNewDBConn()
@@ -886,6 +896,13 @@ func (server *ServerMonitor) JobsCheckPending() error {
 		return nil
 	}
 
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL {
+		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
+		return nil
+	}
+
+	server.ExecQueryNoBinLog("UPDATE replication_manager_schema.jobs SET state=5, result='Timeout waiting for job to start' where state=0 and start <= DATE_SUB(NOW(), interval 1 hour)")
+
 	//server.JobInsertTask("", "", "")
 	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE state=2 group by task ")
 	if err != nil {
@@ -954,6 +971,11 @@ func (server *ServerMonitor) JobsCancelReseed() error {
 	var err error
 	var canCancel bool = true
 	cluster := server.ClusterGroup
+
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL {
+		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
+		return nil
+	}
 
 	//Check for already running task
 	server.JobResults.Range(func(k, v any) bool {
@@ -1029,6 +1051,11 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 
 	cluster := server.ClusterGroup
 	if server.IsDown() {
+		return nil
+	}
+
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL {
+		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
 
@@ -1984,6 +2011,11 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop int) error {
 	cluster := server.ClusterGroup
 	var err error
+
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL {
+		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
+		return nil
+	}
 
 	if !server.IsReseeding {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server is not in reseeding state, cancel sending file to %s", server.URL)
