@@ -584,6 +584,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup() error {
 		return err
 	}
 
+	server.JobsUpdateState(task, "processing", 1, 0)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
 		go func() {
@@ -658,7 +659,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup() error {
 			}
 		}()
 	}
-	return err
+	return nil
 }
 
 func (server *ServerMonitor) JobServerStop() (int64, error) {
@@ -1850,9 +1851,9 @@ func (server *ServerMonitor) JobBackupLogical() error {
 			server.SetBackupLogicalCookie("script")
 		}
 	} else {
-
+		task := cluster.Conf.BackupLogicalType
 		//Only for record
-		server.JobInsertTask(cluster.Conf.BackupLogicalType, "0", cluster.Conf.MonitorAddress)
+		server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
 
 		//Change to switch since we only allow one type of backup (for now)
 		switch cluster.Conf.BackupLogicalType {
@@ -1867,11 +1868,11 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 			err = server.JobBackupMysqldump(filename)
 			if err != nil {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, err.Error(), 5, 1); e2 != nil {
+				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 1); e2 != nil {
+				if e2 := server.JobsUpdateState(task, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 				finfo, e3 := os.Stat(filename)
@@ -1892,11 +1893,11 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 			err = server.JobBackupDumpling(outputdir + "/")
 			if err != nil {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, err.Error(), 5, 1); e2 != nil {
+				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 1); e2 != nil {
+				if e2 := server.JobsUpdateState(task, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 				finfo, e3 := os.Stat(outputdir)
@@ -1917,11 +1918,11 @@ func (server *ServerMonitor) JobBackupLogical() error {
 			}
 			err = server.JobBackupMyDumper(outputdir + "/")
 			if err != nil {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, err.Error(), 5, 1); e2 != nil {
+				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 1); e2 != nil {
+				if e2 := server.JobsUpdateState(task, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 
@@ -1937,11 +1938,11 @@ func (server *ServerMonitor) JobBackupLogical() error {
 			//No change on river
 			err = server.JobBackupRiver()
 			if err != nil {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, err.Error(), 5, 1); e2 != nil {
+				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := server.JobsUpdateState(cluster.Conf.BackupLogicalType, "Backup completed", 3, 1); e2 != nil {
+				if e2 := server.JobsUpdateState(task, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			}
