@@ -1,4 +1,4 @@
-import { Button, Menu, MenuButton, MenuItem, MenuList } from '@chakra-ui/react'
+import { Box, Button, Menu, MenuButton, MenuItem, MenuList, Text } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import { HiChevronDown } from 'react-icons/hi'
 import styles from './styles.module.scss'
@@ -10,9 +10,11 @@ function Dropdown({
   placeholder = 'Select option',
   selectedValue,
   width = '200px',
+  inlineLabel = '',
   onChange,
   confirmTitle,
-  buttonClassName
+  buttonClassName,
+  menuListClassName
 }) {
   const [selectedOption, setSelectedOption] = useState(null)
   const [previousOption, setPreviousOption] = useState(null)
@@ -54,9 +56,20 @@ function Dropdown({
           as={Button}
           className={`${styles.menuButton} ${buttonClassName}`}
           rightIcon={<HiChevronDown fontSize={'1.5rem'} />}>
-          {selectedOption ? selectedOption.name : placeholder}
+          {selectedOption ? (
+            inlineLabel ? (
+              <Box className={styles.inlineLabelValue}>
+                <Text className={styles.inlineLabel}>{`${inlineLabel}:`}</Text>
+                <Text className={styles.inlineValue}>{selectedOption.name}</Text>
+              </Box>
+            ) : (
+              selectedOption.name
+            )
+          ) : (
+            placeholder
+          )}
         </MenuButton>
-        <MenuList width={width}>
+        <MenuList width={width} className={menuListClassName}>
           {options.map((option, index) => (
             <MenuItem
               width={width}
