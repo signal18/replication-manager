@@ -1406,7 +1406,7 @@ app.controller('DashboardController', function (
     value += ' ' + selectedDbServersLogicalBackupWeek;
     if (selectedDbServersLogicalBackupWeekTo) value += '-' + selectedDbServersLogicalBackupWeekTo;
 
-    if (confirm("Confirm save logical backup scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-logical-backups-cron/' + value);
+    if (confirm("Confirm save logical backup scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-logical-backup-cron/' + value);
   };
 
   $scope.savePhysicalBackupCron = function (selectedDbServersPhysicalBackupHour, selectedDbServersPhysicalBackupMin, selectedDbServersPhysicalBackupSec, selectedDbServersPhysicalBackupDay, selectedDbServersPhysicalBackupMonth, selectedDbServersPhysicalBackupWeek, selectedDbServersPhysicalBackupHourTo, selectedDbServersPhysicalBackupMinTo, selectedDbServersPhysicalBackupSecTo, selectedDbServersPhysicalBackupDayTo, selectedDbServersPhysicalBackupMonthTo, selectedDbServersPhysicalBackupWeekTo, selectedDbServersPhysicalBackupHourPer, selectedDbServersPhysicalBackupMinPer, selectedDbServersPhysicalBackupSecPer) {
