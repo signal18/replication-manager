@@ -1563,8 +1563,9 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 		return err
 	}
 
-	// Create a scanner to read line by line
-	scanner := bufio.NewScanner(teeReader)
+	// Create a buffered reader to read the duplicated stream
+	reader := bufio.NewReader(teeReader)
+	buffer := make([]byte, cluster.Conf.SSTSendBuffer) // 64 KB buffer
 
 	errCh := make(chan error, 2) // Create a channel to send errors
 	var wg sync.WaitGroup
@@ -1576,30 +1577,56 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	go func() {
 		defer wg.Done()
 
-		// Read from the scanner line by line and write to the gzip writer
-		for scanner.Scan() {
-			line := scanner.Text()
+		var remainingLine string
 
-			if server.LastBackupMeta.Logical.BinLogFileName == "" {
-				if matches := binlogRegex.FindStringSubmatch(line); matches != nil {
-					bfile = matches[1]
-					bpos, _ = strconv.ParseUint(matches[2], 10, 64)
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog filename:%s, pos: %s", server.LastBackupMeta.Logical.BinLogFileName, server.LastBackupMeta.Logical.BinLogFilePos)
-				}
+		for {
+			n, err := reader.Read(buffer)
+			if err != nil && err != io.EOF {
+				errCh <- fmt.Errorf("Error reading buffer: %w", err) // Send the error through the channel with more context
+			}
+			if n == 0 {
+				break
 			}
 
-			if server.LastBackupMeta.Logical.BinLogGtid == "" && server.IsMariaDB() {
-				if matches := gtidRegex.FindStringSubmatch(line); matches != nil {
-					bgtid = matches[1]
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "GTID:%s", server.LastBackupMeta.Logical.BinLogGtid)
+			// Process buffer content
+			content := remainingLine + string(buffer[:n])
+			lines := strings.Split(content, "\n")
+			remainingLine = lines[len(lines)-1] // Last element is the remaining part
+
+			for _, line := range lines[:len(lines)-1] {
+				if server.LastBackupMeta.Logical.BinLogFileName == "" {
+					if matches := binlogRegex.FindStringSubmatch(line); matches != nil {
+						bfile = matches[1]
+						bpos, _ = strconv.ParseUint(matches[2], 10, 64)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog filename:%s, pos: %s", bfile, strconv.FormatUint(bpos, 10))
+					}
+				}
+
+				if server.LastBackupMeta.Logical.BinLogGtid == "" && server.IsMariaDB() {
+					if matches := gtidRegex.FindStringSubmatch(line); matches != nil {
+						bgtid = matches[1]
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "GTID:%s", bgtid)
+					}
 				}
 			}
 		}
 
-		// Check for errors during scanning
-		if err := scanner.Err(); err != nil {
-			errCh <- fmt.Errorf("Error reading from stdout: %w", err) // Send the error through the channel with more context
-			return
+		// Process any remaining line data after the loop
+		if remainingLine != "" {
+			if server.LastBackupMeta.Logical.BinLogFileName == "" {
+				if matches := binlogRegex.FindStringSubmatch(remainingLine); matches != nil {
+					bfile = matches[1]
+					bpos, _ = strconv.ParseUint(matches[2], 10, 64)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog filename:%s, pos: %s", bfile, strconv.FormatUint(bpos, 10))
+				}
+			}
+
+			if server.LastBackupMeta.Logical.BinLogGtid == "" && server.IsMariaDB() {
+				if matches := gtidRegex.FindStringSubmatch(remainingLine); matches != nil {
+					bgtid = matches[1]
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "GTID:%s", bgtid)
+				}
+			}
 		}
 
 		err := dumpCmd.Wait()
