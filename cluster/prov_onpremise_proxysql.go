@@ -1,6 +1,12 @@
 package cluster
 
-import "github.com/signal18/replication-manager/config"
+import (
+	"bytes"
+	"errors"
+	"os"
+
+	"github.com/signal18/replication-manager/config"
+)
 
 func (cluster *Cluster) OnPremiseProvisionProxySQLService(prx *ProxySQLProxy) error {
 	client, err := cluster.OnPremiseConnectProxy(prx)
@@ -31,32 +37,78 @@ func (cluster *Cluster) OnPremiseUnprovisionProxySQLService(prx *ProxySQLProxy) 
 }
 
 func (cluster *Cluster) OnPremiseStopProxySQLService(server DatabaseProxy) error {
-	server.SetWaitStartCookie()
+	var strOut string
+	var err error
+	server.SetWaitStopCookie()
 	client, err := cluster.OnPremiseConnectProxy(server)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-	out, err := client.Cmd("systemctl stop proxysql").SmartOutput()
-	if err != nil {
-		return err
+	if cluster.Conf.OnPremiseSSHStopProxysqlScript == "" {
+		out, err := client.Cmd("systemctl stop proxysql").SmartOutput()
+		if err != nil {
+			return err
+		}
+		strOut = string(out)
+	} else {
+		var r, stdout, stderr bytes.Buffer
+
+		srcpath := cluster.Conf.OnPremiseSSHStopProxysqlScript
+		filerc, err2 := os.Open(srcpath)
+		if err2 != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Failed to load start script %s for SSH, err : %s", srcpath, err2.Error())
+			return err2
+
+		}
+		defer filerc.Close()
+		r.ReadFrom(filerc)
+
+		if err = client.Shell().SetStdio(&r, &stdout, &stderr).Start(); err != nil {
+			return err
+		}
+		strOut = stdout.String()
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise stop ProxySQL  : %s", string(out))
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise stop ProxySQL  : %s", strOut)
 	return nil
 }
 
 func (cluster *Cluster) OnPremiseStartProxySQLService(server DatabaseProxy) error {
-
+	var strOut string
+	var err error
 	server.SetWaitStartCookie()
+
 	client, err := cluster.OnPremiseConnectProxy(server)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-	out, err := client.Cmd("systemctl start proxysql").SmartOutput()
-	if err != nil {
-		return err
+
+	if cluster.Conf.OnPremiseSSHStartProxysqlScript == "" {
+		out, err := client.Cmd("systemctl start proxysql").SmartOutput()
+		if err != nil {
+			return err
+		}
+		strOut = string(out)
+	} else {
+		var r, stdout, stderr bytes.Buffer
+
+		srcpath := cluster.Conf.OnPremiseSSHStartProxysqlScript
+		filerc, err2 := os.Open(srcpath)
+		if err2 != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Failed to load start script %s for SSH, err : %s", srcpath, err2.Error())
+			return errors.New("Cancel dbjob can't open script")
+
+		}
+		defer filerc.Close()
+		r.ReadFrom(filerc)
+
+		if err = client.Shell().SetStdio(&r, &stdout, &stderr).Start(); err != nil {
+			return err
+		}
+		strOut = stdout.String()
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise start ProxySQL  : %s", string(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise start ProxySQL  : %s", strOut)
 	return nil
 }
