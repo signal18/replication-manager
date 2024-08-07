@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"errors"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -97,6 +98,16 @@ func (cluster *Cluster) RollingRestart() error {
 			if !slave.IsMaintenance {
 				slave.SwitchMaintenance()
 			}
+
+			writeOnce := true
+			for slave.IsBackingUpBinaryLog {
+				if writeOnce {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting slave %s to finish binlog backup", slave.URL)
+					writeOnce = false
+				}
+				time.Sleep(time.Second)
+			}
+
 			err := cluster.StopDatabaseService(slave)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
@@ -132,6 +143,14 @@ func (cluster *Cluster) RollingRestart() error {
 	}
 	if !master.IsMaintenance {
 		master.SwitchMaintenance()
+	}
+	writeOnce := true
+	for master.IsBackingUpBinaryLog {
+		if writeOnce {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting master %s to finish binlog backup", master.URL)
+			writeOnce = false
+		}
+		time.Sleep(time.Second)
 	}
 	err := cluster.StopDatabaseService(master)
 	if err != nil {
