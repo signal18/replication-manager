@@ -445,7 +445,10 @@ type Config struct {
 	OnPremiseSSHCredential                    string                 `mapstructure:"onpremise-ssh-credential" toml:"onpremise-ssh-credential" json:"onpremiseSshCredential"`
 	OnPremiseSSHPrivateKey                    string                 `mapstructure:"onpremise-ssh-private-key" toml:"onpremise-ssh-private-key" json:"onpremiseSshPrivateKey"`
 	OnPremiseSSHStartDbScript                 string                 `mapstructure:"onpremise-ssh-start-db-script" toml:"onpremise-ssh-start-db-script" json:"onpremiseSshStartDbScript"`
-	OnPremiseSSHStartProxyScript              string                 `mapstructure:"onpremise-ssh-start-proxy-script" toml:"onpremise-ssh-start-proxy-script" json:"onpremiseSshStartProxyScript"`
+	OnPremiseSSHStartProxysqlScript           string                 `mapstructure:"onpremise-ssh-start-proxysql-script" toml:"onpremise-ssh-start-proxysql-script" json:"onpremiseSshStartProxysqlScript"`
+	OnPremiseSSHStopProxysqlScript            string                 `mapstructure:"onpremise-ssh-stop-proxysql-script" toml:"onpremise-ssh-stop-proxysql-script" json:"onpremiseSshStopProxysqlScript"`
+	OnPremiseSSHStartHaproxyScript            string                 `mapstructure:"onpremise-ssh-start-haproxy-script" toml:"onpremise-ssh-start-haproxy-script" json:"onpremiseSshStartHaproxyScript"`
+	OnPremiseSSHStopHaproxyScript             string                 `mapstructure:"onpremise-ssh-stop-haproxy-script" toml:"onpremise-ssh-stop-haproxy-script" json:"onpremiseSshStopHaproxyScript"`
 	OnPremiseSSHDbJobScript                   string                 `mapstructure:"onpremise-ssh-db-job-script" toml:"onpremise-ssh-db-job-script" json:"onpremiseSshDbJobScript"`
 	ProvOpensvcP12Certificate                 string                 `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificate" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string                 `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`

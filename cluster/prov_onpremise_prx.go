@@ -146,10 +146,10 @@ func (cluster *Cluster) OnPremiseStopProxyService(pri DatabaseProxy) error {
 	}
 
 	if prx, ok := pri.(*HaproxyProxy); ok {
-		cluster.OnPremiseStartHaProxyService(prx)
+		cluster.OnPremiseStopHaproxyService(prx)
 	}
 	if prx, ok := pri.(*ProxySQLProxy); ok {
-		cluster.OnPremiseStartProxySQLService(prx)
+		cluster.OnPremiseStopProxySQLService(prx)
 	}
 
 	return nil
