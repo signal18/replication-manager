@@ -72,20 +72,28 @@ func (server *ServerMonitor) JobsCreateTable() error {
 		return nil
 	}
 
+	Conn, err := server.GetNewDBConn()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error connecting for retrieve jobs data from %s: %s", server.URL, err)
+		server.JobsCreateTable()
+		return err
+	}
+	defer Conn.Close()
+
 	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
 
 	server.ExecQueryNoBinLog("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
-	err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
+	err = server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't create table replication_manager_schema.jobs")
 		return err
 	}
 
 	var exist int
-	server.Conn.Get(&exist, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
+	Conn.Get(&exist, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
 
 	if exist == 0 {
 		server.ExecQueryNoBinLog("DROP TABLE IF EXISTS replication_manager_schema.jobs")
@@ -96,7 +104,7 @@ func (server *ServerMonitor) JobsCreateTable() error {
 		}
 	}
 
-	server.Conn.Get(&exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'state'")
+	Conn.Get(&exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'state'")
 	if exist == 0 {
 		//Add column instead of changing create table for compatibility
 		err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD COLUMN state tinyint not null default 0 AFTER `done`")
@@ -129,9 +137,17 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 		return errors.New("Node is down")
 	}
 
+	Conn, err := server.GetNewDBConn()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error connecting for retrieve jobs data from %s: %s", server.URL, err)
+		server.JobsCreateTable()
+		return err
+	}
+	defer Conn.Close()
+
 	query := "SELECT id, task, port, server, done, state, result, floor(UNIX_TIMESTAMP(start)) start, floor(UNIX_TIMESTAMP(end)) end FROM replication_manager_schema.jobs"
 
-	rows, err := server.Conn.Queryx(query)
+	rows, err := Conn.Queryx(query)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't retrieve jobs data from server %s", server.URL)
 		server.JobsCreateTable()
@@ -1095,8 +1111,17 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 	if server.IsDown() {
 		return nil
 	}
+
+	Conn, err := server.GetNewDBConn()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error connecting for retrieve jobs data from %s: %s", server.URL, err)
+		server.JobsCreateTable()
+		return err
+	}
+	defer Conn.Close()
+
 	//server.JobInsertTask("", "", "")
-	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE state=0 group by task ")
+	rows, err := Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE state=0 group by task ")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
 		server.JobsCreateTable()
@@ -1161,6 +1186,14 @@ func (server *ServerMonitor) JobsCheckPending() error {
 		return nil
 	}
 
+	Conn, err := server.GetNewDBConn()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
+		server.JobsCreateTable()
+		return err
+	}
+	defer Conn.Close()
+
 	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
@@ -1169,7 +1202,7 @@ func (server *ServerMonitor) JobsCheckPending() error {
 	server.ExecQueryNoBinLog("UPDATE replication_manager_schema.jobs SET state=5, result='Timeout waiting for job to start' where state=0 and start <= DATE_SUB(NOW(), interval 1 hour)")
 
 	//server.JobInsertTask("", "", "")
-	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE state=2 group by task ")
+	rows, err := Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE state=2 group by task ")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
 		server.JobsCreateTable()
@@ -1200,7 +1233,15 @@ func (server *ServerMonitor) JobsCheckErrors() error {
 		return nil
 	}
 
-	rows, err := server.Conn.Queryx("SELECT task, result FROM replication_manager_schema.jobs WHERE done=0 AND state=5")
+	Conn, err := server.GetNewDBConn()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
+		server.JobsCreateTable()
+		return err
+	}
+	defer Conn.Close()
+
+	rows, err := Conn.Queryx("SELECT task, result FROM replication_manager_schema.jobs WHERE done=0 AND state=5")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
 		server.JobsCreateTable()
@@ -1330,12 +1371,20 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 		return nil
 	}
 
+	Conn, err := server.GetNewDBConn()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
+		server.JobsCreateTable()
+		return err
+	}
+	defer Conn.Close()
+
 	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
 		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
 		return nil
 	}
 
-	rows, err := server.Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE done=1 AND state=3")
+	rows, err := Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE done=1 AND state=3")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
 		server.JobsCreateTable()
@@ -2527,7 +2576,15 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 		}
 	}
 
-	rows, err := server.Conn.Queryx(fmt.Sprintf("SELECT done FROM replication_manager_schema.jobs WHERE task='%s' and state=%d", task, 2))
+	Conn, err := server.GetNewDBConn()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err)
+		server.JobsCreateTable()
+		return err
+	}
+	defer Conn.Close()
+
+	rows, err := Conn.Queryx(fmt.Sprintf("SELECT done FROM replication_manager_schema.jobs WHERE task='%s' and state=%d", task, 2))
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs %s", err)
 		server.JobsCreateTable()
