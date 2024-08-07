@@ -102,6 +102,7 @@ var ClusterError = map[string]string{
 	"ERR00090":  "Monitoring save config enable but no encryption key for password, see the keygen command",
 	"ERR00091":  "Proxysql %s found active server %s as OFFLINE_SOFT in ProxySQL.",
 	"ERR00092":  "Cluster [%s] topology (%s) is not same with target topology (%s).",
+	"ERR00093":  "Proxysql %s has read on master no slave and found no active reader but bootstrap is turned off.",
 	"WARN0022":  "Rejoining standalone server %s to master %s",
 	"WARN0023":  "Number of failed master ping has been reached",
 	"WARN0045":  "Provision task is in queue",
