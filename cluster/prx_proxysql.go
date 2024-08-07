@@ -393,7 +393,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			} else if s.IsLeader() && isFoundBackendRead && (!cluster.Configurator.HasProxyReadLeader()) {
 				// Drop the leader in reader group if not found and setup
 				// Cancel learder remove because no valid reader
-				if !cluster.Configurator.HasProxyReadLeaderNoSlave() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && !cluster.HasNoValidSlave()) {
+				if !cluster.Configurator.HasProxyReadLeaderNoSlave() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && !(cluster.HasNoValidSlave() || proxy.HasAvailableReader())) {
 					// if cluster.Conf.ProxysqlDebug {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL Drop the leader in reader group from %s", s.URL)
 					// }
