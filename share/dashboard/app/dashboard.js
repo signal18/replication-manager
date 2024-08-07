@@ -372,7 +372,7 @@ app.controller('DashboardController', function (
   $scope.selectedApiTokenTimeout = 48
 
   $scope.canCancel = function (t) {
-    return t.state === 0 || (t.start < Math.floor((Date.now() - 300000) / 1000) && !t.end)
+    return t.state === 0 || (t.start < Math.floor((Date.now() - 300000) / 1000) && !t.end && t.state < 3)
   }
 
   $scope.SetApiTokenTimeout = function (val) {
