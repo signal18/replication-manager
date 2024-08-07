@@ -753,8 +753,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.OnPremiseSSHPort, "onpremise-ssh-port", 22, "Connect to host via SSH using ssh port")
 	flags.StringVar(&conf.OnPremiseSSHCredential, "onpremise-ssh-credential", "root:", "User:password for ssh if no password using current user private key")
 	flags.StringVar(&conf.OnPremiseSSHStartDbScript, "onpremise-ssh-start-db-script", "", "Run via ssh a custom script to start database")
-	flags.StringVar(&conf.OnPremiseSSHStartProxysqlScript, "onpremise-ssh-start-proxy-script", "", "Run via ssh a custom script to start proxy")
-	flags.StringVar(&conf.OnPremiseSSHStopProxysqlScript, "onpremise-ssh-stop-proxy-script", "", "Run via ssh a custom script to stop proxy")
+	flags.StringVar(&conf.OnPremiseSSHStartHaproxyScript, "onpremise-ssh-start-haproxy-script", "", "Run via ssh a custom script to start HAProxy")
+	flags.StringVar(&conf.OnPremiseSSHStopHaproxyScript, "onpremise-ssh-stop-haproxy-script", "", "Run via ssh a custom script to stop HAProxy")
+	flags.StringVar(&conf.OnPremiseSSHStartProxysqlScript, "onpremise-ssh-start-proxysql-script", "", "Run via ssh a custom script to start ProxySQL")
+	flags.StringVar(&conf.OnPremiseSSHStopProxysqlScript, "onpremise-ssh-stop-proxysql-script", "", "Run via ssh a custom script to stop ProxySQL")
 	flags.StringVar(&conf.OnPremiseSSHDbJobScript, "onpremise-ssh-db-job-script", "", "Run via ssh a custom script to execute database jobs")
 
 	if WithProvisioning == "ON" {
