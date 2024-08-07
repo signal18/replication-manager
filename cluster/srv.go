@@ -822,13 +822,15 @@ func (server *ServerMonitor) Refresh() error {
 		server.Users = config.FromNormalGrantsMap(server.Users, users)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database users %s %s", server.URL, err)
 
-		// Job section
-		server.JobsCheckFinished()
-		server.JobsCheckErrors()
-		server.JobsCheckPending()
+		if !cluster.IsInFailover() && !server.IsReseeding && !server.IsFlashingBack {
+			// Job section
+			server.JobsCheckFinished()
+			server.JobsCheckErrors()
+			server.JobsCheckPending()
 
-		if server.NeedRefreshJobs {
-			server.JobsUpdateEntries()
+			if server.NeedRefreshJobs {
+				server.JobsUpdateEntries()
+			}
 		}
 
 		if cluster.Conf.MonitorScheduler {
