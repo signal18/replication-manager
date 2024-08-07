@@ -240,3 +240,9 @@ func (cluster *Cluster) ResticFetchRepoStat() error {
 
 	return nil
 }
+
+func (cluster *Cluster) FetchLastBackupMetadata() {
+	for _, sv := range cluster.Servers {
+		sv.FetchLastBackupMetadata()
+	}
+}

@@ -445,7 +445,10 @@ type Config struct {
 	OnPremiseSSHCredential                    string                 `mapstructure:"onpremise-ssh-credential" toml:"onpremise-ssh-credential" json:"onpremiseSshCredential"`
 	OnPremiseSSHPrivateKey                    string                 `mapstructure:"onpremise-ssh-private-key" toml:"onpremise-ssh-private-key" json:"onpremiseSshPrivateKey"`
 	OnPremiseSSHStartDbScript                 string                 `mapstructure:"onpremise-ssh-start-db-script" toml:"onpremise-ssh-start-db-script" json:"onpremiseSshStartDbScript"`
-	OnPremiseSSHStartProxyScript              string                 `mapstructure:"onpremise-ssh-start-proxy-script" toml:"onpremise-ssh-start-proxy-script" json:"onpremiseSshStartProxyScript"`
+	OnPremiseSSHStartProxysqlScript           string                 `mapstructure:"onpremise-ssh-start-proxysql-script" toml:"onpremise-ssh-start-proxysql-script" json:"onpremiseSshStartProxysqlScript"`
+	OnPremiseSSHStopProxysqlScript            string                 `mapstructure:"onpremise-ssh-stop-proxysql-script" toml:"onpremise-ssh-stop-proxysql-script" json:"onpremiseSshStopProxysqlScript"`
+	OnPremiseSSHStartHaproxyScript            string                 `mapstructure:"onpremise-ssh-start-haproxy-script" toml:"onpremise-ssh-start-haproxy-script" json:"onpremiseSshStartHaproxyScript"`
+	OnPremiseSSHStopHaproxyScript             string                 `mapstructure:"onpremise-ssh-stop-haproxy-script" toml:"onpremise-ssh-stop-haproxy-script" json:"onpremiseSshStopHaproxyScript"`
 	OnPremiseSSHDbJobScript                   string                 `mapstructure:"onpremise-ssh-db-job-script" toml:"onpremise-ssh-db-job-script" json:"onpremiseSshDbJobScript"`
 	ProvOpensvcP12Certificate                 string                 `mapstructure:"opensvc-p12-certificate" toml:"opensvc-p12-certificate" json:"opensvcP12Certificate"`
 	ProvOpensvcP12Secret                      string                 `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
@@ -603,6 +606,7 @@ type Config struct {
 	BackupLogicalDumpThreads                  int                    `mapstructure:"backup-logical-dump-threads" toml:"backup-logical-dump-threads" json:"backupLogicalDumpThreads"`
 	BackupLogicalDumpSystemTables             bool                   `mapstructure:"backup-logical-dump-system-tables" toml:"backup-logical-dump-system-tables" json:"backupLogicalDumpSystemTables"`
 	BackupPhysicalType                        string                 `mapstructure:"backup-physical-type" toml:"backup-physical-type" json:"backupPhysicalType"`
+	BackupKeepUntilValid                      bool                   `mapstructure:"backup-keep-until-valid" toml:"backup-keep-until-valid" json:"backupKeepUntilValid"`
 	BackupKeepHourly                          int                    `mapstructure:"backup-keep-hourly" toml:"backup-keep-hourly" json:"backupKeepHourly"`
 	BackupKeepDaily                           int                    `mapstructure:"backup-keep-daily" toml:"backup-keep-daily" json:"backupKeepDaily"`
 	BackupKeepWeekly                          int                    `mapstructure:"backup-keep-weekly" toml:"backup-keep-weekly" json:"backupKeepWeekly"`
@@ -2116,6 +2120,18 @@ type Task struct {
 	Result string `json:"result,omitempty" db:"result"`
 	Start  int64  `json:"start" db:"utc_start"`
 	End    int64  `json:"end,omitempty" db:"utc_end"`
+}
+
+func (t *Task) Set(nt Task) {
+	t.Id = nt.Id
+	t.Task = nt.Task
+	t.Port = nt.Port
+	t.Server = nt.Server
+	t.Done = nt.Done
+	t.State = nt.State
+	t.Result = nt.Result
+	t.Start = nt.Start
+	t.End = nt.End
 }
 
 type TaskSorter []Task

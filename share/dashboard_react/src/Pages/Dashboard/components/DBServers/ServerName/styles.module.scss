@@ -1,0 +1,14 @@
+button.serverName {
+  background-color: transparent !important;
+  display: flex;
+  padding: 0;
+  width: 100%;
+  font-size: 15px;
+
+  .text {
+    color: var(--white-color) !important;
+  }
+  &:hover {
+    background-color: transparent;
+  }
+}

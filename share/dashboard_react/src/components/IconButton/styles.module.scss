@@ -1,0 +1,7 @@
+button.button {
+  background-color: var(--secondary-color);
+  color: var(--white-color);
+  &:hover {
+    background-color: var(--primary-color);
+  }
+}

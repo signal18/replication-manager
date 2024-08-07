@@ -380,7 +380,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				updated = true
 
-			} else if s.IsLeader() && !isFoundBackendRead && (cluster.Configurator.HasProxyReadLeader() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && cluster.HasNoValidSlave())) {
+			} else if s.IsLeader() && !isFoundBackendRead && (cluster.Configurator.HasProxyReadLeader() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && (cluster.HasNoValidSlave() || !proxy.HasAvailableReader()))) {
 				// Add  leader in reader group if not found and setup
 				// if cluster.Conf.ProxysqlDebug {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL add leader in reader group in %s", s.URL)
@@ -393,7 +393,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			} else if s.IsLeader() && isFoundBackendRead && (!cluster.Configurator.HasProxyReadLeader()) {
 				// Drop the leader in reader group if not found and setup
 				// Cancel learder remove because no valid reader
-				if !cluster.Configurator.HasProxyReadLeaderNoSlave() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && !cluster.HasNoValidSlave()) {
+				if !cluster.Configurator.HasProxyReadLeaderNoSlave() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && !(cluster.HasNoValidSlave() || proxy.HasAvailableReader())) {
 					// if cluster.Conf.ProxysqlDebug {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL Drop the leader in reader group from %s", s.URL)
 					// }
@@ -420,11 +420,12 @@ func (proxy *ProxySQLProxy) Refresh() error {
 
 		// //Set the alert if proxysql status is OFFLINE_SOFT
 		if (bke.PrxStatus == "OFFLINE_SOFT" || bkeread.PrxStatus == "OFFLINE_SOFT") && !s.IsMaintenance {
-			if !cluster.StateMachine.IsInState("ERR00091") {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlWarn, clusterError["ERR00091"], proxy.Name, s.URL)
-			}
 			cluster.SetState("ERR00091", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00091"], proxy.Name, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 			// s.SwitchMaintenance()
+		}
+
+		if s.IsLeader() && !isFoundBackendRead && (cluster.Configurator.HasProxyReadLeader() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && (cluster.HasNoValidSlave() || !proxy.HasAvailableReader()))) {
+			cluster.SetState("ERR00093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00093"], proxy.Name), ErrFrom: "PRX", ServerUrl: proxy.Name})
 		}
 
 		// load the grants

@@ -177,6 +177,7 @@ type Cluster struct {
 	QueryRules                map[uint32]config.QueryRule `json:"-"`
 	Backups                   []v3.Backup                 `json:"-"`
 	BackupStat                v3.BackupStat               `json:"backupStat"`
+	BackupMetaMap             *config.BackupMetaMap       `json:"backupList"`
 	SLAHistory                []state.Sla                 `json:"slaHistory"`
 	APIUsers                  map[string]APIUser          `json:"apiUsers"`
 	Schedule                  map[string]cron.Entry       `json:"-"`
@@ -219,6 +220,7 @@ type Cluster struct {
 	SlavesConnected        int
 	clog                   *clog.Logger `json:"-"`
 	*ClusterGraphite
+	MyDumperVersion *dbhelper.MySQLVersion
 }
 
 type SlavesOldestMasterFile struct {
@@ -333,6 +335,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.runOnceAfterTopology = true
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
+	cluster.BackupMetaMap = config.NewBackupMetaMap()
 
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
 	if cluster.Conf.Arbitration {
@@ -477,7 +480,15 @@ func (cluster *Cluster) InitFromConf() {
 	//cluster.Conf.PrintConf()
 	cluster.initScheduler()
 	cluster.CheckDefaultUser(true)
-
+	if err = cluster.SetMyDumperVersion(); err != nil {
+		lv := config.LvlWarn
+		if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
+			lv = config.LvlErr
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, lv, "Could not set MyDumper Version: %s", err)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "MyDumper version: %s", cluster.MyDumperVersion.ToString())
+	}
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
@@ -594,6 +605,7 @@ func (cluster *Cluster) Run() {
 					}
 					go cluster.initOrchetratorNodes()
 					go cluster.ResticFetchRepo()
+					go cluster.FetchLastBackupMetadata()
 					cluster.runOnceAfterTopology = false
 				} else {
 
@@ -679,14 +691,18 @@ func (cluster *Cluster) StateProcessing() {
 			//Remove from captured state if already resolved, so it will capture next occurence
 			cluster.GetStateMachine().CapturedState.Delete(s.ErrKey)
 			servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
-			if s.ErrKey == "WARN0073" {
-				for _, s := range cluster.Servers {
-					s.SetBackupPhysicalCookie()
-				}
-			}
+			// if s.ErrKey == "WARN0073" {
+			// 	for _, s := range cluster.Servers {
+			// 		s.SetBackupPhysicalCookie()
+			// 	}
+			// }
 			if s.ErrKey == "WARN0074" {
-				err := servertoreseed.ProcessReseedPhysical()
+				task := "reseed" + cluster.Conf.BackupPhysicalType
+
+				err := servertoreseed.ProcessReseedPhysical(task)
 				if err != nil {
+					servertoreseed.JobsUpdateState(task, err.Error(), 2, 1)
+					servertoreseed.SetInReseedBackup(false)
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
 				}
 			}
@@ -708,8 +724,11 @@ func (cluster *Cluster) StateProcessing() {
 				// }
 			}
 			if s.ErrKey == "WARN0076" {
-				err := servertoreseed.ProcessFlashbackPhysical()
+				task := "flashback" + cluster.Conf.BackupPhysicalType
+				err := servertoreseed.ProcessFlashbackPhysical(task)
 				if err != nil {
+					servertoreseed.JobsUpdateState(task, err.Error(), 2, 1)
+					servertoreseed.SetInFlashbackBackup(false)
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing flashback for %s: %s", servertoreseed.URL, err)
 				}
 			}
@@ -752,7 +771,12 @@ func (cluster *Cluster) StateProcessing() {
 				for _, srv := range cluster.Servers {
 					if srv.HasWaitPhysicalBackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for physical backup", srv.URL)
-						go srv.JobReseedPhysicalBackup()
+						go func() {
+							err := srv.JobReseedPhysicalBackup()
+							if err != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, err.Error())
+							}
+						}()
 					}
 				}
 			}

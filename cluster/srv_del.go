@@ -10,6 +10,7 @@
 package cluster
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/signal18/replication-manager/config"
@@ -67,6 +68,49 @@ func (server *ServerMonitor) DelBackupLogicalCookie() error {
 
 func (server *ServerMonitor) DelBackupPhysicalCookie() error {
 	return server.delCookie("cookie_physicalbackup")
+}
+
+func (server *ServerMonitor) DelBackupScriptCookie() error {
+	return server.delCookie("cookie_backup_script")
+}
+
+func (server *ServerMonitor) DelBackupMysqldumpCookie() error {
+	return server.delCookie("cookie_backup_mysqldump")
+}
+
+func (server *ServerMonitor) DelBackupMydumperCookie() error {
+	return server.delCookie("cookie_backup_mydumper")
+}
+
+func (server *ServerMonitor) DelBackupDumplingCookie() error {
+	return server.delCookie("cookie_backup_dumpling")
+}
+
+func (server *ServerMonitor) DelBackupXtrabackupCookie() error {
+	return server.delCookie("cookie_backup_xtrabackup")
+}
+
+func (server *ServerMonitor) DelBackupMariabackupCookie() error {
+	return server.delCookie("cookie_backup_mariabackup")
+}
+
+func (server *ServerMonitor) DelBackupTypeCookie(backtype string) error {
+	switch backtype {
+	case config.ConstBackupLogicalTypeMysqldump:
+		return server.DelBackupMysqldumpCookie()
+	case config.ConstBackupLogicalTypeMydumper:
+		return server.DelBackupMydumperCookie()
+	case config.ConstBackupLogicalTypeDumpling:
+		return server.DelBackupDumplingCookie()
+	case config.ConstBackupPhysicalTypeXtrabackup:
+		return server.DelBackupXtrabackupCookie()
+	case config.ConstBackupPhysicalTypeMariaBackup:
+		return server.DelBackupMariabackupCookie()
+	case "script":
+		return server.DelBackupScriptCookie()
+	}
+
+	return fmt.Errorf("No backup type of %s", backtype)
 }
 
 func (server *ServerMonitor) DelMaintenance() {

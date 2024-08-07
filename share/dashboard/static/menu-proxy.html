@@ -25,13 +25,13 @@
                        Unprovision Proxy
                     </md-button>
                  </md-menu-item>
-                 <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'"  ng-click="prxstart(proxy.id,proxy.host,proxy.port)">
+                 <md-menu-item ng-click="prxstart(proxy.id,proxy.host,proxy.port)">
                     <md-button ng-disabled="selectedCluster.apiUsers[user].grants['proxy-start']==false">
                        <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
-                       start Proxy
+                       Start Proxy
                     </md-button>
                  </md-menu-item>
-                 <md-menu-item ng-if="settings.config.provOrchestrator!='onpremise'"  ng-click="prxstop(proxy.id,proxy.host,proxy.port)">
+                 <md-menu-item ng-click="prxstop(proxy.id,proxy.host,proxy.port)">
                     <md-button ng-disabled="selectedCluster.apiUsers[user].grants['proxy-stop']==false">
                        <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
                        Stop Proxy

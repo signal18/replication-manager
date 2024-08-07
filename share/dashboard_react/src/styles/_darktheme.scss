@@ -1,0 +1,29 @@
+:global {
+  .dark {
+    --body-bg-color: #131a34;
+    --text-color: #ffffff;
+
+    --primary-color: #1a365d;
+    --secondary-color: #2a4365;
+    --tertiary-color: #2c5282;
+    --quaternary-color: #1a365d;
+
+    --white-color: #ffffff;
+    --black-color: #000000;
+    --gray-color: #2d3748;
+    --darkgray-color: #778899;
+    --secondary-gray-color: #2a3048;
+
+    --danger-primary-color: #ed5e5efc;
+    --danger-secondary-color: #fc8181;
+    --danger-tertiary-color: #fed7d7;
+
+    --success-primary-color: #c6f6d5;
+    --success-secondary-color: #68d391;
+    --success-tertiary-color: #2f855a;
+
+    --warning-primary-color: #dd6b20;
+    --warning-secondary-color: #f6ad55;
+    --warning-tertiary-color: #feebc8;
+  }
+}

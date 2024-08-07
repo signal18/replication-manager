@@ -1,16 +1,17 @@
-import { Box } from '@chakra-ui/react'
+import { Box, useColorMode } from '@chakra-ui/react'
 import { useTheme } from '@emotion/react'
 import React from 'react'
 
-function NotFound({ text, currentTheme }) {
+function NotFound({ text }) {
   const theme = useTheme()
+  const { colorMode } = useColorMode()
   const styles = {
     container: {
       p: '24px',
-      bg: currentTheme === 'light' ? theme.colors.primary.light : theme.colors.primary.dark,
+      bg: colorMode === 'light' ? theme.colors.primary.light : theme.colors.primary.dark,
       width: 'fit-content',
       boxShadow:
-        currentTheme === 'light'
+        colorMode === 'light'
           ? 'rgba(100, 100, 111, 0.2) 0px 7px 29px 0px'
           : 'rgba(255, 255, 255, 0.2) 0px 7px 29px 0px',
       borderRadius: '16px',
