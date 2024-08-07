@@ -8,7 +8,7 @@ package cluster
 
 import (
 	"errors"
-	"os"
+	"fmt"
 	"strconv"
 
 	"github.com/helloyi/go-sshclient"
@@ -53,13 +53,22 @@ func (cluster *Cluster) OnPremiseConnectProxy(server DatabaseProxy) (*sshclient.
 		return nil, errors.New("onpremise-ssh disable ")
 	}
 
-	user, _ := misc.SplitPair(cluster.Conf.GetDecryptedValue("onpremise-ssh-credential"))
-	key := os.Getenv("HOME") + "/.ssh/id_rsa"
-	client, err := sshcli.DialWithKey(misc.Unbracket(server.GetHost())+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, key)
-	if err != nil {
-		return nil, errors.New("OnPremise Provisioning via SSH %s" + err.Error())
+	user, password := misc.SplitPair(cluster.Conf.GetDecryptedValue("onpremise-ssh-credential"))
+
+	key := cluster.OnPremiseGetSSHKey(user)
+	if password != "" {
+		client, err := sshcli.DialWithPasswd(misc.Unbracket(server.GetHost())+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, password)
+		if err != nil {
+			return nil, errors.New(fmt.Sprintf("OnPremise Provisioning via SSH %s %s", err.Error(), key))
+		}
+		return client, nil
+	} else {
+		client, err := sshcli.DialWithKey(misc.Unbracket(server.GetHost())+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, key)
+		if err != nil {
+			return nil, errors.New("OnPremise Provisioning via SSH %s" + err.Error())
+		}
+		return client, nil
 	}
-	return client, nil
 }
 
 func (cluster *Cluster) OnPremiseProvisionProxyService(pri DatabaseProxy) error {
