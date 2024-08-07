@@ -72,7 +72,8 @@ func (server *ServerMonitor) CheckBinaryLogs() error {
 			cluster.BinlogRotationScript(server)
 		}
 
-		if cluster.Conf.BackupBinlogs {
+		//Don't do anything while failover
+		if cluster.Conf.BackupBinlogs && !cluster.IsInFailover() {
 			//Set second parameter to false, not part of backupbinlogpurge
 			server.InitiateJobBackupBinlog(server.BinaryLogFilePrevious, false)
 			//Initiate purging backup binlog
