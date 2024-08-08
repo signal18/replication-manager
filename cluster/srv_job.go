@@ -22,7 +22,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -176,9 +175,14 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 
 func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost string) (int64, error) {
 	cluster := server.ClusterGroup
+	if cluster.InRollingRestart {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancel job %s during rolling restart", task)
+		return 0, errors.New("In rolling restart, can't insert job")
+	}
+
 	if cluster.IsInFailover() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancel job %s during failover", task)
-		return 0, errors.New("In failover can't insert job")
+		return 0, errors.New("In failover, can't insert job")
 	}
 
 	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
@@ -1107,7 +1111,7 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 
 func (server *ServerMonitor) JobsCheckRunning() error {
 	cluster := server.ClusterGroup
-	if server.IsDown() {
+	if server.IsDown() || cluster.InRollingRestart {
 		return nil
 	}
 
@@ -2183,24 +2187,6 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 
 	//Log Task - Debug Level
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, stderr.String())
-
-	res := new(JobResult)
-	val := reflect.ValueOf(res).Elem()
-	for i := 0; i < val.NumField(); i++ {
-		jobname := val.Type().Field(i).Name
-		if strings.Contains(strings.ToLower(string(out)), strings.ToLower("no "+jobname)) {
-			val.Field(i).SetBool(false)
-		} else {
-			val.Field(i).SetBool(true)
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Database jobs run via SSH: %s", val.Type().Field(i).Name)
-			lower := strings.ToLower(jobname)
-			if strings.HasPrefix(lower, "reseed") || strings.HasPrefix(lower, "flashback") {
-				server.SetInReseedBackup(false)
-			}
-		}
-	}
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Exec via ssh  : %s", res)
 	return nil
 }
 
@@ -2804,12 +2790,19 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 	}
 
 	binRegex := regexp.MustCompile(`filename '([^']+)', position '([^']+)', GTID of the last change '([^']+)'`)
+	startRegex := regexp.MustCompile(`Job [^']+ initiated`)
+	endRegex := regexp.MustCompile(`Job [^']+ ended with state`)
 
 	lines := strings.Split(strings.ReplaceAll(entry.Log, "\\n", "\n"), "\n")
 	for _, line := range lines {
 		if strings.TrimSpace(line) != "" {
+			if matches := startRegex.FindStringSubmatch(line); matches != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "[%s] Job initiated: %s", server.URL, task)
+			}
 			// Process the individual log line (e.g., write to file, send to a logging system, etc.)
-			if strings.Contains(line, "ERROR") {
+			if matches := endRegex.FindStringSubmatch(line); matches != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "[%s] ", server.URL, line)
+			} else if strings.Contains(line, "ERROR") {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlErr, "[%s] %s", server.URL, line)
 			} else {
 				switch task {

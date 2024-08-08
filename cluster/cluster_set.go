@@ -1793,3 +1793,7 @@ func (cluster *Cluster) SetMyDumperVersion() error {
 	cluster.MyDumperVersion = ver
 	return nil
 }
+
+func (cluster *Cluster) SetInRollingRestart(value bool) {
+	cluster.InRollingRestart = value
+}

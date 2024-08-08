@@ -823,7 +823,7 @@ func (server *ServerMonitor) Refresh() error {
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database users %s %s", server.URL, err)
 
 		//Skip writing to db
-		if !cluster.IsInFailover() {
+		if !cluster.IsInFailover() && !cluster.InRollingRestart {
 			// Job section
 			server.JobsCheckFinished()
 			server.JobsCheckErrors()
