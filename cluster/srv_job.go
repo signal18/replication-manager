@@ -1106,7 +1106,7 @@ func (server *ServerMonitor) JobReseedBackupScript() {
 
 func (server *ServerMonitor) JobsCheckRunning() error {
 	cluster := server.ClusterGroup
-	if server.IsDown() {
+	if server.IsDown() || cluster.InRollingRestart {
 		return nil
 	}
 
@@ -2785,12 +2785,19 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 	}
 
 	binRegex := regexp.MustCompile(`filename '([^']+)', position '([^']+)', GTID of the last change '([^']+)'`)
+	startRegex := regexp.MustCompile(`Job [^']+ initiated`)
+	endRegex := regexp.MustCompile(`Job [^']+ ended with state`)
 
 	lines := strings.Split(strings.ReplaceAll(entry.Log, "\\n", "\n"), "\n")
 	for _, line := range lines {
 		if strings.TrimSpace(line) != "" {
+			if matches := startRegex.FindStringSubmatch(line); matches != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "[%s] Job initiated: %s", server.URL, task)
+			}
 			// Process the individual log line (e.g., write to file, send to a logging system, etc.)
-			if strings.Contains(line, "ERROR") {
+			if matches := endRegex.FindStringSubmatch(line); matches != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "[%s] ", server.URL, line)
+			} else if strings.Contains(line, "ERROR") {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlErr, "[%s] %s", server.URL, line)
 			} else {
 				switch task {

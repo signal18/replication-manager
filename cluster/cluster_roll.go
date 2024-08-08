@@ -85,6 +85,9 @@ func (cluster *Cluster) RollingReprov() error {
 }
 
 func (cluster *Cluster) RollingRestart() error {
+	cluster.SetInRollingRestart(true)
+	defer cluster.SetInRollingRestart(false)
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling restart")
 	masterID := cluster.GetMaster().Id
 	saveFailoverMode := cluster.Conf.FailSync

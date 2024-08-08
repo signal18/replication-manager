@@ -213,6 +213,7 @@ type Cluster struct {
 	InLogicalBackup           bool                        `json:"inLogicalBackup"`
 	InBinlogBackup            bool                        `json:"inBinlogBackup"`
 	InResticBackup            bool                        `json:"inResticBackup"`
+	InRollingRestart          bool                        `json:"inRollingRestart"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
