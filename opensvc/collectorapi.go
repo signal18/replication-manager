@@ -332,7 +332,7 @@ func (collector *Collector) CreateMRMGroup() (int, error) {
 		return 0, err
 	}
 
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	groupid := m.Data[0].Id
@@ -377,7 +377,7 @@ func (collector *Collector) CreateTemplate(name string, template string) (int, e
 	var m Message
 	err = json.Unmarshal(body, &m)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(body))
 		}
 		return 0, err
@@ -387,7 +387,7 @@ func (collector *Collector) CreateTemplate(name string, template string) (int, e
 	if len(m.Data) > 0 {
 		tempid = m.Data[0].Id
 	} else {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(body))
 		}
 	}
@@ -419,7 +419,7 @@ func (collector *Collector) ProvisionTemplate(id int, nodeid string, name string
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	type Message struct {
@@ -428,7 +428,7 @@ func (collector *Collector) ProvisionTemplate(id int, nodeid string, name string
 	var m Message
 	err = json.Unmarshal(body, &m)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(body))
 		}
 		return 0, err
@@ -438,7 +438,7 @@ func (collector *Collector) ProvisionTemplate(id int, nodeid string, name string
 	if len(m.Data) > 0 {
 		actionid = m.Data[0].Id
 	} else {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(body))
 		}
 	}
@@ -481,7 +481,7 @@ func (collector *Collector) CreateMRMUser(user string, password string) (int, er
 	var m Message
 	err = json.Unmarshal(body, &m)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(body))
 		}
 		return 0, err
@@ -491,7 +491,7 @@ func (collector *Collector) CreateMRMUser(user string, password string) (int, er
 	if len(m.Data) > 0 {
 		userid = m.Data[0].Id
 	} else {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(body))
 		}
 	}
@@ -531,7 +531,7 @@ func (collector *Collector) SetAppCodeResponsible(appid int, groupid int) (strin
 	if err != nil {
 		return "", err
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	return string(body), nil
@@ -569,7 +569,7 @@ func (collector *Collector) SetServiceTag(tag_id string, service_id string) (str
 	if err != nil {
 		return "", err
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	return string(body), nil
@@ -605,12 +605,12 @@ func (collector *Collector) SetAppCodePublication(appid int, groupid int) (strin
 	var r response
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(body))
 		}
 		return "", err
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	return string(body), nil
@@ -652,7 +652,7 @@ func (collector *Collector) CreateAppCode(code string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	return m.Data[0].Id, nil
@@ -691,7 +691,7 @@ func (collector *Collector) CreateTag(tag string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	return m.Data[0].Tag_id, nil
@@ -730,7 +730,7 @@ func (collector *Collector) CreateService(service string, app string) (string, e
 	if err != nil {
 		return "", err
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	if len(m.Data) == 0 {
@@ -770,12 +770,12 @@ func (collector *Collector) SetPrimaryGroup(groupid int, userid int) (string, er
 	var r response
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(body))
 		}
 		return "", err
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	return string(body), nil
@@ -812,12 +812,12 @@ func (collector *Collector) SetGroupUser(groupid int, userid int) (string, error
 	var r response
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(body))
 		}
 		return "", err
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	return string(body), nil
@@ -841,7 +841,7 @@ func (collector *Collector) ImportCompliance(path string) (string, error) {
 	req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
@@ -849,7 +849,7 @@ func (collector *Collector) ImportCompliance(path string) (string, error) {
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
@@ -857,7 +857,7 @@ func (collector *Collector) ImportCompliance(path string) (string, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
@@ -883,7 +883,7 @@ func (collector *Collector) PublishSafe(safeUUID string, group string) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return err
@@ -891,7 +891,7 @@ func (collector *Collector) PublishSafe(safeUUID string, group string) error {
 	defer resp.Body.Close()
 	_, err = io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return err
@@ -944,7 +944,7 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
@@ -952,7 +952,7 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
@@ -973,7 +973,7 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
@@ -1007,7 +1007,7 @@ func (collector *Collector) ImportForms(path string) (string, error) {
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
@@ -1015,7 +1015,7 @@ func (collector *Collector) ImportForms(path string) (string, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
@@ -1032,7 +1032,7 @@ func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 
@@ -1041,7 +1041,7 @@ func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1049,7 +1049,7 @@ func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1061,7 +1061,7 @@ func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1078,7 +1078,7 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 
@@ -1087,7 +1087,7 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1095,7 +1095,7 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1107,7 +1107,7 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1119,7 +1119,7 @@ func (collector *Collector) SetRulesetVariableValue(RulesetName string, Variable
 
 	rls, err := collector.GetRuleset(RulesetName)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(err.Error()))
 		}
 		return "", err
@@ -1129,13 +1129,13 @@ func (collector *Collector) SetRulesetVariableValue(RulesetName string, Variable
 	client := &http.Client{Transport: tr}
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/compliance/rulesets/" + strconv.Itoa(rls[0].Id) + "/variables/" + strconv.Itoa(rlsv[0].Id)
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println("INFO SetRulesetVariableValue: ", urlpost)
 	}
 	var jsonStr = []byte(`{"var_value":"{"path":"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/haproxy.cfg","mode":"%%ENV:BINDED_DIR_PERMS%%","uid":"%%ENV:MYSQL_UID%%","gid":"%%ENV:MYSQL_UID%%","fmt":"` + Content + `"}"}`)
 	req, err := http.NewRequest("POST", urlpost, bytes.NewBuffer(jsonStr))
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(err.Error()))
 		}
 		return "", err
@@ -1160,14 +1160,14 @@ func (collector *Collector) SetRulesetVariableValue(RulesetName string, Variable
 	req.SetBasicAuth(collector.User, collector.Pass)
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(err.Error()))
 		}
 		return "", err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	type response struct {
@@ -1176,12 +1176,12 @@ func (collector *Collector) SetRulesetVariableValue(RulesetName string, Variable
 	var r response
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(body))
 		}
 		return "", err
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	return string(body), nil
@@ -1199,7 +1199,7 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 	}
@@ -1207,7 +1207,7 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1215,7 +1215,7 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1227,7 +1227,7 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1246,7 +1246,7 @@ func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 	}
@@ -1254,7 +1254,7 @@ func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "0", err
@@ -1262,7 +1262,7 @@ func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "0", err
@@ -1274,7 +1274,7 @@ func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "0", err
@@ -1302,7 +1302,7 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 
@@ -1311,7 +1311,7 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1319,14 +1319,14 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
 	count, err := collector.getMetaCount(body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println("ERROR get Meta Data count", err)
 		}
 		return nil, err
@@ -1340,7 +1340,7 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1381,7 +1381,7 @@ func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return err
@@ -1389,7 +1389,7 @@ func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
 	defer resp.Body.Close()
 	_, err = io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return err
@@ -1425,7 +1425,7 @@ func (collector *Collector) GetTags() ([]Tag, error) {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 
@@ -1434,7 +1434,7 @@ func (collector *Collector) GetTags() ([]Tag, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1442,7 +1442,7 @@ func (collector *Collector) GetTags() ([]Tag, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1454,7 +1454,7 @@ func (collector *Collector) GetTags() ([]Tag, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1473,7 +1473,7 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 
@@ -1482,7 +1482,7 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1490,12 +1490,12 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println(string(body))
 	}
 	type Message struct {
@@ -1504,7 +1504,7 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1526,7 +1526,7 @@ func (collector *Collector) GetActionStatus(actionid string) string {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 
@@ -1535,7 +1535,7 @@ func (collector *Collector) GetActionStatus(actionid string) string {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "W"
@@ -1543,7 +1543,7 @@ func (collector *Collector) GetActionStatus(actionid string) string {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "W"
@@ -1555,7 +1555,7 @@ func (collector *Collector) GetActionStatus(actionid string) string {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "W"
@@ -1584,7 +1584,7 @@ func (collector *Collector) GetAction(actionid string) *Action {
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 
@@ -1593,7 +1593,7 @@ func (collector *Collector) GetAction(actionid string) *Action {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil
@@ -1601,7 +1601,7 @@ func (collector *Collector) GetAction(actionid string) *Action {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil
@@ -1613,7 +1613,7 @@ func (collector *Collector) GetAction(actionid string) *Action {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println("JSON ERROR unmarchaling action", err)
 		}
 		return nil
@@ -1636,7 +1636,7 @@ func (collector *Collector) GetServices() ([]Service, error) {
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 
@@ -1645,7 +1645,7 @@ func (collector *Collector) GetServices() ([]Service, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1653,7 +1653,7 @@ func (collector *Collector) GetServices() ([]Service, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1665,7 +1665,7 @@ func (collector *Collector) GetServices() ([]Service, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1685,7 +1685,7 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 
@@ -1695,7 +1695,7 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1703,7 +1703,7 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1715,7 +1715,7 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 	var r Message
 	err = json.Unmarshal(body, &r)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
@@ -1772,7 +1772,7 @@ func (collector *Collector) StopService(nodeid string, serviceid string) (string
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
@@ -1781,7 +1781,7 @@ func (collector *Collector) StopService(nodeid string, serviceid string) (string
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
@@ -1808,7 +1808,7 @@ func (collector *Collector) StartService(nodeid string, serviceid string) (strin
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
@@ -1816,12 +1816,12 @@ func (collector *Collector) StartService(nodeid string, serviceid string) (strin
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println("OpenSVC API Response: ", string(body))
 	}
 	return string(body), nil
@@ -1852,7 +1852,7 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return 0, err
@@ -1860,7 +1860,7 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return 0, err
@@ -1871,7 +1871,7 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	var m Message
 	err = json.Unmarshal(body, &m)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(body))
 		}
 		return 0, err
@@ -1881,11 +1881,11 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	if len(m.Data) > 0 {
 		actionid = m.Data[0].Id
 	} else {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 			collector.Logrus.Println(string(body))
 		}
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println("OpenSVC API Response: ", string(body))
 	}
 	return actionid, nil
@@ -1896,7 +1896,7 @@ func (collector *Collector) DeleteService(serviceid string) (string, error) {
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/" + serviceid
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println("INFO Delete service: ", urlpost)
 	}
 
@@ -1908,7 +1908,7 @@ func (collector *Collector) DeleteService(serviceid string) (string, error) {
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
@@ -1916,12 +1916,12 @@ func (collector *Collector) DeleteService(serviceid string) (string, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
 			collector.Logrus.Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.Println("OpenSVC API Response: ", string(body))
 	}
 	return string(body), nil
