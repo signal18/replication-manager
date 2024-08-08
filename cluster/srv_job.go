@@ -175,9 +175,14 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 
 func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost string) (int64, error) {
 	cluster := server.ClusterGroup
+	if cluster.InRollingRestart {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancel job %s during rolling restart", task)
+		return 0, errors.New("In rolling restart, can't insert job")
+	}
+
 	if cluster.IsInFailover() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancel job %s during failover", task)
-		return 0, errors.New("In failover can't insert job")
+		return 0, errors.New("In failover, can't insert job")
 	}
 
 	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
