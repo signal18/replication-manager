@@ -150,8 +150,8 @@ type Cluster struct {
 	termlength                int                         `json:"-"`
 	runUUID                   string                      `json:"-"`
 	cfgGroupDisplay           string                      `json:"-"`
-	repmgrVersion             string                      `json:"-"`
-	repmgrHostname            string                      `json:"-"`
+	RepMgrVersion             string                      `json:"-"`
+	RepMgrHostname            string                      `json:"-"`
 	exitMsg                   string                      `json:"-"`
 	exit                      bool                        `json:"-"`
 	canFlashBack              bool                        `json:"-"`
@@ -295,7 +295,7 @@ const (
 )
 
 // Init initial cluster definition
-func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string) error {
+func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, RepMgrVersion string, RepMgrHostname string) error {
 	cluster.Confs = confs
 
 	cluster.Conf = confs.ConfInit
@@ -306,8 +306,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.Name = cfgGroup
 
 	cluster.runUUID = runUUID
-	cluster.repmgrHostname = repmgrHostname
-	cluster.repmgrVersion = repmgrVersion
+	cluster.RepMgrHostname = RepMgrHostname
+	cluster.RepMgrVersion = RepMgrVersion
 
 	cluster.InitFromConf()
 	cluster.NewClusterGraphite()
@@ -1591,12 +1591,12 @@ func (c *Cluster) AddProxy(prx DatabaseProxy) {
 }
 
 func (cluster *Cluster) ConfigDiscovery() error {
-	server := cluster.GetMaster()
-	if server != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cluster configurartion discovery can ony be done on a valid leader")
-		return errors.New("Cluster configurartion discovery can ony be done on a valid leader")
+	master := cluster.GetMaster()
+	if master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cluster configuration discovery can only be done on a valid leader")
+		return errors.New("Cluster configuration discovery can only be done on a valid leader")
 	}
-	cluster.Configurator.ConfigDiscovery(server.Variables, server.Plugins)
+	cluster.Configurator.ConfigDiscovery(master.Variables, master.Plugins)
 	cluster.SetDBCoresFromConfigurator()
 	cluster.SetDBMemoryFromConfigurator()
 	cluster.SetDBIOPSFromConfigurator()

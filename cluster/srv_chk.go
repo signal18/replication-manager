@@ -375,10 +375,10 @@ func (server *ServerMonitor) CheckPrivileges() {
 		if err != nil {
 			cluster.SetState("ERR00078", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.GetDbUser(), server.URL, myhost, err), ErrFrom: "CONF", ServerUrl: server.URL})
 		} else {
-			priv, logs, err := dbhelper.GetPrivileges(server.Conn, cluster.GetDbUser(), cluster.repmgrHostname, myip, server.DBVersion)
-			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, fmt.Sprintf(clusterError["ERR00005"], cluster.GetDbUser(), cluster.repmgrHostname, err))
+			priv, logs, err := dbhelper.GetPrivileges(server.Conn, cluster.GetDbUser(), cluster.RepMgrHostname, myip, server.DBVersion)
+			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, fmt.Sprintf(clusterError["ERR00005"], cluster.GetDbUser(), cluster.RepMgrHostname, err))
 			if err != nil {
-				cluster.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.GetDbUser(), cluster.repmgrHostname, err), ErrFrom: "CONF", ServerUrl: server.URL})
+				cluster.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.GetDbUser(), cluster.RepMgrHostname, err), ErrFrom: "CONF", ServerUrl: server.URL})
 			}
 			if priv.Repl_client_priv == "N" {
 				cluster.SetState("ERR00006", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00006"], server.URL), ErrFrom: "CONF", ServerUrl: server.URL})

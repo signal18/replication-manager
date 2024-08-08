@@ -9,7 +9,6 @@ package configurator
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
@@ -77,7 +77,7 @@ func (configurator *Configurator) LoadDBModules() error {
 		}
 		jsonFile, err := os.Open(file)
 		if err != nil {
-			return errors.New(fmt.Sprintf("Failed opened module %s %s", file, err))
+			return fmt.Errorf("Failed opened module %s %s", file, err)
 		}
 		// defer the closing of our jsonFile so that we can parse it later on
 		defer jsonFile.Close()
@@ -89,7 +89,7 @@ func (configurator *Configurator) LoadDBModules() error {
 
 	err := json.Unmarshal([]byte(byteValue), &configurator.DBModule)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Failed unmarshal file %s %s", "opensvc/moduleset_mariadb.svc.mrm.db.json", err))
+		return fmt.Errorf("Failed unmarshal file %s %s", "opensvc/moduleset_mariadb.svc.mrm.db.json", err)
 	}
 	return nil
 }
@@ -103,7 +103,7 @@ func (configurator *Configurator) LoadProxyModules() error {
 		}
 		jsonFile, err := os.Open(file)
 		if err != nil {
-			return errors.New(fmt.Sprintf("Failed opened module %s %s", file, err))
+			return fmt.Errorf("Failed opened module %s %s", file, err)
 		}
 		defer jsonFile.Close()
 		byteValue, _ = io.ReadAll(jsonFile)
@@ -113,8 +113,8 @@ func (configurator *Configurator) LoadProxyModules() error {
 
 	err := json.Unmarshal([]byte(byteValue), &configurator.ProxyModule)
 	if err != nil {
-		//return errors.New(fmt.Sprintf("Failed unmarshal file %s %s", file, err))
-		return errors.New(fmt.Sprintf("Failed unmarshal file %s %s", "opensvc/moduleset_mariadb.svc.mrm.proxy.json", err))
+		//return fmt.Errorf("Failed unmarshal file %s %s", file, err)
+		return fmt.Errorf("Failed unmarshal file %s %s", "opensvc/moduleset_mariadb.svc.mrm.proxy.json", err)
 	}
 	return nil
 }
@@ -441,12 +441,8 @@ func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, 
 	return nil
 }
 
-func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir string, TemplateEnv map[string]string) error {
+func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir string, TemplateEnv map[string]string, RepMgrVersion string) error {
 
-	type File struct {
-		Path    string `json:"path"`
-		Content string `json:"fmt"`
-	}
 	os.RemoveAll(Datadir + "/init")
 	// Extract files
 	for _, rule := range configurator.ProxyModule.Rulesets {
@@ -454,37 +450,10 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 		if strings.Contains(rule.Name, "mariadb.svc.mrm.proxy.cnf") {
 
 			for _, variable := range rule.Variables {
-
 				if variable.Class == "file" || variable.Class == "fileprop" {
-					var f File
-					json.Unmarshal([]byte(variable.Value), &f)
-					fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
-					dir := filepath.Dir(fpath)
-					//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config create %s", fpath)
-					// create directory
-					if _, err := os.Stat(dir); os.IsNotExist(err) {
-						err := os.MkdirAll(dir, os.FileMode(0775))
-						if err != nil {
-							return errors.New(fmt.Sprintf("Compliance create directory %q: %s", dir, err))
-						}
-					}
-					//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "rule %s filter %s %t", rule.Name, rule.Filter, proxy.IsFilterInTags(rule.Filter))
-					if fpath[len(fpath)-1:] != "/" && (configurator.IsFilterInProxyTags(rule.Filter) || rule.Filter == "") {
-						content := misc.ExtractKey(f.Content, TemplateEnv)
-						outFile, err := os.Create(fpath)
-						if err != nil {
-							return errors.New(fmt.Sprintf("Compliance create file failed %q: %s", fpath, err))
-						} else {
-							_, err = outFile.WriteString(content)
-
-							if err != nil {
-								return errors.New(fmt.Sprintf("Compliance writing file failed %q: %s", fpath, err))
-							}
-							outFile.Close()
-							//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Variable name %s", variable.Name)
-
-						}
-
+					err := configurator.WriteProxyConfigFile(Datadir, TemplateEnv, RepMgrVersion, &rule, &variable)
+					if err != nil {
+						return err
 					}
 				}
 			}
@@ -536,7 +505,7 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 	/*if configurator.HaveProxyTag("docker") {
 		err := misc.ChownR(Datadir+"/init/data", 999, 999)
 		if err != nil {
-			return errors.New(fmt.Sprintf("Chown failed %q: %s", Datadir+"/init/data", err))
+			return fmt.Errorf("Chown failed %q: %s", Datadir+"/init/data", err)
 		}
 	}*/
 	configurator.TarGz(Datadir+"/config.tar.gz", Datadir+"/init")
@@ -544,7 +513,7 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 	return nil
 }
 
-func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, ClusterDir string, RemoteBasedir string, TemplateEnv map[string]string) error {
+func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, ClusterDir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string) error {
 
 	type File struct {
 		Path    string `json:"path"`
@@ -555,11 +524,11 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 	if configurator.ClusterConfig.ProvBinaryInTarball {
 		url, err := configurator.ClusterConfig.GetTarballUrl(configurator.ClusterConfig.ProvBinaryTarballName)
 		if err != nil {
-			return errors.New(fmt.Sprintf("Compliance get binary %s directory  %s", url, err))
+			return fmt.Errorf("Compliance get binary %s directory  %s", url, err)
 		}
 		err = misc.DownloadFileTimeout(url, Datadir+"/"+configurator.ClusterConfig.ProvBinaryTarballName, 1200)
 		if err != nil {
-			return errors.New(fmt.Sprintf("Compliance dowload binary %s directory  %s", url, err))
+			return fmt.Errorf("Compliance dowload binary %s directory  %s", url, err)
 		}
 		misc.Untargz(Datadir+"/init", Datadir+"/"+configurator.ClusterConfig.ProvBinaryTarballName)
 	}
@@ -574,58 +543,9 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 
 			for _, variable := range rule.Variables {
 				if variable.Class == "file" || variable.Class == "fileprop" {
-					var f File
-					json.Unmarshal([]byte(variable.Value), &f)
-					fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
-					dir := filepath.Dir(fpath)
-					/*		if server.ClusterGroup.Conf.LogLevel > 2 {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config create %s", fpath)
-							}
-					*/
-					// create directory
-					if _, err := os.Stat(dir); os.IsNotExist(err) {
-						err := os.MkdirAll(dir, os.FileMode(0775))
-						if err != nil {
-							return errors.New(fmt.Sprintf("Compliance create directory %q: %s", dir, err))
-						}
-					}
-
-					if fpath[len(fpath)-1:] != "/" && (configurator.IsFilterInDBTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
-						content := misc.ExtractKey(f.Content, TemplateEnv)
-
-						if configurator.IsFilterInDBTags("docker") && configurator.ClusterConfig.ProvOrchestrator != config.ConstOrchestratorLocalhost {
-							if configurator.IsFilterInDBTags("wsrep") {
-								//if galera don't cusomized system files
-								if strings.Contains(content, "./.system") && !(strings.Contains(content, "exclude") || strings.Contains(content, "ignore")) {
-									content = ""
-								}
-							} else {
-								content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
-							}
-						}
-
-						if configurator.ClusterConfig.ProvOrchestrator == config.ConstOrchestratorLocalhost {
-							content = strings.Replace(content, "includedir ..", "includedir "+RemoteBasedir+"/init", -1)
-							content = strings.Replace(content, "../etc/mysql", RemoteBasedir+"/init/etc/mysql", -1)
-
-						} else if configurator.ClusterConfig.ProvOrchestrator == config.ConstOrchestratorSlapOS {
-							content = strings.Replace(content, "includedir ..", "includedir "+RemoteBasedir+"/", -1)
-							content = strings.Replace(content, "../etc/mysql", RemoteBasedir+"/etc/mysql", -1)
-							content = strings.Replace(content, "./.system", RemoteBasedir+"/var/lib/mysql/.system", -1)
-						}
-						outFile, err := os.Create(fpath)
-						if err != nil {
-							return errors.New(fmt.Sprintf("Compliance create file failed %q: %s", fpath, err))
-						} else {
-							_, err = outFile.WriteString(content)
-
-							if err != nil {
-								return errors.New(fmt.Sprintf("Compliance writing file failed %q: %s", fpath, err))
-							}
-							outFile.Close()
-							//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Variable name %s", variable.Name)
-						}
-
+					err := configurator.WriteDatabaseConfigFile(Datadir, RemoteBasedir, TemplateEnv, RepMgrVersion, &rule, &variable)
+					if err != nil {
+						return err
 					}
 				}
 			}
@@ -658,11 +578,11 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 	/*	if configurator.HaveDBTag("docker") {
 			err := misc.ChownR(Datadir+"/init/data", 999, 999)
 			if err != nil {
-				return errors.New(fmt.Sprintf("Chown failed %q: %s", Datadir+"/init/data", err))
+				return fmt.Errorf("Chown failed %q: %s", Datadir+"/init/data", err)
 			}
 			err = misc.ChmodR(Datadir+"/init/init", 0755)
 			if err != nil {
-				return errors.New(fmt.Sprintf("Chown failed %q: %s", Datadir+"/init/init", err))
+				return fmt.Errorf("Chown failed %q: %s", Datadir+"/init/init", err)
 			}
 		}
 	*/
@@ -708,7 +628,7 @@ func (configurator *Configurator) GetDatabaseDynamicConfig(filter string, cmd st
 								file.Close()
 
 							} else {
-								return mydynamicconf, errors.New(fmt.Sprintf("Error in dynamic config: %s", err))
+								return mydynamicconf, fmt.Errorf("Error in dynamic config: %s", err)
 							}
 						}
 					}
@@ -746,7 +666,7 @@ func (configurator *Configurator) GetDatabaseConfig(filter string, datadir strin
 								file.Close()
 
 							} else {
-								return mydynamicconf, errors.New(fmt.Sprintf("Error in dynamic config: %s", err))
+								return mydynamicconf, fmt.Errorf("Error in dynamic config: %s", err)
 							}
 						}
 					}
@@ -755,4 +675,119 @@ func (configurator *Configurator) GetDatabaseConfig(filter string, datadir strin
 		}
 	}
 	return mydynamicconf, nil
+}
+
+func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string, rule *config.ComplianceRuleset, variable *config.ComplianceVariable) error {
+	ts := time.Now().Format(time.RFC3339)
+
+	type File struct {
+		Path    string `json:"path"`
+		Content string `json:"fmt"`
+	}
+
+	var f File
+	json.Unmarshal([]byte(variable.Value), &f)
+	fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
+	dir := filepath.Dir(fpath)
+	/*		if server.ClusterGroup.Conf.LogLevel > 2 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config create %s", fpath)
+			}
+	*/
+	// create directory
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err := os.MkdirAll(dir, os.FileMode(0775))
+		if err != nil {
+			return fmt.Errorf("Compliance create directory %q: %s", dir, err)
+		}
+	}
+
+	if fpath[len(fpath)-1:] != "/" && (configurator.IsFilterInDBTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic") {
+		content := misc.ExtractKey(f.Content, TemplateEnv)
+
+		if configurator.IsFilterInDBTags("docker") && configurator.ClusterConfig.ProvOrchestrator != config.ConstOrchestratorLocalhost {
+			if configurator.IsFilterInDBTags("wsrep") {
+				//if galera don't cusomized system files
+				if strings.Contains(content, "./.system") && !(strings.Contains(content, "exclude") || strings.Contains(content, "ignore")) {
+					content = ""
+				}
+			} else {
+				content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
+			}
+		}
+
+		if configurator.ClusterConfig.ProvOrchestrator == config.ConstOrchestratorLocalhost {
+			content = strings.Replace(content, "includedir ..", "includedir "+RemoteBasedir+"/init", -1)
+			content = strings.Replace(content, "../etc/mysql", RemoteBasedir+"/init/etc/mysql", -1)
+
+		} else if configurator.ClusterConfig.ProvOrchestrator == config.ConstOrchestratorSlapOS {
+			content = strings.Replace(content, "includedir ..", "includedir "+RemoteBasedir+"/", -1)
+			content = strings.Replace(content, "../etc/mysql", RemoteBasedir+"/etc/mysql", -1)
+			content = strings.Replace(content, "./.system", RemoteBasedir+"/var/lib/mysql/.system", -1)
+		}
+
+		outFile, err := os.Create(fpath)
+		if err != nil {
+			return fmt.Errorf("Compliance create file failed %q: %s", fpath, err)
+		} else {
+			_, err = outFile.WriteString(fmt.Sprintf("# Generated by Signal18 replication-manager %s on %s \n", RepMgrVersion, ts))
+			if err != nil {
+				outFile.Close()
+				return fmt.Errorf("Compliance writing header file failed %q: %s", fpath, err)
+			}
+
+			_, err = outFile.WriteString(content)
+			if err != nil {
+				outFile.Close()
+				return fmt.Errorf("Compliance writing file failed %q: %s", fpath, err)
+			}
+			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Variable name %s", variable.Name)
+		}
+
+	}
+	return nil
+}
+
+func (configurator *Configurator) WriteProxyConfigFile(Datadir string, TemplateEnv map[string]string, RepMgrVersion string, rule *config.ComplianceRuleset, variable *config.ComplianceVariable) error {
+	ts := time.Now().Format(time.RFC3339)
+
+	type File struct {
+		Path    string `json:"path"`
+		Content string `json:"fmt"`
+	}
+
+	var f File
+	json.Unmarshal([]byte(variable.Value), &f)
+	fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
+	dir := filepath.Dir(fpath)
+	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config create %s", fpath)
+	// create directory
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err := os.MkdirAll(dir, os.FileMode(0775))
+		if err != nil {
+			return fmt.Errorf("Compliance create directory %q: %s", dir, err)
+		}
+	}
+	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "rule %s filter %s %t", rule.Name, rule.Filter, proxy.IsFilterInTags(rule.Filter))
+	if fpath[len(fpath)-1:] != "/" && (configurator.IsFilterInProxyTags(rule.Filter) || rule.Filter == "") {
+
+	}
+	content := misc.ExtractKey(f.Content, TemplateEnv)
+	outFile, err := os.Create(fpath)
+	if err != nil {
+		return fmt.Errorf("Compliance create file failed %q: %s", fpath, err)
+	} else {
+		_, err = outFile.WriteString(fmt.Sprintf("# Generated by Signal18 replication-manager %s on %s \n", RepMgrVersion, ts))
+		if err != nil {
+			outFile.Close()
+			return fmt.Errorf("Compliance writing file failed %q: %s", fpath, err)
+		}
+		_, err = outFile.WriteString(content)
+		if err != nil {
+			outFile.Close()
+			return fmt.Errorf("Compliance writing file failed %q: %s", fpath, err)
+		}
+
+		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Variable name %s", variable.Name)
+	}
+	return nil
 }

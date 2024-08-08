@@ -463,6 +463,7 @@ type Config struct {
 	ProvOrchestratorEnable                    string                 `mapstructure:"prov-orchestrator-enable" toml:"prov-orchestrator-enable" json:"provOrchestratorEnable"`
 	ProvOrchestratorCluster                   string                 `mapstructure:"prov-orchestrator-cluster" toml:"prov-orchestrator-cluster" json:"provOrchestratorCluster"`
 	ProvDBApplyDynamicConfig                  bool                   `mapstructure:"prov-db-apply-dynamic-config" toml:"prov-db-apply-dynamic-config" json:"provDBApplyDynamicConfig"`
+	ProvDBForceWriteConfig                    bool                   `mapstructure:"prov-db-force-write-config" toml:"prov-db-force-write-config" json:"provDBForceWriteConfig"`
 	ProvDBClientBasedir                       string                 `mapstructure:"prov-db-client-basedir" toml:"prov-db-client-basedir" json:"provDbClientBasedir"`
 	ProvDBBinaryBasedir                       string                 `mapstructure:"prov-db-binary-basedir" toml:"prov-db-binary-basedir" json:"provDbBinaryBasedir"`
 	ProvType                                  string                 `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
@@ -705,21 +706,28 @@ type Secret struct {
 
 // Compliance created in OpenSVC collector and exported as JSON
 type Compliance struct {
-	Filtersets []struct {
-		ID    uint   `json:"id"`
-		Stats bool   `json:"fset_stats"`
-		Name  string `json:"fset_name"`
-	} `json:"filtersets"`
-	Rulesets []struct {
-		ID        uint   `json:"id"`
-		Name      string `json:"ruleset_name"`
-		Filter    string `json:"fset_name"`
-		Variables []struct {
-			Value string `json:"var_value"`
-			Class string `json:"var_class"`
-			Name  string `json:"var_name"`
-		} `json:"variables"`
-	} `json:"rulesets"`
+	Filtersets []ComplianceFilterset `json:"filtersets"`
+	Rulesets   []ComplianceRuleset   `json:"rulesets"`
+}
+
+// Compliance created in OpenSVC collector and exported as JSON
+type ComplianceFilterset struct {
+	ID    uint   `json:"id"`
+	Stats bool   `json:"fset_stats"`
+	Name  string `json:"fset_name"`
+}
+
+type ComplianceRuleset struct {
+	ID        uint                 `json:"id"`
+	Name      string               `json:"ruleset_name"`
+	Filter    string               `json:"fset_name"`
+	Variables []ComplianceVariable `json:"variables"`
+}
+
+type ComplianceVariable struct {
+	Value string `json:"var_value"`
+	Class string `json:"var_class"`
+	Name  string `json:"var_name"`
 }
 
 type QueryRule struct {
