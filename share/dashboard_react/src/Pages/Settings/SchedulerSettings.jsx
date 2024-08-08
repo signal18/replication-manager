@@ -6,7 +6,7 @@ import RMSwitch from '../../components/RMSwitch'
 import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
-import Scheduler from '../../components/Scheduler'
+import Scheduler from './Scheduler'
 
 function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
   const dispatch = useDispatch()
@@ -31,6 +31,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         <Scheduler
           user={user}
           value={selectedCluster?.config?.schedulerDbServersLogicalBackupCron}
+          switchConfirmTitle={'Confirm switch settings for scheduler-db-servers-logical-backup?'}
           isSwitchChecked={selectedCluster?.config?.schedulerDbServersLogicalBackup}
           confirmTitle={'Confirm save logical backup scheduler to: '}
           onSwitchChange={() =>
@@ -56,6 +57,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         <Scheduler
           user={user}
           value={selectedCluster?.config?.schedulerDbServersPhysicalBackupCron}
+          switchConfirmTitle={'Confirm switch settings for scheduler-db-servers-physical-backup?'}
           isSwitchChecked={selectedCluster?.config?.schedulerDbServersPhysicalBackup}
           confirmTitle={'Confirm save physical backup scheduler to: '}
           onSwitchChange={() =>
@@ -81,6 +83,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         <Scheduler
           user={user}
           value={selectedCluster?.config?.schedulerDbServersOptimizeCron}
+          switchConfirmTitle={'Confirm switch settings for scheduler-db-servers-optimize?'}
           isSwitchChecked={selectedCluster?.config?.schedulerDbServersOptimize}
           confirmTitle={'Confirm optimize backup scheduler to: '}
           onSwitchChange={() =>
@@ -104,6 +107,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         <Scheduler
           user={user}
           value={selectedCluster?.config?.schedulerDbServersAnalyzeCron}
+          switchConfirmTitle={'Confirm switch settings for scheduler-db-servers-analyze?'}
           isSwitchChecked={selectedCluster?.config?.schedulerDbServersAnalyze}
           confirmTitle={'Confirm save analyze backup scheduler to: '}
           onSwitchChange={() =>
@@ -127,6 +131,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         <Scheduler
           user={user}
           value={selectedCluster?.config?.schedulerDbServersLogsCron}
+          switchConfirmTitle={'Confirm switch settings for scheduler-db-servers-logs?'}
           isSwitchChecked={selectedCluster?.config?.schedulerDbServersLogs}
           confirmTitle={'Confirm save logs scheduler to: '}
           onSwitchChange={() =>
@@ -150,6 +155,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         <Scheduler
           user={user}
           value={selectedCluster?.config?.schedulerDbServersLogsTableRotateCron}
+          switchConfirmTitle={'Confirm switch settings for scheduler-db-servers-logs-table-rotate?'}
           isSwitchChecked={selectedCluster?.config?.schedulerDbServersLogsTableRotate}
           confirmTitle={'Confirm save LogsTableRotate scheduler to: '}
           onSwitchChange={() =>
@@ -175,6 +181,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         <Scheduler
           user={user}
           value={selectedCluster?.config?.schedulerRollingRestartCron}
+          switchConfirmTitle={'Confirm switch settings for scheduler-rolling-restart?'}
           isSwitchChecked={selectedCluster?.config?.schedulerRollingRestart}
           confirmTitle={'Confirm save RollingRestart scheduler to: '}
           onSwitchChange={() =>
@@ -198,6 +205,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         <Scheduler
           user={user}
           value={selectedCluster?.config?.schedulerRollingReprovCron}
+          switchConfirmTitle={'Confirm switch settings for scheduler-rolling-reprov?'}
           isSwitchChecked={selectedCluster?.config?.schedulerRollingReprov}
           confirmTitle={'Confirm save RollingReprov scheduler to: '}
           onSwitchChange={() =>
@@ -241,6 +249,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         <Scheduler
           user={user}
           value={selectedCluster?.config?.schedulerJobsSshCron}
+          switchConfirmTitle={'Confirm switch settings for scheduler-jobs-ssh?'}
           isSwitchChecked={selectedCluster?.config?.schedulerJobsSsh}
           confirmTitle={'Confirm save JobsSsh scheduler to: '}
           onSwitchChange={() =>
@@ -264,6 +273,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         <Scheduler
           user={user}
           value={selectedCluster?.config?.schedulerAlertDisableCron}
+          switchConfirmTitle={'Confirm switch settings for scheduler-alert-disable?'}
           isSwitchChecked={selectedCluster?.config?.schedulerAlertDisable}
           confirmTitle={'Confirm save alert disable scheduler to: '}
           onSwitchChange={() =>

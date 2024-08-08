@@ -1,9 +1,11 @@
-import { getRequest } from './apiHelper'
+import { getRequest, postRequest } from './apiHelper'
 
 export const settingsService = {
   switchSettings,
   changeTopology,
-  setSetting
+  setSetting,
+  updateGraphiteWhiteList,
+  updateGraphiteBlackList
 }
 
 function switchSettings(clusterName, setting) {
@@ -15,5 +17,21 @@ function changeTopology(clusterName, topology) {
 }
 
 function setSetting(clusterName, setting, value) {
-  return getRequest(`clusters/${clusterName}/settings/actions/set/${setting}/${value}`)
+  if (setting === 'reset-graphite-filterlist') {
+    return getRequest(`clusters/${clusterName}/settings/actions/${setting}/${value}`)
+  } else {
+    return getRequest(`clusters/${clusterName}/settings/actions/set/${setting}/${value}`)
+  }
+}
+
+function updateGraphiteWhiteList(clusterName, whiteListValue) {
+  return postRequest(`clusters/${clusterName}/settings/actions/set-graphite-filterlist/whitelist`, {
+    whitelist: whiteListValue
+  })
+}
+
+function updateGraphiteBlackList(clusterName, blackListValue) {
+  return postRequest(`clusters/${clusterName}/settings/actions/set-graphite-filterlist/blacklist`, {
+    blacklist: blackListValue
+  })
 }
