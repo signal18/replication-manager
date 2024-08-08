@@ -70,7 +70,7 @@ function Dropdown({
           )}
         </MenuButton>
         <MenuList width={width} className={menuListClassName}>
-          {options.map((option, index) => (
+          {options?.map((option, index) => (
             <MenuItem
               width={width}
               key={index}
