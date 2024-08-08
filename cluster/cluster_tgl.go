@@ -609,3 +609,13 @@ func (cluster *Cluster) SwitchDynamicTopology() {
 func (cluster *Cluster) SwitchReplicationNoRelay() {
 	cluster.Conf.ReplicationNoRelay = !cluster.Conf.ReplicationNoRelay
 }
+
+func (cluster *Cluster) SwitchForceWriteConfig() {
+	cluster.Conf.ProvDBForceWriteConfig = !cluster.Conf.ProvDBForceWriteConfig
+
+	if cluster.Conf.ProvDBForceWriteConfig {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Configurator force write config files activated. Will replace config files on next provision.")
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Configurator force write config files de-activated. Will create config files with suffix (.new) for conflicting files on next provision.")
+	}
+}
