@@ -74,7 +74,6 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	Conn, err := server.GetNewDBConn()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error connecting for retrieve jobs data from %s: %s", server.URL, err)
-		server.JobsCreateTable()
 		return err
 	}
 	defer Conn.Close()
