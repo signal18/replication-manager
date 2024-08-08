@@ -49,3 +49,25 @@ export const convertObjectToArray = (inputObject) => {
     return { name: key, value: key }
   })
 }
+
+export const getDaysInMonth = (month, year = new Date().getFullYear()) => {
+  // Create a date object with the next month and the first day
+  const date = new Date(year, month - 1, 1)
+
+  // Set the date object to the last day of the previous month
+  date.setMonth(date.getMonth() + 1)
+  date.setDate(0)
+  // Get the number of days in the month
+  const daysInMonth = date.getDate()
+
+  // Create an array with the days of the month
+  return Array.from({ length: daysInMonth }, (_, i) => {
+    return { name: i + 1, value: i + 1 }
+  })
+}
+
+export const padWithZero = (number) => {
+  const res = number < 10 ? `0${number}` : number !== 'undefined' ? `${number}` : ''
+
+  return res
+}

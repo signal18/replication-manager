@@ -10,6 +10,8 @@ import ReplicationSettings from './ReplicationSettings'
 import RejoinSettings from './RejoinSettings'
 import BackupSettings from './BackupSettings'
 import SchedulerSettings from './SchedulerSettings'
+import ProxySettings from './ProxySettings'
+import GraphSettings from './GraphSettings'
 
 function Settings({ selectedCluster, user }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -102,6 +104,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isProxiesOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<ProxySettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Graphs'}
@@ -109,6 +112,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isGraphsOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<GraphSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Cloud18'}
