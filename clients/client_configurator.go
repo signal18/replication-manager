@@ -150,7 +150,7 @@ var configuratorCmd = &cobra.Command{
 					if event.Key == termbox.KeyCtrlS {
 						cluster.Save()
 						for _, server := range cluster.Servers {
-							err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv())
+							err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv(), cluster.RepMgrVersion)
 							if err != nil {
 								log.WithError(err).Fatalf("Generate database config failed %s", server.URL)
 							}
