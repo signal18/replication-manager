@@ -8,7 +8,7 @@ import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import RMSlider from '../../components/Sliders/RMSlider'
 import Dropdown from '../../components/Dropdown'
-import { convertObjectToArray } from '../../utility/common'
+import { convertObjectToArray, formatBytes } from '../../utility/common'
 import TextForm from '../../components/TextForm'
 
 function BackupSettings({ selectedCluster, user, openConfirmModal }) {
@@ -17,6 +17,11 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
   const [physicalBackupOptions, setPhysicalBackupOptions] = useState([])
   const [binlogBackupOptions, setBinlogBackupOptions] = useState([])
   const [binlogParseOptions, setBinlogParseOptions] = useState([])
+  const [sizeOptions, setSizeOptions] = useState(
+    [1024, 2048, 4096, 8192, 16384, 32768, 65536, 1048576].map((size) => {
+      return { name: formatBytes(size, 0), value: size }
+    })
+  )
   const [selectedBinlogBackupType, setselectedBinlogBackupType] = useState('')
 
   const {
@@ -150,14 +155,41 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
     },
     {
       key: 'Use Compression For Backup',
-      value: (
-        <RMSwitch
-          isChecked={selectedCluster?.config?.compressBackups}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for compress-backups?'}
-          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'compress-backups' }))}
-        />
-      )
+      value: [
+        {
+          key: 'Use Compression',
+          value: (
+            <RMSwitch
+              isChecked={selectedCluster?.config?.compressBackups}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              confirmTitle={'Confirm switch settings for compress-backups?'}
+              onChange={() =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'compress-backups' }))
+              }
+            />
+          )
+        },
+        {
+          key: 'Backup Buffer Size',
+          value: (
+            <Dropdown
+              buttonClassName={styles.dropdownButton}
+              options={sizeOptions}
+              selectedValue={selectedCluster?.config?.sstSendBuffer}
+              confirmTitle={`Confirm change 'sst-send-buffer' to `}
+              onChange={(size) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'sst-send-buffer',
+                    value: size
+                  })
+                )
+              }
+            />
+          )
+        }
+      ]
     },
     {
       key: 'Backup Binlogs',

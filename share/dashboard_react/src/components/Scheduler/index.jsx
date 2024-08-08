@@ -278,11 +278,6 @@ function Scheduler({ value, user, isSwitchChecked, onSave, hasSwitch = true, onS
     }
     setIsConfirmModalOpen(false)
   }
-  if (value === '0 * * * * *') {
-    console.log('selectedFromTime::', selectedFromTime)
-    console.log('selectedToTime::', selectedToTime)
-    console.log('selectedInterval::', selectedInterval)
-  }
 
   return (
     <VStack className={styles.scheduler} align='flex-start'>
