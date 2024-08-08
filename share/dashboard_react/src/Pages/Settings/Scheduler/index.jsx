@@ -1,17 +1,26 @@
 import { Flex, HStack, Radio, RadioGroup, VStack } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
-import Dropdown from '../Dropdown'
+import Dropdown from '../../../components/Dropdown'
 import styles from './styles.module.scss'
 import TimePicker from 'react-time-picker'
-import { getDaysInMonth, padWithZero } from '../../utility/common'
-import RMButton from '../RMButton'
-import ConfirmModal from '../Modals/ConfirmModal'
-import RMSwitch from '../RMSwitch'
-import RMIconButton from '../RMIconButton'
+import { getDaysInMonth, padWithZero } from '../../../utility/common'
+import RMButton from '../../../components/RMButton'
+import ConfirmModal from '../../../components/Modals/ConfirmModal'
+import RMSwitch from '../../../components/RMSwitch'
+import RMIconButton from '../../../components/RMIconButton'
 import { GrPowerReset } from 'react-icons/gr'
-import Message from '../Message'
+import Message from '../../../components/Message'
 
-function Scheduler({ value, user, isSwitchChecked, onSave, hasSwitch = true, onSwitchChange, confirmTitle }) {
+function Scheduler({
+  value,
+  user,
+  isSwitchChecked,
+  onSave,
+  hasSwitch = true,
+  onSwitchChange,
+  confirmTitle,
+  switchConfirmTitle
+}) {
   const [currentValue, setCurrentValue] = useState(value)
   const [previousValue, setPreviousValue] = useState(value)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -186,18 +195,6 @@ function Scheduler({ value, user, isSwitchChecked, onSave, hasSwitch = true, onS
         if (arrIntervalTime && parseInt(arrIntervalTime[2]) > 0) {
           finalSec += '/' + parseInt(arrIntervalTime[2])
         }
-        // let finalHour = `${parseInt(arrFromTime[0])}-${!isNaN(arrToTime[0]) ? parseInt(arrToTime[0]) : arrToTime[0]}`
-        // if (arrIntervalTime && parseInt(arrIntervalTime[0]) > 0) {
-        //   finalHour += '-' + parseInt(arrIntervalTime[0])
-        // }
-        // let finalMin = `${parseInt(arrFromTime[1])}-${!isNaN(arrToTime[1]) ? parseInt(arrToTime[1]) : arrToTime[1]}`
-        // if (arrIntervalTime && parseInt(arrIntervalTime[1]) > 0) {
-        //   finalMin += '/' + parseInt(arrIntervalTime[1])
-        // }
-        // let finalSec = `${parseInt(arrFromTime[2])}-${!isNaN(arrToTime[2]) ? parseInt(arrToTime[2]) : arrToTime[2]}`
-        // if (arrIntervalTime && parseInt(arrIntervalTime[2]) > 0) {
-        //   finalSec += '/' + parseInt(arrIntervalTime[2])
-        // }
 
         //assemble final string to pass in api
         const finalValue = `${finalSec} ${finalMin} ${finalHour} ${finalDay} ${finalMonth} ${finalWeek}`
@@ -283,7 +280,7 @@ function Scheduler({ value, user, isSwitchChecked, onSave, hasSwitch = true, onS
     <VStack className={styles.scheduler} align='flex-start'>
       {hasSwitch && (
         <RMSwitch
-          confirmTitle={'Confirm switch settings for scheduler-db-servers-logical-backup?'}
+          confirmTitle={switchConfirmTitle}
           onChange={onSwitchChange}
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={isSwitchChecked}

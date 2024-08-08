@@ -67,22 +67,20 @@ export async function postRequest(apiUrl, params, authValue = 1) {
       body: JSON.stringify(params)
     })
 
-    if (!response.ok) {
-      // Handle HTTP errors
-      const contentType = response.headers.get('Content-Type')
-      if (contentType && contentType.includes('application/json')) {
-        const data = await response.json()
-        throw new Error(data.message)
-      } else if (contentType && contentType.includes('text/plain')) {
-        // Handle plain text response
-        const textData = await response.text()
-        throw new Error(textData)
-      }
+    // Handle HTTP errors
+    const contentType = response.headers.get('Content-Type')
+    let data = null
+    if (contentType && contentType.includes('application/json')) {
+      data = await response.json()
+    } else if (contentType && contentType.includes('text/plain')) {
+      // Handle plain text response
+      const data = await response.text()
     }
 
-    // Assuming the response is JSON
-    const data = await response.json()
-    return data
+    return {
+      data,
+      status: response.status
+    }
   } catch (error) {
     // Handle other errors (e.g., network issues)
     console.error('Error:', error)
