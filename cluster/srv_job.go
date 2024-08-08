@@ -22,7 +22,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -2184,24 +2183,6 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 
 	//Log Task - Debug Level
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job run via ssh script: %s ,out: %s ,err: %s", scriptpath, out, stderr.String())
-
-	res := new(JobResult)
-	val := reflect.ValueOf(res).Elem()
-	for i := 0; i < val.NumField(); i++ {
-		jobname := val.Type().Field(i).Name
-		if strings.Contains(strings.ToLower(string(out)), strings.ToLower("no "+jobname)) {
-			val.Field(i).SetBool(false)
-		} else {
-			val.Field(i).SetBool(true)
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Database jobs run via SSH: %s", val.Type().Field(i).Name)
-			lower := strings.ToLower(jobname)
-			if strings.HasPrefix(lower, "reseed") || strings.HasPrefix(lower, "flashback") {
-				server.SetInReseedBackup(false)
-			}
-		}
-	}
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Exec via ssh  : %s", res)
 	return nil
 }
 

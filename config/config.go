@@ -2101,10 +2101,8 @@ type JobResult struct {
 	Optimize              bool `json:"optimize"`
 	Reseedxtrabackup      bool `json:"reseedxtrabackup"`
 	Reseedmariabackup     bool `json:"reseedmariabackup"`
-	Reseedmysqldump       bool `json:"reseedmysqldump"`
 	Flashbackxtrabackup   bool `json:"flashbackxtrabackup"`
 	Flashbackmariadbackup bool `json:"flashbackmariadbackup"`
-	Flashbackmysqldump    bool `json:"flashbackmysqldump"`
 	Stop                  bool `json:"stop"`
 	Start                 bool `json:"start"`
 	Restart               bool `json:"restart"`
@@ -2178,11 +2176,6 @@ type ServerTaskList struct {
 type JobEntries struct {
 	Header  map[string]bool           `json:"header"`
 	Servers map[string]ServerTaskList `json:"servers"`
-}
-
-func (conf *Config) GetJobTypes() map[string]bool {
-	var res = JobResult{}
-	return GetLabelsAsMap(res)
 }
 
 func GetTagsForLog(module int) string {

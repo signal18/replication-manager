@@ -262,8 +262,6 @@ type Alerts struct {
 	Warnings []state.StateHttp `json:"warnings"`
 }
 
-type JobResult config.JobResult
-
 type Diff struct {
 	Server        string `json:"serverName"`
 	VariableValue string `json:"variableValue"`
