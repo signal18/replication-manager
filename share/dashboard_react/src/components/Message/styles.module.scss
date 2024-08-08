@@ -1,0 +1,10 @@
+.message {
+  font-size: rem(16);
+  font-weight: 500;
+  &.error {
+    color: var(--danger-primary-color) !important;
+  }
+  &.success {
+    color: var(--success-primary-color) !important;
+  }
+}

@@ -34,7 +34,7 @@ function Dropdown({
     if (confirmTitle && option.value !== 'script') {
       openConfirmModal()
     } else {
-      onChange(option?.value)
+      onChange(option)
     }
   }
 
