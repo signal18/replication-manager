@@ -26,7 +26,7 @@
       .menuList {
         min-width: rem(80);
         width: rem(80);
-        max-height: rem(400);
+        max-height: rem(350);
         overflow: auto;
         //   button {
         //     width: rem(80) !important;
@@ -41,14 +41,14 @@
         div[class*='react-time-picker__inputGroup'] {
           display: flex;
           justify-content: space-evenly;
-          input {
-            width: rem(40) !important;
-            height: rem(40);
-            border-radius: $border-radius-xs;
-            margin: auto;
+          background-color: var(--white-color);
+          padding: rem(4) rem(8);
+          border-radius: $border-radius-xs;
+
+          font-size: rem(16);
+          input,
+          span {
             font-weight: bold;
-            text-align: center;
-            font-size: rem(16);
           }
 
           [class*='__inputGroup__divider'] {
