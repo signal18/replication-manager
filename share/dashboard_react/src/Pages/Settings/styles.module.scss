@@ -153,5 +153,13 @@ div.settingsContainer {
         font-style: italic;
       }
     }
+    .maxConnectMarkLabel {
+      width: rem(52);
+      min-width: rem(52);
+      height: rem(32);
+      margin-top: rem(-40);
+      margin-left: rem(-24);
+      border-radius: $border-radius-sm;
+    }
   }
 }
