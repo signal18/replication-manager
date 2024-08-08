@@ -1592,12 +1592,12 @@ func (c *Cluster) AddProxy(prx DatabaseProxy) {
 }
 
 func (cluster *Cluster) ConfigDiscovery() error {
-	server := cluster.GetMaster()
-	if server != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cluster configurartion discovery can ony be done on a valid leader")
-		return errors.New("Cluster configurartion discovery can ony be done on a valid leader")
+	master := cluster.GetMaster()
+	if master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cluster configuration discovery can only be done on a valid leader")
+		return errors.New("Cluster configuration discovery can only be done on a valid leader")
 	}
-	cluster.Configurator.ConfigDiscovery(server.Variables, server.Plugins)
+	cluster.Configurator.ConfigDiscovery(master.Variables, master.Plugins)
 	cluster.SetDBCoresFromConfigurator()
 	cluster.SetDBMemoryFromConfigurator()
 	cluster.SetDBIOPSFromConfigurator()
