@@ -150,8 +150,8 @@ type Cluster struct {
 	termlength                int                         `json:"-"`
 	runUUID                   string                      `json:"-"`
 	cfgGroupDisplay           string                      `json:"-"`
-	repmgrVersion             string                      `json:"-"`
-	repmgrHostname            string                      `json:"-"`
+	RepMgrVersion             string                      `json:"-"`
+	RepMgrHostname            string                      `json:"-"`
 	exitMsg                   string                      `json:"-"`
 	exit                      bool                        `json:"-"`
 	canFlashBack              bool                        `json:"-"`
@@ -296,7 +296,7 @@ const (
 )
 
 // Init initial cluster definition
-func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, repmgrVersion string, repmgrHostname string) error {
+func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, RepMgrVersion string, RepMgrHostname string) error {
 	cluster.Confs = confs
 
 	cluster.Conf = confs.ConfInit
@@ -307,8 +307,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.Name = cfgGroup
 
 	cluster.runUUID = runUUID
-	cluster.repmgrHostname = repmgrHostname
-	cluster.repmgrVersion = repmgrVersion
+	cluster.RepMgrHostname = RepMgrHostname
+	cluster.RepMgrVersion = RepMgrVersion
 
 	cluster.InitFromConf()
 	cluster.NewClusterGraphite()

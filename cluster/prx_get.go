@@ -79,7 +79,7 @@ func (proxy *Proxy) GetJanitorWeight() string {
 func (proxy *Proxy) GetProxyConfig() string {
 	cluster := proxy.ClusterGroup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
-	err := cluster.Configurator.GenerateProxyConfig(proxy.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, proxy.GetEnv(), cluster.repmgrVersion)
+	err := cluster.Configurator.GenerateProxyConfig(proxy.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, proxy.GetEnv(), cluster.RepMgrVersion)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, " "+proxy.Datadir+"/config.tar.gz error: %s", err)
 	}
