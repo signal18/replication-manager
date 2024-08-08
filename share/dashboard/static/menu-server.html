@@ -10,7 +10,7 @@
       </md-button>
       </md-menu-item>
       <md-menu-item ng-click="dbpromote(server.id,server.host,server.port)">
-      <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-switchover']==false  || server.isSlave==false">
+      <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-switchover']==false  || server.isSlave==false || selectedCluster.inRollingRestart == true">
          <md-icon md-menu-align-target class="fas fa-star"></md-icon>
          Promote To Leader
       </md-button>
@@ -56,31 +56,31 @@
          </md-button>
          <md-menu-content>
             <md-menu-item ng-if="server.id==master.id" ng-click="backupphysical(server.id,server.host,server.port)">
-               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false || server.isReseeding == true">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false || server.isReseeding == true || selectedCluster.inRollingRestart == true">
                   <md-icon md-menu-align-target class="fas fa-save"></md-icon>
                   Physical Backup
                </md-button>
             </md-menu-item>
             <md-menu-item ng-if="server.id==master.id" ng-click="dbdump(server.id,server.host,server.port)">
-               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false || server.isReseeding == true">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false || server.isReseeding == true || selectedCluster.inRollingRestart == true">
                   <md-icon md-menu-align-target class="fas fa-save"></md-icon>
                   Logical Backup
                </md-button>
             </md-menu-item>
             <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedlogical(server.id,server.host,server.port)">
-               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false || server.isReseeding == true">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false || server.isReseeding == true || selectedCluster.inRollingRestart == true">
                   <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
                   Reseed Logical From Backup
                </md-button>
             </md-menu-item>
             <md-menu-item ng-if="server.id!=master.id" ng-click="  dbreseedmysqldumpmaster(server.id,server.host,server.port)">
-               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false || server.isReseeding == true">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false || server.isReseeding == true || selectedCluster.inRollingRestart == true">
                   <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
                   Reseed Logical From Master
                </md-button>
             </md-menu-item>
             <md-menu-item ng-if="server.id!=master.id" ng-click="dbreseedphysicalbackup(server.id,server.host,server.port)">
-               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false || server.isReseeding == true">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false || server.isReseeding == true || selectedCluster.inRollingRestart == true">
                   <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
                   Reseed Physical From Backup
                </md-button>
@@ -92,7 +92,7 @@
                </md-button>
             </md-menu-item>
             <md-menu-item ng-click="flushlogs(server.id,server.host,server.port)">
-               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false || server.isReseeding == true">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-backup']==false || server.isReseeding == true || selectedCluster.inRollingRestart == true">
                   <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
                   Flush logs
                </md-button>
@@ -117,7 +117,7 @@
          </md-button>
          <md-menu-content>
             <md-menu-item ng-click="dbstop(server.id,server.host,server.port)">
-               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-stop']==false">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-stop']==false || selectedCluster.inRollingRestart == true">
                   <md-icon md-menu-align-target class="fas fa-stop"></md-icon>
                   Stop Database
                </md-button>
@@ -135,13 +135,13 @@
                </md-button>
             </md-menu-item>
             <md-menu-item ng-click="dbunprovision(server.id,server.host,server.port)">
-               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['prov-db-unprovision']==false">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['prov-db-unprovision']==false || selectedCluster.inRollingRestart == true">
                   <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
                   Unprovision Database
                </md-button>
             </md-menu-item>
             <md-menu-item ng-click="dropmonitor(server.host,server.port)">
-               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-drop-monitor']==false">
+               <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['cluster-drop-monitor']==false || selectedCluster.inRollingRestart == true">
                   <md-icon md-menu-align-target class="fas fa-trash"></md-icon>
                   Remove Monitor
                </md-button>
