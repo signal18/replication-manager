@@ -111,6 +111,7 @@ type Cluster struct {
 	UptimeSemiSync                string               `json:"uptimeSemisync"`
 	MonitorSpin                   string               `json:"monitorSpin"`
 	WorkLoad                      config.WorkLoad      `json:"workLoad"`
+	Logrus                        *log.Logger          `json:"-"`
 	LogPushover                   *log.Logger          `json:"-"`
 	Log                           s18log.HttpLog       `json:"log"`
 	LogTask                       s18log.HttpLog       `json:"logTask"`

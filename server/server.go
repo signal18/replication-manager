@@ -112,6 +112,7 @@ type ReplicationManager struct {
 	v3Config                                         Repmanv3Config                 `json:"-"`
 	cloud18CheckSum                                  hash.Hash                      `json:"-"`
 	clog                                             *clog.Logger                   `json:"-"`
+	Logrus                                           *log.Logger                    `json:"-"`
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -848,7 +849,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 				dbConfig.SetConfigType("yaml")
 				file, err := os.ReadFile(conf.ProvOpensvcCollectorAccount)
 				if err != nil {
-					log.Errorf("Provide OpenSVC account file : %s", err)
+					repman.Logrus.Errorf("Provide OpenSVC account file : %s", err)
 
 				}
 
@@ -873,7 +874,7 @@ func (repman *ReplicationManager) DiscoverClusters(FirstRead *viper.Viper) strin
 
 		if strings.Contains(k, ".") {
 			mycluster := strings.Split(k, ".")[0]
-			//	log.Infof("Evaluate key %s %s", mycluster, k)
+			//	repman.Logrus.Infof("Evaluate key %s %s", mycluster, k)
 			if strings.ToLower(mycluster) != "default" {
 				if strings.HasPrefix(mycluster, "saved-") {
 					mycluster = strings.TrimPrefix(mycluster, "saved-")
@@ -882,7 +883,7 @@ func (repman *ReplicationManager) DiscoverClusters(FirstRead *viper.Viper) strin
 				if !ok {
 					clusterDiscovery[mycluster] = mycluster
 					discoveries = append(discoveries, mycluster)
-					log.Infof("Cluster discover from config: %s", strings.Split(k, ".")[0])
+					repman.Logrus.Infof("Cluster discover from config: %s", strings.Split(k, ".")[0])
 				}
 			}
 
@@ -919,16 +920,16 @@ func (repman *ReplicationManager) initEmbed() error {
 
 		file, err := etc.EmbededDbModuleFS.ReadFile("local/embed/config.toml")
 		if err != nil {
-			log.Errorf("failed opening file because: %s", err.Error())
+			repman.Logrus.Errorf("failed opening file because: %s", err.Error())
 			return err
 		}
 		err = os.WriteFile("./.replication-manager/config.toml", file, 0644) //remplacer nil par l'obj créer pour config.toml dans etc/local/embed
 		if err != nil {
-			log.Errorf("failed write file because: %s", err.Error())
+			repman.Logrus.Errorf("failed write file because: %s", err.Error())
 			return err
 		}
 		if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
-			log.Errorf("failed create ./.replication-manager/config.toml file because: %s", err.Error())
+			repman.Logrus.Errorf("failed create ./.replication-manager/config.toml file because: %s", err.Error())
 			return err
 		}
 	}
@@ -937,6 +938,7 @@ func (repman *ReplicationManager) initEmbed() error {
 }
 
 func (repman *ReplicationManager) InitConfig(conf config.Config) {
+	RepMan.Logrus = log.New()
 	repman.VersionConfs = make(map[string]*config.ConfVersion)
 	repman.ImmuableFlagMaps = make(map[string]map[string]interface{})
 	repman.DynamicFlagMaps = make(map[string]map[string]interface{})
@@ -961,8 +963,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	//if a config file is already define
 	if conf.ConfigFile != "" {
 		if _, err := os.Stat(conf.ConfigFile); os.IsNotExist(err) {
-			//	log.Fatal("No config file " + conf.ConfigFile)
-			log.Error("No config file " + conf.ConfigFile)
+			//	repman.Logrus.Fatal("No config file " + conf.ConfigFile)
+			repman.Logrus.Error("No config file " + conf.ConfigFile)
 		}
 		fistRead.SetConfigFile(conf.ConfigFile)
 
@@ -980,17 +982,17 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		if conf.WithTarball == "ON" {
 			fistRead.AddConfigPath("/usr/local/replication-manager/etc")
 			if _, err := os.Stat("/usr/local/replication-manager/etc/config.toml"); os.IsNotExist(err) {
-				log.Warning("No config file /usr/local/replication-manager/etc/config.toml")
+				repman.Logrus.Warning("No config file /usr/local/replication-manager/etc/config.toml")
 			}
 		}
 		//if embed, add config path
 		if conf.WithEmbed == "ON" {
 			if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
-				log.Warning("No config file ./.replication-manager/config.toml ")
+				repman.Logrus.Warning("No config file ./.replication-manager/config.toml ")
 			}
 		} else {
 			if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
-				log.Warning("No config file /etc/replication-manager/config.toml ")
+				repman.Logrus.Warning("No config file /etc/replication-manager/config.toml ")
 			}
 		}
 	}
@@ -1002,17 +1004,17 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	fistRead.SetEnvPrefix("DEFAULT")
 	err := fistRead.ReadInConfig()
 	if err == nil {
-		log.WithFields(log.Fields{
+		repman.Logrus.WithFields(log.Fields{
 			"file": fistRead.ConfigFileUsed(),
 		}).Debug("Using config file")
 	} else {
-		log.Errorf("Could not parse config file: %s", err)
+		repman.Logrus.Errorf("Could not parse config file: %s", err)
 	}
 
 	//recup tous les param set dans le default (avec les lignes de commandes)
 	//err = fistRead.MergeInConfig()
 	if err != nil {
-		log.Fatal("Config error in " + conf.ClusterConfigPath + ":" + err.Error())
+		repman.Logrus.Fatal("Config error in " + conf.ClusterConfigPath + ":" + err.Error())
 	}
 	secRead := fistRead.Sub("DEFAULT")
 	//var test config.Config
@@ -1038,10 +1040,10 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	// Proceed include files
 	//if include is defined in a config file
 	if fistRead.GetString("default.include") != "" {
-		log.Info("Reading default section include directory: " + fistRead.GetString("default.include"))
+		repman.Logrus.Info("Reading default section include directory: " + fistRead.GetString("default.include"))
 
 		if _, err := os.Stat(fistRead.GetString("default.include")); os.IsNotExist(err) {
-			log.Warning("Include config directory does not exist " + conf.Include)
+			repman.Logrus.Warning("Include config directory does not exist " + conf.Include)
 		} else {
 			//if this path exist, set cluster config path to it
 			conf.ClusterConfigPath = fistRead.GetString("default.include")
@@ -1050,7 +1052,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//load files from the include path
 		files, err := os.ReadDir(conf.ClusterConfigPath)
 		if err != nil {
-			log.Infof("No config include directory %s ", conf.ClusterConfigPath)
+			repman.Logrus.Infof("No config include directory %s ", conf.ClusterConfigPath)
 		}
 		//read and set config from all files in the include path
 		for _, f := range files {
@@ -1065,7 +1067,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 				err := fistRead.MergeInConfig()
 				if err != nil {
-					log.Fatal("Config error in " + conf.ClusterConfigPath + "/" + f.Name() + ":" + err.Error())
+					repman.Logrus.Fatal("Config error in " + conf.ClusterConfigPath + "/" + f.Name() + ":" + err.Error())
 				}
 
 				//recup tous les param set dans le include
@@ -1074,7 +1076,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			}
 		}
 	} else {
-		log.Warning("No include directory in default section")
+		repman.Logrus.Warning("No include directory in default section")
 	}
 
 	tmp_read := fistRead.Sub("Default")
@@ -1095,7 +1097,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//load files from the working dir
 		files, err := os.ReadDir(conf.WorkingDir)
 		if err != nil {
-			log.Infof("No working directory %s ", conf.WorkingDir)
+			repman.Logrus.Infof("No working directory %s ", conf.WorkingDir)
 		}
 
 		//read and set config from all files in the working dir
@@ -1105,16 +1107,16 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 				dynRead.SetConfigName("overwrite-" + f.Name())
 				if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml"); os.IsNotExist(err) || f.Name() == "overwrite" {
 					if f.Name() != "overwrite" {
-						log.Warning("No monitoring saved config found " + conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
+						repman.Logrus.Warning("No monitoring saved config found " + conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
 					}
 
 				} else {
 
-					log.Infof("Parsing saved config from working directory %s ", conf.WorkingDir+"/"+f.Name()+"/"+f.Name()+".toml")
+					repman.Logrus.Infof("Parsing saved config from working directory %s ", conf.WorkingDir+"/"+f.Name()+"/"+f.Name()+".toml")
 					fistRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
 					err := fistRead.MergeInConfig()
 					if err != nil {
-						log.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
+						repman.Logrus.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
 					}
 				}
 			}
@@ -1122,12 +1124,12 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 		//to read and set cloud18.toml config file if exist
 		if _, err := os.Stat(conf.WorkingDir + "/cloud18.toml"); os.IsNotExist(err) {
-			log.Infof("No monitoring saved config found %s", conf.WorkingDir+"/cloud18.toml")
+			repman.Logrus.Infof("No monitoring saved config found %s", conf.WorkingDir+"/cloud18.toml")
 		} else {
 			tmp_read.SetConfigFile(conf.WorkingDir + "/cloud18.toml")
 			err := tmp_read.MergeInConfig()
 			if err != nil {
-				log.Error("Config error in " + conf.WorkingDir + "/cloud18.toml:" + err.Error())
+				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/cloud18.toml:" + err.Error())
 			}
 		}
 
@@ -1135,7 +1137,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		//fmt.Printf("%s\n", dynRead.AllKeys())
 
 	} else {
-		log.Warning("No monitoring-save-config variable in default section config change lost on restart")
+		repman.Logrus.Warning("No monitoring-save-config variable in default section config change lost on restart")
 	}
 
 	//contain a list of cluster name
@@ -1146,7 +1148,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	if strClusters == "" {
 		// Discovering the clusters from all merged conf files build clusterDiscovery map
 		strClusters = repman.DiscoverClusters(fistRead)
-		log.WithField("clusters", strClusters).Infof("Clusters discovered: %s", strClusters)
+		repman.Logrus.WithField("clusters", strClusters).Infof("Clusters discovered: %s", strClusters)
 	}
 
 	cfgGroupIndex = 0
@@ -1155,7 +1157,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 	//cf1.Debug()
 	if cf1 == nil {
-		log.Warning("config.toml has no [Default] configuration group and config group has not been specified")
+		repman.Logrus.Warning("config.toml has no [Default] configuration group and config group has not been specified")
 	} else {
 		//save all default section in conf
 		cf1.AutomaticEnv()
@@ -1173,7 +1175,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	if strClusters == "" {
 
 		//add default to the clusterlist if no cluster discover
-		log.WithField("cluster", "Default").Debug("No clusters dicoverd add Default Cluster")
+		repman.Logrus.WithField("cluster", "Default").Debug("No clusters dicoverd add Default Cluster")
 
 		strClusters += "Default"
 
@@ -1192,11 +1194,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		if conf.IsVaultUsed() && conf.IsPath(conf.GitAccesToken) {
 			conn, err := conf.GetVaultConnection()
 			if err != nil {
-				log.Printf("Error vault connection %v", err)
+				repman.Logrus.Printf("Error vault connection %v", err)
 			}
 			tok, err = conf.GetVaultCredentials(conn, conf.GitAccesToken, "git-acces-token")
 			if err != nil {
-				log.Printf("Error get vault git-acces-token value %v", err)
+				repman.Logrus.Printf("Error get vault git-acces-token value %v", err)
 				tok = conf.GetDecryptedValue("git-acces-token")
 			} else {
 				var Secrets config.Secret
@@ -1229,7 +1231,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			//conf.GitAddReadMe(conf.GitUrl, conf.GitAccesToken, conf.GitUsername, conf.WorkingDir)
 
 		} else if conf.LogGit {
-			log.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof("Could not get personal access token from gitlab")
+			repman.Logrus.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof("Could not get personal access token from gitlab")
 		}
 
 	}
@@ -1243,7 +1245,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	}
 
 	cfgGroupIndex--
-	log.WithField("cluster", repman.ClusterList[cfgGroupIndex]).Debug("Default Cluster set")
+	repman.Logrus.WithField("cluster", repman.ClusterList[cfgGroupIndex]).Debug("Default Cluster set")
 
 	//fmt.Printf("%+v\n", fistRead.AllSettings())
 	repman.Confs = confs
@@ -1282,13 +1284,13 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 
 	//if name cluster is defined
 	if cluster != "" {
-		log.WithField("group", cluster).Debug("Reading configuration group")
+		repman.Logrus.WithField("group", cluster).Debug("Reading configuration group")
 
 		//extract the cluster config from the viper
 		cf2 := fistRead.Sub(cluster)
 
 		if cf2 == nil {
-			log.WithField("group", cluster).Infof("Could not parse configuration group")
+			repman.Logrus.WithField("group", cluster).Infof("Could not parse configuration group")
 		} else {
 			cf2.AutomaticEnv()
 			cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
@@ -1324,7 +1326,7 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 
 			//cf4 := repman.CleanupDynamicConfig(clustImmuableMap, cf3)
 			if cf3 == nil {
-				log.WithField("group", cluster).Info("Could not parse saved configuration group")
+				repman.Logrus.WithField("group", cluster).Info("Could not parse saved configuration group")
 			} else {
 				for _, f := range cf3.AllKeys() {
 					v, ok := clustImmuableMap[f]
@@ -1442,7 +1444,7 @@ func (repman *ReplicationManager) Run() error {
 	if repman.CpuProfile != "" {
 		fcpupprof, err := os.Create(repman.CpuProfile)
 		if err != nil {
-			log.Fatal(err)
+			repman.Logrus.Fatal(err)
 		}
 		pprof.StartCPUProfile(fcpupprof)
 
@@ -1460,22 +1462,22 @@ func (repman *ReplicationManager) Run() error {
 	regtest := new(regtest.RegTest)
 	repman.Tests = regtest.GetTests()
 	if err != nil {
-		log.Fatalln("ERROR: replication-manager could not get hostname from system")
+		repman.Logrus.Fatalln("ERROR: replication-manager could not get hostname from system")
 	}
 
 	if repman.Conf.LogSyslog {
 		hook, err := lSyslog.NewSyslogHook("udp", "localhost:514", syslog.LOG_INFO, "")
 		if err == nil {
-			log.AddHook(hook)
+			repman.Logrus.AddHook(hook)
 		}
 	}
 
 	if repman.Conf.LogLevel > 1 {
-		log.SetLevel(log.DebugLevel)
+		repman.Logrus.SetLevel(log.DebugLevel)
 	}
 
 	if repman.Conf.LogFile != "" {
-		log.WithField("version", repman.Version).Info("Log to file: " + repman.Conf.LogFile)
+		repman.Logrus.WithField("version", repman.Version).Info("Log to file: " + repman.Conf.LogFile)
 		hook, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
 			Filename:   repman.Conf.LogFile,
 			MaxSize:    repman.Conf.LogRotateMaxSize,
@@ -1489,19 +1491,19 @@ func (repman *ReplicationManager) Run() error {
 			},
 		})
 		if err != nil {
-			log.WithError(err).Error("Can't init log file")
+			repman.Logrus.WithError(err).Error("Can't init log file")
 		}
-		log.AddHook(hook)
+		repman.Logrus.AddHook(hook)
 	}
 
 	if !repman.Conf.Daemon {
 		err := termbox.Init()
 		if err != nil {
-			log.WithError(err).Fatal("Termbox initialization error")
+			repman.Logrus.WithError(err).Fatal("Termbox initialization error")
 		}
 	}
 	repman.termlength = 40
-	log.WithField("version", repman.Version).Info("Replication-Manager started in daemon mode")
+	repman.Logrus.WithField("version", repman.Version).Info("Replication-Manager started in daemon mode")
 	loglen := repman.termlength - 9 - (len(strings.Split(repman.Conf.Hosts, ",")) * 3)
 	repman.tlog = s18log.NewTermLog(loglen)
 	repman.Logs = s18log.NewHttpLog(80)
@@ -1510,11 +1512,11 @@ func (repman *ReplicationManager) Run() error {
 	repman.InitGrants()
 	repman.ServiceRepos, err = repman.Conf.GetDockerRepos(repman.Conf.ShareDir+"/repo/repos.json", repman.Conf.Test)
 	if err != nil {
-		log.WithError(err).Errorf("Initialization docker repo failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
+		repman.Logrus.WithError(err).Errorf("Initialization docker repo failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
 	}
 	repman.ServiceTarballs, err = repman.Conf.GetTarballs(repman.Conf.Test)
 	if err != nil {
-		log.WithError(err).Errorf("Initialization tarballs repo failed: %s %s", repman.Conf.ShareDir+"/repo/tarballs.json", err)
+		repman.Logrus.WithError(err).Errorf("Initialization tarballs repo failed: %s %s", repman.Conf.ShareDir+"/repo/tarballs.json", err)
 	}
 
 	repman.ServiceVM = repman.Conf.GetVMType()
@@ -1538,16 +1540,16 @@ func (repman *ReplicationManager) Run() error {
 			repman.OpenSVC.CertsDERSecret = repman.Conf.GetDecryptedValue("opensvc-p12-secret")
 			err := repman.OpenSVC.LoadCert(repman.Conf.ProvOpensvcP12Certificate)
 			if err != nil {
-				log.Fatalf("Cannot load OpenSVC cluster certificate %s ", err)
+				repman.Logrus.Fatalf("Cannot load OpenSVC cluster certificate %s ", err)
 			}
 		}
 		//don't Bootstrap opensvc to speedup test
 		if repman.Conf.ProvRegister {
 			err := repman.OpenSVC.Bootstrap(repman.Conf.ShareDir + "/opensvc/")
 			if err != nil {
-				log.Fatalf("%s", err)
+				repman.Logrus.Fatalf("%s", err)
 			}
-			log.Fatalf("Registration to %s collector done", repman.Conf.ProvHost)
+			repman.Logrus.Fatalf("Registration to %s collector done", repman.Conf.ProvHost)
 		} else {
 			repman.OpenSVC.User, repman.OpenSVC.Pass = misc.SplitPair(repman.Conf.ProvUser)
 		}
@@ -1568,20 +1570,20 @@ func (repman *ReplicationManager) Run() error {
 		})
 
 		go graphite.RunCarbon(&repman.Conf)
-		log.WithFields(log.Fields{
+		repman.Logrus.WithFields(log.Fields{
 			"metricport": repman.Conf.GraphiteCarbonPort,
 			"httpport":   repman.Conf.GraphiteCarbonServerPort,
 		}).Info("Carbon server started")
 		time.Sleep(2 * time.Second)
 		go graphite.RunCarbonApi(&repman.Conf)
-		log.WithField("apiport", repman.Conf.GraphiteCarbonApiPort).Info("Carbon server API started")
+		repman.Logrus.WithField("apiport", repman.Conf.GraphiteCarbonApiPort).Info("Carbon server API started")
 	}
 
 	go repman.MountS3()
 
 	//repman.InitRestic()
-	log.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
-	log.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
+	repman.Logrus.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
+	repman.Logrus.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
 
 	// If there's an existing encryption key, decrypt the passwords
 
@@ -1629,11 +1631,11 @@ func (repman *ReplicationManager) Run() error {
 						file, err := os.Open(repman.Conf.WorkingDir + "/cloud18.toml")
 						if err != nil {
 							if os.IsPermission(err) {
-								log.Infof("File permission denied: %s", repman.Conf.WorkingDir+"/cloud18.toml")
+								repman.Logrus.Infof("File permission denied: %s", repman.Conf.WorkingDir+"/cloud18.toml")
 							}
 						} else {
 							if _, err := io.Copy(new_h, file); err != nil {
-								log.Infof("Error during computing cloud18.toml hash: %s", err)
+								repman.Logrus.Infof("Error during computing cloud18.toml hash: %s", err)
 							} else {
 								repman.cloud18CheckSum = new_h
 							}
@@ -1645,12 +1647,12 @@ func (repman *ReplicationManager) Run() error {
 						file, err := os.Open(repman.Conf.WorkingDir + "/cloud18.toml")
 						if err != nil {
 							if os.IsPermission(err) {
-								log.Infof("File permission denied: %s", repman.Conf.WorkingDir+"/cloud18.toml")
+								repman.Logrus.Infof("File permission denied: %s", repman.Conf.WorkingDir+"/cloud18.toml")
 							}
 						} else {
 							new_h := md5.New()
 							if _, err := io.Copy(new_h, file); err != nil {
-								log.Infof("Error during computing cloud18.toml hash: %s", err)
+								repman.Logrus.Infof("Error during computing cloud18.toml hash: %s", err)
 							} else if !bytes.Equal(repman.cloud18CheckSum.Sum(nil), new_h.Sum(nil)) {
 								repman.Conf.ReadCloud18Config(repman.ViperConfig)
 								repman.cloud18CheckSum = new_h
@@ -1664,7 +1666,7 @@ func (repman *ReplicationManager) Run() error {
 					//then to check new file pulled in working dir
 					files, err := os.ReadDir(repman.Conf.WorkingDir)
 					if err != nil {
-						log.Infof("No working directory %s ", repman.Conf.WorkingDir)
+						repman.Logrus.Infof("No working directory %s ", repman.Conf.WorkingDir)
 					}
 					//check all dir of the datadir to check if a new cluster has been pull by git
 					for _, f := range files {
@@ -1689,7 +1691,7 @@ func (repman *ReplicationManager) Run() error {
 								repman.ViperConfig.SetConfigFile(repman.Conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
 								err := repman.ViperConfig.MergeInConfig()
 								if err != nil {
-									log.Errorf("Config error in " + repman.Conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
+									repman.Logrus.Errorf("Config error in " + repman.Conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
 								}
 								repman.Confs[f.Name()] = repman.GetClusterConfig(repman.ViperConfig, repman.Conf.ImmuableFlagMap, repman.Conf.DynamicFlagMap, f.Name(), repman.Conf)
 								repman.StartCluster(f.Name())
@@ -1748,7 +1750,7 @@ func (repman *ReplicationManager) Run() error {
 	// method invoked upon seeing signal
 	go func() {
 		s := <-sigs
-		log.Printf("RECEIVED SIGNAL: %s", s)
+		repman.Logrus.Printf("RECEIVED SIGNAL: %s", s)
 		repman.UnMountS3()
 		for _, cl := range repman.Clusters {
 			cl.Stop()
@@ -1768,7 +1770,7 @@ func (repman *ReplicationManager) Run() error {
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
 	}
 	if repman.exitMsg != "" {
-		log.Println(repman.exitMsg)
+		repman.Logrus.Println(repman.exitMsg)
 	}
 	fmt.Println("Cleanup before leaving")
 	if repman.CpuProfile != "" {
@@ -1783,6 +1785,7 @@ func (repman *ReplicationManager) Run() error {
 func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Cluster, error) {
 
 	repman.currentCluster = new(cluster.Cluster)
+	repman.currentCluster.Logrus = repman.Logrus
 
 	myClusterConf := repman.Confs[clusterName]
 	if myClusterConf.MonitorAddress == "localhost" {
@@ -1801,7 +1804,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	myClusterConf.ImmuableFlagMap = repman.ImmuableFlagMaps[clusterName]
 	myClusterConf.DynamicFlagMap = repman.DynamicFlagMaps[clusterName]
 	myClusterConf.DefaultFlagMap = repman.DefaultFlagMap
-	log.Infof("Starting cluster: %s workingdir %s", clusterName, myClusterConf.WorkingDir)
+	repman.Logrus.Infof("Starting cluster: %s workingdir %s", clusterName, myClusterConf.WorkingDir)
 
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
 	//log.Infof("Default config for %s workingdir:\n %v", clusterName, myClusterConf.DefaultFlagMap)
@@ -1818,9 +1821,9 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	/*	Host, _ := misc.SplitHostPort(peer)
 		ha, err := net.LookupHost(Host)
 		if err != nil {
-			log.Errorf("Heartbeat: Resolv %s DNS err: %s", Host, err)
+			repman.Logrus.Errorf("Heartbeat: Resolv %s DNS err: %s", Host, err)
 		} else {
-			log.Errorf("Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
+			repman.Logrus.Errorf("Heartbeat: Resolv %s DNS say: %s", Host, ha[0])
 		}
 	*/
 
@@ -1829,19 +1832,19 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		Timeout: timeout,
 	}
 	if repman.Conf.LogHeartbeat {
-		log.Debugf("Heartbeat: Sending peer request to node %s", peer)
+		repman.Logrus.Debugf("Heartbeat: Sending peer request to node %s", peer)
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if bcksplitbrain == false {
-			log.Debugf("Error building HTTP request: %s", err)
+			repman.Logrus.Debugf("Error building HTTP request: %s", err)
 		}
 		return true
 	}
 	resp, err := client.Do(req)
 	if err != nil {
 		if bcksplitbrain == false {
-			log.Debugf("Could not reach peer node, might be down or incorrect address")
+			repman.Logrus.Debugf("Could not reach peer node, might be down or incorrect address")
 		}
 		return true
 	}
@@ -1849,28 +1852,28 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	monjson, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if bcksplitbrain == false {
-			log.Debugf("Could not read body from peer response")
+			repman.Logrus.Debugf("Could not read body from peer response")
 		}
 		return true
 	}
 	if repman.Conf.LogHeartbeat {
-		log.Debugf("splitbrain http call result: %s ", monjson)
+		repman.Logrus.Debugf("splitbrain http call result: %s ", monjson)
 	}
 	// Use json.Decode for reading streams of JSON data
 	var h Heartbeat
 	if err := json.Unmarshal(monjson, &h); err != nil {
 		if repman.Conf.LogHeartbeat {
-			log.Debugf("Could not unmarshal JSON from peer response %s", err)
+			repman.Logrus.Debugf("Could not unmarshal JSON from peer response %s", err)
 		}
 		return true
 	} else {
 
 		if repman.Conf.LogHeartbeat {
-			log.Debugf("RETURN: %v", h)
+			repman.Logrus.Debugf("RETURN: %v", h)
 		}
 
 		if repman.Conf.LogHeartbeat {
-			log.Infof("No peer split brain setting status to %s", repman.Status)
+			repman.Logrus.Infof("No peer split brain setting status to %s", repman.Status)
 		}
 
 	}
@@ -1880,7 +1883,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 
 func (repman *ReplicationManager) Heartbeat() {
 	if cfgGroup == "arbitrator" {
-		log.Debugf("Arbitrator cannot send heartbeat to itself. Exiting")
+		repman.Logrus.Debugf("Arbitrator cannot send heartbeat to itself. Exiting")
 		return
 	}
 
@@ -1889,7 +1892,7 @@ func (repman *ReplicationManager) Heartbeat() {
 	if repman.Conf.ArbitrationPeerHosts != "" {
 		peerList = strings.Split(repman.Conf.ArbitrationPeerHosts, ",")
 	} else {
-		log.Debugf("Arbitration peer not specified. Disabling arbitration")
+		repman.Logrus.Debugf("Arbitration peer not specified. Disabling arbitration")
 		repman.Conf.Arbitration = false
 		return
 	}
@@ -1901,7 +1904,7 @@ func (repman *ReplicationManager) Heartbeat() {
 		repman.SplitBrain = repman.HeartbeatPeerSplitBrain(peer, bcksplitbrain)
 		repman.Unlock()
 		if repman.Conf.LogHeartbeat {
-			log.Infof("SplitBrain set to %t on peer %s", repman.SplitBrain, peer)
+			repman.Logrus.Infof("SplitBrain set to %t on peer %s", repman.SplitBrain, peer)
 		}
 	} //end check all peers
 
@@ -1910,7 +1913,7 @@ func (repman *ReplicationManager) Heartbeat() {
 		cl.IsSplitBrain = repman.SplitBrain
 
 		if repman.Conf.LogHeartbeat {
-			log.Infof("SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
+			repman.Logrus.Infof("SplitBrain set to %t on cluster %s", repman.SplitBrain, cl.Name)
 		}
 	}
 }
@@ -1937,7 +1940,7 @@ func (repman *ReplicationManager) Stop() {
 	if repman.MemProfile != "" {
 		f, err := os.Create(repman.MemProfile)
 		if err != nil {
-			log.Fatal(err)
+			repman.Logrus.Fatal(err)
 		}
 		pprof.WriteHeapProfile(f)
 		f.Close()
@@ -1951,19 +1954,19 @@ func (repman *ReplicationManager) DownloadFile(url string, file string) error {
 	}
 	response, err := client.Get(url)
 	if err != nil {
-		log.Errorf("Get File %s to %s : %s", url, file, err)
+		repman.Logrus.Errorf("Get File %s to %s : %s", url, file, err)
 		return err
 	}
 	defer response.Body.Close()
 	contents, err := io.ReadAll(response.Body)
 	if err != nil {
-		log.Errorf("Read File %s to %s : %s", url, file, err)
+		repman.Logrus.Errorf("Read File %s to %s : %s", url, file, err)
 		return err
 	}
 
 	err = os.WriteFile(file, contents, 0644)
 	if err != nil {
-		log.Errorf("Write File %s to %s : %s", url, file, err)
+		repman.Logrus.Errorf("Write File %s to %s : %s", url, file, err)
 		return err
 	}
 	return nil
@@ -1980,7 +1983,7 @@ func (repman *ReplicationManager) InitServicePlans() error {
 	} else {
 		err = repman.DownloadFile(repman.Conf.ProvServicePlanRegistry, repman.Conf.WorkingDir+"/serviceplan.csv")
 		if err != nil {
-			log.Errorf("GetServicePlans download csv  %s", err)
+			repman.Logrus.Errorf("GetServicePlans download csv  %s", err)
 			// copy from share if not downloadable
 			if _, err := os.Stat(repman.Conf.WorkingDir + "/serviceplan.csv"); os.IsNotExist(err) {
 				misc.CopyFile(repman.Conf.ShareDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.csv")
@@ -1991,13 +1994,13 @@ func (repman *ReplicationManager) InitServicePlans() error {
 
 	}
 	if err != nil {
-		log.Errorf("GetServicePlans ConvertCSVtoJSON %s", err)
+		repman.Logrus.Errorf("GetServicePlans ConvertCSVtoJSON %s", err)
 		return err
 	}
 
 	file, err := os.ReadFile(repman.Conf.WorkingDir + "/serviceplan.json")
 	if err != nil {
-		log.Errorf("failed opening file because: %s", err.Error())
+		repman.Logrus.Errorf("failed opening file because: %s", err.Error())
 		return err
 	}
 
@@ -2007,7 +2010,7 @@ func (repman *ReplicationManager) InitServicePlans() error {
 	var m Message
 	err = json.Unmarshal([]byte(file), &m.Rows)
 	if err != nil {
-		log.Errorf("GetServicePlans  %s", err)
+		repman.Logrus.Errorf("GetServicePlans  %s", err)
 		return err
 	}
 	repman.ServicePlans = m.Rows

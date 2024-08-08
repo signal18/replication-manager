@@ -77,7 +77,6 @@ For interacting with this daemon use,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("monitor cmd")
 		RepMan = new(ReplicationManager)
-
 		RepMan.SetDefaultFlags(viper.GetViper())
 		RepMan.CommandLineFlag = GetCommandLineFlag(cmd)
 		//	RepMan.DefaultFlagMap = defaultFlagMap
