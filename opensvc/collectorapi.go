@@ -173,7 +173,7 @@ func (collector *Collector) FromP12Bytes(bytes []byte, password string) (tls.Cer
 		cert, err := tls.X509KeyPair(pemData, pemData)
 		if err != nil {
 			if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
-				collector.Logrus.Error(err)
+				collector.Logrus.WithField("FROM", "OpenSVC").Error(err)
 			}
 			return cert, err
 		}
@@ -297,7 +297,7 @@ func (collector *Collector) CreateMRMGroup() (int, error) {
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/groups"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 	data := url.Values{}
 	data.Add("role", "replication-manager")
@@ -333,7 +333,7 @@ func (collector *Collector) CreateMRMGroup() (int, error) {
 	}
 
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	groupid := m.Data[0].Id
 
@@ -347,7 +347,7 @@ func (collector *Collector) CreateTemplate(name string, template string) (int, e
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/provisioning_templates"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 	data := url.Values{}
 	data.Add("tpl_definition", template)
@@ -378,7 +378,7 @@ func (collector *Collector) CreateTemplate(name string, template string) (int, e
 	err = json.Unmarshal(body, &m)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(body))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 		}
 		return 0, err
 
@@ -388,7 +388,7 @@ func (collector *Collector) CreateTemplate(name string, template string) (int, e
 		tempid = m.Data[0].Id
 	} else {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(body))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 		}
 	}
 
@@ -401,7 +401,7 @@ func (collector *Collector) ProvisionTemplate(id int, nodeid string, name string
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/provisioning_templates/" + strconv.Itoa(id)
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 
 	var jsonStr = []byte(`{"svcname":"` + name + `","node_id":"` + nodeid + `"}`)
@@ -420,7 +420,7 @@ func (collector *Collector) ProvisionTemplate(id int, nodeid string, name string
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	type Message struct {
 		Data []Action `json:"data"`
@@ -429,7 +429,7 @@ func (collector *Collector) ProvisionTemplate(id int, nodeid string, name string
 	err = json.Unmarshal(body, &m)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(body))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 		}
 		return 0, err
 
@@ -439,7 +439,7 @@ func (collector *Collector) ProvisionTemplate(id int, nodeid string, name string
 		actionid = m.Data[0].Id
 	} else {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(body))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 		}
 	}
 
@@ -451,7 +451,7 @@ func (collector *Collector) CreateMRMUser(user string, password string) (int, er
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/users"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 	data := url.Values{}
 	data.Add("email", user)
@@ -482,7 +482,7 @@ func (collector *Collector) CreateMRMUser(user string, password string) (int, er
 	err = json.Unmarshal(body, &m)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(body))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 		}
 		return 0, err
 
@@ -492,7 +492,7 @@ func (collector *Collector) CreateMRMUser(user string, password string) (int, er
 		userid = m.Data[0].Id
 	} else {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(body))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 		}
 	}
 
@@ -505,7 +505,7 @@ func (collector *Collector) SetAppCodeResponsible(appid int, groupid int) (strin
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/apps/" + strconv.Itoa(appid) + "/responsibles/" + strconv.Itoa(groupid)
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 	data := url.Values{}
 	b := bytes.NewBuffer([]byte(data.Encode()))
@@ -532,7 +532,7 @@ func (collector *Collector) SetAppCodeResponsible(appid int, groupid int) (strin
 		return "", err
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	return string(body), nil
 
@@ -543,7 +543,7 @@ func (collector *Collector) SetServiceTag(tag_id string, service_id string) (str
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/tags/" + tag_id + "/services/" + service_id
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 	data := url.Values{}
 	b := bytes.NewBuffer([]byte(data.Encode()))
@@ -570,7 +570,7 @@ func (collector *Collector) SetServiceTag(tag_id string, service_id string) (str
 		return "", err
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	return string(body), nil
 
@@ -581,7 +581,7 @@ func (collector *Collector) SetAppCodePublication(appid int, groupid int) (strin
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/apps/" + strconv.Itoa(appid) + "/publications/" + strconv.Itoa(groupid)
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 	data := url.Values{}
 	b := bytes.NewBuffer([]byte(data.Encode()))
@@ -606,12 +606,12 @@ func (collector *Collector) SetAppCodePublication(appid int, groupid int) (strin
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(body))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 		}
 		return "", err
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	return string(body), nil
 
@@ -622,7 +622,7 @@ func (collector *Collector) CreateAppCode(code string) (int, error) {
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/apps"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 	data := url.Values{}
 	data.Add("app", code)
@@ -653,7 +653,7 @@ func (collector *Collector) CreateAppCode(code string) (int, error) {
 		return 0, err
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	return m.Data[0].Id, nil
 
@@ -664,7 +664,7 @@ func (collector *Collector) CreateTag(tag string) (string, error) {
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/tags"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 	data := url.Values{}
 	data.Add("tag_name", tag)
@@ -692,7 +692,7 @@ func (collector *Collector) CreateTag(tag string) (string, error) {
 		return "", err
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	return m.Data[0].Tag_id, nil
 }
@@ -702,7 +702,7 @@ func (collector *Collector) CreateService(service string, app string) (string, e
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 	data := url.Values{}
 	data.Add("svcname", service)
@@ -731,7 +731,7 @@ func (collector *Collector) CreateService(service string, app string) (string, e
 		return "", err
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	if len(m.Data) == 0 {
 		return "", errors.New("OpenSVC can't create service")
@@ -745,7 +745,7 @@ func (collector *Collector) SetPrimaryGroup(groupid int, userid int) (string, er
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/users/" + strconv.Itoa(userid) + "/primary_group/" + strconv.Itoa(groupid)
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 	data := url.Values{}
 	data.Add("primary_group", "T")
@@ -771,12 +771,12 @@ func (collector *Collector) SetPrimaryGroup(groupid int, userid int) (string, er
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(body))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 		}
 		return "", err
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	return string(body), nil
 
@@ -787,7 +787,7 @@ func (collector *Collector) SetGroupUser(groupid int, userid int) (string, error
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/users/" + strconv.Itoa(userid) + "/groups/" + strconv.Itoa(groupid)
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 	data := url.Values{}
 	data.Add("primary_group", "F")
@@ -813,12 +813,12 @@ func (collector *Collector) SetGroupUser(groupid int, userid int) (string, error
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(body))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 		}
 		return "", err
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	return string(body), nil
 
@@ -835,14 +835,14 @@ func (collector *Collector) ImportCompliance(path string) (string, error) {
 	client := &http.Client{Transport: tr}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/compliance/import"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", url)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 	}
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(file))
 	req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
@@ -850,7 +850,7 @@ func (collector *Collector) ImportCompliance(path string) (string, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
@@ -858,7 +858,7 @@ func (collector *Collector) ImportCompliance(path string) (string, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
@@ -872,7 +872,7 @@ func (collector *Collector) PublishSafe(safeUUID string, group string) error {
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/safe/" + safeUUID + "/publications/" + groupid
 	//url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/" + idSrv + "/tags/" + tag.Tag_id
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", url)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 	}
 
 	req, err := http.NewRequest("POST", url, nil)
@@ -884,7 +884,7 @@ func (collector *Collector) PublishSafe(safeUUID string, group string) error {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return err
 	}
@@ -892,7 +892,7 @@ func (collector *Collector) PublishSafe(safeUUID string, group string) error {
 	_, err = io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return err
 	}
@@ -945,7 +945,7 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
@@ -953,7 +953,7 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
@@ -974,7 +974,7 @@ func (collector *Collector) PostSafe(filename string) (string, error) {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
@@ -993,7 +993,7 @@ func (collector *Collector) ImportForms(path string) (string, error) {
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/forms"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 	data := url.Values{}
 	data.Add("role", "replication-manager")
@@ -1008,7 +1008,7 @@ func (collector *Collector) ImportForms(path string) (string, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
@@ -1016,7 +1016,7 @@ func (collector *Collector) ImportForms(path string) (string, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
@@ -1028,12 +1028,12 @@ func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
 	client := &http.Client{Transport: tr}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/compliance/rulesets?filters[]=ruleset_name " + RulesetName
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", url)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 
 	}
@@ -1042,7 +1042,7 @@ func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1050,7 +1050,7 @@ func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1062,7 +1062,7 @@ func (collector *Collector) GetRuleset(RulesetName string) ([]Ruleset, error) {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1074,12 +1074,12 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 	client := &http.Client{Transport: tr}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/compliance/rulesets/" + strconv.Itoa(RulesetId) + "/variables?filters[]=var_name " + VariableName
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", url)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 
 	}
@@ -1088,7 +1088,7 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1096,7 +1096,7 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1108,7 +1108,7 @@ func (collector *Collector) GetRulesetVariable(RulesetId int, VariableName strin
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1120,7 +1120,7 @@ func (collector *Collector) SetRulesetVariableValue(RulesetName string, Variable
 	rls, err := collector.GetRuleset(RulesetName)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(err.Error()))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(err.Error()))
 		}
 		return "", err
 	}
@@ -1130,13 +1130,13 @@ func (collector *Collector) SetRulesetVariableValue(RulesetName string, Variable
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/compliance/rulesets/" + strconv.Itoa(rls[0].Id) + "/variables/" + strconv.Itoa(rlsv[0].Id)
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println("INFO SetRulesetVariableValue: ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO SetRulesetVariableValue: ", urlpost)
 	}
 	var jsonStr = []byte(`{"var_value":"{"path":"/%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/conf/haproxy.cfg","mode":"%%ENV:BINDED_DIR_PERMS%%","uid":"%%ENV:MYSQL_UID%%","gid":"%%ENV:MYSQL_UID%%","fmt":"` + Content + `"}"}`)
 	req, err := http.NewRequest("POST", urlpost, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(err.Error()))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(err.Error()))
 		}
 		return "", err
 	}
@@ -1161,14 +1161,14 @@ func (collector *Collector) SetRulesetVariableValue(RulesetName string, Variable
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(err.Error()))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(err.Error()))
 		}
 		return "", err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	type response struct {
 		Info string `json:"info"`
@@ -1177,12 +1177,12 @@ func (collector *Collector) SetRulesetVariableValue(RulesetName string, Variable
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(body))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 		}
 		return "", err
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	return string(body), nil
 
@@ -1194,13 +1194,13 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 	client := &http.Client{Transport: tr}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/groups?props=role,id&filters[]=privilege T&filters[]=role !manager&limit=0"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", url)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 	}
 	req.SetBasicAuth(collector.User, collector.Pass)
@@ -1208,7 +1208,7 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1216,7 +1216,7 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1228,7 +1228,7 @@ func (collector *Collector) GetGroups() ([]Group, error) {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1241,13 +1241,13 @@ func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
 	client := &http.Client{Transport: tr}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/groups/" + group + "?props=id"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", url)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 	}
 	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
@@ -1255,7 +1255,7 @@ func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "0", err
 	}
@@ -1263,7 +1263,7 @@ func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "0", err
 	}
@@ -1275,7 +1275,7 @@ func (collector *Collector) GetGroupIdFromName(group string) (string, error) {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "0", err
 	}
@@ -1297,13 +1297,13 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 	client := &http.Client{Transport: tr}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/" + idSrv + "/tags?limit=0"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", url)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 
 	}
@@ -1312,7 +1312,7 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1320,14 +1320,14 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
 	count, err := collector.getMetaCount(body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println("ERROR get Meta Data count", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("ERROR get Meta Data count", err)
 		}
 		return nil, err
 	}
@@ -1341,7 +1341,7 @@ func (collector *Collector) GetServiceTags(idSrv string) ([]Tag, error) {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1358,7 +1358,7 @@ func (collector *Collector) getMetaCount(body []byte) (int, error) {
 	var m Metadata
 	err := json.Unmarshal(body, &m)
 	if err != nil {
-		collector.Logrus.Print(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Print(string(body))
 		return 0, err
 	}
 	return m.Meta.Count, nil
@@ -1370,7 +1370,7 @@ func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/tags/" + tag.Tag_id + "/services/" + idSrv
 	//url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/" + idSrv + "/tags/" + tag.Tag_id
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", url)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 	}
 
 	req, err := http.NewRequest("DELETE", url, nil)
@@ -1382,7 +1382,7 @@ func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return err
 	}
@@ -1390,7 +1390,7 @@ func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
 	_, err = io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return err
 	}
@@ -1420,13 +1420,13 @@ func (collector *Collector) GetTags() ([]Tag, error) {
 	client := &http.Client{Transport: tr}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/tags?limit=0"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", url)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 
 	}
@@ -1435,7 +1435,7 @@ func (collector *Collector) GetTags() ([]Tag, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1443,7 +1443,7 @@ func (collector *Collector) GetTags() ([]Tag, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1455,7 +1455,7 @@ func (collector *Collector) GetTags() ([]Tag, error) {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1468,13 +1468,13 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes/" + nodeid + "/ips?props=addr,addr_type,mask,net_broadcast,net_gateway,net_name,net_netmask,net_network,net_id,intf"
 	if collector.Verbose == 1 {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-			collector.Logrus.Println("INFO ", url)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 		}
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 
 	}
@@ -1483,7 +1483,7 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1491,12 +1491,12 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println(string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 	}
 	type Message struct {
 		Data []Addr `json:"data"`
@@ -1505,7 +1505,7 @@ func (collector *Collector) getNetwork(nodeid string) ([]Addr, error) {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1520,14 +1520,14 @@ func (collector *Collector) GetActionStatus(actionid string) string {
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/actions/" + actionid + "?props=id,status"
 	if collector.Verbose == 1 {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-			collector.Logrus.Println("INFO ", url)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 		}
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 
 	}
@@ -1536,7 +1536,7 @@ func (collector *Collector) GetActionStatus(actionid string) string {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "W"
 	}
@@ -1544,7 +1544,7 @@ func (collector *Collector) GetActionStatus(actionid string) string {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "W"
 	}
@@ -1556,7 +1556,7 @@ func (collector *Collector) GetActionStatus(actionid string) string {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "W"
 	}
@@ -1575,17 +1575,17 @@ func (collector *Collector) GetAction(actionid string) *Action {
 	client := &http.Client{Transport: tr}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/actions/" + actionid
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", url)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 	}
 	if collector.Verbose == 1 {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-			collector.Logrus.Println("INFO ", url)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 		}
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 
 	}
@@ -1594,7 +1594,7 @@ func (collector *Collector) GetAction(actionid string) *Action {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil
 	}
@@ -1602,7 +1602,7 @@ func (collector *Collector) GetAction(actionid string) *Action {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil
 	}
@@ -1614,7 +1614,7 @@ func (collector *Collector) GetAction(actionid string) *Action {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println("JSON ERROR unmarchaling action", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("JSON ERROR unmarchaling action", err)
 		}
 		return nil
 	}
@@ -1631,13 +1631,13 @@ func (collector *Collector) GetServices() ([]Service, error) {
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services?limit=0"
 	if collector.Verbose == 1 {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-			collector.Logrus.Println("INFO ", url)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 		}
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 
 	}
@@ -1646,7 +1646,7 @@ func (collector *Collector) GetServices() ([]Service, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1654,7 +1654,7 @@ func (collector *Collector) GetServices() ([]Service, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1666,7 +1666,7 @@ func (collector *Collector) GetServices() ([]Service, error) {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1680,13 +1680,13 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes/" + nodeid + "/services?limit=0&props=services.svcname,services.svc_id"
 	if collector.Verbose == 1 {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-			collector.Logrus.Println("INFO ", url)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", url)
 		}
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 
 	}
@@ -1696,7 +1696,7 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1704,7 +1704,7 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1716,7 +1716,7 @@ func (collector *Collector) getNodeServices(nodeid string) ([]Service, error) {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return nil, err
 	}
@@ -1760,7 +1760,7 @@ func (collector *Collector) StopService(nodeid string, serviceid string) (string
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/actions"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 
 	var jsonStr = []byte(`[{"node_id":"` + nodeid + `", "svc_id":"` + serviceid + `", "action": "stop"}]`)
@@ -1773,7 +1773,7 @@ func (collector *Collector) StopService(nodeid string, serviceid string) (string
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
@@ -1782,7 +1782,7 @@ func (collector *Collector) StopService(nodeid string, serviceid string) (string
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
@@ -1796,7 +1796,7 @@ func (collector *Collector) StartService(nodeid string, serviceid string) (strin
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/actions"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 
 	var jsonStr = []byte(`[{"node_id":"` + nodeid + `", "svc_id":"` + serviceid + `", "action": "start"}]`)
@@ -1809,7 +1809,7 @@ func (collector *Collector) StartService(nodeid string, serviceid string) (strin
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
@@ -1817,12 +1817,12 @@ func (collector *Collector) StartService(nodeid string, serviceid string) (strin
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println("OpenSVC API Response: ", string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
 	return string(body), nil
 
@@ -1834,7 +1834,7 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/actions"
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.Println("INFO ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlpost)
 	}
 
 	var jsonStr = []byte(`[{"svc_id":"` + serviceid + `", "action": "delete", "options": [{"option": "unprovision"}]}]`)
@@ -1853,7 +1853,7 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return 0, err
 	}
@@ -1861,7 +1861,7 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return 0, err
 	}
@@ -1872,7 +1872,7 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 	err = json.Unmarshal(body, &m)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(body))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 		}
 		return 0, err
 
@@ -1882,11 +1882,11 @@ func (collector *Collector) UnprovisionService(nodeid string, serviceid string) 
 		actionid = m.Data[0].Id
 	} else {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-			collector.Logrus.Println(string(body))
+			collector.Logrus.WithField("FROM", "OpenSVC").Println(string(body))
 		}
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println("OpenSVC API Response: ", string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
 	return actionid, nil
 }
@@ -1897,7 +1897,7 @@ func (collector *Collector) DeleteService(serviceid string) (string, error) {
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/services/" + serviceid
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println("INFO Delete service: ", urlpost)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO Delete service: ", urlpost)
 	}
 
 	req, err := http.NewRequest("DELETE", urlpost, nil)
@@ -1909,7 +1909,7 @@ func (collector *Collector) DeleteService(serviceid string) (string, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
@@ -1917,12 +1917,12 @@ func (collector *Collector) DeleteService(serviceid string) (string, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.Println("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
 		}
 		return "", err
 	}
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.Println("OpenSVC API Response: ", string(body))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
 	return string(body), nil
 
