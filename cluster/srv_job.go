@@ -1960,10 +1960,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				if e2 := server.JobsUpdateState(task, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
-				finfo, e3 := os.Stat(filename)
+				_, e3 := os.Stat(filename)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
-					server.LastBackupMeta.Logical.Size = finfo.Size()
+					server.LastBackupMeta.Logical.GetSize()
 					server.LastBackupMeta.Logical.Completed = true
 					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMysqldump)
 				}
@@ -1985,10 +1985,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				if e2 := server.JobsUpdateState(task, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
-				finfo, e3 := os.Stat(outputdir)
+				_, e3 := os.Stat(outputdir)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
-					server.LastBackupMeta.Logical.Size = finfo.Size()
+					server.LastBackupMeta.Logical.GetSize()
 					server.LastBackupMeta.Logical.Completed = true
 					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
 				}
@@ -2011,10 +2011,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 
-				finfo, e3 := os.Stat(outputdir)
+				_, e3 := os.Stat(outputdir)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
-					server.LastBackupMeta.Logical.Size = finfo.Size()
+					server.LastBackupMeta.Logical.GetSize()
 					server.LastBackupMeta.Logical.Completed = true
 					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
 				}
@@ -2860,8 +2860,8 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 		return
 	}
 
-	if finfo, err := os.Stat(lastmeta.Dest); err == nil {
-		lastmeta.Size = finfo.Size()
+	if _, err := os.Stat(lastmeta.Dest); err == nil {
+		lastmeta.GetSize()
 		lastmeta.EndTime = time.Now()
 	}
 
