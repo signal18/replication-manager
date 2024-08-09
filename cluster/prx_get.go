@@ -398,3 +398,23 @@ func (p *Proxy) GetCluster() *Cluster {
 func (p *Proxy) GetURL() string {
 	return p.GetHost() + ":" + p.GetPort()
 }
+
+func (p *Proxy) GetSshEnv() string {
+	/*
+		REPLICATION_MANAGER_USER
+		REPLICATION_MANAGER_PASSWORD
+		REPLICATION_MANAGER_URL
+		REPLICATION_MANAGER_CLUSTER_NAME
+		REPLICATION_MANAGER_HOST_NAME
+		REPLICATION_MANAGER_HOST_USER
+		REPLICATION_MANAGER_HOST_PASSWORD
+		REPLICATION_MANAGER_HOST_PORT
+		REPLICATION_MANAGER_HOST_TYPE
+	*/
+	adminuser := "admin"
+	adminpassword := "repman"
+	if user, ok := p.ClusterGroup.APIUsers[adminuser]; ok {
+		adminpassword = user.Password
+	}
+	return "export REPLICATION_MANAGER_HOST_USER=\"" + p.GetUser() + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + p.GetPass() + "\";export REPLICATION_MANAGER_URL=\"https://" + p.ClusterGroup.Conf.MonitorAddress + ":" + p.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + p.GetHost() + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + p.GetPort() + "\";export REPLICATION_MANAGER_HOST_TYPE=\"" + p.Type + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + p.ClusterGroup.Name + "\"\n"
+}

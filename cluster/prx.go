@@ -123,6 +123,7 @@ type DatabaseProxy interface {
 	GetConfigDatadir() string
 	GetConfigConfigdir() string
 	GetEnv() map[string]string
+	GetSshEnv() string
 	GetConfigProxyModule(variable string) string
 	SendStats() error
 

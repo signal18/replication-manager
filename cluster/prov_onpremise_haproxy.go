@@ -2,7 +2,9 @@ package cluster
 
 import (
 	"bytes"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -44,25 +46,27 @@ func (cluster *Cluster) OnPremiseStopHaproxyService(server DatabaseProxy) error 
 		return err
 	}
 	defer client.Close()
-	if cluster.Conf.OnPremiseSSHStopHaproxyScript == "" {
+	if cluster.Conf.OnPremiseSSHStopProxyScript == "" {
 		out, err := client.Cmd("systemctl stop haproxy").SmartOutput()
 		if err != nil {
 			return err
 		}
 		strOut = string(out)
 	} else {
-		var r, stdout, stderr bytes.Buffer
+		var stdout, stderr bytes.Buffer
 
-		srcpath := cluster.Conf.OnPremiseSSHStopHaproxyScript
+		srcpath := cluster.Conf.OnPremiseSSHStopProxyScript
 		filerc, err2 := os.Open(srcpath)
 		if err2 != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Failed to load start script %s for SSH, err : %s", srcpath, err2.Error())
 			return err2
 		}
 		defer filerc.Close()
-		r.ReadFrom(filerc)
 
-		if err = client.Shell().SetStdio(&r, &stdout, &stderr).Start(); err != nil {
+		envBuf := strings.NewReader(server.GetSshEnv())
+		r := io.MultiReader(envBuf, filerc)
+
+		if err = client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 			return err
 		}
 		strOut = stdout.String()
@@ -80,25 +84,27 @@ func (cluster *Cluster) OnPremiseStartHaProxyService(server DatabaseProxy) error
 		return err
 	}
 	defer client.Close()
-	if cluster.Conf.OnPremiseSSHStartHaproxyScript == "" {
+	if cluster.Conf.OnPremiseSSHStartProxyScript == "" {
 		out, err := client.Cmd("systemctl start haproxy").SmartOutput()
 		if err != nil {
 			return err
 		}
 		strOut = string(out)
 	} else {
-		var r, stdout, stderr bytes.Buffer
+		var stdout, stderr bytes.Buffer
 
-		srcpath := cluster.Conf.OnPremiseSSHStartHaproxyScript
+		srcpath := cluster.Conf.OnPremiseSSHStartProxyScript
 		filerc, err2 := os.Open(srcpath)
 		if err2 != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Failed to load start script %s for SSH, err : %s", srcpath, err2.Error())
 			return err2
 		}
 		defer filerc.Close()
-		r.ReadFrom(filerc)
 
-		if err = client.Shell().SetStdio(&r, &stdout, &stderr).Start(); err != nil {
+		envBuf := strings.NewReader(server.GetSshEnv())
+		r := io.MultiReader(envBuf, filerc)
+
+		if err = client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 			return err
 		}
 		strOut = stdout.String()

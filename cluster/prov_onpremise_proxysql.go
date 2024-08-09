@@ -3,7 +3,9 @@ package cluster
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -45,16 +47,16 @@ func (cluster *Cluster) OnPremiseStopProxySQLService(server DatabaseProxy) error
 		return err
 	}
 	defer client.Close()
-	if cluster.Conf.OnPremiseSSHStopProxysqlScript == "" {
+	if cluster.Conf.OnPremiseSSHStopProxyScript == "" {
 		out, err := client.Cmd("systemctl stop proxysql").SmartOutput()
 		if err != nil {
 			return err
 		}
 		strOut = string(out)
 	} else {
-		var r, stdout, stderr bytes.Buffer
+		var stdout, stderr bytes.Buffer
 
-		srcpath := cluster.Conf.OnPremiseSSHStopProxysqlScript
+		srcpath := cluster.Conf.OnPremiseSSHStopProxyScript
 		filerc, err2 := os.Open(srcpath)
 		if err2 != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Failed to load start script %s for SSH, err : %s", srcpath, err2.Error())
@@ -62,9 +64,11 @@ func (cluster *Cluster) OnPremiseStopProxySQLService(server DatabaseProxy) error
 
 		}
 		defer filerc.Close()
-		r.ReadFrom(filerc)
 
-		if err = client.Shell().SetStdio(&r, &stdout, &stderr).Start(); err != nil {
+		envBuf := strings.NewReader(server.GetSshEnv())
+		r := io.MultiReader(envBuf, filerc)
+
+		if err = client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 			return err
 		}
 		strOut = stdout.String()
@@ -85,16 +89,16 @@ func (cluster *Cluster) OnPremiseStartProxySQLService(server DatabaseProxy) erro
 	}
 	defer client.Close()
 
-	if cluster.Conf.OnPremiseSSHStartProxysqlScript == "" {
+	if cluster.Conf.OnPremiseSSHStartProxyScript == "" {
 		out, err := client.Cmd("systemctl start proxysql").SmartOutput()
 		if err != nil {
 			return err
 		}
 		strOut = string(out)
 	} else {
-		var r, stdout, stderr bytes.Buffer
+		var stdout, stderr bytes.Buffer
 
-		srcpath := cluster.Conf.OnPremiseSSHStartProxysqlScript
+		srcpath := cluster.Conf.OnPremiseSSHStartProxyScript
 		filerc, err2 := os.Open(srcpath)
 		if err2 != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Failed to load start script %s for SSH, err : %s", srcpath, err2.Error())
@@ -102,9 +106,11 @@ func (cluster *Cluster) OnPremiseStartProxySQLService(server DatabaseProxy) erro
 
 		}
 		defer filerc.Close()
-		r.ReadFrom(filerc)
 
-		if err = client.Shell().SetStdio(&r, &stdout, &stderr).Start(); err != nil {
+		envBuf := strings.NewReader(server.GetSshEnv())
+		r := io.MultiReader(envBuf, filerc)
+
+		if err = client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 			return err
 		}
 		strOut = stdout.String()
