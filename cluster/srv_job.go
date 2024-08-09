@@ -2901,6 +2901,7 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 	//Don't change river
 	if cluster.Conf.BackupKeepUntilValid && lastmeta.BackupTool != config.ConstBackupLogicalTypeRiver {
 		if lastmeta.Completed {
+			// Delete previous meta with same type
 			cluster.BackupMetaMap.Delete(lastmeta.Previous)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
 			exec.Command("rm", "-r", lastmeta.Dest+".old").Run()
@@ -2909,6 +2910,15 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 			exec.Command("mv", lastmeta.Dest, lastmeta.Dest+".err").Run()
 			exec.Command("mv", lastmeta.Dest+".old", lastmeta.Dest).Run()
 			exec.Command("rm", "-r", lastmeta.Dest+".err").Run()
+
+			// Revert to previous meta with same type
+			cluster.BackupMetaMap.Delete(lastmeta.Id)
+			switch backtype {
+			case config.BackupMethodLogical:
+				_, server.LastBackupMeta.Logical = server.GetLatestMeta("logical")
+			case config.BackupMethodPhysical:
+				_, server.LastBackupMeta.Physical = server.GetLatestMeta("physical")
+			}
 		}
 	}
 }

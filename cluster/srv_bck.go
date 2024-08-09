@@ -92,3 +92,40 @@ func (server *ServerMonitor) ReadLastMetadata(method string) (*config.BackupMeta
 
 	return meta, nil
 }
+
+func (server *ServerMonitor) GetLatestMeta(method string) (int64, *config.BackupMetadata) {
+	cluster := server.ClusterGroup
+	var latest int64 = 0
+	var meta *config.BackupMetadata
+	cluster.BackupMetaMap.Range(func(k, v any) bool {
+		m := v.(*config.BackupMetadata)
+		valid := false
+		switch method {
+		case "logical":
+			if m.BackupMethod == config.BackupMethodLogical {
+				valid = true
+			}
+		case "physical":
+			if m.BackupMethod == config.BackupMethodPhysical {
+				valid = true
+			}
+		default:
+			if m.BackupTool == method {
+				valid = true
+			}
+		}
+
+		if m.Source != server.URL {
+			valid = false
+		}
+
+		if valid && latest < m.Id {
+			latest = m.Id
+			meta = m
+		}
+
+		return true
+	})
+
+	return latest, meta
+}

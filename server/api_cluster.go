@@ -1256,6 +1256,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchReplicationNoRelay()
 	case "prov-db-force-write-config":
 		mycluster.SwitchForceWriteConfig()
+	case "backup-keep-until-valid":
+		mycluster.SwitchBackupKeepUntilValid()
 	}
 }
 
