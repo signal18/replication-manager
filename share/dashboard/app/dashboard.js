@@ -1383,7 +1383,7 @@ app.controller('DashboardController', function (
   };
 
   $scope.cancelJob = function (server, host, port, task) {
-    if (confirm("Warning! This action will forcefully cancel the job. Ensure the job is not currently running. Confirm to proceed with the cancellation of '" + task + "' on server " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/job-cancel/'+ task);
+    if (confirm("Warning! This action will forcefully cancel the job. Ensure the job is not currently running. Confirm to proceed with the cancellation of '" + task + "' on server " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/job-cancel/' + task);
   }
 
   $scope.clsetdbcore = function (base, add) {
@@ -1402,7 +1402,7 @@ app.controller('DashboardController', function (
 
     value += ' ' + selectedDbServersLogicalBackupHour;
     if (selectedDbServersLogicalBackupHourTo) value += '-' + selectedDbServersLogicalBackupHourTo;
-    if (selectedDbServersLogicalBackupHourPer) value += '-' + selectedDbServersLogicalBackupHourPer;
+    if (selectedDbServersLogicalBackupHourPer) value += '/' + selectedDbServersLogicalBackupHourPer;
 
     value += ' ' + selectedDbServersLogicalBackupDay;
     if (selectedDbServersLogicalBackupDayTo) value += '-' + selectedDbServersLogicalBackupDayTo;
@@ -1412,7 +1412,7 @@ app.controller('DashboardController', function (
     value += ' ' + selectedDbServersLogicalBackupWeek;
     if (selectedDbServersLogicalBackupWeekTo) value += '-' + selectedDbServersLogicalBackupWeekTo;
 
-    if (confirm("Confirm save logical backup scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-logical-backup-cron/' + value);
+    if (confirm("Confirm save logical backup scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set-cron/scheduler-db-servers-logical-backup-cron/' + encodeURIComponent(value));
   };
 
   $scope.savePhysicalBackupCron = function (selectedDbServersPhysicalBackupHour, selectedDbServersPhysicalBackupMin, selectedDbServersPhysicalBackupSec, selectedDbServersPhysicalBackupDay, selectedDbServersPhysicalBackupMonth, selectedDbServersPhysicalBackupWeek, selectedDbServersPhysicalBackupHourTo, selectedDbServersPhysicalBackupMinTo, selectedDbServersPhysicalBackupSecTo, selectedDbServersPhysicalBackupDayTo, selectedDbServersPhysicalBackupMonthTo, selectedDbServersPhysicalBackupWeekTo, selectedDbServersPhysicalBackupHourPer, selectedDbServersPhysicalBackupMinPer, selectedDbServersPhysicalBackupSecPer) {
@@ -1426,7 +1426,7 @@ app.controller('DashboardController', function (
 
     value += ' ' + selectedDbServersPhysicalBackupHour;
     if (selectedDbServersPhysicalBackupHourTo) value += '-' + selectedDbServersPhysicalBackupHourTo;
-    if (selectedDbServersPhysicalBackupHourPer) value += '-' + selectedDbServersPhysicalBackupHourPer;
+    if (selectedDbServersPhysicalBackupHourPer) value += '/' + selectedDbServersPhysicalBackupHourPer;
 
     value += ' ' + selectedDbServersPhysicalBackupDay;
     if (selectedDbServersPhysicalBackupDayTo) value += '-' + selectedDbServersPhysicalBackupDayTo;
@@ -1436,7 +1436,7 @@ app.controller('DashboardController', function (
     value += ' ' + selectedDbServersPhysicalBackupWeek;
     if (selectedDbServersPhysicalBackupWeekTo) value += '-' + selectedDbServersPhysicalBackupWeekTo;
 
-    if (confirm("Confirm save Physical backup scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-physical-backup-cron/' + value);
+    if (confirm("Confirm save Physical backup scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set-cron/scheduler-db-servers-physical-backup-cron/' + encodeURIComponent(value));
   };
 
   $scope.saveAlertDisableCron = function (selectedDbServersAlertDisableHour, selectedDbServersAlertDisableMin, selectedDbServersAlertDisableSec, selectedDbServersAlertDisableDay, selectedDbServersAlertDisableMonth, selectedDbServersAlertDisableWeek, selectedDbServersAlertDisableHourTo, selectedDbServersAlertDisableMinTo, selectedDbServersAlertDisableSecTo, selectedDbServersAlertDisableDayTo, selectedDbServersAlertDisableMonthTo, selectedDbServersAlertDisableWeekTo, selectedDbServersAlertDisableHourPer, selectedDbServersAlertDisableMinPer, selectedDbServersAlertDisableSecPer) {
@@ -1450,7 +1450,7 @@ app.controller('DashboardController', function (
 
     value += ' ' + selectedDbServersAlertDisableHour;
     if (selectedDbServersAlertDisableHourTo) value += '-' + selectedDbServersAlertDisableHourTo;
-    if (selectedDbServersAlertDisableHourPer) value += '-' + selectedDbServersAlertDisableHourPer;
+    if (selectedDbServersAlertDisableHourPer) value += '/' + selectedDbServersAlertDisableHourPer;
 
     value += ' ' + selectedDbServersAlertDisableDay;
     if (selectedDbServersAlertDisableDayTo) value += '-' + selectedDbServersAlertDisableDayTo;
@@ -1460,7 +1460,7 @@ app.controller('DashboardController', function (
     value += ' ' + selectedDbServersAlertDisableWeek;
     if (selectedDbServersAlertDisableWeekTo) value += '-' + selectedDbServersAlertDisableWeekTo;
 
-    if (confirm("Confirm save alert disable scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-alert-disable-cron/' + value);
+    if (confirm("Confirm save alert disable scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set-cron/scheduler-alert-disable-cron/' + encodeURIComponent(value));
   };
 
   $scope.saveAnalyzeCron = function (selectedDbServersAnalyzeHour, selectedDbServersAnalyzeMin, selectedDbServersAnalyzeSec, selectedDbServersAnalyzeDay, selectedDbServersAnalyzeMonth, selectedDbServersAnalyzeWeek, selectedDbServersAnalyzeHourTo, selectedDbServersAnalyzeMinTo, selectedDbServersAnalyzeSecTo, selectedDbServersAnalyzeDayTo, selectedDbServersAnalyzeMonthTo, selectedDbServersAnalyzeWeekTo, selectedDbServersAnalyzeHourPer, selectedDbServersAnalyzeMinPer, selectedDbServersAnalyzeSecPer) {
@@ -1474,7 +1474,7 @@ app.controller('DashboardController', function (
 
     value += ' ' + selectedDbServersAnalyzeHour;
     if (selectedDbServersAnalyzeHourTo) value += '-' + selectedDbServersAnalyzeHourTo;
-    if (selectedDbServersAnalyzeHourPer) value += '-' + selectedDbServersAnalyzeHourPer;
+    if (selectedDbServersAnalyzeHourPer) value += '/' + selectedDbServersAnalyzeHourPer;
 
     value += ' ' + selectedDbServersAnalyzeDay;
     if (selectedDbServersAnalyzeDayTo) value += '-' + selectedDbServersAnalyzeDayTo;
@@ -1484,7 +1484,7 @@ app.controller('DashboardController', function (
     value += ' ' + selectedDbServersAnalyzeWeek;
     if (selectedDbServersAnalyzeWeekTo) value += '-' + selectedDbServersAnalyzeWeekTo;
 
-    if (confirm("Confirm save Analyze backup scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-analyze-cron/' + value);
+    if (confirm("Confirm save Analyze backup scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set-cron/scheduler-db-servers-analyze-cron/' + encodeURIComponent(value));
   };
 
   $scope.saveOptimizeCron = function (selectedDbServersOptimizeHour, selectedDbServersOptimizeMin, selectedDbServersOptimizeSec, selectedDbServersOptimizeDay, selectedDbServersOptimizeMonth, selectedDbServersOptimizeWeek, selectedDbServersOptimizeHourTo, selectedDbServersOptimizeMinTo, selectedDbServersOptimizeSecTo, selectedDbServersOptimizeDayTo, selectedDbServersOptimizeMonthTo, selectedDbServersOptimizeWeekTo, selectedDbServersOptimizeHourPer, selectedDbServersOptimizeMinPer, selectedDbServersOptimizeSecPer) {
@@ -1498,7 +1498,7 @@ app.controller('DashboardController', function (
 
     value += ' ' + selectedDbServersOptimizeHour;
     if (selectedDbServersOptimizeHourTo) value += '-' + selectedDbServersOptimizeHourTo;
-    if (selectedDbServersOptimizeHourPer) value += '-' + selectedDbServersOptimizeHourPer;
+    if (selectedDbServersOptimizeHourPer) value += '/' + selectedDbServersOptimizeHourPer;
 
     value += ' ' + selectedDbServersOptimizeDay;
     if (selectedDbServersOptimizeDayTo) value += '-' + selectedDbServersOptimizeDayTo;
@@ -1508,7 +1508,7 @@ app.controller('DashboardController', function (
     value += ' ' + selectedDbServersOptimizeWeek;
     if (selectedDbServersOptimizeWeekTo) value += '-' + selectedDbServersOptimizeWeekTo;
 
-    if (confirm("Confirm save Optimize backup scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-optimize-cron/' + value);
+    if (confirm("Confirm save Optimize backup scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set-cron/scheduler-db-servers-optimize-cron/' + encodeURIComponent(value));
   };
 
   $scope.saveLogsCron = function (selectedDbServersLogsHour, selectedDbServersLogsMin, selectedDbServersLogsSec, selectedDbServersLogsDay, selectedDbServersLogsMonth, selectedDbServersLogsWeek, selectedDbServersLogsHourTo, selectedDbServersLogsMinTo, selectedDbServersLogsSecTo, selectedDbServersLogsDayTo, selectedDbServersLogsMonthTo, selectedDbServersLogsWeekTo, selectedDbServersLogsHourPer, selectedDbServersLogsMinPer, selectedDbServersLogsSecPer) {
@@ -1522,7 +1522,7 @@ app.controller('DashboardController', function (
 
     value += ' ' + selectedDbServersLogsHour;
     if (selectedDbServersLogsHourTo) value += '-' + selectedDbServersLogsHourTo;
-    if (selectedDbServersLogsHourPer) value += '-' + selectedDbServersLogsHourPer;
+    if (selectedDbServersLogsHourPer) value += '/' + selectedDbServersLogsHourPer;
 
     value += ' ' + selectedDbServersLogsDay;
     if (selectedDbServersLogsDayTo) value += '-' + selectedDbServersLogsDayTo;
@@ -1532,7 +1532,7 @@ app.controller('DashboardController', function (
     value += ' ' + selectedDbServersLogsWeek;
     if (selectedDbServersLogsWeekTo) value += '-' + selectedDbServersLogsWeekTo;
 
-    if (confirm("Confirm save logs scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-logs-cron/' + value);
+    if (confirm("Confirm save logs scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set-cron/scheduler-db-servers-logs-cron/' + encodeURIComponent(value));
   };
 
   $scope.saveLogsTableRotateCron = function (selectedDbServersLogsTableRotateHour, selectedDbServersLogsTableRotateMin, selectedDbServersLogsTableRotateSec, selectedDbServersLogsTableRotateDay, selectedDbServersLogsTableRotateMonth, selectedDbServersLogsTableRotateWeek, selectedDbServersLogsTableRotateHourTo, selectedDbServersLogsTableRotateMinTo, selectedDbServersLogsTableRotateSecTo, selectedDbServersLogsTableRotateDayTo, selectedDbServersLogsTableRotateMonthTo, selectedDbServersLogsTableRotateWeekTo, selectedDbServersLogsTableRotateHourPer, selectedDbServersLogsTableRotateMinPer, selectedDbServersLogsTableRotateSecPer) {
@@ -1546,7 +1546,7 @@ app.controller('DashboardController', function (
 
     value += ' ' + selectedDbServersLogsTableRotateHour;
     if (selectedDbServersLogsTableRotateHourTo) value += '-' + selectedDbServersLogsTableRotateHourTo;
-    if (selectedDbServersLogsTableRotateHourPer) value += '-' + selectedDbServersLogsTableRotateHourPer;
+    if (selectedDbServersLogsTableRotateHourPer) value += '/' + selectedDbServersLogsTableRotateHourPer;
 
     value += ' ' + selectedDbServersLogsTableRotateDay;
     if (selectedDbServersLogsTableRotateDayTo) value += '-' + selectedDbServersLogsTableRotateDayTo;
@@ -1556,7 +1556,7 @@ app.controller('DashboardController', function (
     value += ' ' + selectedDbServersLogsTableRotateWeek;
     if (selectedDbServersLogsTableRotateWeekTo) value += '-' + selectedDbServersLogsTableRotateWeekTo;
 
-    if (confirm("Confirm save LogsTableRotate scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-db-servers-logs-table-rotate-cron/' + value);
+    if (confirm("Confirm save LogsTableRotate scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set-cron/scheduler-db-servers-logs-table-rotate-cron/' + encodeURIComponent(value));
   };
 
   $scope.saveRollingRestartCron = function (selectedRollingRestartHour, selectedRollingRestartMin, selectedRollingRestartSec, selectedRollingRestartDay, selectedRollingRestartMonth, selectedRollingRestartWeek, selectedRollingRestartHourTo, selectedRollingRestartMinTo, selectedRollingRestartSecTo, selectedRollingRestartDayTo, selectedRollingRestartMonthTo, selectedRollingRestartWeekTo, selectedRollingRestartHourPer, selectedRollingRestartMinPer, selectedRollingRestartSecPer) {
@@ -1570,7 +1570,7 @@ app.controller('DashboardController', function (
 
     value += ' ' + selectedRollingRestartHour;
     if (selectedRollingRestartHourTo) value += '-' + selectedRollingRestartHourTo;
-    if (selectedRollingRestartHourPer) value += '-' + selectedRollingRestartHourPer;
+    if (selectedRollingRestartHourPer) value += '/' + selectedRollingRestartHourPer;
 
     value += ' ' + selectedRollingRestartDay;
     if (selectedRollingRestartDayTo) value += '-' + selectedRollingRestartDayTo;
@@ -1580,7 +1580,7 @@ app.controller('DashboardController', function (
     value += ' ' + selectedRollingRestartWeek;
     if (selectedRollingRestartWeekTo) value += '-' + selectedRollingRestartWeekTo;
 
-    if (confirm("Confirm save RollingRestart scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-rolling-restart-cron/' + value);
+    if (confirm("Confirm save RollingRestart scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set-cron/scheduler-rolling-restart-cron/' + encodeURIComponent(value));
   };
 
   $scope.saveRollingReprovCron = function (selectedRollingReprovHour, selectedRollingReprovMin, selectedRollingReprovSec, selectedRollingReprovDay, selectedRollingReprovMonth, selectedRollingReprovWeek, selectedRollingReprovHourTo, selectedRollingReprovMinTo, selectedRollingReprovSecTo, selectedRollingReprovDayTo, selectedRollingReprovMonthTo, selectedRollingReprovWeekTo, selectedRollingReprovHourPer, selectedRollingReprovMinPer, selectedRollingReprovSecPer) {
@@ -1594,7 +1594,7 @@ app.controller('DashboardController', function (
 
     value += ' ' + selectedRollingReprovHour;
     if (selectedRollingReprovHourTo) value += '-' + selectedRollingReprovHourTo;
-    if (selectedRollingReprovHourPer) value += '-' + selectedRollingReprovHourPer;
+    if (selectedRollingReprovHourPer) value += '/' + selectedRollingReprovHourPer;
 
     value += ' ' + selectedRollingReprovDay;
     if (selectedRollingReprovDayTo) value += '-' + selectedRollingReprovDayTo;
@@ -1604,7 +1604,7 @@ app.controller('DashboardController', function (
     value += ' ' + selectedRollingReprovWeek;
     if (selectedRollingReprovWeekTo) value += '-' + selectedRollingReprovWeekTo;
 
-    if (confirm("Confirm save RollingReprov scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-rolling-reprov-cron/' + value);
+    if (confirm("Confirm save RollingReprov scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set-cron/scheduler-rolling-reprov-cron/' + encodeURIComponent(value));
   };
 
   $scope.saveJobsSshCron = function (selectedJobsSshHour, selectedJobsSshMin, selectedJobsSshSec, selectedJobsSshDay, selectedJobsSshMonth, selectedJobsSshWeek, selectedJobsSshHourTo, selectedJobsSshMinTo, selectedJobsSshSecTo, selectedJobsSshDayTo, selectedJobsSshMonthTo, selectedJobsSshWeekTo, selectedJobsSshHourPer, selectedJobsSshMinPer, selectedJobsSshSecPer) {
@@ -1618,7 +1618,7 @@ app.controller('DashboardController', function (
 
     value += ' ' + selectedJobsSshHour;
     if (selectedJobsSshHourTo) value += '-' + selectedJobsSshHourTo;
-    if (selectedJobsSshHourPer) value += '-' + selectedJobsSshHourPer;
+    if (selectedJobsSshHourPer) value += '/' + selectedJobsSshHourPer;
 
     value += ' ' + selectedJobsSshDay;
     if (selectedJobsSshDayTo) value += '-' + selectedJobsSshDayTo;
@@ -1628,7 +1628,7 @@ app.controller('DashboardController', function (
     value += ' ' + selectedJobsSshWeek;
     if (selectedJobsSshWeekTo) value += '-' + selectedJobsSshWeekTo;
 
-    if (confirm("Confirm save JobsSsh scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-jobs-ssh-cron/' + value);
+    if (confirm("Confirm save JobsSsh scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set-cron/scheduler-jobs-ssh-cron/' + encodeURIComponent(value));
   };
 
   $scope.saveSlaRotateCron = function (selectedSlaRotateHour, selectedSlaRotateMin, selectedSlaRotateSec, selectedSlaRotateDay, selectedSlaRotateMonth, selectedSlaRotateWeek, selectedSlaRotateHourTo, selectedSlaRotateMinTo, selectedSlaRotateSecTo, selectedSlaRotateDayTo, selectedSlaRotateMonthTo, selectedSlaRotateWeekTo, selectedSlaRotateHourPer, selectedSlaRotateMinPer, selectedSlaRotateSecPer) {
@@ -1642,7 +1642,7 @@ app.controller('DashboardController', function (
 
     value += ' ' + selectedSlaRotateHour;
     if (selectedSlaRotateHourTo) value += '-' + selectedSlaRotateHourTo;
-    if (selectedSlaRotateHourPer) value += '-' + selectedSlaRotateHourPer;
+    if (selectedSlaRotateHourPer) value += '/' + selectedSlaRotateHourPer;
 
     value += ' ' + selectedSlaRotateDay;
     if (selectedSlaRotateDayTo) value += '-' + selectedSlaRotateDayTo;
@@ -1652,7 +1652,7 @@ app.controller('DashboardController', function (
     value += ' ' + selectedSlaRotateWeek;
     if (selectedSlaRotateWeekTo) value += '-' + selectedSlaRotateWeekTo;
 
-    if (confirm("Confirm save SlaRotate scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/scheduler-sla-rotate-cron/' + value);
+    if (confirm("Confirm save SlaRotate scheduler  " + value)) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set-cron/scheduler-sla-rotate-cron/' + encodeURIComponent(value));
   };
 
   $scope.clsetdbdisk = function (base, add) {
