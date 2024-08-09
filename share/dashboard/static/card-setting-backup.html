@@ -46,6 +46,20 @@
                 </span>
             </td>
         </tr>
+        <tr>
+            <th colspan=4>Backup keep previous until valid</th>
+        </tr>
+        <tr>
+            <td colspan=4>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
+                    ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.backupKeepUntilValid"
+                    ng-click="switchsettings('backup-keep-until-valid')" aria-label="Keep previous backup until next backup is valid">
+                    <span ng-if="selectedCluster.config.backupKeepUntilValid" class="label label-primary">On</span><span
+                        ng-if="!selectedCluster.config.backupKeepUntilValid" class="label label-warning">Off</span>
+
+                </md-switch>
+            </td>
+        </tr>
     </table>
 </md-card>
 <md-card ng-if="selectedCluster">

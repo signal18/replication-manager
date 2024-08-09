@@ -1,9 +1,45 @@
 <md-content class="md-padding">
    <md-card>
       <md-card-content>
-         <p class="sectionheader">Backups</p>
+         <p class="sectionheader">Current Backups</p>
       </md-card-content>
-
+      <md-card>
+         <table ng-if="selectedCluster.backupList" class="table">
+            <thead>
+               <tr>
+                  <th>Id</th>
+                  <th>Start Time</th>
+                  <th>End Time</th>
+                  <th>Backup Method</th>
+                  <th>Backup Strategy</th>
+                  <th>Source</th>
+                  <th>Destination</th>
+                  <th>Size</th>
+                  <th>Compressed</th>
+                  <th>Encrypted</th>
+                  <th>Completed</th>
+               </tr>
+            </thead>
+            <tbody>
+               <tr ng-repeat="backup in selectedCluster.backupList">
+                  <td>{{backup.id}}</td>
+                  <td>{{backup.startTime | date:'yyyy-MM-dd HH:mm:ss'}}</td>
+                  <td>{{backup.endTime | date:'yyyy-MM-dd HH:mm:ss'}}</td>
+                  <td>{{getBackupMethod(backup.backupMethod)}}</td>
+                  <td>{{getBackupStrategy(backup.backupStrategy)}}</td>
+                  <td>{{backup.source}}</td>
+                  <td>{{backup.dest}}</td>
+                  <td>{{formatBytes(backup.size)}}</td>
+                  <td>{{backup.compressed ? 'Yes' : 'No'}}</td>
+                  <td>{{backup.encrypted ? 'Yes' : 'No'}}</td>
+                  <td>{{backup.completed ? 'Yes' : 'No'}}</td>
+               </tr>
+            </tbody>
+         </table>
+      </md-card>
+      <md-card-content>
+         <p class="sectionheader">Backup History</p>
+      </md-card-content>
       <md-card>
          <table ng-if="backups" class="table">
             <thead>
@@ -22,7 +58,6 @@
             </tbody>
          </table>
       </md-card>
-
       <md-card>
          <table ng-if="backups" class="table">
             <thead>
@@ -45,5 +80,7 @@
             </tbody>
          </table>
       </md-card>
+
+
    </md-card>
 </md-content>

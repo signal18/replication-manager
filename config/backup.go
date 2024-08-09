@@ -1,6 +1,10 @@
 package config
 
-import "time"
+import (
+	"os"
+	"path/filepath"
+	"time"
+)
 
 type BackupMethod int
 
@@ -37,4 +41,17 @@ type BackupMetadata struct {
 	BinLogFilePos  uint64         `json:"binLogFilePos"`
 	BinLogGtid     string         `json:"binLogUuid"`
 	Completed      bool           `json:"completed"`
+	Previous       int64          `json:"previous"`
+}
+
+func (bm *BackupMetadata) GetSize() error {
+	var size int64 = 0
+	err := filepath.Walk(bm.Dest, func(_ string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			size += info.Size()
+		}
+		return err
+	})
+	bm.Size = size
+	return err
 }

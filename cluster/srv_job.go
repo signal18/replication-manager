@@ -311,6 +311,17 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 
 	now := time.Now()
 	// Reset last backup meta
+	var prevId int64
+	prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupPhysicalType, server.URL)
+	if prev != nil {
+		prevId = prev.Id
+	}
+
+	// Remove from backup list, since the file will be replaced
+	if !cluster.Conf.BackupKeepUntilValid {
+		cluster.BackupMetaMap.Delete(prevId)
+	}
+
 	server.LastBackupMeta.Physical = &config.BackupMetadata{
 		Id:             now.Unix(),
 		StartTime:      now,
@@ -320,6 +331,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 		Source:         server.URL,
 		Dest:           dest,
 		Compressed:     cluster.Conf.CompressBackups,
+		Previous:       prevId,
 	}
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Physical.Id, server.LastBackupMeta.Physical)
@@ -1888,6 +1900,17 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	cluster.SetInLogicalBackupState(true)
 	start := time.Now()
+	var prevId int64
+	prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupLogicalType, server.URL)
+	if prev != nil {
+		prevId = prev.Id
+	}
+
+	// Remove from backup list, since the file will be replaced
+	if !cluster.Conf.BackupKeepUntilValid {
+		cluster.BackupMetaMap.Delete(prevId)
+	}
+
 	server.LastBackupMeta.Logical = &config.BackupMetadata{
 		Id:             start.Unix(),
 		StartTime:      start,
@@ -1895,7 +1918,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		BackupTool:     cluster.Conf.BackupLogicalType,
 		BackupStrategy: config.BackupStrategyFull,
 		Source:         server.URL,
+		Previous:       prevId,
 	}
+
+	cluster.BackupMetaMap.Set(server.LastBackupMeta.Logical.Id, server.LastBackupMeta.Logical)
 
 	// Removing previous valid backup state and start
 	server.DelBackupLogicalCookie()
@@ -1934,10 +1960,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				if e2 := server.JobsUpdateState(task, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
-				finfo, e3 := os.Stat(filename)
+				_, e3 := os.Stat(filename)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
-					server.LastBackupMeta.Logical.Size = finfo.Size()
+					server.LastBackupMeta.Logical.GetSize()
 					server.LastBackupMeta.Logical.Completed = true
 					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMysqldump)
 				}
@@ -1959,10 +1985,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				if e2 := server.JobsUpdateState(task, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
-				finfo, e3 := os.Stat(outputdir)
+				_, e3 := os.Stat(outputdir)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
-					server.LastBackupMeta.Logical.Size = finfo.Size()
+					server.LastBackupMeta.Logical.GetSize()
 					server.LastBackupMeta.Logical.Completed = true
 					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
 				}
@@ -1985,10 +2011,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 
-				finfo, e3 := os.Stat(outputdir)
+				_, e3 := os.Stat(outputdir)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
-					server.LastBackupMeta.Logical.Size = finfo.Size()
+					server.LastBackupMeta.Logical.GetSize()
 					server.LastBackupMeta.Logical.Completed = true
 					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
 				}
@@ -2834,8 +2860,8 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 		return
 	}
 
-	if finfo, err := os.Stat(lastmeta.Dest); err == nil {
-		lastmeta.Size = finfo.Size()
+	if _, err := os.Stat(lastmeta.Dest); err == nil {
+		lastmeta.GetSize()
 		lastmeta.EndTime = time.Now()
 	}
 
@@ -2875,6 +2901,8 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 	//Don't change river
 	if cluster.Conf.BackupKeepUntilValid && lastmeta.BackupTool != config.ConstBackupLogicalTypeRiver {
 		if lastmeta.Completed {
+			// Delete previous meta with same type
+			cluster.BackupMetaMap.Delete(lastmeta.Previous)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
 			exec.Command("rm", "-r", lastmeta.Dest+".old").Run()
 		} else {
@@ -2882,6 +2910,15 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 			exec.Command("mv", lastmeta.Dest, lastmeta.Dest+".err").Run()
 			exec.Command("mv", lastmeta.Dest+".old", lastmeta.Dest).Run()
 			exec.Command("rm", "-r", lastmeta.Dest+".err").Run()
+
+			// Revert to previous meta with same type
+			cluster.BackupMetaMap.Delete(lastmeta.Id)
+			switch backtype {
+			case config.BackupMethodLogical:
+				_, server.LastBackupMeta.Logical = server.GetLatestMeta("logical")
+			case config.BackupMethodPhysical:
+				_, server.LastBackupMeta.Physical = server.GetLatestMeta("physical")
+			}
 		}
 	}
 }

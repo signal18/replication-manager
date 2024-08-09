@@ -619,3 +619,7 @@ func (cluster *Cluster) SwitchForceWriteConfig() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Configurator force write config files de-activated. Will create config files with suffix (.new) for conflicting files on next provision.")
 	}
 }
+
+func (cluster *Cluster) SwitchBackupKeepUntilValid() {
+	cluster.Conf.BackupKeepUntilValid = !cluster.Conf.BackupKeepUntilValid
+}
