@@ -3,7 +3,9 @@ package cluster
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -52,7 +54,7 @@ func (cluster *Cluster) OnPremiseStopProxySQLService(server DatabaseProxy) error
 		}
 		strOut = string(out)
 	} else {
-		var r, stdout, stderr bytes.Buffer
+		var stdout, stderr bytes.Buffer
 
 		srcpath := cluster.Conf.OnPremiseSSHStopProxyScript
 		filerc, err2 := os.Open(srcpath)
@@ -62,9 +64,11 @@ func (cluster *Cluster) OnPremiseStopProxySQLService(server DatabaseProxy) error
 
 		}
 		defer filerc.Close()
-		r.ReadFrom(filerc)
 
-		if err = client.Shell().SetStdio(&r, &stdout, &stderr).Start(); err != nil {
+		envBuf := strings.NewReader(server.GetSshEnv())
+		r := io.MultiReader(envBuf, filerc)
+
+		if err = client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 			return err
 		}
 		strOut = stdout.String()
@@ -92,7 +96,7 @@ func (cluster *Cluster) OnPremiseStartProxySQLService(server DatabaseProxy) erro
 		}
 		strOut = string(out)
 	} else {
-		var r, stdout, stderr bytes.Buffer
+		var stdout, stderr bytes.Buffer
 
 		srcpath := cluster.Conf.OnPremiseSSHStartProxyScript
 		filerc, err2 := os.Open(srcpath)
@@ -102,9 +106,11 @@ func (cluster *Cluster) OnPremiseStartProxySQLService(server DatabaseProxy) erro
 
 		}
 		defer filerc.Close()
-		r.ReadFrom(filerc)
 
-		if err = client.Shell().SetStdio(&r, &stdout, &stderr).Start(); err != nil {
+		envBuf := strings.NewReader(server.GetSshEnv())
+		r := io.MultiReader(envBuf, filerc)
+
+		if err = client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 			return err
 		}
 		strOut = stdout.String()
