@@ -44,7 +44,7 @@ func (cluster *Cluster) OnPremiseStopHaproxyService(server DatabaseProxy) error 
 		return err
 	}
 	defer client.Close()
-	if cluster.Conf.OnPremiseSSHStopHaproxyScript == "" {
+	if cluster.Conf.OnPremiseSSHStopProxyScript == "" {
 		out, err := client.Cmd("systemctl stop haproxy").SmartOutput()
 		if err != nil {
 			return err
@@ -53,7 +53,7 @@ func (cluster *Cluster) OnPremiseStopHaproxyService(server DatabaseProxy) error 
 	} else {
 		var r, stdout, stderr bytes.Buffer
 
-		srcpath := cluster.Conf.OnPremiseSSHStopHaproxyScript
+		srcpath := cluster.Conf.OnPremiseSSHStopProxyScript
 		filerc, err2 := os.Open(srcpath)
 		if err2 != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Failed to load start script %s for SSH, err : %s", srcpath, err2.Error())
@@ -80,7 +80,7 @@ func (cluster *Cluster) OnPremiseStartHaProxyService(server DatabaseProxy) error
 		return err
 	}
 	defer client.Close()
-	if cluster.Conf.OnPremiseSSHStartHaproxyScript == "" {
+	if cluster.Conf.OnPremiseSSHStartProxyScript == "" {
 		out, err := client.Cmd("systemctl start haproxy").SmartOutput()
 		if err != nil {
 			return err
@@ -89,7 +89,7 @@ func (cluster *Cluster) OnPremiseStartHaProxyService(server DatabaseProxy) error
 	} else {
 		var r, stdout, stderr bytes.Buffer
 
-		srcpath := cluster.Conf.OnPremiseSSHStartHaproxyScript
+		srcpath := cluster.Conf.OnPremiseSSHStartProxyScript
 		filerc, err2 := os.Open(srcpath)
 		if err2 != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Failed to load start script %s for SSH, err : %s", srcpath, err2.Error())
