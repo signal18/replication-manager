@@ -97,16 +97,22 @@ func (server *ServerMonitor) DelBackupMariabackupCookie() error {
 func (server *ServerMonitor) DelBackupTypeCookie(backtype string) error {
 	switch backtype {
 	case config.ConstBackupLogicalTypeMysqldump:
+		server.DelBackupLogicalCookie()
 		return server.DelBackupMysqldumpCookie()
 	case config.ConstBackupLogicalTypeMydumper:
+		server.DelBackupLogicalCookie()
 		return server.DelBackupMydumperCookie()
 	case config.ConstBackupLogicalTypeDumpling:
+		server.DelBackupLogicalCookie()
 		return server.DelBackupDumplingCookie()
 	case config.ConstBackupPhysicalTypeXtrabackup:
+		server.DelBackupPhysicalCookie()
 		return server.DelBackupXtrabackupCookie()
 	case config.ConstBackupPhysicalTypeMariaBackup:
+		server.DelBackupPhysicalCookie()
 		return server.DelBackupMariabackupCookie()
 	case "script":
+		server.DelBackupLogicalCookie()
 		return server.DelBackupScriptCookie()
 	}
 
