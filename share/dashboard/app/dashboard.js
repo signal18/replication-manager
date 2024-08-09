@@ -375,6 +375,23 @@ app.controller('DashboardController', function (
     return t.state === 0 || (t.start < Math.floor((Date.now() - 300000) / 1000) && !t.end && t.state < 3)
   }
 
+  $scope.getBackupMethod = function(method) {
+    switch(method) {
+        case 1: return 'Logical';
+        case 2: return 'Physical';
+        default: return 'Unknown';
+    }
+};
+
+$scope.getBackupStrategy = function(strategy) {
+    switch(strategy) {
+        case 1: return 'Full';
+        case 2: return 'Incremental';
+        case 3: return 'Differential';
+        default: return 'Unknown';
+    }
+};
+
   $scope.SetApiTokenTimeout = function (val) {
     if ($scope.roApiTokenTimeout) {
       $scope.selectedApiTokenTimeout = Number(val)

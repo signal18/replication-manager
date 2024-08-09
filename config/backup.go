@@ -37,4 +37,5 @@ type BackupMetadata struct {
 	BinLogFilePos  uint64         `json:"binLogFilePos"`
 	BinLogGtid     string         `json:"binLogUuid"`
 	Completed      bool           `json:"completed"`
+	Previous       int64          `json:"previous"`
 }

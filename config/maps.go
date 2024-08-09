@@ -880,3 +880,18 @@ func FromBackupMetaMap(m *BackupMetaMap, c *BackupMetaMap) *BackupMetaMap {
 
 	return m
 }
+
+// GetBackupsByToolAndSource retrieves backups with the same backupTool and source.
+func (b *BackupMetaMap) GetPreviousBackup(backupTool string, source string) *BackupMetadata {
+	var result *BackupMetadata
+	b.Map.Range(func(key, value interface{}) bool {
+		if backup, ok := value.(*BackupMetadata); ok {
+			if backup.BackupTool == backupTool && backup.Source == source {
+				result = backup
+				return false
+			}
+		}
+		return true
+	})
+	return result
+}

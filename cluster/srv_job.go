@@ -311,6 +311,17 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 
 	now := time.Now()
 	// Reset last backup meta
+	var prevId int64
+	prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupPhysicalType, server.URL)
+	if prev != nil {
+		prevId = prev.Id
+	}
+
+	// Remove from backup list, since the file will be replaced
+	if !cluster.Conf.BackupKeepUntilValid {
+		cluster.BackupMetaMap.Delete(prevId)
+	}
+
 	server.LastBackupMeta.Physical = &config.BackupMetadata{
 		Id:             now.Unix(),
 		StartTime:      now,
@@ -320,6 +331,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 		Source:         server.URL,
 		Dest:           dest,
 		Compressed:     cluster.Conf.CompressBackups,
+		Previous:       prevId,
 	}
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Physical.Id, server.LastBackupMeta.Physical)
@@ -1888,6 +1900,17 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	cluster.SetInLogicalBackupState(true)
 	start := time.Now()
+	var prevId int64
+	prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupLogicalType, server.URL)
+	if prev != nil {
+		prevId = prev.Id
+	}
+
+	// Remove from backup list, since the file will be replaced
+	if !cluster.Conf.BackupKeepUntilValid {
+		cluster.BackupMetaMap.Delete(prevId)
+	}
+
 	server.LastBackupMeta.Logical = &config.BackupMetadata{
 		Id:             start.Unix(),
 		StartTime:      start,
@@ -1895,7 +1918,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		BackupTool:     cluster.Conf.BackupLogicalType,
 		BackupStrategy: config.BackupStrategyFull,
 		Source:         server.URL,
+		Previous:       prevId,
 	}
+
+	cluster.BackupMetaMap.Set(server.LastBackupMeta.Logical.Id, server.LastBackupMeta.Logical)
 
 	// Removing previous valid backup state and start
 	server.DelBackupLogicalCookie()
@@ -2875,6 +2901,7 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 	//Don't change river
 	if cluster.Conf.BackupKeepUntilValid && lastmeta.BackupTool != config.ConstBackupLogicalTypeRiver {
 		if lastmeta.Completed {
+			cluster.BackupMetaMap.Delete(lastmeta.Previous)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
 			exec.Command("rm", "-r", lastmeta.Dest+".old").Run()
 		} else {
