@@ -35,12 +35,11 @@ export const authSlice = createSlice({
       state.user = null
       state.isLogged = false
     },
-    setUserData:(state, action)=>{
-      const username =  localStorage.getItem('username')
+    setUserData: (state, action) => {
+      const username = localStorage.getItem('username')
       state.user = {
-          username: username
-        }
-
+        username: username
+      }
     }
   },
   extraReducers: (builder) => {
@@ -50,9 +49,9 @@ export const authSlice = createSlice({
       })
       .addCase(login.fulfilled, (state, action) => {
         const { payload, meta } = action
-        const { token } = payload
+        const { data } = payload
         const { arg } = meta
-        localStorage.setItem('user_token', token)
+        localStorage.setItem('user_token', data.token)
         localStorage.setItem('username', arg.username)
         state.loading = false
         state.isLogged = true
@@ -81,7 +80,7 @@ export const authSlice = createSlice({
 })
 
 // this is for dispatch
-export const { logout,setUserData } = authSlice.actions
+export const { logout, setUserData } = authSlice.actions
 
 // this is for configureStore
 export default authSlice.reducer

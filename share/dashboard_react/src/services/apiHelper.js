@@ -27,21 +27,27 @@ export async function getRequest(apiUrl, params, authValue = 1) {
       headers: authHeader(authValue),
       ...(params ? { body: JSON.stringify(params) } : {})
     })
-    const contentType = response.headers.get('Content-Type')
-    let data = null
-    if (contentType && contentType.includes('application/json')) {
-      data = await response.json()
-    } else if (contentType && contentType.includes('text/plain')) {
-      data = await response.text()
-      try {
-        data = JSON.parse(data)
-      } catch (e) {
-        throw new Error(data)
+
+    if (response.status === 401) {
+      localStorage.removeItem('user_token')
+      localStorage.removeItem('username')
+    } else {
+      const contentType = response.headers.get('Content-Type')
+      let data = null
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json()
+      } else if (contentType && contentType.includes('text/plain')) {
+        data = await response.text()
+        try {
+          data = JSON.parse(data)
+        } catch (e) {
+          throw new Error(data)
+        }
       }
-    }
-    return {
-      data,
-      status: response.status
+      return {
+        data,
+        status: response.status
+      }
     }
   } catch (error) {
     console.error('Error occured:', error)
@@ -66,15 +72,21 @@ export async function postRequest(apiUrl, params, authValue = 1) {
       headers: authHeader(authValue), // Spread the headers from authHeader
       body: JSON.stringify(params)
     })
-
-    // Handle HTTP errors
     const contentType = response.headers.get('Content-Type')
+    // Handle HTTP errors
     let data = null
-    if (contentType && contentType.includes('application/json')) {
+    // try {
+    //   data = await response.json()
+    // } catch (e) {
+    //   console.log('data::', data, contentType)
+    //   data = await response.text()
+    //   console.log('data text::', data)
+    // }
+    if ((contentType && contentType.includes('application/json')) || apiUrl.includes('login')) {
       data = await response.json()
     } else if (contentType && contentType.includes('text/plain')) {
       // Handle plain text response
-      const data = await response.text()
+      data = await response.text()
     }
 
     return {
