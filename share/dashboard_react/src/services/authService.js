@@ -10,6 +10,5 @@ function login(username, password) {
 }
 
 function gitLogin() {
-    console.log('inside gitLogin')
   return postRequest('monitor', {}, 0)
 }
