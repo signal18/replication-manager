@@ -59,6 +59,7 @@ export const getDaysInMonth = (month, year = new Date().getFullYear()) => {
   date.setDate(0)
   // Get the number of days in the month
   const daysInMonth = date.getDate()
+  console.log('daysInMonth::', month)
 
   // Create an array with the days of the month
   return Array.from({ length: daysInMonth }, (_, i) => {
