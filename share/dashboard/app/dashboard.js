@@ -46,6 +46,7 @@ app.controller('DashboardController', function (
   $scope.menuOpened = false;
   $scope.serverListTabular = false;
   $scope.selectedTab = undefined;
+  $scope.selectedSubTab = undefined;
   $scope.selectedAcls = [];
   $scope.selectedUserIndex = undefined;
   $scope.newUserAcls = undefined;
@@ -62,6 +63,12 @@ app.controller('DashboardController', function (
   $scope.missingDBTags = [];
   $scope.missingProxyTags = [];
   $scope.promise = undefined;
+
+  $scope.restoreForm = {
+    selectedBackupServer: undefined,
+    selectedBackup: undefined,
+    restoreTime: undefined,
+  };
 
   $scope.showTable = false
   $scope.showLog = true
@@ -302,9 +309,16 @@ app.controller('DashboardController', function (
     { id: '6', name: 'SAT' },
   ];
 
-  $scope.humanFileSize = function (size) {
-    var i = size == 0 ? 0 : Math.floor(Math.log(size) / Math.log(1024));
-    return +((size / Math.pow(1024, i)).toFixed(2)) * 1 + ' ' + ['B', 'kB', 'MB', 'GB', 'TB'][i];
+  $scope.sortObjectValues = function (values, sortBy, direction) {
+    if (!values) return [];
+
+    let array = Object.values(values);
+    if (direction.toLowerCase() == 'desc') {
+      array.sort((a, b) => b[sortBy] - a[sortBy]); // Descending order
+    } else {
+      array.sort((a, b) => a[sortBy] - b[sortBy]); // Ascending order
+    }
+    return array;
   }
 
   var getClusterUrl = function () {
@@ -375,22 +389,22 @@ app.controller('DashboardController', function (
     return t.state === 0 || (t.start < Math.floor((Date.now() - 300000) / 1000) && !t.end && t.state < 3)
   }
 
-  $scope.getBackupMethod = function(method) {
-    switch(method) {
-        case 1: return 'Logical';
-        case 2: return 'Physical';
-        default: return 'Unknown';
+  $scope.getBackupMethod = function (method) {
+    switch (method) {
+      case 1: return 'Logical';
+      case 2: return 'Physical';
+      default: return 'Unknown';
     }
-};
+  };
 
-$scope.getBackupStrategy = function(strategy) {
-    switch(strategy) {
-        case 1: return 'Full';
-        case 2: return 'Incremental';
-        case 3: return 'Differential';
-        default: return 'Unknown';
+  $scope.getBackupStrategy = function (strategy) {
+    switch (strategy) {
+      case 1: return 'Full';
+      case 2: return 'Incremental';
+      case 3: return 'Differential';
+      default: return 'Unknown';
     }
-};
+  };
 
   $scope.SetApiTokenTimeout = function (val) {
     if ($scope.roApiTokenTimeout) {
@@ -2115,14 +2129,27 @@ $scope.getBackupStrategy = function(strategy) {
   };
 
   $scope.onTabSelected = function (tab) {
-
     $scope.selectedTab = tab;
     $scope.gfilterUpdate = true;
+    if (tab == "Backups") {
+      $scope.selectedSubTab = tab;
+    }
+  };
+
+  $scope.onSubTabSelected = function (sub) {
+    $scope.selectedSubTab = sub;
   };
 
   $scope.onTabClicked = function (tab) {
     $scope.selectedTab = tab;
     $scope.gfilterUpdate = true;
+    if (tab == "Backups") {
+      $scope.selectedSubTab = tab;
+    }
+  };
+
+  $scope.onSubTabClicked = function (sub) {
+    $scope.selectedSubTab = sub;
   };
 
   $scope.openServer = function (id) {
@@ -2262,8 +2289,5 @@ $scope.getBackupStrategy = function(strategy) {
   $scope.getTablePct = function (table, index) {
     return ((table + index) / ($scope.selectedCluster.workLoad.dbTableSize + $scope.selectedCluster.workLoad.dbTableSize + 1) * 100).toFixed(2);
   };
-
-
   $scope.start();
-
 });

@@ -1,65 +1,69 @@
 <!doctype html>
 <html>
-   <head>
-      <meta charset="utf-8">
-      <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-      <title></title>
-      <meta name="description" content="">
-      <meta name="viewport" content="width=device-width">
-      <link href="/static/img/favicon.ico" rel="shortcut icon" type="image/vnd.microsoft.icon" />
-      <link rel="apple-touch-icon" type="image/png" href="/static/img/repman.57.png">
-      <link rel="apple-touch-icon" type="image/png" sizes="72x72" href="/static/img/repman.72.png">
-      <link rel="apple-touch-icon" type="image/png" sizes="114x114" href="/static/img/repman.114.png">
-      <link rel="icon" type="image/png" href="/static/img/repman.114.png">
 
-      <script src="/static/vendor/jquery-3.7.1.min.js"></script>
-      <script src="/static/vendor/jquery-ui.min.js"></script>
-      <script src="/static/vendor/jquery.rule-1.0.2-min.js"></script>
+<head>
+   <meta charset="utf-8">
+   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+   <title></title>
+   <meta name="description" content="">
+   <meta name="viewport" content="width=device-width">
+   <link href="/static/img/favicon.ico" rel="shortcut icon" type="image/vnd.microsoft.icon" />
+   <link rel="apple-touch-icon" type="image/png" href="/static/img/repman.57.png">
+   <link rel="apple-touch-icon" type="image/png" sizes="72x72" href="/static/img/repman.72.png">
+   <link rel="apple-touch-icon" type="image/png" sizes="114x114" href="/static/img/repman.114.png">
+   <link rel="icon" type="image/png" href="/static/img/repman.114.png">
 
+   <script src="/static/vendor/jquery-3.7.1.min.js"></script>
+   <script src="/static/vendor/jquery-ui.min.js"></script>
+   <script src="/static/vendor/jquery.rule-1.0.2-min.js"></script>
+   <script src="/static/vendor/flatpickr.js"></script>
 
-      <link rel="stylesheet" href="/static/css/bootstrap.min.css">
-      <link rel="stylesheet" href="/static/css/bootstrap-theme.min.css">
-      <link rel="stylesheet" href="/static/css/detail.css">
-      <link rel="stylesheet" href="/static/css/legend.css">
-      <link rel="stylesheet" href="/static/css/main.css">
+   <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+   <link rel="stylesheet" href="/static/css/bootstrap-theme.min.css">
+   <link rel="stylesheet" href="/static/css/detail.css">
+   <link rel="stylesheet" href="/static/css/legend.css">
+   <link rel="stylesheet" href="/static/css/main.css">
+   <link rel="stylesheet" href="/static/css/flatpickr.css">
 
-      <script  src="/static/vendor/fontawesome-all.min.js"></script>
-      <script  src="/static/vendor/fa-v4-shims.min.js"></script>
-      <script src="/static/vendor/underscore-min.js"></script>
-      <script src="/static/vendor/mustache.js"></script>
+   <script src="/static/vendor/fontawesome-all.min.js"></script>
+   <script src="/static/vendor/fa-v4-shims.min.js"></script>
+   <script src="/static/vendor/underscore-min.js"></script>
+   <script src="/static/vendor/mustache.js"></script>
 
-      <script src="/static/vendor/Markdown.Converter.js"></script>
+   <script src="/static/vendor/Markdown.Converter.js"></script>
 
-      <script src="/static/vendor/modernizr-2.6.2-respond-1.1.0.min.js"></script>
-      <script src="/static/vendor/angular.min.js"></script>
-      <script src="/static/vendor/angular-resource.min.js"></script>
-      <script src="/static/vendor/angular-animate.min.js"></script>
-      <script src="/static/vendor/angular-aria.min.js"></script>
-      <script src="/static/vendor/angular-messages.min.js"></script>
-      <script src="/static/vendor/angular-material.min.js"></script>
-      <script src="/static/vendor/angular-route.min.js"></script>
-      <script src="static/vendor/angularjs-gauge.js"></script>
-      <script src="/static/vendor/svg-assets-cache.js"></script>
-      <script src="/static/vendor/hammer.js"></script>
-      <script src="/static/vendor/ng-storage.min.js"></script>
-      <script src="/app/app.module-router.js"></script>
-      <script src="/app/app.config.js"></script>
-      <script src="/app/app.service.js"></script>
-      <script src="/app/app.factories.js"></script>
-      <script src="/app/interceptor.js"></script>
-      <script src="/app/dashboard.js"></script>
-      <script src="/app/login.controller.js"></script>
+   <script src="/static/vendor/modernizr-2.6.2-respond-1.1.0.min.js"></script>
+   <script src="/static/vendor/angular.min.js"></script>
+   <script src="/static/vendor/angular-resource.min.js"></script>
+   <script src="/static/vendor/angular-animate.min.js"></script>
+   <script src="/static/vendor/angular-aria.min.js"></script>
+   <script src="/static/vendor/angular-messages.min.js"></script>
+   <script src="/static/vendor/angular-material.min.js"></script>
+   <script src="/static/vendor/angular-route.min.js"></script>
+   <script src="static/vendor/angularjs-gauge.js"></script>
+   <script src="/static/vendor/svg-assets-cache.js"></script>
+   <script src="/static/vendor/hammer.js"></script>
+   <script src="/static/vendor/ng-storage.min.js"></script>
+   <script src="/app/app.module-router.js"></script>
+   <script src="/app/app.config.js"></script>
+   <script src="/app/app.service.js"></script>
+   <script src="/app/app.factories.js"></script>
+   <script src="/app/interceptor.js"></script>
+   <script src="/app/dashboard.js"></script>
+   <script src="/app/login.controller.js"></script>
 
-      <link rel="stylesheet" href="/static/css/angular-material.min.css">
-      <link rel="stylesheet" href="/app/app.css">
+   <link rel="stylesheet" href="/static/css/angular-material.min.css">
+   <link rel="stylesheet" href="/app/app.css">
 
-      <link href="/static/css/bootstrap-table.min.css" rel="stylesheet">
-      <script src="/static/vendor/bootstrap-table.min.js"></script>
-      <script src="/static/vendor/bootstrap-table-angular.min.js"></script>
-      <link href="data:image/x-icon;base64,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" rel="icon" type="image/x-icon" />
+   <link href="/static/css/bootstrap-table.min.css" rel="stylesheet">
+   <script src="/static/vendor/bootstrap-table.min.js"></script>
+   <script src="/static/vendor/bootstrap-table-angular.min.js"></script>
+   <link href="data:image/x-icon;base64,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" rel="icon" type="image/x-icon" />
 
-   </head>
-   <body ng-app="dashboard" ng-cloak>
-      <div ng-view></div>
-    </body>
+</head>
+
+<body ng-app="dashboard" ng-cloak>
+   <div ng-view></div>
+</body>
+
 </html>
