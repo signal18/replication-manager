@@ -1,15 +1,17 @@
-import { Flex, HStack, Radio, RadioGroup, VStack } from '@chakra-ui/react'
+import { Flex, HStack, Input, Radio, RadioGroup, Text, VStack } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import Dropdown from '../../../components/Dropdown'
 import styles from './styles.module.scss'
 import TimePicker from 'react-time-picker'
-import { getDaysInMonth, padWithZero } from '../../../utility/common'
+import { compareTimes, getDaysInMonth, getOrdinalSuffix, padWithZero } from '../../../utility/common'
 import RMButton from '../../../components/RMButton'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import RMSwitch from '../../../components/RMSwitch'
 import RMIconButton from '../../../components/RMIconButton'
 import { GrPowerReset } from 'react-icons/gr'
 import Message from '../../../components/Message'
+import TabItems from '../../../components/TabItems'
+import { HiPencilAlt } from 'react-icons/hi'
 
 function Scheduler({
   value,
@@ -24,49 +26,59 @@ function Scheduler({
   const [currentValue, setCurrentValue] = useState(value)
   const [previousValue, setPreviousValue] = useState(value)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
+  const [recurrentOptions, setRecurrentOptions] = useState([
+    // { key: 'once', value: 'Once' },
+    { key: 'everyMinute', value: 'Every Minute' },
+    { key: 'hourly', value: 'Hourly' },
+    { key: 'daily', value: 'Daily' },
+    { key: 'weekly', value: 'Weekly' },
+    { key: 'monthly', value: 'Monthly' }
+  ])
   const [months, setMonths] = useState([
-    { name: 'Jan', value: 1 },
-    { name: 'Feb', value: 2 },
-    { name: 'Mar', value: 3 },
-    { name: 'Apr', value: 4 },
+    { name: 'January', value: 1 },
+    { name: 'February', value: 2 },
+    { name: 'March', value: 3 },
+    { name: 'April', value: 4 },
     { name: 'May', value: 5 },
-    { name: 'Jun', value: 6 },
-    { name: 'Jul', value: 7 },
-    { name: 'Aug', value: 8 },
-    { name: 'Sep', value: 9 },
-    { name: 'Oct', value: 10 },
-    { name: 'Nov', value: 11 },
-    { name: 'Dec', value: 12 }
+    { name: 'June', value: 6 },
+    { name: 'July', value: 7 },
+    { name: 'August', value: 8 },
+    { name: 'September', value: 9 },
+    { name: 'October', value: 10 },
+    { name: 'November', value: 11 },
+    { name: 'December', value: 12 }
   ])
   const [weekDays, setWeekdays] = useState([
-    { name: 'Sun', value: 0 },
-    { name: 'Mon', value: 1 },
-    { name: 'Tue', value: 2 },
-    { name: 'Wed', value: 3 },
-    { name: 'Thu', value: 4 },
-    { name: 'Fri', value: 5 },
-    { name: 'Sat', value: 6 }
+    { name: 'Sun', value: 0, selected: false },
+    { name: 'Mon', value: 1, selected: false },
+    { name: 'Tue', value: 2, selected: false },
+    { name: 'Wed', value: 3, selected: false },
+    { name: 'Thu', value: 4, selected: false },
+    { name: 'Fri', value: 5, selected: false },
+    { name: 'Sat', value: 6, selected: false }
   ])
+
+  const [editMode, setEditMode] = useState(false)
+  const [description, setDescription] = useState('')
 
   const [fromDays, setFromDays] = useState([])
   const [toDays, setToDays] = useState([])
 
   const [recurrentType, setRecurrentType] = useState('daily')
 
-  const [sections, setSections] = useState(['From', 'To', 'Interval'])
-
   const [selectedFromMonth, setSelectedFromMonth] = useState()
   const [selectedToMonth, setSelectedToMonth] = useState()
-
-  const [selectedFromWeekday, setSelectedFromWeekday] = useState()
-  const [selectedToWeekday, setSelectedToWeekday] = useState()
 
   const [selectedFromDay, setSelectedFromDay] = useState()
   const [selectedToDay, setSelectedToDay] = useState()
 
-  const [selectedFromTime, setSelectedFromTime] = useState('00:00:00')
-  const [selectedToTime, setSelectedToTime] = useState('00:00:00')
-  const [selectedInterval, setSelectedInterval] = useState('00:00:00')
+  const [selectedFromHour, setSelectedFromHour] = useState(0)
+  const [selectedFromMinute, setSelectedFromMinute] = useState(0)
+  const [selectedToHour, setSelectedToHour] = useState(0)
+  const [selectedToMinute, setSelectedToMinute] = useState(0)
+
+  const [everyHour, setEveryHour] = useState(2)
+  const [everyMinute, setEveryMinute] = useState(30)
 
   const [valuesChanged, setValuesChanged] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -78,182 +90,202 @@ function Scheduler({
 
   useEffect(() => {
     if (currentValue && !valuesChanged) {
-      ///from
-      const fromHour = currentValue.split(' ')[2].split('-')[0].split('/')[0] ?? 0
-      const fromMin = currentValue.split(' ')[1].split('-')[0].split('/')[0] ?? 0
-      const fromSecond = currentValue.split(' ')[0].split('-')[0].split('/')[0] ?? 0
-      if (fromHour === '*' || fromMin === '*' || fromSecond === '*') {
-        setSelectedFromTime('')
-      } else {
-        setSelectedFromTime(`${padWithZero(fromHour)}:${padWithZero(fromMin)}:${padWithZero(fromSecond)}`)
-      }
+      let desc = 'Runs '
+      //evaluate month part
+      const monthPart = currentValue.split(' ')[4]
+      const fromMonth = monthPart.split('-')[0]
+      const toMonth = monthPart.split('-')[1]
+      setSelectedFromMonth(fromMonth)
+      setSelectedToMonth(toMonth)
 
-      const fromMonth = currentValue.split(' ')[4].split('-')[0].split('/')[0]
-      setSelectedFromMonth(months.find((x) => x.value == fromMonth))
+      //evaluate day part
+      setFromDays(getDaysInMonth(fromMonth))
+      setToDays(getDaysInMonth(toMonth))
+      const dayPart = currentValue.split(' ')[3]
+      const fromDay = dayPart.split('-')[0]
+      const toDay = dayPart.split('-')[1]
+      setSelectedFromDay(fromDay)
+      setSelectedToDay(toDay)
 
-      const fromDay = currentValue.split(' ')[3].split('-')[0].split('/')[0]
-
-      if (fromMonth && fromDay) {
-        setFromDays(getDaysInMonth(fromMonth))
-        setTimeout(() => setSelectedFromDay(fromDays.find((x) => x.value == fromDay)), 10)
-      }
-
-      const fromWeek = currentValue.split(' ')[5].split('-')[0].split('/')[0]
-      setSelectedFromWeekday(weekDays.find((x) => x.value == fromWeek))
-
-      ///to
-      const toHour = parseInt(currentValue.split(' ')[2].split('-')[1]) || 0
-      const toMin = parseInt(currentValue.split(' ')[1].split('-')[1]) || 0
-      const toSecond = parseInt(currentValue.split(' ')[0].split('-')[1]) || 0
-      if (toHour === '*' || toMin === '*' || toSecond === '*') {
-        setSelectedToTime('')
-      } else {
-        setSelectedToTime(`${padWithZero(toHour)}:${padWithZero(toMin)}:${padWithZero(toSecond)}`)
-      }
-
-      const toMonth = currentValue.split(' ')[4].split('-')[1]
-      setSelectedToMonth(months.find((x) => x.value == toMonth))
-
-      const toDay = currentValue.split(' ')[3].split('-')[1]
-      if (fromMonth && fromDay) {
-        setToDays(getDaysInMonth(toMonth))
-        setTimeout(() => setSelectedToDay(toDays.find((x) => x.value == toDay)), 10)
-      }
-
-      const toWeek = currentValue.split(' ')[5].split('-')[1]
-      setSelectedToWeekday(weekDays.find((x) => x.value == toWeek))
-
-      ///interval
-      const intervalHour = currentValue.split(' ')[2].split('-')[2] ?? 0
-      const intervalMin = currentValue.split(' ')[1].split('/')[1] ?? 0
-      const intevalSecond = currentValue.split(' ')[0].split('/')[1] ?? 0
-
-      setSelectedInterval(`${padWithZero(intervalHour)}:${padWithZero(intervalMin)}:${padWithZero(intevalSecond)}`)
-
-      if (fromDay != '*' || (toDay !== undefined && toDay != '*')) {
-        setRecurrentType('monthly')
-      } else if (fromWeek != '*' || (toWeek !== undefined && toWeek != '*')) {
+      //evaluate weekday part
+      const weekdayPart = currentValue.split(' ')[5]
+      if (weekdayPart !== '*') {
         setRecurrentType('weekly')
-      } else {
+        const arrSelectedWkdays = weekdayPart.split(',')
+        let weekdayNames = ''
+        const updatedWeekdays = weekDays.map((wd) => {
+          if (arrSelectedWkdays.includes(wd.value.toString())) {
+            wd.selected = true
+            weekdayNames += `${wd.name}, `
+          }
+          return wd
+        })
+        setWeekdays(updatedWeekdays)
+        desc += `<strong>weekly</strong> on <strong>${weekdayNames.replace(/, $/, '')}</strong> starting from <strong>${getOrdinalSuffix(fromDay)} ${getMonthName(fromMonth)}</strong> till <strong>${getOrdinalSuffix(toDay)} ${getMonthName(toMonth)}</strong> <br/>`
+      } else if (selectedToMonth > 0 && !selectedToDay) {
+        setRecurrentType('monthly')
+        desc += `<strong>monthly</strong> on the date <strong>${fromDay}</strong> starting from the month <strong>${getMonthName(fromMonth)}</strong> till <strong>${getMonthName(toMonth)}</strong> <br/>`
+      } else if (selectedToMonth > 0 && selectedToDay > 0) {
         setRecurrentType('daily')
+        desc += `<strong>daily</strong> starting from <strong>${getOrdinalSuffix(fromDay)} ${getMonthName(fromMonth)}</strong> till <strong>${getOrdinalSuffix(toDay)} ${getMonthName(toMonth)}</strong> <br/>`
       }
+
+      //evaluate hour part
+      const hourPart = currentValue.split(' ')[2]
+      const fromHour = hourPart.split('/')[0].split('-')[0]
+      const toHour = hourPart.split('/')[0].split('-')[1] || 0
+      let hourInterval = hourPart.split('/')[1]
+      setSelectedFromHour(fromHour)
+      setSelectedToHour(toHour)
+      if (hourInterval) {
+        setEveryHour(hourInterval)
+      }
+
+      //evaluate minute part
+      const minutePart = currentValue.split(' ')[1]
+      const fromMinute = minutePart.split('-')[0].split('/')[0]
+      const toMinute = minutePart.split('-')[1] || 0
+      setSelectedFromMinute(fromMinute)
+      setSelectedToMinute(toMinute)
+
+      let minuteInterval = 0
+      if (minutePart.includes('/')) {
+        minuteInterval = minutePart.split('/')[1]
+        setEveryMinute(minuteInterval)
+      }
+
+      if (minuteInterval > 0) {
+        setRecurrentType('everyMinute')
+        desc += `every <strong>${minuteInterval} ${minuteInterval == 1 ? 'minute' : 'minutes'}</strong><br/>`
+      } else if (hourInterval > 0) {
+        setRecurrentType('hourly')
+        desc += `every <strong>${hourInterval} ${hourInterval == 1 ? 'hour' : 'hours'}</strong><br/>`
+      }
+
+      desc += `At <strong>${padWithZero(fromHour)}:${padWithZero(fromMinute)}</strong> till <strong>${padWithZero(toHour)}:${padWithZero(toMinute)}</strong>`
+      setDescription(desc)
     }
   }, [currentValue, valuesChanged])
 
   useEffect(() => {
     if (valuesChanged) {
-      let finalMonth = '*'
-      let finalDay = '*'
-      let finalWeek = '*'
-
-      if (recurrentType === 'weekly') {
-        finalMonth = selectedToMonth?.value
-          ? `${selectedFromMonth?.value || '*'}-${selectedToMonth.value}`
-          : selectedFromMonth?.value
-
-        finalWeek =
-          selectedToWeekday?.value >= 0
-            ? `${selectedFromWeekday?.value >= 0 ? selectedFromWeekday?.value : '*'}-${selectedToWeekday.value}`
-            : selectedFromWeekday?.value
+      const toHour = selectedToHour && selectedFromHour !== selectedToHour ? `-${selectedToHour}` : ''
+      const hr = `${selectedFromHour}${toHour}`
+      const toMin = selectedToMinute && selectedFromMinute !== selectedToMinute ? `-${selectedToMinute}` : ''
+      const min = `${selectedFromMinute}${toMin}`
+      let finalStr = ''
+      if (recurrentType === 'everyMinute') {
+        const everyMin = everyMinute > 0 ? `/${everyMinute}` : ''
+        finalStr = `0 ${`${min}${everyMin}`} ${hr} * * *`
+      } else if (recurrentType === 'hourly') {
+        const everyHr = everyHour > 0 ? `/${everyHour}` : ''
+        finalStr = `0 ${min} ${`${hr}${everyHr}`} * * *`
+      } else if (recurrentType === 'daily') {
+        const day =
+          selectedToDay && selectedFromDay !== selectedToDay ? `${selectedFromDay}-${selectedToDay}` : selectedFromDay
+        const month =
+          selectedToMonth && selectedFromMonth !== selectedToMonth
+            ? `${selectedFromMonth}-${selectedToMonth}`
+            : selectedToDay
+        finalStr = `0 ${min} ${hr} ${day} ${month} *`
+      } else if (recurrentType === 'weekly') {
+        const day =
+          selectedToDay && selectedFromDay !== selectedToDay ? `${selectedFromDay}-${selectedToDay}` : selectedFromDay
+        const month =
+          selectedToMonth && selectedFromMonth !== selectedToMonth
+            ? `${selectedFromMonth}-${selectedToMonth}`
+            : selectedFromMonth
+        const wkdays = weekDays
+          .filter((d) => d.selected)
+          .map((d) => d.value)
+          .join(',')
+        finalStr = `0 ${min} ${hr} ${day} ${month} ${wkdays}`
       } else if (recurrentType === 'monthly') {
-        finalMonth = selectedToMonth?.value
-          ? `${selectedFromMonth?.value || '*'}-${selectedToMonth.value}`
-          : selectedFromMonth?.value
-
-        finalDay = selectedToDay?.value
-          ? `${selectedFromDay?.value || '*'}-${selectedToDay.value}`
-          : selectedFromDay?.value
+        const day = selectedFromDay
+        const month =
+          selectedToMonth && selectedFromMonth !== selectedToMonth
+            ? `${selectedFromMonth}-${selectedToMonth}`
+            : selectedFromMonth
+        finalStr = `0 ${min} ${hr} ${day} ${month} *`
       }
-      ///make expression for time
-      const arrFromTime = selectedFromTime?.split(':')
-      const arrToTime = selectedToTime?.split(':')
-      const arrIntervalTime = selectedInterval?.split(':')
-
-      if (!arrFromTime) {
-        setErrorMessage('From time is required')
-      } else {
-        let finalHour = `${parseInt(arrFromTime[0])}`
-        if (arrToTime && parseInt(arrFromTime[0]) >= 0) {
-          finalHour += `-${parseInt(arrToTime[0])}`
-        } else {
-          finalHour += `-undefined`
-        }
-        if (arrIntervalTime && parseInt(arrIntervalTime[0]) > 0) {
-          finalHour += '-' + parseInt(arrIntervalTime[0])
-        }
-        let finalMin = `${parseInt(arrFromTime[1])}`
-        if (arrToTime && parseInt(arrFromTime[1]) >= 0) {
-          finalMin += `-${parseInt(arrToTime[1])}`
-        }
-        if (arrIntervalTime && parseInt(arrIntervalTime[1]) > 0) {
-          finalMin += '/' + parseInt(arrIntervalTime[1])
-        }
-        let finalSec = `${parseInt(arrFromTime[2])}`
-        if (arrToTime && parseInt(arrFromTime[2]) >= 0) {
-          finalMin += `-${parseInt(arrToTime[2])}`
-        }
-        if (arrIntervalTime && parseInt(arrIntervalTime[2]) > 0) {
-          finalSec += '/' + parseInt(arrIntervalTime[2])
-        }
-
-        //assemble final string to pass in api
-        const finalValue = `${finalSec} ${finalMin} ${finalHour} ${finalDay} ${finalMonth} ${finalWeek}`
-        setCurrentValue(finalValue)
-      }
+      setCurrentValue(finalStr)
     }
   }, [
     recurrentType,
     valuesChanged,
+    everyHour,
     selectedFromMonth,
     selectedToMonth,
     selectedFromDay,
     selectedToDay,
-    selectedFromWeekday,
-    selectedToWeekday,
-    selectedFromTime,
-    selectedToTime,
-    selectedInterval
+    weekDays,
+    selectedFromHour,
+    selectedToHour,
+    selectedFromMinute,
+    selectedToMinute
   ])
 
   const handleTimeChange = (time, section) => {
     setValuesChanged(true)
+    setErrorMessage('')
     if (section === 'From') {
-      setSelectedFromTime(time)
+      if (!time) {
+        setErrorMessage('Start time is required')
+      } else {
+        const hour = parseInt(time.split(':')[0])
+        const min = parseInt(time.split(':')[1])
+        setSelectedFromHour(hour)
+        setSelectedFromMinute(min)
+      }
     } else if (section === 'To') {
-      setSelectedToTime(time)
+      if (!compareTimes(`${selectedFromHour}:${selectedFromMinute}`, time)) {
+        setErrorMessage('End time should be later than start time.')
+      } else if (time) {
+        const hour = parseInt(time.split(':')[0])
+        const min = parseInt(time.split(':')[1])
+        setSelectedToHour(hour)
+        setSelectedToMinute(min)
+      }
     } else {
       setSelectedInterval(time)
     }
   }
+
+  const getMonthName = (monthNumber) => {
+    const month = months.find((m) => m.value == monthNumber)
+    return month?.name
+  }
+
+  const isValid = () => {
+    if (recurrentType === 'weekly') {
+      const atleastOneWeekdaySelected = weekDays.some((x) => x.selected)
+      if (!atleastOneWeekdaySelected) {
+        setErrorMessage('Please select atleast one weekday')
+        return false
+      }
+    }
+    return true
+  }
   const handleChangeDay = (day, section) => {
     setValuesChanged(true)
     if (section === 'From') {
-      setSelectedFromDay(day)
+      setSelectedFromDay(day.value)
     } else {
-      setSelectedToDay(day)
+      setSelectedToDay(day.value)
     }
   }
 
   const handleChangeMonth = (month, section) => {
     setValuesChanged(true)
     if (section === 'From') {
-      setSelectedFromMonth(month)
+      setSelectedFromMonth(month.value)
     } else {
-      setSelectedToMonth(month)
+      setSelectedToMonth(month.value)
     }
     if (section === 'From') {
-      setFromDays(getDaysInMonth(month))
+      setFromDays(getDaysInMonth(month.value))
     } else if (section === 'To') {
-      setToDays(getDaysInMonth(month))
-    }
-  }
-
-  const handleChangeWeek = (week, section) => {
-    setValuesChanged(true)
-    if (section === 'From') {
-      setSelectedFromWeekday(week)
-    } else {
-      setSelectedToWeekday(week)
+      setToDays(getDaysInMonth(month.value))
     }
   }
 
@@ -262,17 +294,47 @@ function Scheduler({
     setRecurrentType(recurrentVal)
   }
 
+  const handleHourChange = (e) => {
+    setErrorMessage('')
+    const hour = e.target.value
+    if (!hour) {
+      setErrorMessage('Every hour input is required')
+    } else {
+      setEveryHour(hour)
+    }
+  }
+
+  const handleMinuteChange = () => {
+    setErrorMessage('')
+    const minute = e.target.value
+    if (!minute) {
+      setErrorMessage('Every minute input is required')
+    } else {
+      setEveryMinute(minute)
+    }
+  }
+
+  const handleWeekdayChange = (weekday) => {
+    setErrorMessage('')
+    const updatedWeekdays = weekDays.map((day) => {
+      if (day.value === weekday) {
+        day.selected = !day.selected
+      }
+      return day
+    })
+    setWeekdays(updatedWeekdays)
+  }
+
   const handleSaveScheduler = () => {
-    openConfirmModal()
+    if (isValid()) {
+      openConfirmModal()
+    }
   }
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
   }
-  const closeConfirmModal = (action) => {
-    if (action === 'cancel') {
-      setCurrentValue(previousValue)
-    }
+  const closeConfirmModal = () => {
     setIsConfirmModalOpen(false)
   }
 
@@ -287,109 +349,183 @@ function Scheduler({
         />
       )}
 
-      {(!hasSwitch || isSwitchChecked) && (
-        <>
-          <RadioGroup value={recurrentType} onChange={handleRecurrentChange}>
-            <HStack spacing={6}>
-              <Radio value='daily' size='lg'>
-                Daily
-              </Radio>
-              <Radio value='weekly' size='lg'>
-                Weekly
-              </Radio>
-              <Radio value='monthly' size='lg'>
-                Monthly
-              </Radio>
-            </HStack>
-          </RadioGroup>
-          {sections.map((section) => (
+      {!hasSwitch || isSwitchChecked ? (
+        editMode ? (
+          <>
+            <RMButton className={styles.btnCancelEdit} onClick={() => setEditMode(false)}>
+              Cancel edit
+            </RMButton>
+            <RadioGroup value={recurrentType} onChange={handleRecurrentChange}>
+              <HStack spacing={6}>
+                {recurrentOptions.map((recur) => (
+                  <Radio key={recur.key} value={recur.key} size='lg'>
+                    {recur.value}
+                  </Radio>
+                ))}
+              </HStack>
+            </RadioGroup>
             <Flex className={styles.schedulerItem}>
-              <div className={styles.label}>{section}</div>
-              <TimePicker
-                format='HH:mm:ss'
-                disableClock={true}
-                className={styles.timepicker}
-                hourPlaceholder='HH'
-                minutePlaceholder='mm'
-                secondPlaceholder='ss'
-                maxDetail='second'
-                value={section === 'From' ? selectedFromTime : section === 'To' ? selectedToTime : selectedInterval}
-                onChange={(val) => {
-                  handleTimeChange(val, section)
-                }}
-              />
-
-              {section !== 'Interval' && (
-                <HStack className={styles.dayMonthWeek}>
-                  {(recurrentType === 'monthly' || recurrentType === 'weekly') && (
+              <HStack>
+                <div className={styles.label}>Start Time</div>
+                <TimePicker
+                  format='HH:mm'
+                  disableClock={true}
+                  className={styles.timepicker}
+                  hourPlaceholder='HH'
+                  minutePlaceholder='mm'
+                  // secondPlaceholder='ss'
+                  maxDetail='minute'
+                  value={`${selectedFromHour}:${selectedFromMinute}`}
+                  onChange={(val) => {
+                    handleTimeChange(val, 'From')
+                  }}
+                />
+                {(recurrentType === 'daily' || recurrentType === 'weekly' || recurrentType === 'monthly') && (
+                  <HStack>
                     <Dropdown
                       placeholder='Select month'
                       options={months}
-                      selectedValue={section === 'From' ? selectedFromMonth?.value : selectedToMonth?.value}
+                      selectedValue={selectedFromMonth}
                       buttonClassName={styles.btnDrodown}
                       menuListClassName={styles.menuList}
                       inlineLabel='Month '
-                      onChange={(month) => handleChangeMonth(month, section)}
+                      onChange={(month) => handleChangeMonth(month, 'From')}
                     />
-                  )}
-
-                  {recurrentType === 'monthly' && (
                     <Dropdown
                       placeholder='Select day'
-                      options={section === 'From' ? fromDays : toDays}
-                      selectedValue={section === 'From' ? selectedFromDay?.value : selectedToDay?.value}
+                      options={fromDays}
+                      selectedValue={selectedFromDay}
                       buttonClassName={styles.btnDrodown}
                       menuListClassName={styles.menuList}
                       inlineLabel='Day '
-                      onChange={(day) => handleChangeDay(day, section)}
+                      onChange={(day) => handleChangeDay(day, 'From')}
                     />
-                  )}
-                  {recurrentType === 'weekly' && (
+                  </HStack>
+                )}
+              </HStack>
+              <HStack>
+                <div className={styles.label}>End Time</div>
+                <TimePicker
+                  format='HH:mm'
+                  disableClock={true}
+                  className={styles.timepicker}
+                  hourPlaceholder='HH'
+                  minutePlaceholder='mm'
+                  // secondPlaceholder='ss'
+                  maxDetail='minute'
+                  value={`${selectedToHour}:${selectedToMinute}`}
+                  onChange={(val) => {
+                    handleTimeChange(val, 'To')
+                  }}
+                />
+                {(recurrentType === 'daily' || recurrentType === 'weekly' || recurrentType === 'monthly') && (
+                  <HStack>
                     <Dropdown
-                      placeholder='Select week'
-                      options={weekDays}
-                      selectedValue={section === 'From' ? selectedFromWeekday?.value : selectedToWeekday?.value}
+                      placeholder='Select month'
+                      options={months}
+                      selectedValue={selectedToMonth}
                       buttonClassName={styles.btnDrodown}
                       menuListClassName={styles.menuList}
-                      inlineLabel='Week '
-                      onChange={(weekday) => handleChangeWeek(weekday, section)}
+                      inlineLabel='Month '
+                      onChange={(month) => handleChangeMonth(month, 'To')}
                     />
-                  )}
+                    {recurrentType !== 'monthly' && (
+                      <Dropdown
+                        placeholder='Select day'
+                        options={toDays}
+                        selectedValue={selectedToDay}
+                        buttonClassName={styles.btnDrodown}
+                        menuListClassName={styles.menuList}
+                        inlineLabel='Day '
+                        onChange={(day) => handleChangeDay(day, 'To')}
+                      />
+                    )}
+                  </HStack>
+                )}
+              </HStack>
+              {recurrentType === 'hourly' && (
+                <HStack>
+                  <div className={styles.label}>Every </div>
+                  <Input className={styles.numberInput} value={everyHour} type='number' onChange={handleHourChange} />
+                  <div className={styles.label}>hours</div>
+                </HStack>
+              )}
+              {recurrentType === 'everyMinute' && (
+                <HStack>
+                  <div className={styles.label}>Every </div>
+                  <Input
+                    className={styles.numberInput}
+                    value={everyMinute}
+                    type='number'
+                    onChange={handleMinuteChange}
+                  />
+                  <div className={styles.label}>Minutes</div>
+                </HStack>
+              )}
+              {recurrentType === 'weekly' && (
+                <HStack>
+                  <div className={styles.label}>Select weekdays</div>
+                  {weekDays.map((weekday) => {
+                    return (
+                      <RMButton
+                        {...(!weekday.selected ? { variant: 'outline' } : {})}
+                        //  variant={weekday.selected ? 'solid' : 'outline'}
+                        onClick={() => handleWeekdayChange(weekday.value)}>
+                        {weekday.name}
+                      </RMButton>
+                    )
+                  })}
                 </HStack>
               )}
             </Flex>
-          ))}
-          {errorMessage && <Message message={errorMessage} />}
-          {valuesChanged && (
+
+            {errorMessage && <Message message={errorMessage} />}
+
             <HStack>
-              <RMButton isDisabled={errorMessage?.length > 0} onClick={handleSaveScheduler}>
-                Save
-              </RMButton>
-              <RMIconButton
-                icon={GrPowerReset}
-                tooltip={'Reset scheduler'}
-                onClick={() => {
-                  setValuesChanged(false)
-                  setCurrentValue(previousValue)
-                  //  setTimeout(() => setCurrentValue(previousValue), 100)
-                  setErrorMessage('')
-                }}
-              />
+              {valuesChanged && errorMessage.length === 0 && (
+                <>
+                  <RMButton isDisabled={errorMessage?.length > 0} onClick={handleSaveScheduler}>
+                    Save
+                  </RMButton>
+                  <RMIconButton
+                    icon={GrPowerReset}
+                    tooltip={'Reset scheduler'}
+                    onClick={() => {
+                      setValuesChanged(false)
+                      setCurrentValue(previousValue)
+                      //  setTimeout(() => setCurrentValue(previousValue), 100)
+                      setErrorMessage('')
+                    }}
+                  />
+                </>
+              )}
             </HStack>
-          )}
-        </>
-      )}
+          </>
+        ) : (
+          <VStack>
+            <Text dangerouslySetInnerHTML={{ __html: description }} />
+            <RMIconButton
+              className={styles.btnEdit}
+              icon={HiPencilAlt}
+              tooltip='Edit scheduler'
+              onClick={() => {
+                setEditMode(true)
+              }}
+            />
+          </VStack>
+        )
+      ) : null}
 
       {isConfirmModalOpen && (
         <ConfirmModal
           isOpen={isConfirmModalOpen}
           closeModal={() => {
-            closeConfirmModal('cancel')
+            closeConfirmModal()
           }}
           title={`${confirmTitle} ${currentValue}`}
           onConfirmClick={() => {
             onSave(currentValue)
-            closeConfirmModal('')
+            closeConfirmModal()
           }}
         />
       )}

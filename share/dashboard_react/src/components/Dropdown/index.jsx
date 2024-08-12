@@ -23,7 +23,7 @@ function Dropdown({
 
   useEffect(() => {
     if (options && selectedValue) {
-      const option = options.find((opt) => opt.value === selectedValue)
+      const option = options.find((opt) => opt.value == selectedValue)
       setSelectedOption(option)
       setPreviousOption(option)
     }
