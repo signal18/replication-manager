@@ -3,35 +3,42 @@
       <md-card-content>
          <p class="sectionheader">Current Backups</p>
       </md-card-content>
-      <md-card>
+      <md-card style="overflow-x: scroll;">
          <table ng-if="selectedCluster.backupList" class="table">
             <thead>
                <tr>
-                  <th>Id</th>
-                  <th>Start Time</th>
-                  <th>End Time</th>
-                  <th>Backup Method</th>
-                  <th>Backup Strategy</th>
-                  <th>Source</th>
-                  <th>Destination</th>
-                  <th>Size</th>
-                  <th>Compressed</th>
-                  <th>Encrypted</th>
+                  <th>ID</th>
+                  <th>Start - End Time</th>
+                  <th>Backup Method / Tool</th>
+                  <th>Strategy</th>
+                  <th>Source - Dest</th>
+                  <th>Backup Size</th>
+                  <th>Compression</th>
+                  <th>Encryption Details</th>
+                  <th>BinLog Info</th>
+                  <th>Retention (Days)</th>
                   <th>Completed</th>
                </tr>
             </thead>
             <tbody>
                <tr ng-repeat="backup in selectedCluster.backupList">
                   <td>{{backup.id}}</td>
-                  <td>{{backup.startTime | date:'yyyy-MM-dd HH:mm:ss'}}</td>
-                  <td>{{backup.endTime | date:'yyyy-MM-dd HH:mm:ss'}}</td>
-                  <td>{{getBackupMethod(backup.backupMethod)}}</td>
+                  <td>{{backup.startTime | date:'yyyy-MM-dd HH:mm:ss'}} <br />
+                     {{backup.endTime | date:'yyyy-MM-dd HH:mm:ss'}}</td>
+                  <td>{{getBackupMethod(backup.backupMethod)}}<br />{{backup.backupTool}}</td>
                   <td>{{getBackupStrategy(backup.backupStrategy)}}</td>
-                  <td>{{backup.source}}</td>
-                  <td>{{backup.dest}}</td>
+                  <td>{{backup.source}}<br />{{backup.dest}}</td>
                   <td>{{formatBytes(backup.size)}}</td>
                   <td>{{backup.compressed ? 'Yes' : 'No'}}</td>
-                  <td>{{backup.encrypted ? 'Yes' : 'No'}}</td>
+                  <td>{{backup.encrypted ? 'Yes' : 'No'}}<br />
+                     <span ng-if="backup.encrypted">Algo: {{ backup.encryptionAlgo }}<br />Key: {{ backup.encryptionKey}}</span>
+                  </td>
+                  <td>
+                     File: {{ backup.binLogFileName }}<br>
+                     Pos: {{ backup.binLogFilePos }}<br>
+                     GTID: {{ backup.binLogUuid }}
+                  </td>
+                  <td>{{backup.retentionDays}}</td>
                   <td>{{backup.completed ? 'Yes' : 'No'}}</td>
                </tr>
             </tbody>
