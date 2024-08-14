@@ -4,7 +4,14 @@ import { useReactTable, flexRender, getCoreRowModel, getSortedRowModel } from '@
 import { useTheme } from '@emotion/react'
 //import styles from './styles.module.scss'
 
-export function DataTable({ data, columns, fixedColumnIndex, enableSorting = false, cellValueAlign = 'center' }) {
+export function DataTable({
+  data,
+  columns,
+  className,
+  fixedColumnIndex,
+  enableSorting = false,
+  cellValueAlign = 'center'
+}) {
   const [sorting, setSorting] = useState([])
   const [hiddenColumns, setHiddenColumns] = useState([])
 
@@ -81,7 +88,7 @@ export function DataTable({ data, columns, fixedColumnIndex, enableSorting = fal
   }, [])
 
   return (
-    <Table className={styles.table}>
+    <Table className={`${styles.table} ${className}`}>
       <Thead>
         {table.getHeaderGroups().map((headerGroup) => (
           <Tr key={headerGroup.id} sx={styles.headerRow}>

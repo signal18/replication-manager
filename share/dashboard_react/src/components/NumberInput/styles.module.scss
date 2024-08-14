@@ -1,0 +1,9 @@
+.readonly {
+  button,
+  input {
+    pointer-events: none;
+    cursor: default;
+    background-color: var(--darkgray-color);
+    font-weight: bold;
+  }
+}
