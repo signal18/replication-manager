@@ -190,10 +190,6 @@ func (server *ServerMonitor) SetMaintenance() {
 	server.IsMaintenance = true
 }
 
-func (server *ServerMonitor) SetBinaryLogFiles(files map[string]uint) {
-	server.BinaryLogFiles = config.FromNormalUIntsMap(server.BinaryLogFiles, files)
-}
-
 func (server *ServerMonitor) SetDSN() {
 	cluster := server.ClusterGroup
 	pgdsn := func() string {
@@ -458,6 +454,10 @@ func (server *ServerMonitor) SetInCaptureMode(value bool) {
 
 func (server *ServerMonitor) SetInRefreshBinlog(value bool) {
 	server.IsRefreshingBinlog = value
+}
+
+func (server *ServerMonitor) SetInRefreshBinlogMeta(value bool) {
+	server.IsRefreshingBinlogMeta = value
 }
 
 func (server *ServerMonitor) SetInReseedBackup(value bool) {
