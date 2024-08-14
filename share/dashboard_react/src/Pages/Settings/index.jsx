@@ -12,6 +12,8 @@ import BackupSettings from './BackupSettings'
 import SchedulerSettings from './SchedulerSettings'
 import ProxySettings from './ProxySettings'
 import GraphSettings from './GraphSettings'
+import CloudSettings from './CloudSettings'
+import GlobalSettings from './GlobalSettings'
 
 function Settings({ selectedCluster, user }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -120,6 +122,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isCloud18Open}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<CloudSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Global'}
@@ -127,6 +130,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isGlobalOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<GlobalSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
 
       {isConfirmModalOpen && (

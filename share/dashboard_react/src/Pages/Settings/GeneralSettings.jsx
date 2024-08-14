@@ -8,7 +8,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { changeTopology, switchSetting } from '../../redux/settingsSlice'
 
-function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
+function GeneralSettings({ selectedCluster, user }) {
   const [topologyOptions, setTopologyOptions] = useState([])
   const dispatch = useDispatch()
 
