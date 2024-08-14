@@ -2477,6 +2477,9 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 	if !cluster.Conf.BackupBinlogs {
 		return errors.New("Copy binlog not enable")
 	}
+	if !cluster.Conf.OnPremiseSSH {
+		return errors.New("On-premise SSH not enable, cannot backup via SSH")
+	}
 
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
