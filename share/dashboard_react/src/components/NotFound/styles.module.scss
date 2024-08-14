@@ -1,0 +1,8 @@
+.container {
+  padding: rem(24);
+  background-color: var(--secondary-gray-color);
+  width: fit-content;
+  box-shadow: $box-shadow-md;
+  border-radius: rem(16);
+  margin: auto;
+}

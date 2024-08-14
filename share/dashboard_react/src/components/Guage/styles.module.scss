@@ -1,0 +1,23 @@
+.container {
+  position: relative;
+  display: inline-block;
+  .gauge {
+    height: 100%;
+  }
+  .textOverlay {
+    position: absolute;
+    bottom: rem(-20);
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+
+    .valueText {
+      display: block;
+      font-size: rem(15);
+    }
+    .labelText {
+      display: block;
+      font-size: rem(12);
+    }
+  }
+}

@@ -1,0 +1,9 @@
+.cardWrapper {
+  margin-top: rem(16);
+  .card {
+    width: rem(400);
+    .heading {
+      padding: rem(4) 0;
+    }
+  }
+}

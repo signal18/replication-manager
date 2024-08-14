@@ -6,7 +6,6 @@ import styles from './styles.module.scss'
 
 function NumberInput({ min = 2, max = 120, step = 1, defaultValue, value, onChange, readonly = false }) {
   const inputRef = useRef(null)
-  console.log('readonly::', readonly)
   const { getInputProps, getIncrementButtonProps, getDecrementButtonProps } = useNumberInput({
     step: step,
     defaultValue: defaultValue,

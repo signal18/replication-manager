@@ -2,8 +2,9 @@ import { Box, Flex, Text } from '@chakra-ui/react'
 import { useTheme } from '@emotion/react'
 import React, { useEffect, useRef } from 'react'
 import GaugeComponent from 'react-gauge-component'
+import styles from './styles.module.scss'
 
-function Gauge({ value, text, width, height, containerSx }) {
+function Gauge({ value, text, width, height, className }) {
   const svgRef = useRef(null)
 
   const updateGaugePosition = () => {
@@ -32,32 +33,32 @@ function Gauge({ value, text, width, height, containerSx }) {
     }
   }, [])
 
-  const styles = {
-    container: {
-      width: `${width}px`,
-      height: `${height}px`,
-      position: 'relative',
-      display: 'inline-block'
-    },
-    gauge: {
-      height: '100%'
-    },
-    textOverlay: {
-      position: 'absolute',
-      bottom: '-20px',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-      textAlign: 'center'
-    },
-    valueText: {
-      display: 'block',
-      fontSize: '15px'
-    },
-    labelText: {
-      display: 'block',
-      fontSize: '12px'
-    }
-  }
+  //   const styles = {
+  //     container: {
+  //       width: `${width}px`,
+  //       height: `${height}px`,
+  //       position: 'relative',
+  //       display: 'inline-block'
+  //     },
+  //     gauge: {
+  //       height: '100%'
+  //     },
+  //     textOverlay: {
+  //       position: 'absolute',
+  //       bottom: '-20px',
+  //       left: '50%',
+  //       transform: 'translate(-50%, -50%)',
+  //       textAlign: 'center'
+  //     },
+  //     valueText: {
+  //       display: 'block',
+  //       fontSize: '15px'
+  //     },
+  //     labelText: {
+  //       display: 'block',
+  //       fontSize: '12px'
+  //     }
+  //   }
 
   const formatValue = (value) => {
     if (typeof value === 'number' && !Number.isInteger(value)) {
@@ -68,22 +69,21 @@ function Gauge({ value, text, width, height, containerSx }) {
 
   return (
     <Flex direction='column' justify='center'>
-      <Box sx={styles.container} ref={svgRef}>
+      <Box width={width} height={height} className={`${styles.container} ${className}`} ref={svgRef}>
         <GaugeComponent
-          style={styles.guage}
+          className={styles.guage}
           value={value}
           labels={{
             valueLabel: {
               formatTextValue: () => '',
-              style: styles.textValue,
               maxDecimalDigits: 3
             },
             tickLabels: { hideMinMax: true }
           }}
         />
-        <Box sx={styles.textOverlay}>
-          <Text sx={styles.valueText}>{formatValue(value)}</Text>
-          <Text sx={styles.labelText}>{text}</Text>
+        <Box className={styles.textOverlay}>
+          <Text className={styles.valueText}>{formatValue(value)}</Text>
+          <Text className={styles.labelText}>{text}</Text>
         </Box>
       </Box>
     </Flex>

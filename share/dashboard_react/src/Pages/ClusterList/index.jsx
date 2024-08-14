@@ -1,39 +1,22 @@
 import React from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { setCluster } from '../redux/clusterSlice'
-import { Box, HStack, Icon, Text, useColorMode, Wrap } from '@chakra-ui/react'
-import NotFound from '../components/NotFound'
+import { setCluster } from '../../redux/clusterSlice'
+import { Box, HStack, Text, Wrap } from '@chakra-ui/react'
+import NotFound from '../../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
-import { HiCheck, HiExclamation, HiX } from 'react-icons/hi'
-import Card from '../components/Card'
-import TableType2 from '../components/TableType2'
+import { HiExclamation } from 'react-icons/hi'
+import Card from '../../components/Card'
+import TableType2 from '../../components/TableType2'
+import styles from './styles.module.scss'
+import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
+import CustomIcon from '../../components/Icons/CustomIcon'
 
 function ClusterList({ onClick }) {
   const dispatch = useDispatch()
-  const { colorMode } = useColorMode()
 
   const {
     cluster: { clusters, loading }
   } = useSelector((state) => state)
-
-  const styles = {
-    linkCard: {
-      _hover: {
-        color: 'inherit'
-      }
-    },
-    icon: {
-      fontSize: '1.5rem'
-    },
-    green: {
-      fill: colorMode === 'light' ? 'green' : 'lightgreen'
-    },
-    red: { fill: 'red' },
-
-    orange: {
-      fill: 'orange'
-    }
-  }
 
   return !loading && clusters?.length === 0 ? (
     <NotFound text={'No cluster found!'} />
@@ -47,12 +30,12 @@ function ClusterList({ onClick }) {
               <HStack spacing='4'>
                 {clusterItem.config.monitoringPause ? (
                   <>
-                    <Icon css={{ ...styles.icon, ...styles.red }} as={HiX} />
+                    <CheckOrCrossIcon isValid={false} />
                     <Text>No</Text>
                   </>
                 ) : (
                   <>
-                    <Icon css={{ ...styles.icon, ...styles.green }} as={HiCheck} />
+                    <CheckOrCrossIcon isValid={true} />
                     <Text>Yes</Text>
                   </>
                 )}
@@ -69,17 +52,17 @@ function ClusterList({ onClick }) {
               <HStack spacing='4'>
                 {clusterItem.isDown ? (
                   <>
-                    <Icon sx={{ ...styles.icon, ...styles.red }} as={HiX} />
+                    <CheckOrCrossIcon isValid={false} />
                     <Text>No</Text>
                   </>
                 ) : !clusterItem.isFailable ? (
                   <>
-                    <Icon sx={{ ...styles.icon, ...styles.orange }} as={HiExclamation} />
+                    <CustomIcon icon={HiExclamation} color='orange' />
                     <Text>Warning</Text>
                   </>
                 ) : (
                   <>
-                    <Icon sx={{ ...styles.icon, ...styles.green }} as={HiCheck} />
+                    <CheckOrCrossIcon isValid={true} />
                     <Text>Yes</Text>
                   </>
                 )}
@@ -92,12 +75,12 @@ function ClusterList({ onClick }) {
               <HStack spacing='4'>
                 {clusterItem.isProvision ? (
                   <>
-                    <Icon css={[styles.icon, styles.green]} as={HiCheck} />
+                    <CheckOrCrossIcon isValid={true} />
                     <Text>Yes</Text>
                   </>
                 ) : (
                   <>
-                    <Icon css={[styles.icon, styles.red]} as={HiX} />
+                    <CheckOrCrossIcon isValid={false} />
                     <Text>No</Text>
                   </>
                 )}
@@ -108,9 +91,8 @@ function ClusterList({ onClick }) {
         ]
         return (
           <Box
-            sx={styles.linkCard}
+            className={styles.cardWrapper}
             as={'button'}
-            mt='8'
             onClick={() => {
               dispatch(setCluster({ data: clusterItem }))
               if (onClick) {
@@ -118,10 +100,11 @@ function ClusterList({ onClick }) {
               }
             }}>
             <Card
+              className={styles.card}
               width={'400px'}
               header={
-                <HStack size={'sm'} sx={styles.heading}>
-                  <Icon fontSize='1.5rem' as={AiOutlineCluster} /> <span>{clusterItem.name}</span>
+                <HStack className={styles.heading}>
+                  <CustomIcon icon={AiOutlineCluster} /> <span>{clusterItem.name}</span>
                 </HStack>
               }
               body={<TableType2 dataArray={dataObject} />}
