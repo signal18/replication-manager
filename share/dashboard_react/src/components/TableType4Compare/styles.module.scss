@@ -1,0 +1,21 @@
+.tableContainer {
+  border-radius: rem(16);
+  overflow: auto;
+  border: rem(2) solid;
+  border-color: var(--tertiary-color);
+
+  .header {
+    height: rem(48);
+    background-color: var(--tertiary-color);
+    overflow: 'hidden';
+    border-bottom: rem(2) solid;
+    border-color: var(--tertiary-color);
+    position: sticky;
+    top: 0;
+  }
+  .column {
+    white-space: break-spaces;
+    padding: rem(8);
+    word-break: break-all;
+  }
+}
