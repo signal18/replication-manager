@@ -11,12 +11,15 @@ package dbhelper
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/crc64"
 	"log"
 	"net"
 	"regexp"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -365,17 +368,18 @@ func GetQueryResponseTime(db *sqlx.DB, version *MySQLVersion) ([]ResponseTime, s
 	return pl, stmt, nil
 }
 
-func GetBinaryLogs(db *sqlx.DB, version *MySQLVersion) (map[string]uint, string, error) {
-
-	vars := make(map[string]uint)
+func GetBinaryLogs(db *sqlx.DB, version *MySQLVersion, metamap *BinaryLogMetaMap) (int, string, []string, string, error) {
+	counter := 0
+	oldest := ""
+	trimmed := make([]string, 0)
 	query := "SHOW BINARY LOGS"
 	if version.IsPostgreSQL() {
-		return nil, query, fmt.Errorf("ERROR: QUERY_RESPONSE_TIME not available on PostgeSQL")
+		return counter, oldest, trimmed, query, fmt.Errorf("ERROR: QUERY_RESPONSE_TIME not available on PostgeSQL")
 	}
 	rows, err := db.Queryx(query)
 
 	if err != nil {
-		return nil, query, errors.New("Could not get binary logs: " + err.Error())
+		return counter, oldest, trimmed, query, errors.New("Could not get binary logs: " + err.Error())
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -386,11 +390,22 @@ func GetBinaryLogs(db *sqlx.DB, version *MySQLVersion) (map[string]uint, string,
 			err = rows.Scan(&v.Log_name, &v.File_size)
 		}
 		if err != nil {
-			return nil, query, errors.New("Could not get binary logs: " + err.Error())
+			return counter, oldest, trimmed, query, errors.New("Could not get binary logs: " + err.Error())
 		}
-		vars[v.Log_name] = v.File_size
+		if oldest == "" {
+			oldest = v.Log_name
+		}
+		if meta, exists := metamap.LoadOrStore(v.Log_name, &BinaryLogMetadata{Filename: v.Log_name, Size: v.File_size}); exists {
+			if meta.Size != v.File_size {
+				meta.Size = v.File_size
+			}
+		}
+		counter++
 	}
-	return vars, query, nil
+
+	trimmed = metamap.ClearObsoleteMetadata(oldest)
+
+	return counter, oldest, trimmed, query, nil
 }
 
 func AnalyzeQuery(db *sqlx.DB, version *MySQLVersion, schema string, query string) (string, string, error) {
@@ -3016,4 +3031,174 @@ func GetBinlogFormatDesc(db *sqlx.DB, binlogfile string) ([]BinlogEvents, string
 	}
 
 	return nil, logs, errors.New("Binlog Format Desc Not Found")
+}
+
+type BinaryLogMetadata struct {
+	Source   string `json:"source"`
+	Filename string `json:"filename"`
+	Start    int64  `json:"start"`
+	Size     uint   `json:"size"`
+}
+
+type BinaryLogMetaMap struct {
+	*sync.Map
+}
+
+func NewBinaryLogMetaMap() *BinaryLogMetaMap {
+	s := new(sync.Map)
+	m := &BinaryLogMetaMap{Map: s}
+	return m
+}
+
+func (m *BinaryLogMetaMap) LoadOrStore(key string, value *BinaryLogMetadata) (*BinaryLogMetadata, bool) {
+	v, ok := m.Map.LoadOrStore(key, value)
+	return v.(*BinaryLogMetadata), ok
+}
+
+func (m *BinaryLogMetaMap) Get(key string) *BinaryLogMetadata {
+	if v, ok := m.Load(key); ok {
+		return v.(*BinaryLogMetadata)
+	}
+	return nil
+}
+
+func (m *BinaryLogMetaMap) CheckAndGet(key string) (*BinaryLogMetadata, bool) {
+	v, ok := m.Load(key)
+	if ok {
+		return v.(*BinaryLogMetadata), true
+	}
+	return nil, false
+}
+
+func (m *BinaryLogMetaMap) Set(key string, value *BinaryLogMetadata) {
+	m.Store(key, value)
+}
+
+func (m *BinaryLogMetaMap) ToNormalMap(c map[string]*BinaryLogMetadata) {
+	// Clear the old values in the output map
+	for k := range c {
+		delete(c, k)
+	}
+
+	// Insert all values from the BinaryLogMetaMap to the output map
+	m.Callback(func(key string, value *BinaryLogMetadata) bool {
+		c[key] = value
+		return true
+	})
+}
+
+func (m *BinaryLogMetaMap) ToNewMap() map[string]BinaryLogMetadata {
+	result := make(map[string]BinaryLogMetadata)
+	m.Range(func(k, v any) bool {
+		result[k.(string)] = *v.(*BinaryLogMetadata)
+		return true
+	})
+	return result
+}
+
+func (m *BinaryLogMetaMap) Callback(f func(key string, value *BinaryLogMetadata) bool) {
+	m.Range(func(k, v any) bool {
+		return f(k.(string), v.(*BinaryLogMetadata))
+	})
+}
+
+func (m *BinaryLogMetaMap) Clear() {
+	m.Range(func(key, value any) bool {
+		m.Delete(key.(string))
+		return true
+	})
+}
+
+func FromNormalBinaryLogMetaMap(m *BinaryLogMetaMap, c map[string]*BinaryLogMetadata) *BinaryLogMetaMap {
+	if m == nil {
+		m = NewBinaryLogMetaMap()
+	} else {
+		m.Clear()
+	}
+
+	for k, v := range c {
+		m.Set(k, v)
+	}
+
+	return m
+}
+
+func FromBinaryLogMetaMap(m *BinaryLogMetaMap, c *BinaryLogMetaMap) *BinaryLogMetaMap {
+	if m == nil {
+		m = NewBinaryLogMetaMap()
+	} else {
+		m.Clear()
+	}
+
+	if c != nil {
+		c.Callback(func(key string, value *BinaryLogMetadata) bool {
+			m.Set(key, value)
+			return true
+		})
+	}
+
+	return m
+}
+
+func (m *BinaryLogMetaMap) MarshalIndent(prefix, indent string) ([]byte, error) {
+	result := make(map[string]BinaryLogMetadata, 0)
+	fnames := make([]string, 0)
+	m.Range(func(k, v any) bool {
+		fnames = append(fnames, k.(string))
+		return true
+	})
+
+	slices.Sort(fnames)
+
+	for _, key := range fnames {
+		result[key] = *m.Get(key)
+	}
+
+	return json.MarshalIndent(result, prefix, indent)
+}
+
+func (m *BinaryLogMetaMap) ClearObsoleteMetadata(oldest string) (deleted []string) {
+	keys := make([]string, 0)
+	m.Range(func(k, v any) bool {
+		keys = append(keys, k.(string))
+		return true
+	})
+
+	slices.Sort(keys)
+
+	index := sort.Search(len(keys), func(i int) bool { return keys[i] >= oldest })
+
+	// If the target string is found, return the slice starting from that index
+	if index < len(keys) && keys[index] == oldest {
+		for _, key := range keys[:index] {
+			deleted = append(deleted, key)
+			m.Delete(key)
+		}
+	}
+
+	return deleted
+}
+
+func CountBinaryLogs(db *sqlx.DB, version *MySQLVersion) (int, error) {
+	counter := 0
+	query := "SHOW BINARY LOGS"
+	if version.IsPostgreSQL() {
+		return counter, fmt.Errorf("ERROR: SHOW BINARY LOGS not available on PostgeSQL")
+	}
+	rows, err := db.Queryx(query)
+
+	if err != nil {
+		return counter, errors.New("Could not get binary logs: " + err.Error())
+	}
+	defer rows.Close()
+	for rows.Next() {
+		counter++
+	}
+
+	// Check for any error after iterating through rows
+	if err = rows.Err(); err != nil {
+		return counter, errors.New("Error iterating show binary logs: " + err.Error())
+	}
+
+	return counter, nil
 }

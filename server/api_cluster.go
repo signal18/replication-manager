@@ -347,28 +347,38 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 	//marshal unmarchal for ofuscation deep copy of struc
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
+	var err error
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 
 	if mycluster != nil {
-		data, _ := json.Marshal(mycluster.GetServers())
-		var srvs []*cluster.ServerMonitor
-
-		err := json.Unmarshal(data, &srvs)
-		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
-			return
+		type ServersContainer struct {
+			servers []map[string]interface{}
 		}
 
-		for i := range srvs {
-			if srvs[i] != nil {
-				srvs[i].Pass = "XXXXXXXX"
+		res := ServersContainer{
+			servers: make([]map[string]interface{}, 0),
+		}
+		for _, srv := range mycluster.GetServers() {
+			var cont map[string]interface{}
+			data, _ := json.Marshal(srv)
+			list, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
+			data, err = jsonparser.Set(data, list, "binaryLogFiles")
+			if err != nil {
+				http.Error(w, "Encoding error: "+err.Error(), 500)
+				return
 			}
+			err = json.Unmarshal(data, &cont)
+			if err != nil {
+				http.Error(w, "Encoding error: "+err.Error(), 500)
+				return
+			}
+			res.servers = append(res.servers, cont)
 		}
+
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err = e.Encode(srvs)
+		err = e.Encode(res.servers)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
