@@ -4,7 +4,7 @@ import { HiViewGrid } from 'react-icons/hi'
 import { DataTable } from '../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
 import ServerMenu from './ServerMenu'
-import DBServersGrid from './DBServerGrid'
+import DBServerGrid from '../DBServers/DBServerGrid'
 import CompareModal from '../../../../components/Modals/CompareModal'
 import { getCurrentGtid, getDelay, getFailCount, getSlaveGtid, getUsingGtid } from './utils'
 import CheckOrCrossIcon from '../../../../components/Icons/CheckOrCrossIcon'
@@ -219,7 +219,7 @@ function DBServers({ selectedCluster, user }) {
       {viewType === 'table' ? (
         <DataTable data={data} columns={columns} />
       ) : (
-        <DBServersGrid
+        <DBServerGrid
           allDBServers={data}
           clusterMasterId={clusterMaster?.id}
           clusterName={selectedCluster?.name}

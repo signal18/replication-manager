@@ -59,7 +59,6 @@ export const getDaysInMonth = (month, year = new Date().getFullYear()) => {
   date.setDate(0)
   // Get the number of days in the month
   const daysInMonth = date.getDate()
-  console.log('daysInMonth::', month)
 
   // Create an array with the days of the month
   return Array.from({ length: daysInMonth }, (_, i) => {
@@ -96,8 +95,8 @@ export const compareTimes = (startTime, endTime) => {
   return true // Times are valid
 }
 
-export const  getOrdinalSuffix=(n) =>{
-  const s = ["th", "st", "nd", "rd"];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+export const getOrdinalSuffix = (n) => {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
 }

@@ -1,0 +1,13 @@
+.container {
+  font-size: rem(15);
+  padding-inline: rem(16);
+  .gridItem {
+    .label,
+    .value {
+      padding: rem(4);
+    }
+    .label {
+      font-weight: bold;
+    }
+  }
+}
