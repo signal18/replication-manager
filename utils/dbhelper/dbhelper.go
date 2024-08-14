@@ -400,6 +400,7 @@ func GetBinaryLogs(db *sqlx.DB, version *MySQLVersion, metamap *BinaryLogMetaMap
 				meta.Size = v.File_size
 			}
 		}
+		counter++
 	}
 
 	trimmed = metamap.ClearObsoleteMetadata(oldest)
@@ -3086,10 +3087,10 @@ func (m *BinaryLogMetaMap) ToNormalMap(c map[string]*BinaryLogMetadata) {
 	})
 }
 
-func (m *BinaryLogMetaMap) ToNewMap() map[string]*BinaryLogMetadata {
-	result := make(map[string]*BinaryLogMetadata)
+func (m *BinaryLogMetaMap) ToNewMap() map[string]BinaryLogMetadata {
+	result := make(map[string]BinaryLogMetadata)
 	m.Range(func(k, v any) bool {
-		result[k.(string)] = v.(*BinaryLogMetadata)
+		result[k.(string)] = *v.(*BinaryLogMetadata)
 		return true
 	})
 	return result

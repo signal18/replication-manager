@@ -292,7 +292,7 @@ func (server *ServerMonitor) ForcePurgeBinlogs() {
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlWarn, err.Error())
 		}
-	} else if len(server.BinaryLogFiles.ToNewMap()) > 2 {
+	} else if server.BinaryLogFilesCount > 2 {
 		if isMaster {
 			go server.JobBinlogPurgeMaster()
 		}
@@ -431,7 +431,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	prefix := strings.Join(parts[:last], ".")
 
 	suffix, _ := strconv.Atoi(parts[last])
-	oldestbinlog := suffix + 1 - len(server.BinaryLogFiles.ToNewMap())
+	oldestbinlog := suffix + 1 - server.BinaryLogFilesCount
 
 	if cluster.SlavesOldestMasterFile.Prefix != prefix {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge cancelled, master binlog file has different prefix")
@@ -552,7 +552,7 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 		}
 
 		//Purge slaves to oldest master binlog timestamp and skip if slave only has 2 binary logs file left (Current Binlog and Prev Binlog)
-		if server.BinaryLogOldestTimestamp > 0 && master.BinaryLogOldestTimestamp > server.BinaryLogPurgeBefore && len(server.BinaryLogFiles.ToNewMap()) > 2 {
+		if server.BinaryLogOldestTimestamp > 0 && master.BinaryLogOldestTimestamp > server.BinaryLogPurgeBefore && server.BinaryLogFilesCount > 2 {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purging slave binlog of %s from %s until oldest timestamp on master: %s", server.URL, time.Unix(server.BinaryLogOldestTimestamp, 0).String(), time.Unix(master.BinaryLogOldestTimestamp, 0).String())
 			q, err := dbhelper.PurgeBinlogBefore(server.Conn, master.BinaryLogOldestTimestamp)
 			if err != nil {
