@@ -2249,7 +2249,6 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 
 			return server.JobBackupBinlog(binlogfile, isPurge)
 		}
-
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
