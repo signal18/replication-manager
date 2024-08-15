@@ -1,5 +1,5 @@
 .accordionHeader {
-  border-radius: 0;
+  border-radius: 0 !important;
   padding: rem(6);
   font-size: rem(15);
 }
@@ -11,7 +11,7 @@
 .card {
   border-radius: $border-radius-sm;
   border: rem(1) solid;
-  border-color: var(--secondary-color);
+  border-color: var(--tertiary-color);
   width: 100%;
   gap: 0;
 }

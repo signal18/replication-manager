@@ -1,6 +1,6 @@
 import { Flex } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
-import Gauge from '../../../components/Guage'
+import Gauge from '../../../components/Gauge'
 
 function ClusterWorkload({ workload }) {
   const [types, setTypes] = useState([])
