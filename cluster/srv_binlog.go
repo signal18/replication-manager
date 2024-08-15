@@ -226,7 +226,7 @@ func (server *ServerMonitor) RefreshBinlogMetadata(oldmetamap map[string]dbhelpe
 }
 
 // This process is detached so it will not blocking if waiting
-func (server *ServerMonitor) CheckBinaryLogs() error {
+func (server *ServerMonitor) CheckBinaryLogs(force bool) error {
 	cluster := server.ClusterGroup
 	var err error
 
@@ -241,7 +241,7 @@ func (server *ServerMonitor) CheckBinaryLogs() error {
 	}
 
 	// If log has been rotated
-	if server.BinaryLogFilePrevious != "" && server.BinaryLogFilePrevious != server.BinaryLogFile {
+	if (server.BinaryLogFilePrevious != "" && server.BinaryLogFilePrevious != server.BinaryLogFile) || force {
 		// Always running, triggered by binlog rotation
 		if cluster.Conf.BinlogRotationScript != "" && server.IsMaster() {
 			cluster.BinlogRotationScript(server)

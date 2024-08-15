@@ -862,7 +862,7 @@ func (server *ServerMonitor) Refresh() error {
 		server.BinaryLogPos = strconv.FormatUint(uint64(server.MasterStatus.Position), 10)
 
 		//Detach binlog process from main process
-		go server.CheckBinaryLogs()
+		go server.CheckBinaryLogs(false)
 	}
 
 	if !server.DBVersion.IsPostgreSQL() {
