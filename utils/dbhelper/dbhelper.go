@@ -3033,6 +3033,10 @@ func GetBinlogFormatDesc(db *sqlx.DB, binlogfile string) ([]BinlogEvents, string
 	return nil, logs, errors.New("Binlog Format Desc Not Found")
 }
 
+func compareDesc(a, b string) int {
+	return map[bool]int{a > b: -1, a < b: 1}[true]
+}
+
 type BinaryLogMetadata struct {
 	Source   string `json:"source"`
 	Filename string `json:"filename"`
@@ -3093,6 +3097,28 @@ func (m *BinaryLogMetaMap) ToNewMap() map[string]BinaryLogMetadata {
 		result[k.(string)] = *v.(*BinaryLogMetadata)
 		return true
 	})
+	return result
+}
+
+func (m *BinaryLogMetaMap) GetKeys() []string {
+	result := make([]string, 0)
+	m.Range(func(k, v any) bool {
+		result = append(result, k.(string))
+		return true
+	})
+
+	slices.Sort(result)
+	return result
+}
+
+func (m *BinaryLogMetaMap) GetKeysDesc() []string {
+	result := make([]string, 0)
+	m.Range(func(k, v any) bool {
+		result = append(result, k.(string))
+		return true
+	})
+
+	slices.SortFunc(result, compareDesc)
 	return result
 }
 

@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -29,10 +30,11 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func (server *ServerMonitor) RefreshBinaryLogs(forceWriteMeta bool) error {
+func (server *ServerMonitor) RefreshBinaryLogs() error {
 	var logs string
 	var err error
 	cluster := server.ClusterGroup
+	var writeMeta bool
 
 	//Don't check binlog of the ignored servers
 	if server.IsIgnored() {
@@ -62,9 +64,15 @@ func (server *ServerMonitor) RefreshBinaryLogs(forceWriteMeta bool) error {
 	}
 
 	if count > 0 {
-		server.BinaryLogFilesCount = count
-		server.BinaryLogFileOldest = oldest
-		go server.RefreshBinlogMetadata(oldmeta, forceWriteMeta)
+		if server.BinaryLogFilesCount != count {
+			server.BinaryLogFilesCount = count
+			writeMeta = true
+		}
+		if server.BinaryLogFileOldest != oldest {
+			server.BinaryLogFileOldest = oldest
+			writeMeta = true
+		}
+		go server.RefreshBinlogMetadata(oldmeta, writeMeta)
 	}
 
 	return err
@@ -75,7 +83,7 @@ func (server *ServerMonitor) WaitForRefresh() {
 	waitbinlog := true
 	for waitbinlog {
 		// Try to refresh if not refreshed
-		err := server.RefreshBinaryLogs(false)
+		err := server.RefreshBinaryLogs()
 		if err != nil && err.Error() == "Server is refreshing binlogs" {
 			time.Sleep(time.Second)
 		} else {
@@ -113,7 +121,7 @@ func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMe
 
 		if err == context.DeadlineExceeded {
 			// meet timeout
-			break
+			return err
 		}
 
 		if ev.Header.EventType == replication.FORMAT_DESCRIPTION_EVENT {
@@ -121,7 +129,7 @@ func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMe
 			ts := time.Unix(meta.Start, 0)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Refreshed oldest timestamp on %s - %s: %s", server.Host+":"+server.Port, meta.Filename, ts.String())
 			//Only update once for oldest binlog timestamp
-			break
+			return nil
 		}
 	}
 
@@ -247,7 +255,7 @@ func (server *ServerMonitor) CheckBinaryLogs() error {
 			go server.JobBackupBinlogPurge(server.BinaryLogFilePrevious)
 		}
 
-		server.RefreshBinaryLogs(false)
+		server.RefreshBinaryLogs()
 	} else {
 		nodebinlogcount, err := dbhelper.CountBinaryLogs(server.Conn, server.DBVersion)
 		if err != nil {
@@ -255,7 +263,7 @@ func (server *ServerMonitor) CheckBinaryLogs() error {
 		}
 
 		if server.BinaryLogFilesCount != nodebinlogcount {
-			server.RefreshBinaryLogs(true)
+			server.RefreshBinaryLogs()
 		}
 	}
 
@@ -429,9 +437,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	parts := strings.Split(server.BinaryLogFile, ".")
 	last := len(parts) - 1
 	prefix := strings.Join(parts[:last], ".")
-
 	suffix, _ := strconv.Atoi(parts[last])
-	oldestbinlog := suffix + 1 - server.BinaryLogFilesCount
 
 	if cluster.SlavesOldestMasterFile.Prefix != prefix {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge cancelled, master binlog file has different prefix")
@@ -446,16 +452,13 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	//Purge binlog on restore
 	if cluster.Conf.ForceBinlogPurgeOnRestore && server.IsReseeding {
 
-		//Only purge if oldest master binlog has more than 2 files
-		prevbinlog := cluster.SlavesOldestMasterFile.Suffix - 1
-
-		if oldestbinlog > 0 && oldestbinlog < prevbinlog {
-			//Purge binlog to will retain the file
-			filename := cluster.SlavesOldestMasterFile.Prefix + "." + fmt.Sprintf("%06d", prevbinlog)
+		filename := fmt.Sprintf("%s.%06d", cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix-1)
+		//Only purge if master has more than 2 files
+		if server.BinaryLogFilesCount > 2 && server.BinaryLogFileOldest < filename {
 			server.PurgeBinlogTo(filename)
-			server.RefreshBinaryLogs(true)
-
+			server.RefreshBinaryLogs()
 		}
+
 		//Not needed to continue, since this only retain last two binlogs
 		return
 	}
@@ -464,51 +467,44 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	* This will run when force purge binlog total size is set (default 30)
 	 **/
 	if cluster.Conf.ForceBinlogPurgeTotalSize > 0 {
-		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "server:%s start:%s stop:%s list: %s", server.URL, fmt.Sprintf("%06d", latestbinlog), fmt.Sprintf("%06d", oldestbinlog))
-		var totalSize uint
-		totalSize = 0
-		lastfile := 0
+		var totalSize, maxSize uint = 0, uint(cluster.Conf.ForceBinlogPurgeTotalSize) * (1024 * 1024 * 1024)
+		var until = ""
 
-		//Accumulating newest binlog size and shifting to oldest
-		for suffix > 0 && totalSize < uint(cluster.Conf.ForceBinlogPurgeTotalSize*(1024*1024*1024)) {
-			filename := prefix + "." + fmt.Sprintf("%06d", suffix)
-			if meta, ok := server.BinaryLogFiles.CheckAndGet(filename); ok {
-				//accumulating size
-				totalSize += meta.Size
-				lastfile = suffix //last file based on total size
+		// DESC for setting the boundary
+		binlogs := server.BinaryLogFiles.GetKeysDesc()
+		for _, fname := range binlogs {
+			meta := server.BinaryLogFiles.Get(fname)
+			if meta == nil {
+				// Exit on invalid binlog
+				return
 			}
-			//Descending
-			suffix--
+			totalSize = totalSize + meta.Size
+			if totalSize > maxSize {
+				break
+			}
+
+			until = meta.Filename
 		}
 
-		// Purging binlog if more than total size
-		if lastfile > 0 && oldestbinlog <= lastfile {
-			for oldestbinlog <= lastfile {
-				//Halt and return if last binlogfile is same with slave master pos
-				if oldestbinlog == cluster.SlavesOldestMasterFile.Suffix {
-					if cluster.StateMachine.CurState.Search("WARN0107") == false {
-						cluster.SetState("WARN0107", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0107"], cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix), ErrFrom: "CHECK", ServerUrl: server.URL})
-					}
-					return
-				}
-
-				//Increment for purging use
-				oldestbinlog++
-
-				if oldestbinlog > 0 && oldestbinlog < cluster.SlavesOldestMasterFile.Suffix-1 {
-					filename := prefix + "." + fmt.Sprintf("%06d", oldestbinlog)
-					if _, ok := server.BinaryLogFiles.CheckAndGet(filename); ok {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purging binlog of %s: %s. ", server.URL, filename)
-						_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)
-						if err != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
-						}
-					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Binlog filename not found on %s: %s", server.URL, filename)
-					}
-				}
+		if until != "" {
+			// ASC for purging oldest
+			binlogs := server.BinaryLogFiles.GetKeys()
+			slavesMasterFile := fmt.Sprintf("%s.%06d", cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix)
+			if until > slavesMasterFile {
+				until = slavesMasterFile
+				cluster.SetState("WARN0107", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0107"], cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix), ErrFrom: "CHECK", ServerUrl: server.URL})
 			}
-			server.RefreshBinaryLogs(true)
+
+			idxUntil := slices.Index(binlogs, until)
+
+			if idxUntil == -1 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge cancelled because of inconsistency, binlog filename %s not found.", until)
+				return
+			}
+
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purging binlog of %s until %s. ", server.URL, until)
+			server.PurgeBinlogTo(until)
+			server.RefreshBinaryLogs()
 		}
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel job purge due to no total size")
@@ -561,7 +557,7 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Executed query: %s", q)
 			}
 			server.BinaryLogPurgeBefore = master.BinaryLogOldestTimestamp
-			server.RefreshBinaryLogs(true)
+			server.RefreshBinaryLogs()
 		}
 	}
 }
@@ -597,10 +593,15 @@ func (server *ServerMonitor) WriteLocalBinlogMetadata() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to marshall metadata for binary logs in %s: %s", server.URL, err.Error())
 	}
 
+	info := "Created metadata for binary logs on %s"
+	if _, err := os.Stat(filename); err == nil {
+		info = "Updated metadata for binary logs on %s"
+	}
+
 	err = os.WriteFile(filename, bjson, 0644)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write metadata for binary logs in %s: %s", server.URL, err.Error())
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Created metadata for binary logs in %s", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, info, server.URL)
 	}
 }
