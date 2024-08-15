@@ -13,7 +13,6 @@ import React, { useState, useEffect } from 'react'
 import Dropdown from '../Dropdown'
 import TableType4Compare from '../TableType4Compare'
 import { useSelector } from 'react-redux'
-import TagPill from '../TagPill'
 import {
   getCurrentGtid,
   getCurrentGtidHeader,
@@ -33,9 +32,8 @@ import RMButton from '../RMButton'
 function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMariadbGtid, hasMysqlGtid }) {
   const [selectedServer, setSelectedServer] = useState(null)
   const [serverOptions, setServerOptions] = useState([])
-  console.log('compare server::', compareServer, selectedServer)
   const {
-    common: { isDesktop, isTablet, isMobile }
+    common: { isDesktop, isTablet }
   } = useSelector((state) => state)
 
   useEffect(() => {

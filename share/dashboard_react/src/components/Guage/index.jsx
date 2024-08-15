@@ -1,5 +1,4 @@
 import { Box, Flex, Text } from '@chakra-ui/react'
-import { useTheme } from '@emotion/react'
 import React, { useEffect, useRef } from 'react'
 import GaugeComponent from 'react-gauge-component'
 import styles from './styles.module.scss'
@@ -32,33 +31,6 @@ function Gauge({ value, text, width, height, className }) {
       window.removeEventListener('resize', updateGaugePosition)
     }
   }, [])
-
-  //   const styles = {
-  //     container: {
-  //       width: `${width}px`,
-  //       height: `${height}px`,
-  //       position: 'relative',
-  //       display: 'inline-block'
-  //     },
-  //     gauge: {
-  //       height: '100%'
-  //     },
-  //     textOverlay: {
-  //       position: 'absolute',
-  //       bottom: '-20px',
-  //       left: '50%',
-  //       transform: 'translate(-50%, -50%)',
-  //       textAlign: 'center'
-  //     },
-  //     valueText: {
-  //       display: 'block',
-  //       fontSize: '15px'
-  //     },
-  //     labelText: {
-  //       display: 'block',
-  //       fontSize: '12px'
-  //     }
-  //   }
 
   const formatValue = (value) => {
     if (typeof value === 'number' && !Number.isInteger(value)) {
