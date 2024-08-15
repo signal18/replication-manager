@@ -1,55 +1,54 @@
-.header {
-  text-align: center;
-  padding: rem(4);
-  border-top-left-radius: $border-radius-sm;
-  border-top-right-radius: $border-radius-sm;
-  //   bg: colorMode === 'light' ? `blue.200` : `blue.900`,
-  ///color: '#000',
-  background-color: var(--secondary-color) !important;
-  font-weight: bold;
-  color: var(--white-color);
-  span[class*='text'] {
-    color: var(--white-color) !important;
+.card {
+  border-radius: $border-radius-sm;
+  border: rem(1) solid;
+  border-color: var(--tertiary-color);
+  width: 100%;
+  gap: 0;
+  .header {
+    text-align: center;
+    padding: rem(4);
+    border-top-left-radius: $border-radius-sm;
+    border-top-right-radius: $border-radius-sm;
+    background-color: var(--secondary-color) !important;
+    font-weight: bold;
+    color: var(--white-color);
+    span[class*='text'] {
+      color: var(--white-color) !important;
+    }
+    &.red {
+      background-color: var(--danger-primary-color) !important;
+    }
+    &.orange {
+      background-color: var(--warning-primary-color) !important;
+    }
   }
-  &.red {
-    background-color: var(--danger-primary-color) !important;
+  .body {
+    &.red {
+      background-color: var(--danger-tertiary-color) !important;
+    }
+    &.orange {
+      background-color: var(--warning-tertiary-color) !important;
+    }
   }
-  &.orange {
-    background-color: var(--warning-primary-color) !important;
-  }
-}
-.body {
-  &.red {
-    background-color: var(--danger-tertiary-color) !important;
-  }
-  &.orange {
-    background-color: var(--warning-tertiary-color) !important;
-  }
-}
-.accordionHeader {
-  border-radius: 0;
-  padding: rem(6);
-  font-size: rem(15);
-  //   &.red,
-  //   &.orange {
-  //     span {
-  //       color: var(--white-color) !important;
-  //     }
-  //   }
-  &.red {
-    background-color: var(--danger-secondary-color) !important;
-    &:hover {
+  .accordionHeader {
+    border-radius: 0;
+    padding: rem(6);
+    font-size: rem(15);
+    &.red {
       background-color: var(--danger-secondary-color) !important;
+      &:hover {
+        background-color: var(--danger-secondary-color) !important;
+      }
     }
-  }
-  &.orange {
-    background-color: var(--warning-secondary-color) !important;
-    &:hover {
+    &.orange {
       background-color: var(--warning-secondary-color) !important;
+      &:hover {
+        background-color: var(--warning-secondary-color) !important;
+      }
     }
   }
-}
-.accordionPanel {
-  border-radius: 0;
-  border: none;
+  .accordionPanel {
+    border-radius: 0;
+    border: none;
+  }
 }
