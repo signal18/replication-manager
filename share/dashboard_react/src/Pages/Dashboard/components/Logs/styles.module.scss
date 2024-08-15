@@ -1,0 +1,31 @@
+// table: {
+//       width: '100%',
+//       borderCollapse: 'collapse'
+//     },
+//     tr: {
+//       borderBottom: '1px solid',
+//       borderColor: colorMode === 'light' ? '#E9E9E9' : ''
+//     },
+//     td: {
+//       paddingTop: '3px',
+//       paddingBottom: '3px'
+//     },
+//     timestamp: {
+//       minWidth: '200px'
+//     }
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  .tr {
+    border-bottom: rem(1) solid;
+    border-color: var(--gray-color);
+    .td {
+      padding-block: rem(3);
+
+      &.timestamp {
+        min-width: rem(200);
+      }
+    }
+  }
+}

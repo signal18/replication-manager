@@ -1,14 +1,15 @@
 import React, { useMemo, useEffect, useState } from 'react'
-import { DataTable } from '../../../../components/DataTable'
+import { DataTable } from '../../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
-import { Box, Tooltip } from '@chakra-ui/react'
-import ProxyMenu from './ProxyMenu'
+import { Box } from '@chakra-ui/react'
+import ProxyMenu from '../ProxyMenu'
 import { HiViewGrid } from 'react-icons/hi'
-import TagPill from '../../../../components/TagPill'
-import ServerStatus from '../../../../components/ServerStatus'
-import ProxyLogo from './ProxyLogo'
-import ProxyStatus from './ProxyStatus'
-import RMIconButton from '../../../../components/RMIconButton'
+import TagPill from '../../../../../components/TagPill'
+import ServerStatus from '../../../../../components/ServerStatus'
+import ProxyLogo from '../ProxyLogo'
+import ProxyStatus from '../ProxyStatus'
+import RMIconButton from '../../../../../components/RMIconButton'
+import styles from './styles.module.scss'
 
 function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMenuOptionsVisible }) {
   const [tableData, setTableData] = useState([])
@@ -46,17 +47,6 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMen
       bytesIn: data.prxByteIn,
       sessTime: data.prxLatency,
       idGroup: data.prxHostgroup
-    }
-  }
-  const styles = {
-    tableContainer: {
-      width: '100%'
-    },
-    heading: {
-      fontSize: '16px',
-      textAlign: 'center',
-      padding: '1',
-      background: 'blue.200'
     }
   }
 
@@ -133,7 +123,7 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMen
   )
 
   return (
-    <Box sx={styles.tableContainer}>
+    <Box className={styles.tableContainer}>
       <DataTable data={tableData} columns={columns} />
     </Box>
   )

@@ -1,57 +1,21 @@
-import { Flex, SimpleGrid, Spacer, Tooltip, useColorMode, VStack, Text, Box } from '@chakra-ui/react'
+import { Flex, SimpleGrid, Spacer, VStack, Text, Box } from '@chakra-ui/react'
 import React from 'react'
-import ProxyMenu from './ProxyMenu'
+import ProxyMenu from '../ProxyMenu'
 import { HiTable } from 'react-icons/hi'
-import ProxyLogo from './ProxyLogo'
-import TableType2 from '../../../../components/TableType2'
-import AccordionComponent from '../../../../components/AccordionComponent'
-import ProxyStatus from './ProxyStatus'
-import ServerStatus from '../../../../components/ServerStatus'
-import TagPill from '../../../../components/TagPill'
-import RMIconButton from '../../../../components/RMIconButton'
+import ProxyLogo from '../ProxyLogo'
+import TableType2 from '../../../../../components/TableType2'
+import AccordionComponent from '../../../../../components/AccordionComponent'
+import ProxyStatus from '../ProxyStatus'
+import ServerStatus from '../../../../../components/ServerStatus'
+import TagPill from '../../../../../components/TagPill'
+import RMIconButton from '../../../../../components/RMIconButton'
+import styles from './styles.module.scss'
 
-function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop }) {
-  const { colorMode } = useColorMode()
-  const styles = {
-    card: {
-      borderRadius: '16px',
-      border: '1px solid',
-      width: '100%',
-      gap: '0',
-      borderColor: colorMode === 'light' ? `blue.200` : `blue.900`
-    },
-
-    header: {
-      textAlign: 'center',
-      p: '4px',
-      bg: colorMode === 'light' ? `blue.200` : `blue.900`,
-      borderTopLeftRadius: '16px',
-      borderTopRightRadius: '16px',
-      color: '#000',
-      fontWeight: 'bold'
-    },
-    tableType2: {
-      padding: '0.5',
-      marginTop: '2',
-      fontSize: '15px',
-      width: '100%'
-    },
-    accordionHeader: {
-      borderRadius: '0',
-      padding: '6px',
-      fontSize: '15px'
-    },
-    accordionPanel: {
-      borderRadius: '0',
-      border: 'none'
-    }
-  }
-
+function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMenuOptionsVisible }) {
   return (
     <SimpleGrid columns={{ base: 1, sm: 1, md: 2, lg: 3 }} spacing={2} spacingY={6} spacingX={6} marginTop='4px'>
       {proxies?.length > 0 &&
         proxies.map((rowData) => {
-          console.log('rowdata::', rowData)
           const proxyData = [
             {
               key: 'Id',
@@ -75,32 +39,28 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop }) {
           })
 
           return (
-            <VStack width='100%' key={rowData.id} sx={{ ...styles.card }}>
-              <Flex as='header' width='100%' align='center' sx={styles.header}>
+            <VStack width='100%' key={rowData.id} className={styles.card}>
+              <Flex as='header' width='100%' align='center' className={styles.header}>
                 <ProxyLogo proxyName={rowData.type} />
                 <Text margin='auto' w='100%'>{`${rowData.host}:${rowData.port}`}</Text>
                 <Spacer />
 
                 <RMIconButton icon={HiTable} onClick={showTableView} marginRight={2} tooltip='Show table view' />
-
-                <ProxyMenu from='gridView' row={rowData} clusterName={clusterName} isDesktop={isDesktop} user={user} />
+                {isMenuOptionsVisible && (
+                  <ProxyMenu
+                    from='gridView'
+                    row={rowData}
+                    clusterName={clusterName}
+                    isDesktop={isDesktop}
+                    user={user}
+                  />
+                )}
               </Flex>
 
               <Flex direction='column' width='100%' mb={2} gap='0'>
-                <TableType2
-                  dataArray={proxyData}
-                  templateColumns='30% auto'
-                  gap={1}
-                  boxPadding={1}
-                  minHeight='24px'
-                  sx={styles.tableType2}
-                />
+                <TableType2 dataArray={proxyData} templateColumns='30% auto' />
                 {readWriteData?.map((object) => {
                   const readWriteTableData = [
-                    {
-                      key: 'Proxy Address',
-                      value: `${rowData.host}:${object.data.port}`
-                    },
                     {
                       key: 'PX Status',
                       value: object.data.prxStatus
@@ -132,21 +92,12 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop }) {
                         <Flex gap='2'>
                           <TagPill text={object.type.toUpperCase()} />
                           <ServerStatus state={object.data.status} />
-                          <Text>{`${object.data.host}:${object.data.port}`}</Text>
+                          <Text className=''>{`${object.data.host}:${object.data.port}`}</Text>
                         </Flex>
                       }
-                      headerSX={styles.accordionHeader}
-                      panelSX={styles.accordionPanel}
-                      body={
-                        <TableType2
-                          dataArray={readWriteTableData}
-                          templateColumns='30% auto'
-                          gap={1}
-                          boxPadding={1}
-                          minHeight='24px'
-                          sx={styles.tableType2}
-                        />
-                      }
+                      headerClassName={styles.accordionHeader}
+                      panelClassName={styles.accordionPanel}
+                      body={<TableType2 dataArray={readWriteTableData} templateColumns='30% auto' />}
                     />
                   )
                 })}

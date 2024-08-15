@@ -1,22 +1,12 @@
-import {
-  background,
-  Modal,
-  ModalBody,
-  ModalCloseButton,
-  ModalContent,
-  ModalHeader,
-  ModalOverlay,
-  Table,
-  useColorMode
-} from '@chakra-ui/react'
+import { Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay } from '@chakra-ui/react'
 import React, { useState, useEffect, useMemo } from 'react'
 import { useSelector } from 'react-redux'
-import NotFound from '../NotFound'
-import { DataTable } from '../DataTable'
+import NotFound from '../../NotFound'
+import { DataTable } from '../../DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
+import styles from './styles.module.scss'
 
 function AlertModal({ type, isOpen, closeModal }) {
-  const { colorMode } = useColorMode()
   const {
     common: { isMobile, isTablet, isDesktop },
     cluster: { clusterAlerts }
@@ -31,23 +21,6 @@ function AlertModal({ type, isOpen, closeModal }) {
       setData(clusterAlerts.warnings)
     }
   }, [clusterAlerts])
-
-  const styles = {
-    header: {
-      background:
-        type === 'error'
-          ? colorMode === 'light'
-            ? 'red.200'
-            : 'red.700'
-          : colorMode === 'light'
-            ? 'orange.200'
-            : 'orange.700'
-    },
-    body: {
-      overflow: 'auto',
-      padding: '2'
-    }
-  }
 
   const columnHelper = createColumnHelper()
   const columns = useMemo(
@@ -78,14 +51,17 @@ function AlertModal({ type, isOpen, closeModal }) {
       <ModalContent
         width={isDesktop ? '80%' : isTablet ? '97%' : '99%'}
         maxWidth='none'
-        minHeight={isMobile ? '300px' : '450px'}
+        minHeight={'300px'}
+        maxH={'90%'}
         textAlign='center'
         overflow='hidden'>
-        <ModalHeader whiteSpace='pre-line' sx={styles.header}>
+        <ModalHeader
+          whiteSpace='pre-line'
+          className={`${styles.header} ${type === 'error' ? styles.red : styles.orange}`}>
           {type === 'error' ? `Errors: ${data.length}` : `Warnings: ${data.length}`}
         </ModalHeader>
         <ModalCloseButton />
-        <ModalBody sx={styles.body}>
+        <ModalBody className={styles.body}>
           {data.length === 0 ? (
             <NotFound text={`No ${type} alerts found`} />
           ) : (

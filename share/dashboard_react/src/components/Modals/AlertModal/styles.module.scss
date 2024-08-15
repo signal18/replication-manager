@@ -1,0 +1,13 @@
+.header {
+  &.red {
+    background-color: var(--danger-secondary-color);
+  }
+  &.orange {
+    background-color: var(--warning-secondary-color);
+  }
+}
+
+.body {
+  overflow: auto;
+  padding: rem(8);
+}
