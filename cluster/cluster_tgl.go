@@ -136,7 +136,13 @@ func (cluster *Cluster) SwitchBackupRestic() {
 }
 func (cluster *Cluster) SwitchBackupBinlogs() {
 	cluster.Conf.BackupBinlogs = !cluster.Conf.BackupBinlogs
+	if cluster.Conf.BackupBinlogs {
+		for _, sv := range cluster.GetServers() {
+			go sv.CheckBinaryLogs(true)
+		}
+	}
 }
+
 func (cluster *Cluster) SwitchCompressBackups() {
 	cluster.Conf.CompressBackups = !cluster.Conf.CompressBackups
 }

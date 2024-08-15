@@ -161,6 +161,8 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 			time.Sleep(1 * time.Second)
 			return cluster.BinlogCopyScript(server, binlog, isPurge)
 		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlog)
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
 	}

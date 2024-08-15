@@ -2250,6 +2250,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 			return server.JobBackupBinlog(binlogfile, isPurge)
 		}
 
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
 	}
@@ -2328,7 +2329,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	for _, file := range files {
 		_, ok := keeping[file.Name()]
 		if strings.HasPrefix(file.Name(), prefix) && !ok {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging binlog file %s", file.Name())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging binlog file from backup dir %s", file.Name())
 			os.Remove(server.GetMyBackupDirectory() + "/" + file.Name())
 		}
 	}
@@ -2490,6 +2491,7 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 			return server.JobBackupBinlogSSH(binlogfile, isPurge)
 		}
 
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
 	}
@@ -2555,10 +2557,6 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 		binlogpath := strings.Join(parts[:len(parts)-1], "/")
 
 		server.SetBinaryLogDir(binlogpath)
-	}
-
-	if !isPurge {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
 	}
 
 	switch cluster.Conf.BinlogCopyMode {
