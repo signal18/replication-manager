@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -219,7 +220,7 @@ func (server *ServerMonitor) RefreshBinlogMetadata(oldmetamap map[string]dbhelpe
 	})
 
 	if modified || forceWriteMeta {
-		server.WriteLocalBinlogMetadata()
+		server.WriteNodeBinlogMetadata()
 	}
 
 	return err
@@ -584,7 +585,7 @@ func (server *ServerMonitor) ReadLocalBinaryLogMetadata() (map[string]dbhelper.B
 	return meta, nil
 }
 
-func (server *ServerMonitor) WriteLocalBinlogMetadata() {
+func (server *ServerMonitor) WriteNodeBinlogMetadata() {
 	cluster := server.GetCluster()
 	filename := server.GetDatabaseBasedir() + "/binary-logs.meta.json"
 
@@ -602,6 +603,114 @@ func (server *ServerMonitor) WriteLocalBinlogMetadata() {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write metadata for binary logs in %s: %s", server.URL, err.Error())
 	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, info, server.URL)
+	}
+}
+
+func (server *ServerMonitor) ReadBinlogBackupDirGoMySQL(meta *dbhelper.BinaryLogMetadata) error {
+	var err error
+	parser := replication.NewBinlogParser()
+
+	file, err := os.Open(server.GetMyBackupDirectory() + "/" + meta.Filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	//Binary logs start at 4
+	file.Seek(4, io.SeekStart)
+
+	_, err = parser.ParseSingleEvent(file, func(e *replication.BinlogEvent) error {
+		// Check if the event is FORMAT_DESCRIPTION_EVENT
+		if e.Header.EventType == replication.FORMAT_DESCRIPTION_EVENT {
+			meta.Start = int64(e.Header.Timestamp)
+		}
+		return nil
+	})
+
+	return err
+}
+
+func (server *ServerMonitor) GenerateBinlogFromBackupDir(metamap *map[string]dbhelper.BinaryLogMetadata) error {
+	prefix := strings.Split(server.BinaryLogFile, ".")[0]
+
+	files, err := os.ReadDir(server.GetMyBackupDirectory())
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		fname := file.Name()
+		if strings.HasPrefix(fname, prefix) {
+			finfo, _ := file.Info()
+			meta := dbhelper.BinaryLogMetadata{
+				Source:   server.URL,
+				Filename: fname,
+				Size:     uint(finfo.Size()),
+			}
+			err := server.ReadBinlogBackupDirGoMySQL(&meta)
+			if meta.Start > 0 {
+				(*metamap)[fname] = meta
+			} else {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) WriteBackupBinlogMetadata() {
+	cluster := server.GetCluster()
+	fname := server.GetMyBackupDirectory() + "/binary-logs.meta.json"
+
+	if len(server.BinaryLogMetaToWrite) == 0 && len(server.BinaryLogMetaToRemove) == 0 {
+		return
+	}
+
+	var metamap = make(map[string]dbhelper.BinaryLogMetadata)
+	info := "Created metadata for binary logs backup on %s"
+	if _, err := os.Stat(fname); err == nil {
+		info = "Updated metadata for binary logs  backup on %s"
+
+		file, err := os.Open(fname)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to read metadata for binary logs backup from file in %s: %s", server.URL, err.Error())
+		} else {
+			err := json.NewDecoder(file).Decode(&metamap)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to decode metadata for binary logs backup from file in %s: %s", server.URL, err.Error())
+			}
+			file.Close()
+		}
+	} else {
+		err := server.GenerateBinlogFromBackupDir(&metamap)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to generate metadata for binary logs backup from dir in %s: %s", server.URL, err.Error())
+		}
+	}
+
+	for _, bfile := range server.BinaryLogMetaToRemove {
+		delete(metamap, bfile)
+	}
+
+	for _, bfile := range server.BinaryLogMetaToWrite {
+		binlog, ok := server.BinaryLogFiles.CheckAndGet(bfile)
+		if ok {
+			metamap[bfile] = *binlog
+		}
+	}
+
+	bjson, err := json.MarshalIndent(metamap, "", "\t")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to marshall metadata for binary logs backup in %s: %s", server.URL, err.Error())
+	}
+
+	err = os.WriteFile(fname, bjson, 0644)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write metadata for binary logs backup in %s: %s", server.URL, err.Error())
+	} else {
+		server.BinaryLogMetaToWrite = make([]string, 0)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, info, server.URL)
 	}
 }

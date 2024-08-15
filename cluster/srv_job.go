@@ -2249,7 +2249,6 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 
 			return server.JobBackupBinlog(binlogfile, isPurge)
 		}
-
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
@@ -2276,6 +2275,10 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 
 	//Skip copying to resting when purge due to batching
 	if !isPurge {
+		if idx := slices.Index(server.BinaryLogMetaToWrite, binlogfile); idx == -1 {
+			server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlogfile)
+		}
+		server.WriteBackupBinlogMetadata()
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
 		backtype := "binlog"
 		defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
@@ -2330,9 +2333,13 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		_, ok := keeping[file.Name()]
 		if strings.HasPrefix(file.Name(), prefix) && !ok {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging binlog file from backup dir %s", file.Name())
-			os.Remove(server.GetMyBackupDirectory() + "/" + file.Name())
+			if err := os.Remove(server.GetMyBackupDirectory() + "/" + file.Name()); err == nil {
+				server.BinaryLogMetaToRemove = append(server.BinaryLogMetaToRemove, file.Name())
+			}
 		}
 	}
+
+	server.WriteBackupBinlogMetadata()
 	return nil
 }
 
@@ -2535,6 +2542,11 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 
 	//Skip copying to resting when purge due to batching
 	if !isPurge {
+		if idx := slices.Index(server.BinaryLogMetaToWrite, binlogfile); idx == -1 {
+			server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlogfile)
+		}
+		server.WriteBackupBinlogMetadata()
+
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
 		backtype := "binlog"
 		defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)

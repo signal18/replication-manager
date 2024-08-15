@@ -181,6 +181,8 @@ type ServerMonitor struct {
 	SSTPort                     string                     `json:"sstPort"`       //used to send data to dbjobs
 	Agent                       string                     `json:"agent"`         //used to provision service in orchestrator
 	BinaryLogFiles              *dbhelper.BinaryLogMetaMap `json:"binaryLogFiles"`
+	BinaryLogMetaToWrite        []string                   `json:"-"`
+	BinaryLogMetaToRemove       []string                   `json:"-"`
 	BinaryLogFilesCount         int                        `json:"binaryLogFilesCount"`
 	BinaryLogFileOldest         string                     `json:"binaryLogFileOldest"`
 	BinaryLogOldestTimestamp    int64                      `json:"binaryLogOldestTimestamp"`
@@ -265,6 +267,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.IsGroupReplicationSlave = false
 	server.IsGroupReplicationMaster = false
 	server.JobResults = config.NewTasksMap()
+	server.BinaryLogMetaToWrite = make([]string, 0)
+	server.BinaryLogMetaToRemove = make([]string, 0)
 	server.NeedRefreshJobs = true
 	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		// OpenSVC and Sharding proxy monitoring
