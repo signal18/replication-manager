@@ -11,10 +11,14 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +35,7 @@ func (server *ServerMonitor) RefreshBinaryLogs() error {
 	var logs string
 	var err error
 	cluster := server.ClusterGroup
+	var writeMeta bool
 
 	//Don't check binlog of the ignored servers
 	if server.IsIgnored() {
@@ -38,21 +43,191 @@ func (server *ServerMonitor) RefreshBinaryLogs() error {
 		return err
 	}
 
-	binlogs, logs, err := dbhelper.GetBinaryLogs(server.Conn, server.DBVersion)
-	if err != nil {
-		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get binary log files %s %s", server.URL, err)
-	} else {
-		server.SetBinaryLogFiles(binlogs)
+	if server.IsRefreshingBinlog {
+		return errors.New("Server is refreshing binlogs")
 	}
 
-	if len(server.BinaryLogFiles.ToNewMap()) > 0 {
-		server.SetBinaryLogFileOldest()
+	server.SetInRefreshBinlog(true)
+	defer server.SetInRefreshBinlog(false)
+
+	var oldmeta = make(map[string]dbhelper.BinaryLogMetadata)
+	if server.BinaryLogFilesCount == 0 {
+		oldmeta, err = server.ReadLocalBinaryLogMetadata()
+	}
+
+	count, oldest, trimmed, logs, err := dbhelper.GetBinaryLogs(server.Conn, server.DBVersion, server.BinaryLogFiles)
+	if err != nil {
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get binary log files %s %s", server.URL, err)
+	}
+
+	if len(trimmed) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Remove purged binlog from binlog metadata on %s: %s", server.Host+":"+server.Port, strings.Join(trimmed, ","))
+	}
+
+	if count > 0 {
+		if server.BinaryLogFilesCount != count {
+			server.BinaryLogFilesCount = count
+			writeMeta = true
+		}
+		if server.BinaryLogFileOldest != oldest {
+			server.BinaryLogFileOldest = oldest
+			writeMeta = true
+		}
+		go server.RefreshBinlogMetadata(oldmeta, writeMeta)
 	}
 
 	return err
 }
 
-func (server *ServerMonitor) CheckBinaryLogs() error {
+func (server *ServerMonitor) WaitForRefresh() {
+	// Wait for binlog refreshed
+	waitbinlog := true
+	for waitbinlog {
+		// Try to refresh if not refreshed
+		err := server.RefreshBinaryLogs()
+		if err != nil && err.Error() == "Server is refreshing binlogs" {
+			time.Sleep(time.Second)
+		} else {
+			waitbinlog = false
+		}
+	}
+}
+
+func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMetadata) error {
+	var err error
+	cluster := server.ClusterGroup
+	port, _ := strconv.Atoi(server.Port)
+
+	cfg := replication.BinlogSyncerConfig{
+		ServerID: uint32(cluster.Conf.CheckBinServerId),
+		Flavor:   server.DBVersion.Flavor,
+		Host:     server.Host,
+		Port:     uint16(port),
+		User:     server.User,
+		Password: server.Pass,
+	}
+
+	syncer := replication.NewBinlogSyncer(cfg)
+	defer syncer.Close()
+
+	streamer, err := syncer.StartSync(mysql.Position{Name: meta.Filename, Pos: 0})
+	if err != nil {
+		return err
+	}
+
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.MonitoringQueryTimeout)*time.Millisecond)
+		ev, err := streamer.GetEvent(ctx)
+		cancel()
+
+		if err == context.DeadlineExceeded {
+			// meet timeout
+			return err
+		}
+
+		if ev.Header.EventType == replication.FORMAT_DESCRIPTION_EVENT {
+			meta.Start = int64(ev.Header.Timestamp)
+			ts := time.Unix(meta.Start, 0)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Refreshed oldest timestamp on %s - %s: %s", server.Host+":"+server.Port, meta.Filename, ts.String())
+			//Only update once for oldest binlog timestamp
+			return nil
+		}
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) RefreshBinlogMetaMySQL(meta *dbhelper.BinaryLogMetadata) error {
+	var err error
+	cluster := server.ClusterGroup
+	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
+
+	events, _, err := dbhelper.GetBinlogFormatDesc(server.Conn, meta.Filename)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error while getting binlog events from oldest master binlog: %s. Err: %s", meta.Filename, err.Error())
+		return err
+	}
+
+	for _, ev := range events {
+		startpos := fmt.Sprintf("%d", ev.Pos)
+		endpos := fmt.Sprintf("%d", ev.End_log_pos)
+
+		mysqlbinlogcmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-position="+startpos, "--stop-position="+endpos, meta.Filename)
+
+		result, err := mysqlbinlogcmd.Output()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error while extracting timestamp from oldest master binlog: %s. Err: %s", meta.Filename, err.Error())
+			return err
+		}
+
+		ts, err := server.GetTimestampUsingRegex(string(result))
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s. Host: %s - %s", err.Error(), server.Host+":"+server.Port, meta.Filename)
+			return err
+		}
+
+		meta.Start = ts
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Refreshed oldest timestamp on binary log %s - %s : %s", server.Host+":"+server.Port, meta.Filename, time.Unix(ts, 0).String())
+
+	}
+
+	return err
+}
+
+func (server *ServerMonitor) RefreshBinlogMetadata(oldmetamap map[string]dbhelper.BinaryLogMetadata, forceWriteMeta bool) error {
+	var err error
+	var modified bool
+	cluster := server.ClusterGroup
+
+	if server.IsRefreshingBinlogMeta {
+		return errors.New("Server is refreshing binlogs meta")
+	}
+
+	server.SetInRefreshBinlogMeta(true)
+	defer server.SetInRefreshBinlogMeta(false)
+
+	server.BinaryLogFiles.Range(func(k, v any) bool {
+		err = nil
+		meta := v.(*dbhelper.BinaryLogMetadata)
+		readbinlog := true
+		if meta.Source == "" {
+			meta.Source = server.URL
+			modified = true
+		}
+
+		if meta.Start == 0 {
+			if old, ok := oldmetamap[k.(string)]; ok {
+				if old.Start > 0 {
+					meta.Start = old.Start
+					readbinlog = false
+				}
+			}
+
+			if readbinlog {
+				if cluster.Conf.BinlogParseMode == config.ConstBackupBinlogTypeGoMySQL {
+					err = server.RefreshBinlogMetaGoMySQL(meta)
+				} else {
+					err = server.RefreshBinlogMetaMySQL(meta)
+				}
+			}
+			modified = true
+		}
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s. Host: %s - %s", err.Error(), server.Host+":"+server.Port, meta.Filename)
+		}
+
+		return true
+	})
+
+	if modified || forceWriteMeta {
+		server.WriteNodeBinlogMetadata()
+	}
+
+	return err
+}
+
+// This process is detached so it will not blocking if waiting
+func (server *ServerMonitor) CheckBinaryLogs(force bool) error {
 	cluster := server.ClusterGroup
 	var err error
 
@@ -62,11 +237,12 @@ func (server *ServerMonitor) CheckBinaryLogs() error {
 		return err
 	}
 
-	if len(server.BinaryLogFiles.ToNewMap()) == 0 {
-		server.RefreshBinaryLogs()
+	if server.BinaryLogFilesCount == 0 {
+		server.WaitForRefresh()
 	}
 
-	if server.BinaryLogFilePrevious != "" && server.BinaryLogFilePrevious != server.BinaryLogFile {
+	// If log has been rotated
+	if (server.BinaryLogFilePrevious != "" && server.BinaryLogFilePrevious != server.BinaryLogFile) || force {
 		// Always running, triggered by binlog rotation
 		if cluster.Conf.BinlogRotationScript != "" && server.IsMaster() {
 			cluster.BinlogRotationScript(server)
@@ -81,6 +257,15 @@ func (server *ServerMonitor) CheckBinaryLogs() error {
 		}
 
 		server.RefreshBinaryLogs()
+	} else {
+		nodebinlogcount, err := dbhelper.CountBinaryLogs(server.Conn, server.DBVersion)
+		if err != nil {
+			return err
+		}
+
+		if server.BinaryLogFilesCount != nodebinlogcount {
+			server.RefreshBinaryLogs()
+		}
 	}
 
 	server.BinaryLogFilePrevious = server.BinaryLogFile
@@ -116,7 +301,7 @@ func (server *ServerMonitor) ForcePurgeBinlogs() {
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlWarn, err.Error())
 		}
-	} else if len(server.BinaryLogFiles.ToNewMap()) > 2 {
+	} else if server.BinaryLogFilesCount > 2 {
 		if isMaster {
 			go server.JobBinlogPurgeMaster()
 		}
@@ -131,16 +316,16 @@ func (server *ServerMonitor) SetIsPurgingBinlog(value bool) {
 	server.InPurgingBinaryLog = value
 }
 
-func (server *ServerMonitor) SetBinlogOldestTimestamp(str string) error {
+func (server *ServerMonitor) GetTimestampUsingRegex(str string) (int64, error) {
 	var regex, err = regexp.Compile(`[0-9]{6}[ ]{1,2}[0-9:]{7,8}`)
 	if err != nil {
-		return errors.New("Incorrect regexp.")
+		return 0, errors.New("Incorrect regexp.")
 	}
 
 	//Get First Timestamp From Binlog Format Desc and remove multiple space
 	strin := strings.Replace(regex.FindString(str), "  ", " ", -1)
 	if strin == "" {
-		return errors.New("Timestamp not found on binlog")
+		return 0, errors.New("Timestamp not found on binlog")
 	}
 
 	strout := strings.Split(strin, " ")
@@ -148,29 +333,29 @@ func (server *ServerMonitor) SetBinlogOldestTimestamp(str string) error {
 	dt := strout[0]
 	yy, err := strconv.Atoi(dt[:2])
 	if err != nil {
-		return errors.New("Failed to parse year")
+		return 0, errors.New("Failed to parse year")
 	}
 	mm, err := strconv.Atoi(dt[2:4])
 	if err != nil {
-		return errors.New("Failed to parse month")
+		return 0, errors.New("Failed to parse month")
 	}
 	dd, err := strconv.Atoi(dt[4:])
 	if err != nil {
-		return errors.New("Failed to parse date of month")
+		return 0, errors.New("Failed to parse date of month")
 	}
 
 	tm := strings.Split(strout[1], ":")
 	hr, err := strconv.Atoi(tm[0])
 	if err != nil {
-		return errors.New("Failed to parse hour")
+		return 0, errors.New("Failed to parse hour")
 	}
 	min, err := strconv.Atoi(tm[1])
 	if err != nil {
-		return errors.New("Failed to parse minute")
+		return 0, errors.New("Failed to parse minute")
 	}
 	sec, err := strconv.Atoi(tm[2])
 	if err != nil {
-		return errors.New("Failed to parse second")
+		return 0, errors.New("Failed to parse second")
 	}
 
 	//4 digit hack
@@ -183,91 +368,7 @@ func (server *ServerMonitor) SetBinlogOldestTimestamp(str string) error {
 		yy = yy - 100
 	}
 
-	server.BinaryLogOldestTimestamp = time.Date(yy, time.Month(mm), dd, hr, min, sec, 0, time.Local).Unix()
-	return nil
-}
-
-func (server *ServerMonitor) RefreshBinlogOldestTimestamp() error {
-	cluster := server.ClusterGroup
-	var err error
-
-	defer server.SetInRefreshBinlog(false)
-
-	if server.BinaryLogFileOldest != "" {
-		if cluster.Conf.BinlogParseMode == "gomysql" {
-			port, _ := strconv.Atoi(server.Port)
-
-			cfg := replication.BinlogSyncerConfig{
-				ServerID: uint32(cluster.Conf.CheckBinServerId),
-				Flavor:   server.DBVersion.Flavor,
-				Host:     server.Host,
-				Port:     uint16(port),
-				User:     server.User,
-				Password: server.Pass,
-			}
-
-			syncer := replication.NewBinlogSyncer(cfg)
-
-			streamer, err := syncer.StartSync(mysql.Position{Name: server.BinaryLogFileOldest, Pos: 0})
-			if err != nil {
-				return err
-			}
-
-			for {
-				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.MonitoringQueryTimeout)*time.Millisecond)
-				ev, err := streamer.GetEvent(ctx)
-				cancel()
-
-				if err == context.DeadlineExceeded {
-					// meet timeout
-					break
-				}
-
-				if ev.Header.EventType == replication.FORMAT_DESCRIPTION_EVENT {
-					server.BinaryLogOldestTimestamp = int64(ev.Header.Timestamp)
-					ts := time.Unix(server.BinaryLogOldestTimestamp, 0)
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Refreshed oldest timestamp on %s. oldest: %s", server.Host+":"+server.Port, ts.String())
-					//Only update once for oldest binlog timestamp
-					break
-				}
-			}
-
-			syncer.Close()
-		} else {
-			binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
-
-			events, _, err := dbhelper.GetBinlogFormatDesc(server.Conn, server.BinaryLogFileOldest)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error while getting binlog events from oldest master binlog: %s. Err: %s", server.BinaryLogFileOldest, err.Error())
-				return err
-			}
-
-			for _, ev := range events {
-				startpos := fmt.Sprintf("%d", ev.Pos)
-				endpos := fmt.Sprintf("%d", ev.End_log_pos)
-
-				mysqlbinlogcmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-position="+startpos, "--stop-position="+endpos, ev.Log_name)
-
-				result, err := mysqlbinlogcmd.Output()
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error while extracting timestamp from oldest master binlog: %s. Err: %s", server.BinaryLogFileOldest, err.Error())
-					return err
-				}
-
-				err = server.SetBinlogOldestTimestamp(string(result))
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s. Host: %s - %s", err.Error(), server.Host+":"+server.Port, server.BinaryLogFileOldest)
-					return err
-				}
-
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Refreshed binary logs on %s - %s. oldest timestamp: %s", server.Host+":"+server.Port, ev.Log_name, time.Unix(server.BinaryLogOldestTimestamp, 0).String())
-
-				return err
-			}
-
-		}
-	}
-	return err
+	return time.Date(yy, time.Month(mm), dd, hr, min, sec, 0, time.Local).Unix(), nil
 }
 
 func (server *ServerMonitor) SetMaxBinlogTotalSize() error {
@@ -294,56 +395,6 @@ func (server *ServerMonitor) SetMaxBinlogTotalSize() error {
 	return nil
 }
 
-func (server *ServerMonitor) SetBinaryLogFileOldest() {
-	cluster := server.ClusterGroup
-	files := len(server.BinaryLogFiles.ToNewMap())
-
-	if server.IsRefreshingBinlog {
-		return
-	}
-
-	server.SetInRefreshBinlog(true)
-
-	if files > 0 {
-		//If no other binlog is exist
-		if files == 1 && server.BinaryLogFileOldest != server.BinaryLogFile {
-			if server.BinaryLogFileOldest != server.BinaryLogFile {
-				server.BinaryLogFileOldest = server.BinaryLogFile
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogFileOldest)
-				//Only get timestamp when needed
-				if cluster.Conf.ForceBinlogPurge {
-					go server.RefreshBinlogOldestTimestamp()
-				} else {
-					server.SetInRefreshBinlog(false)
-				}
-			}
-			return
-		}
-
-		//Use filename and binlog counts
-		parts := strings.Split(server.BinaryLogFile, ".")
-		last := len(parts) - 1
-		prefix := strings.Join(parts[:last], ".")
-		latestbinlog, _ := strconv.Atoi(parts[last])
-		oldestbinlog := latestbinlog - files + 1
-		oldest := prefix + "." + fmt.Sprintf("%06d", oldestbinlog)
-
-		if _, ok := server.BinaryLogFiles.CheckAndGet(oldest); ok && server.BinaryLogFileOldest != server.BinaryLogFile {
-			if server.BinaryLogFileOldest != oldest {
-				server.BinaryLogFileOldest = oldest
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Refreshed binary logs on %s. oldest: %s", server.Host+":"+server.Port, server.BinaryLogFileOldest)
-				//Only get timestamp when needed
-				if cluster.Conf.ForceBinlogPurge {
-					go server.RefreshBinlogOldestTimestamp()
-				} else {
-					server.SetInRefreshBinlog(false)
-				}
-			}
-			return
-		}
-	}
-}
-
 func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	cluster := server.GetCluster()
 
@@ -357,8 +408,8 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 		return
 	}
 
-	if len(server.BinaryLogFiles.ToNewMap()) == 0 {
-		server.RefreshBinaryLogs()
+	if server.BinaryLogFilesCount == 0 {
+		server.WaitForRefresh()
 	}
 
 	//Block multiple purge
@@ -387,9 +438,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	parts := strings.Split(server.BinaryLogFile, ".")
 	last := len(parts) - 1
 	prefix := strings.Join(parts[:last], ".")
-
 	suffix, _ := strconv.Atoi(parts[last])
-	oldestbinlog := suffix + 1 - len(server.BinaryLogFiles.ToNewMap())
 
 	if cluster.SlavesOldestMasterFile.Prefix != prefix {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge cancelled, master binlog file has different prefix")
@@ -404,16 +453,13 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	//Purge binlog on restore
 	if cluster.Conf.ForceBinlogPurgeOnRestore && server.IsReseeding {
 
-		//Only purge if oldest master binlog has more than 2 files
-		prevbinlog := cluster.SlavesOldestMasterFile.Suffix - 1
-
-		if oldestbinlog > 0 && oldestbinlog < prevbinlog {
-			//Purge binlog to will retain the file
-			filename := cluster.SlavesOldestMasterFile.Prefix + "." + fmt.Sprintf("%06d", prevbinlog)
+		filename := fmt.Sprintf("%s.%06d", cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix-1)
+		//Only purge if master has more than 2 files
+		if server.BinaryLogFilesCount > 2 && server.BinaryLogFileOldest < filename {
 			server.PurgeBinlogTo(filename)
 			server.RefreshBinaryLogs()
-
 		}
+
 		//Not needed to continue, since this only retain last two binlogs
 		return
 	}
@@ -422,50 +468,43 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	* This will run when force purge binlog total size is set (default 30)
 	 **/
 	if cluster.Conf.ForceBinlogPurgeTotalSize > 0 {
-		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "server:%s start:%s stop:%s list: %s", server.URL, fmt.Sprintf("%06d", latestbinlog), fmt.Sprintf("%06d", oldestbinlog))
-		var totalSize uint
-		totalSize = 0
-		lastfile := 0
+		var totalSize, maxSize uint = 0, uint(cluster.Conf.ForceBinlogPurgeTotalSize) * (1024 * 1024 * 1024)
+		var until = ""
 
-		//Accumulating newest binlog size and shifting to oldest
-		for suffix > 0 && totalSize < uint(cluster.Conf.ForceBinlogPurgeTotalSize*(1024*1024*1024)) {
-			filename := prefix + "." + fmt.Sprintf("%06d", suffix)
-			if size, ok := server.BinaryLogFiles.CheckAndGet(filename); ok {
-				//accumulating size
-				totalSize += size
-				lastfile = suffix //last file based on total size
+		// DESC for setting the boundary
+		binlogs := server.BinaryLogFiles.GetKeysDesc()
+		for _, fname := range binlogs {
+			meta := server.BinaryLogFiles.Get(fname)
+			if meta == nil {
+				// Exit on invalid binlog
+				return
 			}
-			//Descending
-			suffix--
+			totalSize = totalSize + meta.Size
+			if totalSize > maxSize {
+				break
+			}
+
+			until = meta.Filename
 		}
 
-		// Purging binlog if more than total size
-		if lastfile > 0 && oldestbinlog <= lastfile {
-			for oldestbinlog <= lastfile {
-				//Halt and return if last binlogfile is same with slave master pos
-				if oldestbinlog == cluster.SlavesOldestMasterFile.Suffix {
-					if cluster.StateMachine.CurState.Search("WARN0107") == false {
-						cluster.SetState("WARN0107", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0107"], cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix), ErrFrom: "CHECK", ServerUrl: server.URL})
-					}
-					return
-				}
-
-				//Increment for purging use
-				oldestbinlog++
-
-				if oldestbinlog > 0 && oldestbinlog < cluster.SlavesOldestMasterFile.Suffix-1 {
-					filename := prefix + "." + fmt.Sprintf("%06d", oldestbinlog)
-					if _, ok := server.BinaryLogFiles.CheckAndGet(filename); ok {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purging binlog of %s: %s. ", server.URL, filename)
-						_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)
-						if err != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error purging binlog of %s,%s : %s", server.URL, filename, err.Error())
-						}
-					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Binlog filename not found on %s: %s", server.URL, filename)
-					}
-				}
+		if until != "" {
+			// ASC for purging oldest
+			binlogs := server.BinaryLogFiles.GetKeys()
+			slavesMasterFile := fmt.Sprintf("%s.%06d", cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix)
+			if until > slavesMasterFile {
+				until = slavesMasterFile
+				cluster.SetState("WARN0107", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0107"], cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix), ErrFrom: "CHECK", ServerUrl: server.URL})
 			}
+
+			idxUntil := slices.Index(binlogs, until)
+
+			if idxUntil == -1 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge cancelled because of inconsistency, binlog filename %s not found.", until)
+				return
+			}
+
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purging binlog of %s until %s. ", server.URL, until)
+			server.PurgeBinlogTo(until)
 			server.RefreshBinaryLogs()
 		}
 	} else {
@@ -510,7 +549,7 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 		}
 
 		//Purge slaves to oldest master binlog timestamp and skip if slave only has 2 binary logs file left (Current Binlog and Prev Binlog)
-		if server.BinaryLogOldestTimestamp > 0 && master.BinaryLogOldestTimestamp > server.BinaryLogPurgeBefore && len(server.BinaryLogFiles.ToNewMap()) > 2 {
+		if server.BinaryLogOldestTimestamp > 0 && master.BinaryLogOldestTimestamp > server.BinaryLogPurgeBefore && server.BinaryLogFilesCount > 2 {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purging slave binlog of %s from %s until oldest timestamp on master: %s", server.URL, time.Unix(server.BinaryLogOldestTimestamp, 0).String(), time.Unix(master.BinaryLogOldestTimestamp, 0).String())
 			q, err := dbhelper.PurgeBinlogBefore(server.Conn, master.BinaryLogOldestTimestamp)
 			if err != nil {
@@ -521,5 +560,157 @@ func (server *ServerMonitor) JobBinlogPurgeSlave() {
 			server.BinaryLogPurgeBefore = master.BinaryLogOldestTimestamp
 			server.RefreshBinaryLogs()
 		}
+	}
+}
+
+func (server *ServerMonitor) ReadLocalBinaryLogMetadata() (map[string]dbhelper.BinaryLogMetadata, error) {
+	filename := server.GetDatabaseBasedir() + "/binary-logs.meta.json"
+	_, err := os.Stat(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	meta := make(map[string]dbhelper.BinaryLogMetadata)
+	err = json.NewDecoder(file).Decode(&meta)
+	if err != nil {
+		return nil, err
+	}
+
+	return meta, nil
+}
+
+func (server *ServerMonitor) WriteNodeBinlogMetadata() {
+	cluster := server.GetCluster()
+	filename := server.GetDatabaseBasedir() + "/binary-logs.meta.json"
+
+	bjson, err := server.BinaryLogFiles.MarshalIndent("", "\t")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to marshall metadata for binary logs in %s: %s", server.URL, err.Error())
+	}
+
+	info := "Created metadata for binary logs on %s"
+	if _, err := os.Stat(filename); err == nil {
+		info = "Updated metadata for binary logs on %s"
+	}
+
+	err = os.WriteFile(filename, bjson, 0644)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write metadata for binary logs in %s: %s", server.URL, err.Error())
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, info, server.URL)
+	}
+}
+
+func (server *ServerMonitor) ReadBinlogBackupDirGoMySQL(meta *dbhelper.BinaryLogMetadata) error {
+	var err error
+	parser := replication.NewBinlogParser()
+
+	file, err := os.Open(server.GetMyBackupDirectory() + "/" + meta.Filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	//Binary logs start at 4
+	file.Seek(4, io.SeekStart)
+
+	_, err = parser.ParseSingleEvent(file, func(e *replication.BinlogEvent) error {
+		// Check if the event is FORMAT_DESCRIPTION_EVENT
+		if e.Header.EventType == replication.FORMAT_DESCRIPTION_EVENT {
+			meta.Start = int64(e.Header.Timestamp)
+		}
+		return nil
+	})
+
+	return err
+}
+
+func (server *ServerMonitor) GenerateBinlogFromBackupDir(metamap *map[string]dbhelper.BinaryLogMetadata) error {
+	prefix := strings.Split(server.BinaryLogFile, ".")[0]
+
+	files, err := os.ReadDir(server.GetMyBackupDirectory())
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		fname := file.Name()
+		if strings.HasPrefix(fname, prefix) {
+			finfo, _ := file.Info()
+			meta := dbhelper.BinaryLogMetadata{
+				Source:   server.URL,
+				Filename: fname,
+				Size:     uint(finfo.Size()),
+			}
+			err := server.ReadBinlogBackupDirGoMySQL(&meta)
+			if meta.Start > 0 {
+				(*metamap)[fname] = meta
+			} else {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) WriteBackupBinlogMetadata() {
+	cluster := server.GetCluster()
+	fname := server.GetMyBackupDirectory() + "/binary-logs.meta.json"
+
+	if len(server.BinaryLogMetaToWrite) == 0 && len(server.BinaryLogMetaToRemove) == 0 {
+		return
+	}
+
+	var metamap = make(map[string]dbhelper.BinaryLogMetadata)
+	info := "Created metadata for binary logs backup on %s"
+	if _, err := os.Stat(fname); err == nil {
+		info = "Updated metadata for binary logs  backup on %s"
+
+		file, err := os.Open(fname)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to read metadata for binary logs backup from file in %s: %s", server.URL, err.Error())
+		} else {
+			err := json.NewDecoder(file).Decode(&metamap)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to decode metadata for binary logs backup from file in %s: %s", server.URL, err.Error())
+			}
+			file.Close()
+		}
+	} else {
+		err := server.GenerateBinlogFromBackupDir(&metamap)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to generate metadata for binary logs backup from dir in %s: %s", server.URL, err.Error())
+		}
+	}
+
+	for _, bfile := range server.BinaryLogMetaToRemove {
+		delete(metamap, bfile)
+	}
+
+	for _, bfile := range server.BinaryLogMetaToWrite {
+		binlog, ok := server.BinaryLogFiles.CheckAndGet(bfile)
+		if ok {
+			metamap[bfile] = *binlog
+		}
+	}
+
+	bjson, err := json.MarshalIndent(metamap, "", "\t")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to marshall metadata for binary logs backup in %s: %s", server.URL, err.Error())
+	}
+
+	err = os.WriteFile(fname, bjson, 0644)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write metadata for binary logs backup in %s: %s", server.URL, err.Error())
+	} else {
+		server.BinaryLogMetaToWrite = make([]string, 0)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, info, server.URL)
 	}
 }

@@ -2249,7 +2249,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 
 			return server.JobBackupBinlog(binlogfile, isPurge)
 		}
-
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
 	}
@@ -2275,6 +2275,10 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 
 	//Skip copying to resting when purge due to batching
 	if !isPurge {
+		if idx := slices.Index(server.BinaryLogMetaToWrite, binlogfile); idx == -1 {
+			server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlogfile)
+		}
+		server.WriteBackupBinlogMetadata()
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
 		backtype := "binlog"
 		defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
@@ -2328,10 +2332,14 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	for _, file := range files {
 		_, ok := keeping[file.Name()]
 		if strings.HasPrefix(file.Name(), prefix) && !ok {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging binlog file %s", file.Name())
-			os.Remove(server.GetMyBackupDirectory() + "/" + file.Name())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging binlog file from backup dir %s", file.Name())
+			if err := os.Remove(server.GetMyBackupDirectory() + "/" + file.Name()); err == nil {
+				server.BinaryLogMetaToRemove = append(server.BinaryLogMetaToRemove, file.Name())
+			}
 		}
 	}
+
+	server.WriteBackupBinlogMetadata()
 	return nil
 }
 
@@ -2477,6 +2485,9 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 	if !cluster.Conf.BackupBinlogs {
 		return errors.New("Copy binlog not enable")
 	}
+	if !cluster.Conf.OnPremiseSSH {
+		return errors.New("On-premise SSH not enable, cannot backup via SSH")
+	}
 
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
@@ -2487,6 +2498,7 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 			return server.JobBackupBinlogSSH(binlogfile, isPurge)
 		}
 
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
 	}
@@ -2530,6 +2542,11 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 
 	//Skip copying to resting when purge due to batching
 	if !isPurge {
+		if idx := slices.Index(server.BinaryLogMetaToWrite, binlogfile); idx == -1 {
+			server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlogfile)
+		}
+		server.WriteBackupBinlogMetadata()
+
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
 		backtype := "binlog"
 		defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
@@ -2552,10 +2569,6 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 		binlogpath := strings.Join(parts[:len(parts)-1], "/")
 
 		server.SetBinaryLogDir(binlogpath)
-	}
-
-	if !isPurge {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
 	}
 
 	switch cluster.Conf.BinlogCopyMode {

@@ -635,7 +635,7 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 		return
 	}
 	if !cluster.Conf.ForceBinlogPurge {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog not enabled")
+		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog not enabled")
 		return
 	}
 

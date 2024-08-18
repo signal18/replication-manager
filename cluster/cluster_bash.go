@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strconv"
 	"time"
 
@@ -161,6 +162,8 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 			time.Sleep(1 * time.Second)
 			return cluster.BinlogCopyScript(server, binlog, isPurge)
 		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlog)
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
 	}
@@ -174,6 +177,10 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 		} else {
 			// Skip backup to restic if in purge binlog
 			if !isPurge {
+				if idx := slices.Index(server.BinaryLogMetaToWrite, binlog); idx == -1 {
+					server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlog)
+				}
+				server.WriteBackupBinlogMetadata()
 				// Backup to restic when no error (defer to prevent unfinished physical copy)
 				backtype := "binlog"
 				defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
