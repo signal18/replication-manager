@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
@@ -217,6 +218,11 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseed)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/pitr", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerPITR)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel", negroni.New(
@@ -597,6 +603,41 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 				}
 			}
 
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerPITR(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			var formPit struct {
+				Backup      int64
+				IsPitr      bool
+				RestoreTime time.Time
+			}
+			err := json.NewDecoder(r.Body).Decode(&formPit)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Decode error :%s", err.Error()), http.StatusInternalServerError)
+				return
+			}
+			marshal, _ := json.MarshalIndent(formPit, "", "\t")
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(ApiResponse{Data: string(marshal), Success: true})
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

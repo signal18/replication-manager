@@ -50,6 +50,7 @@ app.controller('DashboardController', function (
   $scope.selectedAcls = [];
   $scope.selectedUserIndex = undefined;
   $scope.newUserAcls = undefined;
+  $scope.flatpickrInstance = undefined;
   $scope.refreshInterval = 4000;
   $scope.digestmode = "pfs";
   $scope.gfilter = {
@@ -65,8 +66,11 @@ app.controller('DashboardController', function (
   $scope.promise = undefined;
 
   $scope.restoreForm = {
-    selectedBackupServer: undefined,
+    selectedServer: undefined,
+    selectedHost: undefined,
+    selectedPort: undefined,
     selectedBackup: undefined,
+    pitr: undefined,
     restoreTime: undefined,
   };
 
@@ -1890,6 +1894,15 @@ app.controller('DashboardController', function (
     return $scope.setsettings(setting, value)
   };
 
+  $scope.sendRestoreForm = function (form) {
+    $http.post(getClusterUrl() + '/servers/' + form.selectedServer + '/actions/pitr', { Backup: form.selectedBackup, IsPitr: form.pitr, RestoreTime: form.restoreTime})
+      .then(function () {
+        console.log("Restore request sent successfully")
+      }, function (err) {
+        alert("Failed to send restore request. Err: " + err)
+      });
+  };
+
 
   $scope.saveApiTokenTimeout = function (to) {
     $scope.setsettings("api-token-timeout", to)
@@ -2116,6 +2129,32 @@ app.controller('DashboardController', function (
   };
   $scope.closeDebugProxiesDialog = function () {
     $mdDialog.hide({ contentElement: '#myProxiesDebugDialog', });
+  };
+
+  $scope.openRestoreDialog = function (server, host, port) {
+    $scope.restoreForm.selectedServer = server
+    $scope.restoreForm.selectedHost = host
+    $scope.restoreForm.selectedPort = port
+    $mdDialog.show({
+      contentElement: '#myRestoreDialog',
+      parent: angular.element(document.body),
+    });
+  };
+  $scope.closeRestoreDialog = function (restoreForm) {
+    $mdDialog.hide({ contentElement: '#myRestoreDialog', });
+    backup = $scope.selectedCluster.backupList[restoreForm.selectedBackup]
+    if (!restoreForm.restoreTime) {
+      restoreForm.restoreTime = backup.startTime
+    }
+    let msg = "Confirm restore server " + restoreForm.selectedHost + ":" + restoreForm.selectedPort + " with " + backup.backupTool
+    if (restoreForm.pitr) {
+      msg = msg + " and binary logs"
+    }
+    msg = msg + " (" + new Date(restoreForm.restoreTime) + ")"
+    if (confirm(msg)) $scope.sendRestoreForm(restoreForm);
+  };
+  $scope.cancelRestoreDialog = function () {
+    $mdDialog.hide({ contentElement: '#myRestoreDialog', });
   };
 
   $scope.selectUserIndex = function (index) {

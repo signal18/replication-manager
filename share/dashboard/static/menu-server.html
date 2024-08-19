@@ -85,6 +85,12 @@
                   Reseed Physical From Backup
                </md-button>
             </md-menu-item>
+            <md-menu-item ng-if="server.id!=master.id" ng-click="openRestoreDialog(server.id,server.host,server.port)">
+               <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false || server.isReseeding == true || selectedCluster.inRollingRestart == true">
+                  <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
+                  Reseed PITR
+               </md-button>
+            </md-menu-item>
             <md-menu-item ng-if="server.id!=master.id && (server.isReseeding == true || $scope.isReseeding[server.id])" ng-click="dbreseedcancel(server.id,server.host,server.port)">
                <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-restore']==false">
                   <md-icon md-menu-align-target class="fas fa-upload"></md-icon>
