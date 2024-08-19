@@ -1,12 +1,93 @@
 <md-content class="md-padding">
    <md-card>
-      <md-tabs style="min-height: 600px;" md-dynamic-height="" md-border-bottom="">
-         <md-tab md-select-id="Backups" ng-click="onSubTabClicked('Backups')" md-on-select="onSubTabSelected" label="Backups" ng-if="!selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-backups']==true">
-            <div ng-if="selectedSubTab=='Backups'" ng-include src="'static/tab-cluster-backup-list.html'"></div>
-         </md-tab>
-         <md-tab md-select-id="Backups" ng-click="onSubTabClicked('Restore')" md-on-select="onSubTabSelected" label="Restore" ng-if="!selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-backups']==true">
-            <div ng-if="selectedSubTab=='Restore'" ng-include src="'static/tab-cluster-backup-restore.html'"></div>
-         </md-tab>
-      </md-tabs>
+      <md-card-content>
+         <p class="sectionheader">Current Backups</p>
+      </md-card-content>
+      <md-card style="overflow-x: scroll;">
+         <table ng-if="selectedCluster.backupList" class="table">
+            <thead>
+               <tr>
+                  <th>ID</th>
+                  <th>Start - End Time</th>
+                  <th>Backup Method / Tool</th>
+                  <th>Strategy</th>
+                  <th>Source - Dest</th>
+                  <th>Backup Size</th>
+                  <th>Compression</th>
+                  <th>Encryption Details</th>
+                  <th>BinLog Info</th>
+                  <th>Retention (Days)</th>
+                  <th>Completed</th>
+               </tr>
+            </thead>
+            <tbody>
+               <tr ng-repeat="backup in selectedCluster.backupList">
+                  <td>{{backup.id}}</td>
+                  <td>{{backup.startTime | date:'yyyy-MM-dd HH:mm:ss'}} <br />
+                     {{backup.endTime | date:'yyyy-MM-dd HH:mm:ss'}}</td>
+                  <td>{{getBackupMethod(backup.backupMethod)}}<br />{{backup.backupTool}}</td>
+                  <td>{{getBackupStrategy(backup.backupStrategy)}}</td>
+                  <td>{{backup.source}}<br />{{backup.dest}}</td>
+                  <td>{{formatBytes(backup.size)}}</td>
+                  <td>{{backup.compressed ? 'Yes' : 'No'}}</td>
+                  <td>{{backup.encrypted ? 'Yes' : 'No'}}<br />
+                     <span ng-if="backup.encrypted">Algo: {{ backup.encryptionAlgo }}<br />Key: {{ backup.encryptionKey}}</span>
+                  </td>
+                  <td>
+                     File: {{ backup.binLogFileName }}<br>
+                     Pos: {{ backup.binLogFilePos }}<br>
+                     GTID: {{ backup.binLogUuid }}
+                  </td>
+                  <td>{{backup.retentionDays}}</td>
+                  <td>{{backup.completed ? 'Yes' : 'No'}}</td>
+               </tr>
+            </tbody>
+         </table>
+      </md-card>
+      <md-card-content>
+         <p class="sectionheader">Backup History</p>
+      </md-card-content>
+      <md-card>
+         <table ng-if="backups" class="table">
+            <thead>
+               <tr>
+                  <th>Total Size</th>
+                  <th width="30%">Total File Count</th>
+                  <th width="30%">Total Blob Count</th>
+               </tr>
+            </thead>
+            <tbody>
+               <tr ng-class="">
+                  <td>{{humanFileSize(selectedCluster.backupStat.total_size)}}</td>
+                  <td>{{selectedCluster.backupStat.total_file_count}}</td>
+                  <td>{{selectedCluster.backupStat.total_blob_count}}</td>
+               </tr>
+            </tbody>
+         </table>
+      </md-card>
+      <md-card>
+         <table ng-if="backups" class="table">
+            <thead>
+               <tr>
+                  <th width="8%">Id</th>
+                  <th width="20%">Time</th>
+                  <th>Path</th>
+                  <th width="20%">Hostname</th>
+                  <th width="20%">Tags</th>
+               </tr>
+            </thead>
+            <tbody>
+               <tr ng-repeat="bck in backups" ng-class="">
+                  <td>{{bck.short_id}}</td>
+                  <td>{{bck.time}}</td>
+                  <td>{{bck.paths[0]}}</td>
+                  <td>{{bck.hostname}}</td>
+                  <td>{{bck.tags.join(', ')}}</td>
+               </tr>
+            </tbody>
+         </table>
+      </md-card>
+
+
    </md-card>
 </md-content>
