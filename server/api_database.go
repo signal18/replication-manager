@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
@@ -627,7 +626,7 @@ func (repman *ReplicationManager) handlerMuxServerPITR(w http.ResponseWriter, r 
 			var formPit struct {
 				Backup      int64
 				IsPitr      bool
-				RestoreTime time.Time
+				RestoreTime int64
 			}
 			err := json.NewDecoder(r.Body).Decode(&formPit)
 			if err != nil {

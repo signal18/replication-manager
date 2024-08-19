@@ -35,8 +35,8 @@ app.controller('DashboardController', function (
   QueryRules,
   GraphiteFilterList
 ) {
-
-  $scope.yearNow = new Date().getFullYear();
+  $scope.now = new Date()
+  $scope.yearNow = $scope.now.getFullYear();
   $scope.selectedClusterName = undefined;
   $scope.selectedPlan = undefined;
   $scope.selectedOrchestrator = undefined;
@@ -65,14 +65,21 @@ app.controller('DashboardController', function (
   $scope.missingProxyTags = [];
   $scope.promise = undefined;
 
-  $scope.restoreForm = {
-    selectedServer: undefined,
-    selectedHost: undefined,
-    selectedPort: undefined,
-    selectedBackup: undefined,
-    pitr: undefined,
-    restoreTime: undefined,
-  };
+  $scope.defaultRestoreForm = function () {
+    $scope.restoreForm = {
+      selectedServer: undefined,
+      selectedHost: undefined,
+      selectedPort: undefined,
+      selectedBackup: undefined,
+      pitr: undefined,
+      restoreTime: undefined,
+    };
+  }
+
+  $scope.defaultRestoreForm();
+  $scope.resetRestoreTime = function () {
+    $scope.restoreForm.restoreTime = undefined
+  }
 
   $scope.showTable = false
   $scope.showLog = true
@@ -323,6 +330,32 @@ app.controller('DashboardController', function (
       array.sort((a, b) => a[sortBy] - b[sortBy]); // Ascending order
     }
     return array;
+  }
+
+  $scope.formatDateToUTC = function (date) {
+    // Check if the input is a valid Date object
+    if (!(date instanceof Date) || isNaN(date)) {
+      throw new Error('Invalid Date');
+    }
+
+    // Convert date to ISO string and extract the relevant parts
+    var isoString = date.toISOString();
+    var formattedDate = isoString.slice(0, 19).replace('T', ' ') + ' UTC';
+
+    return formattedDate;
+  }
+
+  $scope.parseUTCDate = function (dateString) {
+    // Ensure the input is a string
+    if (typeof dateString !== 'string') {
+      throw new Error('Input must be a string');
+    }
+
+    // Convert 'yyyy-MM-dd HH:mm:ss' to 'yyyy-MM-ddTHH:mm:ssZ'
+    var isoString = dateString.replace(' ', 'T') + 'Z';
+
+    // Create a Date object from the ISO string
+    return new Date(isoString);
   }
 
   var getClusterUrl = function () {
@@ -1895,7 +1928,9 @@ app.controller('DashboardController', function (
   };
 
   $scope.sendRestoreForm = function (form) {
-    $http.post(getClusterUrl() + '/servers/' + form.selectedServer + '/actions/pitr', { Backup: form.selectedBackup, IsPitr: form.pitr, RestoreTime: form.restoreTime})
+    let unixts = Math.Floor(form.restoreTime.getTime() / 1000)
+
+    $http.post(getClusterUrl() + '/servers/' + form.selectedServer + '/actions/pitr', { Backup: form.selectedBackup, IsPitr: form.pitr, RestoreTime: unixts })
       .then(function () {
         console.log("Restore request sent successfully")
       }, function (err) {
@@ -2143,18 +2178,19 @@ app.controller('DashboardController', function (
   $scope.closeRestoreDialog = function (restoreForm) {
     $mdDialog.hide({ contentElement: '#myRestoreDialog', });
     backup = $scope.selectedCluster.backupList[restoreForm.selectedBackup]
-    if (!restoreForm.restoreTime) {
-      restoreForm.restoreTime = backup.startTime
-    }
+    restoreForm.restoreTime = restoreForm.restoreTime ? $scope.parseUTCDate(restoreForm.restoreTime) : new Date(backup.startTime)
+
     let msg = "Confirm restore server " + restoreForm.selectedHost + ":" + restoreForm.selectedPort + " with " + backup.backupTool
     if (restoreForm.pitr) {
       msg = msg + " and binary logs"
     }
-    msg = msg + " (" + new Date(restoreForm.restoreTime) + ")"
+    msg = msg + " (" + $scope.formatDateToUTC(restoreForm.restoreTime) + ")"
     if (confirm(msg)) $scope.sendRestoreForm(restoreForm);
+    $scope.defaultRestoreForm()
   };
   $scope.cancelRestoreDialog = function () {
     $mdDialog.hide({ contentElement: '#myRestoreDialog', });
+    $scope.defaultRestoreForm()
   };
 
   $scope.selectUserIndex = function (index) {
