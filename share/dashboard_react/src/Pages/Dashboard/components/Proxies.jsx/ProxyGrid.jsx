@@ -1,6 +1,6 @@
 import { Flex, SimpleGrid, Spacer, Tooltip, useColorMode, VStack, Text, Box } from '@chakra-ui/react'
 import React from 'react'
-import ProxyMenu from './ProxyMenu'
+import ProxyMenu from '../Proxies/ProxyMenu'
 import { HiTable } from 'react-icons/hi'
 import ProxyLogo from './ProxyLogo'
 import TableType2 from '../../../../components/TableType2'
