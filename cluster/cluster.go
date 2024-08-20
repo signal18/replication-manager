@@ -763,7 +763,7 @@ func (cluster *Cluster) StateProcessing() {
 				for _, srv := range cluster.Servers {
 					if srv.HasWaitLogicalBackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for logical backup", srv.URL)
-						go srv.JobReseedLogicalBackup()
+						go srv.JobReseedLogicalBackup("default")
 					}
 				}
 			}
@@ -773,7 +773,7 @@ func (cluster *Cluster) StateProcessing() {
 					if srv.HasWaitPhysicalBackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for physical backup", srv.URL)
 						go func() {
-							err := srv.JobReseedPhysicalBackup()
+							err := srv.JobReseedPhysicalBackup("default")
 							if err != nil {
 								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, err.Error())
 							}

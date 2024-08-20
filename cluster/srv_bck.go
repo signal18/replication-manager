@@ -11,7 +11,9 @@ package cluster
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -128,4 +130,67 @@ func (server *ServerMonitor) GetLatestMeta(method string) (int64, *config.Backup
 	})
 
 	return latest, meta
+}
+
+func (server *ServerMonitor) ReseedPointInTime(meta config.PointInTimeMeta) error {
+	var err error
+	cluster := server.ClusterGroup
+
+	server.SetPointInTimeMeta(meta)                           //Set for PITR
+	defer server.SetPointInTimeMeta(config.PointInTimeMeta{}) //Reset after done
+
+	backup := cluster.BackupMetaMap.Get(meta.Backup)
+	if backup == nil {
+		return fmt.Errorf("Backup with id %d not found in BackupMetaMap", meta.Backup)
+	}
+
+	if !meta.UseBinlog {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Requesting PITR on node %s with %s without using binary logs", server.URL, backup.BackupTool)
+	}
+
+	if cluster.master != server {
+		server.SetIgnored(true)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Set slave %s as ignored since it will restored as standalone.", server.URL)
+	}
+
+	switch backup.BackupTool {
+	case config.ConstBackupLogicalTypeMysqldump, config.ConstBackupLogicalTypeMydumper, config.ConstBackupLogicalTypeRiver, config.ConstBackupLogicalTypeDumpling:
+		err = server.JobReseedLogicalBackup(backup.BackupTool)
+	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
+		err = server.JobReseedPhysicalBackup(backup.BackupTool)
+	default:
+		return fmt.Errorf("Wrong backup type for reseed: got %s", backup.BackupTool)
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while trying to execute PITR on %s. err: %s", server.URL, err.Error())
+		return err
+	}
+
+	task := server.JobResults.Get("reseed" + backup.BackupTool)
+
+	//Wait until job result changed since we're using pointer
+	for task.State < 3 {
+		time.Sleep(time.Second)
+	}
+
+	//If failed
+	if task.State > 4 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while trying to execute PITR on %s. Unable to complete reseed from backup using %s", server.URL, backup.BackupTool)
+	}
+
+	if !meta.UseBinlog {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "PITR done on node %s without using binary logs", server.URL)
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for injecting binary logs on %s until %t", server.URL)
+
+	return nil
+}
+
+func (server *ServerMonitor) InjectViaBinlogs(meta config.PointInTimeMeta) error {
+	return nil
+}
+
+func (server *ServerMonitor) InjectViaReplication(meta config.PointInTimeMeta) error {
+	return nil
 }

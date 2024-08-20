@@ -44,6 +44,13 @@ type BackupMetadata struct {
 	Previous       int64          `json:"previous"`
 }
 
+type PointInTimeMeta struct {
+	IsInPITR    bool
+	UseBinlog   bool
+	Backup      int64
+	RestoreTime int64
+}
+
 func (bm *BackupMetadata) GetSize() error {
 	var size int64 = 0
 	err := filepath.Walk(bm.Dest, func(_ string, info os.FileInfo, err error) error {

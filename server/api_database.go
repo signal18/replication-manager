@@ -582,7 +582,7 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			if vars["backupMethod"] == "logicalbackup" {
-				err := node.JobReseedLogicalBackup()
+				err := node.JobReseedLogicalBackup("default")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "logical reseed restore failed %s", err)
 					http.Error(w, "Error reseed logical backup", 500)
@@ -596,7 +596,7 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 				}
 			}
 			if vars["backupMethod"] == "physicalbackup" {
-				err := node.JobReseedPhysicalBackup()
+				err := node.JobReseedPhysicalBackup("default")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "physical reseed restore failed %s", err)
 				}
@@ -623,18 +623,20 @@ func (repman *ReplicationManager) handlerMuxServerPITR(w http.ResponseWriter, r 
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			var formPit struct {
-				Backup      int64
-				IsPitr      bool
-				RestoreTime int64
-			}
+			var formPit config.PointInTimeMeta
+			// This will always true for making standalone
+			formPit.IsInPITR = true
 			err := json.NewDecoder(r.Body).Decode(&formPit)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Decode error :%s", err.Error()), http.StatusInternalServerError)
 				return
 			}
-			marshal, _ := json.MarshalIndent(formPit, "", "\t")
 
+			marshal, err := json.MarshalIndent(formPit, "", "\t")
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Decode error :%s", err.Error()), http.StatusInternalServerError)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(ApiResponse{Data: string(marshal), Success: true})
 		} else {

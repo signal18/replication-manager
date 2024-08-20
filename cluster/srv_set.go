@@ -471,3 +471,7 @@ func (server *ServerMonitor) SetInFlashbackBackup(value bool) {
 func (server *ServerMonitor) SetNeedRefreshJobs(value bool) {
 	server.NeedRefreshJobs = value
 }
+
+func (server *ServerMonitor) SetPointInTimeMeta(value config.PointInTimeMeta) {
+	server.PointInTimeMeta = value
+}

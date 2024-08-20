@@ -714,3 +714,126 @@ func (server *ServerMonitor) WriteBackupBinlogMetadata() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, info, server.URL)
 	}
 }
+
+func (server *ServerMonitor) FindLogPositionForTimestamp(binlogFile string, timestamp time.Time, maxRange int) (string, int, error) {
+	cluster := server.ClusterGroup
+	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
+
+	timeString := timestamp.Format("2006-01-02 15:04:05")
+	cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", timeString, "--stop-datetime", timeString, "--base64-output=DECODE-ROWS", "--verbose", binlogFile)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to execute mysqlbinlog: %w", err)
+	}
+
+	re := regexp.MustCompile(`# at (\d+)\n`)
+	matches := re.FindStringSubmatch(string(output))
+	if len(matches) < 2 {
+		if maxRange > 0 {
+			return server.FindNearestLogPosition(binlogFile, timestamp, maxRange)
+		}
+		return "", 0, fmt.Errorf("failed to find log position in binlog output")
+	}
+
+	logPos, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to convert log position to integer: %w", err)
+	}
+
+	return binlogFile, logPos, nil
+}
+
+func (server *ServerMonitor) FindNearestLogPosition(binlogFile string, timestamp time.Time, maxRetries int) (string, int, error) {
+	cluster := server.ClusterGroup
+	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
+
+	startTime := timestamp
+	for retry := 0; retry < maxRetries; retry++ {
+		startTimeString := startTime.Format("2006-01-02 15:04:05")
+		endTime := startTime.Add(1 * time.Minute)
+		endTimeString := endTime.Format("2006-01-02 15:04:05")
+
+		cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", startTimeString, "--stop-datetime", endTimeString, "--base64-output=DECODE-ROWS", "--verbose", binlogFile)
+		output, err := cmd.Output()
+		if err != nil {
+			return "", 0, fmt.Errorf("failed to execute mysqlbinlog: %w", err)
+		}
+
+		re := regexp.MustCompile(`# at (\d+)\n`)
+		matches := re.FindStringSubmatch(string(output))
+		if len(matches) >= 2 {
+			logPos, err := strconv.Atoi(matches[1])
+			if err != nil {
+				return "", 0, fmt.Errorf("failed to convert log position to integer: %w", err)
+			}
+			return binlogFile, logPos, nil
+		}
+
+		// Increase the search range for the next retry
+		startTime = startTime.Add(1 * time.Minute)
+	}
+
+	return "", 0, fmt.Errorf("no log position found after %d retries", maxRetries)
+}
+
+type LogEvent struct {
+	Timestamp   time.Time
+	LogPosition int
+	EventType   string
+	Query       string
+}
+
+func (server *ServerMonitor) ReadBinaryLogsWithinRange(binlogFile string, startTime, endTime time.Time) ([]LogEvent, error) {
+	cluster := server.ClusterGroup
+	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
+
+	startTimeString := startTime.Format("2006-01-02 15:04:05")
+	endTimeString := endTime.Format("2006-01-02 15:04:05")
+
+	cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", startTimeString, "--stop-datetime", endTimeString, "--base64-output=DECODE-ROWS", "--verbose", binlogFile)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute mysqlbinlog: %w", err)
+	}
+
+	return parseLogEvents(output)
+}
+
+func parseLogEvents(output []byte) ([]LogEvent, error) {
+	var logEvents []LogEvent
+	var currentEvent LogEvent
+
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "# at ") {
+			if currentEvent.LogPosition != 0 {
+				logEvents = append(logEvents, currentEvent)
+			}
+			position, err := strconv.Atoi(strings.TrimPrefix(line, "# at "))
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse log position: %w", err)
+			}
+			currentEvent = LogEvent{LogPosition: position}
+		} else if strings.HasPrefix(line, "/*!") {
+			continue // Skip MySQL-specific version comments
+		} else if strings.HasPrefix(line, "Query: ") {
+			currentEvent.Query = strings.TrimPrefix(line, "Query: ")
+			continue
+		} else if strings.HasPrefix(line, "### INSERT") {
+			currentEvent.EventType = "INSERT"
+			continue
+		} else if strings.HasPrefix(line, "### UPDATE") {
+			currentEvent.EventType = "UPDATE"
+			continue
+		} else if strings.HasPrefix(line, "### DELETE") {
+			currentEvent.EventType = "DELETE"
+			continue
+		}
+	}
+
+	if currentEvent.LogPosition != 0 {
+		logEvents = append(logEvents, currentEvent)
+	}
+
+	return logEvents, nil
+}
