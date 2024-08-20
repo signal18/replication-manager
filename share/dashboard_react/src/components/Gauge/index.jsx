@@ -47,6 +47,9 @@ function Gauge({
   }, [value, updateGaugePosition, width, height, isGaugeSizeCustomized])
 
   useEffect(() => {
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'))
+    }, 100)
     window.addEventListener('resize', updateGaugePosition)
     return () => {
       window.removeEventListener('resize', updateGaugePosition)
@@ -62,30 +65,6 @@ function Gauge({
 
   return (
     <Flex direction='column' justify='center' position='relative'>
-      {showStep && (
-        <HStack className={styles.stepButtons} gap={2} margin='auto'>
-          <RMButton
-            variant='outline'
-            className={styles.decreaseButton}
-            onClick={() => {
-              let newValue = value - step
-              if (newValue < minValue) {
-                newValue = minValue
-              }
-              handleStepChange(newValue)
-            }}>{`-${step}`}</RMButton>
-          <RMButton
-            variant='outline'
-            className={styles.increaseButton}
-            onClick={() => {
-              let newValue = value + step
-              if (newValue > maxValue) {
-                newValue = maxValue
-              }
-              handleStepChange(newValue)
-            }}>{`+${step}`}</RMButton>
-        </HStack>
-      )}
       <Box width={width} height={height} className={`${styles.container} ${className}`} ref={svgRef}>
         {value >= minValue && value <= maxValue && (
           <GaugeComponent
@@ -115,6 +94,30 @@ function Gauge({
           <Text className={styles.labelText}>{text}</Text>
         </Box>
       </Box>
+      {showStep && (
+        <HStack className={styles.stepButtons} gap={2} margin='auto'>
+          <RMButton
+            variant='outline'
+            className={styles.decreaseButton}
+            onClick={() => {
+              let newValue = parseInt(value) - parseInt(step)
+              if (newValue < minValue) {
+                newValue = minValue
+              }
+              handleStepChange(newValue)
+            }}>{`-${step}`}</RMButton>
+          <RMButton
+            variant='outline'
+            className={styles.increaseButton}
+            onClick={() => {
+              let newValue = parseInt(value) + parseInt(step)
+              if (newValue > maxValue) {
+                newValue = maxValue
+              }
+              handleStepChange(newValue)
+            }}>{`+${step}`}</RMButton>
+        </HStack>
+      )}
     </Flex>
   )
 }

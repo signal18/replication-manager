@@ -26,7 +26,7 @@
   }
   .dividerRow {
     display: none;
-    @include breakpoint('lg') {
+    @include breakpoint('md') {
       display: block;
     }
   }

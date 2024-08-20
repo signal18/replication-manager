@@ -211,7 +211,118 @@ function DBConfigs({ selectedCluster, user }) {
     },
     {
       key: 'Resources',
-      value: <Flex className={styles.resources}></Flex>
+      value: (
+        <Flex className={styles.resources}>
+          <Gauge
+            minValue={1}
+            maxValue={25600}
+            value={selectedCluster?.config?.provDbMemory}
+            text={'Memory'}
+            width={220}
+            height={150}
+            hideMinMax={false}
+            isGaugeSizeCustomized={false}
+            showStep={true}
+            step={256}
+            textOverlayClassName={styles.textOverlay}
+            handleStepChange={(value) => {
+              setConfirmTitle(`Confirm memory change to ${value}`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-memory',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
+          <Gauge
+            minValue={1}
+            maxValue={10000}
+            value={selectedCluster?.config?.provDbDiskSize}
+            text={'Disk size'}
+            width={220}
+            height={150}
+            hideMinMax={false}
+            isGaugeSizeCustomized={false}
+            showStep={true}
+            step={10}
+            textOverlayClassName={styles.textOverlay}
+            handleStepChange={(value) => {
+              setConfirmTitle(`Confirm disk size change to ${value}`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-disk-size',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
+          <Gauge
+            minValue={1}
+            maxValue={100000}
+            value={selectedCluster?.config?.provDbDiskIops}
+            text={'Disk IO/s'}
+            width={220}
+            height={150}
+            hideMinMax={false}
+            isGaugeSizeCustomized={false}
+            showStep={true}
+            step={100}
+            textOverlayClassName={styles.textOverlay}
+            handleStepChange={(value) => {
+              setConfirmTitle(`Confirm disk io/s change to ${value}`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-disk-iops',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
+          <Gauge
+            minValue={1}
+            maxValue={256}
+            value={selectedCluster?.config?.provDbCpuCores}
+            text={'Cores'}
+            width={220}
+            height={150}
+            hideMinMax={false}
+            isGaugeSizeCustomized={false}
+            showStep={true}
+            step={1}
+            textOverlayClassName={styles.textOverlay}
+            handleStepChange={(value) => {
+              setConfirmTitle(`Confirm cpu cores change to ${value}`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-cpu-cores',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
+        </Flex>
+      )
     }
   ]
 

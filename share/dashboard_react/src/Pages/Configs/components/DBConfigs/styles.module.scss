@@ -31,8 +31,9 @@
 .connections,
 .resources {
   width: 100%;
-  justify-content: space-evenly;
-  gap: rem(48);
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: rem(32);
   .textOverlay {
     bottom: rem(10);
   }

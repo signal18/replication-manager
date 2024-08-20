@@ -1,9 +1,7 @@
 .stepButtons {
-  position: absolute;
-  top: 0;
   display: flex;
   width: 100%;
-  justify-content: space-between;
+  justify-content: center;
   z-index: 2;
 
   .decreaseButton {
