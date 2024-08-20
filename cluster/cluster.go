@@ -75,7 +75,8 @@ type Cluster struct {
 	Servers                       serverList           `json:"-"`
 	LogSlaveServers               []string             `json:"-"` //To store slave with log-slave-updates
 	ServerIdList                  []string             `json:"dbServers"`
-	Crashes                       crashList            `json:"dbServersCrashes"`
+	Crashes                       crashList            `json:"dbServersCrashes"` //This will be purged on all db node up
+	FailoverHistory               crashList            `json:"failoverHistory"`  //This will be used for PITR
 	Proxies                       proxyList            `json:"-"`
 	ProxyIdList                   []string             `json:"proxyServers"`
 	FailoverCtr                   int                  `json:"failoverCounter"`
