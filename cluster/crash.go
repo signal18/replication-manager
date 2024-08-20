@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/utils/gtid"
 )
@@ -29,6 +30,7 @@ type Crash struct {
 	FailoverSemiSyncSlaveStatus bool
 	FailoverIOGtid              *gtid.List
 	ElectedMasterURL            string
+	UnixTimestamp               int64
 }
 
 // Collection of Crash reports
@@ -37,6 +39,7 @@ type crashList []*Crash
 
 func (cluster *Cluster) newCrash(*Crash) (*Crash, error) {
 	crash := new(Crash)
+	crash.UnixTimestamp = time.Now().Unix()
 	return crash, nil
 }
 
