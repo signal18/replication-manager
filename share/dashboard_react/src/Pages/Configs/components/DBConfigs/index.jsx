@@ -4,11 +4,11 @@ import RMSwitch from '../../../../components/RMSwitch'
 import TableType2 from '../../../../components/TableType2'
 import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
-import { switchSetting } from '../../../../redux/settingsSlice'
+import { setSetting, switchSetting } from '../../../../redux/settingsSlice'
 import AccordionComponent from '../../../../components/AccordionComponent'
 import AddRemovePill from '../../../../components/AddRemovePill'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
-import { addDBTag, configsSlice, dropDBTag } from '../../../../redux/configSlice'
+import { addDBTag, dropDBTag } from '../../../../redux/configSlice'
 import Gauge from '../../../../components/Gauge'
 
 function DBConfigs({ selectedCluster, user }) {
@@ -152,22 +152,59 @@ function DBConfigs({ selectedCluster, user }) {
       key: 'Connections',
       value: (
         <Flex className={styles.connections}>
-          {/* <Gauge
+          <Gauge
             minValue={200}
             maxValue={10000}
             value={selectedCluster?.config?.provDbMaxConnections}
             text={'Connections'}
-            width={210}
-            height={90}
-          /> */}
+            width={220}
+            height={150}
+            hideMinMax={false}
+            isGaugeSizeCustomized={false}
+            showStep={true}
+            step={200}
+            textOverlayClassName={styles.textOverlay}
+            handleStepChange={(value) => {
+              setConfirmTitle(`Confirm connections change to ${value}`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-max-connections',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
           <Gauge
             minValue={0}
             maxValue={90}
             value={selectedCluster?.config?.provDbExpireLogDays}
             text={'Expire Binglog days'}
-            width={210}
-            height={90}
+            width={220}
+            height={150}
             hideMinMax={false}
+            isGaugeSizeCustomized={false}
+            showStep={true}
+            step={1}
+            textOverlayClassName={styles.textOverlay}
+            handleStepChange={(value) => {
+              setConfirmTitle(`Confirm expire binlog days change to ${value}`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-expire-log-days',
+                      value: value
+                    })
+                  )
+              )
+            }}
           />
         </Flex>
       )
@@ -196,7 +233,7 @@ function DBConfigs({ selectedCluster, user }) {
       />
       <HStack className={styles.configTagContainer}>
         <VStack className={styles.availableTags}>
-          <h4 className={styles.sectionTitle}>{'Missing Tags'}</h4>
+          <h4 className={styles.sectionTitle}>{'Available Tags'}</h4>
           {configTagData.map((tagData) => {
             return (
               <AccordionComponent
@@ -204,7 +241,6 @@ function DBConfigs({ selectedCluster, user }) {
                 className={styles.accordion}
                 headerClassName={styles.accordionHeader}
                 panelClassName={styles.accordionBody}
-                //  isOpen={tagData.key === 'Replication' ? true : false}
                 body={
                   <HStack className={styles.tags}>
                     {tagData.value.map((tag) => {
@@ -251,6 +287,7 @@ function DBConfigs({ selectedCluster, user }) {
           </HStack>
         </VStack>
       </HStack>
+
       {isConfirmModalOpen && (
         <ConfirmModal
           isOpen={isConfirmModalOpen}

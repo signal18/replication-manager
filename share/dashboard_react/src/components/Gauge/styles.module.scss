@@ -1,3 +1,20 @@
+.stepButtons {
+  position: absolute;
+  top: 0;
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  z-index: 2;
+
+  .decreaseButton {
+    color: var(--danger-primary-color);
+    box-shadow: 0 1px 2px 0 var(--danger-primary-color);
+  }
+  .increaseButton {
+    color: var(--success-primary-color);
+    box-shadow: 0 1px 2px 0 var(--success-primary-color);
+  }
+}
 .container {
   position: relative;
   display: inline-block;

@@ -30,7 +30,13 @@
 }
 .connections,
 .resources {
-  height: rem(100);
+  width: 100%;
+  justify-content: space-evenly;
+  gap: rem(48);
+  .textOverlay {
+    bottom: rem(10);
+  }
+  //  height: rem(120);
 }
 
 .configTagContainer {
@@ -71,4 +77,8 @@
     gap: rem(8);
     flex-wrap: wrap;
   }
+}
+.guage {
+  height: rem(140);
+  width: rem(190);
 }
