@@ -116,15 +116,17 @@
         <md-dialog style="padding: 20px 20px 20px 20px; overflow: visible;">
             <h2 class="md-title">Restore Backup PITR</h2>
             <label for="backup-select">Select Backup:</label>
-            <md-select id="backup-select" ng-model="restoreForm.selectedBackup" style="margin-bottom: 5px;">
+            <md-select id="backup-select" ng-model="restoreForm.selectedBackup" style="margin-bottom: 5px;" ng-change="canPITR(restoreForm.selectedBackup)">
                 <md-option value="">--Select a Backup--</md-option>
                 <md-option ng-repeat="backup in sortObjectValues(selectedCluster.backupList,'startTime','desc') | orderBy:'-startTime'" ng-value="backup.id">{{backup.source + ' - ' + backup.backupTool + ' - ' + (backup.startTime | date:'yyyyMMdd_HHmmss':'UTC')}}</md-option>
             </md-select>
             <br>
-            <br>
-            <span ng-show="restoreForm.selectedBackup">
+            <span ng-show="restoreForm.selectedBackup && restoreForm.canPITR">
                 <label for="restore-time" class="pull-left" style="margin-right: 5px;">Point In Time Restore:</label>
                 <input type="checkbox" id="pitr-checkbox" ng-model="restoreForm.pitr" class="pull-left" ng-click="resetRestoreTime()">
+            </span>
+            <span ng-show="restoreForm.selectedBackup && !restoreForm.canPITR">
+                <label for="restore-time" class="pull-left" style="margin-right: 5px;">No PITR for this backup</label>
             </span>
             <input id="datetime-picker" type="text" ng-show="restoreForm.pitr" ng-model="restoreForm.restoreTime" flatpickr flatpickr-min-date="restoreForm.selectedBackup" flatpickr-min-date-type="unix" flatpickr-max-date="now" flatpickr-date-format="Y-m-d H:i:S" flatpickr-static="true" flatpickr-enable-time="true" flatpickr-utc="true">
 
@@ -145,7 +147,9 @@
                 <md-button ng-click="cancelRestoreDialog()" class="md-primary">
                     Cancel
                 </md-button>
-                <button ng-click="closeRestoreDialog(restoreForm)" ng-disabled="!restoreForm.selectedBackup || (!restoreForm.restoreTime && restoreForm.pitr)">Start Restore</button>
+                <md-button ng-click="closeRestoreDialog(restoreForm)" ng-disabled="!restoreForm.selectedBackup || (!restoreForm.restoreTime && restoreForm.pitr)" class="md-primary">
+                    Start Restore
+                </md-button>
             </div>
         </md-dialog>
     </div>

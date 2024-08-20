@@ -73,7 +73,22 @@ app.controller('DashboardController', function (
       selectedBackup: undefined,
       pitr: undefined,
       restoreTime: undefined,
+      canPITR: false,
     };
+  }
+
+  $scope.canPITR = function (selectedBackup) {
+    $scope.restoreForm.pitr = false
+    $scope.resetRestoreTime() // Reset restore time for show PITR
+    let backup = $scope.selectedCluster.backupList[selectedBackup];
+    if (backup) {
+      const srv = $scope.servers.find(sv => sv.url === backup.source);
+      if (srv && srv.binaryLogFiles[backup.binLogFileName]) {
+        $scope.restoreForm.canPITR = true
+        return
+      }
+    }
+    $scope.restoreForm.canPITR = false
   }
 
   $scope.defaultRestoreForm();
@@ -2184,7 +2199,10 @@ app.controller('DashboardController', function (
     if (restoreForm.pitr) {
       msg = msg + " and binary logs"
     }
-    msg = msg + " (" + $scope.formatDateToUTC(restoreForm.restoreTime) + ")"
+    msg = msg + " (" + $scope.formatDateToUTC(restoreForm.restoreTime) + ") ?\n"
+    if ($scope.master.id != restoreForm.selectedServer) {
+      msg = msg + "This will make this slave as standalone."
+    }
     if (confirm(msg)) $scope.sendRestoreForm(restoreForm);
     $scope.defaultRestoreForm()
   };
