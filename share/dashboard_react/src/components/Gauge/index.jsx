@@ -17,6 +17,7 @@ function Gauge({
   hideMinMax = true,
   showStep = false,
   step = 0,
+  appendTextToValue = '',
   handleStepChange
 }) {
   const svgRef = useRef(null)
@@ -90,7 +91,7 @@ function Gauge({
           />
         )}
         <Box className={`${styles.textOverlay} ${textOverlayClassName}`}>
-          <Text className={styles.valueText}>{formatValue(value)}</Text>
+          <Text className={styles.valueText}>{`${formatValue(value)} ${appendTextToValue}`}</Text>
           <Text className={styles.labelText}>{text}</Text>
         </Box>
       </Box>

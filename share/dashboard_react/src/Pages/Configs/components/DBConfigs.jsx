@@ -1,15 +1,15 @@
 import { Box, Flex, HStack, VStack } from '@chakra-ui/react'
 import React, { useEffect, useState } from 'react'
-import RMSwitch from '../../../../components/RMSwitch'
-import TableType2 from '../../../../components/TableType2'
-import styles from './styles.module.scss'
+import RMSwitch from '../../../components/RMSwitch'
+import TableType2 from '../../../components/TableType2'
+import styles from '../styles.module.scss'
 import { useDispatch } from 'react-redux'
-import { setSetting, switchSetting } from '../../../../redux/settingsSlice'
-import AccordionComponent from '../../../../components/AccordionComponent'
-import AddRemovePill from '../../../../components/AddRemovePill'
-import ConfirmModal from '../../../../components/Modals/ConfirmModal'
-import { addDBTag, dropDBTag } from '../../../../redux/configSlice'
-import Gauge from '../../../../components/Gauge'
+import { setSetting, switchSetting } from '../../../redux/settingsSlice'
+import AccordionComponent from '../../../components/AccordionComponent'
+import AddRemovePill from '../../../components/AddRemovePill'
+import ConfirmModal from '../../../components/Modals/ConfirmModal'
+import { addDBTag, dropDBTag } from '../../../redux/configSlice'
+import Gauge from '../../../components/Gauge'
 
 function DBConfigs({ selectedCluster, user }) {
   const [replicationTags, setReplicationTags] = useState([])
@@ -224,6 +224,7 @@ function DBConfigs({ selectedCluster, user }) {
             isGaugeSizeCustomized={false}
             showStep={true}
             step={256}
+            appendTextToValue='MB'
             textOverlayClassName={styles.textOverlay}
             handleStepChange={(value) => {
               setConfirmTitle(`Confirm memory change to ${value}`)
@@ -251,6 +252,7 @@ function DBConfigs({ selectedCluster, user }) {
             isGaugeSizeCustomized={false}
             showStep={true}
             step={10}
+            appendTextToValue='GB'
             textOverlayClassName={styles.textOverlay}
             handleStepChange={(value) => {
               setConfirmTitle(`Confirm disk size change to ${value}`)

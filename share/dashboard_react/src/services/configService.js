@@ -15,10 +15,10 @@ function dropDBTag(clusterName, tag) {
   return getRequest(`clusters/${clusterName}/settings/actions/drop-db-tag/${tag}`)
 }
 
-function addProxyTag(clusterName, setting) {
+function addProxyTag(clusterName, tag) {
   return getRequest(`clusters/${clusterName}/settings/actions/add-proxy-tag/${tag}`)
 }
 
-function dropProxyTag(clusterName, topology) {
+function dropProxyTag(clusterName, tag) {
   return getRequest(`clusters/${clusterName}/settings/actions/drop-proxy-tag/${tag}`)
 }
