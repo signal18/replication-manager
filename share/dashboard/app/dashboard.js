@@ -1943,7 +1943,7 @@ app.controller('DashboardController', function (
   };
 
   $scope.sendRestoreForm = function (form) {
-    let unixts = Math.Floor(form.restoreTime.getTime() / 1000)
+    let unixts = Math.floor(form.restoreTime.getTime() / 1000)
 
     $http.post(getClusterUrl() + '/servers/' + form.selectedServer + '/actions/pitr', { Backup: form.selectedBackup, UseBinlog: form.pitr, RestoreTime: unixts })
       .then(function () {

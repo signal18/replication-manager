@@ -12,7 +12,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
@@ -632,9 +631,15 @@ func (repman *ReplicationManager) handlerMuxServerPITR(w http.ResponseWriter, r 
 				return
 			}
 
+			err = node.ReseedPointInTime(formPit)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("PITR error :%s", err.Error()), http.StatusInternalServerError)
+				return
+			}
+
 			marshal, err := json.MarshalIndent(formPit, "", "\t")
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Decode error :%s", err.Error()), http.StatusInternalServerError)
+				http.Error(w, fmt.Sprintf("Encode error :%s", err.Error()), http.StatusInternalServerError)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -829,14 +834,7 @@ func (repman *ReplicationManager) handlerMuxServerSetPrefered(w http.ResponseWri
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive set node as prefered request")
-			if !mycluster.IsInPreferedHosts(node) {
-				savedPrefMaster := mycluster.GetPreferedMasterList()
-				if savedPrefMaster == "" {
-					mycluster.SetPrefMaster(node.URL)
-				} else {
-					mycluster.SetPrefMaster(savedPrefMaster + "," + node.URL)
-				}
-			}
+			mycluster.AddPrefMaster(node)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -859,28 +857,8 @@ func (repman *ReplicationManager) handlerMuxServerSetUnrated(w http.ResponseWrit
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive set node as unrated request")
-			if mycluster.IsInPreferedHosts(node) {
-				savedPrefMaster := mycluster.GetPreferedMasterList()
-				if savedPrefMaster == node.URL {
-					mycluster.SetPrefMaster("")
-				} else {
-					//Remove the prefered from list
-					newPrefMaster := strings.Replace(savedPrefMaster, node.URL+",", "", -1)
-					newPrefMaster = strings.Replace(newPrefMaster, ","+node.URL, "", -1)
-					mycluster.SetPrefMaster(newPrefMaster)
-				}
-			}
-			if mycluster.IsInIgnoredHosts(node) {
-				savedIgnoredHost := mycluster.GetIgnoredHostList()
-				if savedIgnoredHost == node.URL {
-					mycluster.SetIgnoreSrv("")
-				} else {
-					//Remove the prefered from list
-					newIgnoredHost := strings.Replace(savedIgnoredHost, node.URL+",", "", -1)
-					newIgnoredHost = strings.Replace(newIgnoredHost, ","+node.URL, "", -1)
-					mycluster.SetIgnoreSrv(newIgnoredHost)
-				}
-			}
+			mycluster.RemovePrefMaster(node)
+			mycluster.RemoveIgnoreSrv(node)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -902,15 +880,8 @@ func (repman *ReplicationManager) handlerMuxServerSetIgnored(w http.ResponseWrit
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive set node as prefered request")
-			if !mycluster.IsInIgnoredHosts(node) {
-				savedIgnoredHost := mycluster.GetIgnoredHostList()
-				if savedIgnoredHost == "" {
-					mycluster.SetIgnoreSrv(node.URL)
-				} else {
-					mycluster.SetIgnoreSrv(savedIgnoredHost + "," + node.URL)
-				}
-			}
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive request: set node as ignored")
+			mycluster.AddIgnoreSrv(node)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

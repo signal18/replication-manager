@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	gzip "github.com/klauspost/pgzip"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
@@ -594,11 +595,15 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 
 	// If reset failed, better to stop PITR
 	if server.PointInTimeMeta.IsInPITR {
+		server.StopSlave()
 		_, err := server.ResetSlave()
 		if err != nil {
-			server.SetInReseedBackup(false)
-			return fmt.Errorf("Unable to continue PITR. Failed to reset slave on server: %s %s", server.URL, err)
+			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
+				server.SetInReseedBackup(false)
+				return err
+			}
 		}
+		server.SetState(stateUnconn)
 	}
 
 	_, err := server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)

@@ -148,11 +148,6 @@ func (server *ServerMonitor) ReseedPointInTime(meta config.PointInTimeMeta) erro
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Requesting PITR on node %s with %s without using binary logs", server.URL, backup.BackupTool)
 	}
 
-	if cluster.master != server {
-		server.SetIgnored(true)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Set slave %s as ignored since it will restored as standalone.", server.URL)
-	}
-
 	switch backup.BackupTool {
 	case config.ConstBackupLogicalTypeMysqldump, config.ConstBackupLogicalTypeMydumper, config.ConstBackupLogicalTypeRiver, config.ConstBackupLogicalTypeDumpling:
 		err = server.JobReseedLogicalBackup(backup.BackupTool)
