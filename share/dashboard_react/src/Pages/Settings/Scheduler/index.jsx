@@ -91,6 +91,7 @@ function Scheduler({
   useEffect(() => {
     if (currentValue && !valuesChanged) {
       let desc = 'Runs '
+      let recType = ''
       //evaluate month part
       const monthPart = currentValue.split(' ')[4]
       const fromMonth = monthPart.split('-')[0]
@@ -110,7 +111,7 @@ function Scheduler({
       //evaluate weekday part
       const weekdayPart = currentValue.split(' ')[5]
       if (weekdayPart !== '*') {
-        setRecurrentType('weekly')
+        recType = 'weekly'
         const arrSelectedWkdays = weekdayPart.split(',')
         let weekdayNames = ''
         const updatedWeekdays = weekDays.map((wd) => {
@@ -122,11 +123,11 @@ function Scheduler({
         })
         setWeekdays(updatedWeekdays)
         desc += `<strong>weekly</strong> on <strong>${weekdayNames.replace(/, $/, '')}</strong> starting from <strong>${getOrdinalSuffix(fromDay)} ${getMonthName(fromMonth)}</strong> till <strong>${getOrdinalSuffix(toDay)} ${getMonthName(toMonth)}</strong> <br/>`
-      } else if (selectedToMonth > 0 && !selectedToDay) {
-        setRecurrentType('monthly')
+      } else if (toMonth > 0 && !toDay) {
+        recType = 'monthly'
         desc += `<strong>monthly</strong> on the date <strong>${fromDay}</strong> starting from the month <strong>${getMonthName(fromMonth)}</strong> till <strong>${getMonthName(toMonth)}</strong> <br/>`
-      } else if (selectedToMonth > 0 && selectedToDay > 0) {
-        setRecurrentType('daily')
+      } else if (toMonth > 0 && toDay > 0) {
+        recType = 'daily'
         desc += `<strong>daily</strong> starting from <strong>${getOrdinalSuffix(fromDay)} ${getMonthName(fromMonth)}</strong> till <strong>${getOrdinalSuffix(toDay)} ${getMonthName(toMonth)}</strong> <br/>`
       }
 
@@ -155,14 +156,18 @@ function Scheduler({
       }
 
       if (minuteInterval > 0) {
-        setRecurrentType('everyMinute')
+        recType = 'everyMinute'
         desc += `every <strong>${minuteInterval} ${minuteInterval == 1 ? 'minute' : 'minutes'}</strong><br/>`
       } else if (hourInterval > 0) {
-        setRecurrentType('hourly')
+        recType = 'hourly'
         desc += `every <strong>${hourInterval} ${hourInterval == 1 ? 'hour' : 'hours'}</strong><br/>`
       }
 
-      desc += `At <strong>${padWithZero(fromHour)}:${padWithZero(fromMinute)}</strong> till <strong>${padWithZero(toHour)}:${padWithZero(toMinute)}</strong>`
+      desc += `At <strong>${padWithZero(fromHour)}:${padWithZero(fromMinute)}</strong>`
+      if (recType === 'everyMinute' || recType === 'hourly') {
+        desc += ` till <strong>${padWithZero(toHour)}:${padWithZero(toMinute)}</strong>`
+      }
+      setRecurrentType(recType)
       setDescription(desc)
     }
   }, [currentValue, valuesChanged])
@@ -170,9 +175,9 @@ function Scheduler({
   useEffect(() => {
     if (valuesChanged) {
       const toHour = selectedToHour && selectedFromHour !== selectedToHour ? `-${selectedToHour}` : ''
-      const hr = `${selectedFromHour}${toHour}`
+      const hr = `${selectedFromHour}${recurrentType === 'everyMinute' || recurrentType === 'hourly' ? toHour : ''}`
       const toMin = selectedToMinute && selectedFromMinute !== selectedToMinute ? `-${selectedToMinute}` : ''
-      const min = `${selectedFromMinute}${toMin}`
+      const min = `${selectedFromMinute}${recurrentType === 'everyMinute' || recurrentType === 'hourly' ? toMin : ''}`
       let finalStr = ''
       if (recurrentType === 'everyMinute') {
         const everyMin = everyMinute > 0 ? `/${everyMinute}` : ''
@@ -208,6 +213,7 @@ function Scheduler({
             : selectedFromMonth
         finalStr = `0 ${min} ${hr} ${day} ${month} *`
       }
+      console.log('final string::', finalStr)
       setCurrentValue(finalStr)
     }
   }, [
@@ -366,7 +372,11 @@ function Scheduler({
             </RadioGroup>
             <Flex className={styles.schedulerItem}>
               <HStack>
-                <div className={styles.label}>Start Time</div>
+                <div className={styles.label}>
+                  {recurrentType === 'daily' || recurrentType === 'weekly' || recurrentType === 'monthly'
+                    ? 'Time'
+                    : 'Start Time'}
+                </div>
                 <TimePicker
                   format='HH:mm'
                   disableClock={true}
@@ -383,20 +393,18 @@ function Scheduler({
                 {(recurrentType === 'daily' || recurrentType === 'weekly' || recurrentType === 'monthly') && (
                   <HStack>
                     <Dropdown
-                      placeholder='Select month'
+                      id='month'
+                      label='Month'
                       options={months}
                       selectedValue={selectedFromMonth}
-                      buttonClassName={styles.btnDrodown}
-                      menuListClassName={styles.menuList}
                       inlineLabel='Month '
                       onChange={(month) => handleChangeMonth(month, 'From')}
                     />
                     <Dropdown
-                      placeholder='Select day'
+                      id='day'
+                      label='Day'
                       options={fromDays}
                       selectedValue={selectedFromDay}
-                      buttonClassName={styles.btnDrodown}
-                      menuListClassName={styles.menuList}
                       inlineLabel='Day '
                       onChange={(day) => handleChangeDay(day, 'From')}
                     />
@@ -404,39 +412,42 @@ function Scheduler({
                 )}
               </HStack>
               <HStack>
-                <div className={styles.label}>End Time</div>
-                <TimePicker
-                  format='HH:mm'
-                  disableClock={true}
-                  className={styles.timepicker}
-                  hourPlaceholder='HH'
-                  minutePlaceholder='mm'
-                  // secondPlaceholder='ss'
-                  maxDetail='minute'
-                  value={`${selectedToHour}:${selectedToMinute}`}
-                  onChange={(val) => {
-                    handleTimeChange(val, 'To')
-                  }}
-                />
+                <HStack
+                  className={
+                    recurrentType === 'daily' || recurrentType === 'weekly' || recurrentType === 'monthly'
+                      ? styles.hiddenEndTimePicker
+                      : ''
+                  }>
+                  <div className={styles.label}>End Time</div>
+                  <TimePicker
+                    format='HH:mm'
+                    disableClock={true}
+                    className={styles.timepicker}
+                    hourPlaceholder='HH'
+                    minutePlaceholder='mm'
+                    maxDetail='minute'
+                    value={`${selectedToHour}:${selectedToMinute}`}
+                    onChange={(val) => {
+                      handleTimeChange(val, 'To')
+                    }}
+                  />
+                </HStack>
+
                 {(recurrentType === 'daily' || recurrentType === 'weekly' || recurrentType === 'monthly') && (
                   <HStack>
                     <Dropdown
-                      placeholder='Select month'
+                      id='tomonth'
+                      label='Month'
                       options={months}
                       selectedValue={selectedToMonth}
-                      buttonClassName={styles.btnDrodown}
-                      menuListClassName={styles.menuList}
-                      inlineLabel='Month '
                       onChange={(month) => handleChangeMonth(month, 'To')}
                     />
                     {recurrentType !== 'monthly' && (
                       <Dropdown
-                        placeholder='Select day'
+                        id='today'
+                        label='Day'
                         options={toDays}
                         selectedValue={selectedToDay}
-                        buttonClassName={styles.btnDrodown}
-                        menuListClassName={styles.menuList}
-                        inlineLabel='Day '
                         onChange={(day) => handleChangeDay(day, 'To')}
                       />
                     )}
@@ -525,6 +536,7 @@ function Scheduler({
           title={`${confirmTitle} ${currentValue}`}
           onConfirmClick={() => {
             onSave(currentValue)
+            setEditMode(false)
             closeConfirmModal()
           }}
         />

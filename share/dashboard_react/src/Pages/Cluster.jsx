@@ -2,7 +2,7 @@ import React, { lazy, useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import Dashboard from './Dashboard'
 import Agents from './Agents'
-import Configs from './Configs'
+const Configs = lazy(() => import('./Configs'))
 const Settings = lazy(() => import('./Settings'))
 
 function Cluster({ tab }) {

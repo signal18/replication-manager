@@ -344,62 +344,64 @@ function DBConfigs({ selectedCluster, user }) {
         rowDivider={true}
         rowClassName={styles.row}
       />
-      <HStack className={styles.configTagContainer}>
-        <VStack className={styles.availableTags}>
-          <h4 className={styles.sectionTitle}>{'Available Tags'}</h4>
-          {configTagData.map((tagData) => {
-            return (
-              <AccordionComponent
-                heading={tagData.key}
-                className={styles.accordion}
-                headerClassName={styles.accordionHeader}
-                panelClassName={styles.accordionBody}
-                body={
-                  <HStack className={styles.tags}>
-                    {tagData.value.map((tag) => {
-                      const isAdded = usingDBServerTags.find((x) => x.name === tag.name)
-                      if (isAdded) {
-                        return null
-                      }
-                      return (
-                        <AddRemovePill
-                          text={tag.name}
-                          onAdd={(title) => {
-                            setConfirmTitle(title)
-                            setIsConfirmModalOpen(true)
-                            setConfirmHandler(
-                              () => () => dispatch(addDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
-                            )
-                          }}
-                        />
-                      )
-                    })}
-                  </HStack>
-                }
-              />
-            )
-          })}
-        </VStack>
-        <VStack className={styles.addedTags}>
-          <h4 className={styles.sectionTitle}>{'Using Tags'}</h4>
-          <HStack className={`${styles.tags} `}>
-            {usingDBServerTags.map((tag) => (
-              <AddRemovePill
-                text={tag?.name}
-                onRemove={(title) => {
-                  setConfirmTitle(title)
-                  setIsConfirmModalOpen(true)
-                  setConfirmHandler(
-                    () => () => dispatch(dropDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
-                  )
-                }}
-                used={true}
-                category={tag?.category}
-              />
-            ))}
-          </HStack>
-        </VStack>
-      </HStack>
+      {user?.grants['db-config-flag'] && (
+        <HStack className={styles.configTagContainer}>
+          <VStack className={styles.availableTags}>
+            <h4 className={styles.sectionTitle}>{'Available Tags'}</h4>
+            {configTagData.map((tagData) => {
+              return (
+                <AccordionComponent
+                  heading={tagData.key}
+                  className={styles.accordion}
+                  headerClassName={styles.accordionHeader}
+                  panelClassName={styles.accordionBody}
+                  body={
+                    <HStack className={styles.tags}>
+                      {tagData.value.map((tag) => {
+                        const isAdded = usingDBServerTags.find((x) => x.name === tag.name)
+                        if (isAdded) {
+                          return null
+                        }
+                        return (
+                          <AddRemovePill
+                            text={tag.name}
+                            onAdd={(title) => {
+                              setConfirmTitle(title)
+                              setIsConfirmModalOpen(true)
+                              setConfirmHandler(
+                                () => () => dispatch(addDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
+                              )
+                            }}
+                          />
+                        )
+                      })}
+                    </HStack>
+                  }
+                />
+              )
+            })}
+          </VStack>
+          <VStack className={styles.addedTags}>
+            <h4 className={styles.sectionTitle}>{'Using Tags'}</h4>
+            <HStack className={`${styles.tags} `}>
+              {usingDBServerTags.map((tag) => (
+                <AddRemovePill
+                  text={tag?.name}
+                  onRemove={(title) => {
+                    setConfirmTitle(title)
+                    setIsConfirmModalOpen(true)
+                    setConfirmHandler(
+                      () => () => dispatch(dropDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
+                    )
+                  }}
+                  used={true}
+                  category={tag?.category}
+                />
+              ))}
+            </HStack>
+          </VStack>
+        </HStack>
+      )}
 
       {isConfirmModalOpen && (
         <ConfirmModal

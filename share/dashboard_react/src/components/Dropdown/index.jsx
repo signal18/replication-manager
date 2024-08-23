@@ -1,20 +1,21 @@
-import { Box, Button, Menu, MenuButton, MenuItem, MenuList, Text } from '@chakra-ui/react'
+import { Box, Button, Flex, Menu, MenuButton, MenuItem, MenuList, Text } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import { HiChevronDown } from 'react-icons/hi'
 import styles from './styles.module.scss'
 import { useTheme } from '../../ThemeProvider'
 import ConfirmModal from '../Modals/ConfirmModal'
+import Select from 'react-select'
 
 function Dropdown({
+  id,
   options,
-  placeholder = 'Select option',
+  placeholder = 'Select',
+  label,
   selectedValue,
-  width = '200px',
-  inlineLabel = '',
+  className,
   onChange,
   confirmTitle,
-  buttonClassName,
-  menuListClassName
+  isSearchable = false
 }) {
   const [selectedOption, setSelectedOption] = useState(null)
   const [previousOption, setPreviousOption] = useState(null)
@@ -29,7 +30,7 @@ function Dropdown({
     }
   }, [options, selectedValue])
 
-  const handleOptionClick = (option) => {
+  const handleChange = (option) => {
     setSelectedOption(option)
     if (confirmTitle && option.value !== 'script') {
       openConfirmModal()
@@ -50,38 +51,23 @@ function Dropdown({
   }
 
   return (
-    <>
-      <Menu variant='outline' placement='bottom-end'>
-        <MenuButton
-          width={width}
-          as={Button}
-          className={`${styles.menuButton} ${buttonClassName}`}
-          rightIcon={<HiChevronDown fontSize={'1.5rem'} />}>
-          {selectedOption ? (
-            inlineLabel ? (
-              <Box className={styles.inlineLabelValue}>
-                <Text className={styles.inlineLabel}>{`${inlineLabel}:`}</Text>
-                <Text className={styles.inlineValue}>{selectedOption.name}</Text>
-              </Box>
-            ) : (
-              selectedOption.name
-            )
-          ) : (
-            placeholder
-          )}
-        </MenuButton>
-        <MenuList width={width} className={menuListClassName}>
-          {options?.map((option, index) => (
-            <MenuItem
-              width={width}
-              key={index}
-              className={theme === 'light' ? styles.lightMenuItem : styles.darkMenuItem}
-              onClick={() => handleOptionClick(option)}>
-              {option.name}
-            </MenuItem>
-          ))}
-        </MenuList>
-      </Menu>
+    <Flex className={styles.selectFormContainer}>
+      {label && (
+        <label className={styles.label} htmlFor={id}>
+          {label}
+        </label>
+      )}
+      <Select
+        id={id}
+        className={`${styles.select}  ${className}`}
+        classNamePrefix='rm-select'
+        getOptionLabel={(option) => option.name || option.label}
+        value={selectedOption}
+        onChange={handleChange}
+        options={options}
+        isSearchable={isSearchable}
+        placeholder={placeholder}
+      />
       {isConfirmModalOpen && (
         <ConfirmModal
           isOpen={isConfirmModalOpen}
@@ -90,12 +76,12 @@ function Dropdown({
           }}
           title={`${confirmTitle} ${selectedOption.name}`}
           onConfirmClick={() => {
-            onChange(selectedOption.value)
+            onChange(selectedOption.value || selectedOption.name)
             closeConfirmModal('')
           }}
         />
       )}
-    </>
+    </Flex>
   )
 }
 

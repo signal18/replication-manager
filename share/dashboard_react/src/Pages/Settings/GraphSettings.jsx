@@ -61,7 +61,6 @@ function GraphSettings({ selectedCluster, user, openConfirmModal }) {
           key: 'Reset graphite template',
           value: (
             <Dropdown
-              buttonClassName={styles.dropdownButton}
               options={graphiteTemplateOptions}
               selectedValue={selectedCluster?.config?.graphiteWhitelistTemplate}
               confirmTitle={`Confirm reset graphite filterlist to `}

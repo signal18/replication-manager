@@ -59,7 +59,7 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
             <Flex className={styles.dropdownContainer}>
               <Dropdown
                 options={logicalBackupOptions}
-                buttonClassName={styles.dropdownButton}
+                className={styles.dropdownButton}
                 selectedValue={selectedCluster?.config?.backupLogicalType}
                 confirmTitle={`Confirm logical backup to`}
                 onChange={(backupType) => {
@@ -81,7 +81,7 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
             <Flex className={styles.dropdownContainer}>
               <Dropdown
                 options={physicalBackupOptions}
-                buttonClassName={styles.dropdownButton}
+                className={styles.dropdownButton}
                 selectedValue={selectedCluster?.config?.backupPhysicalType}
                 confirmTitle={`Confirm physical backup to`}
                 onChange={(backupType) =>
@@ -106,7 +106,7 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
               align='flex-start'>
               <Dropdown
                 options={binlogBackupOptions}
-                buttonClassName={styles.dropdownButton}
+                className={styles.dropdownButton}
                 selectedValue={selectedCluster?.config?.binlogCopyMode}
                 confirmTitle={`Confirm Binlog backup to`}
                 onChange={(backupType) => {
@@ -173,7 +173,6 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
           key: 'Backup Buffer Size',
           value: (
             <Dropdown
-              buttonClassName={styles.dropdownButton}
               options={sizeOptions}
               selectedValue={selectedCluster?.config?.sstSendBuffer}
               confirmTitle={`Confirm change 'sst-send-buffer' to `}
@@ -226,7 +225,7 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
         <Flex className={styles.dropdownContainer}>
           <Dropdown
             options={binlogParseOptions}
-            buttonClassName={styles.dropdownButton}
+            className={styles.dropdownButton}
             selectedValue={selectedCluster?.config?.binlogParseMode}
             confirmTitle={`Confirm binlog parse mode to`}
             onChange={(mode) =>

@@ -25,9 +25,9 @@ div.settingsContainer {
       background-color: var(--tertiary-color) !important;
     }
   }
-  .accordionPanel {
-    overflow: hidden;
-  }
+  // .accordionPanel {
+  //   overflow: hidden;
+  // }
   .listContainer {
     flex-basis: 10%;
     @include breakpoint('md', 'lg') {
@@ -90,7 +90,7 @@ div.settingsContainer {
     padding: 0;
     gap: 0;
     align-items: center;
-    overflow: hidden;
+    // overflow: hidden;
     grid-template-columns: auto !important;
     // @include breakpoint('sm', 'md') {
     //   grid-template-columns: 1fr !important;
@@ -131,7 +131,7 @@ div.settingsContainer {
         margin-top: rem(8);
       }
 
-      button.dropdownButton {
+      .dropdownButton {
         width: 160px;
         white-space: break-spaces;
         text-align: start;

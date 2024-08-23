@@ -18,6 +18,11 @@
     //   flex-direction: row;
     //   align-items: center;
     // }
+
+    .hiddenEndTimePicker {
+      visibility: hidden;
+    }
+
     .label {
       width: rem(100);
       font-weight: bold;

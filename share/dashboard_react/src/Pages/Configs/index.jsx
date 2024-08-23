@@ -4,6 +4,7 @@ import styles from './styles.module.scss'
 import DBConfigs from './components/DBConfigs'
 import ProxyConfig from './components/ProxyConfig'
 import { VStack } from '@chakra-ui/react'
+import OrchestratorImages from './components/OrchestratorImages'
 
 function Configs({ selectedCluster, user }) {
   return (
@@ -19,6 +20,12 @@ function Configs({ selectedCluster, user }) {
         headerClassName={styles.accordionHeader}
         heading={'Proxy Configurator'}
         body={<ProxyConfig selectedCluster={selectedCluster} user={user} />}
+      />
+      <AccordionComponent
+        className={styles.accordion}
+        headerClassName={styles.accordionHeader}
+        heading={'Orchestrator Images'}
+        body={<OrchestratorImages selectedCluster={selectedCluster} user={user} />}
       />
     </VStack>
   )

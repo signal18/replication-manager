@@ -33,57 +33,62 @@ function ProxyConfig({ selectedCluster, user }) {
     setConfirmHandler(null)
   }
 
+
   const dataObject = [
-    {
-      key: 'Manage Tags',
-      value: (
-        <VStack className={styles.configTagContainer}>
-          <VStack className={`${styles.availableTags} ${styles.proxyTags}`}>
-            <h4 className={styles.sectionTitle}>{'Available Tags'}</h4>
-            <HStack className={styles.tags}>
-              {availableTags.map((tag) => {
-                const isAdded = usingTags.find((x) => x.name === tag.name)
-                if (isAdded) {
-                  return null
-                }
-                return (
-                  <AddRemovePill
-                    text={tag.name}
-                    onAdd={(title) => {
-                      setConfirmTitle(title)
-                      setIsConfirmModalOpen(true)
-                      setConfirmHandler(
-                        () => () => dispatch(addProxyTag({ clusterName: selectedCluster?.name, tag: tag.name }))
+    ...(user?.grants['proxy-config-flag']
+      ? [
+          {
+            key: 'Manage Tags',
+            value: (
+              <VStack className={styles.configTagContainer}>
+                <VStack className={`${styles.availableTags} ${styles.proxyTags}`}>
+                  <h4 className={styles.sectionTitle}>{'Available Tags'}</h4>
+                  <HStack className={styles.tags}>
+                    {availableTags.map((tag) => {
+                      const isAdded = usingTags.find((x) => x.name === tag.name)
+                      if (isAdded) {
+                        return null
+                      }
+                      return (
+                        <AddRemovePill
+                          text={tag.name}
+                          onAdd={(title) => {
+                            setConfirmTitle(title)
+                            setIsConfirmModalOpen(true)
+                            setConfirmHandler(
+                              () => () => dispatch(addProxyTag({ clusterName: selectedCluster?.name, tag: tag.name }))
+                            )
+                          }}
+                        />
                       )
-                    }}
-                  />
-                )
-              })}
-            </HStack>
-          </VStack>
-          <VStack className={`${styles.addedTags} ${styles.proxyTags}`}>
-            <h4 className={styles.sectionTitle}>{'Using Tags'}</h4>
-            <HStack className={`${styles.tags} `}>
-              {usingTags.map((tag) => {
-                return (
-                  <AddRemovePill
-                    text={tag}
-                    onRemove={(title) => {
-                      setConfirmTitle(title)
-                      setIsConfirmModalOpen(true)
-                      setConfirmHandler(
-                        () => () => dispatch(dropProxyTag({ clusterName: selectedCluster?.name, tag: tag }))
+                    })}
+                  </HStack>
+                </VStack>
+                <VStack className={`${styles.addedTags} ${styles.proxyTags}`}>
+                  <h4 className={styles.sectionTitle}>{'Using Tags'}</h4>
+                  <HStack className={`${styles.tags} `}>
+                    {usingTags.map((tag) => {
+                      return (
+                        <AddRemovePill
+                          text={tag}
+                          onRemove={(title) => {
+                            setConfirmTitle(title)
+                            setIsConfirmModalOpen(true)
+                            setConfirmHandler(
+                              () => () => dispatch(dropProxyTag({ clusterName: selectedCluster?.name, tag: tag }))
+                            )
+                          }}
+                          used={true}
+                        />
                       )
-                    }}
-                    used={true}
-                  />
-                )
-              })}
-            </HStack>
-          </VStack>
-        </VStack>
-      )
-    },
+                    })}
+                  </HStack>
+                </VStack>
+              </VStack>
+            )
+          }
+        ]
+      : []),
     {
       key: 'Resources',
       value: (

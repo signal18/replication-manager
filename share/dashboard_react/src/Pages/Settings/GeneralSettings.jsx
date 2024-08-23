@@ -49,8 +49,7 @@ function GeneralSettings({ selectedCluster, user }) {
         <Flex className={styles.dropdownContainer}>
           <Dropdown
             options={topologyOptions}
-            buttonClassName={styles.dropdownButton}
-            // width='200px'
+            className={styles.dropdownButton}
             selectedValue={selectedCluster?.config?.topologyTarget}
             confirmTitle={`Please confirm if you want to set the preferred topology to`}
             onChange={(selectedTopology) =>
