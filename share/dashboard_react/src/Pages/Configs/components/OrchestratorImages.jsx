@@ -1,12 +1,11 @@
-import { Flex, HStack, VStack } from '@chakra-ui/react'
+import { HStack, VStack } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
-import TagPill from '../../../../components/TagPill'
-import styles from './styles.module.scss'
-import Dropdown from '../../../../components/Dropdown'
-import TableType2 from '../../../../components/TableType2'
-import parentStyles from '../../styles.module.scss'
+import TagPill from '../../../components/TagPill'
+import Dropdown from '../../../components/Dropdown'
+import TableType2 from '../../../components/TableType2'
+import parentStyles from '../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
-import { setSetting } from '../../../../redux/settingsSlice'
+import { setSetting } from '../../../redux/settingsSlice'
 
 function OrchestratorImages({ selectedCluster, user }) {
   const dispatch = useDispatch()
@@ -26,9 +25,8 @@ function OrchestratorImages({ selectedCluster, user }) {
       key: 'MariaDB',
       value: (
         <Dropdown
+          className={parentStyles.dropdown}
           options={serviceRepos.find((repo) => repo.name === 'mariadb')?.tags?.results}
-          buttonClassName={styles.dropdownButton}
-          menuListClassName={styles.dropdownMenuList}
           selectedValue={selectedCluster?.config?.provDbDockerImg?.split(':')[1]}
           confirmTitle={`Confirm change database OCI image to mariadb:`}
           onChange={(value) => {
@@ -47,9 +45,8 @@ function OrchestratorImages({ selectedCluster, user }) {
       key: 'MySQL',
       value: (
         <Dropdown
+          className={parentStyles.dropdown}
           options={serviceRepos.find((repo) => repo.name === 'mysql')?.tags?.results}
-          buttonClassName={styles.dropdownButton}
-          menuListClassName={styles.dropdownMenuList}
           selectedValue={selectedCluster?.config?.provDbDockerImg?.split(':')[1]}
           confirmTitle={`Confirm change database OCI image to mysql:`}
           onChange={(value) => {
@@ -68,9 +65,8 @@ function OrchestratorImages({ selectedCluster, user }) {
       key: 'Percona',
       value: (
         <Dropdown
+          className={parentStyles.dropdown}
           options={serviceRepos.find((repo) => repo.name === 'percona')?.tags?.results}
-          buttonClassName={styles.dropdownButton}
-          menuListClassName={styles.dropdownMenuList}
           selectedValue={selectedCluster?.config?.provDbDockerImg?.split(':')[1]}
           confirmTitle={`Confirm change database OCI image to percona:`}
           onChange={(value) => {
@@ -89,9 +85,8 @@ function OrchestratorImages({ selectedCluster, user }) {
       key: 'Postgress',
       value: (
         <Dropdown
+          className={parentStyles.dropdown}
           options={serviceRepos.find((repo) => repo.name === 'postgres')?.tags?.results}
-          buttonClassName={styles.dropdownButton}
-          menuListClassName={styles.dropdownMenuList}
           selectedValue={selectedCluster?.config?.provDbDockerImg?.split(':')[1]}
           confirmTitle={`Confirm change database OCI image to postgres:`}
           onChange={(value) => {
@@ -110,9 +105,8 @@ function OrchestratorImages({ selectedCluster, user }) {
       key: 'ProxySQL',
       value: (
         <Dropdown
+          className={parentStyles.dropdown}
           options={serviceRepos.find((repo) => repo.name === 'myproxysqlsql')?.tags?.results}
-          buttonClassName={styles.dropdownButton}
-          menuListClassName={styles.dropdownMenuList}
           selectedValue={selectedCluster?.config?.provProxyDockerProxysqlImg?.split(':')[1]}
           confirmTitle={`Confirm change database OCI image to proxysql:`}
           onChange={(value) => {
@@ -131,9 +125,8 @@ function OrchestratorImages({ selectedCluster, user }) {
       key: 'Maxscale',
       value: (
         <Dropdown
+          className={parentStyles.dropdown}
           options={serviceRepos.find((repo) => repo.name === 'maxscale')?.tags?.results}
-          buttonClassName={styles.dropdownButton}
-          menuListClassName={styles.dropdownMenuList}
           selectedValue={selectedCluster?.config?.provProxyDockerMaxscaleImg?.split(':')[1]}
           confirmTitle={`Confirm change database OCI image to maxscale:`}
           onChange={(value) => {
@@ -152,9 +145,8 @@ function OrchestratorImages({ selectedCluster, user }) {
       key: 'HaProxy',
       value: (
         <Dropdown
+          className={parentStyles.dropdown}
           options={serviceRepos.find((repo) => repo.name === 'haproxy')?.tags?.results}
-          buttonClassName={styles.dropdownButton}
-          menuListClassName={styles.dropdownMenuList}
           selectedValue={selectedCluster?.config?.provProxyDockerHaproxyImg?.split(':')[1]}
           confirmTitle={`Confirm change database OCI image to haproxy:`}
           onChange={(value) => {
@@ -173,9 +165,8 @@ function OrchestratorImages({ selectedCluster, user }) {
       key: 'Sphinx',
       value: (
         <Dropdown
+          className={parentStyles.dropdown}
           options={serviceRepos.find((repo) => repo.name === 'sphinx')?.tags?.results}
-          buttonClassName={styles.dropdownButton}
-          menuListClassName={styles.dropdownMenuList}
           selectedValue={selectedCluster?.config?.provSphinxDockerImg?.split(':')[1]}
           confirmTitle={`Confirm change database OCI image to sphinx:`}
           onChange={(value) => {
@@ -194,9 +185,8 @@ function OrchestratorImages({ selectedCluster, user }) {
       key: 'ShardProxy',
       value: (
         <Dropdown
+          className={parentStyles.dropdown}
           options={serviceRepos.find((repo) => repo.name === 'mariadb')?.tags?.results}
-          buttonClassName={styles.dropdownButton}
-          menuListClassName={styles.dropdownMenuList}
           selectedValue={selectedCluster?.config?.provProxyDockerShardproxyImg?.split(':')[1]}
           confirmTitle={`Confirm change database OCI image to mariadb:`}
           onChange={(value) => {
@@ -213,8 +203,8 @@ function OrchestratorImages({ selectedCluster, user }) {
     }
   ]
   return (
-    <VStack className={styles.orchContainer}>
-      <HStack className={styles.tags}>
+    <VStack className={parentStyles.orchContainer}>
+      <HStack className={parentStyles.tags}>
         <TagPill colorScheme={'green'} text={selectedCluster?.config?.provDbDockerImg} />
         <TagPill colorScheme={'green'} text={selectedCluster?.config?.provProxyDockerProxysqlImg} />
         <TagPill colorScheme={'green'} text={selectedCluster?.config?.provProxyDockerMaxscaleImg} />

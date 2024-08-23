@@ -25,9 +25,9 @@ div.settingsContainer {
       background-color: var(--tertiary-color) !important;
     }
   }
-  // .accordionPanel {
-  //   overflow: hidden;
-  // }
+  .accordionPanel {
+    overflow: hidden;
+  }
   .listContainer {
     flex-basis: 10%;
     @include breakpoint('md', 'lg') {
@@ -90,7 +90,7 @@ div.settingsContainer {
     padding: 0;
     gap: 0;
     align-items: center;
-    // overflow: hidden;
+    overflow: hidden;
     grid-template-columns: auto !important;
     // @include breakpoint('sm', 'md') {
     //   grid-template-columns: 1fr !important;
@@ -110,9 +110,7 @@ div.settingsContainer {
       height: 100%;
       padding-left: rem(16);
     }
-    div[class*='subLabel'] {
-      background-color: var(--quaternary-color);
-    }
+
     .value {
       background-color: transparent;
       padding-left: rem(16);

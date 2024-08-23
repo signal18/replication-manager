@@ -127,25 +127,24 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
                   label={'Backup Binlog Script Path'}
                   direction='column'
                   className={styles.scriptTextContainer}
-                  originalValue={selectedCluster?.config?.binlogCopyScript}
-                  onConfirm={(scriptValue) =>
-                    openConfirmModal(`Confirm Binlog backup to script with value ${scriptValue} `, () => () => {
-                      dispatch(
-                        setSetting({
-                          clusterName: selectedCluster?.name,
-                          setting: 'backup-binlog-script',
-                          value: scriptValue
-                        })
-                      )
-                      dispatch(
-                        setSetting({
-                          clusterName: selectedCluster?.name,
-                          setting: 'backup-binlog-type',
-                          value: 'script'
-                        })
-                      )
-                    })
-                  }
+                  value={selectedCluster?.config?.binlogCopyScript}
+                  confirmTitle='Confirm Binlog backup to script with value '
+                  onSave={(scriptValue) => {
+                    dispatch(
+                      setSetting({
+                        clusterName: selectedCluster?.name,
+                        setting: 'backup-binlog-script',
+                        value: scriptValue
+                      })
+                    )
+                    dispatch(
+                      setSetting({
+                        clusterName: selectedCluster?.name,
+                        setting: 'backup-binlog-type',
+                        value: 'script'
+                      })
+                    )
+                  }}
                 />
               )}
             </Flex>

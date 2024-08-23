@@ -44,18 +44,19 @@
         border-color: var(--secondary-color) !important;
       }
     }
-    div[class*='rm-select__menu'] {
-      div[class*='rm-select__option'] {
-        &:hover {
-          background-color: var(--quaternary-color);
-        }
-      }
-      div[class*='rm-select__option--is-selected'] {
-        background-color: var(--secondary-color);
-        &:hover {
-          background-color: var(--secondary-color);
-        }
-      }
+  }
+}
+
+div[class*='rm-select__menu'] {
+  div[class*='rm-select__option'] {
+    &:hover {
+      background-color: var(--quaternary-color);
+    }
+  }
+  div[class*='rm-select__option--is-selected'] {
+    background-color: var(--secondary-color);
+    &:hover {
+      background-color: var(--secondary-color);
     }
   }
 }

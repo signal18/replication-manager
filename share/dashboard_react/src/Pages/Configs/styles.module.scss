@@ -24,6 +24,22 @@
       background-color: var(--tertiary-color) !important;
     }
   }
+
+  .dropdown {
+    width: rem(180);
+  }
+  .orchContainer {
+    gap: 0;
+    .tags {
+      padding: rem(8);
+      justify-content: flex-start;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+  }
+  .textbox {
+    width: rem(280);
+  }
 }
 
 .table {
