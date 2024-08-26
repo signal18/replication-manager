@@ -1,10 +1,18 @@
 .scheduler {
   display: flex;
-  .btnCancelEdit {
-    margin-left: auto;
-  }
+  .btnCancelEdit,
   .btnEdit {
     margin-right: auto;
+  }
+
+  .radios {
+    display: flex;
+    flex-wrap: wrap;
+    width: 90vw;
+    gap: rem(16);
+    @include breakpoint('lg') {
+      width: 100%;
+    }
   }
   .schedulerItem {
     gap: rem(24);
@@ -19,8 +27,28 @@
     //   align-items: center;
     // }
 
+    .fromContainer,
+    .toContainer {
+      flex-direction: column;
+      gap: rem(4);
+      @include breakpoint('lg') {
+        flex-direction: row;
+        margin-top: 0;
+      }
+    }
+
     .hiddenEndTimePicker {
       visibility: hidden;
+    }
+    .weekdaysContainer {
+      flex-direction: column;
+      gap: rem(4);
+
+      @include breakpoint('md') {
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+      }
     }
 
     .label {
@@ -28,6 +56,9 @@
       font-weight: bold;
       &.customLabel {
         width: 100%;
+      }
+      &.weekDaysLabel {
+        width: rem(150);
       }
     }
     .numberInput {
@@ -81,9 +112,6 @@
     }
     .customContainer {
       width: 100%;
-
-      .input {
-      }
     }
   }
 }

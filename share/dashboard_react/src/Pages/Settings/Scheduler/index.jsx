@@ -10,8 +10,8 @@ import RMSwitch from '../../../components/RMSwitch'
 import RMIconButton from '../../../components/RMIconButton'
 import { GrPowerReset } from 'react-icons/gr'
 import Message from '../../../components/Message'
-import TabItems from '../../../components/TabItems'
 import { HiPencilAlt } from 'react-icons/hi'
+import { useSelector } from 'react-redux'
 
 function Scheduler({
   value,
@@ -23,6 +23,9 @@ function Scheduler({
   confirmTitle,
   switchConfirmTitle
 }) {
+  const {
+    common: { isMobile }
+  } = useSelector((state) => state)
   const [currentValue, setCurrentValue] = useState(value)
   const [previousValue, setPreviousValue] = useState(value)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -118,6 +121,8 @@ function Scheduler({
           if (arrSelectedWkdays.includes(wd.value.toString())) {
             wd.selected = true
             weekdayNames += `${wd.name}, `
+          } else {
+            wd.selected = false
           }
           return wd
         })
@@ -133,7 +138,7 @@ function Scheduler({
 
       //evaluate hour part
       const hourPart = currentValue.split(' ')[2]
-      const fromHour = hourPart.split('/')[0].split('-')[0]
+      const fromHour = hourPart === '*' ? 0 : hourPart.split('/')[0].split('-')[0]
       const toHour = hourPart.split('/')[0].split('-')[1] || 0
       let hourInterval = hourPart.split('/')[1]
       setSelectedFromHour(fromHour)
@@ -144,7 +149,7 @@ function Scheduler({
 
       //evaluate minute part
       const minutePart = currentValue.split(' ')[1]
-      const fromMinute = minutePart.split('-')[0].split('/')[0]
+      const fromMinute = minutePart === '*' ? 0 : minutePart.split('-')[0].split('/')[0]
       const toMinute = minutePart.split('-')[1] || 0
       setSelectedFromMinute(fromMinute)
       setSelectedToMinute(toMinute)
@@ -157,10 +162,10 @@ function Scheduler({
 
       if (minuteInterval > 0) {
         recType = 'everyMinute'
-        desc += `every <strong>${minuteInterval} ${minuteInterval == 1 ? 'minute' : 'minutes'}</strong><br/>`
+        desc += `every <strong>${minuteInterval} ${minuteInterval == 1 ? 'minute' : 'minutes'}</strong> on daily basis<br/>`
       } else if (hourInterval > 0) {
         recType = 'hourly'
-        desc += `every <strong>${hourInterval} ${hourInterval == 1 ? 'hour' : 'hours'}</strong><br/>`
+        desc += `every <strong>${hourInterval} ${hourInterval == 1 ? 'hour' : 'hours'}</strong> on daily basis<br/>`
       }
 
       desc += `At <strong>${padWithZero(fromHour)}:${padWithZero(fromMinute)}</strong>`
@@ -213,13 +218,13 @@ function Scheduler({
             : selectedFromMonth
         finalStr = `0 ${min} ${hr} ${day} ${month} *`
       }
-      console.log('final string::', finalStr)
       setCurrentValue(finalStr)
     }
   }, [
     recurrentType,
     valuesChanged,
     everyHour,
+    everyMinute,
     selectedFromMonth,
     selectedToMonth,
     selectedFromDay,
@@ -301,26 +306,27 @@ function Scheduler({
   }
 
   const handleHourChange = (e) => {
+    setValuesChanged(true)
     setErrorMessage('')
     const hour = e.target.value
+    setEveryHour(hour)
     if (!hour) {
       setErrorMessage('Every hour input is required')
-    } else {
-      setEveryHour(hour)
     }
   }
 
-  const handleMinuteChange = () => {
+  const handleMinuteChange = (e) => {
+    setValuesChanged(true)
     setErrorMessage('')
     const minute = e.target.value
+    setEveryMinute(minute)
     if (!minute) {
       setErrorMessage('Every minute input is required')
-    } else {
-      setEveryMinute(minute)
     }
   }
 
   const handleWeekdayChange = (weekday) => {
+    setValuesChanged(true)
     setErrorMessage('')
     const updatedWeekdays = weekDays.map((day) => {
       if (day.value === weekday) {
@@ -358,40 +364,46 @@ function Scheduler({
       {!hasSwitch || isSwitchChecked ? (
         editMode ? (
           <>
-            <RMButton className={styles.btnCancelEdit} onClick={() => setEditMode(false)}>
+            <RMButton
+              className={styles.btnCancelEdit}
+              onClick={() => {
+                setEditMode(false)
+                setValuesChanged(false)
+                setCurrentValue(previousValue)
+              }}>
               Cancel edit
             </RMButton>
-            <RadioGroup value={recurrentType} onChange={handleRecurrentChange}>
-              <HStack spacing={6}>
-                {recurrentOptions.map((recur) => (
-                  <Radio key={recur.key} value={recur.key} size='lg'>
-                    {recur.value}
-                  </Radio>
-                ))}
-              </HStack>
+            <RadioGroup className={styles.radios} value={recurrentType} onChange={handleRecurrentChange}>
+              {recurrentOptions.map((recur) => (
+                <Radio key={recur.key} value={recur.key} size='lg'>
+                  {recur.value}
+                </Radio>
+              ))}
             </RadioGroup>
             <Flex className={styles.schedulerItem}>
-              <HStack>
-                <div className={styles.label}>
-                  {recurrentType === 'daily' || recurrentType === 'weekly' || recurrentType === 'monthly'
-                    ? 'Time'
-                    : 'Start Time'}
-                </div>
-                <TimePicker
-                  format='HH:mm'
-                  disableClock={true}
-                  className={styles.timepicker}
-                  hourPlaceholder='HH'
-                  minutePlaceholder='mm'
-                  // secondPlaceholder='ss'
-                  maxDetail='minute'
-                  value={`${selectedFromHour}:${selectedFromMinute}`}
-                  onChange={(val) => {
-                    handleTimeChange(val, 'From')
-                  }}
-                />
+              <Flex className={styles.fromContainer}>
+                <HStack className={styles.timePickerContainer}>
+                  <div className={styles.label}>
+                    {recurrentType === 'daily' || recurrentType === 'weekly' || recurrentType === 'monthly'
+                      ? 'Time'
+                      : 'Start Time'}
+                  </div>
+                  <TimePicker
+                    format='HH:mm'
+                    disableClock={true}
+                    className={styles.timepicker}
+                    hourPlaceholder='HH'
+                    minutePlaceholder='mm'
+                    // secondPlaceholder='ss'
+                    maxDetail='minute'
+                    value={`${selectedFromHour}:${selectedFromMinute}`}
+                    onChange={(val) => {
+                      handleTimeChange(val, 'From')
+                    }}
+                  />
+                </HStack>
                 {(recurrentType === 'daily' || recurrentType === 'weekly' || recurrentType === 'monthly') && (
-                  <HStack>
+                  <>
                     <Dropdown
                       id='month'
                       label='Month'
@@ -408,33 +420,35 @@ function Scheduler({
                       inlineLabel='Day '
                       onChange={(day) => handleChangeDay(day, 'From')}
                     />
+                  </>
+                )}
+              </Flex>
+              <Flex className={styles.toContainer}>
+                {!isMobile && (
+                  <HStack
+                    className={`${styles.timePickerContainer} ${
+                      recurrentType === 'daily' || recurrentType === 'weekly' || recurrentType === 'monthly'
+                        ? styles.hiddenEndTimePicker
+                        : ''
+                    }`}>
+                    <div className={styles.label}>End Time</div>
+                    <TimePicker
+                      format='HH:mm'
+                      disableClock={true}
+                      className={styles.timepicker}
+                      hourPlaceholder='HH'
+                      minutePlaceholder='mm'
+                      maxDetail='minute'
+                      value={`${selectedToHour}:${selectedToMinute}`}
+                      onChange={(val) => {
+                        handleTimeChange(val, 'To')
+                      }}
+                    />
                   </HStack>
                 )}
-              </HStack>
-              <HStack>
-                <HStack
-                  className={
-                    recurrentType === 'daily' || recurrentType === 'weekly' || recurrentType === 'monthly'
-                      ? styles.hiddenEndTimePicker
-                      : ''
-                  }>
-                  <div className={styles.label}>End Time</div>
-                  <TimePicker
-                    format='HH:mm'
-                    disableClock={true}
-                    className={styles.timepicker}
-                    hourPlaceholder='HH'
-                    minutePlaceholder='mm'
-                    maxDetail='minute'
-                    value={`${selectedToHour}:${selectedToMinute}`}
-                    onChange={(val) => {
-                      handleTimeChange(val, 'To')
-                    }}
-                  />
-                </HStack>
 
                 {(recurrentType === 'daily' || recurrentType === 'weekly' || recurrentType === 'monthly') && (
-                  <HStack>
+                  <>
                     <Dropdown
                       id='tomonth'
                       label='Month'
@@ -451,9 +465,9 @@ function Scheduler({
                         onChange={(day) => handleChangeDay(day, 'To')}
                       />
                     )}
-                  </HStack>
+                  </>
                 )}
-              </HStack>
+              </Flex>
               {recurrentType === 'hourly' && (
                 <HStack>
                   <div className={styles.label}>Every </div>
@@ -474,19 +488,21 @@ function Scheduler({
                 </HStack>
               )}
               {recurrentType === 'weekly' && (
-                <HStack>
-                  <div className={styles.label}>Select weekdays</div>
-                  {weekDays.map((weekday) => {
-                    return (
-                      <RMButton
-                        {...(!weekday.selected ? { variant: 'outline' } : {})}
-                        //  variant={weekday.selected ? 'solid' : 'outline'}
-                        onClick={() => handleWeekdayChange(weekday.value)}>
-                        {weekday.name}
-                      </RMButton>
-                    )
-                  })}
-                </HStack>
+                <Flex className={styles.weekdaysContainer}>
+                  <div className={`${styles.label} ${styles.weekDaysLabel}`}>Select weekdays</div>
+                  <HStack spacing={2} wrap='wrap'>
+                    {weekDays.map((weekday) => {
+                      return (
+                        <RMButton
+                          {...(!weekday.selected ? { variant: 'outline' } : {})}
+                          //  variant={weekday.selected ? 'solid' : 'outline'}
+                          onClick={() => handleWeekdayChange(weekday.value)}>
+                          {weekday.name}
+                        </RMButton>
+                      )
+                    })}
+                  </HStack>
+                </Flex>
               )}
             </Flex>
 
@@ -537,6 +553,7 @@ function Scheduler({
           onConfirmClick={() => {
             onSave(currentValue)
             setEditMode(false)
+            setValuesChanged(false)
             closeConfirmModal()
           }}
         />
