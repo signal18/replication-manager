@@ -52,7 +52,7 @@ function Home() {
     }
   }, [refreshInterval])
 
-  const dashboardTabs = ['Dashboard', 'Settings', 'Configs', 'Agents', 'Certificates', 'Queryrules', 'Shards']
+  const dashboardTabs = ['Dashboard', 'Settings', 'Configs', 'Agents', 'Queryrules', 'Shards']
 
   const callServices = () => {
     if (selectedTabRef.current === 0) {
@@ -67,7 +67,7 @@ function Home() {
         dispatch(getClusterServers({ clusterName: selectedClusterNameRef.current }))
         dispatch(getClusterProxies({ clusterName: selectedClusterNameRef.current }))
       }
-      if (selectedTabRef.current === 5) {
+      if (selectedTabRef.current === 3) {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
       }
     }
@@ -99,8 +99,7 @@ function Home() {
             <Cluster tab='dashboard' />,
             <Cluster tab='settings' />,
             <Cluster tab='configs' />,
-            <Cluster tab='agents' />,
-            <Cluster tab='certificates' />
+            <Cluster tab='agents' />
           ]}
         />
       </Box>

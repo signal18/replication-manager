@@ -342,9 +342,9 @@ function ClusterDetail({ selectedCluster }) {
         body={
           <TableType2
             dataArray={dataObject}
-            className={parentStyles.table}
-            labelClassName={parentStyles.rowLabel}
-            valueClassName={parentStyles.rowValue}
+            className={`${parentStyles.table} ${parentStyles.clusterDetailTable}`}
+            labelClassName={`${parentStyles.rowLabel} ${parentStyles.ClusterDetailRow}`}
+            valueClassName={`${parentStyles.rowValue} ${parentStyles.ClusterDetailRow}`}
           />
         }
         headerAction='menu'
