@@ -10,8 +10,8 @@ import {
   Text
 } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
-import Dropdown from '../Dropdown'
-import TableType4Compare from '../TableType4Compare'
+import Dropdown from '../../Dropdown'
+import TableType4Compare from '../../TableType4Compare'
 import { useSelector } from 'react-redux'
 import {
   getCurrentGtid,
@@ -23,11 +23,12 @@ import {
   getUsingGtid,
   getUsingGtidHeader,
   getVersion
-} from '../../Pages/Dashboard/components/DBServers/utils'
-import CheckOrCrossIcon from '../Icons/CheckOrCrossIcon'
-import DBFlavourIcon from '../Icons/DBFlavourIcon'
-import ServerStatus from '../ServerStatus'
-import RMButton from '../RMButton'
+} from '../../../Pages/Dashboard/components/DBServers/utils'
+import CheckOrCrossIcon from '../../Icons/CheckOrCrossIcon'
+import DBFlavourIcon from '../../Icons/DBFlavourIcon'
+import ServerStatus from '../../ServerStatus'
+import RMButton from '../../RMButton'
+import styles from './styles.module.scss'
 
 function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMariadbGtid, hasMysqlGtid }) {
   const [selectedServer, setSelectedServer] = useState(null)
@@ -192,7 +193,12 @@ function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMari
               />
             </Flex>
           ) : (
-            <Dropdown options={serverOptions} onChange={(server) => setSelectedServer(server.data)} />
+            <Dropdown
+              isMenuPortalTarget={false}
+              options={serverOptions}
+              className={styles.dropdown}
+              onChange={(server) => setSelectedServer(server.data)}
+            />
           )}
         </ModalBody>
       </ModalContent>

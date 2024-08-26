@@ -71,6 +71,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
             <FormControl isInvalid={dbTypeError}>
               <FormLabel htmlFor='username'>Database type</FormLabel>
               <Dropdown
+                isMenuPortalTarget={false}
                 onChange={(option) => {
                   setDbType(option.value)
                 }}

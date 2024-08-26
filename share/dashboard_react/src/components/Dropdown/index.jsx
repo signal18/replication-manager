@@ -13,7 +13,8 @@ function Dropdown({
   className,
   onChange,
   confirmTitle,
-  isSearchable = false
+  isSearchable = false,
+  isMenuPortalTarget = true
 }) {
   const [selectedOption, setSelectedOption] = useState(null)
   const [previousOption, setPreviousOption] = useState(null)
@@ -64,7 +65,7 @@ function Dropdown({
         options={options}
         isSearchable={isSearchable}
         placeholder={placeholder}
-        menuPortalTarget={document.body}
+        {...(isMenuPortalTarget ? { menuPortalTarget: document.body } : {})}
       />
       {isConfirmModalOpen && (
         <ConfirmModal
