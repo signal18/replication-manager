@@ -10,6 +10,7 @@
 package cluster
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,6 +22,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-mysql-org/go-mysql/mysql"
@@ -783,57 +785,177 @@ type LogEvent struct {
 	Query       string
 }
 
-func (server *ServerMonitor) ReadBinaryLogsWithinRange(binlogFile string, startTime, endTime time.Time) ([]LogEvent, error) {
+func (server *ServerMonitor) ReadAndExecBinaryLogsWithinRange(start config.ReadBinaryLogsBoundary, end config.ReadBinaryLogsBoundary, dest *ServerMonitor) error {
 	cluster := server.ClusterGroup
-	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
+	binlogs := server.BinaryLogFiles.GetKeys()
+	readStart := config.ReadBinaryLogsBoundary(start)
+	hasReadOnce := false
 
-	startTimeString := startTime.Format("2006-01-02 15:04:05")
-	endTimeString := endTime.Format("2006-01-02 15:04:05")
-
-	cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", startTimeString, "--stop-datetime", endTimeString, "--base64-output=DECODE-ROWS", "--verbose", binlogFile)
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute mysqlbinlog: %w", err)
-	}
-
-	return parseLogEvents(output)
-}
-
-func parseLogEvents(output []byte) ([]LogEvent, error) {
-	var logEvents []LogEvent
-	var currentEvent LogEvent
-
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "# at ") {
-			if currentEvent.LogPosition != 0 {
-				logEvents = append(logEvents, currentEvent)
+	if end.Filename == "" {
+		for _, key := range binlogs {
+			binlog := server.BinaryLogFiles.Get(key)
+			if binlog.Start <= end.Timestamp.Unix() {
+				end.Filename = binlog.Filename
 			}
-			position, err := strconv.Atoi(strings.TrimPrefix(line, "# at "))
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse log position: %w", err)
-			}
-			currentEvent = LogEvent{LogPosition: position}
-		} else if strings.HasPrefix(line, "/*!") {
-			continue // Skip MySQL-specific version comments
-		} else if strings.HasPrefix(line, "Query: ") {
-			currentEvent.Query = strings.TrimPrefix(line, "Query: ")
-			continue
-		} else if strings.HasPrefix(line, "### INSERT") {
-			currentEvent.EventType = "INSERT"
-			continue
-		} else if strings.HasPrefix(line, "### UPDATE") {
-			currentEvent.EventType = "UPDATE"
-			continue
-		} else if strings.HasPrefix(line, "### DELETE") {
-			currentEvent.EventType = "DELETE"
-			continue
 		}
 	}
 
-	if currentEvent.LogPosition != 0 {
-		logEvents = append(logEvents, currentEvent)
+	if end.Filename == "" {
+		return fmt.Errorf("Last binlog not found")
 	}
 
-	return logEvents, nil
+	if start.Filename == end.Filename {
+		server.GetBinlogPositionFromTimestamp(uint32(start.Position), &end)
+	} else {
+		server.GetBinlogPositionFromTimestamp(4, &end)
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for injecting binary logs on %s until %s pos: %d", dest.URL, end.Filename, end.Position)
+
+	for _, key := range binlogs {
+		binlog := server.BinaryLogFiles.Get(key)
+		//Stop when the filename is bigger than end, or binlog first timestamp is bigger than end timestamp
+		if binlog.Filename > end.Filename {
+			if hasReadOnce {
+				return nil
+			} else {
+				return fmt.Errorf("Oldest binlog filename or timestamp is newer than range end")
+			}
+		}
+
+		if binlog.Filename >= start.Filename {
+			hasReadOnce = true
+			if readStart.Filename != binlog.Filename {
+				readStart.Filename = binlog.Filename
+				if !readStart.UseTimestamp {
+					readStart.Position = 4
+				}
+			}
+
+			err := server.ReadAndApplyBinaryLogsWithinRange(readStart, end, dest)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *config.ReadBinaryLogsBoundary) error {
+	cluster := server.ClusterGroup
+	port, _ := strconv.Atoi(server.Port)
+
+	cfg := replication.BinlogSyncerConfig{
+		ServerID: uint32(cluster.Conf.CheckBinServerId),
+		Flavor:   server.DBVersion.Flavor,
+		Host:     server.Host,
+		Port:     uint16(port),
+		User:     server.User,
+		Password: server.Pass,
+	}
+
+	syncer := replication.NewBinlogSyncer(cfg)
+	defer syncer.Close()
+
+	streamer, err := syncer.StartSync(mysql.Position{Name: end.Filename, Pos: start})
+	if err != nil {
+		return fmt.Errorf("failed to start binlog sync: %v", err)
+	}
+
+	var prevPosition uint32 = start
+	var found bool
+
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		ev, err := streamer.GetEvent(ctx)
+		if err != nil {
+			cancel()
+			return fmt.Errorf("failed to get binlog event: %v", err)
+		}
+
+		// Check if the event timestamp is after the specified timestamp
+		if ev.Header.Timestamp >= uint32(end.Timestamp.Unix()) {
+			if found {
+				cancel()
+				end.Position = int64(prevPosition)
+				return nil
+			}
+			cancel()
+			return fmt.Errorf("timestamp not found in binary log")
+		}
+
+		// Update previous position
+		prevPosition = ev.Header.LogPos
+		found = true
+	}
+}
+
+func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.ReadBinaryLogsBoundary, end config.ReadBinaryLogsBoundary, dest *ServerMonitor) error {
+	cluster := server.ClusterGroup
+	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
+
+	file, err := cluster.CreateTmpClientConfFile()
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file)
+
+	// Base parameters
+	params := make([]string, 0)
+	params = append(params, "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port)
+
+	if start.Position > 0 {
+		params = append(params, "--start-position="+strconv.FormatInt(start.Position, 10))
+	}
+
+	if start.Filename == end.Filename && end.Position > 0 {
+		params = append(params, "--stop-position="+strconv.FormatInt(end.Position, 10))
+	}
+
+	// Binlog filename parameter
+	params = append(params, "--verbose", start.Filename)
+
+	binlogCmd := exec.Command(cluster.GetMysqlBinlogPath(), params...)
+
+	stderrIn, _ := binlogCmd.StderrPipe()
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
+	stderrOut, _ := clientCmd.StderrPipe()
+
+	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.ReplaceAll(binlogCmd.String(), cluster.GetRplPass(), "XXXX"))
+
+	iodumpreader, _ := binlogCmd.StdoutPipe()
+	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), iodumpreader)
+
+	/*clientCmd.Stdin, err = dumpCmd.StdoutPipe()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask,config.LvlErr, "Failed opening pipe: %s", err)
+		return err
+	}*/
+	if err := binlogCmd.Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(binlogCmd.String(), cluster.GetDbPass(), "XXXX", -1))
+		return err
+	}
+	if err := clientCmd.Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't start mysql client:%s at %s", err, strings.Replace(clientCmd.String(), cluster.GetDbPass(), "XXXX", -1))
+		return err
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
+	}()
+	go func() {
+		defer wg.Done()
+		dest.copyLogs(stderrOut, config.ConstLogModBackupStream, config.LvlDbg)
+	}()
+
+	wg.Wait()
+
+	binlogCmd.Wait()
+
+	return nil
 }

@@ -9,6 +9,7 @@ app.directive('flatpickr', function($timeout) {
 
             function initFlatpickr() {
                 var options = {
+                    time_24hr : true,
                     static: attrs.flatpickrStatic === 'true',
                     enableTime: attrs.flatpickrEnableTime === 'true',
                     dateFormat: attrs.flatpickrDateFormat || "Y-m-d H:i:S",
@@ -43,7 +44,7 @@ app.directive('flatpickr', function($timeout) {
                 scope.$watch(attrs.flatpickrMaxDate, debounce(function(newValue) {
                     let maxDate;
                     if (newValue === 'now') {
-                        maxDate = new Date();
+                        maxDate = parseDate();
                     } else if (newValue) {
                         maxDate = parseDate(newValue, attrs.flatpickrMaxDateType || 'datetime');
                     }
@@ -56,14 +57,18 @@ app.directive('flatpickr', function($timeout) {
             }
 
             function parseDate(value, type) {
+                let ms;
                 switch (type) {
                     case 'unix':
-                        return new Date(parseInt(value) * 1000); // Unix timestamp in seconds
+                        ms = Math.floor(parseInt(value) * 1000 + (new Date().getTimezoneOffset()*60000))
+                        return new Date(ms); // Unix timestamp in seconds
                     case 'unix-ms':
-                        return new Date(parseInt(value)); // Unix timestamp in milliseconds
+                        ms = Math.floor(parseInt(value) + (new Date().getTimezoneOffset()*60000))
+                        return new Date(parseInt(ms)); // Unix timestamp in milliseconds
                     case 'datetime':
                     default:
-                        return new Date(value); // ISO 8601 or Date string
+                        let tmp = new Date(value)
+                        return new Date(Math.floor(tmp.getTime() + (tmp.getTimezoneOffset()*60000))); // ISO 8601 or Date string
                 }
             }
 

@@ -62,3 +62,15 @@ func (bm *BackupMetadata) GetSize() error {
 	bm.Size = size
 	return err
 }
+
+type ReadBinaryLogsBoundary struct {
+	UseTimestamp bool
+	Filename     string
+	Position     int64
+	Timestamp    time.Time
+}
+
+type ReadBinaryLogsRange struct {
+	Start ReadBinaryLogsBoundary
+	End   ReadBinaryLogsBoundary
+}
