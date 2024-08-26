@@ -8,6 +8,7 @@ export const clusterService = {
   getClusterMaster,
   getClusterServers,
   getClusterProxies,
+  getClusterCertificates,
   //cluster apis
   switchOverCluster,
   failOverCluster,
@@ -96,6 +97,10 @@ function getClusterServers(clusterName) {
 
 function getClusterProxies(clusterName) {
   return getRequest(`clusters/${clusterName}/topology/proxies`)
+}
+
+function getClusterCertificates(clusterName) {
+  return getRequest(`clusters/${clusterName}/certificates`)
 }
 
 function switchOverCluster(clusterName) {

@@ -201,14 +201,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
   ]
   return (
     <VStack>
-      <TableType2
-        dataArray={dataObject}
-        className={parentStyles.table}
-        labelClassName={parentStyles.label}
-        valueClassName={parentStyles.value}
-        rowDivider={true}
-        rowClassName={parentStyles.row}
-      />
+      <TableType2 dataArray={dataObject} className={parentStyles.table} />
     </VStack>
   )
 }

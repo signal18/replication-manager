@@ -58,7 +58,13 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMen
               </Flex>
 
               <Flex direction='column' width='100%' mb={2} gap='0'>
-                <TableType2 dataArray={proxyData} templateColumns='30% auto' />
+                <TableType2
+                  dataArray={proxyData}
+                  templateColumns='30% auto'
+                  className={styles.table}
+                  labelClassName={styles.rowLabel}
+                  valueClassName={styles.rowValue}
+                />
                 {readWriteData?.map((object) => {
                   const readWriteTableData = [
                     {
@@ -97,7 +103,15 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMen
                       }
                       headerClassName={styles.accordionHeader}
                       panelClassName={styles.accordionPanel}
-                      body={<TableType2 dataArray={readWriteTableData} templateColumns='30% auto' />}
+                      body={
+                        <TableType2
+                          dataArray={readWriteTableData}
+                          templateColumns='30% auto'
+                          className={styles.table}
+                          labelClassName={styles.rowLabel}
+                          valueClassName={styles.rowValue}
+                        />
+                      }
                     />
                   )
                 })}

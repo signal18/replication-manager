@@ -1,9 +1,22 @@
 .cardWrapper {
   margin-top: rem(16);
-  .card {
-    width: rem(400);
-    .heading {
-      padding: rem(4) 0;
+
+  .table {
+    margin-top: 0;
+    .rowLabel,
+    .rowValue {
+      padding-top: rem(8) !important;
+      padding-bottom: rem(8) !important;
     }
+    .rowLabel {
+      background-color: var(--quaternary-color);
+    }
+  }
+}
+
+.card {
+  width: rem(400);
+  .heading {
+    padding: rem(4) 0;
   }
 }

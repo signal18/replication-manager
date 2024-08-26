@@ -336,14 +336,7 @@ function DBConfigs({ selectedCluster, user }) {
 
   return (
     <VStack>
-      <TableType2
-        dataArray={dataObject}
-        className={styles.table}
-        labelClassName={styles.label}
-        valueClassName={styles.value}
-        rowDivider={true}
-        rowClassName={styles.row}
-      />
+      <TableType2 dataArray={dataObject} className={styles.table} />
       {user?.grants['db-config-flag'] && (
         <HStack className={styles.configTagContainer}>
           <VStack className={styles.availableTags}>
@@ -358,7 +351,7 @@ function DBConfigs({ selectedCluster, user }) {
                   body={
                     <HStack className={styles.tags}>
                       {tagData.value.map((tag) => {
-                        const isAdded = usingDBServerTags.find((x) => x.name === tag.name)
+                        const isAdded = usingDBServerTags?.find((x) => x?.name === tag.name)
                         if (isAdded) {
                           return null
                         }

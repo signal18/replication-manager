@@ -33,7 +33,6 @@ function ProxyConfig({ selectedCluster, user }) {
     setConfirmHandler(null)
   }
 
-
   const dataObject = [
     ...(user?.grants['proxy-config-flag']
       ? [
@@ -182,14 +181,7 @@ function ProxyConfig({ selectedCluster, user }) {
   ]
   return (
     <VStack>
-      <TableType2
-        dataArray={dataObject}
-        className={styles.table}
-        labelClassName={styles.label}
-        valueClassName={styles.value}
-        rowDivider={true}
-        rowClassName={styles.row}
-      />
+      <TableType2 dataArray={dataObject} className={styles.table} />
 
       {isConfirmModalOpen && (
         <ConfirmModal

@@ -1,0 +1,26 @@
+.table {
+  margin-top: 0;
+  .rowLabel,
+  .rowValue {
+    padding-top: rem(2) !important;
+    padding-bottom: rem(2) !important;
+  }
+  .rowLabel {
+    background-color: var(--quaternary-color);
+    &.red {
+      background-color: var(--danger-tertiary-color) !important;
+    }
+    &.orange {
+      background-color: var(--warning-tertiary-color) !important;
+    }
+  }
+}
+
+.clusterDetailHeader {
+  width: 100%;
+  padding: 0 rem(8);
+  align-items: center;
+  .title {
+    color: var(--white-color);
+  }
+}

@@ -104,10 +104,18 @@ function ClusterList({ onClick }) {
               width={'400px'}
               header={
                 <HStack className={styles.heading}>
-                  <CustomIcon icon={AiOutlineCluster} /> <span>{clusterItem.name}</span>
+                  <CustomIcon icon={AiOutlineCluster} />{' '}
+                  <span className={styles.cardHeaderText}>{clusterItem.name}</span>
                 </HStack>
               }
-              body={<TableType2 dataArray={dataObject} />}
+              body={
+                <TableType2
+                  dataArray={dataObject}
+                  className={styles.table}
+                  labelClassName={styles.rowLabel}
+                  valueClassName={styles.rowValue}
+                />
+              }
             />
           </Box>
         )

@@ -212,14 +212,7 @@ function OrchestratorImages({ selectedCluster, user }) {
         <TagPill colorScheme={'green'} text={selectedCluster?.config?.provSphinxDockerImg} />
         <TagPill colorScheme={'green'} text={selectedCluster?.config?.provProxyDockerShardproxyImg} />
       </HStack>
-      <TableType2
-        dataArray={dataObject}
-        className={parentStyles.table}
-        labelClassName={parentStyles.label}
-        valueClassName={parentStyles.value}
-        rowDivider={true}
-        rowClassName={parentStyles.row}
-      />
+      <TableType2 dataArray={dataObject} className={parentStyles.table} />
     </VStack>
   )
 }

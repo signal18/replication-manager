@@ -128,14 +128,7 @@ function GraphSettings({ selectedCluster, user, openConfirmModal }) {
 
   return (
     <Flex justify='space-between' gap='0'>
-      <TableType2
-        dataArray={dataObject}
-        className={styles.table}
-        labelClassName={styles.label}
-        valueClassName={styles.value}
-        rowDivider={true}
-        rowClassName={styles.row}
-      />
+      <TableType2 dataArray={dataObject} className={styles.table} />
     </Flex>
   )
 }

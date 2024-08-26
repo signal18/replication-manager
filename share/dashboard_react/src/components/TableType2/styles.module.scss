@@ -1,9 +1,12 @@
 .container {
   font-size: rem(15);
-  gap: rem(4);
-  padding: rem(2);
+  gap: 0;
+  padding: 0;
   margin-top: rem(4);
   width: 100%;
+  .row {
+    height: 100%;
+  }
   .label,
   .value {
     padding: rem(4);
@@ -12,8 +15,11 @@
     align-items: center;
   }
   .label {
-    font-weight: 500;
     text-align: start;
+    font-weight: 600;
+    background-color: var(--tertiary-color);
+    height: 100%;
+    padding-left: rem(16);
   }
   .subLabel {
     padding-left: rem(32);
@@ -21,9 +27,10 @@
   }
   .value {
     text-align: start;
-    background-color: var(--secondary-gray-color);
     border-radius: rem(6);
     min-height: rem(24);
+    background-color: transparent;
+    padding-left: rem(16);
   }
   .dividerRow {
     display: none;

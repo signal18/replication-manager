@@ -7,6 +7,7 @@ import ClusterList from '../ClusterList'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   getClusterAlerts,
+  getClusterCertificates,
   getClusterData,
   getClusterMaster,
   getClusterProxies,
@@ -66,6 +67,9 @@ function Home() {
         dispatch(getClusterServers({ clusterName: selectedClusterNameRef.current }))
         dispatch(getClusterProxies({ clusterName: selectedClusterNameRef.current }))
       }
+      if (selectedTabRef.current === 5) {
+        dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
+      }
     }
   }
   const handleTabChange = (tabIndex) => {
@@ -95,7 +99,8 @@ function Home() {
             <Cluster tab='dashboard' />,
             <Cluster tab='settings' />,
             <Cluster tab='configs' />,
-            <Cluster tab='agents' />
+            <Cluster tab='agents' />,
+            <Cluster tab='certificates' />
           ]}
         />
       </Box>

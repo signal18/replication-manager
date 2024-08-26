@@ -2,6 +2,7 @@ import React, { lazy, useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import Dashboard from './Dashboard'
 import Agents from './Agents'
+import Certificates from './Certificates'
 const Configs = lazy(() => import('./Configs'))
 const Settings = lazy(() => import('./Settings'))
 
@@ -34,6 +35,8 @@ function Cluster({ tab }) {
     <Agents selectedCluster={clusterData} user={user} />
   ) : currentTab === 'configs' ? (
     <Configs selectedCluster={clusterData} user={user} />
+  ) : currentTab === 'certificates' ? (
+    <Certificates selectedCluster={clusterData} user={user} />
   ) : null
 }
 
