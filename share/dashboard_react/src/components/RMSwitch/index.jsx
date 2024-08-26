@@ -10,7 +10,7 @@ function RMSwitch({
   isChecked,
   size = 'md',
   isDisabled,
-  onConfirm,
+  onChange,
   confirmTitle,
   loading
 }) {
@@ -25,7 +25,11 @@ function RMSwitch({
 
   const handleChange = (e) => {
     setCurrentValue(e.target.checked)
-    openConfirmModal()
+    if (confirmTitle) {
+      openConfirmModal()
+    } else {
+      onChange(e.target.checked)
+    }
   }
 
   const openConfirmModal = () => {
@@ -53,7 +57,7 @@ function RMSwitch({
           }}
           title={confirmTitle}
           onConfirmClick={() => {
-            onConfirm(currentValue)
+            onChange(currentValue)
             closeConfirmModal('')
           }}
         />

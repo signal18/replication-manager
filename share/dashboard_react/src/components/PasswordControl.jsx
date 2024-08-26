@@ -10,7 +10,7 @@ import {
   Input
 } from '@chakra-ui/react'
 import { HiEye, HiEyeOff } from 'react-icons/hi'
-import IconButton from './IconButton'
+import RMIconButton from './RMIconButton'
 
 const PasswordControl = forwardRef((props, ref) => {
   const { isOpen, onToggle } = useDisclosure()
@@ -29,7 +29,7 @@ const PasswordControl = forwardRef((props, ref) => {
       <FormLabel htmlFor='password'>Password</FormLabel>
       <InputGroup>
         <InputRightElement>
-          <IconButton
+          <RMIconButton
             className={props.className}
             variant='text'
             aria-label={isOpen ? 'Mask password' : 'Reveal password'}

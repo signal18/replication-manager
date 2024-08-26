@@ -1,0 +1,38 @@
+.stepButtons {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+
+  .decreaseButton {
+    color: var(--danger-primary-color);
+    box-shadow: 0 1px 2px 0 var(--danger-primary-color);
+  }
+  .increaseButton {
+    color: var(--success-primary-color);
+    box-shadow: 0 1px 2px 0 var(--success-primary-color);
+  }
+}
+.container {
+  position: relative;
+  display: inline-block;
+  .gauge {
+    height: 100%;
+  }
+  .textOverlay {
+    position: absolute;
+    bottom: rem(-20);
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+
+    .valueText {
+      display: block;
+      font-size: rem(15);
+    }
+    .labelText {
+      display: block;
+      font-size: rem(12);
+      font-weight: 500;
+    }
+  }
+}

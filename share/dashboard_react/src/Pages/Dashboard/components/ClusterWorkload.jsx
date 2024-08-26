@@ -26,9 +26,9 @@ function ClusterWorkload({ workload }) {
               key={index}
               value={type.value}
               text={type.key}
-              width={210}
+              width={150}
               height={90}
-              containerSx={{ flexBasis: 1 / 6 }}
+              className={{ flexBasis: 1 / 6 }}
             />
           )
         })}

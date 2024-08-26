@@ -4,7 +4,7 @@ import { HiViewGrid } from 'react-icons/hi'
 import { DataTable } from '../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
 import ServerMenu from './ServerMenu'
-import DBServersGrid from './DBServerGrid'
+import DBServerGrid from '../DBServers/DBServerGrid'
 import CompareModal from '../../../../components/Modals/CompareModal'
 import { getCurrentGtid, getDelay, getFailCount, getSlaveGtid, getUsingGtid } from './utils'
 import CheckOrCrossIcon from '../../../../components/Icons/CheckOrCrossIcon'
@@ -12,7 +12,7 @@ import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
 import ServerName from './ServerName'
 import GTID from '../../../../components/GTID'
 import ServerStatus from '../../../../components/ServerStatus'
-import IconButton from '../../../../components/IconButton'
+import RMIconButton from '../../../../components/RMIconButton'
 import { useColorMode } from '@chakra-ui/react'
 
 function DBServers({ selectedCluster, user }) {
@@ -81,7 +81,7 @@ function DBServers({ selectedCluster, user }) {
           cell: (info) => info.getValue(),
           id: 'options',
           header: () => {
-            return <IconButton onClick={showGridView} icon={HiViewGrid} tooltip='Show grid view' />
+            return <RMIconButton onClick={showGridView} icon={HiViewGrid} tooltip='Show grid view' />
           }
         }
       ),
@@ -219,7 +219,7 @@ function DBServers({ selectedCluster, user }) {
       {viewType === 'table' ? (
         <DataTable data={data} columns={columns} />
       ) : (
-        <DBServersGrid
+        <DBServerGrid
           allDBServers={data}
           clusterMasterId={clusterMaster?.id}
           clusterName={selectedCluster?.name}

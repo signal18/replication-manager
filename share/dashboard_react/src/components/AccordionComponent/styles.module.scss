@@ -27,4 +27,8 @@
     border: 1px solid;
     border-color: var(--tertiary-color);
   }
+
+  div[class*='chakra-collapse'] {
+    overflow: visible !important;
+  }
 }

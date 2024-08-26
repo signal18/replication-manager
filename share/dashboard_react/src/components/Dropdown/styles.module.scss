@@ -1,6 +1,6 @@
 .menuButton {
-  height: fit-content;
-  padding: rem(16);
+  height: rem(40);
+  padding: rem(8);
   white-space: break-spaces;
   background-color: var(--quaternary-color) !important;
   box-shadow: $box-shadow-md;
@@ -9,15 +9,53 @@
   &[data-active] {
     background-color: var(--quaternary-color);
   }
+
+  .inlineLabelValue {
+    display: flex;
+    justify-content: space-between;
+    .inlineLabel {
+      font-weight: 300;
+      font-size: rem(14);
+    }
+  }
 }
-button.lightMenuItem,
-button.darkMenuItem {
-  width: 100%;
-}
-.lightMenuItem {
-  background-color: var(--white-color);
+.lightMenuItem,
+.darkMenuItem {
+  width: 100% !important;
+  &:hover,
+  &:active {
+    background-color: var(--gray-color);
+  }
 }
 
-.darkMenuItem {
-  background-color: var(--gray-color);
+.selectFormContainer {
+  align-items: center;
+  gap: rem(8);
+  .label {
+    font-weight: bold;
+  }
+
+  .select {
+    width: rem(150);
+    div[class*='rm-select__control'] {
+      &:focus,
+      &:hover,
+      &:focus-visible {
+        border-color: var(--secondary-color) !important;
+      }
+    }
+    div[class*='rm-select__menu'] {
+      div[class*='rm-select__option'] {
+        &:hover {
+          background-color: var(--quaternary-color);
+        }
+      }
+      div[class*='rm-select__option--is-selected'] {
+        background-color: var(--secondary-color);
+        &:hover {
+          background-color: var(--secondary-color);
+        }
+      }
+    }
+  }
 }

@@ -10,12 +10,13 @@ function AccordionComponent({
   headerClassName,
   panelClassName,
   isOpen = null,
+  allowToggle = true,
   onToggle
 }) {
   return (
     <Accordion
       className={className}
-      allowToggle={true}
+      allowToggle={allowToggle}
       sx={sx}
       defaultIndex={0}
       {...(isOpen !== null ? { index: isOpen ? [0] : [] } : {})}>
@@ -27,7 +28,7 @@ function AccordionComponent({
             <Box as='h4' flex='1' textAlign='left'>
               {heading}
             </Box>
-            <AccordionIcon className={styles.icon} />
+            {allowToggle && <AccordionIcon className={styles.icon} />}
           </AccordionButton>
         </h2>
         <AccordionPanel className={`${styles.panel} ${panelClassName}`}>{body}</AccordionPanel>

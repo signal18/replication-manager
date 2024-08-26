@@ -55,7 +55,7 @@ function HADetail({ selectedCluster }) {
     }
     closeModal()
   }
-  console.log('clusterMaster?.state::', clusterMaster?.state)
+
   return (
     <>
       <Card
@@ -71,7 +71,7 @@ function HADetail({ selectedCluster }) {
         body={
           <Grid
             {...(isDesktop ? { templateColumns: 'repeat(2, 1fr)' } : { templateRows: 'repeat(2, 1fr)' })}
-            columnGap={2}>
+            columnGap={1}>
             <GridItem>
               <Text className={styles.headerColumn}>Failover</Text>
               <TableType1 dataArray={failOverData} />

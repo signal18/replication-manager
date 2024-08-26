@@ -33,7 +33,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for monitoring-save-config?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-save-config' }))
               }
               isDisabled={user?.grants['cluster-settings'] == false}
@@ -47,7 +47,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <RMSwitch
               confirmTitle={'Confirm switch settings for monitoring-pause?'}
-              onConfirm={() =>
+              onChange={() =>
                 dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-pause' }))
               }
               isDisabled={user?.grants['cluster-settings'] == false}
@@ -67,7 +67,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           </Text>
           <RMSwitch
             confirmTitle={'Confirm switch settings for monitoring-capture?'}
-            onConfirm={() =>
+            onChange={() =>
               dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-capture' }))
             }
             isDisabled={user?.grants['cluster-settings'] == false}
@@ -126,7 +126,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-schema-change?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-change' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}
@@ -140,7 +140,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-innodb-status?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-innodb-status' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}
@@ -154,7 +154,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-variable-diff?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-variable-diff' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}
@@ -168,7 +168,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for monitoring-processlist?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-processlist' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}

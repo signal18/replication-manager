@@ -1,6 +1,6 @@
 import { Flex, SimpleGrid, Spacer, Tooltip, useColorMode, VStack, Text, Box } from '@chakra-ui/react'
 import React from 'react'
-import ProxyMenu from './ProxyMenu'
+import ProxyMenu from '../Proxies/ProxyMenu'
 import { HiTable } from 'react-icons/hi'
 import ProxyLogo from './ProxyLogo'
 import TableType2 from '../../../../components/TableType2'
@@ -8,7 +8,7 @@ import AccordionComponent from '../../../../components/AccordionComponent'
 import ProxyStatus from './ProxyStatus'
 import ServerStatus from '../../../../components/ServerStatus'
 import TagPill from '../../../../components/TagPill'
-import IconButton from '../../../../components/IconButton'
+import RMIconButton from '../../../../components/RMIconButton'
 
 function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop }) {
   const { colorMode } = useColorMode()
@@ -51,6 +51,7 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop }) {
     <SimpleGrid columns={{ base: 1, sm: 1, md: 2, lg: 3 }} spacing={2} spacingY={6} spacingX={6} marginTop='4px'>
       {proxies?.length > 0 &&
         proxies.map((rowData) => {
+          console.log('rowdata::', rowData)
           const proxyData = [
             {
               key: 'Id',
@@ -80,7 +81,7 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop }) {
                 <Text margin='auto' w='100%'>{`${rowData.host}:${rowData.port}`}</Text>
                 <Spacer />
 
-                <IconButton icon={HiTable} onClick={showTableView} marginRight={2} tooltip='Show table view' />
+                <RMIconButton icon={HiTable} onClick={showTableView} marginRight={2} tooltip='Show table view' />
 
                 <ProxyMenu from='gridView' row={rowData} clusterName={clusterName} isDesktop={isDesktop} user={user} />
               </Flex>
@@ -96,6 +97,10 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop }) {
                 />
                 {readWriteData?.map((object) => {
                   const readWriteTableData = [
+                    {
+                      key: 'Proxy Address',
+                      value: `${rowData.host}:${object.data.port}`
+                    },
                     {
                       key: 'PX Status',
                       value: object.data.prxStatus

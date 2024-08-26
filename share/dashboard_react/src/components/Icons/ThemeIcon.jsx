@@ -1,12 +1,12 @@
 import { HiMoon, HiSun } from 'react-icons/hi'
 import { useTheme } from '../../ThemeProvider'
-import IconButton from '../IconButton'
+import RMIconButton from '../RMIconButton'
 
 function ThemeIcon() {
   const { theme, toggleTheme } = useTheme()
 
   return theme === 'light' ? (
-    <IconButton
+    <RMIconButton
       style={{ backgroundColor: 'transparent' }}
       onClick={toggleTheme}
       icon={HiMoon}
@@ -15,7 +15,7 @@ function ThemeIcon() {
       tooltip='Switch to dark mode'
     />
   ) : (
-    <IconButton
+    <RMIconButton
       style={{ backgroundColor: 'transparent' }}
       onClick={toggleTheme}
       icon={HiSun}
