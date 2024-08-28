@@ -267,6 +267,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.IsGroupReplicationSlave = false
 	server.IsGroupReplicationMaster = false
 	server.JobResults = config.NewTasksMap()
+	server.LastBackupMeta.Physical = new(config.BackupMetadata)
+	server.LastBackupMeta.Logical = new(config.BackupMetadata)
 	server.BinaryLogMetaToWrite = make([]string, 0)
 	server.BinaryLogMetaToRemove = make([]string, 0)
 	server.NeedRefreshJobs = true
