@@ -6,7 +6,7 @@ import TableType2 from '../../../components/TableType2'
 import parentStyles from '../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
 import { setSetting, switchSetting } from '../../../redux/settingsSlice'
-import { convertObjectToArray } from '../../../utility/common'
+import { convertObjectToArrayForDropdown } from '../../../utility/common'
 import RMSwitch from '../../../components/RMSwitch'
 
 function OrchestratorDbVM({ selectedCluster, user }) {
@@ -18,7 +18,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
 
   useEffect(() => {
     if (monitor?.serviceVM) {
-      setServiceVMs(convertObjectToArray(monitor.serviceVM))
+      setServiceVMs(convertObjectToArrayForDropdown(monitor.serviceVM))
     }
   }, [monitor?.serviceVM])
 

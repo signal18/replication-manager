@@ -44,6 +44,7 @@ export function DataTable({
               return (
                 <Th
                   maxWidth={header.column.columnDef.maxWidth}
+                  minWidth={header.column.columnDef.minWidth}
                   className={`${styles.tableHeader} ${index === fixedColumnIndex && styles.fixedColumn}`}
                   key={header.id}
                   {...(enableSorting ? { onClick: header.column.getToggleSortingHandler() } : {})}

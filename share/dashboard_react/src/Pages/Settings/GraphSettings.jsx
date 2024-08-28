@@ -7,7 +7,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting, updateGraphiteBlackList, updateGraphiteWhiteList } from '../../redux/settingsSlice'
 import Dropdown from '../../components/Dropdown'
-import { convertObjectToArray } from '../../utility/common'
+import { convertObjectToArrayForDropdown } from '../../utility/common'
 import RegexText from './RegexText'
 
 function GraphSettings({ selectedCluster, user, openConfirmModal }) {
@@ -18,7 +18,7 @@ function GraphSettings({ selectedCluster, user, openConfirmModal }) {
   } = useSelector((state) => state)
   useEffect(() => {
     if (monitor?.graphiteTemplateList) {
-      setGraphiteTemplateOptions(convertObjectToArray(monitor.graphiteTemplateList))
+      setGraphiteTemplateOptions(convertObjectToArrayForDropdown(monitor.graphiteTemplateList))
     }
   }, [monitor?.graphiteTemplateList])
 

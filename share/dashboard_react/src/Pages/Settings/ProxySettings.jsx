@@ -159,7 +159,7 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
-                setting: 'proxy-servers-backend-max-replication-lag',
+                setting: 'proxy-servers-backend-max-connections',
                 value: val
               })
             )

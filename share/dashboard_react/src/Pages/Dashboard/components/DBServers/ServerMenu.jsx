@@ -33,6 +33,8 @@ import { useState, useEffect } from 'react'
 function ServerMenu({
   clusterName,
   clusterMasterId,
+  backupPhysicalType,
+  backupLogicalType,
   row,
   user,
   isDesktop,
@@ -138,7 +140,7 @@ function ServerMenu({
                       name: 'Physical Backup',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm master physical (xtrabackup compressed) backup?`)
+                        setConfirmTitle(`Confirm master physical (${backupPhysicalType}) backup?`)
                         setConfirmHandler(() => () => dispatch(physicalBackupMaster({ clusterName, serverId: row.id })))
                       }
                     },
@@ -146,7 +148,7 @@ function ServerMenu({
                       name: 'Logical Backup',
                       onClick: () => {
                         openConfirmModal()
-                        setConfirmTitle(`Confirm sending logical backup (mysqldump) for ${serverName}?`)
+                        setConfirmTitle(`Confirm sending logical backup (${backupLogicalType}) for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(logicalBackup({ clusterName, serverId: row.id })))
                       }
                     }
@@ -157,7 +159,9 @@ function ServerMenu({
                         name: 'Reseed Logical From Backup',
                         onClick: () => {
                           openConfirmModal()
-                          setConfirmTitle(`Confirm reseed with logical backup (mysqldump) for ${serverName}?`)
+                          setConfirmTitle(
+                            `Confirm reseed with logical backup (${backupLogicalType}) for ${serverName}?`
+                          )
                           setConfirmHandler(
                             () => () => dispatch(reseedLogicalFromBackup({ clusterName, serverId: row.id }))
                           )
@@ -167,7 +171,7 @@ function ServerMenu({
                         name: 'Reseed Logical From Master',
                         onClick: () => {
                           openConfirmModal()
-                          setConfirmTitle(`Confirm reseed with mysqldump for ${serverName}?`)
+                          setConfirmTitle(`Confirm reseed with ${backupLogicalType} for ${serverName}?`)
                           setConfirmHandler(
                             () => () => dispatch(reseedLogicalFromMaster({ clusterName, serverId: row.id }))
                           )
@@ -178,7 +182,7 @@ function ServerMenu({
                         onClick: () => {
                           openConfirmModal()
                           setConfirmTitle(
-                            `Confirm reseed with physical backup (xtrabackup compressed) for ${serverName}?`
+                            `Confirm reseed with physical backup (${backupPhysicalType}) for ${serverName}?`
                           )
                           setConfirmHandler(
                             () => () => dispatch(reseedPhysicalFromBackup({ clusterName, serverId: row.id }))

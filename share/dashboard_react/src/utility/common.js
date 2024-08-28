@@ -44,9 +44,15 @@ export const handleError = (error, thunkAPI) => {
   return thunkAPI.rejectWithValue({ errorMessage, errorStatus }) // Pass the entire Error object to the rejected action
 }
 
-export const convertObjectToArray = (inputObject) => {
+export const convertObjectToArrayForDropdown = (inputObject) => {
   return Object.keys(inputObject).map((key) => {
     return { name: key, value: key }
+  })
+}
+
+export const convertObjectToArray = (inputObject) => {
+  return Object.keys(inputObject).map((key) => {
+    return inputObject[key]
   })
 }
 
@@ -59,7 +65,6 @@ export const getDaysInMonth = (month, year = new Date().getFullYear()) => {
   date.setDate(0)
   // Get the number of days in the month
   const daysInMonth = date.getDate()
-  console.log('daysInMonth::', month)
 
   // Create an array with the days of the month
   return Array.from({ length: daysInMonth }, (_, i) => {
@@ -100,4 +105,45 @@ export const getOrdinalSuffix = (n) => {
   const s = ['th', 'st', 'nd', 'rd']
   const v = n % 100
   return n + (s[(v - 20) % 10] || s[v] || s[0])
+}
+
+export const getBackupMethod = (methodId) => {
+  switch (methodId) {
+    case 1:
+      return 'Logical'
+    case 2:
+      return 'Physical'
+    default:
+      return 'Unknown'
+  }
+}
+
+export const getBackupStrategy = (strategyId) => {
+  switch (strategyId) {
+    case 1:
+      return 'Full'
+    case 2:
+      return 'Incremental'
+    case 3:
+      return 'Differential'
+    default:
+      return 'Unknown'
+  }
+}
+
+export const formatDate = (date, format) => {
+  if (typeof date === 'string') {
+    date = new Date(date)
+  }
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0') // Months are zero-based
+  const day = String(date.getDate()).padStart(2, '0')
+
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+  // if (format === 'YYYY-MM-DD HH:MI:SS') {
+  //   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+  // }
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }

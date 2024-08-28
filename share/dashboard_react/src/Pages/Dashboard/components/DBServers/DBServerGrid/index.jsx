@@ -29,10 +29,12 @@ import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
 import parentStyles from '../../../styles.module.scss'
 
-function DBServersGrid({
+function DBServerGrid({
   allDBServers,
   clusterMasterId,
   clusterName,
+  backupPhysicalType,
+  backupLogicalType,
   user,
   showTableView,
   openCompareModal,
@@ -146,6 +148,8 @@ function DBServersGrid({
                   clusterMasterId={clusterMasterId}
                   row={rowData}
                   clusterName={clusterName}
+                  backupLogicalType={backupLogicalType}
+                  backupPhysicalType={backupPhysicalType}
                   isDesktop={isDesktop}
                   user={user}
                   openCompareModal={openCompareModal}
@@ -391,4 +395,4 @@ function DBServersGrid({
   )
 }
 
-export default DBServersGrid
+export default DBServerGrid

@@ -8,7 +8,7 @@ import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import RMSlider from '../../components/Sliders/RMSlider'
 import Dropdown from '../../components/Dropdown'
-import { convertObjectToArray, formatBytes } from '../../utility/common'
+import { convertObjectToArrayForDropdown, formatBytes } from '../../utility/common'
 import TextForm from '../../components/TextForm'
 
 function BackupSettings({ selectedCluster, user, openConfirmModal }) {
@@ -36,16 +36,16 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
 
   useEffect(() => {
     if (monitor?.backupBinlogList) {
-      setBinlogBackupOptions(convertObjectToArray(monitor.backupBinlogList))
+      setBinlogBackupOptions(convertObjectToArrayForDropdown(monitor.backupBinlogList))
     }
     if (monitor?.backupLogicalList) {
-      setLogicalBackupOptions(convertObjectToArray(monitor.backupLogicalList))
+      setLogicalBackupOptions(convertObjectToArrayForDropdown(monitor.backupLogicalList))
     }
     if (monitor?.backupPhysicalList) {
-      setPhysicalBackupOptions(convertObjectToArray(monitor.backupPhysicalList))
+      setPhysicalBackupOptions(convertObjectToArrayForDropdown(monitor.backupPhysicalList))
     }
     if (monitor?.binlogParseList) {
-      setBinlogParseOptions(convertObjectToArray(monitor.binlogParseList))
+      setBinlogParseOptions(convertObjectToArrayForDropdown(monitor.binlogParseList))
     }
   }, [monitor?.backupBinlogList, monitor?.backupLogicalList, monitor?.backupPhysicalList, monitor?.binlogParseList])
 

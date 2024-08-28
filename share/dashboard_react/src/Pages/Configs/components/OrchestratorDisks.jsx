@@ -5,7 +5,7 @@ import TableType2 from '../../../components/TableType2'
 import parentStyles from '../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
 import { setSetting } from '../../../redux/settingsSlice'
-import { convertObjectToArray } from '../../../utility/common'
+import { convertObjectToArrayForDropdown } from '../../../utility/common'
 import TextForm from '../../../components/TextForm'
 
 function OrchestratorDisks({ selectedCluster, user }) {
@@ -19,13 +19,13 @@ function OrchestratorDisks({ selectedCluster, user }) {
 
   useEffect(() => {
     if (monitor?.serviceDisk) {
-      setServiceDisks(convertObjectToArray(monitor.serviceDisk))
+      setServiceDisks(convertObjectToArrayForDropdown(monitor.serviceDisk))
     }
     if (monitor?.serviceFS) {
-      setServiceFS(convertObjectToArray(monitor.serviceFS))
+      setServiceFS(convertObjectToArrayForDropdown(monitor.serviceFS))
     }
     if (monitor?.servicePool) {
-      setServicePool(convertObjectToArray(monitor.servicePool))
+      setServicePool(convertObjectToArrayForDropdown(monitor.servicePool))
     }
   }, [monitor?.serviceDisk, monitor?.serviceFS, monitor?.servicePool])
 

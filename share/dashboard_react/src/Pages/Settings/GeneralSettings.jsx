@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 import Dropdown from '../../components/Dropdown'
-import { convertObjectToArray } from '../../utility/common'
+import { convertObjectToArrayForDropdown } from '../../utility/common'
 import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { changeTopology, switchSetting } from '../../redux/settingsSlice'
@@ -24,7 +24,7 @@ function GeneralSettings({ selectedCluster, user }) {
 
   useEffect(() => {
     if (selectedCluster?.topologyType) {
-      setTopologyOptions(convertObjectToArray(selectedCluster.topologyType))
+      setTopologyOptions(convertObjectToArrayForDropdown(selectedCluster.topologyType))
     }
   }, [selectedCluster?.topologyType])
 

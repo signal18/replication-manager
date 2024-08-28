@@ -1,0 +1,18 @@
+.accordionPanel {
+  overflow: auto !important;
+}
+.table {
+  font-size: rem(14);
+  th {
+    padding-top: rem(8);
+    padding-bottom: rem(8);
+  }
+
+  .cellStack {
+    align-items: flex-start;
+  }
+  .cellValue {
+    white-space: nowrap;
+    text-align: start;
+  }
+}

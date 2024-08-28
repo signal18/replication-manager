@@ -13,14 +13,13 @@ import ServerName from './ServerName'
 import GTID from '../../../../components/GTID'
 import ServerStatus from '../../../../components/ServerStatus'
 import RMIconButton from '../../../../components/RMIconButton'
-import { useColorMode } from '@chakra-ui/react'
 
 function DBServers({ selectedCluster, user }) {
   const {
     common: { isDesktop },
     cluster: { clusterServers, clusterMaster }
   } = useSelector((state) => state)
-  const { colorMode } = useColorMode()
+
   const [data, setData] = useState([])
   const [viewType, setViewType] = useState('table')
   const [hasMariadbGtid, setHasMariadbGtid] = useState(false)
@@ -71,6 +70,8 @@ function DBServers({ selectedCluster, user }) {
             <ServerMenu
               clusterName={selectedCluster?.name}
               clusterMasterId={clusterMaster?.id}
+              backupLogicalType={selectedCluster?.config?.backupLogicalType}
+              backupPhysicalType={selectedCluster?.config?.backupPhysicalType}
               row={row}
               user={user}
               isDesktop={isDesktop}
@@ -120,7 +121,8 @@ function DBServers({ selectedCluster, user }) {
           header: () => {
             return hasMariadbGtid ? 'Current GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'File' : ''
           },
-          id: 'currentGtid'
+          id: 'currentGtid',
+          minWidth: 250
         }
       ),
       columnHelper.accessor((row) => <GTID text={getSlaveGtid(row, hasMariadbGtid, hasMysqlGtid)} />, {
@@ -128,7 +130,8 @@ function DBServers({ selectedCluster, user }) {
         header: () => {
           return hasMariadbGtid ? 'Slave GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'Pos' : ''
         },
-        id: 'slaveGtid'
+        id: 'slaveGtid',
+        minWidth: 250
       }),
       columnHelper.accessor((row) => getDelay(row), {
         cell: (info) => info.getValue(),
@@ -211,7 +214,13 @@ function DBServers({ selectedCluster, user }) {
         maxWidth: 40
       })
     ],
-    [hasMariadbGtid, hasMysqlGtid, selectedCluster?.name]
+    [
+      hasMariadbGtid,
+      hasMysqlGtid,
+      selectedCluster?.name,
+      selectedCluster?.config?.backupPhysicalType,
+      selectedCluster?.config?.backupLogicalType
+    ]
   )
 
   return clusterServers?.length > 0 ? (
@@ -223,6 +232,8 @@ function DBServers({ selectedCluster, user }) {
           allDBServers={data}
           clusterMasterId={clusterMaster?.id}
           clusterName={selectedCluster?.name}
+          backupLogicalType={selectedCluster?.config?.backupLogicalType}
+          backupPhysicalType={selectedCluster?.config?.backupPhysicalType}
           user={user}
           showTableView={showTableView}
           openCompareModal={openCompareModal}
