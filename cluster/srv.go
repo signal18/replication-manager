@@ -268,6 +268,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.IsGroupReplicationSlave = false
 	server.IsGroupReplicationMaster = false
 	server.JobResults = config.NewTasksMap()
+	server.LastBackupMeta.Physical = new(config.BackupMetadata)
+	server.LastBackupMeta.Logical = new(config.BackupMetadata)
 	server.BinaryLogMetaToWrite = make([]string, 0)
 	server.BinaryLogMetaToRemove = make([]string, 0)
 	server.NeedRefreshJobs = true
@@ -829,19 +831,18 @@ func (server *ServerMonitor) Refresh() error {
 		server.Users = config.FromNormalGrantsMap(server.Users, users)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database users %s %s", server.URL, err)
 
-		//Skip writing to db
-		if !cluster.IsInFailover() && !cluster.InRollingRestart {
-			// Job section
-			server.JobsCheckFinished()
-			server.JobsCheckErrors()
-			server.JobsCheckPending()
-		}
-
-		if server.NeedRefreshJobs {
-			server.JobsUpdateEntries()
-		}
-
 		if cluster.Conf.MonitorScheduler {
+
+			if !cluster.IsInFailover() && !cluster.InRollingRestart {
+				server.JobsCheckFinished()
+				server.JobsCheckErrors()
+				server.JobsCheckPending()
+			}
+
+			if server.NeedRefreshJobs {
+				server.JobsUpdateEntries()
+			}
+
 			server.JobsCheckRunning()
 		}
 

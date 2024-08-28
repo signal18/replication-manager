@@ -8,11 +8,12 @@ function RMSlider({
   max = 10,
   step = 1,
   showMark = true,
-  showMarkAtInterval = 1,
+  showMarkAtInterval = 2,
+  selectedMarkLabelCSS,
   value,
   loading,
   confirmTitle,
-  onConfirm
+  onChange
 }) {
   const [currentValue, setCurrentValue] = useState(value)
   const [previousValue, setPreviousValue] = useState(value)
@@ -25,16 +26,27 @@ function RMSlider({
   const renderMarks = () => {
     const marks = []
     if (showMark) {
-      for (let i = min; i <= max; i += showMarkAtInterval) {
+      for (let i = min; i <= max; ) {
         marks.push(
           <SliderMark key={i} value={i} className={styles.markLabel}>
             {i}
           </SliderMark>
         )
+        i = i + showMarkAtInterval
+        if (i > max && i % showMarkAtInterval !== 0) {
+          marks.push(
+            <SliderMark key={i} value={max} className={styles.markLabel}>
+              {max}
+            </SliderMark>
+          )
+        }
       }
     }
     marks.push(
-      <SliderMark value={currentValue} textAlign='center' className={`${styles.selectedMarkLabel}`}>
+      <SliderMark
+        value={currentValue}
+        textAlign='center'
+        className={`${styles.selectedMarkLabel} ${selectedMarkLabelCSS}`}>
         {currentValue}
       </SliderMark>
     )
@@ -84,7 +96,7 @@ function RMSlider({
           }}
           title={`${confirmTitle} ${currentValue}`}
           onConfirmClick={() => {
-            onConfirm(currentValue)
+            onChange(currentValue)
             closeConfirmModal('')
           }}
         />

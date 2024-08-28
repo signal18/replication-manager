@@ -1,4 +1,4 @@
-import { Box, Flex, Image, Button, Spacer, Text, HStack, useColorMode, IconButton } from '@chakra-ui/react'
+import { Box, Flex, Image, Spacer, Text, HStack, useColorMode } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../redux/authSlice'
@@ -12,6 +12,8 @@ import AlertBadge from './AlertBadge'
 import AlertModal from './Modals/AlertModal'
 import { FaPowerOff } from 'react-icons/fa'
 import ConfirmModal from './Modals/ConfirmModal'
+import RMButton from './RMButton'
+import RMIconButton from './RMIconButton'
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
@@ -104,17 +106,9 @@ function Navbar({ username }) {
             <>
               {username && isDesktop && <Text>{`Welcome, ${username}`}</Text>}
               {isMobile ? (
-                <IconButton
-                  onClick={openLogoutModal}
-                  variant='filled'
-                  border='none'
-                  size='md'
-                  icon={<FaPowerOff fontSize='1.5rem' fill='blue.200' />}
-                />
+                <RMIconButton onClick={openLogoutModal} icon={FaPowerOff} />
               ) : (
-                <Button type='button' size={{ base: 'sm' }} onClick={openLogoutModal}>
-                  Logout
-                </Button>
+                <RMButton onClick={openLogoutModal}>Logout</RMButton>
               )}
             </>
           )}

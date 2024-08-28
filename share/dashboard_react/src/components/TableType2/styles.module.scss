@@ -20,9 +20,15 @@
   }
   .value {
     text-align: start;
-    background-color: var(--gray-color);
+    background-color: var(--secondary-gray-color);
     border-radius: rem(6);
     min-height: rem(24);
+  }
+  .dividerRow {
+    display: none;
+    @include breakpoint('md') {
+      display: block;
+    }
   }
 
   .divider {

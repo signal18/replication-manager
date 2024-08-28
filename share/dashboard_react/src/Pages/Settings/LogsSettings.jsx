@@ -42,7 +42,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for verbose?'}
-          onConfirm={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'verbose' }))}
+          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'verbose' }))}
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.verbose}
           loading={verboseLoading}
@@ -54,7 +54,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for log-sql-in-monitoring?'}
-          onConfirm={() =>
+          onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'log-sql-in-monitoring' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}
@@ -68,7 +68,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for log-syslog?'}
-          onConfirm={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'log-syslog' }))}
+          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'log-syslog' }))}
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.logSyslog}
           loading={logSysLogLoading}
@@ -82,7 +82,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value={selectedCluster?.config?.logLevel}
           loading={logLevelLoading}
           confirmTitle={`Confirm change 'log-level' to: `}
-          onConfirm={(val) =>
+          onChange={(val) =>
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
@@ -104,7 +104,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logTaskLevel}
               loading={logTaskLoading}
               confirmTitle={`Confirm change 'log-task-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -123,7 +123,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logWriterElectionLevel}
               loading={logWriterEleLoading}
               confirmTitle={`Confirm change 'log-writer-election-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -142,7 +142,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logSstLevel}
               loading={logSSTLoading}
               confirmTitle={`Confirm change 'log-sst-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -161,7 +161,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logHeartbeatLevel}
               loading={logheartbeatLoading}
               confirmTitle={`Confirm change 'log-heartbeat-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -180,7 +180,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logConfigLoadLevel}
               loading={logConfigLoadLoading}
               confirmTitle={`Confirm change 'log-config-load-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -199,7 +199,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logGitLevel}
               loading={logGitLoading}
               confirmTitle={`Confirm change 'log-git-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -218,7 +218,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logBackupStreamLevel}
               loading={logBackupStrmLoading}
               confirmTitle={`Confirm change 'log-backup-stream-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -237,7 +237,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logOrchestratorLevel}
               loading={logOrcheLoading}
               confirmTitle={`Confirm change 'log-orchestrator-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -256,7 +256,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logVaultLevel}
               loading={logVaultLoading}
               confirmTitle={`Confirm change 'log-vault-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -275,7 +275,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logTopologyLevel}
               loading={logTopologyLoading}
               confirmTitle={`Confirm change 'log-topology-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -294,7 +294,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logGraphiteLevel}
               loading={logGraphiteLoading}
               confirmTitle={`Confirm change 'log-graphite-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -313,7 +313,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logBinlogPurgeLevel}
               loading={logBinlogLoading}
               confirmTitle={`Confirm change 'log-binlog-purge-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -338,7 +338,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.logProxyLevel}
               loading={logProxyLoading}
               confirmTitle={`Confirm change 'log-proxy-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -357,7 +357,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.haproxyLogLevel}
               loading={logHAProxyLoading}
               confirmTitle={`Confirm change 'haproxy-log-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -376,7 +376,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.proxysqlLogLevel}
               loading={logProxySqlLoading}
               confirmTitle={`Confirm change 'proxysql-log-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -395,7 +395,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.proxyjanitorLogLevel}
               loading={logProxyJanitorLoading}
               confirmTitle={`Confirm change 'proxyjanitor-log-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
@@ -414,7 +414,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               value={selectedCluster?.config?.maxscaleLogLevel}
               loading={logMaxscaleLoading}
               confirmTitle={`Confirm change 'maxscale-log-level' to: `}
-              onConfirm={(val) =>
+              onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,

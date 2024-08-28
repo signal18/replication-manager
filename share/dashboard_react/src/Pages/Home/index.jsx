@@ -93,7 +93,9 @@ function Home() {
           tabContents={[
             <ClusterList onClick={setDashboardTab} />,
             <Cluster tab='dashboard' />,
-            <Cluster tab='settings' />
+            <Cluster tab='settings' />,
+            <Cluster tab='configs' />,
+            <Cluster tab='agents' />
           ]}
         />
       </Box>

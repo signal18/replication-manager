@@ -261,6 +261,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	if server == nil {
 		return 0, nil
 	}
+
 	cluster := server.ClusterGroup
 
 	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
@@ -1241,7 +1242,7 @@ func (server *ServerMonitor) JobsCheckPending() error {
 		return nil
 	}
 
-	server.ExecQueryNoBinLog("UPDATE replication_manager_schema.jobs SET state=5, result='Timeout waiting for job to start' where state=0 and start <= DATE_SUB(NOW(), interval 1 hour)")
+	server.ExecQueryNoBinLog("UPDATE replication_manager_schema.jobs SET state=5, result='Timeout waiting for job to start', done=1, end=now() where state=0 and start <= DATE_SUB(NOW(), interval 1 hour)")
 
 	//server.JobInsertTask("", "", "")
 	rows, err := Conn.Queryx("SELECT task ,count(*) as ct, max(id) as id FROM replication_manager_schema.jobs WHERE state=2 group by task ")
@@ -1257,7 +1258,7 @@ func (server *ServerMonitor) JobsCheckPending() error {
 		if task.ct > 0 {
 			if strings.HasPrefix(task.task, "reseed") || strings.HasPrefix(task.task, "flashback") {
 				res := "Replication-manager is down while preparing task, cancelling operation for data safety."
-				query := "UPDATE replication_manager_schema.jobs SET state=5, result='%s' where task = '%s'"
+				query := "UPDATE replication_manager_schema.jobs SET state=5, done=1, end=now(), result='%s' where task = '%s'"
 				server.ExecQueryNoBinLog(fmt.Sprintf(query, res, task.task))
 				server.SetNeedRefreshJobs(true)
 			}
@@ -1966,8 +1967,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		}
 	} else {
 		task := cluster.Conf.BackupLogicalType
-		//Only for record
-		server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
+		if cluster.Conf.MonitorScheduler {
+			//Only for record
+			server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
+		}
 
 		//Change to switch since we only allow one type of backup (for now)
 		switch cluster.Conf.BackupLogicalType {

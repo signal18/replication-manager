@@ -1,0 +1,40 @@
+button.addRemovePill {
+  display: flex;
+  flex-direction: column;
+  border-radius: $border-radius-sm;
+  box-shadow: $box-shadow-sm;
+  gap: 0;
+  align-items: center;
+  padding: 0 !important;
+  &.used {
+    background-color: var(--quaternary-color) !important;
+    height: auto;
+    border: rem(1) solid var(--tertiary-color);
+    .category {
+      background-color: var(--primary-color);
+      width: 100%;
+      padding: rem(4) rem(12);
+      border-radius: $border-radius-sm;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      color: var(--white-color) !important;
+      text-transform: uppercase;
+      font-size: rem(11);
+    }
+    span.usedConfigText {
+      color: var(--white-color) !important;
+    }
+  }
+  &.unused {
+    background-color: var(--quaternary-color) !important;
+  }
+  .tagData {
+    padding: rem(8);
+    .usedIcon,
+    .unusedIcon {
+      background-color: var(--white-color);
+      border-radius: 50%;
+      height: 100%;
+    }
+  }
+}

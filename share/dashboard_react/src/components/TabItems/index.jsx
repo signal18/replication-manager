@@ -15,7 +15,7 @@ function TabItems({ variant = 'enclosed', options, tabContents, tabIndex, onChan
       <TabPanels>
         {tabContents.map((content, index) => (
           <TabPanel key={index} px='0' py='2'>
-            {content}
+            {index === tabIndex && tabContents[index]}
           </TabPanel>
         ))}
       </TabPanels>

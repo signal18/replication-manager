@@ -8,4 +8,7 @@
   @include breakpoint('lg') {
     width: 60%;
   }
+  .label {
+    font-weight: 500;
+  }
 }

@@ -887,7 +887,6 @@ func (repman *ReplicationManager) handlerMuxMaster(w http.ResponseWriter, r *htt
 		m := mycluster.GetMaster()
 		var srvs *cluster.ServerMonitor
 		if m != nil {
-
 			data, _ := json.Marshal(m)
 
 			err := json.Unmarshal(data, &srvs)
@@ -1310,7 +1309,6 @@ func (repman *ReplicationManager) handlerMuxSetCron(w http.ResponseWriter, r *ht
 		if err != nil {
 			http.Error(w, "Bad cron pattern", http.StatusBadRequest)
 		}
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
 		repman.setSetting(mycluster, setting, cronValue)
 		return
 	} else {

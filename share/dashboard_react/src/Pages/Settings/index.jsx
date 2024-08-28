@@ -1,5 +1,5 @@
-import { Flex, List, ListItem, useDisclosure } from '@chakra-ui/react'
-import React, { useState, useEffect } from 'react'
+import { Flex, useDisclosure } from '@chakra-ui/react'
+import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import GeneralSettings from './GeneralSettings'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
@@ -7,6 +7,13 @@ import MonitoringSettings from './MonitoringSettings'
 import AccordionComponent from '../../components/AccordionComponent'
 import LogsSettings from './LogsSettings'
 import ReplicationSettings from './ReplicationSettings'
+import RejoinSettings from './RejoinSettings'
+import BackupSettings from './BackupSettings'
+import SchedulerSettings from './SchedulerSettings'
+import ProxySettings from './ProxySettings'
+import GraphSettings from './GraphSettings'
+import CloudSettings from './CloudSettings'
+import GlobalSettings from './GlobalSettings'
 
 function Settings({ selectedCluster, user }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -75,6 +82,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isRejoinOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<RejoinSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Backups'}
@@ -82,6 +90,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isBackupsOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<BackupSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Schedulers'}
@@ -89,6 +98,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isSchedulersOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<SchedulerSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Proxies'}
@@ -96,6 +106,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isProxiesOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<ProxySettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Graphs'}
@@ -103,6 +114,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isGraphsOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<GraphSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Cloud18'}
@@ -110,6 +122,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isCloud18Open}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<CloudSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Global'}
@@ -117,26 +130,9 @@ function Settings({ selectedCluster, user }) {
         isOpen={isGlobalOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
+        body={<GlobalSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
 
-      {/* <List className={styles.listContainer} spacing={2}>
-        {items.map((item) => (
-          <ListItem className={`${styles.listItem} ${selected === item ? styles.selecetdListItem : ''}`}>
-            <Button onClick={() => setSelected(item)}>{item}</Button>
-          </ListItem>
-        ))}
-      </List>
-
-      <Flex className={styles.settingsContent}>
-        <Flex className={styles.content}>
-          {selected === 'General' ? (
-            <GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />
-          ) : selected === 'Monitoring' ? (
-            <MonitoringSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} s />
-          ) : null}
-        </Flex>
-      </Flex>
-      <Flex />*/}
       {isConfirmModalOpen && (
         <ConfirmModal
           isOpen={isConfirmModalOpen}

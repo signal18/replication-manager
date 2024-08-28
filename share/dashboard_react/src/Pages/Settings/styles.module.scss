@@ -25,9 +25,9 @@ div.settingsContainer {
       background-color: var(--tertiary-color) !important;
     }
   }
-  .accordionPanel {
-    overflow: hidden;
-  }
+  // .accordionPanel {
+  //   overflow: hidden;
+  // }
   .listContainer {
     flex-basis: 10%;
     @include breakpoint('md', 'lg') {
@@ -90,11 +90,11 @@ div.settingsContainer {
     padding: 0;
     gap: 0;
     align-items: center;
-    overflow: hidden;
-
-    @include breakpoint('sm', 'md') {
-      grid-template-columns: 1fr !important;
-    }
+    // overflow: hidden;
+    grid-template-columns: auto !important;
+    // @include breakpoint('sm', 'md') {
+    //   grid-template-columns: 1fr !important;
+    // }
     @include breakpoint('md', 'lg') {
       grid-template-columns: 320px auto !important;
     }
@@ -117,17 +117,30 @@ div.settingsContainer {
       background-color: transparent;
       padding-left: rem(16);
     }
-    button.dropdownButton {
-      width: 160px;
-      white-space: break-spaces;
-      padding: 0;
-      padding-left: rem(8);
-      text-align: start;
-      @include breakpoint('md', 'lg') {
-        width: 200px;
+    .dropdownContainer {
+      margin: rem(8) 0;
+      align-items: center;
+      gap: rem(8);
+
+      &.dropdownContainerColumn {
+        flex-direction: column;
+        align-items: flex-start;
       }
-      @include breakpoint('lg') {
-        width: 250px;
+      .scriptTextContainer {
+        width: 100%;
+        margin-top: rem(8);
+      }
+
+      .dropdownButton {
+        width: 160px;
+        white-space: break-spaces;
+        text-align: start;
+        @include breakpoint('md', 'lg') {
+          width: 200px;
+        }
+        @include breakpoint('lg') {
+          width: 280px;
+        }
       }
     }
     .valueWithInfo {
@@ -139,6 +152,14 @@ div.settingsContainer {
         text-align: start;
         font-style: italic;
       }
+    }
+    .maxConnectMarkLabel {
+      width: rem(52);
+      min-width: rem(52);
+      height: rem(32);
+      margin-top: rem(-40);
+      margin-left: rem(-24);
+      border-radius: $border-radius-sm;
     }
   }
 }
