@@ -828,19 +828,18 @@ func (server *ServerMonitor) Refresh() error {
 		server.Users = config.FromNormalGrantsMap(server.Users, users)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database users %s %s", server.URL, err)
 
-		//Skip writing to db
-		if !cluster.IsInFailover() && !cluster.InRollingRestart {
-			// Job section
-			server.JobsCheckFinished()
-			server.JobsCheckErrors()
-			server.JobsCheckPending()
-		}
-
-		if server.NeedRefreshJobs {
-			server.JobsUpdateEntries()
-		}
-
 		if cluster.Conf.MonitorScheduler {
+
+			if !cluster.IsInFailover() && !cluster.InRollingRestart {
+				server.JobsCheckFinished()
+				server.JobsCheckErrors()
+				server.JobsCheckPending()
+			}
+
+			if server.NeedRefreshJobs {
+				server.JobsUpdateEntries()
+			}
+
 			server.JobsCheckRunning()
 		}
 
