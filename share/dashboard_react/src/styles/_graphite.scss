@@ -1,0 +1,63 @@
+.axis {
+  font-size: rem(14);
+  background-color: var(--secondary-gray-color);
+}
+
+.axis text {
+  -webkit-transition: fill-opacity 250ms linear;
+}
+
+.axis path {
+  display: none;
+}
+
+.axis line {
+  stroke: var(--primary-color);
+  shape-rendering: crispEdges;
+}
+
+.horizon {
+  border-bottom: solid 1px var(--black-color);
+  overflow: hidden;
+  position: relative;
+  background-color: var(--secondary-gray-color);
+}
+
+.horizon {
+  border-top: solid 1px var(--black-color);
+  border-bottom: solid 1px var(--black-color);
+}
+
+.horizon + .horizon {
+  border-top: none;
+}
+
+.horizon canvas {
+  display: block;
+}
+
+.horizon .title,
+.horizon .value {
+  bottom: 0;
+  line-height: 30px;
+  margin: 0 6px;
+  position: absolute;
+  white-space: nowrap;
+}
+
+.horizon .title {
+  left: 0;
+  top: 0;
+  font-size: rem(20);
+  font-weight: bold;
+}
+
+.horizon .value {
+  right: 0;
+}
+
+.line {
+  background: var(--danger-primary-color);
+  opacity: 0.7;
+  z-index: 2;
+}

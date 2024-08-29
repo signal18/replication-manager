@@ -1,7 +1,6 @@
 import React, { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
-import Cluster from './Pages/Cluster'
 import ToastManager from './components/ToastManager'
 import Login from './Pages/Login'
 // const Login = lazy(() => import('./Pages/Login'))
@@ -15,14 +14,6 @@ function App() {
       <Routes>
         <Route
           path={'/'}
-          element={
-            <PrivateRoute>
-              <Home />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path={'/clusters'}
           element={
             <PrivateRoute>
               <Home />

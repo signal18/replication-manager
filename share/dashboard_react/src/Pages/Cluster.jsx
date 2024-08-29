@@ -5,6 +5,7 @@ import Agents from './Agents'
 import Backups from './Backups'
 const Configs = lazy(() => import('./Configs'))
 const Settings = lazy(() => import('./Settings'))
+const Graphs = lazy(() => import('./Graphs'))
 
 function Cluster({ tab }) {
   const [user, setUser] = useState(null)
@@ -37,6 +38,8 @@ function Cluster({ tab }) {
     <Configs selectedCluster={clusterData} user={user} />
   ) : currentTab === 'backups' ? (
     <Backups selectedCluster={clusterData} />
+  ) : currentTab === 'graphs' ? (
+    <Graphs />
   ) : null
 }
 

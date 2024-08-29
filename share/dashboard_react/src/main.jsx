@@ -9,14 +9,12 @@ import theme from './themes/theme.js'
 import ThemeProvider from './ThemeProvider.jsx'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <Provider store={store}>
-      <ChakraProvider theme={theme}>
-        <ColorModeScript initialColorMode={theme.config.initialColorMode} />
-        <ThemeProvider>
-          <App />
-        </ThemeProvider>
-      </ChakraProvider>
-    </Provider>
-  </React.StrictMode>
+  <Provider store={store}>
+    <ChakraProvider theme={theme}>
+      <ColorModeScript initialColorMode={theme.config.initialColorMode} />
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
+    </ChakraProvider>
+  </Provider>
 )

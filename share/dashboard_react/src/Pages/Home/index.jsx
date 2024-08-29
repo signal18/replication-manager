@@ -52,7 +52,7 @@ function Home() {
     }
   }, [refreshInterval])
 
-  const dashboardTabs = ['Dashboard', 'Settings', 'Configs', 'Agents', 'Backups']
+  const dashboardTabs = ['Dashboard', 'Settings', 'Configs', 'Graphs', 'Agents', 'Backups']
 
   const callServices = () => {
     if (selectedTabRef.current === 0) {
@@ -99,6 +99,7 @@ function Home() {
             <Cluster tab='dashboard' />,
             <Cluster tab='settings' />,
             <Cluster tab='configs' />,
+            <Cluster tab='graphs' />,
             <Cluster tab='agents' />,
             <Cluster tab='backups' />
           ]}
