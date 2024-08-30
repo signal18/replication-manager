@@ -17,9 +17,12 @@ import { useDispatch } from 'react-redux'
 import { addServer } from '../../redux/clusterSlice'
 import Dropdown from '../Dropdown'
 import RMButton from '../RMButton'
+import { useTheme } from '../../ThemeProvider'
+import parentStyles from './styles.module.scss'
 
 function NewServerModal({ clusterName, isOpen, closeModal }) {
   const dispatch = useDispatch()
+  const { theme } = useTheme()
   const [host, setHost] = useState('')
   const [port, setPort] = useState(0)
   const [dbType, setDbType] = useState('')
@@ -53,7 +56,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
   return (
     <Modal isOpen={isOpen} onClose={closeModal}>
       <ModalOverlay />
-      <ModalContent>
+      <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
         <ModalHeader>{'New server'}</ModalHeader>
         <ModalCloseButton />
         <ModalBody>

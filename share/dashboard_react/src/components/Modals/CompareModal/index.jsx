@@ -29,14 +29,16 @@ import DBFlavourIcon from '../../Icons/DBFlavourIcon'
 import ServerStatus from '../../ServerStatus'
 import RMButton from '../../RMButton'
 import styles from './styles.module.scss'
+import { useTheme } from '../../../ThemeProvider'
+import parentStyles from '../styles.module.scss'
 
 function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMariadbGtid, hasMysqlGtid }) {
   const [selectedServer, setSelectedServer] = useState(null)
   const [serverOptions, setServerOptions] = useState([])
+  const { theme } = useTheme()
   const {
     common: { isDesktop, isTablet }
   } = useSelector((state) => state)
-
   useEffect(() => {
     let servers = []
     if (allDBServers?.length > 0) {
@@ -52,6 +54,7 @@ function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMari
     <Modal isOpen={isOpen} onClose={closeModal}>
       <ModalOverlay />
       <ModalContent
+        className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}
         width={isDesktop ? '60%' : isTablet ? '90%' : '97%'}
         maxWidth='none'
         minHeight='300px'

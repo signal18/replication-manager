@@ -38,7 +38,7 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMen
       showMenu: isNewProxy && isMenuOptionsVisible,
       server: `${proxy.host}:${data.port}`,
       status: <ProxyStatus status={proxy.state} />,
-      group: <TagPill text={readWriteType} />,
+      group: <TagPill text={readWriteType} colorScheme={readWriteType === 'WRITE' ? 'blue' : 'gray'} />,
       dbName: `${data.prxName}`,
       dbStatus: <ServerStatus state={data.status} />,
       pxStatus: data.prxStatus,

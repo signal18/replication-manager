@@ -34,7 +34,12 @@ function Graphs() {
   const [selectedStep, setSelectedStep] = useState({ name: '10 seconds', value: 1e4 })
 
   useEffect(() => {
-    setContext(cubism.context().serverDelay(5e3).clientDelay(5e3).step(selectedStep.value).size(selectedHour.value))
+    if (cubism) {
+      setContext(cubism.context().serverDelay(5e3).clientDelay(5e3).step(selectedStep.value).size(selectedHour.value))
+    }
+    return () => {
+      setContext(null)
+    }
   }, [selectedHour, selectedStep])
 
   return (
