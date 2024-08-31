@@ -113,3 +113,11 @@
   height: rem(140);
   width: rem(190);
 }
+
+.dbTypeVersion {
+  flex-direction: column;
+  gap: rem(16);
+  @include breakpoint('md') {
+    flex-direction: row;
+  }
+}
