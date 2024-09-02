@@ -1426,8 +1426,10 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 	//Wait for debug sent via API
 	time.Sleep(3 * time.Second)
 	for _, logrow := range logs {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, logrow[0], logrow[1], logrow[2])
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, logrow[0], logrow[1], logrow[2])
 	}
+
 	return err
 }
 
