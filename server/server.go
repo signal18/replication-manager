@@ -370,6 +370,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.FailoverSemiSyncState, "failover-semisync-state", false, "Failover Switchover set semisync slave master state")
 	flags.BoolVar(&conf.SuperReadOnly, "failover-superreadonly-state", false, "Failover Switchover set slaves as super-read-only")
 	flags.StringVar(&conf.FailMode, "failover-mode", "manual", "Failover is manual or automatic")
+	flags.BoolVar(&conf.FailoverMdevCheck, "failover-mdev-check", false, "Failover is prevented if cluster has MDEV issues")
+	flags.StringVar(&conf.FailoverMdevLevel, "failover-mdev-level", "blocker", "Failover is prevented if cluster has MDEV issues with severity level. Bug level will also include higher severity i.e. critical will also have blocker. Valid values are (blocker|critical|major). Default 'blocker'")
 	flags.Int64Var(&conf.FailMaxDelay, "failover-max-slave-delay", 30, "Election ignore slave with replication delay over this time in sec")
 	flags.BoolVar(&conf.FailRestartUnsafe, "failover-restart-unsafe", false, "Failover when cluster down if a slave is start first ")
 	flags.IntVar(&conf.FailLimit, "failover-limit", 5, "Failover is canceld if already failover this number of time (0: unlimited)")
