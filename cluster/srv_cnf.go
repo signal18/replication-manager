@@ -146,6 +146,32 @@ func (server *ServerMonitor) GetDatabaseClientBasedir() string {
 	return "/usr/bin"
 }
 
+func (server *ServerMonitor) GetDbErrorLog() string {
+	if v, ok := server.Variables.CheckAndGet("LOG_ERROR"); ok && v != "" {
+		return v
+	}
+
+	// If has nosplitpath
+	if server.ClusterGroup.Configurator.HaveDBTag("nosplitpath") {
+		return server.GetDatabaseDatadir() + "/error.log"
+	}
+
+	return server.GetDatabaseDatadir() + "/.system/logs/error.log"
+}
+
+func (server *ServerMonitor) GetDbSlowLog() string {
+	if v, ok := server.Variables.CheckAndGet("SLOW_QUERY_LOG_FILE"); ok && v != "" {
+		return v
+	}
+
+	// If has nosplitpath
+	if server.ClusterGroup.Configurator.HaveDBTag("nosplitpath") {
+		return server.GetDatabaseDatadir() + "/slow-query.log"
+	}
+
+	return server.GetDatabaseDatadir() + "/.system/logs/slow-query.log"
+}
+
 func (server *ServerMonitor) GetConfigVariable(variable string) string {
 	// if server.Variables == nil {
 	// 	return ""
