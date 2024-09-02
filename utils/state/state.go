@@ -216,6 +216,7 @@ func (SM *StateMachine) IsInState(key string) bool {
 
 func (SM *StateMachine) IsInStateList(keys ...string) bool {
 	SM.Lock()
+	defer SM.Unlock()
 	for key := range *SM.OldState {
 		if slices.Contains(keys, key) {
 			return true
