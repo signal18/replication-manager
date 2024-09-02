@@ -68,56 +68,57 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 	hasBinLogs, err := cluster.IsEqualBinlogFilters(cluster.master, sl)
 	if err != nil {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlWarn, "Could not check binlog filters on %s", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Could not check binlog filters on %s", sl.URL)
 		// }
 		return false
 	}
 	if (!cluster.Conf.SwitchLowerRelease) && (sl.DBVersion.Major < cluster.master.DBVersion.Major || (sl.DBVersion.Major == cluster.master.DBVersion.Major && sl.DBVersion.Minor < cluster.master.DBVersion.Minor)) {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlWarn, "Could not elect a minor version as leader without enabing switchover-lower-release %s", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Could not elect a minor version as leader without enabing switchover-lower-release %s", sl.URL)
 		// }
 		return false
 	}
 	if hasBinLogs == false && cluster.Conf.CheckBinFilter == true && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlWarn, "Binlog filters differ on master and slave %s. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Binlog filters differ on master and slave %s. Skipping", sl.URL)
 		// }
 		return false
 	}
 	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") && cluster.Conf.CheckReplFilter == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlWarn, "Replication filters differ on master and slave %s. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Replication filters differ on master and slave %s. Skipping", sl.URL)
 		// }
 		return false
 	}
 	if cluster.Conf.SwitchGtidCheck && cluster.IsCurrentGTIDSync(sl, cluster.master) == false && cluster.Conf.RplChecks == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlWarn, "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
 		// }
 		return false
 	}
 	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.SwitchSync && cluster.Conf.RplChecks {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		// }
 		return false
 	}
+
 	if ss.SecondsBehindMaster.Valid == false && cluster.Conf.RplChecks == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlWarn, "Slave %s is stopped. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave %s is stopped. Skipping", sl.URL)
 		// }
 		return false
 	}
 
 	if sl.IsMaxscale || sl.IsRelay {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlWarn, "Slave %s is a relay slave. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave %s is a relay slave. Skipping", sl.URL)
 		// }
 		return false
 	}
 
 	if sl.HasErrantTransactions() {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModGeneral, config.LvlWarn, "Slave %s has errent transactions. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave %s has errent transactions. Skipping", sl.URL)
 		return false
 	}
 
