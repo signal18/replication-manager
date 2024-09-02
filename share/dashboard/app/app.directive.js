@@ -10,6 +10,9 @@ app.directive('flatpickr', function($timeout) {
             function initFlatpickr() {
                 var options = {
                     time_24hr : true,
+                    enableSeconds: attrs.flatpickrEnableSeconds === 'true',
+                    minuteIncrement: attrs.flatpickrMinuteIncrement || 1,
+                    allowInput: attrs.flatpickrAllowInput === 'true',
                     static: attrs.flatpickrStatic === 'true',
                     enableTime: attrs.flatpickrEnableTime === 'true',
                     dateFormat: attrs.flatpickrDateFormat || "Y-m-d H:i:S",

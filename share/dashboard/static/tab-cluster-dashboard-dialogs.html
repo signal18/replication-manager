@@ -128,7 +128,7 @@
             <span ng-show="restoreForm.selectedBackup && !restoreForm.canPITR">
                 <label for="restore-time" class="pull-left" style="margin-right: 5px;">No PITR for this backup</label>
             </span>
-            <input id="datetime-picker" type="text" ng-show="restoreForm.pitr" ng-model="restoreForm.restoreTime" flatpickr flatpickr-min-date="restoreForm.selectedBackup" flatpickr-min-date-type="unix" flatpickr-max-date="now" flatpickr-date-format="Y-m-d H:i:S" flatpickr-static="true" flatpickr-enable-time="true" flatpickr-utc="true">
+            <input id="datetime-picker" type="text" ng-show="restoreForm.pitr" ng-model="restoreForm.restoreTime" flatpickr flatpickr-min-date="restoreForm.selectedBackup" flatpickr-min-date-type="unix" flatpickr-max-date="now" flatpickr-date-format="Y-m-d H:i:S" flatpickr-static="true" flatpickr-enable-time="true" flatpickr-utc="true" flatpickr-allow-input="true" flatpickr-enable-seconds="true" autocomplete="off">
 
             <span ng-if="restoreForm.selectedBackup && !restoreForm.restoreTime" style="margin-top: 5px;">
                 <label for="restore-time" class="pull-left" style="margin-right: 5px;">UTC:</label>{{ (restoreForm.selectedBackup*1000 | date:'yyyy-MM-dd HH:mm:ss' : 'UTC') }}
