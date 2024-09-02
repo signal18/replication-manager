@@ -200,6 +200,7 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor) {
 	var err error
 
 	defer func() {
+		stat, _ := sst.file.Stat()
 		if sst.cluster.Conf.LogSST {
 			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
@@ -213,11 +214,13 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor) {
 		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
 
-		server.WriteBackupMetadata(config.BackupMethodPhysical)
+		if strings.Contains(stat.Name(), "xbtream") {
+			server.WriteBackupMetadata(config.BackupMethodPhysical)
 
-		backtype := "physical"
-		server.BackupRestic(sst.cluster.Conf.Cloud18GitUser, sst.cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, sst.cluster.Conf.BackupPhysicalType)
-		sst.cluster.SetInPhysicalBackupState(false)
+			backtype := "physical"
+			server.BackupRestic(sst.cluster.Conf.Cloud18GitUser, sst.cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, sst.cluster.Conf.BackupPhysicalType)
+			sst.cluster.SetInPhysicalBackupState(false)
+		}
 	}()
 
 	sst.in, err = sst.listener.Accept()
@@ -243,6 +246,7 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor) {
 	var err error
 
 	defer func() {
+		stat, _ := sst.file.Stat()
 		if sst.cluster.Conf.LogSST {
 			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
@@ -255,11 +259,13 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor) {
 		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
 
-		server.WriteBackupMetadata(config.BackupMethodPhysical)
+		if strings.Contains(stat.Name(), "xbtream") {
+			server.WriteBackupMetadata(config.BackupMethodPhysical)
 
-		backtype := "physical"
-		server.BackupRestic(sst.cluster.Conf.Cloud18GitUser, sst.cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, sst.cluster.Conf.BackupPhysicalType)
-		sst.cluster.SetInPhysicalBackupState(false)
+			backtype := "physical"
+			server.BackupRestic(sst.cluster.Conf.Cloud18GitUser, sst.cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, sst.cluster.Conf.BackupPhysicalType)
+			sst.cluster.SetInPhysicalBackupState(false)
+		}
 	}()
 
 	sst.in, err = sst.listener.Accept()
