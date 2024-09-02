@@ -41,6 +41,10 @@ func (server *ServerMonitor) CheckVersion() {
 		cluster.SetState("MDEV28310", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["MDEV28310"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
 	}
 
+	if server.DBVersion.IsMariaDB() && !server.HasBinlogRow() && server.Variables.Get("INNODB_AUTOINC_LOCK_MODE") == "2" && (server.DBVersion.GreaterEqualRelease("10.2") || server.DBVersion.LowerReleaseList("10.3.35", " 10.4.25", " 10.5.16", " 10.6.8", " 10.7.4", " 10.8.3")) {
+		cluster.SetState("MDEV19577", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["MDEV19577"], server.URL), ErrFrom: "MON", ServerUrl: server.URL})
+	}
+
 }
 
 // CheckDisks check mariadb disk plugin ti see if it get free space

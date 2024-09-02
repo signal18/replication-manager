@@ -697,7 +697,6 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 		}
 
 		// The tests below should run only in case of a switchover as they require the master to be up.
-
 		if cluster.isSlaveElectableForSwitchover(sl, forcingLog) == false {
 			cluster.SetState("ERR00034", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00034"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
@@ -1094,6 +1093,14 @@ func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) boo
 		// }
 		return false
 	}
+
+	if cluster.Conf.FailoverMdevCheck && sl.HasMdevIssue() {
+		// if cluster.Conf.LogLevel > 1 || forcingLog {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "MDEV check are enabled. Slave %s has MDEV issue with higher priority than '%s'. Skipping", sl.URL, cluster.Conf.FailoverMdevLevel)
+		// }
+		return false
+	}
+
 	if sl.IsIgnored() {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave is in ignored list %s", sl.URL)

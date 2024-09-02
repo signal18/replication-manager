@@ -671,9 +671,41 @@ func (server *ServerMonitor) HasErrantTransactions() bool {
 	return false
 }
 
+/* Check agains listed blocker MDEV issues */
 func (server *ServerMonitor) HasBlockerIssue() bool {
-	if server.ClusterGroup.StateMachine.IsInState("MDEV20821@" + server.URL) {
+	if server.ClusterGroup.StateMachine.IsInStateList("MDEV20821@" + server.URL) {
 		return true
 	}
 	return false
+}
+
+/* Will be used if we already listed critical MDEV issues */
+func (server *ServerMonitor) HasCriticalIssue() bool {
+	/* Will be used if we already listed critical MDEV issues */
+	// if server.ClusterGroup.StateMachine.IsInStateList("MDEV20821@" + server.URL) {
+	// 	return true
+	// }
+	return false
+}
+
+/* Check agains listed major MDEV issues */
+func (server *ServerMonitor) HasMajorIssue() bool {
+	if server.ClusterGroup.StateMachine.IsInStateList("MDEV19577@" + server.URL) {
+		return true
+	}
+	return false
+}
+
+/* Check agains listed MDEV issues, lower severity will include higher severity */
+func (server *ServerMonitor) HasMdevIssue() bool {
+	switch server.ClusterGroup.Conf.FailoverMdevLevel {
+	case "blocker":
+		return server.HasBlockerIssue()
+	case "critical":
+		return server.HasBlockerIssue() || server.HasCriticalIssue()
+	case "major":
+		return server.HasBlockerIssue() || server.HasCriticalIssue() || server.HasMajorIssue()
+	default:
+		return server.HasBlockerIssue()
+	}
 }
