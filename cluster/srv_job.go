@@ -1415,9 +1415,9 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 		if task.ct > 0 {
 			var logrow []string
 			if err := server.AfterJobProcess(task); err != nil {
-				logrow = []string{config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err.Error()}
+				logrow = []string{config.LvlErr, "[ERROR] Scheduler error fetching finished replication_manager_schema.jobs %s", err.Error()}
 			} else {
-				logrow = []string{config.LvlInfo, "Finished %s successfully", task.task}
+				logrow = []string{config.LvlInfo, "[SUCCESS] Finished %s successfully", task.task}
 			}
 			logs = append(logs, logrow)
 			server.SetNeedRefreshJobs(true)
@@ -1426,7 +1426,7 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 	//Wait for debug sent via API
 	time.Sleep(3 * time.Second)
 	for _, logrow := range logs {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, logrow[0], logrow[1], logrow[2])
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, logrow[0], logrow[1], logrow[2])
 	}
 	return err
 }
