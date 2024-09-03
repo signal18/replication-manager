@@ -10,7 +10,6 @@ import {
   Text
 } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
-import Dropdown from '../../Dropdown'
 import TableType4Compare from '../../TableType4Compare'
 import { useSelector } from 'react-redux'
 import {
@@ -31,6 +30,7 @@ import RMButton from '../../RMButton'
 import styles from './styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
+import Dropdown from '../../Dropdown'
 
 function CompareModal({ isOpen, closeModal, allDBServers, compareServer, hasMariadbGtid, hasMysqlGtid }) {
   const [selectedServer, setSelectedServer] = useState(null)

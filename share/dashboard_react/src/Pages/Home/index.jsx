@@ -20,16 +20,33 @@ import {
 import Cluster from '../Cluster'
 import { AppSettings } from '../../AppSettings'
 import styles from './styles.module.scss'
+import { useParams } from 'react-router-dom'
 
 function Home() {
   const dispatch = useDispatch()
   const selectedTabRef = useRef(0)
   const selectedClusterNameRef = useRef('')
   const [selectedTab, setSelectedTab] = useState(0)
+  const [dashboardTabs, setDashboardTabs] = useState([
+    'Dashboard',
+    'Settings',
+    'Configs',
+    'Graphs',
+    'Agents',
+    'Backups'
+  ])
+
+  const params = useParams()
 
   const {
     cluster: { refreshInterval }
   } = useSelector((state) => state)
+
+  useEffect(() => {
+    if (params?.cluster) {
+      setDashboardTab({ name: params.cluster })
+    }
+  }, [])
 
   useEffect(() => {
     let intervalId = 0
@@ -51,8 +68,6 @@ function Home() {
       clearInterval(intervalId)
     }
   }, [refreshInterval])
-
-  const dashboardTabs = ['Dashboard', 'Settings', 'Configs', 'Graphs', 'Agents', 'Backups']
 
   const callServices = () => {
     if (selectedTabRef.current === 0) {

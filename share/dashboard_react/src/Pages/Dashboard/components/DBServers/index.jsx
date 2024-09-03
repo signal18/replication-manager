@@ -13,6 +13,7 @@ import ServerName from './ServerName'
 import GTID from '../../../../components/GTID'
 import ServerStatus from '../../../../components/ServerStatus'
 import RMIconButton from '../../../../components/RMIconButton'
+import { Link } from 'react-router-dom'
 
 function DBServers({ selectedCluster, user }) {
   const {
@@ -86,12 +87,19 @@ function DBServers({ selectedCluster, user }) {
           }
         }
       ),
-      columnHelper.accessor((row) => <DBFlavourIcon dbFlavor={row.dbVersion.flavor} />, {
-        cell: (info) => info.getValue(),
-        header: 'Db',
-        maxWidth: 40,
-        id: 'dbFlavor'
-      }),
+      columnHelper.accessor(
+        (row) => (
+          <Link to={`/clusters/${selectedCluster?.name}/${row?.id}`}>
+            <DBFlavourIcon dbFlavor={row.dbVersion.flavor} />
+          </Link>
+        ),
+        {
+          cell: (info) => info.getValue(),
+          header: 'Db',
+          maxWidth: 40,
+          id: 'dbFlavor'
+        }
+      ),
       columnHelper.accessor((row) => <ServerName rowData={row} />, {
         cell: (info) => info.getValue(),
         header: 'Server',
