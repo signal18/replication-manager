@@ -161,6 +161,9 @@ func (server *ServerMonitor) ReseedPointInTime(meta config.PointInTimeMeta) erro
 		return err
 	}
 
+	// Wait for 15 seconds until job result updated.
+	time.Sleep(time.Second * 15)
+
 	task := server.JobResults.Get("reseed" + backup.BackupTool)
 
 	//Wait until job result changed since we're using pointer
