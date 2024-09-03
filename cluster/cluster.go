@@ -605,7 +605,6 @@ func (cluster *Cluster) Run() {
 					}
 					go cluster.initOrchetratorNodes()
 					go cluster.ResticFetchRepo()
-					go cluster.FetchLastBackupMetadata()
 					cluster.runOnceAfterTopology = false
 				} else {
 
@@ -691,12 +690,13 @@ func (cluster *Cluster) StateProcessing() {
 			//Remove from captured state if already resolved, so it will capture next occurence
 			cluster.GetStateMachine().CapturedState.Delete(s.ErrKey)
 			servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
+
 			// if s.ErrKey == "WARN0073" {
 			// 	for _, s := range cluster.Servers {
 			// 		s.SetBackupPhysicalCookie()
 			// 	}
 			// }
-			if s.ErrKey == "WARN0074" {
+			if s.ErrKey == "WARN0074" && servertoreseed != nil {
 				task := "reseed" + cluster.Conf.BackupPhysicalType
 
 				err := servertoreseed.ProcessReseedPhysical(task)
@@ -723,7 +723,7 @@ func (cluster *Cluster) StateProcessing() {
 				// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
 				// }
 			}
-			if s.ErrKey == "WARN0076" {
+			if s.ErrKey == "WARN0076" && servertoreseed != nil {
 				task := "flashback" + cluster.Conf.BackupPhysicalType
 				err := servertoreseed.ProcessFlashbackPhysical(task)
 				if err != nil {

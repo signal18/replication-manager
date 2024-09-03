@@ -196,6 +196,8 @@ type Config struct {
 	FailResetTime                             int64                  `mapstructure:"failcount-reset-time" toml:"failover-reset-time" json:"failoverResetTime"`
 	FailMode                                  string                 `mapstructure:"failover-mode" toml:"failover-mode" json:"failoverMode"`
 	FailMaxDelay                              int64                  `mapstructure:"failover-max-slave-delay" toml:"failover-max-slave-delay" json:"failoverMaxSlaveDelay"`
+	FailoverMdevCheck                         bool                   `mapstructure:"failover-mdev-check" toml:"failover-mdev-check" json:"failoverMdevCheck"`
+	FailoverMdevLevel                         string                 `mapstructure:"failover-mdev-level" toml:"failover-mdev-level" json:"failoverMdevLevel"`
 	MaxFail                                   int                    `mapstructure:"failover-falsepositive-ping-counter" toml:"failover-falsepositive-ping-counter" json:"failoverFalsePositivePingCounter"`
 	CheckFalsePositiveHeartbeat               bool                   `mapstructure:"failover-falsepositive-heartbeat" toml:"failover-falsepositive-heartbeat" json:"failoverFalsePositiveHeartbeat"`
 	CheckFalsePositiveMaxscale                bool                   `mapstructure:"failover-falsepositive-maxscale" toml:"failover-falsepositive-maxscale" json:"failoverFalsePositiveMaxscale"`
