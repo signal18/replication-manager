@@ -170,7 +170,9 @@ func (server *ServerMonitor) ReseedPointInTime(meta config.PointInTimeMeta) erro
 
 	//If failed
 	if task.State > 4 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while trying to execute PITR on %s. Unable to complete reseed from backup using %s", server.URL, backup.BackupTool)
+		err = fmt.Errorf("Unable to complete reseed from backup using %s", backup.BackupTool)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while trying to execute PITR on %s: %s", server.URL, err)
+		return err
 	}
 
 	if !meta.UseBinlog {
