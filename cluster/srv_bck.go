@@ -199,6 +199,8 @@ func (server *ServerMonitor) ReseedPointInTime(meta config.PointInTimeMeta) erro
 		return err
 	}
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binary logs injected on %s until %s", server.URL, time.Unix(meta.RestoreTime, 0).Format(time.RFC3339))
+
 	return nil
 }
 

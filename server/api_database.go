@@ -631,10 +631,17 @@ func (repman *ReplicationManager) handlerMuxServerPITR(w http.ResponseWriter, r 
 				return
 			}
 
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Requesting PITR on node %s", node.URL)
+
 			err = node.ReseedPointInTime(formPit)
 			if err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "PITR on %s failed, err: %s", node.URL, err.Error())
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "PITR on %s failed, err: %s", node.URL, err.Error())
 				http.Error(w, fmt.Sprintf("PITR error :%s", err.Error()), http.StatusInternalServerError)
 				return
+			} else {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "PITR on %s finished successfully", node.URL)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "PITR on %s finished successfully", node.URL)
 			}
 
 			marshal, err := json.MarshalIndent(formPit, "", "\t")
