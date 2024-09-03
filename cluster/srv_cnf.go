@@ -85,6 +85,8 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_HOST_NAME%%":    server.Host,
 		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_HOST_PORT%%":    server.Port,
 		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_CLUSTER_NAME%%": server.ClusterGroup.Name,
+		"%%ENV:SVC_CONF_ENV_ERROR_LOG%%":                            server.GetDbErrorLog(),
+		"%%ENV:SVC_CONF_ENV_SLOW_LOG%%":                             server.GetDbSlowLog(),
 	}
 
 	//	size = ` + collector.ProvDisk + `
@@ -144,6 +146,38 @@ func (server *ServerMonitor) GetDatabaseClientBasedir() string {
 		return server.SlapOSDatadir + "/usr/bin/"
 	}
 	return "/usr/bin"
+}
+
+func (server *ServerMonitor) GetDbErrorLog() string {
+
+	//Not using Variables[] due to uppercase values
+	v, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_ERROR", server.DBVersion)
+	if err == nil && v != "" {
+		return v
+	}
+
+	// If has nosplitpath
+	if server.ClusterGroup.Configurator.HaveDBTag("nosplitpath") {
+		return server.GetDatabaseDatadir() + "/error.log"
+	}
+
+	return server.GetDatabaseDatadir() + "/.system/logs/error.log"
+}
+
+func (server *ServerMonitor) GetDbSlowLog() string {
+
+	//Not using Variables[] due to uppercase values
+	v, _, err := dbhelper.GetVariableByName(server.Conn, "SLOW_QUERY_LOG_FILE", server.DBVersion)
+	if err == nil && v != "" {
+		return v
+	}
+
+	// If has nosplitpath
+	if server.ClusterGroup.Configurator.HaveDBTag("nosplitpath") {
+		return server.GetDatabaseDatadir() + "/slow-query.log"
+	}
+
+	return server.GetDatabaseDatadir() + "/.system/logs/slow-query.log"
 }
 
 func (server *ServerMonitor) GetConfigVariable(variable string) string {
