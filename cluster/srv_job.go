@@ -409,31 +409,47 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 
 	server.SetInReseedBackup(true)
 
+	// If reset failed, better to stop PITR
+	if server.PointInTimeMeta.IsInPITR {
+		server.StopSlave()
+		_, err := server.ResetSlave()
+		if err != nil {
+			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
+				server.SetInReseedBackup(false)
+				return err
+			}
+		}
+		server.SetState(stateUnconn)
+	}
+
 	_, err := server.JobInsertTask("reseed"+backtype, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive reseed physical backup %s request for server: %s %s", backtype, server.URL, err)
 		return err
 	}
 
-	logs, err := server.StopSlave()
-	if err != nil {
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
-	}
+	// Set replication master to current master if not PITR
+	if !server.PointInTimeMeta.IsInPITR {
+		logs, err := server.StopSlave()
+		if err != nil {
+			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
+		}
 
-	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-		Host:      cluster.master.Host,
-		Port:      cluster.master.Port,
-		User:      cluster.GetRplUser(),
-		Password:  cluster.GetRplPass(),
-		Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-		Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-		Mode:      "SLAVE_POS",
-		SSL:       cluster.Conf.ReplicationSSL,
-		Channel:   cluster.Conf.MasterConn,
-	}, server.DBVersion)
-	if err != nil {
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", backtype, server.URL, err)
-		return err
+		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+			Host:      cluster.master.Host,
+			Port:      cluster.master.Port,
+			User:      cluster.GetRplUser(),
+			Password:  cluster.GetRplPass(),
+			Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+			Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
+			Mode:      "SLAVE_POS",
+			SSL:       cluster.Conf.ReplicationSSL,
+			Channel:   cluster.Conf.MasterConn,
+		}, server.DBVersion)
+		if err != nil {
+			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", backtype, server.URL, err)
+			return err
+		}
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", backtype, server.URL)
