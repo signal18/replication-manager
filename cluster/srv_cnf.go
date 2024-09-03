@@ -85,6 +85,8 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_HOST_NAME%%":    server.Host,
 		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_HOST_PORT%%":    server.Port,
 		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_CLUSTER_NAME%%": server.ClusterGroup.Name,
+		"%%ENV:SVC_CONF_ENV_ERROR_LOG%%":                            server.GetDbErrorLog(),
+		"%%ENV:SVC_CONF_ENV_SLOW_LOG%%":                             server.GetDbSlowLog(),
 	}
 
 	//	size = ` + collector.ProvDisk + `
@@ -147,7 +149,10 @@ func (server *ServerMonitor) GetDatabaseClientBasedir() string {
 }
 
 func (server *ServerMonitor) GetDbErrorLog() string {
-	if v, ok := server.Variables.CheckAndGet("LOG_ERROR"); ok && v != "" {
+
+	//Not using Variables[] due to uppercase values
+	v, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_ERROR", server.DBVersion)
+	if err == nil && v != "" {
 		return v
 	}
 
@@ -160,7 +165,10 @@ func (server *ServerMonitor) GetDbErrorLog() string {
 }
 
 func (server *ServerMonitor) GetDbSlowLog() string {
-	if v, ok := server.Variables.CheckAndGet("SLOW_QUERY_LOG_FILE"); ok && v != "" {
+
+	//Not using Variables[] due to uppercase values
+	v, _, err := dbhelper.GetVariableByName(server.Conn, "SLOW_QUERY_LOG_FILE", server.DBVersion)
+	if err == nil && v != "" {
 		return v
 	}
 
