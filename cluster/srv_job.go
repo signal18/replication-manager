@@ -1276,6 +1276,8 @@ func (server *ServerMonitor) JobsCheckErrors() error {
 		switch task.String {
 		case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
 			defer server.SetInReseedBackup(false)
+		case "xtrabackup", "mariabackup":
+			cluster.SetState("WARN0115", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0115"]), ErrFrom: "JOB", ServerUrl: server.URL})
 		}
 	}
 
