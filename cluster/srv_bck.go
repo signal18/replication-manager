@@ -144,6 +144,17 @@ func (server *ServerMonitor) ReseedPointInTime(meta config.PointInTimeMeta) erro
 		return fmt.Errorf("Backup with id %d not found in BackupMetaMap", meta.Backup)
 	}
 
+	// Needed for updating status
+	if !cluster.Conf.MonitorScheduler {
+		return fmt.Errorf("PITR on node %s can not continue without monitoring scheduler", server.URL)
+	}
+
+	// Prevent reseed with incompatible tools
+	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") && backup.BackupTool == "xtrabackup" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Node %s MariaDB version is greater than 10.1 and not compatible with xtrabackup. Cancelling reseed for data safety.", server.URL)
+		return fmt.Errorf("Node %s MariaDB version is greater than 10.1 and not compatible with xtrabackup.", server.URL)
+	}
+
 	if !meta.UseBinlog {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Requesting PITR on node %s with %s without using binary logs", server.URL, backup.BackupTool)
 	}

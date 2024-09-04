@@ -420,6 +420,8 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 			}
 		}
 		server.SetState(stateUnconn)
+
+		cluster.Conf.BackupPhysicalType = backtype
 	}
 
 	_, err := server.JobInsertTask("reseed"+backtype, server.SSTPort, cluster.Conf.MonitorAddress)

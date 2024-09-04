@@ -900,7 +900,6 @@ func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *c
 
 func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.ReadBinaryLogsBoundary, end config.ReadBinaryLogsBoundary, dest *ServerMonitor) error {
 	cluster := server.ClusterGroup
-	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
 
 	file, err := cluster.CreateTmpClientConfFile()
 	if err != nil {
@@ -909,8 +908,9 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 	defer os.Remove(file)
 
 	// Base parameters
+	// Important! Server ID should use binlog owner to apply binary logs correctly
 	params := make([]string, 0)
-	params = append(params, "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port)
+	params = append(params, "--read-from-remote-server", fmt.Sprintf("--server-id=%d", server.ServerID), "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port)
 
 	if start.Position > 0 {
 		params = append(params, "--start-position="+strconv.FormatInt(start.Position, 10))
@@ -924,15 +924,14 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 	params = append(params, "--verbose", start.Filename)
 
 	binlogCmd := exec.Command(cluster.GetMysqlBinlogPath(), params...)
-
+	iodumpreader, _ := binlogCmd.StdoutPipe()
 	stderrIn, _ := binlogCmd.StderrPipe()
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
 	stderrOut, _ := clientCmd.StderrPipe()
 
-	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.ReplaceAll(binlogCmd.String(), cluster.GetRplPass(), "XXXX"))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.ReplaceAll(clientCmd.String(), cluster.GetDbPass(), "XXXX"))
 
-	iodumpreader, _ := binlogCmd.StdoutPipe()
 	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), iodumpreader)
 
 	/*clientCmd.Stdin, err = dumpCmd.StdoutPipe()
@@ -941,7 +940,7 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 		return err
 	}*/
 	if err := binlogCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(binlogCmd.String(), cluster.GetDbPass(), "XXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqlbinlog command: %s at %s", err, strings.Replace(binlogCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 		return err
 	}
 	if err := clientCmd.Start(); err != nil {
@@ -962,7 +961,12 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 
 	wg.Wait()
 
-	binlogCmd.Wait()
+	if err := binlogCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed waiting mysqlbinlog command at %s : %s", server.URL, err)
+	}
+	if err := clientCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed waiting mysql client at %s : %s", dest.URL, err)
+	}
 
 	return nil
 }
