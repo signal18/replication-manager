@@ -2894,12 +2894,12 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 
 	if task.State == 3 || task.State == 4 {
 		//Wait for binlog metadata sent by writelog API
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Waiting for binlog info: %v", server.LastBackupMeta.Logical)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Waiting for binlog info: %v", lastmeta)
 		for lastmeta.BinLogFileName == "" {
 			time.Sleep(time.Second)
 		}
 		lastmeta.Completed = true
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Metadata completed: %v", server.LastBackupMeta.Logical)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Metadata completed: %v", lastmeta)
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Error occured in backup, writing incomplete metadata for backup in %s", server.URL)
 	}

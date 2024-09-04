@@ -107,6 +107,10 @@ func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMe
 		Password: server.Pass,
 	}
 
+	if cluster.HaveDBTLSCert {
+		cfg.TLSConfig = cluster.tlsconf
+	}
+
 	syncer := replication.NewBinlogSyncer(cfg)
 	defer syncer.Close()
 
@@ -125,12 +129,16 @@ func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMe
 			return err
 		}
 
-		if ev.Header.EventType == replication.FORMAT_DESCRIPTION_EVENT {
+		if ev != nil && ev.Header.EventType == replication.FORMAT_DESCRIPTION_EVENT {
 			meta.Start = int64(ev.Header.Timestamp)
 			ts := time.Unix(meta.Start, 0)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Refreshed oldest timestamp on %s - %s: %s", server.Host+":"+server.Port, meta.Filename, ts.String())
 			//Only update once for oldest binlog timestamp
 			return nil
+		}
+
+		if err != nil {
+			return err
 		}
 	}
 
@@ -210,7 +218,10 @@ func (server *ServerMonitor) RefreshBinlogMetadata(oldmetamap map[string]dbhelpe
 					err = server.RefreshBinlogMetaMySQL(meta)
 				}
 			}
-			modified = true
+
+			if err == nil {
+				modified = true
+			}
 		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s. Host: %s - %s", err.Error(), server.Host+":"+server.Port, meta.Filename)

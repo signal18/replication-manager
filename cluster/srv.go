@@ -367,6 +367,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	} else {
 		server.Conn, err = sqlx.Open("mysql", server.DSN)
 	}*/
+
+	go server.FetchLastBackupMetadata()
 	return server, err
 }
 
