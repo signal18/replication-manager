@@ -1321,6 +1321,8 @@ func (server *ServerMonitor) JobsCheckErrors() error {
 		switch task.String {
 		case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
 			defer server.SetInReseedBackup(false)
+		case "xtrabackup", "mariabackup":
+			cluster.SetState("WARN0115", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0115"]), ErrFrom: "JOB", ServerUrl: server.URL})
 		}
 	}
 
@@ -1460,9 +1462,9 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 		if task.ct > 0 {
 			var logrow []string
 			if err := server.AfterJobProcess(task); err != nil {
-				logrow = []string{config.LvlErr, "Scheduler error fetching finished replication_manager_schema.jobs %s", err.Error()}
+				logrow = []string{config.LvlErr, "[ERROR] Scheduler error fetching finished replication_manager_schema.jobs %s", err.Error()}
 			} else {
-				logrow = []string{config.LvlInfo, "Finished %s successfully", task.task}
+				logrow = []string{config.LvlInfo, "[SUCCESS] Finished %s successfully", task.task}
 			}
 			logs = append(logs, logrow)
 			server.SetNeedRefreshJobs(true)
@@ -1472,7 +1474,9 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 	time.Sleep(3 * time.Second)
 	for _, logrow := range logs {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, logrow[0], logrow[1], logrow[2])
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, logrow[0], logrow[1], logrow[2])
 	}
+
 	return err
 }
 
@@ -2938,7 +2942,7 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 		time.Sleep(time.Second)
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for writing metadata", server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for writing metadata for backup in %s", server.URL)
 
 	if task.State == 3 || task.State == 4 {
 		//Wait for binlog metadata sent by writelog API
