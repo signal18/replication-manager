@@ -203,6 +203,7 @@ type ServerMonitor struct {
 	IsRefreshingBinlogMeta      bool
 	IsLoadingJobList            bool
 	NeedRefreshJobs             bool
+	PointInTimeMeta             config.PointInTimeMeta
 	BinaryLogDir                string
 	DBDataDir                   string
 	LastBackupMeta              ServerBackupMeta `json:"lastBackupMeta"`

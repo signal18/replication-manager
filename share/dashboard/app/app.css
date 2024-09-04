@@ -63,3 +63,14 @@ td {
 .padding20{
     padding: 20px 20px 20px 20px;
 }
+
+
+/* This will disable the panel animation */
+md-tabs [role="tabpanel"] {
+    transition: none;
+}
+
+/* This will disable the `ink-bar` animation (border-bottom of selected tab) */
+md-tabs md-ink-bar {
+    transition: none;
+}

@@ -35,8 +35,8 @@ app.controller('DashboardController', function (
   QueryRules,
   GraphiteFilterList
 ) {
-
-  $scope.yearNow = new Date().getFullYear();
+  $scope.now = new Date()
+  $scope.yearNow = $scope.now.getFullYear();
   $scope.selectedClusterName = undefined;
   $scope.selectedPlan = undefined;
   $scope.selectedOrchestrator = undefined;
@@ -46,9 +46,11 @@ app.controller('DashboardController', function (
   $scope.menuOpened = false;
   $scope.serverListTabular = false;
   $scope.selectedTab = undefined;
+  $scope.selectedSubTab = undefined;
   $scope.selectedAcls = [];
   $scope.selectedUserIndex = undefined;
   $scope.newUserAcls = undefined;
+  $scope.flatpickrInstance = undefined;
   $scope.refreshInterval = 4000;
   $scope.digestmode = "pfs";
   $scope.gfilter = {
@@ -62,6 +64,37 @@ app.controller('DashboardController', function (
   $scope.missingDBTags = [];
   $scope.missingProxyTags = [];
   $scope.promise = undefined;
+
+  $scope.defaultRestoreForm = function () {
+    $scope.restoreForm = {
+      selectedServer: undefined,
+      selectedHost: undefined,
+      selectedPort: undefined,
+      selectedBackup: undefined,
+      pitr: undefined,
+      restoreTime: undefined,
+      canPITR: false,
+    };
+  }
+
+  $scope.canPITR = function (selectedBackup) {
+    $scope.restoreForm.pitr = false
+    $scope.resetRestoreTime() // Reset restore time for show PITR
+    let backup = $scope.selectedCluster.backupList[selectedBackup];
+    if (backup) {
+      const srv = $scope.servers.find(sv => sv.url === backup.source);
+      if (srv && srv.binaryLogFiles[backup.binLogFileName]) {
+        $scope.restoreForm.canPITR = true
+        return
+      }
+    }
+    $scope.restoreForm.canPITR = false
+  }
+
+  $scope.defaultRestoreForm();
+  $scope.resetRestoreTime = function () {
+    $scope.restoreForm.restoreTime = undefined
+  }
 
   $scope.showTable = false
   $scope.showLog = true
@@ -302,9 +335,42 @@ app.controller('DashboardController', function (
     { id: '6', name: 'SAT' },
   ];
 
-  $scope.humanFileSize = function (size) {
-    var i = size == 0 ? 0 : Math.floor(Math.log(size) / Math.log(1024));
-    return +((size / Math.pow(1024, i)).toFixed(2)) * 1 + ' ' + ['B', 'kB', 'MB', 'GB', 'TB'][i];
+  $scope.sortObjectValues = function (values, sortBy, direction) {
+    if (!values) return [];
+
+    let array = Object.values(values);
+    if (direction.toLowerCase() == 'desc') {
+      array.sort((a, b) => b[sortBy] - a[sortBy]); // Descending order
+    } else {
+      array.sort((a, b) => a[sortBy] - b[sortBy]); // Ascending order
+    }
+    return array;
+  }
+
+  $scope.formatDateToUTC = function (date) {
+    // Check if the input is a valid Date object
+    if (!(date instanceof Date) || isNaN(date)) {
+      throw new Error('Invalid Date');
+    }
+
+    // Convert date to ISO string and extract the relevant parts
+    var isoString = date.toISOString();
+    var formattedDate = isoString.slice(0, 19).replace('T', ' ') + ' UTC';
+
+    return formattedDate;
+  }
+
+  $scope.parseUTCDate = function (dateString) {
+    // Ensure the input is a string
+    if (typeof dateString !== 'string') {
+      throw new Error('Input must be a string');
+    }
+
+    // Convert 'yyyy-MM-dd HH:mm:ss' to 'yyyy-MM-ddTHH:mm:ssZ'
+    var isoString = dateString.replace(' ', 'T') + 'Z';
+
+    // Create a Date object from the ISO string
+    return new Date(isoString);
   }
 
   var getClusterUrl = function () {
@@ -375,22 +441,22 @@ app.controller('DashboardController', function (
     return t.state === 0 || (t.start < Math.floor((Date.now() - 300000) / 1000) && !t.end && t.state < 3)
   }
 
-  $scope.getBackupMethod = function(method) {
-    switch(method) {
-        case 1: return 'Logical';
-        case 2: return 'Physical';
-        default: return 'Unknown';
+  $scope.getBackupMethod = function (method) {
+    switch (method) {
+      case 1: return 'Logical';
+      case 2: return 'Physical';
+      default: return 'Unknown';
     }
-};
+  };
 
-$scope.getBackupStrategy = function(strategy) {
-    switch(strategy) {
-        case 1: return 'Full';
-        case 2: return 'Incremental';
-        case 3: return 'Differential';
-        default: return 'Unknown';
+  $scope.getBackupStrategy = function (strategy) {
+    switch (strategy) {
+      case 1: return 'Full';
+      case 2: return 'Incremental';
+      case 3: return 'Differential';
+      default: return 'Unknown';
     }
-};
+  };
 
   $scope.SetApiTokenTimeout = function (val) {
     if ($scope.roApiTokenTimeout) {
@@ -1876,6 +1942,17 @@ $scope.getBackupStrategy = function(strategy) {
     return $scope.setsettings(setting, value)
   };
 
+  $scope.sendRestoreForm = function (form) {
+    let unixts = Math.floor(form.restoreTime.getTime() / 1000)
+
+    $http.post(getClusterUrl() + '/servers/' + form.selectedServer + '/actions/pitr', { Backup: form.selectedBackup, UseBinlog: form.pitr, RestoreTime: unixts })
+      .then(function () {
+        console.log("Restore request sent successfully")
+      }, function (err) {
+        alert("Failed to send restore request. Err: " + err)
+      });
+  };
+
 
   $scope.saveApiTokenTimeout = function (to) {
     $scope.setsettings("api-token-timeout", to)
@@ -2104,6 +2181,36 @@ $scope.getBackupStrategy = function(strategy) {
     $mdDialog.hide({ contentElement: '#myProxiesDebugDialog', });
   };
 
+  $scope.openRestoreDialog = function (server, host, port) {
+    $scope.restoreForm.selectedServer = server
+    $scope.restoreForm.selectedHost = host
+    $scope.restoreForm.selectedPort = port
+    $mdDialog.show({
+      contentElement: '#myRestoreDialog',
+      parent: angular.element(document.body),
+    });
+  };
+  $scope.closeRestoreDialog = function (restoreForm) {
+    $mdDialog.hide({ contentElement: '#myRestoreDialog', });
+    backup = $scope.selectedCluster.backupList[restoreForm.selectedBackup]
+    restoreForm.restoreTime = restoreForm.restoreTime ? $scope.parseUTCDate(restoreForm.restoreTime) : new Date(backup.startTime)
+
+    let msg = "Confirm restore server " + restoreForm.selectedHost + ":" + restoreForm.selectedPort + " with " + backup.backupTool
+    if (restoreForm.pitr) {
+      msg = msg + " and binary logs"
+    }
+    msg = msg + " (" + $scope.formatDateToUTC(restoreForm.restoreTime) + ") ?\n"
+    if ($scope.master.id != restoreForm.selectedServer) {
+      msg = msg + "This will make this slave as standalone."
+    }
+    if (confirm(msg)) $scope.sendRestoreForm(restoreForm);
+    $scope.defaultRestoreForm()
+  };
+  $scope.cancelRestoreDialog = function () {
+    $mdDialog.hide({ contentElement: '#myRestoreDialog', });
+    $scope.defaultRestoreForm()
+  };
+
   $scope.selectUserIndex = function (index) {
     var r = confirm("Confirm select Index  " + index);
     if ($scope.selectedUserIndex !== index) {
@@ -2115,14 +2222,27 @@ $scope.getBackupStrategy = function(strategy) {
   };
 
   $scope.onTabSelected = function (tab) {
-
     $scope.selectedTab = tab;
     $scope.gfilterUpdate = true;
+    if (tab == "Backups") {
+      $scope.selectedSubTab = tab;
+    }
+  };
+
+  $scope.onSubTabSelected = function (sub) {
+    $scope.selectedSubTab = sub;
   };
 
   $scope.onTabClicked = function (tab) {
     $scope.selectedTab = tab;
     $scope.gfilterUpdate = true;
+    if (tab == "Backups") {
+      $scope.selectedSubTab = tab;
+    }
+  };
+
+  $scope.onSubTabClicked = function (sub) {
+    $scope.selectedSubTab = sub;
   };
 
   $scope.openServer = function (id) {
@@ -2262,8 +2382,5 @@ $scope.getBackupStrategy = function(strategy) {
   $scope.getTablePct = function (table, index) {
     return ((table + index) / ($scope.selectedCluster.workLoad.dbTableSize + $scope.selectedCluster.workLoad.dbTableSize + 1) * 100).toFixed(2);
   };
-
-
   $scope.start();
-
 });

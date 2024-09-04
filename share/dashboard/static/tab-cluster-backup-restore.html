@@ -1,0 +1,35 @@
+<md-content class="md-padding">
+    <md-card class="md-padding">
+        <md-card-content>
+            <p class="sectionheader">Restore Backup</p>
+        </md-card-content>
+        <md-card class="md-padding">
+            <label for="backup-select">Select Backup:</label>
+            <md-select id="backup-select" ng-model="restoreForm.selectedBackup">
+                <md-option value="">--Select a Backup--</md-option>
+                <md-option ng-repeat="backup in sortObjectValues(selectedCluster.backupList,'startTime','desc') | orderBy:'-startTime'" ng-value="backup.id">{{backup.source + ' - ' + backup.backupTool + ' - ' + (backup.startTime | date:'yyyy-MM-dd HH:mm:ss')}}</md-option>
+            </md-select>
+
+            <label for="restore-time">Restore Point In Time:</label>
+            <input type="text" id="datetime-picker" ng-model="restoreForm.restoreTime">
+
+            <div class="actions md-padding">
+                <button ng-click="startRestore(restoreForm)" ng-disabled="!restoreForm.selectedBackup || !restoreForm.restoreTime">Start Restore</button>
+                <button ng-click="clearRestoreForm()">Clear</button>
+            </div>
+        </md-card>
+    </md-card>
+</md-content>
+<script>
+    angular.element(document).ready(function () {
+        flatpickr("#datetime-picker", {
+            enableTime: true,
+            dateFormat: "Y-m-d H:i:S",
+            onChange: function (selectedDates, dateStr, instance) {
+                $scope.$apply(function () {
+                    $scope.restoreForm.restoreTime = dateStr;
+                });
+            }
+        });
+    });
+</script>

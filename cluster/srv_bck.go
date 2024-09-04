@@ -11,7 +11,10 @@ package cluster
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -64,7 +67,9 @@ func (server *ServerMonitor) AppendLastMetadata(method string, latest *int64) {
 			*latest = meta.Id
 		}
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Error reading %s meta: %s", method, err.Error())
+		if !errors.Is(err, os.ErrNotExist) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Error reading %s meta: %s", method, err.Error())
+		}
 	}
 }
 
@@ -128,4 +133,95 @@ func (server *ServerMonitor) GetLatestMeta(method string) (int64, *config.Backup
 	})
 
 	return latest, meta
+}
+
+func (server *ServerMonitor) ReseedPointInTime(meta config.PointInTimeMeta) error {
+	var err error
+	cluster := server.ClusterGroup
+
+	server.SetPointInTimeMeta(meta)                           //Set for PITR
+	defer server.SetPointInTimeMeta(config.PointInTimeMeta{}) //Reset after done
+
+	backup := cluster.BackupMetaMap.Get(meta.Backup)
+	if backup == nil {
+		return fmt.Errorf("Backup with id %d not found in BackupMetaMap", meta.Backup)
+	}
+
+	// Needed for updating status
+	if !cluster.Conf.MonitorScheduler {
+		return fmt.Errorf("PITR on node %s can not continue without monitoring scheduler", server.URL)
+	}
+
+	// Prevent reseed with incompatible tools
+	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") && backup.BackupTool == "xtrabackup" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Node %s MariaDB version is greater than 10.1 and not compatible with xtrabackup. Cancelling reseed for data safety.", server.URL)
+		return fmt.Errorf("Node %s MariaDB version is greater than 10.1 and not compatible with xtrabackup.", server.URL)
+	}
+
+	if !meta.UseBinlog {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Requesting PITR on node %s with %s without using binary logs", server.URL, backup.BackupTool)
+	}
+
+	switch backup.BackupTool {
+	case config.ConstBackupLogicalTypeMysqldump, config.ConstBackupLogicalTypeMydumper, config.ConstBackupLogicalTypeRiver, config.ConstBackupLogicalTypeDumpling:
+		err = server.JobReseedLogicalBackup(backup.BackupTool)
+	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
+		err = server.JobReseedPhysicalBackup(backup.BackupTool)
+	default:
+		return fmt.Errorf("Wrong backup type for reseed: got %s", backup.BackupTool)
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while trying to execute PITR on %s. err: %s", server.URL, err.Error())
+		return err
+	}
+
+	// Wait for 15 seconds until job result updated.
+	time.Sleep(time.Second * 15)
+
+	task := server.JobResults.Get("reseed" + backup.BackupTool)
+
+	//Wait until job result changed since we're using pointer
+	for task.State < 3 {
+		time.Sleep(time.Second)
+	}
+
+	//If failed
+	if task.State > 4 {
+		err = fmt.Errorf("Unable to complete reseed from backup using %s", backup.BackupTool)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while trying to execute PITR on %s: %s", server.URL, err)
+		return err
+	}
+
+	if !meta.UseBinlog {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "PITR done on node %s without using binary logs", server.URL)
+		return nil
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for injecting binary logs on %s until %s", server.URL, time.Unix(meta.RestoreTime, 0).Format(time.RFC3339))
+
+	source := cluster.GetServerFromURL(backup.Source)
+	if source == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while trying to execute PITR on %s. Unable to get backup source: %s", server.URL, backup.Source)
+		return fmt.Errorf("Source not found")
+	}
+
+	start := config.ReadBinaryLogsBoundary{Filename: backup.BinLogFileName, Position: int64(backup.BinLogFilePos)}
+	end := config.ReadBinaryLogsBoundary{UseTimestamp: true, Timestamp: time.Unix(meta.RestoreTime, 0)}
+	err = source.ReadAndExecBinaryLogsWithinRange(start, end, server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while applying binlogs on %s. err: %s", server.URL, err.Error())
+		return err
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binary logs injected on %s until %s", server.URL, time.Unix(meta.RestoreTime, 0).Format(time.RFC3339))
+
+	return nil
+}
+
+func (server *ServerMonitor) InjectViaBinlogs(meta config.PointInTimeMeta) error {
+	return nil
+}
+
+func (server *ServerMonitor) InjectViaReplication(meta config.PointInTimeMeta) error {
+	return nil
 }

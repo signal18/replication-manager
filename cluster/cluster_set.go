@@ -444,6 +444,37 @@ func (cluster *Cluster) SetBenchMethod(m string) {
 	cluster.benchmarkType = m
 }
 
+func (cluster *Cluster) AddPrefMaster(node *ServerMonitor) {
+	if cluster.IsInPreferedHosts(node) {
+		return
+	}
+
+	savedPrefMaster := cluster.GetPreferedMasterList()
+	if savedPrefMaster == "" {
+		cluster.SetPrefMaster(node.URL)
+	} else {
+		cluster.SetPrefMaster(savedPrefMaster + "," + node.URL)
+	}
+}
+
+func (cluster *Cluster) RemovePrefMaster(node *ServerMonitor) error {
+	if !cluster.IsInPreferedHosts(node) {
+		return fmt.Errorf("Host not found in prefered list")
+	}
+
+	savedPrefMaster := cluster.GetPreferedMasterList()
+	if savedPrefMaster == node.URL {
+		cluster.SetPrefMaster("")
+	} else {
+		//Remove the prefered from list
+		newPrefMaster := strings.Replace(savedPrefMaster, node.URL+",", "", -1)
+		newPrefMaster = strings.Replace(newPrefMaster, ","+node.URL, "", -1)
+		cluster.SetPrefMaster(newPrefMaster)
+	}
+
+	return nil
+}
+
 // SetPrefMaster is used by regtest test_switchover_semisync_switchback_prefmaster_norplcheck and API to force a server
 func (cluster *Cluster) SetPrefMaster(PrefMasterURL string) {
 	var prefmasterlist []string
@@ -457,6 +488,39 @@ func (cluster *Cluster) SetPrefMaster(PrefMasterURL string) {
 	}
 	cluster.Conf.PrefMaster = strings.Join(prefmasterlist, ",")
 	// fmt.Printf("Update config prefered Master: " + cluster.Conf.PrefMaster + "\n")
+}
+
+// Set Ignored Host for Election
+func (cluster *Cluster) AddIgnoreSrv(node *ServerMonitor) {
+	if cluster.IsInIgnoredHosts(node) {
+		return
+	}
+
+	savedIgnoredHost := cluster.GetIgnoredHostList()
+	if savedIgnoredHost == "" {
+		cluster.SetIgnoreSrv(node.URL)
+	} else {
+		cluster.SetIgnoreSrv(savedIgnoredHost + "," + node.URL)
+	}
+}
+
+// Set Ignored Host for Election
+func (cluster *Cluster) RemoveIgnoreSrv(node *ServerMonitor) error {
+	if !cluster.IsInIgnoredHosts(node) {
+		return fmt.Errorf("Host not found in ignored list")
+	}
+
+	savedIgnoredHost := cluster.GetIgnoredHostList()
+	if savedIgnoredHost == node.URL {
+		cluster.SetIgnoreSrv("")
+	} else {
+		//Remove the prefered from list
+		newIgnoredHost := strings.Replace(savedIgnoredHost, node.URL+",", "", -1)
+		newIgnoredHost = strings.Replace(newIgnoredHost, ","+node.URL, "", -1)
+		cluster.SetIgnoreSrv(newIgnoredHost)
+	}
+
+	return nil
 }
 
 // Set Ignored Host for Election

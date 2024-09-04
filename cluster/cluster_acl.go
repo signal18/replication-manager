@@ -245,6 +245,9 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/actions/reseed/") {
 			return true
 		}
+		if strings.Contains(URL, "/actions/pitr") {
+			return true
+		}
 		if strings.Contains(URL, "/actions/reseed-cancel") {
 			return true
 		}

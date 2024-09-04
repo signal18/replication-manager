@@ -75,7 +75,8 @@ type Cluster struct {
 	Servers                       serverList           `json:"-"`
 	LogSlaveServers               []string             `json:"-"` //To store slave with log-slave-updates
 	ServerIdList                  []string             `json:"dbServers"`
-	Crashes                       crashList            `json:"dbServersCrashes"`
+	Crashes                       crashList            `json:"dbServersCrashes"` //This will be purged on all db node up
+	FailoverHistory               crashList            `json:"failoverHistory"`  //This will be used for PITR
 	Proxies                       proxyList            `json:"-"`
 	ProxyIdList                   []string             `json:"proxyServers"`
 	FailoverCtr                   int                  `json:"failoverCounter"`
@@ -762,7 +763,7 @@ func (cluster *Cluster) StateProcessing() {
 				for _, srv := range cluster.Servers {
 					if srv.HasWaitLogicalBackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for logical backup", srv.URL)
-						go srv.JobReseedLogicalBackup()
+						go srv.JobReseedLogicalBackup("default")
 					}
 				}
 			}
@@ -772,7 +773,7 @@ func (cluster *Cluster) StateProcessing() {
 					if srv.HasWaitPhysicalBackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for physical backup", srv.URL)
 						go func() {
-							err := srv.JobReseedPhysicalBackup()
+							err := srv.JobReseedPhysicalBackup("default")
 							if err != nil {
 								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, err.Error())
 							}

@@ -12,7 +12,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
@@ -217,6 +216,11 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseed)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/pitr", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerPITR)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed-cancel", negroni.New(
@@ -577,7 +581,7 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			if vars["backupMethod"] == "logicalbackup" {
-				err := node.JobReseedLogicalBackup()
+				err := node.JobReseedLogicalBackup("default")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "logical reseed restore failed %s", err)
 					http.Error(w, "Error reseed logical backup", 500)
@@ -591,12 +595,62 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 				}
 			}
 			if vars["backupMethod"] == "physicalbackup" {
-				err := node.JobReseedPhysicalBackup()
+				err := node.JobReseedPhysicalBackup("default")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "physical reseed restore failed %s", err)
 				}
 			}
 
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerPITR(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			var formPit config.PointInTimeMeta
+			// This will always true for making standalone
+			formPit.IsInPITR = true
+			err := json.NewDecoder(r.Body).Decode(&formPit)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Decode error :%s", err.Error()), http.StatusInternalServerError)
+				return
+			}
+
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Requesting PITR on node %s", node.URL)
+
+			err = node.ReseedPointInTime(formPit)
+			if err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "PITR on %s failed, err: %s", node.URL, err.Error())
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "PITR on %s failed, err: %s", node.URL, err.Error())
+				http.Error(w, fmt.Sprintf("PITR error :%s", err.Error()), http.StatusInternalServerError)
+				return
+			} else {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "PITR on %s finished successfully", node.URL)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "PITR on %s finished successfully", node.URL)
+			}
+
+			marshal, err := json.MarshalIndent(formPit, "", "\t")
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Encode error :%s", err.Error()), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(ApiResponse{Data: string(marshal), Success: true})
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -787,14 +841,7 @@ func (repman *ReplicationManager) handlerMuxServerSetPrefered(w http.ResponseWri
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive set node as prefered request")
-			if !mycluster.IsInPreferedHosts(node) {
-				savedPrefMaster := mycluster.GetPreferedMasterList()
-				if savedPrefMaster == "" {
-					mycluster.SetPrefMaster(node.URL)
-				} else {
-					mycluster.SetPrefMaster(savedPrefMaster + "," + node.URL)
-				}
-			}
+			mycluster.AddPrefMaster(node)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -817,28 +864,8 @@ func (repman *ReplicationManager) handlerMuxServerSetUnrated(w http.ResponseWrit
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive set node as unrated request")
-			if mycluster.IsInPreferedHosts(node) {
-				savedPrefMaster := mycluster.GetPreferedMasterList()
-				if savedPrefMaster == node.URL {
-					mycluster.SetPrefMaster("")
-				} else {
-					//Remove the prefered from list
-					newPrefMaster := strings.Replace(savedPrefMaster, node.URL+",", "", -1)
-					newPrefMaster = strings.Replace(newPrefMaster, ","+node.URL, "", -1)
-					mycluster.SetPrefMaster(newPrefMaster)
-				}
-			}
-			if mycluster.IsInIgnoredHosts(node) {
-				savedIgnoredHost := mycluster.GetIgnoredHostList()
-				if savedIgnoredHost == node.URL {
-					mycluster.SetIgnoreSrv("")
-				} else {
-					//Remove the prefered from list
-					newIgnoredHost := strings.Replace(savedIgnoredHost, node.URL+",", "", -1)
-					newIgnoredHost = strings.Replace(newIgnoredHost, ","+node.URL, "", -1)
-					mycluster.SetIgnoreSrv(newIgnoredHost)
-				}
-			}
+			mycluster.RemovePrefMaster(node)
+			mycluster.RemoveIgnoreSrv(node)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -860,15 +887,8 @@ func (repman *ReplicationManager) handlerMuxServerSetIgnored(w http.ResponseWrit
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive set node as prefered request")
-			if !mycluster.IsInIgnoredHosts(node) {
-				savedIgnoredHost := mycluster.GetIgnoredHostList()
-				if savedIgnoredHost == "" {
-					mycluster.SetIgnoreSrv(node.URL)
-				} else {
-					mycluster.SetIgnoreSrv(savedIgnoredHost + "," + node.URL)
-				}
-			}
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive request: set node as ignored")
+			mycluster.AddIgnoreSrv(node)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

@@ -1,14 +1,12 @@
-
-
 <div class="hidden">
     <div class="md-dialog-container" id="myNewServerDialog">
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">New Server</h2>
-                Host: <input type="text" ng-model="dlgServerName"><BR>
-                Port: <input type="text" ng-model="dlgServerPort">
-                Type:  <md-select name="selectedMonitor" ng-model="selectedMonitor">
-                    <md-option ng-repeat="monitor in monitors" ng-value="monitor.id">{{ monitor.name }}</md-option>
-                </md-select>
+            Host: <input type="text" ng-model="dlgServerName"><BR>
+            Port: <input type="text" ng-model="dlgServerPort">
+            Type: <md-select name="selectedMonitor" ng-model="selectedMonitor">
+                <md-option ng-repeat="monitor in monitors" ng-value="monitor.id">{{ monitor.name }}</md-option>
+            </md-select>
             <md-button ng-click="cancelNewServerDialog()" class="md-primary">
                 Cancel
             </md-button>
@@ -17,9 +15,6 @@
             </md-button>
         </md-dialog>
     </div>
-</div>
-
-<div class="hidden">
     <div class="md-dialog-container" id="myClusterCredentialDialog">
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">Database Server Credential</h2>
@@ -35,8 +30,6 @@
             </md-button>
         </md-dialog>
     </div>
-</div>
-<div class="hidden">
     <div class="md-dialog-container" id="myClusterProxyCredentialDialog">
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">Proxy Server Credential</h2>
@@ -52,8 +45,6 @@
             </md-button>
         </md-dialog>
     </div>
-</div>
-<div class="hidden">
     <div class="md-dialog-container" id="myRplCredentialDialog">
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">Replication Credential</h2>
@@ -69,13 +60,11 @@
             </md-button>
         </md-dialog>
     </div>
-</div>
-<div class="hidden">
     <div class="md-dialog-container" id="myClusterDebugDialog">
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">JSON</h2>
             <form>
-              <textarea name="message" rows="30" cols="150">
+                <textarea name="message" rows="30" cols="150">
                 {{selectedCluster}}
               </textarea>
             </form>
@@ -84,13 +73,11 @@
             </md-button>
         </md-dialog>
     </div>
-</div>
-<div class="hidden">
     <div class="md-dialog-container" id="myServerDebugDialog">
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">JSON</h2>
             <form>
-              <textarea name="message" rows="30" cols="150">
+                <textarea name="message" rows="30" cols="150">
                 {{servers}}
               </textarea>
             </form>
@@ -99,13 +86,11 @@
             </md-button>
         </md-dialog>
     </div>
-</div>
-<div class="hidden">
     <div class="md-dialog-container" id="myProxiesDebugDialog">
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">JSON</h2>
             <form>
-              <textarea name="message" rows="30" cols="150">
+                <textarea name="message" rows="30" cols="150">
                 {{proxies}}
               </textarea>
             </form>
@@ -114,13 +99,11 @@
             </md-button>
         </md-dialog>
     </div>
-</div>
-<div class="hidden">
     <div class="md-dialog-container" id="myProcessListDialog">
         <md-dialog style="padding: 20px 20px 20px 20px;">
             <h2 class="md-title">JSON</h2>
             <form>
-              <textarea name="message" rows="30" cols="150">
+                <textarea name="message" rows="30" cols="150">
                 {{selectedCluster}}
               </textarea>
             </form>
@@ -129,9 +112,45 @@
             </md-button>
         </md-dialog>
     </div>
-</div>
+    <div class="md-dialog-container" id="myRestoreDialog">
+        <md-dialog style="padding: 20px 20px 20px 20px; overflow: visible;">
+            <h2 class="md-title">Restore Backup PITR</h2>
+            <label for="backup-select">Select Backup:</label>
+            <md-select id="backup-select" ng-model="restoreForm.selectedBackup" style="margin-bottom: 5px;" ng-change="canPITR(restoreForm.selectedBackup)">
+                <md-option value="">--Select a Backup--</md-option>
+                <md-option ng-repeat="backup in sortObjectValues(selectedCluster.backupList,'startTime','desc') | orderBy:'-startTime'" ng-value="backup.id">{{backup.source + ' - ' + backup.backupTool + ' - ' + (backup.startTime | date:'yyyyMMdd_HHmmss':'UTC')}}</md-option>
+            </md-select>
+            <br>
+            <span ng-show="restoreForm.selectedBackup && restoreForm.canPITR">
+                <label for="restore-time" class="pull-left" style="margin-right: 5px;">Point In Time Restore:</label>
+                <input type="checkbox" id="pitr-checkbox" ng-model="restoreForm.pitr" class="pull-left" ng-click="resetRestoreTime()">
+            </span>
+            <span ng-show="restoreForm.selectedBackup && !restoreForm.canPITR">
+                <label for="restore-time" class="pull-left" style="margin-right: 5px;">No PITR for this backup</label>
+            </span>
+            <input id="datetime-picker" type="text" ng-show="restoreForm.pitr" ng-model="restoreForm.restoreTime" flatpickr flatpickr-min-date="restoreForm.selectedBackup" flatpickr-min-date-type="unix" flatpickr-max-date="now" flatpickr-date-format="Y-m-d H:i:S" flatpickr-static="true" flatpickr-enable-time="true" flatpickr-utc="true" flatpickr-allow-input="true" flatpickr-enable-seconds="true" autocomplete="off">
 
+            <span ng-if="restoreForm.selectedBackup && !restoreForm.restoreTime" style="margin-top: 5px;">
+                <label for="restore-time" class="pull-left" style="margin-right: 5px;">UTC:</label>{{ (restoreForm.selectedBackup*1000 | date:'yyyy-MM-dd HH:mm:ss' : 'UTC') }}
+            </span>
+            <span ng-if="restoreForm.selectedBackup && !restoreForm.restoreTime">
+                <label for="restore-time" class="pull-left" style="margin-right: 5px;">Local:</label>{{ (restoreForm.selectedBackup*1000 | date:'yyyy-MM-dd HH:mm:ss Z') }}
+            </span>
+            <span ng-if="restoreForm.restoreTime" style="margin-top: 5px;">
+                <label for="restore-time" class="pull-left" style="margin-right: 5px;">UTC:</label>{{ (parseUTCDate(restoreForm.restoreTime) | date:'yyyy-MM-dd HH:mm:ss' : 'UTC') }}
+            </span>
+            <span ng-if="restoreForm.restoreTime">
+                <label for="restore-time" class="pull-left" style="margin-right: 5px;">Local:</label>{{ (parseUTCDate(restoreForm.restoreTime) | date:'yyyy-MM-dd HH:mm:ss Z') }}
+            </span>
 
-
-
+            <div class="actions md-padding">
+                <md-button ng-click="cancelRestoreDialog()" class="md-primary">
+                    Cancel
+                </md-button>
+                <md-button ng-click="closeRestoreDialog(restoreForm)" ng-disabled="!restoreForm.selectedBackup || (!restoreForm.restoreTime && restoreForm.pitr)" class="md-primary">
+                    Start Restore
+                </md-button>
+            </div>
+        </md-dialog>
+    </div>
 </div>

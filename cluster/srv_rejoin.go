@@ -213,9 +213,9 @@ func (server *ServerMonitor) ReseedMasterSST() error {
 		if cluster.Conf.BackupLoadScript != "" {
 			server.JobReseedBackupScript()
 		} else if cluster.Conf.AutorejoinLogicalBackup {
-			server.JobReseedLogicalBackup()
+			server.JobReseedLogicalBackup("default")
 		} else if cluster.Conf.AutorejoinPhysicalBackup {
-			server.JobReseedPhysicalBackup()
+			server.JobReseedPhysicalBackup("default")
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "No SST reseed method found")
 			return errors.New("No SST reseed method found")

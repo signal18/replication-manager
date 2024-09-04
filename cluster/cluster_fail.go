@@ -162,6 +162,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "master_log_pos=%s", ms.ReadMasterLogPos.String)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Candidate semisync %t", cluster.master.SemiSyncSlaveStatus)
 	crash := new(Crash)
+	if fail == false {
+		crash.Switchover = true
+	}
+	crash.UnixTimestamp = time.Now().Unix()
 	crash.URL = cluster.oldMaster.URL
 	crash.ElectedMasterURL = cluster.master.URL
 	crash.FailoverMasterLogFile = ms.MasterLogFile.String
@@ -230,6 +234,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 	}
 	cluster.Crashes = append(cluster.Crashes, crash)
+	cluster.FailoverHistory.StoreLastN(crash, cluster.Conf.FailoverLogFileKeep)
 	t := time.Now()
 	crash.Save(cluster.WorkingDir + "/failover." + t.Format("20060102150405") + ".json")
 	crash.Purge(cluster.WorkingDir, cluster.Conf.FailoverLogFileKeep)
@@ -1283,6 +1288,10 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		}
 
 		crash := new(Crash)
+		if fail == false {
+			crash.Switchover = true
+		}
+		crash.UnixTimestamp = time.Now().Unix()
 		crash.URL = cluster.oldMaster.URL
 		crash.ElectedMasterURL = cluster.master.URL
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Save replication status before electing")
@@ -1313,6 +1322,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.master.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		cluster.Crashes = append(cluster.Crashes, crash)
+		cluster.FailoverHistory.StoreLastN(crash, cluster.Conf.FailoverLogFileKeep)
 		cluster.Save()
 		t := time.Now()
 		crash.Save(cluster.WorkingDir + "/failover." + t.Format("20060102150405") + ".json")
