@@ -155,6 +155,7 @@ type Processlist struct {
 	Progress     sql.NullFloat64 `json:"progress" db:"Progress"`
 	RowsSent     uint64          `json:"rowsSent" db:"Rows_sent"`
 	RowsExamined uint64          `json:"rowsExamined" db:"Rows_examined"`
+	Url          string          `json:"url" db:"url"`
 }
 
 type LogSlow struct {
