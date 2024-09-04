@@ -2892,7 +2892,7 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 		time.Sleep(time.Second)
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for writing metadata", server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for writing metadata for backup in %s", server.URL)
 
 	if task.State == 3 || task.State == 4 {
 		//Wait for binlog metadata sent by writelog API
