@@ -107,6 +107,10 @@ func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMe
 		Password: server.Pass,
 	}
 
+	if cluster.HaveDBTLSCert {
+		cfg.TLSConfig = cluster.tlsconf
+	}
+
 	syncer := replication.NewBinlogSyncer(cfg)
 	defer syncer.Close()
 
