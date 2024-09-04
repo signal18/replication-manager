@@ -11,6 +11,7 @@ package cluster
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -66,7 +67,9 @@ func (server *ServerMonitor) AppendLastMetadata(method string, latest *int64) {
 			*latest = meta.Id
 		}
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Error reading %s meta: %s", method, err.Error())
+		if !errors.Is(err, os.ErrNotExist) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Error reading %s meta: %s", method, err.Error())
+		}
 	}
 }
 
