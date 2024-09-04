@@ -7,6 +7,22 @@ app.directive('flatpickr', function($timeout) {
             var lastMinDate;
             var lastMaxDate;
 
+            function parseDate(value, type) {
+                let ms;
+                switch (type) {
+                    case 'unix':
+                        ms = Math.floor(parseInt(value) * 1000 + (new Date().getTimezoneOffset()*60000))
+                        return new Date(ms); // Unix timestamp in seconds
+                    case 'unix-ms':
+                        ms = Math.floor(parseInt(value) + (new Date().getTimezoneOffset()*60000))
+                        return new Date(parseInt(ms)); // Unix timestamp in milliseconds
+                    case 'datetime':
+                    default:
+                        let tmp = new Date(value)
+                        return new Date(Math.floor(tmp.getTime() + (tmp.getTimezoneOffset()*60000))); // ISO 8601 or Date string
+                }
+            }
+
             function initFlatpickr() {
                 var options = {
                     time_24hr : true,
@@ -40,6 +56,11 @@ app.directive('flatpickr', function($timeout) {
                             flatpickrInstance.set('minDate', minDate);
                             lastMinDate = minDate;
                         }
+                        if (attrs.flatpickrMaxDate === "now") {
+                            maxDate = parseDate((new Date()).getTime(),"unix-ms");
+                            flatpickrInstance.set('maxDate', maxDate);
+                            lastMaxDate = maxDate;
+                        }
                     }
                 }, 300));
 
@@ -57,22 +78,6 @@ app.directive('flatpickr', function($timeout) {
                         lastMaxDate = maxDate;
                     }
                 }, 300));
-            }
-
-            function parseDate(value, type) {
-                let ms;
-                switch (type) {
-                    case 'unix':
-                        ms = Math.floor(parseInt(value) * 1000 + (new Date().getTimezoneOffset()*60000))
-                        return new Date(ms); // Unix timestamp in seconds
-                    case 'unix-ms':
-                        ms = Math.floor(parseInt(value) + (new Date().getTimezoneOffset()*60000))
-                        return new Date(parseInt(ms)); // Unix timestamp in milliseconds
-                    case 'datetime':
-                    default:
-                        let tmp = new Date(value)
-                        return new Date(Math.floor(tmp.getTime() + (tmp.getTimezoneOffset()*60000))); // ISO 8601 or Date string
-                }
             }
 
             function adjustDatepickerPosition() {
