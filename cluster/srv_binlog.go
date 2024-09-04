@@ -866,6 +866,10 @@ func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *c
 		Password: server.Pass,
 	}
 
+	if cluster.HaveDBTLSCert {
+		cfg.TLSConfig = cluster.tlsconf
+	}
+
 	syncer := replication.NewBinlogSyncer(cfg)
 	defer syncer.Close()
 
@@ -925,16 +929,16 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 	}
 
 	// Binlog filename parameter
-	params = append(params, "--verbose", start.Filename)
+	params = append(params, start.Filename)
 
 	binlogCmd := exec.Command(cluster.GetMysqlBinlogPath(), params...)
 	iodumpreader, _ := binlogCmd.StdoutPipe()
 	stderrIn, _ := binlogCmd.StderrPipe()
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
-	stderrOut, _ := clientCmd.StderrPipe()
+	stderrOut, _ := clientCmd.StdoutPipe()
+	clientCmd.Stderr = clientCmd.Stdout
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.ReplaceAll(binlogCmd.String(), cluster.GetRplPass(), "XXXX"))
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.ReplaceAll(clientCmd.String(), cluster.GetDbPass(), "XXXX"))
 
 	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), iodumpreader)
 

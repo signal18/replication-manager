@@ -2104,7 +2104,10 @@ func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string) {
 		if !s.Scan() {
 			break
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, s.Text())
+			//Remove empty lines
+			if strings.TrimSpace(s.Text()) != "" {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, s.Text())
+			}
 		}
 	}
 }
