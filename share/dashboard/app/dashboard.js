@@ -918,17 +918,21 @@ app.controller('DashboardController', function (
             align: 'left',
             valign: 'bottom',
             sortable: true,
-            width: "15%"
           }, {
             field: 'lockMode.String',
-            title: 'Schema',
+            title: 'Lock Mode',
             align: 'left',
             valign: 'bottom',
             sortable: true,
-            width: "20%"
           }, {
             field: 'lockDuration.String',
             title: 'Duration',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true,
+          }, {
+            field: 'lockTimeMs.Int64',
+            title: 'Lock Time (ms)',
             align: 'left',
             valign: 'bottom',
             sortable: true,
@@ -936,6 +940,12 @@ app.controller('DashboardController', function (
           }, {
             field: 'lockType.String',
             title: 'Lock Type',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true
+          }, {
+            field: 'lockCatalog.String',
+            title: 'Catalog',
             align: 'left',
             valign: 'bottom',
             sortable: true
