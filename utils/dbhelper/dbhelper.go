@@ -56,7 +56,9 @@ type MetaDataLock struct {
 	Thread_id     uint64         `json:"threadId" db:"THREAD_ID"`
 	Lock_mode     sql.NullString `json:"lockMode" db:"LOCK_MODE"`
 	Lock_duration sql.NullString `json:"lockDuration" db:"LOCK_DURATION"`
+	Lock_time_ms  sql.NullInt64  `json:"lockTimeMs" db:"LOCK_TIME_MS"`
 	Lock_type     sql.NullString `json:"lockType" db:"LOCK_TYPE"`
+	Lock_catalog  sql.NullString `json:"lockCatalog" db:"TABLE_CATALOG"`
 	Lock_schema   sql.NullString `json:"lockSchema" db:"TABLE_SCHEMA"`
 	Lock_name     sql.NullString `json:"lockName" db:"TABLE_NAME"`
 }
