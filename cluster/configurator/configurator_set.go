@@ -11,12 +11,17 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/sirupsen/logrus"
 )
 
 func (configurator *Configurator) SetConfig(conf config.Config) {
 	configurator.ClusterConfig = conf
 	configurator.DBTags = strings.Split(conf.ProvTags, ",")
 	configurator.ProxyTags = strings.Split(conf.ProvProxTags, ",")
+}
+
+func (configurator *Configurator) SetLogger(logger *logrus.Logger) {
+	configurator.Logger = logger
 }
 
 func (configurator *Configurator) SetDBTags(newtags []string) {

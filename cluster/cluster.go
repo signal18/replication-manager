@@ -465,7 +465,7 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set proxy list %s", err)
 	}
 	//Loading configuration compliances
-	err = cluster.Configurator.Init(cluster.Conf)
+	err = cluster.Configurator.Init(cluster.Conf, cluster.Logrus)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not initialize configurator %s", err)
 		log.Fatal("missing important file, giving up")
