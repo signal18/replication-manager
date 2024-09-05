@@ -16,7 +16,7 @@ app.controller('LoginController', ['$scope', '$http', '$localStorage', '$locatio
             });
         };
         $scope.gitLogin = function() {
-          //to get data for OAuth 
+          //to get data for OAuth
           $http.post('/api/monitor', {}).then(function(success) {
             var data = success.data
             if (data){
@@ -40,4 +40,3 @@ app.controller('LoginController', ['$scope', '$http', '$localStorage', '$locatio
         })};
     }
 ]);
-

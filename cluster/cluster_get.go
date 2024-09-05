@@ -888,8 +888,8 @@ func (cluster *Cluster) GetTopProcesslist() []dbhelper.Processlist {
 
 			if value.Command != "Sleep" {
 				ct++
+				value.Url = srv.URL
 				top = append(top, value)
-				top.Url = srv.URL
 			}
 			if ct > 60 {
 				break
