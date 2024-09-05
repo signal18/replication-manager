@@ -73,7 +73,7 @@
                 <md-tab ng-if="selectedServer && !selectedQuery" ng-click="onTabClicked('ServiceOpenSVC')" md-select-id="ServiceOpenSVC" md-on-select="onTabSelected" label="Service OpenSVC">
                     <div ng-if="selectedTab=='ServiceOpenSVC'" ng-include src="'static/tab-server-serviceopensvc.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer && !selectedQuery && selectedCluster.apiUsers[user].grants['db-show-logs']==true" ng-click="onTabClicked('MetaDataLocks')" md-select-id="MetaDataLocks" md-on-select="onTabSelected" label="Metatata Locks">
+                <md-tab ng-if="selectedServer && !selectedQuery && selectedCluster.apiUsers[user].grants['db-show-logs']==true" ng-click="onTabClicked('MetaDataLocks')" md-select-id="MetaDataLocks" md-on-select="onTabSelected" label="Metadata Locks">
                     <div ng-if="selectedTab=='MetaDataLocks'" ng-include src="'static/tab-server-meta-data-locks.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedServer && !selectedQuery && selectedCluster.apiUsers[user].grants['db-show-logs']==true" ng-click="onTabClicked('QueryResponseTime')" md-select-id="QueryResponseTime" md-on-select="onTabSelected" label="Response Time">
