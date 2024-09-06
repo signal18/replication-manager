@@ -684,7 +684,8 @@ func (cluster *Cluster) SetClusterCredentialsFromConfig() {
 	cluster.SetClusterMonitorCredentialsFromConfig()
 	cluster.SetClusterReplicationCredentialsFromConfig()
 	cluster.SetClusterProxyCredentialsFromConfig()
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Reveal Secrets %v", cluster.Conf.Secrets)
+	// This is not needed! Only for debug!
+	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Reveal Secrets %v", cluster.Conf.Secrets)
 }
 
 func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {

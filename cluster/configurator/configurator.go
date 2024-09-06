@@ -22,6 +22,7 @@ import (
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/sirupsen/logrus"
 )
 
 type Configurator struct {
@@ -29,6 +30,7 @@ type Configurator struct {
 	ClusterConfigDiscover config.Config     `json:"-"`
 	DBModule              config.Compliance `json:"-"`
 	ProxyModule           config.Compliance `json:"-"`
+	Logger                *logrus.Logger    `json:"-"`
 	ConfigDBTags          []v3.Tag          `json:"configTags"`    //from module
 	ConfigPrxTags         []v3.Tag          `json:"configPrxTags"` //from module
 	DBTags                []string          `json:"dbServersTags"` //from conf
@@ -38,8 +40,9 @@ type Configurator struct {
 	WorkingDir            string            `json:"-"` // working dir is the place to generate the all cluster config
 }
 
-func (configurator *Configurator) Init(conf config.Config) error {
+func (configurator *Configurator) Init(conf config.Config, logger *logrus.Logger) error {
 	var err error
+	configurator.SetLogger(logger)
 	configurator.SetConfig(conf)
 
 	err = configurator.LoadDBModules()
@@ -472,10 +475,9 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 						var f Link
 						json.Unmarshal([]byte(variable.Value), &f)
 						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
-						/*	if proxy.ClusterGroup.Conf.LogLevel > 2 {
-											cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config symlink %s", fpath)
-							  			}
-						*/
+						if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+							configurator.Logger.Debugf("Config symlink %s", fpath)
+						}
 						os.Symlink(f.Target, fpath)
 
 					}
@@ -538,6 +540,7 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 	} else {
 		os.RemoveAll(Datadir + "/init")
 	}
+
 	for _, rule := range configurator.DBModule.Rulesets {
 		if strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
 
@@ -564,9 +567,9 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 						var f Link
 						json.Unmarshal([]byte(variable.Value), &f)
 						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
-						/*		if configurator.ClusterConfig.LogLevel > 2 {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config symlink %s", fpath)
-							} */
+						if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+							configurator.Logger.Debugf("Config symlink %s", fpath)
+						}
 						os.Symlink(f.Target, fpath)
 						//	keys := strings.Split(variable.Value, " ")
 					}
@@ -609,18 +612,26 @@ func (configurator *Configurator) GetDatabaseDynamicConfig(filter string, cmd st
 			for _, variable := range rule.Variables {
 				if variable.Class == "symlink" {
 					if configurator.IsFilterInDBTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
-						//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "content %s %s", filter, rule.Filter)
+						if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+							configurator.Logger.Debugf("content %s %s", filter, rule.Filter)
+						}
 						if filter == "" || strings.Contains(rule.Filter, filter) {
 							var f Link
 							json.Unmarshal([]byte(variable.Value), &f)
 							fpath := Datadir + "/init/etc/mysql/conf.d/"
-							//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config symlink %s , %s", fpath, f.Target)
+							if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+								configurator.Logger.Debugf("Config symlink %s , %s", fpath, f.Target)
+							}
+
 							file, err := os.Open(fpath + f.Target)
 							if err == nil {
 								r, _ := regexp.Compile(cmd)
 								scanner := bufio.NewScanner(file)
 								for scanner.Scan() {
-									//		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "content: %s", scanner.Text())
+									if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+										configurator.Logger.Debugf("content: %s", scanner.Text())
+									}
+
 									if r.MatchString(scanner.Text()) {
 										mydynamicconf = mydynamicconf + strings.Split(scanner.Text(), ":")[1]
 									}
@@ -651,12 +662,16 @@ func (configurator *Configurator) GetDatabaseConfig(filter string, datadir strin
 			for _, variable := range rule.Variables {
 				if variable.Class == "symlink" {
 					if configurator.IsFilterInDBTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
-						//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "content %s %s", filter, rule.Filter)
+						if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+							configurator.Logger.Debugf("content %s %s", filter, rule.Filter)
+						}
 						if filter == "" || strings.Contains(rule.Filter, filter) {
 							var f Link
 							json.Unmarshal([]byte(variable.Value), &f)
 							fpath := datadir + "/init/etc/mysql/conf.d/"
-							//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config symlink %s , %s", fpath, f.Target)
+							if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+								configurator.Logger.Debugf("Config symlink %s , %s", fpath, f.Target)
+							}
 							file, err := os.Open(fpath + f.Target)
 							if err == nil {
 								scanner := bufio.NewScanner(file)
@@ -689,10 +704,10 @@ func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, Remote
 	json.Unmarshal([]byte(variable.Value), &f)
 	fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
 	dir := filepath.Dir(fpath)
-	/*		if server.ClusterGroup.Conf.LogLevel > 2 {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config create %s", fpath)
-			}
-	*/
+	if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+		configurator.Logger.Debugf("Config create %s", fpath)
+	}
+
 	// create directory
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		err := os.MkdirAll(dir, os.FileMode(0775))
@@ -740,7 +755,9 @@ func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, Remote
 				outFile.Close()
 				return fmt.Errorf("Compliance writing file failed %q: %s", fpath, err)
 			}
-			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Variable name %s", variable.Name)
+			if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+				configurator.Logger.Debugf("Variable name %s", variable.Name)
+			}
 		}
 
 	}
@@ -759,7 +776,10 @@ func (configurator *Configurator) WriteProxyConfigFile(Datadir string, TemplateE
 	json.Unmarshal([]byte(variable.Value), &f)
 	fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
 	dir := filepath.Dir(fpath)
-	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Config create %s", fpath)
+	if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+		configurator.Logger.Debugf("Config create %s", fpath)
+	}
+
 	// create directory
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		err := os.MkdirAll(dir, os.FileMode(0775))
@@ -767,27 +787,33 @@ func (configurator *Configurator) WriteProxyConfigFile(Datadir string, TemplateE
 			return fmt.Errorf("Compliance create directory %q: %s", dir, err)
 		}
 	}
-	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "rule %s filter %s %t", rule.Name, rule.Filter, proxy.IsFilterInTags(rule.Filter))
+
+	if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+		configurator.Logger.Debugf("rule %s filter %s %t", rule.Name, rule.Filter, configurator.IsFilterInProxyTags(rule.Filter))
+	}
+
 	if fpath[len(fpath)-1:] != "/" && (configurator.IsFilterInProxyTags(rule.Filter) || rule.Filter == "") {
-
-	}
-	content := misc.ExtractKey(f.Content, TemplateEnv)
-	outFile, err := os.Create(fpath)
-	if err != nil {
-		return fmt.Errorf("Compliance create file failed %q: %s", fpath, err)
-	} else {
-		_, err = outFile.WriteString(fmt.Sprintf("# Generated by Signal18 replication-manager %s on %s \n", RepMgrVersion, ts))
+		content := misc.ExtractKey(f.Content, TemplateEnv)
+		outFile, err := os.Create(fpath)
 		if err != nil {
-			outFile.Close()
-			return fmt.Errorf("Compliance writing file failed %q: %s", fpath, err)
-		}
-		_, err = outFile.WriteString(content)
-		if err != nil {
-			outFile.Close()
-			return fmt.Errorf("Compliance writing file failed %q: %s", fpath, err)
-		}
+			return fmt.Errorf("Compliance create file failed %q: %s", fpath, err)
+		} else {
+			_, err = outFile.WriteString(fmt.Sprintf("# Generated by Signal18 replication-manager %s on %s \n", RepMgrVersion, ts))
+			if err != nil {
+				outFile.Close()
+				return fmt.Errorf("Compliance writing file failed %q: %s", fpath, err)
+			}
+			_, err = outFile.WriteString(content)
+			if err != nil {
+				outFile.Close()
+				return fmt.Errorf("Compliance writing file failed %q: %s", fpath, err)
+			}
 
-		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Variable name %s", variable.Name)
+			if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+				configurator.Logger.Debugf("Variable name %s", variable.Name)
+			}
+		}
 	}
+
 	return nil
 }

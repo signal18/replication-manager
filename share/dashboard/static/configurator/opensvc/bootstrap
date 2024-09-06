@@ -15,8 +15,6 @@ function help {
 [ -z $REPLICATION_MANAGER_HOST_NAME ] && help && exit 1
 [ -z $REPLICATION_MANAGER_HOST_PORT ] && help && exit 1
 
-SET -x
-
 GET="wget -q --no-check-certificate -O- --header Content-Type:application/json"
 AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLICATION_MANAGER_PASSWORD\"}"
 TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html $REPLICATION_MANAGER_URL/api/login)
