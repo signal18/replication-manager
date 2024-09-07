@@ -40,7 +40,9 @@ function ServerMenu({
   isDesktop,
   from = 'tableView',
   openCompareModal,
-  colorScheme
+  colorScheme,
+  className,
+  showCompareWithOption = true
 }) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -66,14 +68,19 @@ function ServerMenu({
   return (
     <>
       <MenuOptions
+        className={className}
         colorScheme={colorScheme}
         placement={from === 'tableView' ? 'right-end' : 'left-end'}
         subMenuPlacement={isDesktop ? (from === 'tableView' ? 'right-end' : 'left-end') : 'bottom'}
         options={[
-          {
-            name: 'Compare With',
-            onClick: () => openCompareModal(row)
-          },
+          ...(showCompareWithOption
+            ? [
+                {
+                  name: 'Compare With',
+                  onClick: () => openCompareModal(row)
+                }
+              ]
+            : []),
           {
             name: 'Maintenance Mode',
             onClick: () => {

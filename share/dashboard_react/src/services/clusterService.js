@@ -65,7 +65,9 @@ export const clusterService = {
   provisionProxy,
   unprovisionProxy,
   startProxy,
-  stopProxy
+  stopProxy,
+  //database apis
+  getDatabaseService
 }
 
 //#region main
@@ -322,3 +324,9 @@ function stopProxy(clusterName, proxyId) {
 }
 
 //#endregion cluster>proxy apis
+
+//#region cluster>database apis
+function getDatabaseService(clusterName, serviceName, dbId) {
+  return getRequest(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
+}
+//#endregion cluster>database apis

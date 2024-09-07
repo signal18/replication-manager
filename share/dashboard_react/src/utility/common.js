@@ -147,3 +147,19 @@ export const formatDate = (date, format) => {
   // }
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
+
+export const getReadableTime = (timeInseconds) => {
+  if (timeInseconds < 60) {
+    return `${timeInseconds} seconds`
+  }
+  const minutes = timeInseconds / 60
+  if (minutes < 60) {
+    return `${Math.round(minutes)} minutes`
+  }
+  const hours = minutes / 24
+  if (hours < 24) {
+    return `${Math.round(hours)} hours`
+  }
+  console.log()
+  return `${Math.round(hours / 7)} days`
+}

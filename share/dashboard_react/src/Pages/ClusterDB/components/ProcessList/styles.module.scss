@@ -1,0 +1,36 @@
+.processlistContainer {
+  width: 100%;
+  .actions {
+    flex-direction: column;
+    gap: rem(8);
+    margin-right: auto;
+    @include breakpoint('md') {
+      flex-direction: row;
+      align-items: center;
+      gap: rem(24);
+      margin-top: rem(12);
+      margin-bottom: rem(12);
+    }
+
+    label {
+      font-weight: 500;
+    }
+    .checkbox {
+      span[class*='-checkbox__label'] {
+        font-size: rem(16);
+        font-weight: 500;
+      }
+    }
+    .serverName {
+      font-weight: 500;
+    }
+    .serverOptionMenu {
+      margin-left: auto;
+    }
+  }
+  .table {
+    thead {
+      height: rem(40);
+    }
+  }
+}
