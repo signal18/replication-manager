@@ -3,7 +3,7 @@ button.serverName {
   display: flex;
   padding: 0;
   width: 100%;
-  font-size: 15px;
+  font-size: 15px !important;
 
   .text {
     color: var(--white-color) !important;

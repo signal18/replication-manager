@@ -159,7 +159,7 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
-                setting: 'proxy-servers-backend-max-replication-lag',
+                setting: 'proxy-servers-backend-max-connections',
                 value: val
               })
             )
@@ -194,14 +194,7 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
 
   return (
     <Flex justify='space-between' gap='0'>
-      <TableType2
-        dataArray={dataObject}
-        className={styles.table}
-        labelClassName={styles.label}
-        valueClassName={styles.value}
-        rowDivider={true}
-        rowClassName={styles.row}
-      />
+      <TableType2 dataArray={dataObject} className={styles.table} />
     </Flex>
   )
 }

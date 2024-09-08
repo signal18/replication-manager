@@ -81,19 +81,15 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       key: 'Capture Trigger',
       value: (
         <TextForm
-          originalValue={selectedCluster?.config?.monitoringCaptureTrigger}
-          loading={captureTriggerLoading}
-          onConfirm={(captureTriggerValue) =>
-            openConfirmModal(
-              `Confirm change 'monitoring-capture-trigger' to: ${captureTriggerValue || '{undefined}'}?`,
-              () => () =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'monitoring-capture-trigger',
-                    value: captureTriggerValue.length === 0 ? '{undefined}' : captureTriggerValue
-                  })
-                )
+          value={selectedCluster?.config?.monitoringCaptureTrigger}
+          confirmTitle={`Confirm change 'monitoring-capture-trigger' to `}
+          onSave={(captureTriggerValue) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'monitoring-capture-trigger',
+                value: captureTriggerValue.length === 0 ? '{undefined}' : captureTriggerValue
+              })
             )
           }
         />
@@ -103,19 +99,15 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       key: 'Monitoring Ignore Error List',
       value: (
         <TextForm
-          originalValue={selectedCluster?.config?.monitoringIgnoreErrors}
-          loading={monIgnoreErrLoading}
-          onConfirm={(errorListValue) =>
-            openConfirmModal(
-              `Confirm change 'monitoring-ignore-errors' to: ${errorListValue || '{undefined}'}?`,
-              () => () =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'monitoring-ignore-errors',
-                    value: errorListValue.length === 0 ? '{undefined}' : errorListValue
-                  })
-                )
+          value={selectedCluster?.config?.monitoringIgnoreErrors}
+          confirmTitle={`Confirm change 'monitoring-ignore-errors' to: `}
+          onSave={(errorListValue) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'monitşring-ignore-errors',
+                value: errorListValue.length === 0 ? '{undefined}' : errorListValue
+              })
             )
           }
         />
@@ -181,14 +173,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
 
   return (
     <Flex justify='space-between' gap='0'>
-      <TableType2
-        dataArray={dataObject}
-        className={styles.table}
-        labelClassName={styles.label}
-        valueClassName={styles.value}
-        rowDivider={true}
-        rowClassName={styles.row}
-      />
+      <TableType2 dataArray={dataObject} className={styles.table} />
     </Flex>
   )
 }

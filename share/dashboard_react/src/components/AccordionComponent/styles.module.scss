@@ -26,9 +26,6 @@
     border-bottom-right-radius: $border-radius-sm;
     border: 1px solid;
     border-color: var(--tertiary-color);
-  }
-
-  div[class*='chakra-collapse'] {
-    overflow: visible !important;
+    overflow: auto;
   }
 }

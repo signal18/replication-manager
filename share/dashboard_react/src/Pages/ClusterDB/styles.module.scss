@@ -1,0 +1,9 @@
+.container {
+  margin: rem(24) rem(16);
+  .tabs {
+    button[role='tab'] {
+      font-size: rem(16) !important;
+      padding: rem(8) rem(12);
+    }
+  }
+}

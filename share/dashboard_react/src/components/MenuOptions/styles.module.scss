@@ -13,4 +13,13 @@
 .menuList {
   z-index: 3;
   position: absolute;
+  background-color: var(--secondary-gray-color) !important;
+  border: none;
+  button[role='menuitem'] {
+    background-color: var(--secondary-gray-color) !important;
+    &:hover,
+    &:focus {
+      background-color: var(--quaternary-color) !important;
+    }
+  }
 }

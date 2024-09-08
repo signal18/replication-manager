@@ -8,7 +8,7 @@ import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import RMSlider from '../../components/Sliders/RMSlider'
 import Dropdown from '../../components/Dropdown'
-import { convertObjectToArray, formatBytes } from '../../utility/common'
+import { convertObjectToArrayForDropdown, formatBytes } from '../../utility/common'
 import TextForm from '../../components/TextForm'
 
 function BackupSettings({ selectedCluster, user, openConfirmModal }) {
@@ -36,16 +36,16 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
 
   useEffect(() => {
     if (monitor?.backupBinlogList) {
-      setBinlogBackupOptions(convertObjectToArray(monitor.backupBinlogList))
+      setBinlogBackupOptions(convertObjectToArrayForDropdown(monitor.backupBinlogList))
     }
     if (monitor?.backupLogicalList) {
-      setLogicalBackupOptions(convertObjectToArray(monitor.backupLogicalList))
+      setLogicalBackupOptions(convertObjectToArrayForDropdown(monitor.backupLogicalList))
     }
     if (monitor?.backupPhysicalList) {
-      setPhysicalBackupOptions(convertObjectToArray(monitor.backupPhysicalList))
+      setPhysicalBackupOptions(convertObjectToArrayForDropdown(monitor.backupPhysicalList))
     }
     if (monitor?.binlogParseList) {
-      setBinlogParseOptions(convertObjectToArray(monitor.binlogParseList))
+      setBinlogParseOptions(convertObjectToArrayForDropdown(monitor.binlogParseList))
     }
   }, [monitor?.backupBinlogList, monitor?.backupLogicalList, monitor?.backupPhysicalList, monitor?.binlogParseList])
 
@@ -127,25 +127,24 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
                   label={'Backup Binlog Script Path'}
                   direction='column'
                   className={styles.scriptTextContainer}
-                  originalValue={selectedCluster?.config?.binlogCopyScript}
-                  onConfirm={(scriptValue) =>
-                    openConfirmModal(`Confirm Binlog backup to script with value ${scriptValue} `, () => () => {
-                      dispatch(
-                        setSetting({
-                          clusterName: selectedCluster?.name,
-                          setting: 'backup-binlog-script',
-                          value: scriptValue
-                        })
-                      )
-                      dispatch(
-                        setSetting({
-                          clusterName: selectedCluster?.name,
-                          setting: 'backup-binlog-type',
-                          value: 'script'
-                        })
-                      )
-                    })
-                  }
+                  value={selectedCluster?.config?.binlogCopyScript}
+                  confirmTitle='Confirm Binlog backup to script with value '
+                  onSave={(scriptValue) => {
+                    dispatch(
+                      setSetting({
+                        clusterName: selectedCluster?.name,
+                        setting: 'backup-binlog-script',
+                        value: scriptValue
+                      })
+                    )
+                    dispatch(
+                      setSetting({
+                        clusterName: selectedCluster?.name,
+                        setting: 'backup-binlog-type',
+                        value: 'script'
+                      })
+                    )
+                  }}
                 />
               )}
             </Flex>
@@ -323,14 +322,7 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
 
   return (
     <Flex justify='space-between' gap='0'>
-      <TableType2
-        dataArray={dataObject}
-        className={styles.table}
-        labelClassName={styles.label}
-        valueClassName={styles.value}
-        rowDivider={true}
-        rowClassName={styles.row}
-      />
+      <TableType2 dataArray={dataObject} className={styles.table} />
     </Flex>
   )
 }

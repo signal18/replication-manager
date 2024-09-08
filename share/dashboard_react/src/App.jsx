@@ -1,12 +1,12 @@
 import React, { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './App.css'
-import Cluster from './Pages/Cluster'
 import ToastManager from './components/ToastManager'
 import Login from './Pages/Login'
 // const Login = lazy(() => import('./Pages/Login'))
 // const Home = lazy(() => import('./Pages/Home'))
 import Home from './Pages/Home'
+import ClusterDB from './Pages/ClusterDB'
 
 function App() {
   return (
@@ -22,10 +22,18 @@ function App() {
           }
         />
         <Route
-          path={'/clusters'}
+          path={'/clusters/:cluster'}
           element={
             <PrivateRoute>
               <Home />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path={'/clusters/:cluster/:dbname'}
+          element={
+            <PrivateRoute>
+              <ClusterDB />
             </PrivateRoute>
           }
         />

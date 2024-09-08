@@ -21,29 +21,28 @@ function CloudSettings({ selectedCluster, user }) {
         />
       )
     },
-    {
-      key: 'Share the cluster on the Cloud18',
-      value: (
-        <RMSwitch
-          confirmTitle={'Confirm switch settings for cloud18-shared?'}
-          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-shared' }))}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          isChecked={selectedCluster?.config?.cloud18Shared}
-        />
-      )
-    }
+    ...(selectedCluster?.config?.cloud18
+      ? [
+          {
+            key: 'Share the cluster on the Cloud18',
+            value: (
+              <RMSwitch
+                confirmTitle={'Confirm switch settings for cloud18-shared?'}
+                onChange={() =>
+                  dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-shared' }))
+                }
+                isDisabled={user?.grants['cluster-settings'] == false}
+                isChecked={selectedCluster?.config?.cloud18Shared}
+              />
+            )
+          }
+        ]
+      : [])
   ]
 
   return (
     <Flex justify='space-between' gap='0'>
-      <TableType2
-        dataArray={dataObject}
-        className={styles.table}
-        labelClassName={styles.label}
-        valueClassName={styles.value}
-        rowDivider={true}
-        rowClassName={styles.row}
-      />
+      <TableType2 dataArray={dataObject} className={styles.table} />
     </Flex>
   )
 }

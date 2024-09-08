@@ -27,11 +27,14 @@ import GTID from '../../../../../components/GTID'
 import ServerStatus from '../../../../../components/ServerStatus'
 import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
+import parentStyles from '../../../styles.module.scss'
 
-function DBServersGrid({
+function DBServerGrid({
   allDBServers,
   clusterMasterId,
   clusterName,
+  backupPhysicalType,
+  backupLogicalType,
   user,
   showTableView,
   openCompareModal,
@@ -145,6 +148,8 @@ function DBServersGrid({
                   clusterMasterId={clusterMasterId}
                   row={rowData}
                   clusterName={clusterName}
+                  backupLogicalType={backupLogicalType}
+                  backupPhysicalType={backupPhysicalType}
                   isDesktop={isDesktop}
                   user={user}
                   openCompareModal={openCompareModal}
@@ -268,7 +273,13 @@ function DBServersGrid({
                               isBlocking={gridColor.length > 0}
                               color={gridColor}
                             />
-                            <TableType2 dataArray={replicationTableData2} templateColumns='30% auto' />
+                            <TableType2
+                              dataArray={replicationTableData2}
+                              templateColumns='30% auto'
+                              className={parentStyles.table}
+                              labelClassName={`${parentStyles.rowLabel} ${parentStyles[gridColor]}`}
+                              valueClassName={parentStyles.rowValue}
+                            />
                           </Flex>
                         }
                       />
@@ -310,6 +321,9 @@ function DBServersGrid({
                             }
                           ]}
                           templateColumns='30% auto'
+                          className={parentStyles.table}
+                          labelClassName={`${parentStyles.rowLabel} ${parentStyles[gridColor]}`}
+                          valueClassName={parentStyles.rowValue}
                         />
                       </Flex>
                     }
@@ -321,7 +335,15 @@ function DBServersGrid({
                   panelClassName={styles.accordionPanel}
                   isOpen={isServiceInfoOpen}
                   onToggle={onServiceInfoToggle}
-                  body={<TableType2 dataArray={serverInfoData} templateColumns='30% auto' />}
+                  body={
+                    <TableType2
+                      dataArray={serverInfoData}
+                      templateColumns='30% auto'
+                      className={parentStyles.table}
+                      labelClassName={`${parentStyles.rowLabel} ${parentStyles[gridColor]}`}
+                      valueClassName={parentStyles.rowValue}
+                    />
+                  }
                 />
 
                 <AccordionComponent
@@ -339,7 +361,13 @@ function DBServersGrid({
                             <TagPill key={index} colorScheme={tag.startsWith('NO_') ? 'red' : 'green'} text={tag} />
                           ))}
                       </Flex>
-                      <TableType2 dataArray={replicationVariables} templateColumns='30% auto' />
+                      <TableType2
+                        dataArray={replicationVariables}
+                        templateColumns='30% auto'
+                        className={parentStyles.table}
+                        labelClassName={`${parentStyles.rowLabel} ${parentStyles[gridColor]}`}
+                        valueClassName={parentStyles.rowValue}
+                      />
                     </Flex>
                   }
                 />
@@ -349,7 +377,15 @@ function DBServersGrid({
                   panelClassName={styles.accordionPanel}
                   isOpen={isLeaderStatusOpen}
                   onToggle={onLeaderStatusToggle}
-                  body={<TableType2 dataArray={leaderStatus} templateColumns='30% auto' />}
+                  body={
+                    <TableType2
+                      dataArray={leaderStatus}
+                      templateColumns='30% auto'
+                      className={parentStyles.table}
+                      labelClassName={`${parentStyles.rowLabel} ${parentStyles[gridColor]}`}
+                      valueClassName={parentStyles.rowValue}
+                    />
+                  }
                 />
               </Flex>
             </VStack>
@@ -359,4 +395,4 @@ function DBServersGrid({
   )
 }
 
-export default DBServersGrid
+export default DBServerGrid

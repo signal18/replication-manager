@@ -1,7 +1,6 @@
 import { Box, Grid, GridItem } from '@chakra-ui/react'
 import React from 'react'
 import styles from './styles.module.scss'
-import { useSelector } from 'react-redux'
 
 function TableType2({
   dataArray,
@@ -9,7 +8,7 @@ function TableType2({
   labelClassName,
   valueClassName,
   templateColumns = '150px auto',
-  rowDivider = false,
+  rowDivider = true,
   rowClassName
 }) {
   // const {
@@ -19,15 +18,15 @@ function TableType2({
     <Grid templateColumns={templateColumns} className={`${styles.container} ${className}`}>
       {dataArray.map((item, index) => (
         <React.Fragment key={index}>
-          <GridItem className={rowClassName}>
+          <GridItem className={`${styles.row} ${rowClassName}`}>
             <Box className={`${styles.label} ${labelClassName}`}>{item.key}</Box>
           </GridItem>
           {Array.isArray(item.value) ? (
-            <GridItem className={rowClassName}>
+            <GridItem className={`${styles.row} ${rowClassName}`}>
               <Box className={`${styles.label} ${labelClassName}`}></Box>
             </GridItem>
           ) : (
-            <GridItem className={rowClassName}>
+            <GridItem className={`${styles.row} ${rowClassName}`}>
               <Box className={`${styles.value} ${valueClassName}`}>{item.value}</Box>
             </GridItem>
           )}
@@ -35,12 +34,12 @@ function TableType2({
             item.value.map((subItem, subIndex) => {
               return (
                 <React.Fragment key={subIndex}>
-                  <GridItem className={rowClassName}>
+                  <GridItem className={`${styles.row} ${rowClassName}`}>
                     <Box className={`${styles.label} ${styles.subLabel}`} pl={3}>
                       {subItem.key}
                     </Box>
                   </GridItem>
-                  <GridItem className={rowClassName}>
+                  <GridItem className={`${styles.row} ${rowClassName}`}>
                     <Box className={`${styles.value} ${valueClassName}`}>{subItem.value}</Box>
                   </GridItem>
                   {rowDivider && subIndex < item.value.length - 1 && (
@@ -52,9 +51,6 @@ function TableType2({
               )
             })}
 
-          {/* <GridItem className={rowClassName}>
-            <Box className={`${styles.value} ${valueClassName}`}>{item.value}</Box>
-          </GridItem> */}
           {rowDivider && index < dataArray.length - 1 && (
             <GridItem colSpan={2} className={styles.dividerRow}>
               <Box className={styles.divider} />
