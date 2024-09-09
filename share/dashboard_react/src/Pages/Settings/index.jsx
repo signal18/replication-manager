@@ -6,7 +6,6 @@ import ConfirmModal from '../../components/Modals/ConfirmModal'
 import MonitoringSettings from './MonitoringSettings'
 import AccordionComponent from '../../components/AccordionComponent'
 import LogsSettings from './LogsSettings'
-import ReplicationSettings from './ReplicationSettings'
 import RejoinSettings from './RejoinSettings'
 import BackupSettings from './BackupSettings'
 import SchedulerSettings from './SchedulerSettings'
@@ -14,6 +13,8 @@ import ProxySettings from './ProxySettings'
 import GraphSettings from './GraphSettings'
 import CloudSettings from './CloudSettings'
 import GlobalSettings from './GlobalSettings'
+import RepFailOverSettings from './RepFailOverSettings'
+import RepConfigSettings from './RepConfigSettings'
 
 function Settings({ selectedCluster, user }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -23,7 +24,8 @@ function Settings({ selectedCluster, user }) {
   const { isOpen: isGeneralOpen, onToggle: onGeneralToggle } = useDisclosure({ defaultIsOpen: true })
   const { isOpen: isMonitoringOpen, onToggle: onMonitoringToggle } = useDisclosure()
   const { isOpen: isLogsOpen, onToggle: onLogsToggle } = useDisclosure()
-  const { isOpen: isReplicationOpen, onToggle: onReplicationToggle } = useDisclosure()
+  const { isOpen: isRepFailOverOpen, onToggle: onRepFailOverToggle } = useDisclosure()
+  const { isOpen: isRepConfigOpen, onToggle: onRepConfigToggle } = useDisclosure()
   const { isOpen: isRejoinOpen, onToggle: onRejoinToggle } = useDisclosure()
   const { isOpen: isBackupsOpen, onToggle: onBackupsToggle } = useDisclosure()
   const { isOpen: isSchedulersOpen, onToggle: onSchedulersToggle } = useDisclosure()
@@ -53,6 +55,22 @@ function Settings({ selectedCluster, user }) {
         body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
+        heading={'Replication Failover Constraints'}
+        onToggle={onRepFailOverToggle}
+        isOpen={isRepFailOverOpen}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={<RepFailOverSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+      />
+      <AccordionComponent
+        heading={'Replication Configuration'}
+        onToggle={onRepConfigToggle}
+        isOpen={isRepConfigOpen}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={<RepConfigSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+      />
+      <AccordionComponent
         heading={'Monitoring'}
         onToggle={onMonitoringToggle}
         isOpen={isMonitoringOpen}
@@ -67,14 +85,6 @@ function Settings({ selectedCluster, user }) {
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<LogsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />
-      <AccordionComponent
-        heading={'Replication'}
-        onToggle={onReplicationToggle}
-        isOpen={isReplicationOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<ReplicationSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Rejoin'}

@@ -24,36 +24,33 @@
       background-color: var(--tertiary-color) !important;
     }
   }
+
+  .dropdown {
+    width: rem(180);
+  }
+  .orchContainer {
+    gap: 0;
+    .tags {
+      padding: rem(8);
+      justify-content: flex-start;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+  }
+  .textbox {
+    width: rem(280);
+  }
 }
 
 .table {
-  padding: 0;
-  gap: 0;
   align-items: center;
   overflow: hidden;
   grid-template-columns: auto !important;
-  // @include breakpoint('sm', 'md') {
-  //   grid-template-columns: 1fr !important;
-  // }
   @include breakpoint('md', 'lg') {
     grid-template-columns: 320px auto !important;
   }
   @include breakpoint('lg') {
     grid-template-columns: 380px auto !important;
-  }
-  .row {
-    height: 100%;
-  }
-  .label {
-    font-weight: 600;
-    background-color: var(--tertiary-color);
-    height: 100%;
-    padding-left: rem(16);
-  }
-
-  .value {
-    background-color: transparent;
-    padding-left: rem(16);
   }
 }
 .connections,
@@ -115,4 +112,12 @@
 .guage {
   height: rem(140);
   width: rem(190);
+}
+
+.dbTypeVersion {
+  flex-direction: column;
+  gap: rem(16);
+  @include breakpoint('md') {
+    flex-direction: row;
+  }
 }

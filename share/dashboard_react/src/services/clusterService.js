@@ -8,6 +8,7 @@ export const clusterService = {
   getClusterMaster,
   getClusterServers,
   getClusterProxies,
+  getClusterCertificates,
   //cluster apis
   switchOverCluster,
   failOverCluster,
@@ -64,7 +65,9 @@ export const clusterService = {
   provisionProxy,
   unprovisionProxy,
   startProxy,
-  stopProxy
+  stopProxy,
+  //database apis
+  getDatabaseService
 }
 
 //#region main
@@ -96,6 +99,10 @@ function getClusterServers(clusterName) {
 
 function getClusterProxies(clusterName) {
   return getRequest(`clusters/${clusterName}/topology/proxies`)
+}
+
+function getClusterCertificates(clusterName) {
+  return getRequest(`clusters/${clusterName}/certificates`)
 }
 
 function switchOverCluster(clusterName) {
@@ -317,3 +324,9 @@ function stopProxy(clusterName, proxyId) {
 }
 
 //#endregion cluster>proxy apis
+
+//#region cluster>database apis
+function getDatabaseService(clusterName, serviceName, dbId) {
+  return getRequest(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
+}
+//#endregion cluster>database apis

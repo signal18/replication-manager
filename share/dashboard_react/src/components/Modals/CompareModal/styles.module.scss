@@ -1,0 +1,10 @@
+.dropdown {
+  width: 80% !important;
+  margin: auto;
+  @include breakpoint('md', 'lg') {
+    width: 60% !important;
+  }
+  @include breakpoint('lg') {
+    width: 50% !important;
+  }
+}

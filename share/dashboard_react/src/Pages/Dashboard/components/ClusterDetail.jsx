@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import Card from '../../../components/Card'
-import { Box, Text, Wrap } from '@chakra-ui/react'
+import { Box, Flex, Text, Wrap } from '@chakra-ui/react'
 import TagPill from '../../../components/TagPill'
 import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../../components/TableType2'
@@ -30,6 +30,7 @@ import {
   unProvisionCluster
 } from '../../../redux/clusterSlice'
 import NewServerModal from '../../../components/Modals/NewServerModal'
+import parentStyles from '../styles.module.scss'
 
 function ClusterDetail({ selectedCluster }) {
   const dispatch = useDispatch()
@@ -338,7 +339,14 @@ function ClusterDetail({ selectedCluster }) {
             </Box>
           </>
         }
-        body={<TableType2 dataArray={dataObject} />}
+        body={
+          <TableType2
+            dataArray={dataObject}
+            className={`${parentStyles.table} ${parentStyles.clusterDetailTable}`}
+            labelClassName={`${parentStyles.rowLabel} ${parentStyles.ClusterDetailRow}`}
+            valueClassName={`${parentStyles.rowValue} ${parentStyles.ClusterDetailRow}`}
+          />
+        }
         headerAction='menu'
         isLoading={menuActionsLoading}
         menuOptions={menuOptions}

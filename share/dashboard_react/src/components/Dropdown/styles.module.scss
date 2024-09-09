@@ -1,33 +1,3 @@
-.menuButton {
-  height: rem(40);
-  padding: rem(8);
-  white-space: break-spaces;
-  background-color: var(--quaternary-color) !important;
-  box-shadow: $box-shadow-md;
-  width: 100%;
-  &:hover,
-  &[data-active] {
-    background-color: var(--quaternary-color);
-  }
-
-  .inlineLabelValue {
-    display: flex;
-    justify-content: space-between;
-    .inlineLabel {
-      font-weight: 300;
-      font-size: rem(14);
-    }
-  }
-}
-.lightMenuItem,
-.darkMenuItem {
-  width: 100% !important;
-  &:hover,
-  &:active {
-    background-color: var(--gray-color);
-  }
-}
-
 .selectFormContainer {
   align-items: center;
   gap: rem(8);
@@ -38,24 +8,34 @@
   .select {
     width: rem(150);
     div[class*='rm-select__control'] {
+      background-color: var(--secondary-gray-color);
       &:focus,
       &:hover,
       &:focus-visible {
         border-color: var(--secondary-color) !important;
       }
+
+      div[class*='rm-select__single-value'] {
+        color: var(--text-color);
+      }
     }
-    div[class*='rm-select__menu'] {
-      div[class*='rm-select__option'] {
-        &:hover {
-          background-color: var(--quaternary-color);
-        }
-      }
-      div[class*='rm-select__option--is-selected'] {
-        background-color: var(--secondary-color);
-        &:hover {
-          background-color: var(--secondary-color);
-        }
-      }
+  }
+}
+
+div[class*='rm-select__menu'] {
+  background-color: var(--secondary-gray-color);
+  div[class*='rm-select__option'] {
+    &:hover,
+    &:focus,
+    &:focus-visible,
+    &:focus-within {
+      background-color: var(--quaternary-color) !important;
+    }
+  }
+  div[class*='rm-select__option--is-selected'] {
+    background-color: var(--secondary-color);
+    &:hover {
+      background-color: var(--secondary-color);
     }
   }
 }

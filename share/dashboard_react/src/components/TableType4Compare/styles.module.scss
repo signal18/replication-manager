@@ -18,4 +18,16 @@
     padding: rem(8);
     word-break: break-all;
   }
+
+  .row:nth-of-type(odd) {
+    background-color: var(--secondary-gray-color) !important;
+    td {
+      background-color: var(--secondary-gray-color) !important;
+    }
+  }
+  .row {
+    td {
+      border: none !important;
+    }
+  }
 }

@@ -1,0 +1,50 @@
+.graphContainer {
+  flex-direction: column;
+  gap: rem(24);
+  margin-top: rem(16);
+  .filters {
+    flex-direction: column;
+    gap: rem(16);
+    @include breakpoint('md') {
+      flex-direction: row;
+    }
+  }
+  .graphs {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: rem(24);
+    .qpsGraph {
+      min-height: rem(200);
+    }
+    .graph {
+      overflow: auto;
+      box-shadow: $box-shadow-lg;
+      border-radius: $border-radius-xs;
+    }
+    .width360 {
+      width: rem(360);
+      text {
+        font-size: rem(11);
+      }
+    }
+    .width720 {
+      width: rem(720);
+    }
+    .width1080 {
+      width: rem(1080);
+    }
+    .width1440 {
+      width: rem(1440);
+    }
+    .width2160 {
+      width: rem(2160);
+    }
+    .width2880 {
+      width: rem(2880);
+    }
+    .width4320 {
+      width: rem(4320);
+    }
+  }
+}

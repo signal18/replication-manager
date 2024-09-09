@@ -3,20 +3,25 @@ import React, { useEffect, useState, useRef } from 'react'
 import { HiCheck, HiPencilAlt, HiX } from 'react-icons/hi'
 import styles from './styles.module.scss'
 import RMIconButton from '../RMIconButton'
+import ConfirmModal from '../Modals/ConfirmModal'
 
-function TextForm({ onConfirm, id, label, originalValue, loading, maxLength = 120, className, direction }) {
-  const [value, setValue] = useState('')
+function TextForm({ onSave, id, label, value, loading, maxLength = 120, className, direction, confirmTitle }) {
   const [isEditable, setIsEditable] = useState(false)
   const inputRef = useRef(null)
 
+  const [currentValue, setCurrentValue] = useState('')
+  const [previousValue, setPreviousValue] = useState('')
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
+
   useEffect(() => {
-    if (originalValue) {
-      setValue(originalValue)
+    if (value) {
+      setCurrentValue(value)
+      setPreviousValue(value)
     }
-  }, [originalValue])
+  }, [value])
 
   const handleChange = (e) => {
-    setValue(e.target.value)
+    setCurrentValue(e.target.value)
   }
 
   return (
@@ -30,7 +35,7 @@ function TextForm({ onConfirm, id, label, originalValue, loading, maxLength = 12
         <Input
           id={id}
           ref={inputRef}
-          value={value}
+          value={currentValue}
           maxLength={maxLength}
           readOnly={!isEditable}
           onChange={handleChange}
@@ -43,7 +48,7 @@ function TextForm({ onConfirm, id, label, originalValue, loading, maxLength = 12
               colorScheme='red'
               onClick={() => {
                 setIsEditable(false)
-                setValue(originalValue)
+                setCurrentValue(previousValue)
               }}
             />
             <RMIconButton
@@ -51,8 +56,7 @@ function TextForm({ onConfirm, id, label, originalValue, loading, maxLength = 12
               colorScheme='green'
               tooltip='Save'
               onClick={() => {
-                onConfirm(value)
-                setIsEditable(false)
+                setIsConfirmModalOpen(true)
               }}
             />
           </>
@@ -68,6 +72,17 @@ function TextForm({ onConfirm, id, label, originalValue, loading, maxLength = 12
         )}
         {loading && <Spinner />}
       </Flex>
+      {isConfirmModalOpen && (
+        <ConfirmModal
+          isOpen={isConfirmModalOpen}
+          closeModal={() => setIsConfirmModalOpen(false)}
+          title={`${confirmTitle} ${currentValue}`}
+          onConfirmClick={() => {
+            onSave(currentValue)
+            setIsConfirmModalOpen(false)
+          }}
+        />
+      )}
     </Flex>
   )
 }

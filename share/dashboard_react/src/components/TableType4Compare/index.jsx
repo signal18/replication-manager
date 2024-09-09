@@ -15,7 +15,7 @@ function TableType4Compare({ item1Title, item2Title, dataArray }) {
         </Thead>
         <Tbody>
           {dataArray.map((dataItem, index) => (
-            <Tr key={index}>
+            <Tr key={index} className={styles.row}>
               <Td className={styles.column}>{dataItem.key}</Td>
               <Td className={styles.column}>{dataItem.value1}</Td>
               <Td className={styles.column}>{dataItem.value2}</Td>

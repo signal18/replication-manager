@@ -37,3 +37,13 @@
     background-color: var(--warning-tertiary-color);
   }
 }
+.paginationContainer {
+  gap: rem(8);
+  align-items: center;
+  margin-top: rem(16);
+  margin-left: auto;
+  flex-direction: column;
+  @include breakpoint('md') {
+    flex-direction: row;
+  }
+}

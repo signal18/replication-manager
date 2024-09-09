@@ -16,14 +16,15 @@ function Card({
   isLoading,
   loadingText,
   onClick,
-  width
+  width,
+  className
 }) {
   const {
     common: { isDesktop }
   } = useSelector((state) => state)
 
   return (
-    <Box className={styles.card} w={width}>
+    <Box className={`${styles.card} ${className}`} w={width}>
       <HStack size={'sm'} className={styles.heading}>
         {headerAction === 'menu' && (
           <MenuOptions placement='right' options={menuOptions} subMenuPlacement={isDesktop ? 'right' : 'bottom'} />

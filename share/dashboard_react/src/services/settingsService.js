@@ -22,7 +22,7 @@ function setSetting(clusterName, setting, value) {
   } else if (setting.includes('-cron')) {
     return getRequest(`clusters/${clusterName}/settings/actions/set-cron/${setting}/${encodeURIComponent(value)}`)
   } else {
-    return getRequest(`clusters/${clusterName}/settings/actions/set/${setting}/${value}`)
+    return getRequest(`clusters/${clusterName}/settings/actions/set/${setting}/${encodeURIComponent(value)}`)
   }
 }
 

@@ -15,7 +15,7 @@ p,
 label,
 span:not([data-status='success']):not([data-status='error']):not([class*='tagpill']):not([class*='alertCount']):not(
     [class*='-radio__control']
-  ),
+  ):not([class*='-checkbox__control']),
 input,
 th,
 td,
@@ -26,4 +26,14 @@ button[class*='accordion'] {
 }
 text {
   fill: var(--text-color);
+}
+
+[class*='chakra-checkbox__control'] {
+  border-color: var(--primary-color) !important;
+}
+
+input[type='search'],
+input[type='text'],
+input[type='number'] {
+  border-color: var(--secondary-color);
 }

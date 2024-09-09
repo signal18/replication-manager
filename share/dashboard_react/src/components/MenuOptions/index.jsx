@@ -9,6 +9,7 @@ function MenuOptions({
   placement = 'bottom',
   colorScheme = 'blue',
   subMenuPlacement = 'bottom',
+  className,
   ...rest
 }) {
   const [menuOptions, setMenuOptions] = useState([])
@@ -26,7 +27,7 @@ function MenuOptions({
         colorScheme={colorScheme}
         onClick={isOpen ? onClose : onOpen}
         aria-label='Options'
-        className={`${styles.menuButton} ${colorScheme === 'blue' ? styles.baseColor : ''}`}
+        className={`${styles.menuButton} ${colorScheme === 'blue' ? styles.baseColor : ''} ${className}`}
         as={IconButton}
         icon={<HiDotsVertical />}></MenuButton>
       <MenuList className={styles.menuList}>

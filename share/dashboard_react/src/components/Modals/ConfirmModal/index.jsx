@@ -3,6 +3,7 @@ import React from 'react'
 import RMButton from '../../RMButton'
 import styles from './styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
+import parentStyles from '../styles.module.scss'
 
 function ConfirmModal({ title, isOpen, closeModal, onConfirmClick }) {
   const { theme } = useTheme()
@@ -11,7 +12,7 @@ function ConfirmModal({ title, isOpen, closeModal, onConfirmClick }) {
     <Modal isOpen={isOpen} onClose={closeModal}>
       <ModalOverlay />
       <ModalContent
-        className={`${styles.modalContent} ${theme === 'light' ? styles.modalLightContent : styles.modalDarkContent}`}>
+        className={`${styles.modalContent} ${theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}`}>
         <ModalHeader className={styles.modalHeader}>{title}</ModalHeader>
         <ModalCloseButton />
 
