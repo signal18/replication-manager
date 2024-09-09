@@ -9,6 +9,8 @@ import {
 } from '@tanstack/react-table'
 import styles from './styles.module.scss'
 import {
+  HiArrowNarrowDown,
+  HiArrowNarrowUp,
   HiOutlineChevronDoubleLeft,
   HiOutlineChevronDoubleRight,
   HiOutlineChevronLeft,
@@ -40,9 +42,9 @@ export function DataTable({
     data,
     getCoreRowModel: getCoreRowModel(),
     onSortingChange: setSorting,
-    getPaginationRowModel: getPaginationRowModel(),
+    enableSortingRemoval: false,
     getSortedRowModel: getSortedRowModel(),
-    onPaginationChange: setPagination,
+    ...(enablePagination ? { getPaginationRowModel: getPaginationRowModel(), onPaginationChange: setPagination } : {}),
     initialState: {
       columnVisibility: {
         proxyId: false
@@ -66,34 +68,22 @@ export function DataTable({
             <Tr key={headerGroup.id} className={styles.headerRow}>
               {headerGroup.headers.map((header, index) => {
                 const meta = header.column.columnDef.meta
+                const isColumnSortable = header.column.columnDef.enableSorting
+
                 return (
                   <Th
                     maxWidth={header.column.columnDef.maxWidth}
                     minWidth={header.column.columnDef.minWidth}
-                    className={`${styles.tableHeader} ${index === fixedColumnIndex && styles.fixedColumn}`}
+                    width={header.column.columnDef.width}
+                    textAlign={header.column.columnDef.textAlign}
+                    className={`${styles.tableHeader} ${index === fixedColumnIndex && styles.fixedColumn} ${isColumnSortable && styles.sortableColumn}`}
                     key={header.id}
                     {...(enableSorting ? { onClick: header.column.getToggleSortingHandler() } : {})}
                     isNumeric={meta?.isNumeric}>
                     {flexRender(header.column.columnDef.header, header.getContext())}
-
                     {{
-                      asc: ' 🔼',
-                      desc: ' 🔽'
-                    }[header.column.getIsSorted()] ?? null}
-
-                    {{
-                      asc: ' 🔼',
-                      desc: ' 🔽'
-                    }[header.column.getIsSorted()] ?? null}
-
-                    {{
-                      asc: ' 🔼',
-                      desc: ' 🔽'
-                    }[header.column.getIsSorted()] ?? null}
-
-                    {{
-                      asc: ' 🔼',
-                      desc: ' 🔽'
+                      asc: <HiArrowNarrowUp className={styles.sortIcon} />,
+                      desc: <HiArrowNarrowDown className={styles.sortIcon} />
                     }[enableSorting && header.column.getIsSorted()] ?? null}
                   </Th>
                 )
@@ -125,6 +115,7 @@ export function DataTable({
                     <Td
                       textAlign={cellValueAlign}
                       maxWidth={cell.column.columnDef.maxWidth}
+                      width={cell.column.columnDef.width}
                       className={`${styles.tableColumn} ${index === fixedColumnIndex && styles.fixedColumn}`}
                       key={cell.id}
                       isNumeric={meta?.isNumeric}>

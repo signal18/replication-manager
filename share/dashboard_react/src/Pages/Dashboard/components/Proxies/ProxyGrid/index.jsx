@@ -10,6 +10,7 @@ import ServerStatus from '../../../../../components/ServerStatus'
 import TagPill from '../../../../../components/TagPill'
 import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
+import ServerName from '../../DBServers/ServerName'
 
 function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMenuOptionsVisible }) {
   return (
@@ -42,7 +43,7 @@ function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMen
             <VStack width='100%' key={rowData.id} className={styles.card}>
               <Flex as='header' width='100%' align='center' className={styles.header}>
                 <ProxyLogo proxyName={rowData.type} />
-                <Text margin='auto' w='100%'>{`${rowData.host}:${rowData.port}`}</Text>
+                <ServerName as='p' name={`${rowData.host}:${rowData.port}`} className={styles.serverName} />
                 <Spacer />
 
                 <RMIconButton icon={HiTable} onClick={showTableView} marginRight={2} tooltip='Show table view' />

@@ -24,8 +24,10 @@
   border-top-right-radius: $border-radius-sm;
   color: var(--white-color) !important;
   font-weight: bold;
-  p {
-    color: var(--white-color) !important;
+  button {
+    p {
+      color: var(--white-color) !important;
+    }
   }
 }
 
@@ -36,7 +38,7 @@
     padding-top: rem(2) !important;
     padding-bottom: rem(2) !important;
   }
-    .rowLabel {
-      background-color: var(--quaternary-color);
-    }
+  .rowLabel {
+    background-color: var(--quaternary-color);
+  }
 }

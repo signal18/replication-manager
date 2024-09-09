@@ -78,37 +78,43 @@ function ProcessList({ clusterName, selectedDBServer, user }) {
   const columns = useMemo(
     () => [
       columnHelper.accessor((row) => row.id, {
-        header: 'Id'
+        header: 'Id',
+        enableSorting: false
       }),
       columnHelper.accessor((row) => row.user, {
-        header: 'User'
+        header: 'User',
+        enableSorting: false
       }),
       columnHelper.accessor((row) => row.host, {
-        header: 'Host'
+        header: 'Host',
+        enableSorting: false
       }),
       columnHelper.accessor((row) => row.db.String, {
-        header: 'Database'
+        header: 'Database',
+        enableSorting: false
       }),
       columnHelper.accessor((row) => row.command, {
-        header: 'Command'
+        header: 'Command',
+        enableSorting: false
       }),
 
-      columnHelper.accessor(
-        (row) => (
-          <Tooltip label={getReadableTime(row.time.Float64)}>
-            <span>{row.time.Float64}</span>
+      columnHelper.accessor((row) => row.time.Float64, {
+        header: 'Time',
+        cell: (info) => (
+          <Tooltip label={getReadableTime(info.getValue())}>
+            <span>{info.getValue()}</span>
           </Tooltip>
         ),
-        {
-          header: 'Time',
-          cell: (info) => info.getValue()
-        }
-      ),
+        enableSorting: true,
+        sortingFn: 'basic'
+      }),
       columnHelper.accessor((row) => row.state.String, {
-        header: 'State'
+        header: 'State',
+        enableSorting: false
       }),
       columnHelper.accessor((row) => row.info.String, {
-        header: 'Info'
+        header: 'Info',
+        enableSorting: false
       })
     ],
     []
@@ -144,7 +150,7 @@ function ProcessList({ clusterName, selectedDBServer, user }) {
           Include Sleep command
         </Checkbox>
       </Flex>
-      <DataTable data={data} columns={columns} enablePagination={true} className={styles.table} />
+      <DataTable data={data} columns={columns} className={styles.table} enableSorting={true} />
     </VStack>
   )
 }

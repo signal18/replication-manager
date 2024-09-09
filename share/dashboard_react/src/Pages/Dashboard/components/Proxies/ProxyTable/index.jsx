@@ -10,6 +10,7 @@ import ProxyLogo from '../ProxyLogo'
 import ProxyStatus from '../ProxyStatus'
 import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
+import ServerName from '../../DBServers/ServerName'
 
 function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMenuOptionsVisible }) {
   const [tableData, setTableData] = useState([])
@@ -60,13 +61,15 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMen
           id: 'options',
           header: () => {
             return <RMIconButton onClick={showGridView} icon={HiViewGrid} tooltip='Show grid view' />
-          }
+          },
+          width: '40px'
         }
       ),
       columnHelper.accessor((row) => row.logo, {
         cell: (info) => info.getValue(),
         id: 'logo',
-        header: ''
+        header: '',
+        width: '40px'
       }),
       columnHelper.accessor((row) => row.proxyId, {
         cell: (info) => info.getValue(),
@@ -74,7 +77,7 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMen
         id: 'proxyId',
         enableHiding: true
       }),
-      columnHelper.accessor((row) => row.server, {
+      columnHelper.accessor((row) => <ServerName name={row.server} />, {
         cell: (info) => info.getValue(),
         header: 'Server'
       }),
