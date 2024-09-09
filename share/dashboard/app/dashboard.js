@@ -1155,7 +1155,7 @@ app.controller('DashboardController', function (
         $timeout.cancel($scope.promise);
           $scope.promise = undefined;
       };
-  
+
   */
 
 

@@ -878,6 +878,31 @@ func (cluster *Cluster) GetQueryRules() []config.QueryRule {
 	return r
 }
 
+func (cluster *Cluster) GetTopProcesslist(srvid string) []dbhelper.Processlist {
+	top := make([]dbhelper.Processlist, 0, 200)
+	for _, srv := range cluster.Servers {
+		if srvid != "" && srv.Id != srvid {
+			continue
+		}
+		srvps := srv.FullProcessList
+		sort.Sort(FullProcessListSorter(srvps))
+		ct := 0
+		for _, value := range srvps {
+
+			if value.Command != "Sleep" {
+				ct++
+				value.Url = srv.URL
+				top = append(top, value)
+			}
+			if ct > 60 {
+				break
+			}
+		}
+	}
+
+	return top
+}
+
 func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 
 	type Message struct {

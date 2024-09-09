@@ -41,7 +41,7 @@ app.factory('Slaves', function ($resource) {
 });
 
 app.factory('Processlist', function ($resource) {
-    return $resource('api/clusters/:clusterName/servers/:serverName/processlist', {clusterName: '@clusters',serverName: '@server'});
+    return $resource('api/clusters/:clusterName/top', {clusterName: '@clusters',serverName: '@server'});
 });
 
 app.factory('Tables', function ($resource) {
@@ -153,9 +153,9 @@ app.factory('Jobs', ['$resource', '$q', function($resource, $q) {
         isArray: false
       }
     });
-  
+
     var pendingRequests = [];
-  
+
     var service = {
       get: function(clusterName) {
         var deferred = $q.defer();
@@ -180,7 +180,6 @@ app.factory('Jobs', ['$resource', '$q', function($resource, $q) {
         pendingRequests = [];
       }
     };
-  
+
     return service;
   }]);
-  
