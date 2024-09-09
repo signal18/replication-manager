@@ -100,7 +100,7 @@ function DBServers({ selectedCluster, user }) {
           id: 'dbFlavor'
         }
       ),
-      columnHelper.accessor((row) => <ServerName rowData={row} />, {
+      columnHelper.accessor((row) => <ServerName name={`${row.host}:${row.port}`} />, {
         cell: (info) => info.getValue(),
         header: 'Server',
         maxWidth: 250,

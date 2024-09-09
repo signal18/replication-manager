@@ -124,7 +124,7 @@ function DBServerGrid({
             <VStack width='100%' key={rowData.id} className={styles.card}>
               <Flex as='header' width='100%' className={`${styles.header} ${styles[gridColor]}`} align='center'>
                 <DBFlavourIcon dbFlavor={rowData.dbVersion.flavor} isBlocking={gridColor.length > 0} from='gridView' />
-                <ServerName as='h4' rowData={rowData} isBlocking={gridColor.length > 0} />
+                <ServerName as='h4' name={`${rowData.host}:${rowData.port}`} isBlocking={gridColor.length > 0} />
                 <Spacer />
 
                 <RMIconButton

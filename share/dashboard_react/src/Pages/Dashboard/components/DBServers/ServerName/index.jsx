@@ -3,7 +3,7 @@ import React from 'react'
 import RMButton from '../../../../../components/RMButton'
 import styles from './styles.module.scss'
 
-function ServerName({ rowData, isBlocking, as = 'span' }) {
+function ServerName({ name, isBlocking, as = 'span', className }) {
   return (
     <RMButton className={styles.serverName}>
       <Box
@@ -12,7 +12,9 @@ function ServerName({ rowData, isBlocking, as = 'span' }) {
         maxWidth='100%'
         whiteSpace='break-spaces'
         textAlign='start'
-        overflowWrap='break-word'>{`${rowData.host}:${rowData.port}`}</Box>
+        overflowWrap='break-word'>
+        {name}
+      </Box>
     </RMButton>
   )
 }
