@@ -1035,9 +1035,10 @@ func (repman *ReplicationManager) handlerMuxClusterTop(w http.ResponseWriter, r 
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+		node := r.URL.Query().Get("serverName")
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetTopProcesslist())
+		err := e.Encode(mycluster.GetTopProcesslist(node))
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return

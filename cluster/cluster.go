@@ -245,11 +245,11 @@ func (a QueryRuleSorter) Len() int           { return len(a) }
 func (a QueryRuleSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a QueryRuleSorter) Less(i, j int) bool { return a[i].Id < a[j].Id }
 
-type FullPtocessListSorter []dbhelper.Processlist
+type FullProcessListSorter []dbhelper.Processlist
 
-func (a FullPtocessListSorter) Len() int           { return len(a) }
-func (a FullPtocessListSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a FullPtocessListSorter) Less(i, j int) bool { return a[i].Time.Float64 < a[j].Time.Float64 }
+func (a FullProcessListSorter) Len() int           { return len(a) }
+func (a FullProcessListSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a FullProcessListSorter) Less(i, j int) bool { return a[i].Time.Float64 < a[j].Time.Float64 }
 
 // The Agent describes the server where the cluster runs on.
 // swagger:response agent

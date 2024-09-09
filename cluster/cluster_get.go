@@ -878,11 +878,14 @@ func (cluster *Cluster) GetQueryRules() []config.QueryRule {
 	return r
 }
 
-func (cluster *Cluster) GetTopProcesslist() []dbhelper.Processlist {
+func (cluster *Cluster) GetTopProcesslist(srvid string) []dbhelper.Processlist {
 	top := make([]dbhelper.Processlist, 0, 200)
 	for _, srv := range cluster.Servers {
+		if srvid != "" && srv.Id != srvid {
+			continue
+		}
 		srvps := srv.FullProcessList
-		sort.Sort(FullPtocessListSorter(srvps))
+		sort.Sort(FullProcessListSorter(srvps))
 		ct := 0
 		for _, value := range srvps {
 
