@@ -31,6 +31,16 @@ pipeline {
                 }
             }
         }
+        stage('Build nightly') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
+                        def Image = docker.build('signal18/replication-manager:2.3-pro', '-f docker/Dockerfile.pro .')
+                        Image.push('nightly')
+                    }
+                }
+            }
+        }        
         stage('Build DEV') {
             steps {
                 script {
