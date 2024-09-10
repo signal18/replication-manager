@@ -14,7 +14,6 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +24,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 	"github.com/sirupsen/logrus"
 )
 
@@ -1831,31 +1831,142 @@ func (cluster *Cluster) SetSSTBufferSize(value int) {
 	cluster.Conf.SSTSendBuffer = value
 }
 
+func (cluster *Cluster) SetToolVersions() {
+	if err := cluster.SetDBClientVersion(); err != nil {
+		cluster.SetState("WARN0117", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0117"], err), ErrFrom: "CLUSTER"})
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database client version: %s", cluster.VersionsMap.Get("client").ToFullString())
+	}
+
+	if err := cluster.SetMysqlDumpVersion(); err != nil {
+		cluster.SetState("WARN0118", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0118"], err), ErrFrom: "CLUSTER"})
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Mysqldump version: %s", cluster.VersionsMap.Get("mysqldump").ToFullString())
+	}
+
+	if err := cluster.SetMysqlBinlogVersion(); err != nil {
+		cluster.SetState("WARN0119", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0119"], err), ErrFrom: "CLUSTER"})
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Mysqlbinlog version: %s", cluster.VersionsMap.Get("mysqlbinlog").ToFullString())
+	}
+
+	if err := cluster.SetMyDumperVersion(); err != nil {
+		cluster.SetState("WARN0120", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0120"], err), ErrFrom: "CLUSTER"})
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "MyDumper version: %s", cluster.VersionsMap.Get("mydumper").ToString())
+	}
+
+	if cluster.Conf.BackupRestic {
+		if err := cluster.SetResticVersion(); err != nil {
+			cluster.SetState("WARN0121", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0121"], err), ErrFrom: "CLUSTER"})
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic version: %s", cluster.VersionsMap.Get("restic").ToString())
+		}
+	}
+}
+
+func (cluster *Cluster) SetDBClientVersion() error {
+	// Return if mysql client not found
+	out, err := exec.Command(cluster.GetMysqlclientPath(), "--version").Output()
+	if err != nil {
+		return err
+	}
+
+	vstring := string(out)
+
+	v, _, _ := version.NewFullVersionFromString(version.ParseDBFlavor(vstring), vstring)
+	cluster.VersionsMap.Set("client", v)
+	// Remove state if already get correct version
+	cluster.GetStateMachine().DeleteState("WARN0117")
+
+	return nil
+}
+
+func (cluster *Cluster) SetMysqlDumpVersion() error {
+	// Return if mysqldump not found
+	out, err := exec.Command(cluster.GetMysqlDumpPath(), "--version").Output()
+	if err != nil {
+		return err
+	}
+
+	vstring := string(out)
+
+	// Mysqldump should be consistent with client since it's distributed together
+	myver := cluster.VersionsMap.Get("client")
+	if myver == nil {
+		err = cluster.SetDBClientVersion()
+		if err != nil {
+			return err
+		}
+	}
+
+	// Mysqldump should be consistent with client since it's distributed together
+	v, _ := version.NewVersionFromString(myver.Flavor, vstring)
+	v.DistVersion = myver.DistVersion
+
+	cluster.VersionsMap.Set("mysqldump", v)
+	// Remove state if already get correct version
+	cluster.GetStateMachine().DeleteState("WARN0118")
+
+	return nil
+}
+
+func (cluster *Cluster) SetMysqlBinlogVersion() error {
+	// Return if mysqldump not found
+	out, err := exec.Command(cluster.GetMysqlBinlogPath(), "--version").Output()
+	if err != nil {
+		return err
+	}
+
+	vstring := string(out)
+
+	// Mysqldump should be consistent with client since it's distributed together
+	myver := cluster.VersionsMap.Get("client")
+	if myver == nil {
+		err = cluster.SetDBClientVersion()
+		if err != nil {
+			return err
+		}
+	}
+
+	// Mysqlbinlog should be consistent with client since it's distributed together
+	v, _ := version.NewVersionFromString(myver.Flavor, vstring)
+	v.DistVersion = myver.DistVersion
+
+	cluster.VersionsMap.Set("mysqlbinlog", v)
+	// Remove state if already get correct version
+	cluster.GetStateMachine().DeleteState("WARN0119")
+
+	return nil
+}
+
 func (cluster *Cluster) SetMyDumperVersion() error {
+	// Return if mydumper not found
 	out, err := exec.Command(cluster.GetMyDumperPath(), "--version").Output()
 	if err != nil {
 		return err
 	}
 
-	v := strings.Split(strings.Split(string(out), ",")[0], "-")[0]
-	re := regexp.MustCompile("[^0-9.]")
-	parts := strings.Split(re.ReplaceAllString(v, ""), ".")
+	v, _ := version.NewVersionFromString("mydumper", string(out))
+	cluster.VersionsMap.Set("mydumper", v)
+	// Remove state if already get correct version
+	cluster.GetStateMachine().DeleteState("WARN0120")
 
-	ver := new(dbhelper.MySQLVersion)
-	ver.Major, err = strconv.Atoi(parts[0])
-	if err != nil {
-		return err
-	}
-	ver.Minor, err = strconv.Atoi(parts[1])
-	if err != nil {
-		return err
-	}
-	ver.Release, err = strconv.Atoi(parts[2])
+	return nil
+}
+
+func (cluster *Cluster) SetResticVersion() error {
+	// Return if mydumper not found
+	out, err := exec.Command(cluster.Conf.BackupResticBinaryPath, "version").Output()
 	if err != nil {
 		return err
 	}
 
-	cluster.MyDumperVersion = ver
+	v, _ := version.NewVersionFromString("restic", string(out))
+	cluster.VersionsMap.Set("restic", v)
+	// Remove state if already get correct version
+	cluster.GetStateMachine().DeleteState("WARN0121")
+
 	return nil
 }
 

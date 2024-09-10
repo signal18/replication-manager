@@ -36,6 +36,7 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 // ServerMonitor defines a server to monitor.
@@ -149,7 +150,7 @@ type ServerMonitor struct {
 	MasterStatus                dbhelper.MasterStatus      `json:"masterStatus"`
 	SlaveStatus                 *dbhelper.SlaveStatus      `json:"-"`
 	ReplicationSourceName       string                     `json:"replicationSourceName"`
-	DBVersion                   *dbhelper.MySQLVersion     `json:"dbVersion"`
+	DBVersion                   *version.Version           `json:"dbVersion"`
 	Version                     int                        `json:"-"`
 	QPS                         int64                      `json:"qps"`
 	ReplicationHealth           string                     `json:"replicationHealth"`
@@ -262,7 +263,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.Domain = domain
 	server.TLSConfigUsed = ConstTLSCurrentConfig
 	server.ClusterGroup = cluster
-	server.DBVersion, _ = dbhelper.NewMySQLVersion("Unknowed-0.0.0", "")
+	server.DBVersion, _ = version.NewMySQLVersion("Unknowed-0.0.0", "")
 	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	server.IsGroupReplicationSlave = false

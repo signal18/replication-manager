@@ -223,7 +223,7 @@ type Cluster struct {
 	SlavesConnected        int
 	clog                   *clog.Logger `json:"-"`
 	*ClusterGraphite
-	MyDumperVersion *dbhelper.MySQLVersion
+	VersionsMap *config.VersionsMap
 }
 
 type SlavesOldestMasterFile struct {
@@ -343,6 +343,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 	cluster.BackupMetaMap = config.NewBackupMetaMap()
+	cluster.VersionsMap = config.NewVersionsMap()
 
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
 	if cluster.Conf.Arbitration {
@@ -487,15 +488,7 @@ func (cluster *Cluster) InitFromConf() {
 	//cluster.Conf.PrintConf()
 	cluster.initScheduler()
 	cluster.CheckDefaultUser(true)
-	if err = cluster.SetMyDumperVersion(); err != nil {
-		lv := config.LvlWarn
-		if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
-			lv = config.LvlErr
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, lv, "Could not set MyDumper Version: %s", err)
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "MyDumper version: %s", cluster.MyDumperVersion.ToString())
-	}
+	cluster.SetToolVersions()
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
@@ -653,7 +646,8 @@ func (cluster *Cluster) Run() {
 							// Set in parallel since it will wait for fetch to finish
 							go cluster.ResticPurgeRepo()
 						} else {
-							cluster.StateMachine.PreserveState("WARN0094")
+							// Preserve tools if not installed or has problem
+							cluster.StateMachine.PreserveState("WARN0094", "WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121")
 						}
 						if cluster.SlavesOldestMasterFile.Suffix == 0 {
 							go cluster.CheckSlavesReplicationsPurge()
@@ -770,7 +764,12 @@ func (cluster *Cluster) StateProcessing() {
 				for _, srv := range cluster.Servers {
 					if srv.HasWaitLogicalBackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for logical backup", srv.URL)
-						go srv.JobReseedLogicalBackup("default")
+						go func() {
+							err := srv.JobReseedLogicalBackup("default")
+							if err != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Logical reseed on %s error: %s", srv.URL, err.Error())
+							}
+						}()
 					}
 				}
 			}

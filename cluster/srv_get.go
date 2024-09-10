@@ -25,6 +25,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 func (server *ServerMonitor) GetProcessList() []dbhelper.Processlist {
@@ -695,7 +696,7 @@ func (server *ServerMonitor) GetTablePK(schema string, table string) (string, er
 	return pk, nil
 }
 
-func (server *ServerMonitor) GetVersion() *dbhelper.MySQLVersion {
+func (server *ServerMonitor) GetVersion() *version.Version {
 	return server.DBVersion
 }
 
