@@ -7,7 +7,7 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
-package dbhelper
+package version
 
 import (
 	"testing"

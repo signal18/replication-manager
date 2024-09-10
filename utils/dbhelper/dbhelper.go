@@ -30,6 +30,7 @@ import (
 	"github.com/percona/go-mysql/query"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 const debug = false
@@ -326,7 +327,7 @@ func GetAddress(host string, port string, socket string) string {
 	return address
 }
 
-func GetQueryExplain(db *sqlx.DB, version *MySQLVersion, schema string, query string) ([]Explain, string, error) {
+func GetQueryExplain(db *sqlx.DB, version *version.Version, schema string, query string) ([]Explain, string, error) {
 	pl := []Explain{}
 	var err error
 	if schema != "" {
@@ -340,7 +341,7 @@ func GetQueryExplain(db *sqlx.DB, version *MySQLVersion, schema string, query st
 	return pl, stmt, nil
 }
 
-func GetMetaDataLock(db *sqlx.DB, version *MySQLVersion) ([]MetaDataLock, string, error) {
+func GetMetaDataLock(db *sqlx.DB, version *version.Version) ([]MetaDataLock, string, error) {
 	/*	select pid from pg_locks l
 		join pg_class t on l.relation = t.oid
 		and t.relkind = 'r'  */
@@ -357,7 +358,7 @@ func GetMetaDataLock(db *sqlx.DB, version *MySQLVersion) ([]MetaDataLock, string
 	return pl, query, nil
 }
 
-func GetQueryResponseTime(db *sqlx.DB, version *MySQLVersion) ([]ResponseTime, string, error) {
+func GetQueryResponseTime(db *sqlx.DB, version *version.Version) ([]ResponseTime, string, error) {
 	pl := []ResponseTime{}
 	var err error
 	stmt := "SELECT * FROM INFORMATION_SCHEMA.QUERY_RESPONSE_TIME"
@@ -371,7 +372,7 @@ func GetQueryResponseTime(db *sqlx.DB, version *MySQLVersion) ([]ResponseTime, s
 	return pl, stmt, nil
 }
 
-func GetBinaryLogs(db *sqlx.DB, version *MySQLVersion, metamap *BinaryLogMetaMap) (int, string, []string, string, error) {
+func GetBinaryLogs(db *sqlx.DB, version *version.Version, metamap *BinaryLogMetaMap) (int, string, []string, string, error) {
 	counter := 0
 	oldest := ""
 	trimmed := make([]string, 0)
@@ -411,7 +412,7 @@ func GetBinaryLogs(db *sqlx.DB, version *MySQLVersion, metamap *BinaryLogMetaMap
 	return counter, oldest, trimmed, query, nil
 }
 
-func AnalyzeQuery(db *sqlx.DB, version *MySQLVersion, schema string, query string) (string, string, error) {
+func AnalyzeQuery(db *sqlx.DB, version *version.Version, schema string, query string) (string, string, error) {
 	var res string
 	if schema != "" {
 		db.Exec("USE " + schema)
@@ -431,7 +432,7 @@ func AnalyzeQuery(db *sqlx.DB, version *MySQLVersion, schema string, query strin
 	return res, stmt, err
 }
 
-func GetProcesslistTable(db *sqlx.DB, version *MySQLVersion) ([]Processlist, string, error) {
+func GetProcesslistTable(db *sqlx.DB, version *version.Version) ([]Processlist, string, error) {
 	pl := []Processlist{}
 	var err error
 	stmt := ""
@@ -455,7 +456,7 @@ func GetProcesslistTable(db *sqlx.DB, version *MySQLVersion) ([]Processlist, str
 	return pl, stmt, nil
 }
 
-func GetProcesslistTableFromUser(db *sqlx.DB, version *MySQLVersion, user string) ([]Processlist, string, error) {
+func GetProcesslistTableFromUser(db *sqlx.DB, version *version.Version, user string) ([]Processlist, string, error) {
 	pl := []Processlist{}
 	var err error
 	stmt := ""
@@ -479,7 +480,7 @@ func GetProcesslistTableFromUser(db *sqlx.DB, version *MySQLVersion, user string
 	return pl, stmt, nil
 }
 
-func GetProcesslist(db *sqlx.DB, version *MySQLVersion) ([]Processlist, string, error) {
+func GetProcesslist(db *sqlx.DB, version *version.Version) ([]Processlist, string, error) {
 	pl := []Processlist{}
 	var err error
 	query := ""
@@ -620,7 +621,7 @@ type ChangeMasterOpt struct {
 	//	SSLKey    string
 }
 
-func ChangeReplicationPassword(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string, error) {
+func ChangeReplicationPassword(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (string, error) {
 	_, err := StopSlave(db, opt.Channel, myver)
 	if err != nil {
 		return "Stop slave error", err
@@ -660,7 +661,7 @@ func ChangeReplicationPassword(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVer
 	return cm, nil
 }
 
-func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *MySQLVersion) (string, error) {
+func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (string, error) {
 	//CREATE PUBLICATION alltables FOR ALL TABLES;
 	/*
 		Group replication we will check opt.Mode=GROUP_REPL
@@ -776,25 +777,25 @@ func MariaDBVersion(server string) int {
 	//return ((versionSplit[0]*10000+versionSplit[1])*100 + versionSplit[2])
 }
 
-func GetDBVersion(db *sqlx.DB) (*MySQLVersion, string, error) {
+func GetDBVersion(db *sqlx.DB) (*version.Version, string, error) {
 	stmt := "SELECT version()"
-	var version string
-	var versionComment string
-	err := db.QueryRowx(stmt).Scan(&version)
+	var vString string
+	var vComment string
+	err := db.QueryRowx(stmt).Scan(&vString)
 	if err != nil {
-		return &MySQLVersion{}, stmt, err
+		return &version.Version{}, stmt, err
 	}
-	v, _ := NewMySQLVersion(version, "")
+	v, _ := version.NewMySQLVersion(vString, "")
 	if !v.IsPostgreSQL() {
 		stmt = "SELECT @@version_comment"
-		db.QueryRowx(stmt).Scan(&versionComment)
+		db.QueryRowx(stmt).Scan(&vComment)
 	}
-	nv, _ := NewMySQLVersion(version, versionComment)
+	nv, _ := version.NewMySQLVersion(vString, vComment)
 	return nv, stmt, nil
 }
 
 // Unused does not look like safe way or documenting it
-func GetHostFromProcessList(db *sqlx.DB, user string, version *MySQLVersion) (string, string, error) {
+func GetHostFromProcessList(db *sqlx.DB, user string, version *version.Version) (string, string, error) {
 	pl := []Processlist{}
 	var err error
 	logs := ""
@@ -810,7 +811,7 @@ func GetHostFromProcessList(db *sqlx.DB, user string, version *MySQLVersion) (st
 	return "N/A", logs, err
 }
 
-func GetHostFromConnection(db *sqlx.DB, user string, version *MySQLVersion) (string, string, error) {
+func GetHostFromConnection(db *sqlx.DB, user string, version *version.Version) (string, string, error) {
 	if version == nil {
 		return "N/A", "", errors.New("No database version")
 	}
@@ -831,7 +832,7 @@ func GetHostFromConnection(db *sqlx.DB, user string, version *MySQLVersion) (str
 
 }
 
-func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQLVersion) (Privileges, string, error) {
+func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *version.Version) (Privileges, string, error) {
 	db.MapperFunc(strings.Title)
 	stmt := ""
 	var err error
@@ -895,7 +896,7 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *MySQ
 
 }
 
-func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string, ip string, myver *MySQLVersion) (bool, string, error) {
+func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string, ip string, myver *version.Version) (bool, string, error) {
 
 	stmt := ""
 	if myver.IsPostgreSQL() {
@@ -960,7 +961,7 @@ func HaveExtraEvents(db *sqlx.DB, file string, pos string) (bool, string, error)
 	return false, stmt, nil
 }
 
-func GetSlaveStatus(db *sqlx.DB, Channel string, myver *MySQLVersion) (SlaveStatus, string, error) {
+func GetSlaveStatus(db *sqlx.DB, Channel string, myver *version.Version) (SlaveStatus, string, error) {
 	db.MapperFunc(strings.Title)
 	var err error
 	udb := db.Unsafe()
@@ -1030,7 +1031,7 @@ func GetSlaveStatus(db *sqlx.DB, Channel string, myver *MySQLVersion) (SlaveStat
 	return ss, query, err
 }
 
-func GetChannelSlaveStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, string, error) {
+func GetChannelSlaveStatus(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, string, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
 	ss := []SlaveStatus{}
@@ -1051,7 +1052,7 @@ func GetChannelSlaveStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, str
 	return uniss, "SHOW SLAVE STATUS", err
 }
 
-func GetPGSlaveStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, error) {
+func GetPGSlaveStatus(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
 	ss := []SlaveStatus{}
@@ -1077,7 +1078,7 @@ func GetPGSlaveStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, error) {
 	return ss, err
 }
 
-func GetDisks(db *sqlx.DB, myver *MySQLVersion) ([]Disk, string, error) {
+func GetDisks(db *sqlx.DB, myver *version.Version) ([]Disk, string, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
 	ss := []Disk{}
@@ -1086,7 +1087,7 @@ func GetDisks(db *sqlx.DB, myver *MySQLVersion) ([]Disk, string, error) {
 	return ss, query, err
 }
 
-func GetMSlaveStatus(db *sqlx.DB, conn string, myver *MySQLVersion) (SlaveStatus, string, error) {
+func GetMSlaveStatus(db *sqlx.DB, conn string, myver *version.Version) (SlaveStatus, string, error) {
 
 	s := SlaveStatus{}
 	ss := []SlaveStatus{}
@@ -1109,7 +1110,7 @@ func GetMSlaveStatus(db *sqlx.DB, conn string, myver *MySQLVersion) (SlaveStatus
 	return s, logs, err
 }
 
-func GetAllSlavesStatus(db *sqlx.DB, myver *MySQLVersion) ([]SlaveStatus, string, error) {
+func GetAllSlavesStatus(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, string, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
 	ss := []SlaveStatus{}
@@ -1216,7 +1217,7 @@ func SetMultiSourceRepl(db *sqlx.DB, master_host string, master_port string, mas
 	return logs, err
 }
 
-func InstallSemiSync(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+func InstallSemiSync(db *sqlx.DB, myver *version.Version) (string, error) {
 	stmt := "INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so'"
 	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
 		stmt = "INSTALL PLUGIN rpl_semi_sync_replica SONAME 'semisync_replica.so'"
@@ -1408,7 +1409,7 @@ func SetSlowQueryLogOff(db *sqlx.DB) (string, error) {
 	return query, nil
 }
 
-func ResetAllSlaves(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+func ResetAllSlaves(db *sqlx.DB, myver *version.Version) (string, error) {
 
 	ss := []SlaveStatus{}
 	var err error
@@ -1446,7 +1447,7 @@ func ResetAllSlaves(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 	return logs, err
 }
 
-func GetMasterStatus(db *sqlx.DB, myver *MySQLVersion) (MasterStatus, string, error) {
+func GetMasterStatus(db *sqlx.DB, myver *version.Version) (MasterStatus, string, error) {
 	db.MapperFunc(strings.Title)
 	ms := MasterStatus{}
 	udb := db.Unsafe()
@@ -1505,7 +1506,7 @@ func GetSlaveHostsDiscovery(db *sqlx.DB) ([]string, string, error) {
 	return slaveList, query, nil
 }
 
-func GetEventStatus(db *sqlx.DB, version *MySQLVersion) ([]Event, string, error) {
+func GetEventStatus(db *sqlx.DB, version *version.Version) ([]Event, string, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
 
@@ -1540,7 +1541,7 @@ func SetEventStatus(db *sqlx.DB, ev Event, status int64) (string, error) {
 	return stmt, nil
 }
 
-func GetVariableSource(db *sqlx.DB, myver *MySQLVersion) string {
+func GetVariableSource(db *sqlx.DB, myver *version.Version) string {
 
 	var source string
 	if !myver.IsMariaDB() && ((myver.Major >= 5 && myver.Minor >= 7) || myver.Major >= 6) {
@@ -1551,7 +1552,7 @@ func GetVariableSource(db *sqlx.DB, myver *MySQLVersion) string {
 	return source
 }
 
-func GetStatus(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, error) {
+func GetStatus(db *sqlx.DB, myver *version.Version) (map[string]string, string, error) {
 
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
@@ -1731,7 +1732,7 @@ func GetTableChecksumResult(db *sqlx.DB) (map[uint64]chunk, string, error) {
 	return vars, query, nil
 }
 
-func GetPlugins(db *sqlx.DB, myver *MySQLVersion) (map[string]*Plugin, string, error) {
+func GetPlugins(db *sqlx.DB, myver *version.Version) (map[string]*Plugin, string, error) {
 
 	vars := make(map[string]*Plugin)
 	query := `SHOW PLUGINS`
@@ -1755,7 +1756,7 @@ func GetPlugins(db *sqlx.DB, myver *MySQLVersion) (map[string]*Plugin, string, e
 	return vars, query, nil
 }
 
-func GetStatusAsInt(db *sqlx.DB, myver *MySQLVersion) (map[string]int64, string, error) {
+func GetStatusAsInt(db *sqlx.DB, myver *version.Version) (map[string]int64, string, error) {
 	type Variable struct {
 		Variable_name string
 		Value         int64
@@ -1776,11 +1777,11 @@ func GetStatusAsInt(db *sqlx.DB, myver *MySQLVersion) (map[string]int64, string,
 	return vars, query, nil
 }
 
-func GetVariables(db *sqlx.DB, myver *MySQLVersion) (map[string]string, string, error) {
+func GetVariables(db *sqlx.DB, myver *version.Version) (map[string]string, string, error) {
 	return GetVariablesCase(db, myver, "UPPER")
 }
 
-func GetVariablesCase(db *sqlx.DB, myver *MySQLVersion, vcase string) (map[string]string, string, error) {
+func GetVariablesCase(db *sqlx.DB, myver *version.Version, vcase string) (map[string]string, string, error) {
 
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
@@ -1831,7 +1832,7 @@ func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 	return vars, query, err
 }
 
-func GetNoBlockOnMedataLock(db *sqlx.DB, myver *MySQLVersion) string {
+func GetNoBlockOnMedataLock(db *sqlx.DB, myver *version.Version) string {
 	if myver.IsPostgreSQL() {
 		return ""
 	}
@@ -1841,7 +1842,7 @@ func GetNoBlockOnMedataLock(db *sqlx.DB, myver *MySQLVersion) string {
 	}
 	return noBlockOnMedataLock
 }
-func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]*v3.Table, []v3.Table, string, error) {
+func GetTables(db *sqlx.DB, myver *version.Version) (map[string]*v3.Table, []v3.Table, string, error) {
 	vars := make(map[string]*v3.Table)
 	var tblList []v3.Table
 
@@ -1911,7 +1912,7 @@ func GetTables(db *sqlx.DB, myver *MySQLVersion) (map[string]*v3.Table, []v3.Tab
 	return vars, tblList, logs, nil
 }
 
-func GetUsers(db *sqlx.DB, myver *MySQLVersion) (map[string]*Grant, string, error) {
+func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, error) {
 	vars := make(map[string]*Grant)
 	// password was remover from system table in mysql 8.0
 
@@ -1990,7 +1991,7 @@ func GetSchemasMap(db *sqlx.DB) (map[string]string, string, error) {
 	return schemas, query, nil
 }
 
-func GetVariableByName(db *sqlx.DB, name string, myver *MySQLVersion) (string, string, error) {
+func GetVariableByName(db *sqlx.DB, name string, myver *version.Version) (string, string, error) {
 	var value string
 	source := GetVariableSource(db, myver)
 	query := "SELECT Variable_Value AS Value FROM " + source + ".global_variables WHERE Variable_Name = ?"
@@ -2001,7 +2002,7 @@ func GetVariableByName(db *sqlx.DB, name string, myver *MySQLVersion) (string, s
 	return value, query, nil
 }
 
-func GetVariableByNameToUpper(db *sqlx.DB, name string, myver *MySQLVersion) (string, string, error) {
+func GetVariableByNameToUpper(db *sqlx.DB, name string, myver *version.Version) (string, string, error) {
 	var value string
 	source := GetVariableSource(db, myver)
 	query := "SELECT UPPER(Variable_Value) AS Value FROM " + source + ".global_variables WHERE Variable_Name = ?"
@@ -2039,7 +2040,7 @@ func MariaDBFlushTablesNoLogTimeout(db *sqlx.DB, timeout string) (string, error)
 	return query, err
 }
 
-func FlushTablesWithReadLock(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+func FlushTablesWithReadLock(db *sqlx.DB, myver *version.Version) (string, error) {
 	query := "FLUSH NO_WRITE_TO_BINLOG TABLES WITH READ LOCK"
 	_, err := db.Exec(query)
 	return query, err
@@ -2051,7 +2052,7 @@ func UnlockTables(db *sqlx.DB) (string, error) {
 	return query, err
 }
 
-func StopSlave(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
+func StopSlave(db *sqlx.DB, Channel string, myver *version.Version) (string, error) {
 	cmd := ""
 	if myver.IsPostgreSQL() {
 		if Channel == "" {
@@ -2071,7 +2072,7 @@ func StopSlave(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error)
 	return cmd, err
 }
 
-func StopSlaveIOThread(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
+func StopSlaveIOThread(db *sqlx.DB, Channel string, myver *version.Version) (string, error) {
 	cmd := "STOP SLAVE IO_THREAD"
 	if myver.IsMariaDB() && Channel != "" {
 		cmd = "STOP SLAVE '" + Channel + "'  IO_THREAD"
@@ -2082,7 +2083,7 @@ func StopSlaveIOThread(db *sqlx.DB, Channel string, myver *MySQLVersion) (string
 	_, err := db.Exec(cmd)
 	return cmd, err
 }
-func StopSlaveSQLThread(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
+func StopSlaveSQLThread(db *sqlx.DB, Channel string, myver *version.Version) (string, error) {
 	cmd := "STOP SLAVE SQL_THREAD"
 	if myver.IsMariaDB() && Channel != "" {
 		cmd = "STOP SLAVE '" + Channel + "' SQL_THREAD"
@@ -2094,7 +2095,7 @@ func StopSlaveSQLThread(db *sqlx.DB, Channel string, myver *MySQLVersion) (strin
 	return cmd, err
 }
 
-func SetSlaveHeartbeat(db *sqlx.DB, interval string, Channel string, myver *MySQLVersion) (string, error) {
+func SetSlaveHeartbeat(db *sqlx.DB, interval string, Channel string, myver *version.Version) (string, error) {
 	var err error
 	logs := ""
 	log := ""
@@ -2118,7 +2119,7 @@ func SetSlaveHeartbeat(db *sqlx.DB, interval string, Channel string, myver *MySQ
 	return logs, err
 }
 
-func SetSlaveGTIDMode(db *sqlx.DB, mode string, Channel string, myver *MySQLVersion) (string, error) {
+func SetSlaveGTIDMode(db *sqlx.DB, mode string, Channel string, myver *version.Version) (string, error) {
 	var err error
 	logs := ""
 	log := ""
@@ -2141,7 +2142,7 @@ func SetSlaveGTIDMode(db *sqlx.DB, mode string, Channel string, myver *MySQLVers
 	return logs, err
 }
 
-func SetSlaveExecMode(db *sqlx.DB, mode string, Channel string, myver *MySQLVersion) (string, error) {
+func SetSlaveExecMode(db *sqlx.DB, mode string, Channel string, myver *version.Version) (string, error) {
 	var err error
 	logs := ""
 	log := ""
@@ -2164,7 +2165,7 @@ func SetSlaveExecMode(db *sqlx.DB, mode string, Channel string, myver *MySQLVers
 	return logs, err
 }
 
-func SetSlaveParallelMode(db *sqlx.DB, mode string, Channel string, myver *MySQLVersion) (string, error) {
+func SetSlaveParallelMode(db *sqlx.DB, mode string, Channel string, myver *version.Version) (string, error) {
 	var err error
 	logs := ""
 	log := ""
@@ -2200,21 +2201,21 @@ func SetGTIDSlavePos(db *sqlx.DB, gtid string) (string, error) {
 	return query, err
 }
 
-func GetBinlogDumpThreads(db *sqlx.DB, myver *MySQLVersion) (int, string, error) {
+func GetBinlogDumpThreads(db *sqlx.DB, myver *version.Version) (int, string, error) {
 	var i int
 	query := "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'"
 	err := db.Get(&i, query)
 	return i, query, err
 }
 
-func SetMaxConnections(db *sqlx.DB, connections string, myver *MySQLVersion) (string, error) {
+func SetMaxConnections(db *sqlx.DB, connections string, myver *version.Version) (string, error) {
 
 	query := "SET GLOBAL max_connections=" + connections
 	_, err := db.Exec(query)
 	return query, err
 }
 
-func SetSemiSyncSlave(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+func SetSemiSyncSlave(db *sqlx.DB, myver *version.Version) (string, error) {
 
 	query := "SET GLOBAL rpl-semi-sync-slave-enabled=1"
 	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
@@ -2232,7 +2233,7 @@ func SetSemiSyncSlave(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 	return query, err
 }
 
-func SetSemiSyncMaster(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+func SetSemiSyncMaster(db *sqlx.DB, myver *version.Version) (string, error) {
 
 	query := "SET GLOBAL rpl-semi-sync-master-enabled=1"
 	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
@@ -2250,7 +2251,7 @@ func SetSemiSyncMaster(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 	return query, err
 }
 
-func SetSlaveGTIDModeStrict(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+func SetSlaveGTIDModeStrict(db *sqlx.DB, myver *version.Version) (string, error) {
 	var err error
 	stmt := ""
 	//MySQL is strict per default with GTID tracking gap trx
@@ -2264,12 +2265,12 @@ func SetSlaveGTIDModeStrict(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 	return stmt, nil
 }
 
-func StopAllSlaves(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+func StopAllSlaves(db *sqlx.DB, myver *version.Version) (string, error) {
 	_, err := db.Exec("STOP ALL SLAVES")
 	return "STOP ALL SLAVES", err
 }
 
-func SkipBinlogEvent(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
+func SkipBinlogEvent(db *sqlx.DB, Channel string, myver *version.Version) (string, error) {
 	if myver.IsMariaDB() {
 		stmt := "SET @@default_master_connection='" + Channel + "'"
 		_, err := db.Exec(stmt)
@@ -2282,7 +2283,7 @@ func SkipBinlogEvent(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, 
 	return query, err
 }
 
-func StartSlave(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
+func StartSlave(db *sqlx.DB, Channel string, myver *version.Version) (string, error) {
 	cmd := ""
 	if myver.IsPostgreSQL() {
 		if Channel == "" {
@@ -2302,13 +2303,13 @@ func StartSlave(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error
 	return cmd, err
 }
 
-func StartGroupReplication(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+func StartGroupReplication(db *sqlx.DB, myver *version.Version) (string, error) {
 	cmd := "START GROUP_REPLICATION"
 	_, err := db.Exec(cmd)
 	return cmd, err
 }
 
-func BootstrapGroupReplication(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+func BootstrapGroupReplication(db *sqlx.DB, myver *version.Version) (string, error) {
 	cmd := "SET GLOBAL group_replication_bootstrap_group = ON"
 
 	_, err := db.Exec(cmd)
@@ -2324,7 +2325,7 @@ func BootstrapGroupReplication(db *sqlx.DB, myver *MySQLVersion) (string, error)
 
 	return cmd, err
 }
-func ResetSlave(db *sqlx.DB, all bool, Channel string, myver *MySQLVersion) (string, error) {
+func ResetSlave(db *sqlx.DB, all bool, Channel string, myver *version.Version) (string, error) {
 	stmt := ""
 	if myver.IsPostgreSQL() {
 		if Channel == "" {
@@ -2347,7 +2348,7 @@ func ResetSlave(db *sqlx.DB, all bool, Channel string, myver *MySQLVersion) (str
 	return stmt, err
 }
 
-func ResetMaster(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, error) {
+func ResetMaster(db *sqlx.DB, Channel string, myver *version.Version) (string, error) {
 	stmt := ""
 	if myver.IsPostgreSQL() {
 		if Channel == "" {
@@ -2362,7 +2363,7 @@ func ResetMaster(db *sqlx.DB, Channel string, myver *MySQLVersion) (string, erro
 	return stmt, err
 }
 
-func PostgresGetChannel(db *sqlx.DB, myver *MySQLVersion) (string, string, error) {
+func PostgresGetChannel(db *sqlx.DB, myver *version.Version) (string, string, error) {
 	stmt := ""
 	if myver.IsPostgreSQL() {
 
@@ -2375,7 +2376,7 @@ func PostgresGetChannel(db *sqlx.DB, myver *MySQLVersion) (string, string, error
 
 }
 
-func SetDefaultMasterConn(db *sqlx.DB, dmc string, myver *MySQLVersion) (string, error) {
+func SetDefaultMasterConn(db *sqlx.DB, dmc string, myver *version.Version) (string, error) {
 
 	if myver.IsMariaDB() {
 		stmt := "SET @@default_master_connection='" + dmc + "'"
@@ -2394,7 +2395,7 @@ func SetDefaultMasterConn(db *sqlx.DB, dmc string, myver *MySQLVersion) (string,
 - Connected to master
 - No replication filters
 */
-func CheckSlavePrerequisites(db *sqlx.DB, s string, myver *MySQLVersion) bool {
+func CheckSlavePrerequisites(db *sqlx.DB, s string, myver *version.Version) bool {
 	if debug {
 		log.Printf("CheckSlavePrerequisites called") // remove those warnings !!
 	}
@@ -2411,7 +2412,7 @@ func CheckSlavePrerequisites(db *sqlx.DB, s string, myver *MySQLVersion) bool {
 	return true
 }
 
-func CheckBinlogFilters(m *sqlx.DB, s *sqlx.DB, myver *MySQLVersion) (bool, string, error) {
+func CheckBinlogFilters(m *sqlx.DB, s *sqlx.DB, myver *version.Version) (bool, string, error) {
 	logs := ""
 
 	ms, log, err := GetMasterStatus(m, myver)
@@ -2431,7 +2432,7 @@ func CheckBinlogFilters(m *sqlx.DB, s *sqlx.DB, myver *MySQLVersion) (bool, stri
 	return false, logs, nil
 }
 
-func CheckReplicationFilters(m *sqlx.DB, s *sqlx.DB, myver *MySQLVersion) bool {
+func CheckReplicationFilters(m *sqlx.DB, s *sqlx.DB, myver *version.Version) bool {
 	mv, _, _ := GetVariables(m, myver)
 	sv, _, _ := GetVariables(s, myver)
 	if mv["REPLICATE_DO_TABLE"] == sv["REPLICATE_DO_TABLE"] && mv["REPLICATE_IGNORE_TABLE"] == sv["REPLICATE_IGNORE_TABLE"] && mv["REPLICATE_WILD_DO_TABLE"] == sv["REPLICATE_WILD_DO_TABLE"] && mv["REPLICATE_WILD_IGNORE_TABLE"] == sv["REPLICATE_WILD_IGNORE_TABLE"] && mv["REPLICATE_DO_DB"] == sv["REPLICATE_DO_DB"] && mv["REPLICATE_IGNORE_DB"] == sv["REPLICATE_IGNORE_DB"] {
@@ -2441,7 +2442,7 @@ func CheckReplicationFilters(m *sqlx.DB, s *sqlx.DB, myver *MySQLVersion) bool {
 	}
 }
 
-func GetEventScheduler(dbM *sqlx.DB, myver *MySQLVersion) bool {
+func GetEventScheduler(dbM *sqlx.DB, myver *version.Version) bool {
 
 	sES, _, _ := GetVariableByNameToUpper(dbM, "EVENT_SCHEDULER", myver)
 	if sES != "ON" {
@@ -2450,7 +2451,7 @@ func GetEventScheduler(dbM *sqlx.DB, myver *MySQLVersion) bool {
 	return true
 }
 
-func SetEventScheduler(db *sqlx.DB, state bool, myver *MySQLVersion) (string, error) {
+func SetEventScheduler(db *sqlx.DB, state bool, myver *version.Version) (string, error) {
 	var err error
 	stmt := ""
 	if state {
@@ -2463,7 +2464,7 @@ func SetEventScheduler(db *sqlx.DB, state bool, myver *MySQLVersion) (string, er
 }
 
 /* Check if a slave is in sync with his master */
-func CheckSlaveSync(dbS *sqlx.DB, dbM *sqlx.DB, myver *MySQLVersion) bool {
+func CheckSlaveSync(dbS *sqlx.DB, dbM *sqlx.DB, myver *version.Version) bool {
 	if debug {
 		log.Printf("CheckSlaveSync called")
 	}
@@ -2476,7 +2477,7 @@ func CheckSlaveSync(dbS *sqlx.DB, dbM *sqlx.DB, myver *MySQLVersion) bool {
 	}
 }
 
-func CheckSlaveSemiSync(dbS *sqlx.DB, myver *MySQLVersion) bool {
+func CheckSlaveSemiSync(dbS *sqlx.DB, myver *version.Version) bool {
 	if debug {
 		log.Printf("CheckSlaveSemiSync called")
 	}
@@ -2495,7 +2496,7 @@ func MasterWaitGTID(db *sqlx.DB, gtid string, timeout int) (string, error) {
 	return query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
 }
 
-func MasterPosWait(db *sqlx.DB, myver *MySQLVersion, log string, pos string, timeout int, channel string) (string, error) {
+func MasterPosWait(db *sqlx.DB, myver *version.Version, log string, pos string, timeout int, channel string) (string, error) {
 	// SOURCE_POS_WAIT  before MySQL 8.0.26
 	funcname := "MASTER_POS_WAIT"
 	if myver.IsMySQLOrPercona() && myver.GreaterEqual("8.0.26") {
@@ -2554,7 +2555,7 @@ func CheckLongRunningWrites(db *sqlx.DB, thresh int) (int, string, error) {
 	return count, query + "(" + strconv.Itoa(thresh) + ")", err
 }
 
-func KillThreads(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+func KillThreads(db *sqlx.DB, myver *version.Version) (string, error) {
 	//SELECT pg_terminate_backend(11929);
 	var ids []int
 	query := "SELECT Id FROM information_schema.PROCESSLIST WHERE Command != 'binlog dump' AND User != 'system user' AND Id != CONNECTION_ID()"
@@ -2578,7 +2579,7 @@ func KillThreads(db *sqlx.DB, myver *MySQLVersion) (string, error) {
 
 }
 
-func KillThread(db *sqlx.DB, id string, myver *MySQLVersion) (string, error) {
+func KillThread(db *sqlx.DB, id string, myver *version.Version) (string, error) {
 	if myver.IsPostgreSQL() {
 		_, err := db.Exec("SELECT pg_terminate_backend(" + id + ")")
 		return "SELECT pg_terminate_backend(" + id + ")", err
@@ -2587,7 +2588,7 @@ func KillThread(db *sqlx.DB, id string, myver *MySQLVersion) (string, error) {
 	return "KILL ? (" + id + ")", err
 }
 
-func KillQuery(db *sqlx.DB, id string, myver *MySQLVersion) (string, error) {
+func KillQuery(db *sqlx.DB, id string, myver *version.Version) (string, error) {
 
 	if myver.IsPostgreSQL() {
 		_, err := db.Exec("SELECT pg_terminate_backend(" + id + ")")
@@ -2764,7 +2765,7 @@ func BenchCleanup(db *sqlx.DB) error {
 	return nil
 }
 
-func AnalyzeTable(db *sqlx.DB, myver *MySQLVersion, table string) (string, error) {
+func AnalyzeTable(db *sqlx.DB, myver *version.Version, table string) (string, error) {
 	query := "ANALYZE TABLE " + table
 	if myver.Greater("10.4.0") && myver.IsMariaDB() {
 		query += " PERSISTENT FOR ALL"
@@ -2852,7 +2853,7 @@ func WriteConcurrent2(dsn string, qt int) (string, error) {
 	return result, nil
 }
 
-func IsGroupReplicationMaster(db *sqlx.DB, myver *MySQLVersion, host string) (bool, error) {
+func IsGroupReplicationMaster(db *sqlx.DB, myver *version.Version, host string) (bool, error) {
 	var value bool
 	value = false
 	err := db.QueryRowx("SELECT 1 FROM  performance_schema.replication_group_members WHERE  MEMBER_STATE='ONLINE' AND MEMBER_ROLE='PRIMARY' AND MEMBER_HOST='" + host + "'").Scan(&value)
@@ -2865,7 +2866,7 @@ func IsGroupReplicationMaster(db *sqlx.DB, myver *MySQLVersion, host string) (bo
 	return value, nil
 }
 
-func IsGroupReplicationSlave(db *sqlx.DB, myver *MySQLVersion, host string) (bool, error) {
+func IsGroupReplicationSlave(db *sqlx.DB, myver *version.Version, host string) (bool, error) {
 	var value bool
 	value = false
 	err := db.QueryRowx("SELECT 1 FROM  performance_schema.replication_group_members WHERE  MEMBER_STATE='ONLINE' AND MEMBER_ROLE='SECONDARY' AND MEMBER_HOST='" + host + "'").Scan(&value)
@@ -2878,7 +2879,7 @@ func IsGroupReplicationSlave(db *sqlx.DB, myver *MySQLVersion, host string) (boo
 	return value, nil
 }
 
-func SetGroupReplicationPrimary(db *sqlx.DB, myver *MySQLVersion) (string, error) {
+func SetGroupReplicationPrimary(db *sqlx.DB, myver *version.Version) (string, error) {
 	var value string
 	value = ""
 	uuid := ""
@@ -2895,17 +2896,17 @@ func SetGroupReplicationPrimary(db *sqlx.DB, myver *MySQLVersion) (string, error
 	return value, nil
 }
 
-func AddMonitoringUser(db *sqlx.DB, myver *MySQLVersion, user string, password string, method string) error {
+func AddMonitoringUser(db *sqlx.DB, myver *version.Version, user string, password string, method string) error {
 
 	return nil
 }
 
-func AddReplicationUser(db *sqlx.DB, myver *MySQLVersion, user string, password string, method string) error {
+func AddReplicationUser(db *sqlx.DB, myver *version.Version, user string, password string, method string) error {
 
 	return nil
 }
 
-func SetUserPassword(db *sqlx.DB, myver *MySQLVersion, user_host string, user_name string, new_password string) (string, error) {
+func SetUserPassword(db *sqlx.DB, myver *version.Version, user_host string, user_name string, new_password string) (string, error) {
 	query := "ALTER USER '" + user_name + "'@'" + user_host + "' IDENTIFIED BY '" + new_password + "'"
 	_, err := db.Exec(query)
 	if err != nil {
@@ -2915,7 +2916,7 @@ func SetUserPassword(db *sqlx.DB, myver *MySQLVersion, user_host string, user_na
 	return query, nil
 }
 
-func RenameUserPassword(db *sqlx.DB, myver *MySQLVersion, user_host string, old_user_name string, new_password string, new_user_name string) (string, error) {
+func RenameUserPassword(db *sqlx.DB, myver *version.Version, user_host string, old_user_name string, new_password string, new_user_name string) (string, error) {
 	query := "RENAME USER '" + old_user_name + "'@'" + user_host + "' TO '" + new_user_name + "'@'" + user_host + "'"
 	_, err := db.Exec(query)
 	if err != nil {
@@ -2925,7 +2926,7 @@ func RenameUserPassword(db *sqlx.DB, myver *MySQLVersion, user_host string, old_
 	return query, nil
 }
 
-func DuplicateUserPassword(db *sqlx.DB, myver *MySQLVersion, old_user_name string, user_host string, new_user_name string) (string, error) {
+func DuplicateUserPassword(db *sqlx.DB, myver *version.Version, old_user_name string, user_host string, new_user_name string) (string, error) {
 	if myver.IsMySQLOrPercona() && myver.Major >= 8 {
 		query := "SHOW CREATE USER  `" + old_user_name + "`@`" + user_host + "`"
 		rows, err := db.Queryx(query)
@@ -3208,7 +3209,7 @@ func (m *BinaryLogMetaMap) ClearObsoleteMetadata(oldest string) (deleted []strin
 	return deleted
 }
 
-func CountBinaryLogs(db *sqlx.DB, version *MySQLVersion) (int, error) {
+func CountBinaryLogs(db *sqlx.DB, version *version.Version) (int, error) {
 	counter := 0
 	query := "SHOW BINARY LOGS"
 	if version.IsPostgreSQL() {

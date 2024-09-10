@@ -14,7 +14,6 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +24,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 	"github.com/sirupsen/logrus"
 )
 
@@ -1832,30 +1832,13 @@ func (cluster *Cluster) SetSSTBufferSize(value int) {
 }
 
 func (cluster *Cluster) SetMyDumperVersion() error {
+	// Return if mydumper not found
 	out, err := exec.Command(cluster.GetMyDumperPath(), "--version").Output()
 	if err != nil {
 		return err
 	}
 
-	v := strings.Split(strings.Split(string(out), ",")[0], "-")[0]
-	re := regexp.MustCompile("[^0-9.]")
-	parts := strings.Split(re.ReplaceAllString(v, ""), ".")
-
-	ver := new(dbhelper.MySQLVersion)
-	ver.Major, err = strconv.Atoi(parts[0])
-	if err != nil {
-		return err
-	}
-	ver.Minor, err = strconv.Atoi(parts[1])
-	if err != nil {
-		return err
-	}
-	ver.Release, err = strconv.Atoi(parts[2])
-	if err != nil {
-		return err
-	}
-
-	cluster.MyDumperVersion = ver
+	cluster.MyDumperVersion, _ = version.NewVersionFromString("mydumper", string(out))
 	return nil
 }
 
