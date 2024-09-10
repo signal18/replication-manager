@@ -928,6 +928,10 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 		params = append(params, "--stop-position="+strconv.FormatInt(end.Position, 10))
 	}
 
+	if !cluster.HaveDBTLSCert && server.IsMariaDB() && server.DBVersion.GreaterEqual("10.3") {
+		params = append(params, "--ssl=FALSE")
+	}
+
 	// Binlog filename parameter
 	params = append(params, start.Filename)
 
@@ -935,8 +939,8 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 	iodumpreader, _ := binlogCmd.StdoutPipe()
 	stderrIn, _ := binlogCmd.StderrPipe()
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
-	stderrOut, _ := clientCmd.StdoutPipe()
-	clientCmd.Stderr = clientCmd.Stdout
+	cliErrPipe, _ := clientCmd.StderrPipe()
+	cliOutPipe, _ := clientCmd.StdoutPipe()
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.ReplaceAll(binlogCmd.String(), cluster.GetRplPass(), "XXXX"))
 
@@ -956,15 +960,20 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 		return err
 	}
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
+		server.copyLogs(stderrIn, config.ConstLogModTask, config.LvlErr)
 	}()
 	go func() {
 		defer wg.Done()
-		dest.copyLogs(stderrOut, config.ConstLogModBackupStream, config.LvlDbg)
+		dest.copyLogs(cliErrPipe, config.ConstLogModTask, config.LvlErr)
+	}()
+
+	go func() {
+		defer wg.Done()
+		dest.copyLogs(cliOutPipe, config.ConstLogModTask, config.LvlDbg)
 	}()
 
 	wg.Wait()
