@@ -651,7 +651,8 @@ func (cluster *Cluster) Run() {
 						}
 
 						if cluster.StateMachine.GetHeartbeats()%36000 == 0 {
-							cluster.ResticPurgeRepo()
+							// Set in parallel since it will wait for fetch to finish
+							go cluster.ResticPurgeRepo()
 						} else {
 							cluster.StateMachine.PreserveState("WARN0094")
 						}
