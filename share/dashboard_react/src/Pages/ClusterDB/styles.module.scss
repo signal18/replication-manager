@@ -7,3 +7,58 @@
     }
   }
 }
+
+.contentContainer {
+  width: 100%;
+  .actions {
+    flex-direction: column;
+    gap: rem(8);
+    margin-right: auto;
+    @include breakpoint('md') {
+      flex-direction: row;
+      align-items: center;
+      gap: rem(16);
+    }
+    @include breakpoint('md', 'lg') {
+      gap: rem(8);
+    }
+    label {
+      font-weight: 500;
+    }
+    .checkbox {
+      span[class*='-checkbox__label'] {
+        font-size: rem(16);
+        font-weight: 500;
+      }
+    }
+    .divider {
+      @include breakpoint('sm', 'md') {
+        display: none;
+      }
+      @include breakpoint('md') {
+        width: rem(2);
+        height: rem(24);
+        background-color: var(--secondary-color);
+      }
+    }
+  }
+  .tableContainer {
+    width: 100%;
+    overflow-x: auto;
+    display: block;
+
+    .table {
+      thead {
+        height: rem(32);
+      }
+      tbody {
+        td {
+          white-space: nowrap;
+        }
+      }
+    }
+    .clipboardText {
+      text-align: start;
+    }
+  }
+}

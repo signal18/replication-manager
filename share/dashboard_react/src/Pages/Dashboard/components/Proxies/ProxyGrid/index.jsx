@@ -10,7 +10,7 @@ import ServerStatus from '../../../../../components/ServerStatus'
 import TagPill from '../../../../../components/TagPill'
 import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
-import ServerName from '../../DBServers/ServerName'
+import ServerName from '../../../../../components/ServerName'
 
 function ProxyGrid({ proxies, clusterName, showTableView, user, isDesktop, isMenuOptionsVisible }) {
   return (

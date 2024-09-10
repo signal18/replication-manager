@@ -63,6 +63,9 @@ function ClusterDB(props) {
     if (selectedTabRef.current === 1) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'processlist', dbId }))
     }
+    if (selectedTabRef.current === 2) {
+      dispatch(getDatabaseService({ clusterName, serviceName: 'slow-queries', dbId }))
+    }
   }
 
   const handleTabChange = (tabIndex) => {

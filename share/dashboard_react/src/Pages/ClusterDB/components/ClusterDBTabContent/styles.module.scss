@@ -1,0 +1,20 @@
+.contentContainer {
+  width: 100%;
+  .actions {
+    flex-direction: column;
+    gap: rem(8);
+    margin-right: auto;
+    @include breakpoint('md') {
+      flex-direction: row;
+      align-items: center;
+      gap: rem(24);
+      margin-top: rem(8);
+      margin-bottom: rem(8);
+    }
+    .serverName {
+      width: fit-content;
+      cursor: text;
+      user-select: text;
+    }
+  }
+}

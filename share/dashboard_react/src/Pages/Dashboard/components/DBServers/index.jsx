@@ -9,11 +9,11 @@ import CompareModal from '../../../../components/Modals/CompareModal'
 import { getCurrentGtid, getDelay, getFailCount, getSlaveGtid, getUsingGtid } from './utils'
 import CheckOrCrossIcon from '../../../../components/Icons/CheckOrCrossIcon'
 import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
-import ServerName from './ServerName'
-import GTID from '../../../../components/GTID'
+import ServerName from '../../../../components/ServerName'
 import ServerStatus from '../../../../components/ServerStatus'
 import RMIconButton from '../../../../components/RMIconButton'
 import { Link } from 'react-router-dom'
+import CopyToClipboard from '../../../../components/CopyToClipboard'
 
 function DBServers({ selectedCluster, user }) {
   const {
@@ -100,12 +100,19 @@ function DBServers({ selectedCluster, user }) {
           id: 'dbFlavor'
         }
       ),
-      columnHelper.accessor((row) => <ServerName name={`${row.host}:${row.port}`} />, {
-        cell: (info) => info.getValue(),
-        header: 'Server',
-        maxWidth: 250,
-        id: 'serverName'
-      }),
+      columnHelper.accessor(
+        (row) => (
+          <Link to={`/clusters/${selectedCluster?.name}/${row?.id}`}>
+            <ServerName name={`${row.host}:${row.port}`} />
+          </Link>
+        ),
+        {
+          cell: (info) => info.getValue(),
+          header: 'Server',
+          maxWidth: 250,
+          id: 'serverName'
+        }
+      ),
 
       columnHelper.accessor((row) => <ServerStatus state={row.state} isBlinking={true} />, {
         cell: (info) => info.getValue(),
@@ -122,7 +129,7 @@ function DBServers({ selectedCluster, user }) {
       columnHelper.accessor(
         (row) => {
           const gtids = getCurrentGtid(row, hasMariadbGtid, hasMysqlGtid)
-          return <GTID text={gtids} />
+          return <CopyToClipboard text={gtids} textType='GTID' />
         },
         {
           cell: (info) => info.getValue(),
@@ -133,14 +140,17 @@ function DBServers({ selectedCluster, user }) {
           minWidth: 250
         }
       ),
-      columnHelper.accessor((row) => <GTID text={getSlaveGtid(row, hasMariadbGtid, hasMysqlGtid)} />, {
-        cell: (info) => info.getValue(),
-        header: () => {
-          return hasMariadbGtid ? 'Slave GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'Pos' : ''
-        },
-        id: 'slaveGtid',
-        minWidth: 250
-      }),
+      columnHelper.accessor(
+        (row) => <CopyToClipboard text={getSlaveGtid(row, hasMariadbGtid, hasMysqlGtid)} textType='GTID' />,
+        {
+          cell: (info) => info.getValue(),
+          header: () => {
+            return hasMariadbGtid ? 'Slave GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'Pos' : ''
+          },
+          id: 'slaveGtid',
+          minWidth: 250
+        }
+      ),
       columnHelper.accessor((row) => getDelay(row), {
         cell: (info) => info.getValue(),
         header: 'Delay',

@@ -67,7 +67,9 @@ export const clusterService = {
   startProxy,
   stopProxy,
   //database apis
-  getDatabaseService
+  getDatabaseService,
+  //tests run
+  runSysbench
 }
 
 //#region main
@@ -330,3 +332,9 @@ function getDatabaseService(clusterName, serviceName, dbId) {
   return getRequest(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
 }
 //#endregion cluster>database apis
+
+//#region cluster> run tests
+function runSysbench(clusterName, thread) {
+  return getRequest(`clusters/${clusterName}/actions/sysbench?threads=${thread}`)
+}
+//#endregion cluster>run tests

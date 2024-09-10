@@ -1,0 +1,26 @@
+.container {
+  position: relative;
+  font-size: rem(15);
+  white-space: pre;
+  .btnCopy {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background-color: rgba(26, 36, 42, 0.5) !important;
+
+    &.end {
+      right: 0;
+      left: 100%;
+    }
+    &.center {
+      right: 25%;
+      left: 25%;
+    }
+    &.start {
+      left: 0;
+    }
+    &:hover {
+      background-color: rgba(26, 36, 42, 0.5);
+    }
+  }
+}

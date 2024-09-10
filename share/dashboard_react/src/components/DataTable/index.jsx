@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Table, Thead, Tbody, Tr, Th, Td, Flex, HStack, Input, Text } from '@chakra-ui/react'
 import {
   useReactTable,
@@ -30,13 +30,13 @@ export function DataTable({
 }) {
   const [sorting, setSorting] = useState([])
   const [hiddenColumns, setHiddenColumns] = useState([])
+
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 })
   const [pageSizeOptions, setPageSizeOptions] = useState([
     { name: 'show 10', value: 10 },
     { name: 'show 20', value: 20 },
     { name: 'show 30', value: 30 }
   ])
-
   const table = useReactTable({
     columns,
     data,
