@@ -557,7 +557,11 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 
 	master := cluster.GetMaster()
 	if master == nil {
-		return errors.New("No master found. Cancel reseed logical backup")
+		return errors.New("No master found")
+	}
+
+	if backtype == config.ConstBackupLogicalTypeMydumper && cluster.VersionsMap.Get("mydumper") == nil {
+		return errors.New("No mydumper version found")
 	}
 
 	useMaster := true
@@ -590,21 +594,17 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			if _, err := os.Stat(backupfile); err != nil {
 				//Remove false cookie
 				master.DelBackupTypeCookie(backtype)
-				return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", backtype)
+				return fmt.Errorf("No backup file found on master for %s", backtype)
 			}
 		}
 	}
 
 	if server.IsFlashingBack {
-		err := errors.New("Server is in flashback state")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
-		return err
+		return fmt.Errorf("Server is in flashback state")
 	}
 
 	if server.IsReseeding {
-		err := errors.New("Server is in reseeding state")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
-		return err
+		return fmt.Errorf("Server is in flashback state")
 	}
 
 	server.SetInReseedBackup(true)
@@ -627,7 +627,6 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 
 	_, err := server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Receive reseed logical backup %s request for server: %s %s", backtype, server.URL, err)
 		server.SetInReseedBackup(false)
 		return err
 	}
@@ -651,7 +650,6 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			Channel:   cluster.Conf.MasterConn,
 		}, server.DBVersion)
 		if err != nil {
-			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for logical backup %s request for server: %s %s", backtype, server.URL, err)
 			server.SetInReseedBackup(false)
 			return err
 		}
@@ -1794,17 +1792,19 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 
 	defer cluster.SetInLogicalBackupState(false)
 
-	if cluster.MyDumperVersion == nil {
+	dumper := cluster.VersionsMap.Get("mydumper")
+	if dumper == nil {
 		if err = cluster.SetMyDumperVersion(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting MyDumper version: %s", err)
 			return err
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "MyDumper version: %s", cluster.MyDumperVersion.ToString())
+			dumper = cluster.VersionsMap.Get("mydumper")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "MyDumper version: %s", dumper.ToString())
 		}
 	}
 
 	//Block DDL For Backup
-	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.4") && cluster.MyDumperVersion.Lower("0.12.3") && cluster.Conf.BackupLockDDL {
+	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.4") && dumper.Lower("0.12.3") && cluster.Conf.BackupLockDDL {
 		bckConn, err = server.GetNewDBConn()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
@@ -1824,7 +1824,7 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalDumpThreads)
 	myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyDumperOptions, "  ", " "), " ")
-	if cluster.MyDumperVersion.GreaterEqual("0.15.3") {
+	if dumper.GreaterEqual("0.15.3") {
 		myargs = append(myargs, "--clear")
 	}
 	myargs = append(myargs, "--outputdir", outputdir, "--threads", threads, "--host", misc.Unbracket(server.Host), "--port", server.Port, "--user", cluster.GetDbUser(), "--password", cluster.GetDbPass(), "--regex", "^(?!(replication_manager_schema\\.jobs$)).*")
@@ -3062,7 +3062,7 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 func (server *ServerMonitor) JobMyLoaderParseMeta(dir string) (config.MyDumperMetaData, error) {
 	cluster := server.ClusterGroup
 	dir = strings.TrimSuffix(dir, "/")
-	if cluster.MyDumperVersion.GreaterEqual("0.14.1") {
+	if cluster.VersionsMap.Get("mydumper").GreaterEqual("0.14.1") {
 		return server.JobParseMyDumperMetaNew(dir)
 	} else {
 		return server.JobParseMyDumperMetaOld(dir)

@@ -41,7 +41,6 @@ import (
 	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
-	"github.com/signal18/replication-manager/utils/version"
 	clog "github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	logsql "github.com/sirupsen/logrus"
@@ -224,7 +223,7 @@ type Cluster struct {
 	SlavesConnected        int
 	clog                   *clog.Logger `json:"-"`
 	*ClusterGraphite
-	MyDumperVersion *version.Version
+	VersionsMap *config.VersionsMap
 }
 
 type SlavesOldestMasterFile struct {
@@ -344,6 +343,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
 	cluster.BackupMetaMap = config.NewBackupMetaMap()
+	cluster.VersionsMap = config.NewVersionsMap()
 
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
 	if cluster.Conf.Arbitration {
@@ -495,7 +495,7 @@ func (cluster *Cluster) InitFromConf() {
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, lv, "Could not set MyDumper Version: %s", err)
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "MyDumper version: %s", cluster.MyDumperVersion.ToString())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "MyDumper version: %s", cluster.VersionsMap.Get("mydumper").ToString())
 	}
 }
 
@@ -771,7 +771,12 @@ func (cluster *Cluster) StateProcessing() {
 				for _, srv := range cluster.Servers {
 					if srv.HasWaitLogicalBackupCookie() {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for logical backup", srv.URL)
-						go srv.JobReseedLogicalBackup("default")
+						go func() {
+							err := srv.JobReseedLogicalBackup("default")
+							if err != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Logical reseed on %s error: %s", srv.URL, err.Error())
+							}
+						}()
 					}
 				}
 			}

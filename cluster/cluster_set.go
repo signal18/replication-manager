@@ -1838,7 +1838,9 @@ func (cluster *Cluster) SetMyDumperVersion() error {
 		return err
 	}
 
-	cluster.MyDumperVersion, _ = version.NewVersionFromString("mydumper", string(out))
+	v, _ := version.NewVersionFromString("mydumper", string(out))
+	cluster.VersionsMap.Set("mydumper", v)
+
 	return nil
 }
 
