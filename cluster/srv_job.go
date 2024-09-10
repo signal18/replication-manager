@@ -2151,6 +2151,11 @@ func (server *ServerMonitor) BackupRestic(tags ...string) error {
 	var errStdout, errStderr error
 
 	if cluster.Conf.BackupRestic {
+		// Wait for fetch or purge, so it will not conflict
+		if !cluster.canResticFetchRepo {
+			time.Sleep(time.Second)
+			return server.BackupRestic(tags...)
+		}
 		cluster.SetInResticBackupState(true)
 		defer cluster.SetInResticBackupState(false)
 

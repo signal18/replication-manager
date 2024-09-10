@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
@@ -39,6 +40,13 @@ type Backup struct {
 
 func (cluster *Cluster) ResticPurgeRepo() error {
 	if cluster.Conf.BackupRestic {
+		//This will prevent purging while restic is fetching and wait since it's only executed once after a while
+		if !cluster.canResticFetchRepo {
+			time.Sleep(time.Second)
+			return cluster.ResticPurgeRepo()
+		}
+		cluster.canResticFetchRepo = false
+		defer func() { cluster.canResticFetchRepo = true }()
 		//		var stdout, stderr []byte
 		var stdoutBuf, stderrBuf bytes.Buffer
 		var errStdout, errStderr error
@@ -49,7 +57,7 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 		stderr := io.MultiWriter(os.Stderr, &stderrBuf)
 		resticcmd.Env = cluster.ResticGetEnv()
 		if err := resticcmd.Start(); err != nil {
-			cluster.SetState("WARN0096", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0096"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
+			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
 			return err
 		}
 		var wg sync.WaitGroup
@@ -132,6 +140,7 @@ func (cluster *Cluster) ResticInitRepo() error {
 }
 
 func (cluster *Cluster) ResticFetchRepo() error {
+	// No need to add wait since it will be checked each monitor loop
 	if cluster.Conf.BackupRestic && cluster.canResticFetchRepo {
 		cluster.canResticFetchRepo = false
 		defer func() { cluster.canResticFetchRepo = true }()
@@ -146,7 +155,7 @@ func (cluster *Cluster) ResticFetchRepo() error {
 
 		resticcmd.Env = cluster.ResticGetEnv()
 		if err := resticcmd.Start(); err != nil {
-			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
+			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
 			return err
 		}
 		var wg sync.WaitGroup
@@ -201,7 +210,7 @@ func (cluster *Cluster) ResticFetchRepoStat() error {
 
 	resticcmd.Env = cluster.ResticGetEnv()
 	if err := resticcmd.Start(); err != nil {
-		cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
+		cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
 		return err
 	}
 	var wg sync.WaitGroup
