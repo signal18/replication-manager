@@ -693,7 +693,7 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	filepath.Walk(cluster.Conf.WorkingDir+"/", server.deletefiles)
 
 	cmdrun = exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup %s %s", cluster.GetMysqlBinlogPath(), strings.Replace(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX", -1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup %s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 
 	var outrun bytes.Buffer
 	cmdrun.Stdout = &outrun
@@ -703,7 +703,7 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	cmdrunErr := cmdrun.Run()
 	if cmdrunErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed to backup binlogs of %s,%s", server.URL, cmdrunErr.Error())
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s %s", cluster.GetMysqlBinlogPath(), cmdrun.Args)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 		cluster.LogPrint(cmdrun.Stderr)
 		cluster.LogPrint(cmdrun.Stdout)
 		cluster.canFlashBack = false

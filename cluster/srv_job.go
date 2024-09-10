@@ -2326,7 +2326,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	defer server.SetBackingUpBinaryLog(false)
 
 	cmdrun := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory(), binlogfile)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "%s", strings.ReplaceAll(cmdrun.String(), cluster.GetRplPass(), "XXXX"))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "%s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 
 	var outrun bytes.Buffer
 	cmdrun.Stdout = &outrun
@@ -2336,7 +2336,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	cmdrunErr := cmdrun.Run()
 	if cmdrunErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed to backup binlogs of %s,%s", server.URL, cmdrunErr.Error())
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s %s", cluster.GetMysqlBinlogPath(), cmdrun.Args)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 		cluster.LogPrint(cmdrun.Stderr)
 		cluster.LogPrint(cmdrun.Stdout)
 		return cmdrunErr
