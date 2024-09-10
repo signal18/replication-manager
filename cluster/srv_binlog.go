@@ -928,7 +928,7 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 		params = append(params, "--stop-position="+strconv.FormatInt(end.Position, 10))
 	}
 
-	if !cluster.HaveDBTLSCert && server.IsMariaDB() && server.DBVersion.GreaterEqual("10.3") {
+	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.GreaterEqual("11.3") {
 		params = append(params, "--ssl=FALSE")
 	}
 

@@ -2328,7 +2328,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	var params []string = make([]string, 0)
 	params = append(params, "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory())
 
-	if !cluster.HaveDBTLSCert && server.IsMariaDB() && server.DBVersion.GreaterEqual("10.3") {
+	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.GreaterEqual("11.3") {
 		params = append(params, "--ssl=FALSE")
 	}
 
