@@ -5,6 +5,7 @@ import (
 
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 type StringsMap struct {
@@ -894,4 +895,99 @@ func (b *BackupMetaMap) GetPreviousBackup(backupTool string, source string) *Bac
 		return true
 	})
 	return result
+}
+
+type VersionsMap struct {
+	*sync.Map
+}
+
+func NewVersionsMap() *VersionsMap {
+	s := new(sync.Map)
+	m := &VersionsMap{Map: s}
+	return m
+}
+
+func (m *VersionsMap) Get(key string) *version.Version {
+	if v, ok := m.Load(key); ok {
+		return v.(*version.Version)
+	}
+	return nil
+}
+
+func (m *VersionsMap) CheckAndGet(key string) (*version.Version, bool) {
+	v, ok := m.Load(key)
+	if ok {
+		return v.(*version.Version), true
+	}
+	return nil, false
+}
+
+func (m *VersionsMap) Set(key string, value *version.Version) {
+	m.Store(key, value)
+}
+
+func (m *VersionsMap) ToNormalMap(c map[string]*version.Version) {
+	// Clear the old values in the output map
+	for k := range c {
+		delete(c, k)
+	}
+
+	// Insert all values from the VersionsMap to the output map
+	m.Callback(func(key string, value *version.Version) bool {
+		c[key] = value
+		return true
+	})
+}
+
+func (m *VersionsMap) ToNewMap() map[string]*version.Version {
+	result := make(map[string]*version.Version)
+	m.Range(func(k, v any) bool {
+		result[k.(string)] = v.(*version.Version)
+		return true
+	})
+	return result
+}
+
+func (m *VersionsMap) Callback(f func(key string, value *version.Version) bool) {
+	m.Range(func(k, v any) bool {
+		return f(k.(string), v.(*version.Version))
+	})
+}
+
+func (m *VersionsMap) Clear() {
+	m.Range(func(key, value any) bool {
+		m.Delete(key.(string))
+		return true
+	})
+}
+
+func FromNormalVersionsMap(m *VersionsMap, c map[string]*version.Version) *VersionsMap {
+	if m == nil {
+		m = NewVersionsMap()
+	} else {
+		m.Clear()
+	}
+
+	for k, v := range c {
+		m.Set(k, v)
+	}
+
+	return m
+}
+
+func FromVersionsMap(m *VersionsMap, c *VersionsMap) *VersionsMap {
+	if m == nil {
+		m = NewVersionsMap()
+	} else {
+		m.Clear()
+	}
+
+	if c != nil {
+		c.Callback(func(key string, value *version.Version) bool {
+			m.Set(key, value)
+			return true
+		})
+	}
+
+	return m
 }
