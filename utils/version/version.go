@@ -64,9 +64,21 @@ func NewMySQLVersion(version string, versionComment string) (*Version, int) {
 	return mv, len(tokens)
 }
 
+func ParseDBFlavor(version string) string {
+	flavorRegex := `MariaDB|PostgreSQL|Percona`
+	re := regexp.MustCompile(flavorRegex)
+
+	flavor := re.FindString(version)
+	if flavor != "" {
+		return flavor
+	}
+
+	return "MySQL"
+}
+
 func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 	// Updated regex to capture numeric version and optional suffix without including dash
-	versionRegex := `[a-zA-Z]*\s*([0-9]{1,3}(?:\.[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z]+))?`
+	versionRegex := `[a-zA-Z]*\s*([0-9]{1,3}(?:\.[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z-]+))?`
 	re := regexp.MustCompile(versionRegex)
 	// Find all matches and capture numeric version with optional suffix
 	matches := re.FindAllStringSubmatch(vstring, 2)
@@ -166,6 +178,14 @@ func (mv *Version) ToInt(tokens int) int {
 
 func (mv *Version) ToString() string {
 	return fmt.Sprintf("%d.%d.%d", mv.Major, mv.Minor, mv.Release)
+}
+
+func (mv *Version) ToFullString() string {
+	vstring := fmt.Sprintf("%d.%d.%d", mv.Major, mv.Minor, mv.Release)
+	if mv.DistVersion != nil {
+		return fmt.Sprintf("%s, Distrib %d.%d.%d-%s", vstring, mv.DistVersion.Major, mv.DistVersion.Minor, mv.DistVersion.Release, mv.DistVersion.Suffix)
+	}
+	return vstring
 }
 
 func (mv *Version) Greater(vstring string) bool {

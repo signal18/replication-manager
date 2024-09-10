@@ -7,30 +7,22 @@
         <tr md-row>
             <th colspan=3>Database Backups</th>
             <th>
-                <span style="display:inline-block;;margin: 2px;"
-                    ng-click="saveBackupType(selectedLogicalBackup,selectedPhysicalBackup,selectedBinlogBackup,selectedBinlogBackupScript)"><i
-                        style="display:inline-block;;margin: 2px;" class="fa fa-save" ></i></span>
+                <span style="display:inline-block;;margin: 2px;" ng-click="saveBackupType(selectedLogicalBackup,selectedPhysicalBackup,selectedBinlogBackup,selectedBinlogBackupScript)"><i style="display:inline-block;;margin: 2px;" class="fa fa-save"></i></span>
             </th>
         </tr>
         <tr>
             <td colspan=4>
-                Logical Backup: <span style="display:inline-block;;margin: 2px;"
-                    class="label label-success">{{selectedCluster.config.backupLogicalType }}</span>
+                Logical Backup: <span style="display:inline-block;;margin: 2px;" class="label label-success">{{selectedCluster.config.backupLogicalType }}</span>
                 <md-select name="selectedLogicalBackup" ng-model="selectedLogicalBackup">
-                    <md-option ng-selected="{{key ==  selectedCluster.config.backupLogicalType}}"
-                        ng-repeat="(key, value) in settings.backupLogicalList" ng-value="key">{{key}}</md-option>
+                    <md-option ng-selected="{{key ==  selectedCluster.config.backupLogicalType}}" ng-repeat="(key, value) in settings.backupLogicalList" ng-value="key">{{key}}</md-option>
                 </md-select>
-                Physical Backup: <span style="display:inline-block;;margin: 2px;"
-                    class="label label-success">{{selectedCluster.config.backupPhysicalType }}</span>
+                Physical Backup: <span style="display:inline-block;;margin: 2px;" class="label label-success">{{selectedCluster.config.backupPhysicalType }}</span>
                 <md-select name="selectedPhysicalBackup" ng-model="selectedPhysicalBackup">
-                    <md-option ng-selected="{{key ==  selectedCluster.config.backupPhysicalType}}"
-                        ng-repeat="(key, value) in settings.backupPhysicalList" ng-value="key">{{key}}</md-option>
+                    <md-option ng-selected="{{key ==  selectedCluster.config.backupPhysicalType}}" ng-repeat="(key, value) in settings.backupPhysicalList" ng-value="key">{{key}}</md-option>
                 </md-select>
-                Binlog Backup: <span style="display:inline-block;;margin: 2px;"
-                    class="label label-success">{{selectedCluster.config.binlogCopyMode }}</span>
+                Binlog Backup: <span style="display:inline-block;;margin: 2px;" class="label label-success">{{selectedCluster.config.binlogCopyMode }}</span>
                 <md-select name="selectedBinlogBackup" ng-model="selectedBinlogBackup">
-                    <md-option ng-selected="{{key ==  selectedCluster.config.binlogCopyMode}}"
-                        ng-repeat="(key, value) in settings.backupBinlogList" ng-value="key">{{key}}</md-option>
+                    <md-option ng-selected="{{key ==  selectedCluster.config.binlogCopyMode}}" ng-repeat="(key, value) in settings.backupBinlogList" ng-value="key">{{key}}</md-option>
                 </md-select>
             </td>
         </tr>
@@ -40,9 +32,7 @@
         <tr ng-hide="selectedBinlogBackup != 'script'">
             <td colspan=4>
                 <span>
-                    <input type="text" name="selectedBinlogBackupScript" value="selectedCluster.config.binlogCopyScript"
-                        id="selectedBinlogBackupScript" maxlength="120" size="80"
-                        ng-model="selectedBinlogBackupScript" />
+                    <input type="text" name="selectedBinlogBackupScript" value="selectedCluster.config.binlogCopyScript" id="selectedBinlogBackupScript" maxlength="120" size="80" ng-model="selectedBinlogBackupScript" />
                 </span>
             </td>
         </tr>
@@ -51,12 +41,8 @@
         </tr>
         <tr>
             <td colspan=4>
-                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                    ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.backupKeepUntilValid"
-                    ng-click="switchsettings('backup-keep-until-valid')" aria-label="Keep previous backup until next backup is valid">
-                    <span ng-if="selectedCluster.config.backupKeepUntilValid" class="label label-primary">On</span><span
-                        ng-if="!selectedCluster.config.backupKeepUntilValid" class="label label-warning">Off</span>
-
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.backupKeepUntilValid" ng-click="switchsettings('backup-keep-until-valid')" aria-label="Keep previous backup until next backup is valid">
+                    <span ng-if="selectedCluster.config.backupKeepUntilValid" class="label label-primary">On</span><span ng-if="!selectedCluster.config.backupKeepUntilValid" class="label label-warning">Off</span>
                 </md-switch>
             </td>
         </tr>
@@ -73,37 +59,35 @@
         </tr>
         <tr>
             <td colspan=4>
-                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                    ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.compressBackups"
-                    ng-click="switchsettings('compress-backups')" aria-label="Use Compression For Backup">
-                    <span ng-if="selectedCluster.config.compressBackups" class="label label-primary">On</span><span
-                        ng-if="!selectedCluster.config.compressBackups" class="label label-warning">Off</span>
-
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.compressBackups" ng-click="switchsettings('compress-backups')" aria-label="Use Compression For Backup">
+                    <span ng-if="selectedCluster.config.compressBackups" class="label label-primary">On</span><span ng-if="!selectedCluster.config.compressBackups" class="label label-warning">Off</span>
                 </md-switch>
             </td>
         </tr>
         <tr>
             <td colspan=4>
-                Backup Buffer Size: <span style="display:inline-block;;margin: 2px;"
-                    class="label label-success">{{ formatBytes(selectedCluster.config.sstSendBuffer,0) }}</span>
-                    <span class="pull-right" ng-click="setsettings('sst-send-buffer',selectedBufferSize)"><i
-                        style="display:inline-block;;margin: 2px;" class="fa fa-save" ></i></span>
+                Backup Buffer Size: <span style="display:inline-block;;margin: 2px;" class="label label-success">{{ formatBytes(selectedCluster.config.sstSendBuffer,0) }}</span>
+                <span class="pull-right" ng-click="setsettings('sst-send-buffer',selectedBufferSize)"><i style="display:inline-block;;margin: 2px;" class="fa fa-save"></i></span>
                 <md-select name="selectedBufferSize" ng-model="selectedBufferSize">
-                    <md-option ng-selected="{{size ==  selectedCluster.config.sstSendBuffer}}"
-                        ng-repeat="size in bufferList" ng-value="size">{{ formatBytes(size,0) }}</md-option>
+                    <md-option ng-selected="{{size ==  selectedCluster.config.sstSendBuffer}}" ng-repeat="size in bufferList" ng-value="size">{{ formatBytes(size,0) }}</md-option>
                 </md-select>
             </td>
+        </tr>
+    </table>
+</md-card>
+<md-card ng-if="selectedCluster">
+    <table ng-if="settings" md-table class="table md-primary md-data-table">
+        <col style="width: 40%;">
+        <col style="width: 10%;">
+        <col style="width: 40%;">
+        <col style="width: 10%;">
         <tr>
             <th colspan=4>Backup Binlogs</th>
         </tr>
         <tr>
             <td colspan=4>
-                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                    ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.backupBinlogs"
-                    ng-click="switchsettings('backup-binlogs')" aria-label="Auto rejoin using pseudo GTID">
-                    <span ng-if="selectedCluster.config.backupBinlogs" class="label label-primary">On</span><span
-                        ng-if="!selectedCluster.config.backupBinlogs" class="label label-warning">Off</span>
-
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.backupBinlogs" ng-click="switchsettings('backup-binlogs')" aria-label="Auto rejoin using pseudo GTID">
+                    <span ng-if="selectedCluster.config.backupBinlogs" class="label label-primary">On</span><span ng-if="!selectedCluster.config.backupBinlogs" class="label label-warning">Off</span>
                 </md-switch>
             </td>
         </tr>
@@ -112,16 +96,28 @@
         </tr>
         <tr>
             <td colspan=4>
-                <md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false"
-                    ng-value="selectedCluster.config.backupBinlogsKeep" md-discrete flex
-                    ng-model="selectedBackupBinlogsKeep" ng-change="changebackupbinlogskeep(selectedBackupBinlogsKeep)"
-                    step="1" min="0" max="10" aria-label="Backup binlogs keep files">
+                <md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-value="selectedCluster.config.backupBinlogsKeep" md-discrete flex ng-model="selectedBackupBinlogsKeep" ng-change="changebackupbinlogskeep(selectedBackupBinlogsKeep)" step="1" min="0" max="10" aria-label="Backup binlogs keep files">
                 </md-slider>
-
                 <span class="label label-primary">{{selectedCluster.config.backupBinlogsKeep}}</span>
-
             </td>
         </tr>
     </table>
-
+</md-card>
+<md-card ng-if="selectedCluster">
+    <table ng-if="settings" md-table class="table md-primary md-data-table">
+        <col style="width: 40%;">
+        <col style="width: 10%;">
+        <col style="width: 40%;">
+        <col style="width: 10%;">
+        <tr>
+            <th colspan=4>Use Restic For Backup</th>
+        </tr>
+        <tr>
+            <td colspan=4>
+                <md-switch ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="selectedCluster.config.backupRestic" ng-click="switchsettings('backup-restic')" aria-label="Use Restic for Backup">
+                    <span ng-if="selectedCluster.config.backupRestic" class="label label-primary">On</span><span ng-if="!selectedCluster.config.backupRestic" class="label label-warning">Off</span>
+                </md-switch>
+            </td>
+        </tr>
+    </table>
 </md-card>

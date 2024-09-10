@@ -7,10 +7,12 @@
 package cluster
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) SwitchForceSlaveNoGtid() {
@@ -133,6 +135,14 @@ func (cluster *Cluster) SwitchProvDockerDaemonPrivate() {
 
 func (cluster *Cluster) SwitchBackupRestic() {
 	cluster.Conf.BackupRestic = !cluster.Conf.BackupRestic
+
+	if cluster.Conf.BackupRestic && cluster.VersionsMap.Get("restic") == nil {
+		if err := cluster.SetResticVersion(); err != nil {
+			cluster.SetState("WARN0121", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0121"], err), ErrFrom: "CLUSTER"})
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic version: %s", cluster.VersionsMap.Get("restic").ToString())
+		}
+	}
 }
 func (cluster *Cluster) SwitchBackupBinlogs() {
 	cluster.Conf.BackupBinlogs = !cluster.Conf.BackupBinlogs

@@ -488,15 +488,7 @@ func (cluster *Cluster) InitFromConf() {
 	//cluster.Conf.PrintConf()
 	cluster.initScheduler()
 	cluster.CheckDefaultUser(true)
-	if err = cluster.SetMyDumperVersion(); err != nil {
-		lv := config.LvlWarn
-		if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
-			lv = config.LvlErr
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, lv, "Could not set MyDumper Version: %s", err)
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "MyDumper version: %s", cluster.VersionsMap.Get("mydumper").ToString())
-	}
+	cluster.SetToolVersions()
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
