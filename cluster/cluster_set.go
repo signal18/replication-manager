@@ -1876,8 +1876,8 @@ func (cluster *Cluster) SetDBClientVersion() error {
 
 	v, _, _ := version.NewFullVersionFromString(version.ParseDBFlavor(vstring), vstring)
 	cluster.VersionsMap.Set("client", v)
-
-	vstring = string(out)
+	// Remove state if already get correct version
+	cluster.GetStateMachine().DeleteState("WARN0117")
 
 	return nil
 }
@@ -1905,6 +1905,8 @@ func (cluster *Cluster) SetMysqlDumpVersion() error {
 	v.DistVersion = myver.DistVersion
 
 	cluster.VersionsMap.Set("mysqldump", v)
+	// Remove state if already get correct version
+	cluster.GetStateMachine().DeleteState("WARN0118")
 
 	return nil
 }
@@ -1932,6 +1934,8 @@ func (cluster *Cluster) SetMysqlBinlogVersion() error {
 	v.DistVersion = myver.DistVersion
 
 	cluster.VersionsMap.Set("mysqlbinlog", v)
+	// Remove state if already get correct version
+	cluster.GetStateMachine().DeleteState("WARN0119")
 
 	return nil
 }
@@ -1945,6 +1949,8 @@ func (cluster *Cluster) SetMyDumperVersion() error {
 
 	v, _ := version.NewVersionFromString("mydumper", string(out))
 	cluster.VersionsMap.Set("mydumper", v)
+	// Remove state if already get correct version
+	cluster.GetStateMachine().DeleteState("WARN0120")
 
 	return nil
 }
@@ -1958,6 +1964,8 @@ func (cluster *Cluster) SetResticVersion() error {
 
 	v, _ := version.NewVersionFromString("restic", string(out))
 	cluster.VersionsMap.Set("restic", v)
+	// Remove state if already get correct version
+	cluster.GetStateMachine().DeleteState("WARN0121")
 
 	return nil
 }

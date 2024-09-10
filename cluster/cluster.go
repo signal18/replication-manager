@@ -646,7 +646,8 @@ func (cluster *Cluster) Run() {
 							// Set in parallel since it will wait for fetch to finish
 							go cluster.ResticPurgeRepo()
 						} else {
-							cluster.StateMachine.PreserveState("WARN0094")
+							// Preserve tools if not installed or has problem
+							cluster.StateMachine.PreserveState("WARN0094", "WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121")
 						}
 						if cluster.SlavesOldestMasterFile.Suffix == 0 {
 							go cluster.CheckSlavesReplicationsPurge()
