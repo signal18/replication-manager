@@ -264,7 +264,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 
 	cluster := server.ClusterGroup
 
-	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+	if cluster.IsInBackup() {
 		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Physical", cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
 
@@ -1949,7 +1949,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 
 	//Wait for previous restic backup
-	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+	if cluster.IsInBackup() {
 		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
 
@@ -2306,7 +2306,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
-		if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+		if cluster.IsInBackup() {
 			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 			time.Sleep(1 * time.Second)
 
@@ -2360,7 +2360,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		return errors.New("Copy binlog not enable")
 	}
 
-	if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+	if cluster.IsInBackup() {
 		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
 
@@ -2555,7 +2555,7 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
-		if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+		if cluster.IsInBackup() {
 			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 			time.Sleep(1 * time.Second)
 
