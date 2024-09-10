@@ -745,6 +745,17 @@ export const stopProxy = createAsyncThunk('cluster/stopProxy', async ({ clusterN
   }
 })
 
+export const runSysBench = createAsyncThunk('cluster/runSysBench', async ({ clusterName, thread }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.runSysbench(clusterName, thread)
+    showSuccessBanner('Sysbench ran successfuly!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Sysbench failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 export const getDatabaseService = createAsyncThunk(
   'cluster/getDatabaseService',
   async ({ clusterName, serviceName, dbId }, thunkAPI) => {
@@ -859,6 +870,8 @@ export const clusterSlice = createSlice({
           const { serviceName } = action.meta.arg
           if (serviceName === 'processlist') {
             state.database.processList = action.payload.data
+          } else if (serviceName === 'slow-queries') {
+            state.database.slowQueries = action.payload.data
           }
         }
       }

@@ -10,7 +10,7 @@ import ProxyLogo from '../ProxyLogo'
 import ProxyStatus from '../ProxyStatus'
 import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
-import ServerName from '../../DBServers/ServerName'
+import ServerName from '../../../../../components/ServerName'
 
 function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMenuOptionsVisible }) {
   const [tableData, setTableData] = useState([])

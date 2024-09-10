@@ -1,4 +1,4 @@
-import { Flex, SimpleGrid, Spacer, useDisclosure, VStack } from '@chakra-ui/react'
+import { Flex, HStack, SimpleGrid, Spacer, useDisclosure, VStack } from '@chakra-ui/react'
 import React from 'react'
 import { useSelector } from 'react-redux'
 import ServerMenu from '../ServerMenu'
@@ -20,7 +20,7 @@ import {
 } from '../utils'
 import TagPill from '../../../../../components/TagPill'
 import DBFlavourIcon from '../../../../../components/Icons/DBFlavourIcon'
-import ServerName from '../ServerName'
+import ServerName from '../../../../../components/ServerName'
 import AccordionComponent from '../../../../../components/AccordionComponent'
 import NotFound from '../../../../../components/NotFound'
 import GTID from '../../../../../components/GTID'
@@ -28,6 +28,8 @@ import ServerStatus from '../../../../../components/ServerStatus'
 import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
 import parentStyles from '../../../styles.module.scss'
+import CopyToClipboard from '../../../../../components/CopyToClipboard'
+import { Link } from 'react-router-dom'
 
 function DBServerGrid({
   allDBServers,
@@ -123,8 +125,16 @@ function DBServerGrid({
           return (
             <VStack width='100%' key={rowData.id} className={styles.card}>
               <Flex as='header' width='100%' className={`${styles.header} ${styles[gridColor]}`} align='center'>
-                <DBFlavourIcon dbFlavor={rowData.dbVersion.flavor} isBlocking={gridColor.length > 0} from='gridView' />
-                <ServerName as='h4' name={`${rowData.host}:${rowData.port}`} isBlocking={gridColor.length > 0} />
+                <Link to={`/clusters/${clusterName}/${rowData?.id}`}>
+                  <HStack>
+                    <DBFlavourIcon
+                      dbFlavor={rowData.dbVersion.flavor}
+                      isBlocking={gridColor.length > 0}
+                      from='gridView'
+                    />
+                    <ServerName as='h4' name={`${rowData.host}:${rowData.port}`} isBlocking={gridColor.length > 0} />
+                  </HStack>
+                </Link>
                 <Spacer />
 
                 <RMIconButton
@@ -221,13 +231,21 @@ function DBServerGrid({
                       {
                         key: getCurrentGtidHeader(hasMariadbGtid, hasMysqlGtid),
                         value: (
-                          <GTID text={getCurrentGtid(rowData, hasMariadbGtid, hasMysqlGtid)} copyIconPosition='end' />
+                          <CopyToClipboard
+                            text={getCurrentGtid(rowData, hasMariadbGtid, hasMysqlGtid)}
+                            // copyIconPosition='end'
+                            textType='GTID'
+                          />
                         )
                       },
                       {
                         key: getSlaveGtidHeader(hasMariadbGtid, hasMysqlGtid),
                         value: (
-                          <GTID text={getSlaveGtid(rowData, hasMariadbGtid, hasMysqlGtid)} copyIconPosition='end' />
+                          <CopyToClipboard
+                            text={getSlaveGtid(rowData, hasMariadbGtid, hasMysqlGtid)}
+                            // copyIconPosition='end'
+                            textType='GTID'
+                          />
                         )
                       },
                       {
@@ -237,7 +255,11 @@ function DBServerGrid({
                       {
                         key: getSlaveGtidHeader(hasMariadbGtid, hasMysqlGtid),
                         value: (
-                          <GTID text={getSlaveGtid(rowData, hasMariadbGtid, hasMysqlGtid)} copyIconPosition='end' />
+                          <CopyToClipboard
+                            text={getSlaveGtid(rowData, hasMariadbGtid, hasMysqlGtid)}
+                            // copyIconPosition='end'
+                            textType='GTID'
+                          />
                         )
                       },
                       {
@@ -304,18 +326,20 @@ function DBServerGrid({
                             {
                               key: getCurrentGtidHeader(hasMariadbGtid, hasMysqlGtid),
                               value: (
-                                <GTID
+                                <CopyToClipboard
                                   text={getCurrentGtid(rowData, hasMariadbGtid, hasMysqlGtid)}
-                                  copyIconPosition='end'
+                                  // copyIconPosition='end'
+                                  textType='GTID'
                                 />
                               )
                             },
                             {
                               key: getSlaveGtidHeader(hasMariadbGtid, hasMysqlGtid),
                               value: (
-                                <GTID
+                                <CopyToClipboard
                                   text={getSlaveGtid(rowData, hasMariadbGtid, hasMysqlGtid)}
-                                  copyIconPosition='end'
+                                  // copyIconPosition='end'
+                                  textType='GTID'
                                 />
                               )
                             }

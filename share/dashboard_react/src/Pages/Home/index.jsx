@@ -21,6 +21,8 @@ import Cluster from '../Cluster'
 import { AppSettings } from '../../AppSettings'
 import styles from './styles.module.scss'
 import { useParams } from 'react-router-dom'
+import { HiArrowNarrowLeft } from 'react-icons/hi'
+import CustomIcon from '../../components/Icons/CustomIcon'
 
 function Home() {
   const dispatch = useDispatch()
@@ -69,6 +71,14 @@ function Home() {
     }
   }, [refreshInterval])
 
+  const renderClusterListTabWithArrow = () => {
+    return (
+      <>
+        <CustomIcon icon={HiArrowNarrowLeft} /> Clusters
+      </>
+    )
+  }
+
   const callServices = () => {
     if (selectedTabRef.current === 0) {
       dispatch(getClusters({}))
@@ -108,7 +118,7 @@ function Home() {
         <TabItems
           tabIndex={selectedTab}
           onChange={handleTabChange}
-          options={selectedTab > 0 ? ['Clusters', ...dashboardTabs] : ['Clusters']}
+          options={selectedTab > 0 ? [renderClusterListTabWithArrow(), ...dashboardTabs] : ['Clusters']}
           tabContents={[
             <ClusterList onClick={setDashboardTab} />,
             <Cluster tab='dashboard' />,

@@ -1,11 +1,11 @@
 import { Box } from '@chakra-ui/react'
 import React from 'react'
-import RMButton from '../../../../../components/RMButton'
+import RMButton from '../RMButton'
 import styles from './styles.module.scss'
 
 function ServerName({ name, isBlocking, as = 'span', className }) {
   return (
-    <RMButton className={styles.serverName}>
+    <RMButton className={`${styles.serverName} ${className}`}>
       <Box
         as={as}
         className={isBlocking && styles.text}

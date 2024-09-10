@@ -1,27 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import styles from './styles.module.scss'
-import { Checkbox, Flex, HStack, Input, Tooltip, VStack, Text } from '@chakra-ui/react'
+import styles from '../../styles.module.scss'
+import { Box, Checkbox, Flex, HStack, Input, Tooltip, VStack } from '@chakra-ui/react'
 import { createColumnHelper } from '@tanstack/react-table'
 import { useSelector } from 'react-redux'
 import { DataTable } from '../../../../components/DataTable'
 import { getReadableTime } from '../../../../utility/common'
-import ServerMenu from '../../../Dashboard/components/DBServers/ServerMenu'
-import ServerStatus from '../../../../components/ServerStatus'
+import DropdownSysbench from '../../../../components/DropdownSysbench'
 
-function ProcessList({ clusterName, selectedDBServer, user }) {
+function ProcessList({ clusterName }) {
   const [data, setData] = useState([])
-  const [allData, setAllData] = useState([])
-  const [dataWithoutSleep, setDataWithoutSleep] = useState([])
+
   const [includeSleep, setIncludeSleep] = useState(false)
   const [search, setSearch] = useState('')
 
   const {
     cluster: {
-      clusterMaster,
-      clusterData,
       database: { processList }
     }
   } = useSelector((state) => state)
+  const [allData, setAllData] = useState(processList || [])
+  const [dataWithoutSleep, setDataWithoutSleep] = useState(processList || [])
 
   useEffect(() => {
     if (processList?.length > 0) {
@@ -121,36 +119,24 @@ function ProcessList({ clusterName, selectedDBServer, user }) {
   )
 
   return (
-    <VStack className={styles.processlistContainer}>
+    <VStack className={styles.contentContainer}>
       <Flex className={styles.actions}>
-        <HStack>
-          {selectedDBServer && (
-            <>
-              <ServerMenu
-                clusterName={clusterName}
-                clusterMasterId={clusterMaster?.id}
-                backupLogicalType={clusterData?.config?.backupLogicalType}
-                backupPhysicalType={clusterData?.config?.backupPhysicalType}
-                row={selectedDBServer}
-                user={user}
-                showCompareWithOption={false}
-              />
-              <ServerStatus state={selectedDBServer?.state} />
-              <Text className={styles.serverName}>{`${selectedDBServer?.host}:${selectedDBServer?.port}`}</Text>
-            </>
-          )}
-        </HStack>
         <HStack gap='4'>
           <HStack className={styles.search}>
             <label htmlFor='search'>Search</label>
             <Input id='search' type='search' onChange={handleSearch} />
           </HStack>
         </HStack>
+        <Box className={styles.divider} />
         <Checkbox size='lg' isChecked={includeSleep} onChange={handleIncludeSleep} className={styles.checkbox}>
           Include Sleep command
         </Checkbox>
+        <Box className={styles.divider} />
+        <DropdownSysbench clusterName={clusterName} />
       </Flex>
-      <DataTable data={data} columns={columns} className={styles.table} enableSorting={true} />
+      <Box className={styles.tableContainer}>
+        <DataTable data={data} columns={columns} className={styles.table} enableSorting={true} />
+      </Box>
     </VStack>
   )
 }
