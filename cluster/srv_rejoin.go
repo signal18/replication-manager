@@ -11,7 +11,6 @@
 package cluster
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -19,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -692,22 +692,46 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup ahead binlog events of previously failed server %s", server.URL)
 	filepath.Walk(cluster.Conf.WorkingDir+"/", server.deletefiles)
 
-	cmdrun = exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup %s %s", cluster.GetMysqlBinlogPath(), strings.Replace(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX", -1))
+	var params []string = make([]string, 0)
+	params = append(params, "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos)
 
-	var outrun bytes.Buffer
-	cmdrun.Stdout = &outrun
-	var outrunerr bytes.Buffer
-	cmdrun.Stderr = &outrunerr
+	if !cluster.HaveDBTLSCert && server.IsMariaDB() && server.DBVersion.GreaterEqual("10.3") {
+		params = append(params, "--ssl=FALSE")
+	}
 
-	cmdrunErr := cmdrun.Run()
-	if cmdrunErr != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed to backup binlogs of %s,%s", server.URL, cmdrunErr.Error())
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s %s", cluster.GetMysqlBinlogPath(), cmdrun.Args)
-		cluster.LogPrint(cmdrun.Stderr)
-		cluster.LogPrint(cmdrun.Stdout)
+	params = append(params, crash.FailoverMasterLogFile)
+
+	cmdrun = exec.Command(cluster.GetMysqlBinlogPath(), params...)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup %s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
+
+	cmdErrPipe, _ := cmdrun.StderrPipe()
+	cmdOutPipe, _ := cmdrun.StdoutPipe()
+
+	if err := cmdrun.Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqlbinlog command: %s at %s", err, strings.Replace(cmdrun.String(), cluster.GetDbPass(), "XXXX", -1))
+		return err
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		server.copyLogs(cmdErrPipe, config.ConstLogModTask, config.LvlErr)
+	}()
+
+	go func() {
+		defer wg.Done()
+		server.copyLogs(cmdOutPipe, config.ConstLogModTask, config.LvlDbg)
+	}()
+
+	wg.Wait()
+
+	if err := cmdrun.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed to backup binlogs of %s,%s", server.URL, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 		cluster.canFlashBack = false
-		return cmdrunErr
+		return err
 	}
 	return nil
 }
