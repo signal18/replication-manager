@@ -9,6 +9,7 @@ export const clusterService = {
   getClusterServers,
   getClusterProxies,
   getClusterCertificates,
+  getTopProcess,
   //cluster apis
   switchOverCluster,
   failOverCluster,
@@ -69,7 +70,8 @@ export const clusterService = {
   //database apis
   getDatabaseService,
   //tests run
-  runSysbench
+  runSysbench,
+  runRegressionTests
 }
 
 //#region main
@@ -105,6 +107,10 @@ function getClusterProxies(clusterName) {
 
 function getClusterCertificates(clusterName) {
   return getRequest(`clusters/${clusterName}/certificates`)
+}
+
+function getTopProcess(clusterName) {
+  return getRequest(`clusters/${clusterName}/top`)
 }
 
 function switchOverCluster(clusterName) {
@@ -336,5 +342,9 @@ function getDatabaseService(clusterName, serviceName, dbId) {
 //#region cluster> run tests
 function runSysbench(clusterName, thread) {
   return getRequest(`clusters/${clusterName}/actions/sysbench?threads=${thread}`)
+}
+
+function runRegressionTests(clusterName, testName) {
+  return getRequest(`clusters/${clusterName}/actions/run/${testName}`)
 }
 //#endregion cluster>run tests

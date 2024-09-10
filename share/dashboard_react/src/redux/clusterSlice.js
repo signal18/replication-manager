@@ -77,6 +77,15 @@ export const getClusterCertificates = createAsyncThunk(
   }
 )
 
+export const getTopProcess = createAsyncThunk('cluster/getTopProcess', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.getTopProcess(clusterName)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
 export const switchOverCluster = createAsyncThunk('cluster/switchOverCluster', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.switchOverCluster(clusterName)
@@ -756,6 +765,20 @@ export const runSysBench = createAsyncThunk('cluster/runSysBench', async ({ clus
   }
 })
 
+export const runRegressionTests = createAsyncThunk(
+  'cluster/runRegressionTests',
+  async ({ clusterName, testName }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.runRegressionTests(clusterName, testName)
+      showSuccessBanner('Regression test ran successfuly!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Regression test failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const getDatabaseService = createAsyncThunk(
   'cluster/getDatabaseService',
   async ({ clusterName, serviceName, dbId }, thunkAPI) => {
@@ -779,6 +802,7 @@ const initialState = {
   clusterServers: null,
   clusterProxies: null,
   clusterCertificates: null,
+  topProcess: null,
   refreshInterval: 0,
   loadingStates: {
     switchOver: false,
@@ -866,6 +890,8 @@ export const clusterSlice = createSlice({
           state.clusterProxies = action.payload.data
         } else if (action.type.includes('getClusterCertificates')) {
           state.clusterCertificates = action.payload.data
+        } else if (action.type.includes('getTopProcess')) {
+          state.topProcess = action.payload.data
         } else if (action.type.includes('getDatabaseService')) {
           const { serviceName } = action.meta.arg
           if (serviceName === 'processlist') {

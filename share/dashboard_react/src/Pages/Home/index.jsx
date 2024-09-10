@@ -14,6 +14,7 @@ import {
   getClusters,
   getClusterServers,
   getMonitoredData,
+  getTopProcess,
   setCluster,
   setRefreshInterval
 } from '../../redux/clusterSlice'
@@ -35,7 +36,8 @@ function Home() {
     'Configs',
     'Graphs',
     'Agents',
-    'Backups'
+    'Backups',
+    'Top'
   ])
 
   const params = useParams()
@@ -95,6 +97,9 @@ function Home() {
       if (selectedTabRef.current === 3) {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
       }
+      if (selectedTabRef.current === 7) {
+        dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
+      }
     }
   }
   const handleTabChange = (tabIndex) => {
@@ -126,7 +131,8 @@ function Home() {
             <Cluster tab='configs' />,
             <Cluster tab='graphs' />,
             <Cluster tab='agents' />,
-            <Cluster tab='backups' />
+            <Cluster tab='backups' />,
+            <Cluster tab='top' />
           ]}
         />
       </Box>
