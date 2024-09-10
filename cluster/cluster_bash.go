@@ -157,7 +157,7 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
-		if cluster.IsInBackup() && cluster.Conf.BackupRestic {
+		if cluster.IsInBackup() {
 			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 			time.Sleep(1 * time.Second)
 			return cluster.BinlogCopyScript(server, binlog, isPurge)

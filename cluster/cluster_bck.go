@@ -132,10 +132,9 @@ func (cluster *Cluster) ResticInitRepo() error {
 }
 
 func (cluster *Cluster) ResticFetchRepo() error {
-
-	defer func() { cluster.canResticFetchRepo = true }()
 	if cluster.Conf.BackupRestic && cluster.canResticFetchRepo {
 		cluster.canResticFetchRepo = false
+		defer func() { cluster.canResticFetchRepo = true }()
 		//		var stdout, stderr []byte
 		var stdoutBuf, stderrBuf bytes.Buffer
 		var errStdout, errStderr error
@@ -192,10 +191,6 @@ func (cluster *Cluster) ResticFetchRepo() error {
 
 func (cluster *Cluster) ResticFetchRepoStat() error {
 
-	// defer func() { cluster.canResticFetchRepo = true }()
-	// if cluster.Conf.BackupRestic && cluster.canResticFetchRepo {
-	cluster.canResticFetchRepo = false
-	//		var stdout, stderr []byte
 	var stdoutBuf, stderrBuf bytes.Buffer
 	var errStdout, errStderr error
 	resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, "stats", "--mode", "raw-data", "--json")
