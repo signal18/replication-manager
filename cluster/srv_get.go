@@ -764,3 +764,19 @@ func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
 	}
 	return -1
 }
+
+func (server *ServerMonitor) GetSSLClientParam(tool string) string {
+	cluster := server.ClusterGroup
+	ver := cluster.VersionsMap.Get(tool)
+	// Only add for client dist 11.3 onwards, and DB pre 11.3
+	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && ver.IsMariaDB() && ver.DistVersion.GreaterEqual("11.3") {
+		switch tool {
+		case "client":
+			return "--disable-ssl"
+		case "client-dump", "client-binlog":
+			return "--ssl=FALSE"
+		}
+	}
+
+	return ""
+}

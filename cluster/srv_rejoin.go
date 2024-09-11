@@ -309,12 +309,7 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	binlogCmd := exec.Command(cluster.GetMysqlBinlogPath(), "--flashback", "--to-last-log", cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
 
 	cliParams := make([]string, 0)
-	cliParams = append(cliParams, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
-	cliver := cluster.VersionsMap.Get("client")
-	// Only add for client dist 11.3 onwards, and DB pre 11.3
-	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && cliver.IsMariaDB() && cliver.DistVersion.GreaterEqual("11.3") {
-		cliParams = append(cliParams, "--disable-ssl")
-	}
+	cliParams = append(cliParams, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass(), server.GetSSLClientParam("client"))
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "FlashBack: %s %s", cluster.GetMysqlBinlogPath(), strings.Replace(strings.Join(binlogCmd.Args, " "), cluster.GetRplPass(), "XXXX", -1))
@@ -713,16 +708,7 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	filepath.Walk(cluster.Conf.WorkingDir+"/", server.deletefiles)
 
 	var params []string = make([]string, 0)
-	params = append(params, "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos)
-
-	binlogver := cluster.VersionsMap.Get("client-binlog")
-	// Only add for binlog client dist 11.3 onwards, and DB pre 11.3
-	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && binlogver.IsMariaDB() && binlogver.DistVersion.GreaterEqual("11.3") {
-		params = append(params, "--ssl=FALSE")
-	}
-
-	params = append(params, crash.FailoverMasterLogFile)
-
+	params = append(params, "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, server.GetSSLClientParam("client-binlog"), crash.FailoverMasterLogFile)
 	cmdrun = exec.Command(cluster.GetMysqlBinlogPath(), params...)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup %s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 

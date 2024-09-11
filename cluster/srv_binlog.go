@@ -953,28 +953,15 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 		params = append(params, "--stop-position="+strconv.FormatInt(end.Position, 10))
 	}
 
-	binlogver := cluster.VersionsMap.Get("client-binlog")
-	// Only add for binlog dist 11.3 onwards, and DB pre 11.3
-	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && binlogver.IsMariaDB() && binlogver.DistVersion.GreaterEqual("11.3") {
-		params = append(params, "--ssl=FALSE")
-	}
-
 	// Binlog filename parameter
-	params = append(params, start.Filename)
+	params = append(params, server.GetSSLClientParam("client-binlog"), start.Filename)
 
 	binlogCmd := exec.Command(cluster.GetMysqlBinlogPath(), params...)
 	iodumpreader, _ := binlogCmd.StdoutPipe()
 	stderrIn, _ := binlogCmd.StderrPipe()
 
 	cliParams := make([]string, 0)
-	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`)
-
-	cliver := cluster.VersionsMap.Get("client")
-	// Only add for client dist 11.3 onwards, and DB pre 11.3
-	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && cliver.IsMariaDB() && cliver.DistVersion.GreaterEqual("11.3") {
-		cliParams = append(cliParams, "--disable-ssl")
-	}
-
+	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`, server.GetSSLClientParam("client"))
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
 	cliErrPipe, _ := clientCmd.StderrPipe()
 	cliOutPipe, _ := clientCmd.StdoutPipe()

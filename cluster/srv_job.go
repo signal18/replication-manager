@@ -1120,14 +1120,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	}
 
 	cliParams := make([]string, 0)
-	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`)
-
-	cliver := cluster.VersionsMap.Get("client")
-	// Only add for client dist 11.3 onwards, and DB pre 11.3
-	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && cliver.IsMariaDB() && cliver.DistVersion.GreaterEqual("11.3") {
-		cliParams = append(cliParams, "--disable-ssl")
-	}
-
+	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`, server.GetSSLClientParam("client"))
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
 	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), &buf)
 
@@ -1666,14 +1659,7 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	}
 
 	dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs")
-
-	dumpver := cluster.VersionsMap.Get("client-dump")
-	// Only add for binlog dist 11.3 onwards, and DB pre 11.3
-	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && dumpver.IsMariaDB() && dumpver.DistVersion.GreaterEqual("11.3") {
-		dumpargs = append(dumpargs, "--ssl=FALSE")
-	}
-
+	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs", server.GetSSLClientParam("client-dump"))
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 	// Get the stdout pipe from the command
@@ -2365,15 +2351,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	defer server.SetBackingUpBinaryLog(false)
 
 	var params []string = make([]string, 0)
-	params = append(params, "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory())
-
-	binlogver := cluster.VersionsMap.Get("client-binlog")
-	// Only add for binlog client dist 11.3 onwards, and DB pre 11.3
-	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && binlogver.IsMariaDB() && binlogver.DistVersion.GreaterEqual("11.3") {
-		params = append(params, "--ssl=FALSE")
-	}
-
-	params = append(params, binlogfile)
+	params = append(params, "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory(), server.GetSSLClientParam("client-binlog"), binlogfile)
 	cmdrun := exec.Command(cluster.GetMysqlBinlogPath(), params...)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "%s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 
@@ -2560,24 +2538,13 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 	dumpargs := strings.Split(strings.ReplaceAll(dumpstring, "  ", " "), " ")
 
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+source.ClusterGroup.GetDbUser() /*, "--log-error="+source.GetMyBackupDirectory()+"dump_error.log"*/)
-
-	dumpver := cluster.VersionsMap.Get("client-dump")
-	// Only add for binlog dist 11.3 onwards, and DB pre 11.3
-	if !cluster.HaveDBTLSCert && !source.HasSSL() && source.IsMariaDB() && source.DBVersion.Lower("11.3") && dumpver.IsMariaDB() && dumpver.DistVersion.GreaterEqual("11.3") {
-		dumpargs = append(dumpargs, "--ssl=FALSE")
-	}
+	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+source.ClusterGroup.GetDbUser(), source.GetSSLClientParam("client-dump"))
 
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
 	stderrIn, _ := dumpCmd.StderrPipe()
 
 	cliParams := make([]string, 0)
-	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`)
-	cliver := cluster.VersionsMap.Get("client")
-	// Only add for client dist 11.3 onwards, and DB pre 11.3
-	if !cluster.HaveDBTLSCert && !dest.HasSSL() && dest.IsMariaDB() && dest.DBVersion.Lower("11.3") && cliver.IsMariaDB() && cliver.DistVersion.GreaterEqual("11.3") {
-		cliParams = append(cliParams, "--disable-ssl")
-	}
+	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, dest.GetSSLClientParam("client"))
 
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
 	stderrOut, _ := clientCmd.StderrPipe()
