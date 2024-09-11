@@ -2325,6 +2325,11 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		return err
 	}
 
+	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
+		return err
+	}
+
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
 		if cluster.IsInBackup() {

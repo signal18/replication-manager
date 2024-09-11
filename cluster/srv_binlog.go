@@ -152,6 +152,11 @@ func (server *ServerMonitor) RefreshBinlogMetaMySQL(meta *dbhelper.BinaryLogMeta
 	cluster := server.ClusterGroup
 	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
 
+	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
+		return err
+	}
+
 	events, _, err := dbhelper.GetBinlogFormatDesc(server.Conn, meta.Filename)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error while getting binlog events from oldest master binlog: %s. Err: %s", meta.Filename, err.Error())
@@ -732,6 +737,11 @@ func (server *ServerMonitor) FindLogPositionForTimestamp(binlogFile string, time
 	cluster := server.ClusterGroup
 	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
 
+	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
+		return "", 0, err
+	}
+
 	timeString := timestamp.Format("2006-01-02 15:04:05")
 	cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", timeString, "--stop-datetime", timeString, "--base64-output=DECODE-ROWS", "--verbose", binlogFile)
 	output, err := cmd.Output()
@@ -759,6 +769,11 @@ func (server *ServerMonitor) FindLogPositionForTimestamp(binlogFile string, time
 func (server *ServerMonitor) FindNearestLogPosition(binlogFile string, timestamp time.Time, maxRetries int) (string, int, error) {
 	cluster := server.ClusterGroup
 	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
+
+	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
+		return "", 0, err
+	}
 
 	startTime := timestamp
 	for retry := 0; retry < maxRetries; retry++ {
@@ -908,6 +923,16 @@ func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *c
 
 func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.ReadBinaryLogsBoundary, end config.ReadBinaryLogsBoundary, dest *ServerMonitor) error {
 	cluster := server.ClusterGroup
+
+	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
+		return err
+	}
+
+	if _, err := os.Stat(cluster.GetMysqlclientPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlclientPath())
+		return err
+	}
 
 	file, err := cluster.CreateTmpClientConfFile()
 	if err != nil {
