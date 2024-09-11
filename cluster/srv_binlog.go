@@ -928,7 +928,9 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 		params = append(params, "--stop-position="+strconv.FormatInt(end.Position, 10))
 	}
 
-	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") {
+	binlogver := cluster.VersionsMap.Get("mysqlbinlog")
+	// Only add for binlog client dist 11.3 onwards, and DB pre 11.3
+	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && binlogver.IsMariaDB() && binlogver.DistVersion.GreaterEqual("11.3") {
 		params = append(params, "--ssl=FALSE")
 	}
 
