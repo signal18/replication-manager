@@ -560,6 +560,11 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 		return errors.New("No master found")
 	}
 
+	if _, err := os.Stat(cluster.GetMysqlclientPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlclientPath())
+		return err
+	}
+
 	if backtype == config.ConstBackupLogicalTypeMydumper && cluster.VersionsMap.Get("mydumper") == nil {
 		return errors.New("No mydumper version found")
 	}
@@ -1962,6 +1967,19 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if server.IsDown() {
 		return errors.New("Can't backup when server down")
+	}
+
+	switch cluster.Conf.BackupLogicalType {
+	case config.ConstBackupLogicalTypeMysqldump:
+		if _, err := os.Stat(cluster.GetMysqlDumpPath()); os.IsNotExist(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlDumpPath())
+			return err
+		}
+	case config.ConstBackupLogicalTypeMydumper:
+		if _, err := os.Stat(cluster.GetMyDumperPath()); os.IsNotExist(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMyDumperPath())
+			return err
+		}
 	}
 
 	//Wait for previous restic backup

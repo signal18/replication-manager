@@ -362,6 +362,16 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 		return errors.New("Server is in reseeding state")
 	}
 
+	if _, err := os.Stat(cluster.GetMysqlDumpPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlDumpPath())
+		return err
+	}
+
+	if _, err := os.Stat(cluster.GetMysqlclientPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlclientPath())
+		return err
+	}
+
 	server.SetInReseedBackup(true)
 
 	realmaster := cluster.master
