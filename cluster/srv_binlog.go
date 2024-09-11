@@ -167,7 +167,7 @@ func (server *ServerMonitor) RefreshBinlogMetaMySQL(meta *dbhelper.BinaryLogMeta
 		startpos := fmt.Sprintf("%d", ev.Pos)
 		endpos := fmt.Sprintf("%d", ev.End_log_pos)
 
-		mysqlbinlogcmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-position="+startpos, "--stop-position="+endpos, meta.Filename)
+		mysqlbinlogcmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-position="+startpos, "--stop-position="+endpos, server.GetSSLClientParam("client-binlog"), meta.Filename)
 
 		result, err := mysqlbinlogcmd.Output()
 		if err != nil {
@@ -743,7 +743,7 @@ func (server *ServerMonitor) FindLogPositionForTimestamp(binlogFile string, time
 	}
 
 	timeString := timestamp.Format("2006-01-02 15:04:05")
-	cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", timeString, "--stop-datetime", timeString, "--base64-output=DECODE-ROWS", "--verbose", binlogFile)
+	cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", timeString, "--stop-datetime", timeString, "--base64-output=DECODE-ROWS", "--verbose", server.GetSSLClientParam("client-binlog"), binlogFile)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to execute mysqlbinlog: %w", err)
@@ -781,7 +781,7 @@ func (server *ServerMonitor) FindNearestLogPosition(binlogFile string, timestamp
 		endTime := startTime.Add(1 * time.Minute)
 		endTimeString := endTime.Format("2006-01-02 15:04:05")
 
-		cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", startTimeString, "--stop-datetime", endTimeString, "--base64-output=DECODE-ROWS", "--verbose", binlogFile)
+		cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", startTimeString, "--stop-datetime", endTimeString, "--base64-output=DECODE-ROWS", "--verbose", server.GetSSLClientParam("client-binlog"), binlogFile)
 		output, err := cmd.Output()
 		if err != nil {
 			return "", 0, fmt.Errorf("failed to execute mysqlbinlog: %w", err)
