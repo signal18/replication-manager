@@ -294,10 +294,9 @@ func (proxy *ProxySQLProxy) Refresh() error {
 		s.ProxysqlHostgroup = proxysqlHostgroup
 		s.MxsServerStatus = proxysqlServerStatus
 
-		if err != nil {
+		if err != nil || s.IsIgnored() {
 			isFoundBackendWrite = false
 		} else {
-
 			proxy.BackendsWrite = append(proxy.BackendsWrite, bke)
 		}
 		isFoundBackendRead := true
@@ -362,7 +361,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				updated = true
 
-			} else if s.IsLeader() && (s.PrevState == stateUnconn || s.PrevState == stateFailed || (len(proxy.BackendsWrite) == 0 || !isFoundBackendWrite)) {
+			} else if s.IsLeader() && !s.IsIgnored() && (s.PrevState == stateUnconn || s.PrevState == stateFailed || (len(proxy.BackendsWrite) == 0 || !isFoundBackendWrite)) {
 				// if the master comes back from a previously failed or standalone state, reintroduce it in
 				// the appropriate HostGroup
 
