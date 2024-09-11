@@ -307,8 +307,18 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	}
 
 	binlogCmd := exec.Command(cluster.GetMysqlBinlogPath(), "--flashback", "--to-last-log", cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
+
+	cliParams := make([]string, 0)
+	cliParams = append(cliParams, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
+	cliver := cluster.VersionsMap.Get("client")
+	// Only add for client dist 11.3 onwards, and DB pre 11.3
+	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && cliver.IsMariaDB() && cliver.DistVersion.GreaterEqual("11.3") {
+		cliParams = append(cliParams, "--disable-ssl")
+	}
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "FlashBack: %s %s", cluster.GetMysqlBinlogPath(), strings.Replace(strings.Join(binlogCmd.Args, " "), cluster.GetRplPass(), "XXXX", -1))
+
 	var err error
 	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
 	if err != nil {

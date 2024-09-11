@@ -1114,7 +1114,16 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 		return fmt.Errorf("[%s] Error happened when unzipping backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
+	cliParams := make([]string, 0)
+	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`)
+
+	cliver := cluster.VersionsMap.Get("client")
+	// Only add for client dist 11.3 onwards, and DB pre 11.3
+	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && cliver.IsMariaDB() && cliver.DistVersion.GreaterEqual("11.3") {
+		cliParams = append(cliParams, "--disable-ssl")
+	}
+
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
 	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), &buf)
 
 	stderr, _ := clientCmd.StdoutPipe()
@@ -2525,13 +2534,22 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
 	stderrIn, _ := dumpCmd.StderrPipe()
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
+
+	cliParams := make([]string, 0)
+	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`)
+	cliver := cluster.VersionsMap.Get("client")
+	// Only add for client dist 11.3 onwards, and DB pre 11.3
+	if !cluster.HaveDBTLSCert && !dest.HasSSL() && dest.IsMariaDB() && dest.DBVersion.Lower("11.3") && cliver.IsMariaDB() && cliver.DistVersion.GreaterEqual("11.3") {
+		cliParams = append(cliParams, "--disable-ssl")
+	}
+
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
 	stderrOut, _ := clientCmd.StderrPipe()
 
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 
-	iodumpreader, err := dumpCmd.StdoutPipe()
+	iodumpreader, _ := dumpCmd.StdoutPipe()
 	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), iodumpreader)
 
 	/*clientCmd.Stdin, err = dumpCmd.StdoutPipe()
