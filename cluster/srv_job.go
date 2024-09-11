@@ -1661,7 +1661,14 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	}
 
 	dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs" /*"--log-error="+server.GetMyBackupDirectory()+"dump_error.log"*/)
+	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs")
+
+	dumpver := cluster.VersionsMap.Get("mysqldump")
+	// Only add for binlog dist 11.3 onwards, and DB pre 11.3
+	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && dumpver.IsMariaDB() && dumpver.DistVersion.GreaterEqual("11.3") {
+		dumpargs = append(dumpargs, "--ssl=FALSE")
+	}
+
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 	// Get the stdout pipe from the command
@@ -2531,6 +2538,12 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	dumpargs := strings.Split(strings.ReplaceAll(dumpstring, "  ", " "), " ")
 
 	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+source.ClusterGroup.GetDbUser() /*, "--log-error="+source.GetMyBackupDirectory()+"dump_error.log"*/)
+
+	dumpver := cluster.VersionsMap.Get("mysqldump")
+	// Only add for binlog dist 11.3 onwards, and DB pre 11.3
+	if !cluster.HaveDBTLSCert && !source.HasSSL() && source.IsMariaDB() && source.DBVersion.Lower("11.3") && dumpver.IsMariaDB() && dumpver.DistVersion.GreaterEqual("11.3") {
+		dumpargs = append(dumpargs, "--ssl=FALSE")
+	}
 
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
 	stderrIn, _ := dumpCmd.StderrPipe()
