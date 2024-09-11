@@ -1841,13 +1841,13 @@ func (cluster *Cluster) SetToolVersions() {
 	if err := cluster.SetMysqlDumpVersion(); err != nil {
 		cluster.SetState("WARN0118", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0118"], err), ErrFrom: "CLUSTER"})
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Mysqldump version: %s", cluster.VersionsMap.Get("mysqldump").ToFullString())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Mysqldump version: %s", cluster.VersionsMap.Get("client-dump").ToFullString())
 	}
 
 	if err := cluster.SetMysqlBinlogVersion(); err != nil {
 		cluster.SetState("WARN0119", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0119"], err), ErrFrom: "CLUSTER"})
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Mysqlbinlog version: %s", cluster.VersionsMap.Get("mysqlbinlog").ToFullString())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Mysqlbinlog version: %s", cluster.VersionsMap.Get("client-binlog").ToFullString())
 	}
 
 	if err := cluster.SetMyDumperVersion(); err != nil {
@@ -1904,7 +1904,7 @@ func (cluster *Cluster) SetMysqlDumpVersion() error {
 	v, _ := version.NewVersionFromString(myver.Flavor, vstring)
 	v.DistVersion = myver.DistVersion
 
-	cluster.VersionsMap.Set("mysqldump", v)
+	cluster.VersionsMap.Set("client-dump", v)
 	// Remove state if already get correct version
 	cluster.GetStateMachine().DeleteState("WARN0118")
 
@@ -1933,7 +1933,7 @@ func (cluster *Cluster) SetMysqlBinlogVersion() error {
 	v, _ := version.NewVersionFromString(myver.Flavor, vstring)
 	v.DistVersion = myver.DistVersion
 
-	cluster.VersionsMap.Set("mysqlbinlog", v)
+	cluster.VersionsMap.Set("client-binlog", v)
 	// Remove state if already get correct version
 	cluster.GetStateMachine().DeleteState("WARN0119")
 

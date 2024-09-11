@@ -1663,7 +1663,7 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
 	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs")
 
-	dumpver := cluster.VersionsMap.Get("mysqldump")
+	dumpver := cluster.VersionsMap.Get("client-dump")
 	// Only add for binlog dist 11.3 onwards, and DB pre 11.3
 	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && dumpver.IsMariaDB() && dumpver.DistVersion.GreaterEqual("11.3") {
 		dumpargs = append(dumpargs, "--ssl=FALSE")
@@ -2344,7 +2344,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	var params []string = make([]string, 0)
 	params = append(params, "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory())
 
-	binlogver := cluster.VersionsMap.Get("mysqlbinlog")
+	binlogver := cluster.VersionsMap.Get("client-binlog")
 	// Only add for binlog client dist 11.3 onwards, and DB pre 11.3
 	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && binlogver.IsMariaDB() && binlogver.DistVersion.GreaterEqual("11.3") {
 		params = append(params, "--ssl=FALSE")
@@ -2539,7 +2539,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+source.ClusterGroup.GetDbUser() /*, "--log-error="+source.GetMyBackupDirectory()+"dump_error.log"*/)
 
-	dumpver := cluster.VersionsMap.Get("mysqldump")
+	dumpver := cluster.VersionsMap.Get("client-dump")
 	// Only add for binlog dist 11.3 onwards, and DB pre 11.3
 	if !cluster.HaveDBTLSCert && !source.HasSSL() && source.IsMariaDB() && source.DBVersion.Lower("11.3") && dumpver.IsMariaDB() && dumpver.DistVersion.GreaterEqual("11.3") {
 		dumpargs = append(dumpargs, "--ssl=FALSE")

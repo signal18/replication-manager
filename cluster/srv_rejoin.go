@@ -705,7 +705,7 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	var params []string = make([]string, 0)
 	params = append(params, "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos)
 
-	binlogver := cluster.VersionsMap.Get("mysqlbinlog")
+	binlogver := cluster.VersionsMap.Get("client-binlog")
 	// Only add for binlog client dist 11.3 onwards, and DB pre 11.3
 	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && binlogver.IsMariaDB() && binlogver.DistVersion.GreaterEqual("11.3") {
 		params = append(params, "--ssl=FALSE")
