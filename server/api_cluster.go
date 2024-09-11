@@ -1183,6 +1183,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchDBApplyDynamicConfig()
 	case "prov-docker-daemon-private":
 		mycluster.SwitchProvDockerDaemonPrivate()
+	case "backup-restic-aws":
+		mycluster.SwitchBackupResticAws()
 	case "backup-restic":
 		mycluster.SwitchBackupRestic()
 	case "backup-binlogs":
