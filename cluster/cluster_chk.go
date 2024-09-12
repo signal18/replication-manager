@@ -61,7 +61,7 @@ func (cluster *Cluster) CheckFailed() {
 
 func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcingLog bool) bool {
 	//Ignore if child cluster
-	if sl.SourceClusterName != cluster.Name {
+	if sl.SourceClusterName != "" && sl.SourceClusterName != cluster.Name {
 		return false
 	}
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)

@@ -552,6 +552,9 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 	if cluster.Conf.PrefMaster != "" {
 		masterKey = func() int {
 			for k, server := range cluster.Servers {
+				if server.SourceClusterName != "" && server.SourceClusterName != cluster.Name {
+					continue
+				}
 				if server.IsPrefered() {
 					cluster.StateMachine.RemoveFailoverState()
 					return k

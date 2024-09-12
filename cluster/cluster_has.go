@@ -130,7 +130,7 @@ func (cluster *Cluster) IsProvisioned() bool {
 
 func (cluster *Cluster) IsInIgnoredHosts(server *ServerMonitor) bool {
 	// Ignore if child cluster
-	if server.SourceClusterName != cluster.Name {
+	if server.SourceClusterName != "" && server.SourceClusterName != cluster.Name {
 		return true
 	}
 	ihosts := strings.Split(cluster.Conf.IgnoreSrv, ",")
@@ -144,7 +144,7 @@ func (cluster *Cluster) IsInIgnoredHosts(server *ServerMonitor) bool {
 
 func (cluster *Cluster) IsInPreferedBackupHosts(server *ServerMonitor) bool {
 	// Ignore if child cluster
-	if server.SourceClusterName != cluster.Name {
+	if server.SourceClusterName != "" && server.SourceClusterName != cluster.Name {
 		return false
 	}
 	ihosts := strings.Split(cluster.Conf.BackupServers, ",")
@@ -158,7 +158,7 @@ func (cluster *Cluster) IsInPreferedBackupHosts(server *ServerMonitor) bool {
 
 func (cluster *Cluster) IsInIgnoredReadonly(server *ServerMonitor) bool {
 	// Ignore if child cluster
-	if server.SourceClusterName != cluster.Name {
+	if server.SourceClusterName != "" && server.SourceClusterName != cluster.Name {
 		return true
 	}
 	ihosts := strings.Split(cluster.Conf.IgnoreSrvRO, ",")
@@ -172,7 +172,7 @@ func (cluster *Cluster) IsInIgnoredReadonly(server *ServerMonitor) bool {
 
 func (cluster *Cluster) IsInPreferedHosts(server *ServerMonitor) bool {
 	// Ignore if child cluster
-	if server.SourceClusterName != cluster.Name {
+	if server.SourceClusterName != "" && server.SourceClusterName != cluster.Name {
 		return false
 	}
 	ihosts := strings.Split(cluster.Conf.PrefMaster, ",")
