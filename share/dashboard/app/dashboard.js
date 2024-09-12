@@ -65,7 +65,6 @@ app.controller('DashboardController', function (
   $scope.missingProxyTags = [];
   $scope.promise = undefined;
   $scope.processlist = {};
-  $scope.bsTableProcessList = {};
 
   $scope.UpdateProcessList = function (newData) {
     // Iterate over each key in the new data
@@ -76,88 +75,6 @@ app.controller('DashboardController', function (
 
       // Update the elements for the specific key
       angular.copy(elements, $scope.processlist[dbKey]);
-
-      // Ensure that bsTableProcessList[dbName] is initialized as an object
-      if (!$scope.bsTableProcessList[dbKey]) {
-        $scope.bsTableProcessList[dbKey] = { option: {} };
-      }
-
-      let option = {
-        data: elements,
-        rowStyle: function (row, index) {
-          return { classes: 'none' }
-        },
-        cache: false,
-        striped: true,
-        pagination: true,
-        pageSize: 20,
-        search: false,
-        showColumns: false,
-        showRefresh: false,
-        clickToSelect: false,
-        showToggle: false,
-        maintainSelected: false,
-        columns: [
-          {
-            field: 'id',
-            title: 'Id',
-            align: 'left',
-            valign: 'bottom',
-            width: "4%"
-          }, {
-            field: 'user',
-            title: 'User',
-            align: 'left',
-            valign: 'bottom',
-            sortable: true,
-            width: "8%"
-          }, {
-            field: 'host',
-            title: 'Host',
-            align: 'left',
-            valign: 'bottom',
-            sortable: true,
-            width: "8%"
-          },
-          {
-            field: 'db.String',
-            title: 'Db',
-            align: 'left',
-            valign: 'bottom',
-            sortable: true
-          },
-          {
-            field: 'command',
-            title: 'Command',
-            align: 'left',
-            valign: 'bottom',
-            sortable: true,
-            width: "10%"
-          }, {
-            field: 'time.Float64',
-            title: 'Time',
-            align: 'left',
-            valign: 'bottom',
-            sortable: true
-          }, {
-            field: 'state.String',
-            title: 'State',
-            align: 'left',
-            valign: 'bottom',
-            sortable: true
-          }, {
-            field: 'info.String',
-            title: 'Info',
-            align: 'true',
-            valign: 'bottom',
-            sortable: true,
-            width: "40%"
-          }
-        ]
-      }
-
-      // Update the elements for the specific key
-      angular.copy(option, $scope.bsTableProcessList[dbKey].option)
     });
   }
 
