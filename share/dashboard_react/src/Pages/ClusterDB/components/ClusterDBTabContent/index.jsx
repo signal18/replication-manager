@@ -57,9 +57,9 @@ function ClusterDBTabContent({ tab, dbId, clusterName }) {
         </HStack>
       </Flex>
       {currentTab === 'processlist' ? (
-        <ProcessList clusterName={clusterName} />
+        <ProcessList clusterName={clusterName} dbId={dbId} />
       ) : currentTab === 'slowqueries' ? (
-        <SlowQueries />
+        <SlowQueries clusterName={clusterName} dbId={dbId} selectedDBServer={selectedDBServer} />
       ) : currentTab === 'digestqueries' ? (
         <div>digest queries</div>
       ) : currentTab === 'errors' ? (

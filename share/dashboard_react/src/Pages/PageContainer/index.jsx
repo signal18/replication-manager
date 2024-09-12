@@ -5,7 +5,6 @@ import { setUserData } from '../../redux/authSlice'
 import { Box, useBreakpointValue, Text } from '@chakra-ui/react'
 import { isAuthorized } from '../../utility/common'
 import { setIsMobile, setIsTablet, setIsDesktop } from '../../redux/commonSlice'
-//const Navbar = lazy(() => import('../components/Navbar'))
 import Navbar from '../../components/Navbar'
 import styles from './styles.module.scss'
 

@@ -45,6 +45,9 @@ export const handleError = (error, thunkAPI) => {
 }
 
 export const convertObjectToArrayForDropdown = (inputObject) => {
+  if (Array.isArray(inputObject)) {
+    return inputObject.map((obj) => ({ name: obj, value: obj }))
+  }
   return Object.keys(inputObject).map((key) => {
     return { name: key, value: key }
   })
@@ -162,4 +165,11 @@ export const getReadableTime = (timeInseconds) => {
   }
   console.log()
   return `${Math.round(hours / 7)} days`
+}
+
+export const isEqualLongQueryTime = (a, b) => {
+  if (Number(a) == Number(b)) {
+    return true
+  }
+  return false
 }

@@ -69,6 +69,8 @@ export const clusterService = {
   stopProxy,
   //database apis
   getDatabaseService,
+  updateLongQueryTime,
+  toggleDatabaseActions,
   //tests run
   runSysbench,
   runRegressionTests
@@ -337,6 +339,15 @@ function stopProxy(clusterName, proxyId) {
 function getDatabaseService(clusterName, serviceName, dbId) {
   return getRequest(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
 }
+
+function updateLongQueryTime(clusterName, dbId, time) {
+  return getRequest(`clusters/${clusterName}/servers/${dbId}/actions/set-long-query-time/${time}`)
+}
+
+function toggleDatabaseActions(clusterName, serviceName, dbId) {
+  return getRequest(`clusters/${clusterName}/servers/${dbId}/actions/${serviceName}`)
+}
+
 //#endregion cluster>database apis
 
 //#region cluster> run tests
@@ -345,6 +356,6 @@ function runSysbench(clusterName, thread) {
 }
 
 function runRegressionTests(clusterName, testName) {
-  return getRequest(`clusters/${clusterName}/actions/run/${testName}`)
+  return getRequest(`clusters/${clusterName}/tests/actions/run/${testName}`)
 }
 //#endregion cluster>run tests

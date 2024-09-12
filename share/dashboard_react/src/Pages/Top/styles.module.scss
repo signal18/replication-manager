@@ -1,0 +1,13 @@
+.topContainer {
+  width: 100%;
+  gap: rem(24) !important;
+  .accordion {
+    width: 100%;
+  }
+
+  .morelink {
+    font-weight: normal;
+    font-size: rem(14);
+    text-decoration: underline;
+  }
+}

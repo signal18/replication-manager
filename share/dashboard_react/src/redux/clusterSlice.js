@@ -791,6 +791,34 @@ export const getDatabaseService = createAsyncThunk(
   }
 )
 
+export const updateLongQueryTime = createAsyncThunk(
+  'cluster/updateLongQueryTime',
+  async ({ clusterName, dbId, time }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.updateLongQueryTime(clusterName, dbId, time)
+      showSuccessBanner('Long query time updated!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Long query time update failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const toggleDatabaseActions = createAsyncThunk(
+  'cluster/toggleDatabaseActions',
+  async ({ clusterName, dbId, serviceName }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.toggleDatabaseActions(clusterName, serviceName, dbId)
+      showSuccessBanner(`Toggle ${serviceName} successful!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Toggle ${serviceName} failed!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   error: null,
@@ -875,7 +903,8 @@ export const clusterSlice = createSlice({
         getClusterServers.fulfilled,
         getClusterProxies.fulfilled,
         getClusterCertificates.fulfilled,
-        getDatabaseService.fulfilled
+        getDatabaseService.fulfilled,
+        getTopProcess.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('getClusterData')) {

@@ -14,7 +14,9 @@ function Dropdown({
   onChange,
   confirmTitle,
   isSearchable = false,
-  isMenuPortalTarget = true
+  classNamePrefix = '',
+  isMenuPortalTarget = true,
+  ...rest
 }) {
   const [selectedOption, setSelectedOption] = useState(null)
   const [previousOption, setPreviousOption] = useState(null)
@@ -59,7 +61,7 @@ function Dropdown({
       <Select
         id={id}
         className={`${styles.select}  ${className}`}
-        classNamePrefix='rm-select'
+        classNamePrefix={`${classNamePrefix}rm-select`}
         getOptionLabel={(option) => option.name || option.label}
         value={selectedOption}
         onChange={handleChange}
@@ -67,6 +69,7 @@ function Dropdown({
         isSearchable={isSearchable}
         placeholder={placeholder}
         {...(isMenuPortalTarget ? { menuPortalTarget: document.body } : {})}
+        {...rest}
       />
       {isConfirmModalOpen && (
         <ConfirmModal
