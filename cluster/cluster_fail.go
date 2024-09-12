@@ -637,6 +637,10 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 func (cluster *Cluster) electSwitchoverGroupReplicationCandidate(l []*ServerMonitor, forcingLog bool) int {
 	//	Return prefered if exists
 	for i, sl := range l {
+		// Skip if child cluster
+		if sl.SourceClusterName != "" && sl.SourceClusterName != cluster.Name {
+			continue
+		}
 		if cluster.IsInPreferedHosts(sl) {
 			// if (cluster.Conf.LogLevel > 1 || forcingLog) && cluster.IsInFailover() {
 			if cluster.IsInFailover() {
@@ -647,6 +651,10 @@ func (cluster *Cluster) electSwitchoverGroupReplicationCandidate(l []*ServerMoni
 	}
 	//	Return one not ignored not full , not prefered
 	for i, sl := range l {
+		// Skip if child cluster
+		if sl.SourceClusterName != "" && sl.SourceClusterName != cluster.Name {
+			continue
+		}
 		if sl.IsIgnored() {
 			cluster.SetState("ERR00037", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
@@ -673,7 +681,10 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 	var maxpos uint64
 
 	for i, sl := range l {
-
+		/* If server is in child cluster, do not elect it in switchover */
+		if sl.SourceClusterName != "" && sl.SourceClusterName != cluster.Name {
+			continue
+		}
 		/* If server is in the ignore list, do not elect it in switchover */
 		if sl.IsIgnored() {
 			cluster.SetState("ERR00037", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00037"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
@@ -815,8 +826,8 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 	for i, sl := range l {
 		trackposList[i].URL = sl.URL
 		trackposList[i].Indice = i
-		trackposList[i].Prefered = sl.IsPrefered()
-		trackposList[i].Ignoredconf = sl.IsIgnored()
+		trackposList[i].Prefered = sl.IsPrefered() && sl.SourceClusterName == ""                                             //Ignore if child cluster
+		trackposList[i].Ignoredconf = sl.IsIgnored() || (sl.SourceClusterName != "" && sl.SourceClusterName != cluster.Name) //Ignore if child cluster
 		trackposList[i].Ignoredrelay = sl.IsRelay
 		trackposList[i].DelayStat = sl.DelayStat.Total
 		trackposList[i].IgnoredErrantTrx = sl.HasErrantTransactions()
@@ -1030,6 +1041,10 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 }
 
 func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) bool {
+	//Ignore if child cluster
+	if sl.SourceClusterName != "" && sl.SourceClusterName != cluster.Name {
+		return false
+	}
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModWriterElection, config.LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)

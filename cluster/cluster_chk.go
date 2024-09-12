@@ -60,6 +60,10 @@ func (cluster *Cluster) CheckFailed() {
 }
 
 func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcingLog bool) bool {
+	//Ignore if child cluster
+	if sl.SourceClusterName != "" && sl.SourceClusterName != cluster.Name {
+		return false
+	}
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Error in getting slave status in testing slave electable for switchover %s: %s  ", sl.URL, err)
