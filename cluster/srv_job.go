@@ -560,6 +560,11 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 		return errors.New("No master found")
 	}
 
+	if _, err := os.Stat(cluster.GetMysqlclientPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlclientPath())
+		return err
+	}
+
 	if backtype == config.ConstBackupLogicalTypeMydumper && cluster.VersionsMap.Get("mydumper") == nil {
 		return errors.New("No mydumper version found")
 	}
@@ -1114,7 +1119,9 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 		return fmt.Errorf("[%s] Error happened when unzipping backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
+	cliParams := make([]string, 0)
+	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`, server.GetSSLClientParam("client"))
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
 	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), &buf)
 
 	stderr, _ := clientCmd.StdoutPipe()
@@ -1652,7 +1659,7 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	}
 
 	dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs" /*"--log-error="+server.GetMyBackupDirectory()+"dump_error.log"*/)
+	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs", server.GetSSLClientParam("client-dump"))
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 	// Get the stdout pipe from the command
@@ -1946,6 +1953,19 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if server.IsDown() {
 		return errors.New("Can't backup when server down")
+	}
+
+	switch cluster.Conf.BackupLogicalType {
+	case config.ConstBackupLogicalTypeMysqldump:
+		if _, err := os.Stat(cluster.GetMysqlDumpPath()); os.IsNotExist(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlDumpPath())
+			return err
+		}
+	case config.ConstBackupLogicalTypeMydumper:
+		if _, err := os.Stat(cluster.GetMyDumperPath()); os.IsNotExist(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMyDumperPath())
+			return err
+		}
 	}
 
 	//Wait for previous restic backup
@@ -2309,6 +2329,11 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		return err
 	}
 
+	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
+		return err
+	}
+
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
 		if cluster.IsInBackup() {
@@ -2326,13 +2351,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	defer server.SetBackingUpBinaryLog(false)
 
 	var params []string = make([]string, 0)
-	params = append(params, "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory())
-
-	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") {
-		params = append(params, "--ssl=FALSE")
-	}
-
-	params = append(params, binlogfile)
+	params = append(params, "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory(), server.GetSSLClientParam("client-binlog"), binlogfile)
 	cmdrun := exec.Command(cluster.GetMysqlBinlogPath(), params...)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "%s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 
@@ -2519,17 +2538,21 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 	dumpargs := strings.Split(strings.ReplaceAll(dumpstring, "  ", " "), " ")
 
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+source.ClusterGroup.GetDbUser() /*, "--log-error="+source.GetMyBackupDirectory()+"dump_error.log"*/)
+	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+source.ClusterGroup.GetDbUser(), source.GetSSLClientParam("client-dump"))
 
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
 	stderrIn, _ := dumpCmd.StderrPipe()
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
+
+	cliParams := make([]string, 0)
+	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, dest.GetSSLClientParam("client"))
+
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
 	stderrOut, _ := clientCmd.StderrPipe()
 
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 
-	iodumpreader, err := dumpCmd.StdoutPipe()
+	iodumpreader, _ := dumpCmd.StdoutPipe()
 	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), iodumpreader)
 
 	/*clientCmd.Stdin, err = dumpCmd.StdoutPipe()

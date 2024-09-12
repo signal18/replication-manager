@@ -152,6 +152,11 @@ func (server *ServerMonitor) RefreshBinlogMetaMySQL(meta *dbhelper.BinaryLogMeta
 	cluster := server.ClusterGroup
 	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
 
+	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
+		return err
+	}
+
 	events, _, err := dbhelper.GetBinlogFormatDesc(server.Conn, meta.Filename)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Error while getting binlog events from oldest master binlog: %s. Err: %s", meta.Filename, err.Error())
@@ -162,7 +167,7 @@ func (server *ServerMonitor) RefreshBinlogMetaMySQL(meta *dbhelper.BinaryLogMeta
 		startpos := fmt.Sprintf("%d", ev.Pos)
 		endpos := fmt.Sprintf("%d", ev.End_log_pos)
 
-		mysqlbinlogcmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-position="+startpos, "--stop-position="+endpos, meta.Filename)
+		mysqlbinlogcmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-position="+startpos, "--stop-position="+endpos, server.GetSSLClientParam("client-binlog"), meta.Filename)
 
 		result, err := mysqlbinlogcmd.Output()
 		if err != nil {
@@ -732,8 +737,13 @@ func (server *ServerMonitor) FindLogPositionForTimestamp(binlogFile string, time
 	cluster := server.ClusterGroup
 	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
 
+	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
+		return "", 0, err
+	}
+
 	timeString := timestamp.Format("2006-01-02 15:04:05")
-	cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", timeString, "--stop-datetime", timeString, "--base64-output=DECODE-ROWS", "--verbose", binlogFile)
+	cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", timeString, "--stop-datetime", timeString, "--base64-output=DECODE-ROWS", "--verbose", server.GetSSLClientParam("client-binlog"), binlogFile)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to execute mysqlbinlog: %w", err)
@@ -760,13 +770,18 @@ func (server *ServerMonitor) FindNearestLogPosition(binlogFile string, timestamp
 	cluster := server.ClusterGroup
 	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
 
+	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
+		return "", 0, err
+	}
+
 	startTime := timestamp
 	for retry := 0; retry < maxRetries; retry++ {
 		startTimeString := startTime.Format("2006-01-02 15:04:05")
 		endTime := startTime.Add(1 * time.Minute)
 		endTimeString := endTime.Format("2006-01-02 15:04:05")
 
-		cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", startTimeString, "--stop-datetime", endTimeString, "--base64-output=DECODE-ROWS", "--verbose", binlogFile)
+		cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", startTimeString, "--stop-datetime", endTimeString, "--base64-output=DECODE-ROWS", "--verbose", server.GetSSLClientParam("client-binlog"), binlogFile)
 		output, err := cmd.Output()
 		if err != nil {
 			return "", 0, fmt.Errorf("failed to execute mysqlbinlog: %w", err)
@@ -909,6 +924,16 @@ func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *c
 func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.ReadBinaryLogsBoundary, end config.ReadBinaryLogsBoundary, dest *ServerMonitor) error {
 	cluster := server.ClusterGroup
 
+	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
+		return err
+	}
+
+	if _, err := os.Stat(cluster.GetMysqlclientPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlclientPath())
+		return err
+	}
+
 	file, err := cluster.CreateTmpClientConfFile()
 	if err != nil {
 		return err
@@ -928,17 +953,16 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 		params = append(params, "--stop-position="+strconv.FormatInt(end.Position, 10))
 	}
 
-	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") {
-		params = append(params, "--ssl=FALSE")
-	}
-
 	// Binlog filename parameter
-	params = append(params, start.Filename)
+	params = append(params, server.GetSSLClientParam("client-binlog"), start.Filename)
 
 	binlogCmd := exec.Command(cluster.GetMysqlBinlogPath(), params...)
 	iodumpreader, _ := binlogCmd.StdoutPipe()
 	stderrIn, _ := binlogCmd.StderrPipe()
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose` /*, `--init-command=reset master;set sql_log_bin=0;set global slow_query_log=0;set global general_log=0;`*/)
+
+	cliParams := make([]string, 0)
+	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`, server.GetSSLClientParam("client"))
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
 	cliErrPipe, _ := clientCmd.StderrPipe()
 	cliOutPipe, _ := clientCmd.StdoutPipe()
 
