@@ -287,7 +287,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	}
 	var sid uint64
 	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id
-	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.GetCluster().GetCrcTable()), 10), 10, 64)
+	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(url), server.GetCluster().GetCrcTable()), 10), 10, 64)
 	server.ServerID = sid
 	server.Id = fmt.Sprintf("%s%d", "db", sid)
 
