@@ -25,11 +25,12 @@ function Dashboard({ selectedCluster, user }) {
           </Flex>
         )}
       </Flex>
-
-      <AccordionComponent
-        heading={'Cluster Workload'}
-        body={<ClusterWorkload workload={selectedCluster?.workLoad} />}
-      />
+      {selectedCluster?.workLoad && (
+        <AccordionComponent
+          heading={'Cluster Workload'}
+          body={<ClusterWorkload workload={selectedCluster?.workLoad} />}
+        />
+      )}
       {selectedCluster && (
         <AccordionComponent
           heading={'Database servers'}
