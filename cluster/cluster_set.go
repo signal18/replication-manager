@@ -445,6 +445,10 @@ func (cluster *Cluster) SetBenchMethod(m string) {
 }
 
 func (cluster *Cluster) AddPrefMaster(node *ServerMonitor) {
+	if node.SourceClusterName != cluster.Name {
+		return
+	}
+
 	if cluster.IsInPreferedHosts(node) {
 		return
 	}
@@ -479,7 +483,7 @@ func (cluster *Cluster) RemovePrefMaster(node *ServerMonitor) error {
 func (cluster *Cluster) SetPrefMaster(PrefMasterURL string) {
 	var prefmasterlist []string
 	for _, srv := range cluster.Servers {
-		if strings.Contains(PrefMasterURL, srv.URL) {
+		if strings.Contains(PrefMasterURL, srv.URL) && srv.SourceClusterName == cluster.Name {
 			srv.SetPrefered(true)
 			prefmasterlist = append(prefmasterlist, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
 		} else {
@@ -506,6 +510,10 @@ func (cluster *Cluster) AddIgnoreSrv(node *ServerMonitor) {
 
 // Set Ignored Host for Election
 func (cluster *Cluster) RemoveIgnoreSrv(node *ServerMonitor) error {
+	if node.SourceClusterName != cluster.Name {
+		return fmt.Errorf("Host is in child cluster. Cannot remove ignore")
+	}
+
 	if !cluster.IsInIgnoredHosts(node) {
 		return fmt.Errorf("Host not found in ignored list")
 	}
@@ -527,7 +535,7 @@ func (cluster *Cluster) RemoveIgnoreSrv(node *ServerMonitor) error {
 func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
 	var ignoresrvlist []string
 	for _, srv := range cluster.Servers {
-		if strings.Contains(IgnoredHostURL, srv.URL) {
+		if strings.Contains(IgnoredHostURL, srv.URL) && srv.SourceClusterName == cluster.Name {
 			srv.SetIgnored(true)
 			ignoresrvlist = append(ignoresrvlist, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
 		} else {
