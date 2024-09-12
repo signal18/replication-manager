@@ -1,80 +1,124 @@
- <div layout="row" flex>
-<md-content  class="md-padding">
+<div layout="row" flex>
+  <md-content class="md-padding" style="width: 100%;">
+    <md-card ng-repeat="server in servers" style="width: 100%;">
+      <!-- Include toolbar if the server is selected -->
+      <div ng-if="server.id==selectedServer" ng-include src="'static/toolbar-server.html'"></div>
+      <div ng-if="(selectedServer && server.id==selectedServer) || !selectedServer ">
+        <md-card-content>
+          <p ng-switch="server.state" class="sectionheader">
+            <span ng-switch-when="Master" class="label label-primary">
+              Master {{server.host}}:{{server.port}}
+              <label ng-if="server.isVirtualMaster==true">-VMaster {{server.host}}:{{server.port}}</label>
+            </span>
+            <span ng-switch-when="Suspect" class="label label-warning">
+              Suspect {{server.host}}:{{server.port}}
+              <label ng-if="server.isVirtualMaster==true">-VMaster</label>
+            </span>
+            <span ng-switch-when="SlaveErr" class="label label-warning">
+              Slave Error {{server.host}}:{{server.port}}
+              <label ng-if="server.isVirtualMaster==true">-VMaster {{server.host}}:{{server.port}}</label>
+            </span>
+            <span ng-switch-when="StandAlone" class="label label-info">
+              Standalone {{server.host}}:{{server.port}}
+              <label ng-if="server.isVirtualMaster==true">-VMaster {{server.host}}:{{server.port}}</label>
+            </span>
+            <span ng-switch-default class="label label-default">
+              {{server.state}} {{server.host}}:{{server.port}}
+              <label ng-if="server.isVirtualMaster==true">-VMaster {{server.host}}:{{server.port}}</label>
+            </span>
+          </p>
+        </md-card-content>
+        <style>
+          table {
+            table-layout: fixed;
+            width: 100%;
 
 
+          }
 
+          td {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+        </style>
 
-  <div  ng-repeat="server in servers">
+        <!-- Debugging output -->
+        <md-card ng-if="processlist[server.id]">
+          <div class="bootstrap-table">
+            <div class="fixed-table-toolbar"></div>
+            <div class="fixed-table-container" style="padding-bottom: 0px;">
+               <div class="fixed-table-header" style="display: none;">
+                  <table></table>
+               </div>
+               <div class="fixed-table-body" style="max-height: 30vh; overflow-y: auto;">
+                  <table class="ng-isolate-scope table table-hover table-striped">
+                     <thead>
+                        <tr>
+                           <th style="text-align: left; vertical-align: bottom; width: 4%; " data-field="id" tabindex="0">
+                              <div class="th-inner ">Id</div>
+                              <div class="fht-cell"></div>
+                           </th>
+                           <th style="text-align: left; vertical-align: bottom; width: 8%; " data-field="user" tabindex="0">
+                              <div class="th-inner sortable both">User</div>
+                              <div class="fht-cell"></div>
+                           </th>
+                           <th style="text-align: left; vertical-align: bottom; width: 8%; " data-field="host" tabindex="0">
+                              <div class="th-inner sortable both">Host</div>
+                              <div class="fht-cell"></div>
+                           </th>
+                           <th style="text-align: left; vertical-align: bottom; " data-field="db.String" tabindex="0">
+                              <div class="th-inner sortable both">Db</div>
+                              <div class="fht-cell"></div>
+                           </th>
+                           <th style="text-align: left; vertical-align: bottom; width: 10%; " data-field="command" tabindex="0">
+                              <div class="th-inner sortable both">Command</div>
+                              <div class="fht-cell"></div>
+                           </th>
+                           <th style="text-align: left; vertical-align: bottom; " data-field="time.Float64" tabindex="0">
+                              <div class="th-inner sortable both">Time</div>
+                              <div class="fht-cell"></div>
+                           </th>
+                           <th style="text-align: tlef; vertical-align: bottom; " data-field="state.String" tabindex="0">
+                              <div class="th-inner sortable both">State</div>
+                              <div class="fht-cell"></div>
+                           </th>
+                           <th style="text-align: true; vertical-align: bottom; width: 40%; " data-field="info.String" tabindex="0">
+                              <div class="th-inner sortable both">Info</div>
+                              <div class="fht-cell"></div>
+                           </th>
+                        </tr>
+                     </thead>
+                     <tbody>
+                        <tr ng-repeat="process in processlist[server.id]">
+                           <td style="text-align: left; vertical-align: bottom; width: 4%; ">{{process.id}}</td>
+                           <td style="text-align: left; vertical-align: bottom; width: 8%; ">{{process.user}}</td>
+                           <td style="text-align: left; vertical-align: bottom; width: 8%; ">{{process.host}}</td>
+                           <td style="text-align: left; vertical-align: bottom; ">{{process.db.String}}</td>
+                           <td style="text-align: left; vertical-align: bottom; width: 10%; ">{{process.command}}</td>
+                           <td style="text-align: left; vertical-align: bottom; ">{{process.time.Float64}}</td>
+                           <td style="text-align: tlef; vertical-align: bottom; ">{{process.state.String}}</td>
+                           <td style="text-align: true; vertical-align: bottom; width: 40%; ">{{process.info.String}}</td>
+                        </tr>
+                     </tbody>
+                  </table>
+               </div>
+               <div class="fixed-table-footer" style="display: none;">
+                  <table>
+                     <tbody>
+                        <tr></tr>
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+         </div>
+         <div class="clearfix"></div>
+          <!-- <table bs-table-control="bsTableProcessList[server.id]"></table> -->
+        </md-card>
 
-          <div ng-if="server.id==selectedServer" ng-include src="'static/toolbar-server.html'"></div>
-           <md-card ng-if="server.id==selectedServer">
+        <!-- Dynamic table for each server -->
 
-
-
-             <md-card-content>
-                 <p  ng-switch="server.state" class="sectionheader">
-                   <span ng-switch-when="Master" class="label label-primary">Master   {{server.host}}:{{server.port}}<label
-                           ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
-                       <span ng-switch-when="Suspect" class="label label-warning">Suspect   {{server.host}}:{{server.port}}<label ng-if="server.isVirtualMaster==true">-VMaster</label></span>
-                       <span ng-switch-when="SlaveErr" class="label label-warning">Slave Error   {{server.host}}:{{server.port}}<label
-                               ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
-                       <span ng-switch-when="StandAlone" class="label label-info">Standalone   {{server.host}}:{{server.port}}<label
-                               ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
-                       <span ng-switch-default class="label label-default">{{server.state}}  {{server.host}}:{{server.port}}
-                           <label ng-if="server.isVirtualMaster==true">-VMaster   {{server.host}}:{{server.port}}</label></span>
-                </p>
-              </md-card-content>
-              <style>
-                table{
-                  table-layout: fixed;
-                  width: 100%;
-
-
-                }
-                td {
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                }
-      </style>
-      <table  bs-table-control="bsTableProcessList"></table>
-                <!--   <table  border=1 >
-                      <col width="5%">
-                     <col span="4">
-                     <col width="5%">
-                      <col>
-                     <col width="50%">
-
-                      <tr>
-                         <th >Id</th>
-                         <th >User</th>
-                         <th>Host</th>
-                         <th >Db</th>
-                         <th >Command</th>
-                         <th>Time</th>
-                         <th >State</th>
-                         <th>Info</th>
-
-                      </tr>
-
-                      <tr ng-repeat="query in processlist">
-                         <td class="process">{{ query.id }}</td>
-                         <td class="process">{{ query.user }}    </td>
-                         <td class="process">{{ query.host }} </td>
-                         <td class="process">{{ query.db.String }}</td>
-                         <td class="process">{{ query.command }}</td>
-                         <td class="process">{{ query.time.Float64 }}</td>
-                         <td class="process">{{ query.state.String }}</td>
-                         <td class="process">{{ query.info.String}}</td>
-
-                      </tr>
-                   <table>-->
-
-             </md-card>
-
-           </div>
-             <BR><BR>
-
-
-</md-content>
+      </div>
+    </md-card>
+  </md-content>
 </div>
