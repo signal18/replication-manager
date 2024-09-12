@@ -94,6 +94,7 @@ func (cluster *Cluster) AddChildServers() error {
 					srv.SetSourceClusterName(c.Name)
 
 					//Will set to Ignore and also will Ignore Read Only to prevent unwanted read-only mode
+					srv.SetPrefered(false)
 					srv.SetIgnored(true)
 					srv.SetIgnoredReadonly(true)
 
