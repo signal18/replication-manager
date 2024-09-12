@@ -1,17 +1,17 @@
 import { Flex } from '@chakra-ui/react'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Dropdown from '../Dropdown'
 import RMButton from '../RMButton'
 import styles from './styles.module.scss'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import ConfirmModal from '../Modals/ConfirmModal'
 import { convertObjectToArrayForDropdown } from '../../utility/common'
-import { runRemoteJobs } from '../../redux/clusterSlice'
+import { getMonitoredData, runRegressionTests } from '../../redux/clusterSlice'
 
 function DropdownRegresssionTests({ clusterName }) {
   const dispatch = useDispatch()
   const {
-    cluster: { clusterMaster }
+    cluster: { monitor }
   } = useSelector((state) => state)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [options, setOptions] = useState([])
@@ -19,10 +19,13 @@ function DropdownRegresssionTests({ clusterName }) {
   const [selectedOption, setSelectedOption] = useState({ name: 1, value: 1 })
 
   useEffect(() => {
-    if (clusterMaster?.tests?.length > 0) {
-      setOptions(convertObjectToArrayForDropdown(clusterMaster.tests))
+    console.log
+    if (monitor?.tests?.length > 0) {
+      setOptions(convertObjectToArrayForDropdown(monitor.tests))
+    } else {
+      dispatch(getMonitoredData({}))
     }
-  }, [clusterMaster?.tests])
+  }, [monitor?.tests])
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
@@ -32,13 +35,19 @@ function DropdownRegresssionTests({ clusterName }) {
     setIsConfirmModalOpen(false)
   }
 
-  const runRegressionTests = () => {
-    dispatch(runRegressionTests({ clusterName, thread: selectedOption.name }))
+  const runRegressionTest = () => {
+    dispatch(runRegressionTests({ clusterName, testName: selectedOption.name }))
     closeConfirmModal()
   }
   return (
-    <Flex className={styles.sysbenchContainer}>
-      <Dropdown options={options} onChange={(value) => setSelectedOption(value)} label='Regression tests' />
+    <Flex className={styles.regressionTestContainer}>
+      <Dropdown
+        classNamePrefix='run-tests'
+        className={styles.dropdown}
+        options={options}
+        onChange={(value) => setSelectedOption(value)}
+        label='Regression tests'
+      />
       <RMButton type='button' onClick={openConfirmModal}>
         Run
       </RMButton>
@@ -47,7 +56,7 @@ function DropdownRegresssionTests({ clusterName }) {
           isOpen={isConfirmModalOpen}
           closeModal={closeConfirmModal}
           title={`Confirm regression test for ${selectedOption.name}`}
-          onConfirmClick={runRegressionTests}
+          onConfirmClick={runRegressionTest}
         />
       )}
     </Flex>

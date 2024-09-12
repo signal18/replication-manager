@@ -2,12 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react'
 import styles from '../../styles.module.scss'
 import { Box, Checkbox, Flex, HStack, Input, Tooltip, VStack } from '@chakra-ui/react'
 import { createColumnHelper } from '@tanstack/react-table'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { DataTable } from '../../../../components/DataTable'
 import { getReadableTime } from '../../../../utility/common'
 import DropdownSysbench from '../../../../components/DropdownSysbench'
+import { getDatabaseService } from '../../../../redux/clusterSlice'
 
-function ProcessList({ clusterName }) {
+function ProcessList({ clusterName, dbId }) {
+  const dispatch = useDispatch()
   const [data, setData] = useState([])
 
   const [includeSleep, setIncludeSleep] = useState(false)
@@ -18,8 +20,13 @@ function ProcessList({ clusterName }) {
       database: { processList }
     }
   } = useSelector((state) => state)
+
   const [allData, setAllData] = useState(processList || [])
   const [dataWithoutSleep, setDataWithoutSleep] = useState(processList || [])
+
+  useEffect(() => {
+    dispatch(getDatabaseService({ clusterName, serviceName: 'processlist', dbId }))
+  }, [])
 
   useEffect(() => {
     if (processList?.length > 0) {

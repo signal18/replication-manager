@@ -34,6 +34,7 @@ function GlobalSettings({ selectedCluster, user, openConfirmModal }) {
       value: (
         <HStack>
           <NumberInput
+            min={1}
             value={currentValue}
             readonly={
               isReadOnly ||

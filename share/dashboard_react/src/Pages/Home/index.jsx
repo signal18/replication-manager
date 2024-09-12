@@ -13,6 +13,7 @@ import {
   getClusterProxies,
   getClusters,
   getClusterServers,
+  getDatabaseService,
   getMonitoredData,
   getTopProcess,
   setCluster,
@@ -98,7 +99,7 @@ function Home() {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
       }
       if (selectedTabRef.current === 7) {
-        dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getDatabaseService({ clusterName: selectedClusterNameRef.current }))
       }
     }
   }

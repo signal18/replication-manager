@@ -31,7 +31,8 @@ function ClusterDB(props) {
     'Status InnoDB',
     'Variables',
     'Service OpenSVC',
-    'Metadata Locks'
+    'Metadata Locks',
+    'Response Time'
   ])
 
   const {

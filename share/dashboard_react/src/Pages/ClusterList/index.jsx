@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { setCluster } from '../../redux/clusterSlice'
+import { getClusters, setCluster } from '../../redux/clusterSlice'
 import { Box, HStack, Text, Wrap } from '@chakra-ui/react'
 import NotFound from '../../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
@@ -17,6 +17,10 @@ function ClusterList({ onClick }) {
   const {
     cluster: { clusters, loading }
   } = useSelector((state) => state)
+
+  useEffect(() => {
+    dispatch(getClusters({}))
+  }, [])
 
   return !loading && clusters?.length === 0 ? (
     <NotFound text={'No cluster found!'} />

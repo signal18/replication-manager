@@ -42,7 +42,7 @@ function Cluster({ tab }) {
   ) : currentTab === 'graphs' ? (
     <Graphs />
   ) : currentTab === 'top' ? (
-    <Top />
+    <Top selectedCluster={clusterData} />
   ) : null
 }
 

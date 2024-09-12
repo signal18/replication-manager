@@ -2,12 +2,15 @@ import React, { useEffect, useMemo, useState, useRef } from 'react'
 import styles from '../../styles.module.scss'
 import { Flex, HStack, Input, Tooltip, VStack, Text, Box } from '@chakra-ui/react'
 import { createColumnHelper } from '@tanstack/react-table'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { DataTable } from '../../../../components/DataTable'
 import CopyToClipboard from '../../../../components/CopyToClipboard'
 import { isEqual } from 'lodash'
+import { getDatabaseService } from '../../../../redux/clusterSlice'
+import Toolbar from '../Toolbar'
 
-function SlowQueries({}) {
+function SlowQueries({ clusterName, dbId, selectedDBServer }) {
+  const dispatch = useDispatch()
   const [search, setSearch] = useState('')
 
   const {
@@ -18,6 +21,10 @@ function SlowQueries({}) {
   const [data, setData] = useState(slowQueries || [])
   const [allData, setAllData] = useState(slowQueries || [])
   const prevSlowQueries = useRef(slowQueries)
+
+  useEffect(() => {
+    dispatch(getDatabaseService({ clusterName, serviceName: 'slow-queries', dbId }))
+  }, [])
 
   useEffect(() => {
     if (slowQueries?.length > 0) {
@@ -101,6 +108,7 @@ function SlowQueries({}) {
             <Input id='search' type='search' onChange={handleSearch} />
           </HStack>
         </HStack>
+        <Toolbar clusterName={clusterName} tab='slowQueries' dbId={dbId} selectedDBServer={selectedDBServer} />
       </Flex>
       <Box className={styles.tableContainer}>
         <DataTable

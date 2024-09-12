@@ -35,7 +35,7 @@ function DropdownSysbench({ clusterName }) {
   }
   return (
     <Flex className={styles.sysbenchContainer}>
-      <Dropdown options={options} onChange={(value) => setSelectedOption(value)} label='Sysbench' />
+      <Dropdown options={options} onChange={(value) => setSelectedOption(value)} label='Sysbench tests' />
       <RMButton type='button' onClick={openConfirmModal}>
         Run
       </RMButton>
