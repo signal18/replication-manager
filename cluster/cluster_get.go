@@ -878,9 +878,10 @@ func (cluster *Cluster) GetQueryRules() []config.QueryRule {
 	return r
 }
 
-func (cluster *Cluster) GetTopProcesslist(srvid string) []dbhelper.Processlist {
-	top := make([]dbhelper.Processlist, 0, 200)
+func (cluster *Cluster) GetTopProcesslist(srvid string) map[string][]dbhelper.Processlist {
+	clustertop := make(map[string][]dbhelper.Processlist)
 	for _, srv := range cluster.Servers {
+		top := make([]dbhelper.Processlist, 0)
 		if srvid != "" && srv.Id != srvid {
 			continue
 		}
@@ -898,9 +899,10 @@ func (cluster *Cluster) GetTopProcesslist(srvid string) []dbhelper.Processlist {
 				break
 			}
 		}
+		clustertop[srv.Id] = top
 	}
 
-	return top
+	return clustertop
 }
 
 func (cluster *Cluster) GetServicePlans() []config.ServicePlan {

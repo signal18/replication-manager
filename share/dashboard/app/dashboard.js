@@ -64,6 +64,103 @@ app.controller('DashboardController', function (
   $scope.missingDBTags = [];
   $scope.missingProxyTags = [];
   $scope.promise = undefined;
+  $scope.processlist = {};
+  $scope.bsTableProcessList = {};
+
+  $scope.UpdateProcessList = function (newData) {
+    // Iterate over each key in the new data
+    angular.forEach(newData, function (elements, dbKey) {
+      if (!$scope.processlist[dbKey]) {
+        $scope.processlist[dbKey] = []; // Initialize if it doesn't exist
+      }
+
+      // Update the elements for the specific key
+      angular.copy(elements, $scope.processlist[dbKey]);
+
+      // Ensure that bsTableProcessList[dbName] is initialized as an object
+      if (!$scope.bsTableProcessList[dbKey]) {
+        $scope.bsTableProcessList[dbKey] = { option: {} };
+      }
+
+      let option = {
+        data: elements,
+        rowStyle: function (row, index) {
+          return { classes: 'none' }
+        },
+        cache: false,
+        striped: true,
+        pagination: true,
+        pageSize: 20,
+        search: false,
+        showColumns: false,
+        showRefresh: false,
+        clickToSelect: false,
+        showToggle: false,
+        maintainSelected: false,
+        columns: [
+          {
+            field: 'id',
+            title: 'Id',
+            align: 'left',
+            valign: 'bottom',
+            width: "4%"
+          }, {
+            field: 'user',
+            title: 'User',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true,
+            width: "8%"
+          }, {
+            field: 'host',
+            title: 'Host',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true,
+            width: "8%"
+          },
+          {
+            field: 'db.String',
+            title: 'Db',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true
+          },
+          {
+            field: 'command',
+            title: 'Command',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true,
+            width: "10%"
+          }, {
+            field: 'time.Float64',
+            title: 'Time',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true
+          }, {
+            field: 'state.String',
+            title: 'State',
+            align: 'left',
+            valign: 'bottom',
+            sortable: true
+          }, {
+            field: 'info.String',
+            title: 'Info',
+            align: 'true',
+            valign: 'bottom',
+            sortable: true,
+            width: "40%"
+          }
+        ]
+      }
+
+      // Update the elements for the specific key
+      angular.copy(option, $scope.bsTableProcessList[dbKey].option)
+    });
+  }
+
 
   $scope.defaultRestoreForm = function () {
     $scope.restoreForm = {
@@ -685,16 +782,16 @@ app.controller('DashboardController', function (
         }
       }
     }
-    if ($scope.selectedClusterName && $scope.selectedServer) {
-      if ($scope.selectedTab == 'Processlist') {
-        Processlist.query({ clusterName: $scope.selectedClusterName, serverName: $scope.selectedServer }, function (data) {
-          $scope.processlist = data;
-          $scope.reserror = false;
-        }, function () {
-          $scope.reserror = true;
-        });
-      }
+    if ($scope.selectedTab == 'Processlist') {
+      Processlist.query({ clusterName: $scope.selectedClusterName, serverName: $scope.selectedServer }, function (data) {
+        $scope.UpdateProcessList(data);
+        $scope.reserror = false;
 
+      }, function () {
+        $scope.reserror = true; // Handle error
+      });
+    }
+    if ($scope.selectedClusterName && $scope.selectedServer) {
       if ($scope.selectedTab == 'PFSQueries') {
         if ($scope.digestmode == 'pfs') {
           PFSStatements.query({ clusterName: $scope.selectedClusterName, serverName: $scope.selectedServer }, function (data) {
@@ -1019,81 +1116,7 @@ app.controller('DashboardController', function (
     };
 
 
-    $scope.bsTableProcessList = {
-      options: {
-        data: $scope.processlist,
-        rowStyle: function (row, index) {
-          return { classes: 'none' }
-        },
-        cache: false,
-        striped: true,
-        pagination: true,
-        pageSize: 20,
-        search: false,
-        showColumns: false,
-        showRefresh: false,
-        clickToSelect: false,
-        showToggle: false,
-        maintainSelected: false,
-        columns: [
-          {
-            field: 'id',
-            title: 'Id',
-            align: 'left',
-            valign: 'bottom',
-            width: "4%"
-          }, {
-            field: 'user',
-            title: 'User',
-            align: 'left',
-            valign: 'bottom',
-            sortable: true,
-            width: "8%"
-          }, {
-            field: 'host',
-            title: 'Host',
-            align: 'left',
-            valign: 'bottom',
-            sortable: true,
-            width: "8%"
-          },
-          {
-            field: 'db.String',
-            title: 'Db',
-            align: 'left',
-            valign: 'bottom',
-            sortable: true
-          },
-          {
-            field: 'command',
-            title: 'Command',
-            align: 'left',
-            valign: 'bottom',
-            sortable: true,
-            width: "10%"
-          }, {
-            field: 'time.Float64',
-            title: 'Time',
-            align: 'left',
-            valign: 'bottom',
-            sortable: true
-          }, {
-            field: 'state.String',
-            title: 'State',
-            align: 'tlef',
-            valign: 'bottom',
-            sortable: true
-          }, {
-            field: 'info.String',
-            title: 'Info',
-            align: 'true',
-            valign: 'bottom',
-            sortable: true,
-            width: "40%"
-          }
-        ]
-      }
-    };
+
     //      $scope.$digest()
     return null;
   };
@@ -1155,7 +1178,7 @@ app.controller('DashboardController', function (
         $timeout.cancel($scope.promise);
           $scope.promise = undefined;
       };
-
+  
   */
 
 
@@ -1979,6 +2002,7 @@ app.controller('DashboardController', function (
   $scope.back = function () {
     if (typeof $scope.selectedServer != 'undefined') {
       $scope.selectedServer = undefined;
+      $scope.onTabSelected('Dashboard');
     } else {
       $scope.selectedClusterName = undefined;
     }
@@ -2392,5 +2416,8 @@ app.controller('DashboardController', function (
   $scope.getTablePct = function (table, index) {
     return ((table + index) / ($scope.selectedCluster.workLoad.dbTableSize + $scope.selectedCluster.workLoad.dbTableSize + 1) * 100).toFixed(2);
   };
+
+
+
   $scope.start();
 });

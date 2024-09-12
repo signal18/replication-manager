@@ -46,7 +46,7 @@
                 <md-tab md-select-id="QueryRules" ng-click="onTabClicked('QueryRules')" md-on-select="onTabSelected" label="QueryRules" ng-if="selectedCluster.config.proxysql && !selectedServer && selectedCluster.apiUsers[user].grants['cluster-show-agents']==true">
                     <div  ng-if="selectedTab=='QueryRules'" ng-include src="'static/tab-cluster-queryrules.html'"></div>
                 </md-tab>
-                <md-tab ng-if="selectedServer && !selectedQuery && selectedCluster.apiUsers[user].grants['db-show-process']==true" ng-click="onTabClicked('Processlist')"  md-select-id="Processlist" md-on-select="onTabSelected" label="Processlist" >
+                <md-tab ng-if="!selectedQuery && selectedCluster.apiUsers[user].grants['db-show-process']==true" ng-click="onTabClicked('Processlist')"  md-select-id="Processlist" md-on-select="onTabSelected" label="Processlist" >
                     <div  ng-if="selectedTab=='Processlist'" style="min-height:800px"  ng-include src="'static/tab-server-process.html'"></div>
                 </md-tab>
                 <md-tab ng-if="selectedServer && !selectedQuery  && selectedCluster.apiUsers[user].grants['db-show-logs']==true" ng-click="onTabClicked('LogSlow')"  md-select-id="LogSlow"  md-on-select="onTabSelected" label="Slow Queries" >
