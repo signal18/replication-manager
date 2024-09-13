@@ -161,18 +161,6 @@ type Processlist struct {
 	Url          string          `json:"url" db:"Url"`
 }
 
-type ServerProcesslist struct {
-	Id          string        `json:"id"`
-	Url         string        `json:"url"`
-	Processlist []Processlist `json:"processlist"`
-}
-
-type ServerStatusDelta struct {
-	Id          string     `json:"id"`
-	Url         string     `json:"url"`
-	StatusDelta []Variable `json:"statusDelta"`
-}
-
 type LogSlow struct {
 	Start_time     int64          `db:"start_time"`
 	User_host      sql.NullString `db:"user_host"`

@@ -31,6 +31,7 @@ import (
 	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	log "github.com/sirupsen/logrus"
 
@@ -822,20 +823,25 @@ type DockerRepos struct {
 	Repos []DockerRepo `json:"repos"`
 }
 
-
 // Stucture to hold header of mytop
-type TopMetrics  struct {
-		Name string    `json:"name"`
-		Value int      `json:"value"`
+type TopMetrics struct {
+	Name  string `json:"name"`
+	Value int    `json:"value"`
 }
-type TopGraph  struct {
-		Name string    `json:"name"`
-		Data TopMetrics[] `json:"data"`
+type TopGraph struct {
+	Name string       `json:"name"`
+	Data []TopMetrics `json:"data"`
 }
-type TopHeader  struct {
-		Graphs TopGraph[] `json:"graphs"`
+type TopHeader struct {
+	Graphs []TopGraph `json:"graphs"`
 }
 
+type ServerTop struct {
+	Id          string                 `json:"id"`
+	Url         string                 `json:"url"`
+	Header      TopHeader              `json:"header"`
+	Processlist []dbhelper.Processlist `json:"processlist"`
+}
 
 const (
 	VaultConfigStoreV2 string = "config_store_v2"
