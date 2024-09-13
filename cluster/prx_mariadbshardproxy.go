@@ -55,12 +55,15 @@ func NewMariadbShardProxy(placement int, cluster *Cluster, proxyHost string) *Ma
 	if cluster.Conf.ProvNetCNI {
 		host := strings.Split(prx.Host, ".")[0]
 		if cluster.Conf.ClusterHead != "" {
-			prx.ShardProxy, _ = cluster.newServerMonitor(host+":"+prx.Port, prx.User, prx.Pass, true, cluster.GetDomainHeadCluster())
+			// Source name will equal to cluster name
+			prx.ShardProxy, _ = cluster.newServerMonitor(host+":"+prx.Port, prx.User, prx.Pass, true, cluster.GetDomainHeadCluster(), cluster.Name)
 		} else {
-			prx.ShardProxy, _ = cluster.newServerMonitor(host+":"+prx.Port, prx.User, prx.Pass, true, cluster.GetDomain())
+			// Source name will equal to cluster name
+			prx.ShardProxy, _ = cluster.newServerMonitor(host+":"+prx.Port, prx.User, prx.Pass, true, cluster.GetDomain(), cluster.Name)
 		}
 	} else {
-		prx.ShardProxy, _ = cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, true, "")
+		// Source name will equal to cluster name
+		prx.ShardProxy, _ = cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, true, "", cluster.Name)
 	}
 	prx.ShardProxy.SlapOSDatadir = prx.SlapOSDatadir
 

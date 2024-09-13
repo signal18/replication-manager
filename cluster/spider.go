@@ -33,7 +33,8 @@ func (cluster *Cluster) SpiderShardsDiscovery() {
 				if extraUrl != "" {
 					for j, url := range strings.Split(extraUrl, ",") {
 						var err error
-						srv, err := cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), true, cluster.GetDomain())
+						// Source name will equal to cluster name
+						srv, err := cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), true, cluster.GetDomain(), cluster.Name)
 						srv.SetState(stateShard)
 						cluster.Servers = append(cluster.Servers, srv)
 						if err != nil {

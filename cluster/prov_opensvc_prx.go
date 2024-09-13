@@ -177,7 +177,8 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 	}
 	if prx, ok := pri.(*MariadbShardProxy); ok {
 		if strings.Contains(svc.ProvProxAgents, agent.Node_name) {
-			srv, _ := cluster.newServerMonitor(prx.GetHost()+":"+prx.GetPort(), prx.User, prx.Pass, true, cluster.GetDomain())
+			// Source name will equal to cluster name
+			srv, _ := cluster.newServerMonitor(prx.GetHost()+":"+prx.GetPort(), prx.User, prx.Pass, true, cluster.GetDomain(), cluster.Name)
 			err := srv.Refresh()
 			if err == nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can connect to requested signal18 sharding proxy")

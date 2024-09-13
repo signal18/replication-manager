@@ -255,7 +255,7 @@ const (
 )
 
 /* Initializes a server object compute if spider node*/
-func (cluster *Cluster) newServerMonitor(url string, user string, pass string, compute bool, domain string) (*ServerMonitor, error) {
+func (cluster *Cluster) newServerMonitor(url string, user string, pass string, compute bool, domain string, source string) (*ServerMonitor, error) {
 	var err error
 	server := new(ServerMonitor)
 	server.QPS = 0
@@ -274,6 +274,15 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.BinaryLogMetaToWrite = make([]string, 0)
 	server.BinaryLogMetaToRemove = make([]string, 0)
 	server.NeedRefreshJobs = true
+
+	// Set source cluster name, set cluster name as source if not specified
+	// This is needed to make check more simple
+	if source != "" {
+		server.SourceClusterName = source
+	} else {
+		server.SourceClusterName = cluster.Name
+	}
+
 	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		// OpenSVC and Sharding proxy monitoring
 		if server.IsCompute {
@@ -352,10 +361,19 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SlowLog = s18log.NewSlowLog(cluster.Conf.MonitorLongQueryLogLength)
 	go server.ErrorLogWatcher()
 	go server.SlowLogWatcher()
-	server.SetIgnored(cluster.IsInIgnoredHosts(server))
-	server.SetIgnoredReadonly(cluster.IsInIgnoredReadonly(server))
-	server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
-	server.SetPrefered(cluster.IsInPreferedHosts(server))
+
+	// Prevent child cluster as prefered
+	if server.SourceClusterName == cluster.Name {
+		server.SetIgnored(cluster.IsInIgnoredHosts(server))
+		server.SetIgnoredReadonly(cluster.IsInIgnoredReadonly(server))
+		server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
+		server.SetPrefered(cluster.IsInPreferedHosts(server))
+	} else {
+		// Always ignore child cluster
+		server.SetIgnored(true)
+		server.SetIgnoredReadonly(true)
+	}
+
 	server.ReloadSaveInfosVariables()
 	server.DelayStat = new(ServerDelayStat)
 	server.DelayStat.ResetDelayStat()

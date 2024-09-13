@@ -61,9 +61,11 @@ func (cluster *Cluster) CheckFailed() {
 
 func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcingLog bool) bool {
 	//Ignore if child cluster
-	if sl.SourceClusterName != "" && sl.SourceClusterName != cluster.Name {
+	if sl.GetSourceClusterName() != cluster.Name {
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave %s is in child cluster. Skipping", sl.URL)
 		return false
 	}
+
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Error in getting slave status in testing slave electable for switchover %s: %s  ", sl.URL, err)
@@ -82,13 +84,13 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		// }
 		return false
 	}
-	if hasBinLogs == false && cluster.Conf.CheckBinFilter == true && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") {
+	if hasBinLogs == false && cluster.Conf.CheckBinFilter == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Binlog filters differ on master and slave %s. Skipping", sl.URL)
 		// }
 		return false
 	}
-	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && (sl.GetSourceClusterName() == cluster.Name || sl.GetSourceClusterName() == "") && cluster.Conf.CheckReplFilter == true {
+	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && cluster.Conf.CheckReplFilter == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Replication filters differ on master and slave %s. Skipping", sl.URL)
 		// }
