@@ -76,7 +76,8 @@ func (cluster *Cluster) OnPremiseProvisionProxyService(pri DatabaseProxy) error 
 
 	if prx, ok := pri.(*MariadbShardProxy); ok {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Bootstrap MariaDB Sharding Cluster")
-		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.GetPort(), prx.User, prx.Pass, true, "")
+		// Source name will equal to cluster name
+		srv, _ := cluster.newServerMonitor(prx.Host+":"+prx.GetPort(), prx.User, prx.Pass, true, "", cluster.Name)
 		err := srv.Refresh()
 		if err == nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can connect to requested signal18 sharding proxy")

@@ -56,7 +56,8 @@ func (cluster *Cluster) newServerList() error {
 
 	if cluster.Conf.Hosts != "" {
 		for k, url := range cluster.hostList {
-			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), false, cluster.GetDomain())
+			// Source name will equal to cluster name
+			cluster.Servers[k], err = cluster.newServerMonitor(url, cluster.GetDbUser(), cluster.GetDbPass(), false, cluster.GetDomain(), cluster.Name)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Could not open connection to server %s : %s", cluster.Servers[k].URL, err)
 			}
@@ -84,19 +85,19 @@ func (cluster *Cluster) AddChildServers() error {
 				if !cluster.HasServer(sv) {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Inter cluster multi-source  %s add server not yet discovered  %s  ", sv.URL, cluster.Conf.MasterConn)
 
-					srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.GetDbUser(), sv.ClusterGroup.GetDbPass(), false, c.GetDomain())
+					// Set child cluster as source cluster name in the last param
+					srv, err := cluster.newServerMonitor(sv.Name+":"+sv.Port, sv.ClusterGroup.GetDbUser(), sv.ClusterGroup.GetDbPass(), false, c.GetDomain(), c.Name)
 					if err != nil {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Inter cluster multi-source %s add server not yet discovered  %s error %s", sv.URL, cluster.Conf.MasterConn, err)
 
 						return err
 					}
 
-					srv.SetSourceClusterName(c.Name)
-
-					//Will set to Ignore and also will Ignore Read Only to prevent unwanted read-only mode
-					srv.SetPrefered(false)
-					srv.SetIgnored(true)
-					srv.SetIgnoredReadonly(true)
+					// This already handled inside newServerMonitor
+					// Will set to Ignore and also will Ignore Read Only to prevent unwanted read-only mode
+					// srv.SetPrefered(false)
+					// srv.SetIgnored(true)
+					// srv.SetIgnoredReadonly(true)
 
 					cluster.Servers = append(cluster.Servers, srv)
 					wg := new(sync.WaitGroup)
