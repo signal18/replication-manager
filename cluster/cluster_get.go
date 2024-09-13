@@ -887,14 +887,14 @@ func (cluster *Cluster) GetQueryRules() []config.QueryRule {
 	return r
 }
 
-func (cluster *Cluster) GetTopProcesslist(srvid string) []dbhelper.ServerProcesslist {
-	clustertop := make([]dbhelper.ServerProcesslist, 0)
+func (cluster *Cluster) GetTopMetrics(srvid string) []config.ServerTop {
+	clustertop := make([]config.ServerTop, 0)
 	for _, srv := range cluster.Servers {
 		top := make([]dbhelper.Processlist, 0)
 		if srvid != "" && srv.Id != srvid {
 			continue
 		}
-		sv := dbhelper.ServerProcesslist{Id: srv.Id, Url: srv.URL}
+		sv := config.ServerTop{Id: srv.Id, Url: srv.URL}
 		srvps := srv.FullProcessList
 		sort.Sort(FullProcessListSorter(srvps))
 		ct := 0
@@ -914,20 +914,6 @@ func (cluster *Cluster) GetTopProcesslist(srvid string) []dbhelper.ServerProcess
 	}
 
 	return clustertop
-}
-
-func (cluster *Cluster) GetStatusDelta(srvid string) []dbhelper.ServerStatusDelta {
-	clstatusdelta := make([]dbhelper.ServerStatusDelta, 0)
-	for _, srv := range cluster.Servers {
-		if srvid != "" && srv.Id != srvid {
-			continue
-		}
-		sv := dbhelper.ServerStatusDelta{Id: srv.Id, Url: srv.URL}
-		sv.StatusDelta = srv.GetStatusDelta()
-		clstatusdelta = append(clstatusdelta, sv)
-	}
-
-	return clstatusdelta
 }
 
 func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
