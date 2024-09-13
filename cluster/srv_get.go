@@ -780,3 +780,12 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 
 	return ""
 }
+
+func (server *ServerMonitor) GetStatusDeltaValue(name string) int {
+	cur, err := strconv.Atoi(server.Status.Get(name))
+	prev, err2 := strconv.Atoi(server.PrevStatus.Get(name))
+	if err != nil || err2 != nil {
+		return 0
+	}
+	return cur - prev
+}
