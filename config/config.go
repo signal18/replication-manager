@@ -822,6 +822,21 @@ type DockerRepos struct {
 	Repos []DockerRepo `json:"repos"`
 }
 
+
+// Stucture to hold header of mytop
+type TopMetrics  struct {
+		Name string    `json:"name"`
+		Value int      `json:"value"`
+}
+type TopGraph  struct {
+		Name string    `json:"name"`
+		Data TopMetrics[] `json:"data"`
+}
+type TopHeader  struct {
+		Graphs TopGraph[] `json:"graphs"`
+}
+
+
 const (
 	VaultConfigStoreV2 string = "config_store_v2"
 	VaultDbEngine      string = "database_engine"
