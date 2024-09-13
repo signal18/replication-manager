@@ -68,13 +68,13 @@ app.controller('DashboardController', function (
 
   $scope.UpdateProcessList = function (newData) {
     // Iterate over each key in the new data
-    angular.forEach(newData, function (elements, dbKey) {
-      if (!$scope.processlist[dbKey]) {
-        $scope.processlist[dbKey] = []; // Initialize if it doesn't exist
+    angular.forEach(newData, function (el) {
+      if (!$scope.processlist[el.id]) {
+        $scope.processlist[el.id] = []; // Initialize if it doesn't exist
       }
 
       // Update the elements for the specific key
-      angular.copy(elements, $scope.processlist[dbKey]);
+      angular.copy(el.processlist, $scope.processlist[el.id]);
     });
   }
 
