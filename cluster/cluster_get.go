@@ -916,6 +916,20 @@ func (cluster *Cluster) GetTopProcesslist(srvid string) []dbhelper.ServerProcess
 	return clustertop
 }
 
+func (cluster *Cluster) GetStatusDelta(srvid string) []dbhelper.ServerStatusDelta {
+	clstatusdelta := make([]dbhelper.ServerStatusDelta, 0)
+	for _, srv := range cluster.Servers {
+		if srvid != "" && srv.Id != srvid {
+			continue
+		}
+		sv := dbhelper.ServerStatusDelta{Id: srv.Id, Url: srv.URL}
+		sv.StatusDelta = srv.GetStatusDelta()
+		clstatusdelta = append(clstatusdelta, sv)
+	}
+
+	return clstatusdelta
+}
+
 func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 
 	type Message struct {
