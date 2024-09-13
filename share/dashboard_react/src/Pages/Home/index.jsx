@@ -99,7 +99,7 @@ function Home() {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
       }
       if (selectedTabRef.current === 7) {
-        dispatch(getDatabaseService({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
       }
     }
   }

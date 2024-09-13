@@ -10,4 +10,11 @@
     font-size: rem(14);
     text-decoration: underline;
   }
+
+  .graph {
+    width: 100%;
+    @include breakpoint('md') {
+      width: rem(300);
+    }
+  }
 }
