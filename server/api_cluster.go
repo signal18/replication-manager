@@ -76,6 +76,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterTop)),
 	))
+	router.Handle("/api/clusters/{clusterName}/status-delta", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterStatusDelta)),
+	))
 	router.Handle("/api/clusters/{clusterName}/shardclusters", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterShardClusters)),
@@ -1044,6 +1048,39 @@ func (repman *ReplicationManager) handlerMuxClusterTop(w http.ResponseWriter, r 
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(mycluster.GetTopProcesslist(svname))
+		if err != nil {
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxClusterStatusDelta(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		svname := r.URL.Query().Get("serverName")
+		if svname != "" {
+			node := mycluster.GetServerFromName(svname)
+			if node == nil {
+				http.Error(w, "Not a Valid Server!", 500)
+				return
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(mycluster.GetStatusDelta(svname))
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
