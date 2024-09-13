@@ -38,6 +38,10 @@ func NewExternalProxy(placement int, cluster *Cluster, proxyHost string) *Extern
 	}
 	// Source name will equal to cluster name
 	prx.ShardProxy, _ = cluster.newServerMonitor(prx.Host+":"+prx.Port, prx.User, prx.Pass, true, "", cluster.Name)
+	if prx.ShardProxy != nil {
+		//DB Version always exist due to nature of new
+		prx.ShardProxy.DBVersion.Suffix = "ShardProxy"
+	}
 	return prx
 }
 

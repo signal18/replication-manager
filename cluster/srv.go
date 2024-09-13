@@ -1050,9 +1050,11 @@ func (server *ServerMonitor) Refresh() error {
 			}
 			server.IsFull = false
 		}
-		if server.HaveMetaDataLocksLog {
-			server.MetaDataLocks, logs, err = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)
-			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get Metat data locks  %s %s", server.URL, err)
+		if server.DBVersion.Suffix != "ShardProxy" && server.HaveMetaDataLocksLog {
+			server.MetaDataLocks, _, err = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)
+			if err != nil {
+				cluster.SetState("WARN0122", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0122"], fmt.Sprintf("Could not get Metat data locks  %s %s", server.URL, err.Error())), ErrFrom: "SRV", ServerUrl: server.URL})
+			}
 		}
 	}
 	server.CheckMaxConnections()
