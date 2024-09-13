@@ -398,7 +398,12 @@ func (cluster *Cluster) GetGroupReplicationWhiteList() string {
 func (cluster *Cluster) GetPreferedMasterList() string {
 	var prefmaster []string
 	for _, server := range cluster.Servers {
-		if server.Prefered && (server.SourceClusterName == "" || server.SourceClusterName == cluster.Name) {
+		// Skip node if child cluster
+		if server.SourceClusterName != cluster.Name {
+			continue
+		}
+
+		if server.Prefered {
 			prefmaster = append(prefmaster, server.URL)
 		}
 	}
@@ -450,10 +455,14 @@ func (cluster *Cluster) getOnePreferedMaster() *ServerMonitor {
 		return nil
 	}
 	for _, server := range cluster.Servers {
-		// if cluster.Conf.LogLevel > 2 {
+		// Skip if child cluster
+		if server.SourceClusterName != cluster.Name {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Skip lookup child node %s for preferred master", server.URL)
+			continue
+		}
+
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Lookup if server: %s is preferred master: %s", server.URL, cluster.Conf.PrefMaster)
-		// }
-		if server.IsPrefered() && (server.SourceClusterName == "" || server.SourceClusterName == cluster.Name) {
+		if server.IsPrefered() {
 			return server
 		}
 	}

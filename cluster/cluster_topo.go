@@ -116,12 +116,9 @@ func (cluster *Cluster) AddChildServers() error {
 	for _, sv := range cluster.Servers {
 		if sv != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Inter cluster multi-source check drop unlinked server %s source cluster  %s vs this cluster %s  ", sv.URL, sv.GetSourceClusterName(), cluster.Name)
-			if sv.GetSourceClusterName() != cluster.Name && sv.GetSourceClusterName() != "" {
-
-				if !sv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Inter cluster multi-source %s drop unlinked server %s  ", sv.URL, cluster.Conf.MasterConn)
-					cluster.RemoveServerFromIndex(cluster.GetServerIndice(sv))
-				}
+			if sv.GetSourceClusterName() != cluster.Name && !sv.IsSlaveOfReplicationSource(cluster.Conf.MasterConn) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Inter cluster multi-source %s drop unlinked server %s  ", sv.URL, cluster.Conf.MasterConn)
+				cluster.RemoveServerFromIndex(cluster.GetServerIndice(sv))
 			}
 		}
 	}
