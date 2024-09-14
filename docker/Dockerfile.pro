@@ -20,7 +20,7 @@ RUN mkdir -p /etc/apt/keyrings
 RUN curl -o /etc/apt/keyrings/mariadb-keyring.pgp 'https://mariadb.org/mariadb_release_signing_key.pgp'
 
 RUN set -e;\
-echo $'X-Repolib-Name: MariaDB \n\
+echo 'X-Repolib-Name: MariaDB \n\
 Types: deb \n\
    URIs: https://mirrors.ircam.fr/pub/mariadb/repo/11.rc/debian \n\
    Suites: bullseye \n\
