@@ -41,14 +41,7 @@ app.factory('Slaves', function ($resource) {
 });
 
 app.factory('Processlist', function ($resource) {
-    return $resource('api/clusters/:clusterName/top', {clusterName: '@clusters',serverName: '@server'},
-        {
-            'query': {
-                method: 'GET',
-                isArray: false
-            }
-        }
-    );
+    return $resource('api/clusters/:clusterName/top', {clusterName: '@clusters',serverName: '@server'});
 });
 
 app.factory('Tables', function ($resource) {
