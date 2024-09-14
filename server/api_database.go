@@ -765,6 +765,7 @@ func (repman *ReplicationManager) handlerMuxServerSetMaintenance(w http.Response
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			node.SetMaintenance()
+			mycluster.SetProxyServerMaintenance(node.ServerID)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -787,6 +788,7 @@ func (repman *ReplicationManager) handlerMuxServerDelMaintenance(w http.Response
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			node.DelMaintenance()
+			mycluster.SetProxyServerMaintenance(node.ServerID)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
