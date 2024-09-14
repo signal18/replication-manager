@@ -121,4 +121,5 @@ func (server *ServerMonitor) DelBackupTypeCookie(backtype string) error {
 
 func (server *ServerMonitor) DelMaintenance() {
 	server.IsMaintenance = false
+	server.ClusterGroup.SetProxyServerMaintenance(server.ServerID)
 }
