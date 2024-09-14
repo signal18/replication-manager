@@ -60,6 +60,7 @@ app.controller('DashboardController', function (
   $scope.gfilterUpdate = true
   $scope.grafanaConfigs = []
   $scope.showGC = false
+  $scope.certificates = {};
 
   $scope.missingDBTags = [];
   $scope.missingProxyTags = [];
@@ -175,6 +176,7 @@ app.controller('DashboardController', function (
     logs: false,
     graphs: false,
     global: false,
+    certificates: false,
   };
 
   $scope.entries = {
@@ -655,16 +657,6 @@ app.controller('DashboardController', function (
           $scope.reserror = true;
         });
       }
-      if ($scope.selectedTab == 'Certificates') {
-        Certificates.query({ clusterName: $scope.selectedClusterName }, function (data) {
-          if (!$scope.menuOpened) {
-            $scope.certificates = data;
-            $scope.reserror = false;
-          }
-        }, function () {
-          $scope.reserror = true;
-        });
-      }
       if ($scope.selectedTab == 'QueryRules') {
         QueryRules.query({ clusterName: $scope.selectedClusterName }, function (data) {
           if (!$scope.menuOpened) {
@@ -681,6 +673,17 @@ app.controller('DashboardController', function (
           $http.get('/api/configs/grafana').then(function (res) {
             $scope.grafanaConfigs = res.data
           })
+        }
+
+        if ($scope.settingsMenu.certificates) {
+          Certificates.query({ clusterName: $scope.selectedClusterName }, function (data) {
+            if (!$scope.menuOpened) {
+              $scope.certificates = data;
+              $scope.reserror = false;
+            }
+          }, function () {
+            $scope.reserror = true;
+          });
         }
 
         if ($scope.settingsMenu.graphs) {
@@ -2213,6 +2216,7 @@ app.controller('DashboardController', function (
       cloud18: false,
       logs: false,
       graphs: false,
+      certificates: false,
     };
     switch (menu) {
       case 'general':
@@ -2247,6 +2251,9 @@ app.controller('DashboardController', function (
         break;
       case 'global':
         $scope.settingsMenu.global = true;
+        break;
+      case 'certificates':
+        $scope.settingsMenu.certificates = true;
         break;
       default:
         console.log(`Sorry, we are out of ${expr}.`);
