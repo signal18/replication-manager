@@ -1,0 +1,43 @@
+.topContainer {
+  width: 100%;
+  gap: rem(24) !important;
+  .accordion {
+    width: 100%;
+  }
+
+  .morelink {
+    font-weight: normal;
+    font-size: rem(14);
+    text-decoration: underline;
+  }
+
+  .graph {
+    width: 100%;
+    @include breakpoint('md', 'lg') {
+      width: rem(280);
+    }
+    @include breakpoint('lg') {
+      width: rem(250);
+    }
+  }
+  .showmore {
+    text-decoration: underline;
+    color: var(--primary-color);
+  }
+}
+
+.modalbodyText {
+  white-space: wrap;
+  display: flex;
+  flex-direction: column;
+  gap: rem(16);
+  button[class*='btnCopy'] {
+    margin-top: rem(20);
+    position: relative;
+    left: 0 !important;
+    right: 0 !important;
+    background-color: var(--secondary-color) !important;
+    display: flex;
+    gap: rem(16);
+  }
+}

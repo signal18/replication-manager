@@ -1,10 +1,14 @@
 import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
 import { settingsService } from '../services/settingsService'
+import { clusterService } from '../services/clusterService'
 
 export const switchSetting = createAsyncThunk('settings/switchSetting', async ({ clusterName, setting }, thunkAPI) => {
   try {
     const { data, status } = await settingsService.switchSettings(clusterName, setting)
+    // if (setting === 'monitoring-scheduler') {
+    //   await clusterService.getClusterData(clusterName)
+    // }
     showSuccessBanner(`Switching ${setting} successful!`, status, thunkAPI)
     return { data, status }
   } catch (error) {

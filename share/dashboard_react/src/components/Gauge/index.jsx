@@ -31,6 +31,7 @@ function Gauge({
       gElements.forEach((g) => {
         const transform = g.getAttribute('transform')
         const translateMatch = /translate\(([^,]+),\s*([^)]+)\)/.exec(transform)
+
         if (translateMatch) {
           const [_, x, y] = translateMatch
           if (isGaugeSizeCustomized) {
@@ -42,7 +43,7 @@ function Gauge({
   }
 
   useEffect(() => {
-    if (value) {
+    if (value >= 0) {
       updateGaugePosition()
     }
   }, [value, updateGaugePosition, width, height, isGaugeSizeCustomized])
