@@ -1,4 +1,4 @@
-FROM golang:1.22-bullseye as builder
+FROM golang:1.23-bookworm AS builder
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
@@ -7,7 +7,7 @@ COPY . .
 
 RUN make osc cli
 
-FROM debian:buster-slim
+FROM debian:bookworm-slim
 
 RUN mkdir -p \
         /etc/replication-manager \
