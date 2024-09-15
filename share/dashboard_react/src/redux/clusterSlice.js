@@ -839,8 +839,6 @@ const initialState = {
   },
   database: {
     processList: null,
-    status: null,
-    statusDelta: {},
     slowQueries: null,
     digestQueries: null,
     tables: null,
@@ -929,10 +927,6 @@ export const clusterSlice = createSlice({
             state.database.processList = action.payload.data
           } else if (serviceName === 'slow-queries') {
             state.database.slowQueries = action.payload.data
-          } else if (serviceName === 'status-delta') {
-            state.database.statusDelta[action.meta.arg.dbId] = action.payload.data
-          } else if (serviceName === 'status') {
-            state.database.status = action.payload.data
           }
         }
       }

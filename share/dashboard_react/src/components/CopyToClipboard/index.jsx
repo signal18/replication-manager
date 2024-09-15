@@ -1,12 +1,14 @@
-import { Box, useDisclosure } from '@chakra-ui/react'
+import { Box, Text, useDisclosure } from '@chakra-ui/react'
 import React from 'react'
 import { FaCopy } from 'react-icons/fa'
 import { useDispatch } from 'react-redux'
 import { showErrorToast, showSuccessToast } from '../../redux/toastSlice'
 import RMIconButton from '../RMIconButton'
 import styles from './styles.module.scss'
+import RMButton from '../RMButton'
+import CustomIcon from '../Icons/CustomIcon'
 
-function CopyToClipboard({ text, textType = 'Text', copyIconPosition = 'center', className }) {
+function CopyToClipboard({ text, textType = 'Text', copyIconPosition = 'center', className, keepOpen = false }) {
   const { isOpen, onOpen, onClose } = useDisclosure()
   const dispatch = useDispatch()
 
@@ -74,16 +76,22 @@ function CopyToClipboard({ text, textType = 'Text', copyIconPosition = 'center',
   }
   return (
     <Box className={`${styles.container} ${className}`} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-      {text}
-      {isOpen && (
-        <RMIconButton
-          icon={FaCopy}
-          onClick={handleCopyClick}
-          className={`${styles.btnCopy} ${styles[copyIconPosition]}`}
-          iconFontsize='1rem'
-          aria-label='Copy to clipboard'
-        />
-      )}
+      <span>{text}</span>
+      {(isOpen || keepOpen) &&
+        (keepOpen ? (
+          <RMButton aria-label='Copy to clipboard' onClick={handleCopyClick} className={`${styles.btnCopy} `}>
+            <CustomIcon icon={FaCopy} />
+            Copy to clipboard
+          </RMButton>
+        ) : (
+          <RMIconButton
+            icon={FaCopy}
+            onClick={handleCopyClick}
+            className={`${styles.btnCopy} ${styles[copyIconPosition]}`}
+            iconFontsize='1rem'
+            aria-label='Copy to clipboard'
+          />
+        ))}
     </Box>
   )
 }
