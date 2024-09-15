@@ -86,16 +86,24 @@ func (repman *ReplicationManager) httpserver() {
 	// page to view which does not need authorization
 	if repman.Conf.Test {
 		// before starting the http server, check that the dashboard is present
-		if err := repman.testFile("app.html"); err != nil {
+		file2test := "index.html"
+		if !repman.HaveReact {
+			file2test = "app.html"
+		}
+		if err := repman.testFile(file2test); err != nil {
 			log.Printf("ERROR: Dashboard app.html file missing - will not start http server %s\n", err)
 			return
 		}
 		router.HandleFunc("/", repman.handlerApp)
+		router.PathPrefix("/images/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+		router.PathPrefix("/assets/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", http.FileServer(http.Dir(repman.Conf.ShareDir+"/grafana"))))
 	} else {
 		router.HandleFunc("/", repman.rootHandler)
+		router.PathPrefix("/images/").Handler(repman.DashboardFSHandler())
+		router.PathPrefix("/assets/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", repman.SharedirHandler("grafana")))
@@ -200,9 +208,11 @@ func (repman *ReplicationManager) httpserver() {
 }
 
 func (repman *ReplicationManager) handlerApp(w http.ResponseWriter, r *http.Request) {
-
-	http.ServeFile(w, r, repman.Conf.HttpRoot+"/app.html")
-
+	if repman.HaveReact {
+		http.ServeFile(w, r, repman.Conf.HttpRoot+"/index.html")
+	} else {
+		http.ServeFile(w, r, repman.Conf.HttpRoot+"/app.html")
+	}
 }
 
 func (repman *ReplicationManager) handlerRepoComp(w http.ResponseWriter, r *http.Request) {
