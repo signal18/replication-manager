@@ -63,6 +63,11 @@ function ClusterDB(props) {
     dispatch(getClusterServers({ clusterName }))
     if (selectedTabRef.current === 1) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'processlist', dbId }))
+      // dispatch(getDatabaseService({ clusterName, serviceName: 'status-delta', dbId }))
+      // dispatch(getDatabaseService({ clusterName, serviceName: 'status', dbId }))
+    }
+    if (selectedTabRef.current === 2) {
+      dispatch(getDatabaseService({ clusterName, serviceName: 'slow-queries', dbId }))
     }
     if (selectedTabRef.current === 2) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'slow-queries', dbId }))

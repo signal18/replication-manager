@@ -839,6 +839,8 @@ const initialState = {
   },
   database: {
     processList: null,
+    status: null,
+    statusDelta: {},
     slowQueries: null,
     digestQueries: null,
     tables: null,
