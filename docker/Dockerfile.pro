@@ -4,7 +4,8 @@ RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
 
 COPY . .
-
+RUN apt-get update
+RUN apt-get install nodejs npm
 RUN make pro cli
 
 FROM debian:bookworm-slim
