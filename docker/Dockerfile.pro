@@ -14,10 +14,8 @@ RUN mkdir -p \
         /etc/replication-manager/cluster.d \
         /var/lib/replication-manager
 
-RUN apt-get update
-RUN apt-get -y  install apt-transport-https curl
-RUN mkdir -p /etc/apt/keyrings
-RUN curl -o /etc/apt/keyrings/mariadb-keyring.pgp 'https://mariadb.org/mariadb_release_signing_key.pgp'
+RUN apt-get update && apt-get -y  install apt-transport-https curl \
+ && mkdir -p /etc/apt/keyrings && curl -o /etc/apt/keyrings/mariadb-keyring.pgp 'https://mariadb.org/mariadb_release_signing_key.pgp'
 
 COPY docker/mariadb.sources /etc/apt/sources.list.d/mariadb.sources
 
@@ -28,8 +26,9 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/share /usr/s
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-pro /usr/bin/replication-manager
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 
-RUN apt-get -y install mydumper ca-certificates restic mariadb-client mariadb-server mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl
-RUN curl -LO https://github.com/sysown/proxysql/releases/download/v2.5.2/proxysql_2.5.2-debian11_amd64.deb && dpkg -i proxysql_2.5.2-debian11_amd64.deb
-RUN apt-get install -y adduser libfontconfig1 && curl -LO https://dl.grafana.com/oss/release/grafana_8.1.1_amd64.deb && dpkg -i grafana_8.1.1_amd64.deb
+RUN apt-get -y install mydumper ca-certificates restic mariadb-server=1:* mariadb-client mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl
+RUN curl -LO https://github.com/sysown/proxysql/releases/download/v2.5.2/proxysql_2.5.2-debian11_amd64.deb && dpkg -i proxysql_2.5.2-debian11_amd64.deb && rm -f proxysql_2.5.2-debian11_amd64.deb \
+  && apt-get install -y adduser libfontconfig1 && curl -LO https://dl.grafana.com/oss/release/grafana_8.1.1_amd64.deb && dpkg -i grafana_8.1.1_amd64.deb && rm -f grafana_8.1.1_amd64.deb \ 
+  && rm -rf /var/lib/mysql/*
 CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001
