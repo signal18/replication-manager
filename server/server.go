@@ -59,7 +59,6 @@ var RepMan *ReplicationManager
 // Global variables
 type ReplicationManager struct {
 	OpenSVC          opensvc.Collector                 `json:"-"`
-	HaveReact        bool                              `json:"havereact"`
 	Version          string                            `json:"version"`
 	Fullversion      string                            `json:"fullVersion"`
 	Os               string                            `json:"os"`
@@ -501,15 +500,16 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BindAddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
 	flags.StringVar(&conf.HttpPort, "http-port", "10001", "HTTP monitor to listen on this port")
 	if runtime.GOOS == "darwin" {
-		flags.StringVar(&conf.HttpRoot, "http-root", "/opt/replication-manager/share/dashboard_react/dist", "Path to HTTP replication-monitor files")
-	} else {
-		flags.StringVar(&conf.HttpRoot, "http-root", "/usr/share/replication-manager/dashboard_react/dist", "Path to HTTP replication-monitor files")
-	}
-	/*if runtime.GOOS == "darwin" {
 		flags.StringVar(&conf.HttpRoot, "http-root", "/opt/replication-manager/share/dashboard", "Path to HTTP replication-monitor files")
 	} else {
 		flags.StringVar(&conf.HttpRoot, "http-root", "/usr/share/replication-manager/dashboard", "Path to HTTP replication-monitor files")
-	}*/
+	}
+	if WithProvisioning == "ON" {
+		flags.BoolVar(&conf.HttpUseReact, "http-use-react", true, "Use React instead of Angular")
+	} else {
+		flags.BoolVar(&conf.HttpUseReact, "http-use-react", false, "Use React instead of Angular")
+	}
+
 	flags.IntVar(&conf.HttpRefreshInterval, "http-refresh-interval", 4000, "Http refresh interval in ms")
 	flags.IntVar(&conf.SessionLifeTime, "http-session-lifetime", 3600, "Http Session life time ")
 
@@ -690,6 +690,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	} else {
 		flags.StringVar(&conf.BinlogCopyMode, "binlog-copy-mode", "ssh", "Method for backing up binlogs: mysqlbinlog|ssh|gomysql|script (old value 'client' will be treated same as 'mysqlbinlog')")
 	}
+
 	flags.StringVar(&conf.BinlogCopyScript, "binlog-copy-script", "", "Script filename for backing up binlogs")
 
 	flags.StringVar(&conf.BinlogRotationScript, "binlog-rotation-script", "", "Script filename triggered by binlogs rotation")
@@ -945,10 +946,6 @@ func (repman *ReplicationManager) initEmbed() error {
 
 func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	RepMan.Logrus = log.New()
-	repman.HaveReact = true
-	if WithReact == "ON" {
-		repman.HaveReact = true
-	}
 	repman.VersionConfs = make(map[string]*config.ConfVersion)
 	repman.ImmuableFlagMaps = make(map[string]map[string]interface{})
 	repman.DynamicFlagMaps = make(map[string]map[string]interface{})

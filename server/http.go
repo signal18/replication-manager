@@ -87,7 +87,7 @@ func (repman *ReplicationManager) httpserver() {
 	if repman.Conf.Test {
 		// before starting the http server, check that the dashboard is present
 		file2test := "index.html"
-		if !repman.HaveReact {
+		if !repman.Conf.HttpUseReact {
 			file2test = "app.html"
 		}
 		if err := repman.testFile(file2test); err != nil {
@@ -208,7 +208,7 @@ func (repman *ReplicationManager) httpserver() {
 }
 
 func (repman *ReplicationManager) handlerApp(w http.ResponseWriter, r *http.Request) {
-	if repman.HaveReact {
+	if repman.Conf.HttpUseReact {
 		http.ServeFile(w, r, repman.Conf.HttpRoot+"/index.html")
 	} else {
 		http.ServeFile(w, r, repman.Conf.HttpRoot+"/app.html")

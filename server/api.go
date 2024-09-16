@@ -124,10 +124,8 @@ func (repman *ReplicationManager) SharedirHandler(folder string) http.Handler {
 }
 
 func (repman *ReplicationManager) DashboardFSHandler() http.Handler {
-	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard_react/dist")
-	if !repman.HaveReact {
-		sub, err = fs.Sub(share.EmbededDbModuleFS, "dashboard")
-	}
+
+	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard")
 	if err != nil {
 		panic(err)
 	}
@@ -135,8 +133,8 @@ func (repman *ReplicationManager) DashboardFSHandler() http.Handler {
 }
 
 func (repman *ReplicationManager) DashboardFSHandlerApp() http.Handler {
-	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard_react/dist/index.html")
-	if !repman.HaveReact {
+	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard/index.html")
+	if !repman.Conf.HttpUseReact {
 		sub, err = fs.Sub(share.EmbededDbModuleFS, "dashboard/app.html")
 	}
 	if err != nil {
@@ -147,8 +145,8 @@ func (repman *ReplicationManager) DashboardFSHandlerApp() http.Handler {
 }
 
 func (repman *ReplicationManager) rootHandler(w http.ResponseWriter, r *http.Request) {
-	html, err := share.EmbededDbModuleFS.ReadFile("dashboard_react/dist/index.html")
-	if !repman.HaveReact {
+	html, err := share.EmbededDbModuleFS.ReadFile("dashboard/index.html")
+	if !repman.Conf.HttpUseReact {
 		html, err = share.EmbededDbModuleFS.ReadFile("dashboard/app.html")
 	}
 	if err != nil {
