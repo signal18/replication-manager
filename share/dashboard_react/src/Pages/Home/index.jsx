@@ -13,7 +13,9 @@ import {
   getClusterProxies,
   getClusters,
   getClusterServers,
+  getDatabaseService,
   getMonitoredData,
+  getTopProcess,
   setCluster,
   setRefreshInterval
 } from '../../redux/clusterSlice'
@@ -21,6 +23,8 @@ import Cluster from '../Cluster'
 import { AppSettings } from '../../AppSettings'
 import styles from './styles.module.scss'
 import { useParams } from 'react-router-dom'
+import { HiArrowNarrowLeft } from 'react-icons/hi'
+import CustomIcon from '../../components/Icons/CustomIcon'
 
 function Home() {
   const dispatch = useDispatch()
@@ -33,7 +37,8 @@ function Home() {
     'Configs',
     'Graphs',
     'Agents',
-    'Backups'
+    'Backups',
+    'Top'
   ])
 
   const params = useParams()
@@ -69,6 +74,14 @@ function Home() {
     }
   }, [refreshInterval])
 
+  const renderClusterListTabWithArrow = () => {
+    return (
+      <>
+        <CustomIcon icon={HiArrowNarrowLeft} /> Clusters
+      </>
+    )
+  }
+
   const callServices = () => {
     if (selectedTabRef.current === 0) {
       dispatch(getClusters({}))
@@ -84,6 +97,9 @@ function Home() {
       }
       if (selectedTabRef.current === 3) {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
+      }
+      if (selectedTabRef.current === 7) {
+        dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
       }
     }
   }
@@ -108,7 +124,7 @@ function Home() {
         <TabItems
           tabIndex={selectedTab}
           onChange={handleTabChange}
-          options={selectedTab > 0 ? ['Clusters', ...dashboardTabs] : ['Clusters']}
+          options={selectedTab > 0 ? [renderClusterListTabWithArrow(), ...dashboardTabs] : ['Clusters']}
           tabContents={[
             <ClusterList onClick={setDashboardTab} />,
             <Cluster tab='dashboard' />,
@@ -116,7 +132,8 @@ function Home() {
             <Cluster tab='configs' />,
             <Cluster tab='graphs' />,
             <Cluster tab='agents' />,
-            <Cluster tab='backups' />
+            <Cluster tab='backups' />,
+            <Cluster tab='top' />
           ]}
         />
       </Box>

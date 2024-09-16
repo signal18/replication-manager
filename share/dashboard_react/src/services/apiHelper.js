@@ -31,6 +31,8 @@ export async function getRequest(apiUrl, params, authValue = 1) {
     if (response.status === 401) {
       localStorage.removeItem('user_token')
       localStorage.removeItem('username')
+      window.location.reload()
+      // window.location.href = `${window.location}/login`
     } else {
       const contentType = response.headers.get('Content-Type')
       let data = null

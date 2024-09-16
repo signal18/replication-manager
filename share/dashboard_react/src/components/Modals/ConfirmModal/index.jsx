@@ -1,11 +1,29 @@
-import { Modal, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay } from '@chakra-ui/react'
+import {
+  Modal,
+  ModalBody,
+  ModalCloseButton,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay
+} from '@chakra-ui/react'
 import React from 'react'
 import RMButton from '../../RMButton'
 import styles from './styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
 import parentStyles from '../styles.module.scss'
 
-function ConfirmModal({ title, isOpen, closeModal, onConfirmClick }) {
+function ConfirmModal({
+  title,
+  isOpen,
+  closeModal,
+  body,
+  onConfirmClick,
+  showCancelButton = true,
+  showConfirmButton = true,
+  cancelButtonText = 'Cancel',
+  confirmButtonText = 'Confirm'
+}) {
   const { theme } = useTheme()
 
   return (
@@ -13,16 +31,22 @@ function ConfirmModal({ title, isOpen, closeModal, onConfirmClick }) {
       <ModalOverlay />
       <ModalContent
         className={`${styles.modalContent} ${theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}`}>
-        <ModalHeader className={styles.modalHeader}>{title}</ModalHeader>
+        {title && <ModalHeader className={styles.modalHeader}>{title}</ModalHeader>}
+
+        <ModalBody className={styles.modalBody}>{body}</ModalBody>
         <ModalCloseButton />
 
         <ModalFooter gap={3}>
-          <RMButton variant='outline' colorScheme='white' size='medium' onClick={closeModal}>
-            Cancel
-          </RMButton>
-          <RMButton colorScheme='blue' size='medium' onClick={onConfirmClick}>
-            Confirm
-          </RMButton>
+          {showCancelButton && (
+            <RMButton variant='outline' colorScheme='white' size='medium' onClick={closeModal}>
+              {cancelButtonText}
+            </RMButton>
+          )}
+          {showConfirmButton && (
+            <RMButton colorScheme='blue' size='medium' onClick={onConfirmClick}>
+              {confirmButtonText}
+            </RMButton>
+          )}
         </ModalFooter>
       </ModalContent>
     </Modal>
