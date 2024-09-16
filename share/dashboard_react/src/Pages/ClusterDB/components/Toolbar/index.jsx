@@ -3,14 +3,15 @@ import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import RMIconButton from '../../../../components/RMIconButton'
 import { HiPlay, HiStop, HiTable } from 'react-icons/hi'
-import { FaFile } from 'react-icons/fa'
+import { FaFile, FaRecycle, FaRegObjectGroup } from 'react-icons/fa'
 import RMButton from '../../../../components/RMButton'
 import { isEqualLongQueryTime } from '../../../../utility/common'
 import { useDispatch } from 'react-redux'
 import { toggleDatabaseActions, updateLongQueryTime } from '../../../../redux/clusterSlice'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
+import CustomIcon from '../../../../components/Icons/CustomIcon'
 
-function Toolbar({ tab, dbId, selectedDBServer, clusterName }) {
+function Toolbar({ tab, dbId, selectedDBServer, clusterName, digestMode, toggleDigestMode }) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
@@ -25,6 +26,10 @@ function Toolbar({ tab, dbId, selectedDBServer, clusterName }) {
       dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toogle-slow-query-table' }))
     } else if (actionType === 'togglePFSCapture') {
       dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toogle-pfs-slow-query' }))
+    } else if (actionType === 'togglePFSMode') {
+      toggleDigestMode()
+    } else if (actionType === 'resetDigestPFSQuery') {
+      dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'reset-pfs-queries' }))
     } else if (actionType === 'toggleMetadataLock') {
       dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toogle-meta-data-locks' }))
     } else if (actionType === 'toggleRespTime') {
@@ -43,6 +48,10 @@ function Toolbar({ tab, dbId, selectedDBServer, clusterName }) {
       setConfirmTitle(`Confirm toggle slow query mode between TABLE and FILE on server: ${serverName}`)
     } else if (type === 'togglePFSCapture') {
       setConfirmTitle(`Confirm toggle slow query log PFS capture on server: ${serverName}`)
+    } else if (type === 'togglePFSMode') {
+      setConfirmTitle(`Confirm  toggle digest mode between PFS and SLOW on server: ${serverName}`)
+    } else if (type === 'resetDigestPFSQuery') {
+      setConfirmTitle(`Confirm reset PFS query on server: ${serverName}`)
     } else if (type === 'toggleMetadataLock') {
       setConfirmTitle(`Confirm toggle metadata lock plugin on server: ${serverName}`)
     } else if (type === 'toggleRespTime') {
@@ -88,6 +97,19 @@ function Toolbar({ tab, dbId, selectedDBServer, clusterName }) {
             onClick={() => openConfirmModal('toggleMode')}
             tooltip='Toggle slow query mode between TABLE and FILE'
             icon={selectedDBServer?.logOutput === 'TABLE' ? HiTable : FaFile}
+          />
+        )}
+        {tab === 'digestQueries' && (
+          <RMButton onClick={() => openConfirmModal('togglePFSMode')}>
+            <CustomIcon icon={FaRegObjectGroup} />
+            {digestMode === 'pfs' ? 'PFS' : 'SLOW'}
+          </RMButton>
+        )}
+        {tab === 'digestQueries' && digestMode === 'pfs' && (
+          <RMIconButton
+            onClick={() => openConfirmModal('resetDigestPFSQuery')}
+            tooltip='Reset PFS query'
+            icon={FaRecycle}
           />
         )}
       </HStack>
