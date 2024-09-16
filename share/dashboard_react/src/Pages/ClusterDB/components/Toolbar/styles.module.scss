@@ -1,0 +1,23 @@
+.toolbarContainer {
+  flex-direction: column;
+  gap: rem(8);
+  @include breakpoint('lg') {
+    flex-direction: row;
+  }
+
+  .querytimes {
+    button {
+      border: rem(1) solid var(--primary-color);
+      background-color: transparent;
+      color: var(--text-color);
+      &:hover {
+        background-color: transparent;
+      }
+
+      &.selectedtime {
+        background-color: var(--primary-color);
+        color: var(--white-color);
+      }
+    }
+  }
+}

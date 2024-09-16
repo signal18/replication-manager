@@ -9,6 +9,7 @@ export const clusterService = {
   getClusterServers,
   getClusterProxies,
   getClusterCertificates,
+  getTopProcess,
   //cluster apis
   switchOverCluster,
   failOverCluster,
@@ -67,7 +68,12 @@ export const clusterService = {
   startProxy,
   stopProxy,
   //database apis
-  getDatabaseService
+  getDatabaseService,
+  updateLongQueryTime,
+  toggleDatabaseActions,
+  //tests run
+  runSysbench,
+  runRegressionTests
 }
 
 //#region main
@@ -103,6 +109,10 @@ function getClusterProxies(clusterName) {
 
 function getClusterCertificates(clusterName) {
   return getRequest(`clusters/${clusterName}/certificates`)
+}
+
+function getTopProcess(clusterName) {
+  return getRequest(`clusters/${clusterName}/top`)
 }
 
 function switchOverCluster(clusterName) {
@@ -329,4 +339,23 @@ function stopProxy(clusterName, proxyId) {
 function getDatabaseService(clusterName, serviceName, dbId) {
   return getRequest(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
 }
+
+function updateLongQueryTime(clusterName, dbId, time) {
+  return getRequest(`clusters/${clusterName}/servers/${dbId}/actions/set-long-query-time/${time}`)
+}
+
+function toggleDatabaseActions(clusterName, serviceName, dbId) {
+  return getRequest(`clusters/${clusterName}/servers/${dbId}/actions/${serviceName}`)
+}
+
 //#endregion cluster>database apis
+
+//#region cluster> run tests
+function runSysbench(clusterName, thread) {
+  return getRequest(`clusters/${clusterName}/actions/sysbench?threads=${thread}`)
+}
+
+function runRegressionTests(clusterName, testName) {
+  return getRequest(`clusters/${clusterName}/tests/actions/run/${testName}`)
+}
+//#endregion cluster>run tests

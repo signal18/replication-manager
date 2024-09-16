@@ -219,6 +219,54 @@ function BackupSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
+      key: 'Use Restic For Backup',
+      value: [
+        {
+          key: 'Use Restic For Backup',
+          value: (
+            <RMSwitch
+              isChecked={selectedCluster?.config?.backupRestic}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              confirmTitle={'Confirm switch settings for backup-restic?'}
+              onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic' }))}
+            />
+          )
+        },
+        ...(selectedCluster?.config?.backupRestic
+          ? [
+              { key: 'backup restic aws', value: selectedCluster?.config?.backupResticAws },
+              // { key: 'backup restic aws access key id', value: selectedCluster?.config?.backupResticBinaryPath },
+              { key: 'backup restic aws access secret', value: selectedCluster?.config?.backupResticAwsAccessSecret },
+              { key: 'backup restic binary path', value: selectedCluster?.config?.backupResticBinaryPath },
+              { key: 'backup restic password', value: selectedCluster?.config?.backupResticPassword },
+              {
+                key: 'backup restic repository',
+                value: selectedCluster?.config?.backupResticRepository
+              }
+              // {
+              //   key: 'backup restic repository',
+              //   value: (
+              //     <TextForm
+              //       value={selectedCluster?.config?.backupResticRepository}
+              //       confirmTitle={`Confirm change confirm change backup restic repository to `}
+              //       //   className={parentStyles.textbox}
+              //       onSave={(value) =>
+              //         dispatch(
+              //           setSetting({
+              //             clusterName: selectedCluster?.name,
+              //             setting: 'backup-restic-repository',
+              //             value: value
+              //           })
+              //         )
+              //       }
+              //     />
+              //   )
+              // }
+            ]
+          : [])
+      ]
+    },
+    {
       key: 'Binlog Parse Mode',
       value: (
         <Flex className={styles.dropdownContainer}>

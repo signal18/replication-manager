@@ -14,9 +14,11 @@ import ConfirmModal from '../Modals/ConfirmModal'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
 import RMIconButton from '../RMIconButton'
+import { useTheme } from '../../ThemeProvider'
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
+  const { theme } = useTheme()
   const [alertModalType, setAlertModalType] = useState('')
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const {
@@ -45,13 +47,17 @@ function Navbar({ username }) {
 
   return (
     <>
-      <Flex as='nav' className={styles.navbarContainer} gap='2' align='center'>
+      <Flex
+        as='nav'
+        className={`${styles.navbarContainer} ${theme === 'light' ? styles.lightBackground : styles.darkBackground} `}
+        gap='2'
+        align='center'>
         <Link to='/'>
           <Image
             loading='lazy'
             height='50px'
             width={isMobile ? '180px' : 'fit-content'}
-            className={styles.logo}
+            className={`${styles.logo}`}
             objectFit='contain'
             src='/images/logo.png'
             alt='Replication

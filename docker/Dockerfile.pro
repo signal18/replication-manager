@@ -4,7 +4,8 @@ RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
 
 COPY . .
-
+RUN apt-get update
+RUN apt-get -y install nodejs npm
 RUN make pro cli
 
 FROM debian:bookworm-slim
@@ -30,5 +31,6 @@ RUN apt-get update && apt-get -y install mydumper ca-certificates restic mariadb
 RUN curl -LO https://github.com/sysown/proxysql/releases/download/v2.5.2/proxysql_2.5.2-debian11_amd64.deb && dpkg -i proxysql_2.5.2-debian11_amd64.deb && rm -f proxysql_2.5.2-debian11_amd64.deb \
   && apt-get install -y adduser libfontconfig1 && curl -LO https://dl.grafana.com/oss/release/grafana_8.1.1_amd64.deb && dpkg -i grafana_8.1.1_amd64.deb && rm -f grafana_8.1.1_amd64.deb \ 
   && rm -rf /var/lib/mysql/*
+
 CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001

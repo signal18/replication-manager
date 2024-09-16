@@ -1,0 +1,14 @@
+.regressionTestContainer {
+  align-items: center;
+  gap: rem(4);
+
+  .dropdown {
+    width: rem(280);
+    @include breakpoint('md', 'lg') {
+      width: rem(400);
+    }
+    @include breakpoint('lg') {
+      width: rem(520);
+    }
+  }
+}

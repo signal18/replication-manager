@@ -9,5 +9,36 @@
 
 .body {
   overflow: auto;
-  padding: rem(8);
+  padding: 0 !important;
+}
+
+.table {
+  thead {
+    height: rem(32);
+  }
+  &.red {
+    thead {
+      tr {
+        background-color: var(--danger-tertiary-color);
+      }
+    }
+  }
+  &.orange {
+    thead {
+      tr {
+        background-color: var(--warning-tertiary-color);
+      }
+    }
+  }
+
+  tbody {
+    tr {
+      td:first-child {
+        padding-left: rem(12);
+      }
+      td:last-child {
+        padding-right: rem(12);
+      }
+    }
+  }
 }

@@ -268,6 +268,7 @@ type Config struct {
 	ApiServ                                   bool                   `mapstructure:"http-server" toml:"api-server" json:"apiServer"`
 	HttpRoot                                  string                 `mapstructure:"http-root" toml:"http-root" json:"httpRoot"`
 	HttpAuth                                  bool                   `mapstructure:"http-auth" toml:"http-auth" json:"httpAuth"`
+	HttpUseReact                              bool                   `mapstructure:"http-use-react" toml:"http-use-react" json:"http-use-react"`
 	HttpBootstrapButton                       bool                   `mapstructure:"http-bootstrap-button" toml:"http-bootstrap-button" json:"httpBootstrapButton"`
 	SessionLifeTime                           int                    `mapstructure:"http-session-lifetime" toml:"http-session-lifetime" json:"httpSessionLifetime"`
 	HttpRefreshInterval                       int                    `mapstructure:"http-refresh-interval" toml:"http-refresh-interval" json:"httpRefreshInterval"`

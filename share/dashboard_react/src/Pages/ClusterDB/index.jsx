@@ -31,7 +31,8 @@ function ClusterDB(props) {
     'Status InnoDB',
     'Variables',
     'Service OpenSVC',
-    'Metadata Locks'
+    'Metadata Locks',
+    'Response Time'
   ])
 
   const {
@@ -62,6 +63,14 @@ function ClusterDB(props) {
     dispatch(getClusterServers({ clusterName }))
     if (selectedTabRef.current === 1) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'processlist', dbId }))
+      // dispatch(getDatabaseService({ clusterName, serviceName: 'status-delta', dbId }))
+      // dispatch(getDatabaseService({ clusterName, serviceName: 'status', dbId }))
+    }
+    if (selectedTabRef.current === 2) {
+      dispatch(getDatabaseService({ clusterName, serviceName: 'slow-queries', dbId }))
+    }
+    if (selectedTabRef.current === 2) {
+      dispatch(getDatabaseService({ clusterName, serviceName: 'slow-queries', dbId }))
     }
   }
 
