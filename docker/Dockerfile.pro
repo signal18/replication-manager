@@ -26,7 +26,7 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/share /usr/s
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-pro /usr/bin/replication-manager
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 
-RUN apt-get -y install mydumper ca-certificates restic mariadb-server=1:* mariadb-client mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl
+RUN apt-get update && apt-get -y install mydumper ca-certificates restic mariadb-server=1:11* mariadb-client mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl
 RUN curl -LO https://github.com/sysown/proxysql/releases/download/v2.5.2/proxysql_2.5.2-debian11_amd64.deb && dpkg -i proxysql_2.5.2-debian11_amd64.deb && rm -f proxysql_2.5.2-debian11_amd64.deb \
   && apt-get install -y adduser libfontconfig1 && curl -LO https://dl.grafana.com/oss/release/grafana_8.1.1_amd64.deb && dpkg -i grafana_8.1.1_amd64.deb && rm -f grafana_8.1.1_amd64.deb \ 
   && rm -rf /var/lib/mysql/*
