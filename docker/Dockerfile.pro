@@ -32,5 +32,5 @@ RUN curl -LO https://github.com/sysown/proxysql/releases/download/v2.5.2/proxysq
   && apt-get install -y adduser libfontconfig1 && curl -LO https://dl.grafana.com/oss/release/grafana_8.1.1_amd64.deb && dpkg -i grafana_8.1.1_amd64.deb && rm -f grafana_8.1.1_amd64.deb \ 
   && rm -rf /var/lib/mysql/*
 
-  CMD ["replication-manager", "monitor", "--http-server"]
+CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001
