@@ -64,32 +64,36 @@ export function DataTable({
     <>
       <Table className={`${styles.table} ${className}`}>
         <Thead>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <Tr key={headerGroup.id} className={styles.headerRow}>
-              {headerGroup.headers.map((header, index) => {
-                const meta = header.column.columnDef.meta
-                const isColumnSortable = header.column.columnDef.enableSorting
+          {table.getHeaderGroups().map((headerGroup) => {
+            return (
+              <Tr key={headerGroup.id} className={styles.headerRow}>
+                {headerGroup.headers.map((header, index) => {
+                  const meta = header.column.columnDef.meta
+                  const isColumnSortable = header.column.columnDef.enableSorting
+                  console.log('header colSpan::', header.colSpan)
+                  return (
+                    <Th
+                      colSpan={header.colSpan}
+                      maxWidth={header.column.columnDef.maxWidth}
+                      minWidth={header.column.columnDef.minWidth}
+                      width={header.column.columnDef.width}
+                      textAlign={header.column.columnDef.textAlign}
+                      className={`${styles.tableHeader} ${index === fixedColumnIndex && styles.fixedColumn} ${isColumnSortable && styles.sortableColumn}`}
+                      key={header.id}
+                      {...(enableSorting ? { onClick: header.column.getToggleSortingHandler() } : {})}
+                      isNumeric={meta?.isNumeric}>
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
 
-                return (
-                  <Th
-                    maxWidth={header.column.columnDef.maxWidth}
-                    minWidth={header.column.columnDef.minWidth}
-                    width={header.column.columnDef.width}
-                    textAlign={header.column.columnDef.textAlign}
-                    className={`${styles.tableHeader} ${index === fixedColumnIndex && styles.fixedColumn} ${isColumnSortable && styles.sortableColumn}`}
-                    key={header.id}
-                    {...(enableSorting ? { onClick: header.column.getToggleSortingHandler() } : {})}
-                    isNumeric={meta?.isNumeric}>
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                    {{
-                      asc: <HiArrowNarrowUp className={styles.sortIcon} />,
-                      desc: <HiArrowNarrowDown className={styles.sortIcon} />
-                    }[enableSorting && header.column.getIsSorted()] ?? null}
-                  </Th>
-                )
-              })}
-            </Tr>
-          ))}
+                      {{
+                        asc: <HiArrowNarrowUp className={styles.sortIcon} />,
+                        desc: <HiArrowNarrowDown className={styles.sortIcon} />
+                      }[enableSorting && header.column.getIsSorted()] ?? null}
+                    </Th>
+                  )
+                })}
+              </Tr>
+            )
+          })}
         </Thead>
         <Tbody>
           {table.getRowModel().rows.map((row, index) => {

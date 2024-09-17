@@ -15,6 +15,7 @@ function ClusterDB(props) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const selectedTabRef = useRef(1)
+  const digestModeRef = useRef('pfs')
   const [selectedTab, setSelectedTab] = useState(1)
   const [clusterName, setClusterName] = useState(params.cluster)
   const [dbId, setDbId] = useState(params.dbname)
@@ -63,14 +64,16 @@ function ClusterDB(props) {
     dispatch(getClusterServers({ clusterName }))
     if (selectedTabRef.current === 1) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'processlist', dbId }))
-      // dispatch(getDatabaseService({ clusterName, serviceName: 'status-delta', dbId }))
-      // dispatch(getDatabaseService({ clusterName, serviceName: 'status', dbId }))
     }
     if (selectedTabRef.current === 2) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'slow-queries', dbId }))
     }
-    if (selectedTabRef.current === 2) {
-      dispatch(getDatabaseService({ clusterName, serviceName: 'slow-queries', dbId }))
+    if (selectedTabRef.current === 3) {
+      if (digestModeRef.current === 'pfs') {
+        dispatch(getDatabaseService({ clusterName, serviceName: 'digest-statements-pfs', dbId }))
+      } else {
+        dispatch(getDatabaseService({ clusterName, serviceName: 'digest-statements-slow', dbId }))
+      }
     }
   }
 
@@ -81,6 +84,11 @@ function ClusterDB(props) {
       navigate(`/clusters/${clusterName}`)
     }
   }
+
+  const toggleDigestMode = () => {
+    digestModeRef.current = digestModeRef.current === 'pfs' ? 'slow' : 'pfs'
+  }
+
   return (
     <PageContainer>
       <Box className={styles.container}>
@@ -93,7 +101,13 @@ function ClusterDB(props) {
             null,
             <ClusterDBTabContent tab='processlist' dbId={dbId} clusterName={clusterName} />,
             <ClusterDBTabContent tab='slowqueries' dbId={dbId} clusterName={clusterName} />,
-            <ClusterDBTabContent tab='digestqueries' dbId={dbId} clusterName={clusterName} />,
+            <ClusterDBTabContent
+              tab='digestqueries'
+              dbId={dbId}
+              clusterName={clusterName}
+              digestMode={digestModeRef.current}
+              toggleDigestMode={toggleDigestMode}
+            />,
             <ClusterDBTabContent tab='errors' dbId={dbId} clusterName={clusterName} />,
             <ClusterDBTabContent tab='tables' dbId={dbId} clusterName={clusterName} />,
             <ClusterDBTabContent tab='status' dbId={dbId} clusterName={clusterName} />

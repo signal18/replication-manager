@@ -929,6 +929,8 @@ export const clusterSlice = createSlice({
             state.database.processList = action.payload.data
           } else if (serviceName === 'slow-queries') {
             state.database.slowQueries = action.payload.data
+          } else if (serviceName === 'digest-statements-pfs') {
+            state.database.digestQueries = action.payload.data
           }
         }
       }

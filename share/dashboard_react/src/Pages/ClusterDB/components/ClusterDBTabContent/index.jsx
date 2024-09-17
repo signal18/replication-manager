@@ -7,8 +7,9 @@ import ServerMenu from '../../../Dashboard/components/DBServers/ServerMenu'
 import ServerStatus from '../../../../components/ServerStatus'
 import ServerName from '../../../../components/ServerName'
 import SlowQueries from '../SlowQueries'
+import DigestQueries from '../DigestQueries'
 
-function ClusterDBTabContent({ tab, dbId, clusterName }) {
+function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode }) {
   const [currentTab, setCurrentTab] = useState('')
   const [selectedDBServer, setSelectedDBServer] = useState(null)
   const [user, setUser] = useState(null)
@@ -61,7 +62,13 @@ function ClusterDBTabContent({ tab, dbId, clusterName }) {
       ) : currentTab === 'slowqueries' ? (
         <SlowQueries clusterName={clusterName} dbId={dbId} selectedDBServer={selectedDBServer} />
       ) : currentTab === 'digestqueries' ? (
-        <div>digest queries</div>
+        <DigestQueries
+          clusterName={clusterName}
+          dbId={dbId}
+          selectedDBServer={selectedDBServer}
+          digestMode={digestMode}
+          toggleDigestMode={toggleDigestMode}
+        />
       ) : currentTab === 'errors' ? (
         <div>errors</div>
       ) : currentTab === 'tables' ? (
