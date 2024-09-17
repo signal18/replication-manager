@@ -8,7 +8,7 @@ import { Box } from '@chakra-ui/react'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import { HiArrowNarrowLeft } from 'react-icons/hi'
 import { useDispatch, useSelector } from 'react-redux'
-import { getClusterServers, getDatabaseService, setRefreshInterval } from '../../redux/clusterSlice'
+import { getClusterData, getClusterServers, getDatabaseService, setRefreshInterval } from '../../redux/clusterSlice'
 
 function ClusterDB(props) {
   const params = useParams()
@@ -62,6 +62,7 @@ function ClusterDB(props) {
 
   const callServices = () => {
     dispatch(getClusterServers({ clusterName }))
+    dispatch(getClusterData({ clusterName }))
     if (selectedTabRef.current === 1) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'processlist', dbId }))
     }
@@ -74,6 +75,9 @@ function ClusterDB(props) {
       } else {
         dispatch(getDatabaseService({ clusterName, serviceName: 'digest-statements-slow', dbId }))
       }
+    }
+    if (selectedTabRef.current === 5) {
+      dispatch(getDatabaseService({ clusterName, serviceName: 'tables', dbId }))
     }
   }
 
