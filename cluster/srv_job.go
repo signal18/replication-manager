@@ -222,8 +222,7 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 		rows.Scan(&t.Id, &t.Task, &t.Done, &t.State)
 
 		if t.State <= 3 && t.Done == 0 {
-			err = errors.New("Previous job with same type is still running. Exiting")
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error: %s", err.Error())
+			cluster.SetState("WARN0123", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0123"], server.URL, t.Task), ErrFrom: "JOB", ServerUrl: server.URL})
 			rows.Close()
 			return 0, err
 		}
@@ -232,15 +231,15 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 
 	_, err = conn.Exec("set sql_log_bin=0")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't disable binlog for session")
+		cluster.SetState("WARN0124", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0124"], server.URL, t.Task, err.Error()), ErrFrom: "JOB", ServerUrl: server.URL})
 		return 0, err
 	}
 
 	var res sql.Result
 	if nr > 0 {
-		res, err = conn.Exec(fmt.Sprintf("DELETE FROM replication_manager_schema.jobs WHERE ID = %d", t.Id))
+		_, err = conn.Exec(fmt.Sprintf("DELETE FROM replication_manager_schema.jobs WHERE ID = %d", t.Id))
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't delete job: %s", err)
+			cluster.SetState("WARN0125", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0125"], server.URL, t.Task, err.Error()), ErrFrom: "JOB", ServerUrl: server.URL})
 			return 0, err
 		}
 	}
@@ -248,6 +247,7 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 	//Reuse the same id
 	res, err = conn.Exec(fmt.Sprintf("INSERT INTO replication_manager_schema.jobs(id, task, port,server,start) VALUES(%d,'%s',%s,'%s', NOW())", t.Id, task, port, repmanhost))
 	if err != nil {
+		cluster.SetState("WARN0126", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0126"], server.URL, t.Task, err.Error()), ErrFrom: "JOB", ServerUrl: server.URL})
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't insert job %s", err)
 		return 0, err
 	}
