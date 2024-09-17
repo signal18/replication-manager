@@ -1,8 +1,8 @@
-FROM golang:1.23rc1-bullseye
+FROM golang:1.23-bookworm AS builder
 
 ENV PROXYSQL_VERSION=2.5.5
 # Cancel using 0.16.3-3 due to incompatible with older version
-# ENV MYDUMPER_VERSION=0.16.3-3 
+# ENV MYDUMPER_VERSION=0.16.3-3
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager

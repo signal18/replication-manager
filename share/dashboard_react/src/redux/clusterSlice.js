@@ -77,6 +77,15 @@ export const getClusterCertificates = createAsyncThunk(
   }
 )
 
+export const getTopProcess = createAsyncThunk('cluster/getTopProcess', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.getTopProcess(clusterName)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
 export const switchOverCluster = createAsyncThunk('cluster/switchOverCluster', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.switchOverCluster(clusterName)
@@ -745,6 +754,31 @@ export const stopProxy = createAsyncThunk('cluster/stopProxy', async ({ clusterN
   }
 })
 
+export const runSysBench = createAsyncThunk('cluster/runSysBench', async ({ clusterName, thread }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.runSysbench(clusterName, thread)
+    showSuccessBanner('Sysbench ran successfuly!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Sysbench failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const runRegressionTests = createAsyncThunk(
+  'cluster/runRegressionTests',
+  async ({ clusterName, testName }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.runRegressionTests(clusterName, testName)
+      showSuccessBanner('Regression test ran successfuly!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Regression test failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const getDatabaseService = createAsyncThunk(
   'cluster/getDatabaseService',
   async ({ clusterName, serviceName, dbId }, thunkAPI) => {
@@ -752,6 +786,34 @@ export const getDatabaseService = createAsyncThunk(
       const { data, status } = await clusterService.getDatabaseService(clusterName, serviceName, dbId)
       return { data, status }
     } catch (error) {
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const updateLongQueryTime = createAsyncThunk(
+  'cluster/updateLongQueryTime',
+  async ({ clusterName, dbId, time }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.updateLongQueryTime(clusterName, dbId, time)
+      showSuccessBanner('Long query time updated!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Long query time update failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const toggleDatabaseActions = createAsyncThunk(
+  'cluster/toggleDatabaseActions',
+  async ({ clusterName, dbId, serviceName }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.toggleDatabaseActions(clusterName, serviceName, dbId)
+      showSuccessBanner(`Toggle ${serviceName} successful!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Toggle ${serviceName} failed!`, error, thunkAPI)
       handleError(error, thunkAPI)
     }
   }
@@ -768,6 +830,7 @@ const initialState = {
   clusterServers: null,
   clusterProxies: null,
   clusterCertificates: null,
+  topProcess: null,
   refreshInterval: 0,
   loadingStates: {
     switchOver: false,
@@ -776,6 +839,8 @@ const initialState = {
   },
   database: {
     processList: null,
+    status: null,
+    statusDelta: {},
     slowQueries: null,
     digestQueries: null,
     tables: null,
@@ -840,7 +905,8 @@ export const clusterSlice = createSlice({
         getClusterServers.fulfilled,
         getClusterProxies.fulfilled,
         getClusterCertificates.fulfilled,
-        getDatabaseService.fulfilled
+        getDatabaseService.fulfilled,
+        getTopProcess.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('getClusterData')) {
@@ -855,10 +921,14 @@ export const clusterSlice = createSlice({
           state.clusterProxies = action.payload.data
         } else if (action.type.includes('getClusterCertificates')) {
           state.clusterCertificates = action.payload.data
+        } else if (action.type.includes('getTopProcess')) {
+          state.topProcess = action.payload.data
         } else if (action.type.includes('getDatabaseService')) {
           const { serviceName } = action.meta.arg
           if (serviceName === 'processlist') {
             state.database.processList = action.payload.data
+          } else if (serviceName === 'slow-queries') {
+            state.database.slowQueries = action.payload.data
           }
         }
       }

@@ -25,7 +25,13 @@ app.factory('Backups', function ($resource) {
 });
 
 app.factory('Certificates', function ($resource) {
-    return $resource('api/clusters/:clusterName/certificates', {clusterName: '@clusters'});
+    return $resource('api/clusters/:clusterName/certificates', {clusterName: '@clusters'},
+        {
+            'query': {
+                method: 'GET',
+                isArray: false
+            }
+        });
 });
 
 app.factory('GraphiteFilterList', function ($resource) {

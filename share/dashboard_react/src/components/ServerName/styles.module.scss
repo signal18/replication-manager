@@ -1,9 +1,11 @@
 button.serverName {
   background-color: transparent !important;
   display: flex;
+  justify-content: flex-start;
   padding: 0;
   width: 100%;
   font-size: 15px !important;
+  font-weight: 500;
 
   .text {
     color: var(--white-color) !important;

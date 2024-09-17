@@ -11,7 +11,6 @@
 package cluster
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -19,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -307,8 +307,13 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	}
 
 	binlogCmd := exec.Command(cluster.GetMysqlBinlogPath(), "--flashback", "--to-last-log", cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-"+crash.FailoverMasterLogFile)
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass())
+
+	cliParams := make([]string, 0)
+	cliParams = append(cliParams, "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--password="+cluster.GetDbPass(), server.GetSSLClientParam("client"))
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "FlashBack: %s %s", cluster.GetMysqlBinlogPath(), strings.Replace(strings.Join(binlogCmd.Args, " "), cluster.GetRplPass(), "XXXX", -1))
+
 	var err error
 	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
 	if err != nil {
@@ -350,6 +355,16 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 
 	if server.IsReseeding {
 		return errors.New("Server is in reseeding state")
+	}
+
+	if _, err := os.Stat(cluster.GetMysqlDumpPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlDumpPath())
+		return err
+	}
+
+	if _, err := os.Stat(cluster.GetMysqlclientPath()); os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlclientPath())
+		return err
 	}
 
 	server.SetInReseedBackup(true)
@@ -692,22 +707,39 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup ahead binlog events of previously failed server %s", server.URL)
 	filepath.Walk(cluster.Conf.WorkingDir+"/", server.deletefiles)
 
-	cmdrun = exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, crash.FailoverMasterLogFile)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup %s %s", cluster.GetMysqlBinlogPath(), strings.Replace(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX", -1))
+	var params []string = make([]string, 0)
+	params = append(params, "--read-from-remote-server", "--raw", "--stop-never-slave-server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos, server.GetSSLClientParam("client-binlog"), crash.FailoverMasterLogFile)
+	cmdrun = exec.Command(cluster.GetMysqlBinlogPath(), params...)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup %s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 
-	var outrun bytes.Buffer
-	cmdrun.Stdout = &outrun
-	var outrunerr bytes.Buffer
-	cmdrun.Stderr = &outrunerr
+	cmdErrPipe, _ := cmdrun.StderrPipe()
+	cmdOutPipe, _ := cmdrun.StdoutPipe()
 
-	cmdrunErr := cmdrun.Run()
-	if cmdrunErr != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed to backup binlogs of %s,%s", server.URL, cmdrunErr.Error())
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s %s", cluster.GetMysqlBinlogPath(), cmdrun.Args)
-		cluster.LogPrint(cmdrun.Stderr)
-		cluster.LogPrint(cmdrun.Stdout)
+	if err := cmdrun.Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqlbinlog command: %s at %s", err, strings.Replace(cmdrun.String(), cluster.GetDbPass(), "XXXX", -1))
+		return err
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		server.copyLogs(cmdErrPipe, config.ConstLogModTask, config.LvlErr)
+	}()
+
+	go func() {
+		defer wg.Done()
+		server.copyLogs(cmdOutPipe, config.ConstLogModTask, config.LvlDbg)
+	}()
+
+	wg.Wait()
+
+	if err := cmdrun.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed to backup binlogs of %s,%s", server.URL, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 		cluster.canFlashBack = false
-		return cmdrunErr
+		return err
 	}
 	return nil
 }

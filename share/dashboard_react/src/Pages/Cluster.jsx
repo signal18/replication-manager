@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux'
 import Dashboard from './Dashboard'
 import Agents from './Agents'
 import Backups from './Backups'
+import Top from './Top'
 const Configs = lazy(() => import('./Configs'))
 const Settings = lazy(() => import('./Settings'))
 const Graphs = lazy(() => import('./Graphs'))
@@ -40,6 +41,8 @@ function Cluster({ tab }) {
     <Backups selectedCluster={clusterData} />
   ) : currentTab === 'graphs' ? (
     <Graphs />
+  ) : currentTab === 'top' ? (
+    <Top selectedCluster={clusterData} />
   ) : null
 }
 

@@ -124,16 +124,19 @@ func (repman *ReplicationManager) SharedirHandler(folder string) http.Handler {
 }
 
 func (repman *ReplicationManager) DashboardFSHandler() http.Handler {
+
 	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard")
 	if err != nil {
 		panic(err)
 	}
-
 	return http.FileServer(http.FS(sub))
 }
 
 func (repman *ReplicationManager) DashboardFSHandlerApp() http.Handler {
-	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard/app.html")
+	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard/index.html")
+	if !repman.Conf.HttpUseReact {
+		sub, err = fs.Sub(share.EmbededDbModuleFS, "dashboard/app.html")
+	}
 	if err != nil {
 		panic(err)
 	}
@@ -142,7 +145,10 @@ func (repman *ReplicationManager) DashboardFSHandlerApp() http.Handler {
 }
 
 func (repman *ReplicationManager) rootHandler(w http.ResponseWriter, r *http.Request) {
-	html, err := share.EmbededDbModuleFS.ReadFile("dashboard/app.html")
+	html, err := share.EmbededDbModuleFS.ReadFile("dashboard/index.html")
+	if !repman.Conf.HttpUseReact {
+		html, err = share.EmbededDbModuleFS.ReadFile("dashboard/app.html")
+	}
 	if err != nil {
 		log.Printf("rootHandler read error : %s", err)
 	}
@@ -171,6 +177,9 @@ func (repman *ReplicationManager) apiserver() {
 
 	if repman.Conf.Test {
 		router.HandleFunc("/", repman.handlerApp)
+		router.PathPrefix("/images/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+		router.PathPrefix("/assets/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
+
 		router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/app/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", http.FileServer(http.Dir(repman.Conf.ShareDir+"/grafana"))))
@@ -178,6 +187,8 @@ func (repman *ReplicationManager) apiserver() {
 		router.HandleFunc("/", repman.rootHandler)
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
+		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
+		router.PathPrefix("/assets/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", repman.SharedirHandler("grafana")))
 	}
 

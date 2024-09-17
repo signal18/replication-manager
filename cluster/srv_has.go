@@ -252,6 +252,10 @@ func (server *ServerMonitor) HasSlaveParallelOptimistic() bool {
 	return server.Variables.Get("SLAVE_PARALLEL_MODE") == "OPTIMISTIC"
 }
 
+func (server *ServerMonitor) HasSSL() bool {
+	return server.Variables.Get("HAVE_SSL") == "YES"
+}
+
 func (server *ServerMonitor) HasSlaveParallelConservative() bool {
 	return server.Variables.Get("SLAVE_PARALLEL_MODE") == "CONSERVATIVE"
 }

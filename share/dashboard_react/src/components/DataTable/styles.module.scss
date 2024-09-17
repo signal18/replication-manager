@@ -12,6 +12,12 @@
       border: 1px solid;
       color: var(--text-color) !important;
       border-color: var(--quaternary-color) !important;
+      &.sortableColumn {
+        cursor: pointer;
+      }
+      .sortIcon {
+        display: inline-flex;
+      }
     }
     .fixedColumn {
       position: sticky;

@@ -398,6 +398,11 @@ func (cluster *Cluster) GetGroupReplicationWhiteList() string {
 func (cluster *Cluster) GetPreferedMasterList() string {
 	var prefmaster []string
 	for _, server := range cluster.Servers {
+		// Skip node if child cluster
+		if server.SourceClusterName != cluster.Name {
+			continue
+		}
+
 		if server.Prefered {
 			prefmaster = append(prefmaster, server.URL)
 		}
@@ -450,9 +455,13 @@ func (cluster *Cluster) getOnePreferedMaster() *ServerMonitor {
 		return nil
 	}
 	for _, server := range cluster.Servers {
-		// if cluster.Conf.LogLevel > 2 {
+		// Skip if child cluster
+		if server.SourceClusterName != cluster.Name {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Skip lookup child node %s for preferred master", server.URL)
+			continue
+		}
+
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Lookup if server: %s is preferred master: %s", server.URL, cluster.Conf.PrefMaster)
-		// }
 		if server.IsPrefered() {
 			return server
 		}
@@ -878,12 +887,103 @@ func (cluster *Cluster) GetQueryRules() []config.QueryRule {
 	return r
 }
 
-func (cluster *Cluster) GetTopProcesslist(srvid string) []dbhelper.Processlist {
-	top := make([]dbhelper.Processlist, 0, 200)
+func (cluster *Cluster) GetTopMetrics(srvid string) []config.ServerTop {
+	clustertop := make([]config.ServerTop, 0)
 	for _, srv := range cluster.Servers {
-		if srvid != "" && srv.Id != srvid {
+		top := make([]dbhelper.Processlist, 0)
+		if srvid != "" && srv.Id != srvid && srv.IsFailed() {
 			continue
 		}
+		var topheader config.TopHeader
+
+		var graph config.TopGraph
+		graph.Name = "Queries"
+		data := make([]config.TopMetrics, 0)
+		var metric config.TopMetrics
+		metric.Name = "Questions"
+		metric.Value = srv.GetStatusDeltaValue("QUESTIONS")
+		data = append(data, metric)
+		metric.Name = "Selects"
+		metric.Value = srv.GetStatusDeltaValue("COM_SELECT")
+		data = append(data, metric)
+		metric.Name = "Inserts"
+		metric.Value = srv.GetStatusDeltaValue("COM_ISNERT")
+		data = append(data, metric)
+		metric.Name = "Updates"
+		metric.Value = srv.GetStatusDeltaValue("COM_UPDATE")
+		data = append(data, metric)
+		metric.Name = "Deletes"
+		metric.Value = srv.GetStatusDeltaValue("COM_DELETE")
+		data = append(data, metric)
+		//metric.Name = "Replace"
+		//metric.Value = srv.GetStatusDeltaValue("COM_REPLACE")
+		//data = append(data, metric)
+		graph.Data = data
+		topheader.Graphs = append(topheader.Graphs, graph)
+
+		graph.Name = "Rows"
+		data = make([]config.TopMetrics, 0)
+		metric.Name = "Reads"
+		metric.Value = srv.GetStatusDeltaValue("HANDLER_READ_FIRST") + srv.GetStatusDeltaValue("HANDLER_READ_KEY") + srv.GetStatusDeltaValue("HANDLER_READ_NEXT") + srv.GetStatusDeltaValue("HANDLER_READ_PREV") + srv.GetStatusDeltaValue("HANDLER_READ_RND") + srv.GetStatusDeltaValue("HANDLER_READ_RND_NEXT")
+		data = append(data, metric)
+		metric.Name = "Writes"
+		metric.Value = srv.GetStatusDeltaValue("HANDLER_WRITE")
+		data = append(data, metric)
+		metric.Name = "Updates"
+		metric.Value = srv.GetStatusDeltaValue("HANDLER_UPDATE")
+		data = append(data, metric)
+		metric.Name = "Deletes"
+		metric.Value = srv.GetStatusDeltaValue("HANDLER_DELETE")
+		data = append(data, metric)
+		graph.Data = data
+		topheader.Graphs = append(topheader.Graphs, graph)
+
+		graph.Name = "Swap"
+		data = make([]config.TopMetrics, 0)
+		metric.Name = "Tmp Tables"
+		metric.Value = srv.GetStatusDeltaValue("TMP_DISK_TABLES")
+		data = append(data, metric)
+		metric.Name = "Binary Logs"
+		metric.Value = srv.GetStatusDeltaValue("BINLOG_STMT_CACHE_DISK_USE") + srv.GetStatusDeltaValue("BINLOG_CACHE_DISK_USE")
+		data = append(data, metric)
+		metric.Name = "Sorts"
+		metric.Value = srv.GetStatusDeltaValue("SORT_MERGE_PASSES")
+		data = append(data, metric)
+		graph.Data = data
+		topheader.Graphs = append(topheader.Graphs, graph)
+
+		graph.Name = "Transactions"
+		data = make([]config.TopMetrics, 0)
+		metric.Name = "Commits"
+		metric.Value = srv.GetStatusDeltaValue("HANDLER_COMMIT")
+		data = append(data, metric)
+		metric.Name = "Binlog"
+		metric.Value = srv.GetStatusDeltaValue("BINLOG_COMMITS")
+		data = append(data, metric)
+		metric.Name = "Binlog Group"
+		metric.Value = srv.GetStatusDeltaValue("BINLOG_GROUP_COMMITS")
+		data = append(data, metric)
+		graph.Data = data
+		topheader.Graphs = append(topheader.Graphs, graph)
+
+		graph.Name = "Cache Miss"
+		data = make([]config.TopMetrics, 0)
+		metric.Name = "InnoDB"
+		metric.Value = srv.GetStatusDeltaValue("INNODB_BUFFER_POOL_READS")
+		data = append(data, metric)
+		metric.Name = "Aria"
+		metric.Value = srv.GetStatusDeltaValue("ARIA_PAGECACHE_READS")
+		data = append(data, metric)
+		metric.Name = "MyISAM"
+		metric.Value = srv.GetStatusDeltaValue("KEY_READS")
+		data = append(data, metric)
+		metric.Name = "MyROCKS"
+		metric.Value = srv.GetStatusDeltaValue("ROCKSDB_BLOCK_CACHE_DATA_MISS")
+		data = append(data, metric)
+		graph.Data = data
+		topheader.Graphs = append(topheader.Graphs, graph)
+
+		sv := config.ServerTop{Id: srv.Id, Url: srv.URL, Header: topheader}
 		srvps := srv.FullProcessList
 		sort.Sort(FullProcessListSorter(srvps))
 		ct := 0
@@ -898,9 +998,11 @@ func (cluster *Cluster) GetTopProcesslist(srvid string) []dbhelper.Processlist {
 				break
 			}
 		}
+		sv.Processlist = top
+		clustertop = append(clustertop, sv)
 	}
 
-	return top
+	return clustertop
 }
 
 func (cluster *Cluster) GetServicePlans() []config.ServicePlan {

@@ -188,6 +188,7 @@ func (server *ServerMonitor) SetReadWrite() error {
 
 func (server *ServerMonitor) SetMaintenance() {
 	server.IsMaintenance = true
+	server.ClusterGroup.SetProxyServerMaintenance(server.ServerID)
 }
 
 func (server *ServerMonitor) SetDSN() {

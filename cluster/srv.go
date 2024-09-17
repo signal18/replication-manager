@@ -255,7 +255,7 @@ const (
 )
 
 /* Initializes a server object compute if spider node*/
-func (cluster *Cluster) newServerMonitor(url string, user string, pass string, compute bool, domain string) (*ServerMonitor, error) {
+func (cluster *Cluster) newServerMonitor(url string, user string, pass string, compute bool, domain string, source string) (*ServerMonitor, error) {
 	var err error
 	server := new(ServerMonitor)
 	server.QPS = 0
@@ -274,6 +274,15 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.BinaryLogMetaToWrite = make([]string, 0)
 	server.BinaryLogMetaToRemove = make([]string, 0)
 	server.NeedRefreshJobs = true
+
+	// Set source cluster name, set cluster name as source if not specified
+	// This is needed to make check more simple
+	if source != "" {
+		server.SourceClusterName = source
+	} else {
+		server.SourceClusterName = cluster.Name
+	}
+
 	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		// OpenSVC and Sharding proxy monitoring
 		if server.IsCompute {
@@ -287,7 +296,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	}
 	var sid uint64
 	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id
-	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.Name+server.Port), server.GetCluster().GetCrcTable()), 10), 10, 64)
+	sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(url), server.GetCluster().GetCrcTable()), 10), 10, 64)
 	server.ServerID = sid
 	server.Id = fmt.Sprintf("%s%d", "db", sid)
 
@@ -352,10 +361,19 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SlowLog = s18log.NewSlowLog(cluster.Conf.MonitorLongQueryLogLength)
 	go server.ErrorLogWatcher()
 	go server.SlowLogWatcher()
-	server.SetIgnored(cluster.IsInIgnoredHosts(server))
-	server.SetIgnoredReadonly(cluster.IsInIgnoredReadonly(server))
-	server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
-	server.SetPrefered(cluster.IsInPreferedHosts(server))
+
+	// Prevent child cluster as prefered
+	if server.SourceClusterName == cluster.Name {
+		server.SetIgnored(cluster.IsInIgnoredHosts(server))
+		server.SetIgnoredReadonly(cluster.IsInIgnoredReadonly(server))
+		server.SetPreferedBackup(cluster.IsInPreferedBackupHosts(server))
+		server.SetPrefered(cluster.IsInPreferedHosts(server))
+	} else {
+		// Always ignore child cluster
+		server.SetIgnored(true)
+		server.SetIgnoredReadonly(true)
+	}
+
 	server.ReloadSaveInfosVariables()
 	server.DelayStat = new(ServerDelayStat)
 	server.DelayStat.ResetDelayStat()
@@ -1032,9 +1050,11 @@ func (server *ServerMonitor) Refresh() error {
 			}
 			server.IsFull = false
 		}
-		if server.HaveMetaDataLocksLog {
-			server.MetaDataLocks, logs, err = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)
-			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get Metat data locks  %s %s", server.URL, err)
+		if server.DBVersion.Suffix != "ShardProxy" && server.HaveMetaDataLocksLog {
+			server.MetaDataLocks, _, err = dbhelper.GetMetaDataLock(server.Conn, server.DBVersion)
+			if err != nil {
+				cluster.SetState("WARN0122", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0122"], fmt.Sprintf("Could not get Metat data locks  %s %s", server.URL, err.Error())), ErrFrom: "SRV", ServerUrl: server.URL})
+			}
 		}
 	}
 	server.CheckMaxConnections()

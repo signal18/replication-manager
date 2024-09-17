@@ -1,0 +1,17 @@
+.testsContainer {
+  margin: rem(16);
+  align-items: flex-start;
+  gap: rem(16);
+  .dropdowns {
+    width: 100%;
+    gap: rem(8);
+    align-items: flex-start;
+    // @include breakpoint('md') {
+    //   flex-direction: row;
+    //   justify-content: space-around;
+    // }
+  }
+  .table {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

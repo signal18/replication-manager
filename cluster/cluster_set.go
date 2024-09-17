@@ -445,6 +445,12 @@ func (cluster *Cluster) SetBenchMethod(m string) {
 }
 
 func (cluster *Cluster) AddPrefMaster(node *ServerMonitor) {
+	// Deny change for child cluster due to possibility of preferred list only use node name (db1, db2...) etc.
+	if node.SourceClusterName != cluster.Name {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Unable to set child node %s as preferred", node.URL)
+		return
+	}
+
 	if cluster.IsInPreferedHosts(node) {
 		return
 	}
@@ -458,6 +464,11 @@ func (cluster *Cluster) AddPrefMaster(node *ServerMonitor) {
 }
 
 func (cluster *Cluster) RemovePrefMaster(node *ServerMonitor) error {
+	// Deny change for child cluster due to possibility of preferred list only use node name (db1, db2...) etc.
+	if node.SourceClusterName != cluster.Name {
+		return fmt.Errorf("Unable to remove child node %s as preferred", node.URL)
+	}
+
 	if !cluster.IsInPreferedHosts(node) {
 		return fmt.Errorf("Host not found in prefered list")
 	}
@@ -466,10 +477,17 @@ func (cluster *Cluster) RemovePrefMaster(node *ServerMonitor) error {
 	if savedPrefMaster == node.URL {
 		cluster.SetPrefMaster("")
 	} else {
-		//Remove the prefered from list
-		newPrefMaster := strings.Replace(savedPrefMaster, node.URL+",", "", -1)
-		newPrefMaster = strings.Replace(newPrefMaster, ","+node.URL, "", -1)
-		cluster.SetPrefMaster(newPrefMaster)
+		list := strings.Split(savedPrefMaster, ",")
+		res := make([]string, 0)
+
+		for _, sv := range list {
+			// Skip (remove) if found
+			if sv == node.URL || sv == node.Name {
+				continue
+			}
+			res = append(res, sv)
+		}
+		cluster.SetPrefMaster(strings.Join(res, ","))
 	}
 
 	return nil
@@ -479,11 +497,16 @@ func (cluster *Cluster) RemovePrefMaster(node *ServerMonitor) error {
 func (cluster *Cluster) SetPrefMaster(PrefMasterURL string) {
 	var prefmasterlist []string
 	for _, srv := range cluster.Servers {
-		if strings.Contains(PrefMasterURL, srv.URL) {
-			srv.SetPrefered(true)
-			prefmasterlist = append(prefmasterlist, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
-		} else {
+		// Deny change for child cluster due to possibility of preferred list only use node name (db1, db2...) etc.
+		if srv.SourceClusterName != cluster.Name {
 			srv.SetPrefered(false)
+		} else {
+			if strings.Contains(PrefMasterURL, srv.URL) {
+				srv.SetPrefered(true)
+				prefmasterlist = append(prefmasterlist, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
+			} else {
+				srv.SetPrefered(false)
+			}
 		}
 	}
 	cluster.Conf.PrefMaster = strings.Join(prefmasterlist, ",")
@@ -506,6 +529,10 @@ func (cluster *Cluster) AddIgnoreSrv(node *ServerMonitor) {
 
 // Set Ignored Host for Election
 func (cluster *Cluster) RemoveIgnoreSrv(node *ServerMonitor) error {
+	if node.SourceClusterName != cluster.Name {
+		return fmt.Errorf("Host is in child cluster. Cannot remove ignore")
+	}
+
 	if !cluster.IsInIgnoredHosts(node) {
 		return fmt.Errorf("Host not found in ignored list")
 	}
@@ -527,11 +554,17 @@ func (cluster *Cluster) RemoveIgnoreSrv(node *ServerMonitor) error {
 func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
 	var ignoresrvlist []string
 	for _, srv := range cluster.Servers {
-		if strings.Contains(IgnoredHostURL, srv.URL) {
+		// Always ignore if child cluster but don't add to config
+		if srv.GetSourceClusterName() != cluster.Name {
 			srv.SetIgnored(true)
-			ignoresrvlist = append(ignoresrvlist, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
 		} else {
-			srv.SetIgnored(false)
+			// Only add to config if node is in main cluster
+			if strings.Contains(IgnoredHostURL, srv.URL) {
+				srv.SetIgnored(true)
+				ignoresrvlist = append(ignoresrvlist, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
+			} else {
+				srv.SetIgnored(false)
+			}
 		}
 	}
 	cluster.Conf.IgnoreSrv = strings.Join(ignoresrvlist, ",")
@@ -542,11 +575,17 @@ func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
 func (cluster *Cluster) SetIgnoreRO(IgnoredReadOnlyHostURL string) {
 	var ignoreROList []string
 	for _, srv := range cluster.Servers {
-		if strings.Contains(IgnoredReadOnlyHostURL, srv.URL) {
-			srv.SetIgnoredReadonly(true)
-			ignoreROList = append(ignoreROList, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
+		// Always ignore if child cluster but don't add to config
+		if srv.GetSourceClusterName() != cluster.Name {
+			srv.SetIgnored(true)
 		} else {
-			srv.SetIgnoredReadonly(false)
+			// Only add to config if node is in main cluster
+			if strings.Contains(IgnoredReadOnlyHostURL, srv.URL) {
+				srv.SetIgnoredReadonly(true)
+				ignoreROList = append(ignoreROList, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
+			} else {
+				srv.SetIgnoredReadonly(false)
+			}
 		}
 	}
 	cluster.Conf.IgnoreSrvRO = strings.Join(ignoreROList, ",")
@@ -1841,13 +1880,13 @@ func (cluster *Cluster) SetToolVersions() {
 	if err := cluster.SetMysqlDumpVersion(); err != nil {
 		cluster.SetState("WARN0118", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0118"], err), ErrFrom: "CLUSTER"})
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Mysqldump version: %s", cluster.VersionsMap.Get("mysqldump").ToFullString())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Mysqldump version: %s", cluster.VersionsMap.Get("client-dump").ToFullString())
 	}
 
 	if err := cluster.SetMysqlBinlogVersion(); err != nil {
 		cluster.SetState("WARN0119", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0119"], err), ErrFrom: "CLUSTER"})
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Mysqlbinlog version: %s", cluster.VersionsMap.Get("mysqlbinlog").ToFullString())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Mysqlbinlog version: %s", cluster.VersionsMap.Get("client-binlog").ToFullString())
 	}
 
 	if err := cluster.SetMyDumperVersion(); err != nil {
@@ -1904,7 +1943,7 @@ func (cluster *Cluster) SetMysqlDumpVersion() error {
 	v, _ := version.NewVersionFromString(myver.Flavor, vstring)
 	v.DistVersion = myver.DistVersion
 
-	cluster.VersionsMap.Set("mysqldump", v)
+	cluster.VersionsMap.Set("client-dump", v)
 	// Remove state if already get correct version
 	cluster.GetStateMachine().DeleteState("WARN0118")
 
@@ -1933,7 +1972,7 @@ func (cluster *Cluster) SetMysqlBinlogVersion() error {
 	v, _ := version.NewVersionFromString(myver.Flavor, vstring)
 	v.DistVersion = myver.DistVersion
 
-	cluster.VersionsMap.Set("mysqlbinlog", v)
+	cluster.VersionsMap.Set("client-binlog", v)
 	// Remove state if already get correct version
 	cluster.GetStateMachine().DeleteState("WARN0119")
 

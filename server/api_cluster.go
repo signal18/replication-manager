@@ -335,11 +335,6 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxOneTest)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/tests/actions/run/{testName}", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxOneTest)),
-	))
-
 	// endpoint to fetch Cluster.DiffVariables
 	router.Handle("/api/clusters/{clusterName}/diffvariables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -1035,10 +1030,20 @@ func (repman *ReplicationManager) handlerMuxClusterTop(w http.ResponseWriter, r 
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		node := r.URL.Query().Get("serverName")
+
+		svname := r.URL.Query().Get("serverName")
+		if svname != "" {
+			node := mycluster.GetServerFromName(svname)
+			if node == nil {
+				http.Error(w, "Not a Valid Server!", 500)
+				return
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetTopProcesslist(node))
+		err := e.Encode(mycluster.GetTopMetrics(svname))
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
@@ -1188,6 +1193,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchDBApplyDynamicConfig()
 	case "prov-docker-daemon-private":
 		mycluster.SwitchProvDockerDaemonPrivate()
+	case "backup-restic-aws":
+		mycluster.SwitchBackupResticAws()
 	case "backup-restic":
 		mycluster.SwitchBackupRestic()
 	case "backup-binlogs":

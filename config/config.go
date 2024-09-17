@@ -31,6 +31,7 @@ import (
 	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	log "github.com/sirupsen/logrus"
 
@@ -267,6 +268,7 @@ type Config struct {
 	ApiServ                                   bool                   `mapstructure:"http-server" toml:"api-server" json:"apiServer"`
 	HttpRoot                                  string                 `mapstructure:"http-root" toml:"http-root" json:"httpRoot"`
 	HttpAuth                                  bool                   `mapstructure:"http-auth" toml:"http-auth" json:"httpAuth"`
+	HttpUseReact                              bool                   `mapstructure:"http-use-react" toml:"http-use-react" json:"http-use-react"`
 	HttpBootstrapButton                       bool                   `mapstructure:"http-bootstrap-button" toml:"http-bootstrap-button" json:"httpBootstrapButton"`
 	SessionLifeTime                           int                    `mapstructure:"http-session-lifetime" toml:"http-session-lifetime" json:"httpSessionLifetime"`
 	HttpRefreshInterval                       int                    `mapstructure:"http-refresh-interval" toml:"http-refresh-interval" json:"httpRefreshInterval"`
@@ -820,6 +822,26 @@ type DockerRepo struct {
 
 type DockerRepos struct {
 	Repos []DockerRepo `json:"repos"`
+}
+
+// Stucture to hold header of mytop
+type TopMetrics struct {
+	Name  string `json:"name"`
+	Value int    `json:"value"`
+}
+type TopGraph struct {
+	Name string       `json:"name"`
+	Data []TopMetrics `json:"data"`
+}
+type TopHeader struct {
+	Graphs []TopGraph `json:"graphs"`
+}
+
+type ServerTop struct {
+	Id          string                 `json:"id"`
+	Url         string                 `json:"url"`
+	Header      TopHeader              `json:"header"`
+	Processlist []dbhelper.Processlist `json:"processlist"`
 }
 
 const (

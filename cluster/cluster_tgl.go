@@ -144,6 +144,11 @@ func (cluster *Cluster) SwitchBackupRestic() {
 		}
 	}
 }
+
+func (cluster *Cluster) SwitchBackupResticAws() {
+	cluster.Conf.BackupResticAws = !cluster.Conf.BackupResticAws
+}
+
 func (cluster *Cluster) SwitchBackupBinlogs() {
 	cluster.Conf.BackupBinlogs = !cluster.Conf.BackupBinlogs
 	if cluster.Conf.BackupBinlogs {

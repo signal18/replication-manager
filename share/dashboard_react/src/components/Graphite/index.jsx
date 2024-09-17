@@ -6,7 +6,8 @@ function Graphite({ chartRef, context, title, title2, target, target2, className
   useEffect(() => {
     if (!chartRef.current || !context) return
     d3.select(chartRef.current).selectAll('*').remove()
-    let graphite = context.graphite('http://repman.marie-dev.svc.cloud18:10001/graphite')
+    // let graphite = context.graphite('http://repman.marie-dev.svc.cloud18:10001/graphite')
+    let graphite = context.graphite('/graphite')
     let data = graphite.metric(target).alias(title)
     let data2 = null
     if (title2 && target2) {

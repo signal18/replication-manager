@@ -5,8 +5,11 @@ import NotFound from '../../NotFound'
 import { DataTable } from '../../DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
 import styles from './styles.module.scss'
+import parentStyles from '../styles.module.scss'
+import { useTheme } from '../../../ThemeProvider'
 
 function AlertModal({ type, isOpen, closeModal }) {
+  const { theme } = useTheme()
   const {
     common: { isMobile, isTablet, isDesktop },
     cluster: { clusterAlerts }
@@ -49,6 +52,7 @@ function AlertModal({ type, isOpen, closeModal }) {
     <Modal isOpen={isOpen} onClose={closeModal}>
       <ModalOverlay />
       <ModalContent
+        className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}
         width={isDesktop ? '80%' : isTablet ? '97%' : '99%'}
         maxWidth='none'
         minHeight={'300px'}
@@ -65,7 +69,12 @@ function AlertModal({ type, isOpen, closeModal }) {
           {data.length === 0 ? (
             <NotFound text={`No ${type} alerts found`} />
           ) : (
-            <DataTable columns={columns} data={data} cellValueAlign='start' />
+            <DataTable
+              className={`${styles.table}  ${type === 'error' ? styles.red : styles.orange}`}
+              columns={columns}
+              data={data}
+              cellValueAlign='start'
+            />
           )}
         </ModalBody>
       </ModalContent>

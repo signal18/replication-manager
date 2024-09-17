@@ -8,7 +8,7 @@ function ClusterWorkload({ workload }) {
       <Gauge minValue={0} maxValue={300000} value={workload?.qps} text={'Queries'} width={150} height={90} />
       <Gauge minValue={0} maxValue={300000} value={workload?.connections} text={'Threads'} width={150} height={90} />
       <Gauge minValue={0} maxValue={100} value={workload?.cpuThreadPool} text={'Cpu TP'} width={150} height={90} />
-      <Gauge minValue={0} maxValue={100} value={workload?.cpuUserStats} text={'Cpu US'} width={150} height={90} />
+      <Gauge minValue={0} maxValue={10000} value={workload?.cpuUserStats} text={'Cpu US'} width={150} height={90} />
       <Gauge
         minValue={0}
         maxValue={10000}
