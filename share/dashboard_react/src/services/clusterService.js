@@ -71,6 +71,7 @@ export const clusterService = {
   getDatabaseService,
   updateLongQueryTime,
   toggleDatabaseActions,
+  checksumTable,
   //tests run
   runSysbench,
   runRegressionTests
@@ -346,6 +347,10 @@ function updateLongQueryTime(clusterName, dbId, time) {
 
 function toggleDatabaseActions(clusterName, serviceName, dbId) {
   return getRequest(`clusters/${clusterName}/servers/${dbId}/actions/${serviceName}`)
+}
+
+function checksumTable(clusterName, schema, table) {
+  return getRequest(`clusters/${clusterName}/schema/${schema}/${table}/actions/checksum-table`)
 }
 
 //#endregion cluster>database apis

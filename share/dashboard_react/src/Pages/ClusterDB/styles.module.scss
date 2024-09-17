@@ -60,5 +60,15 @@
     .clipboardText {
       text-align: start;
     }
+
+    .tablesSchemaCol {
+      gap: rem(16);
+    }
+
+    .gauge {
+      div[class*='textOverlay'] {
+        bottom: rem(12);
+      }
+    }
   }
 }

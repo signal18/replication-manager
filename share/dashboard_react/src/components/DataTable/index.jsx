@@ -70,7 +70,6 @@ export function DataTable({
                 {headerGroup.headers.map((header, index) => {
                   const meta = header.column.columnDef.meta
                   const isColumnSortable = header.column.columnDef.enableSorting
-                  console.log('header colSpan::', header.colSpan)
                   return (
                     <Th
                       colSpan={header.colSpan}
@@ -78,7 +77,7 @@ export function DataTable({
                       minWidth={header.column.columnDef.minWidth}
                       width={header.column.columnDef.width}
                       textAlign={header.column.columnDef.textAlign}
-                      className={`${styles.tableHeader} ${index === fixedColumnIndex && styles.fixedColumn} ${isColumnSortable && styles.sortableColumn}`}
+                      className={`${styles.tableHeader} ${index === fixedColumnIndex && styles.fixedColumn} ${isColumnSortable && styles.sortableColumn} ${header.column.parent && styles.groupedColumn}`}
                       key={header.id}
                       {...(enableSorting ? { onClick: header.column.getToggleSortingHandler() } : {})}
                       isNumeric={meta?.isNumeric}>

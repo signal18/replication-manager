@@ -805,6 +805,20 @@ export const updateLongQueryTime = createAsyncThunk(
   }
 )
 
+export const checksumTable = createAsyncThunk(
+  'cluster/checksumTable',
+  async ({ clusterName, schema, table }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.checksumTable(clusterName, schema, table)
+      showSuccessBanner(`Checksum done for schema ${schema} and table ${table}!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Checksum failed for schema ${schema} and table ${table}!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const toggleDatabaseActions = createAsyncThunk(
   'cluster/toggleDatabaseActions',
   async ({ clusterName, dbId, serviceName }, thunkAPI) => {
@@ -931,6 +945,8 @@ export const clusterSlice = createSlice({
             state.database.slowQueries = action.payload.data
           } else if (serviceName === 'digest-statements-pfs') {
             state.database.digestQueries = action.payload.data
+          } else if (serviceName === 'tables') {
+            state.database.tables = action.payload.data
           }
         }
       }

@@ -11,7 +11,7 @@ import Toolbar from '../Toolbar'
 
 function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggleDigestMode }) {
   const dispatch = useDispatch()
-  const [search, setSearch] = useState('')
+  // const [search, setSearch] = useState('')
 
   const {
     cluster: {
@@ -19,7 +19,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
     }
   } = useSelector((state) => state)
   const [data, setData] = useState(digestQueries || [])
-  const [allData, setAllData] = useState(digestQueries || [])
+  // const [allData, setAllData] = useState(digestQueries || [])
   const prevDigestQueries = useRef(digestQueries)
 
   useEffect(() => {
@@ -33,8 +33,8 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
   useEffect(() => {
     if (digestQueries?.length > 0) {
       if (!isEqual(digestQueries, prevDigestQueries.current)) {
-        setAllData(digestQueries)
-        setData(searchData(digestQueries))
+        // setAllData(digestQueries)
+        setData(digestQueries)
 
         // Update the previous digestQueries value
         prevDigestQueries.current = digestQueries
@@ -42,29 +42,32 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
     }
   }, [digestQueries])
 
-  useEffect(() => {
-    setData(searchData(allData))
-  }, [search])
+  // useEffect(() => {
+  //   setData(searchData(allData))
+  // }, [search])
 
-  const searchData = (serverData) => {
-    const searchedData = serverData.filter((x) => {
-      const searchValue = search.toLowerCase()
-      if (x.query.toLowerCase().includes(searchValue)) {
-        return x
-      }
-    })
-    return searchedData
-  }
+  // const searchData = (serverData) => {
+  //   const searchedData = serverData.filter((x) => {
+  //     const searchValue = search.toLowerCase()
+  //     if (x.query.toLowerCase().includes(searchValue)) {
+  //       return x
+  //     }
+  //   })
+  //   return searchedData
+  // }
 
-  const handleSearch = (e) => {
-    setSearch(e.target.value)
-  }
+  // const handleSearch = (e) => {
+  //   setSearch(e.target.value)
+  // }
   const columnHelper = createColumnHelper()
 
   const columns = useMemo(
     () => [
+      columnHelper.accessor((row, rowIndex) => rowIndex + 1, {
+        header: 'Id'
+      }),
       columnHelper.accessor((row) => row.lastSeen, {
-        header: 'Time',
+        header: 'Last seen at',
         id: 'lastseen'
       }),
       columnHelper.accessor((row) => row.shemaName || '-', {
@@ -148,12 +151,12 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
   return (
     <VStack className={styles.contentContainer}>
       <Flex className={styles.actions}>
-        <HStack gap='4'>
+        {/* <HStack gap='4'>
           <HStack className={styles.search}>
             <label htmlFor='search'>Search</label>
             <Input id='search' type='search' onChange={handleSearch} />
           </HStack>
-        </HStack>
+        </HStack> */}
         <Toolbar
           clusterName={clusterName}
           tab='digestQueries'
