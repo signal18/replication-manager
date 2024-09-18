@@ -8,6 +8,7 @@ import ServerStatus from '../../../../components/ServerStatus'
 import ServerName from '../../../../components/ServerName'
 import SlowQueries from '../SlowQueries'
 import DigestQueries from '../DigestQueries'
+import Tables from '../Tables'
 
 function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode }) {
   const [currentTab, setCurrentTab] = useState('')
@@ -35,6 +36,7 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
       }
     }
   }, [dbId, clusterServers])
+
   return (
     <VStack className={styles.contentContainer}>
       <Flex className={styles.actions}>
@@ -72,7 +74,14 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
       ) : currentTab === 'errors' ? (
         <div>errors</div>
       ) : currentTab === 'tables' ? (
-        <div>tables</div>
+        clusterData?.workLoad?.dbTableSize >= 0 ? (
+          <Tables
+            clusterName={clusterName}
+            dbId={dbId}
+            selectedDBServer={selectedDBServer}
+            tableSize={clusterData?.workLoad?.dbTableSize}
+          />
+        ) : null
       ) : currentTab === 'status' ? (
         <div>status</div>
       ) : null}

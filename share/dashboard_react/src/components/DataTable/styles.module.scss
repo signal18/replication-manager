@@ -18,6 +18,11 @@
       .sortIcon {
         display: inline-flex;
       }
+
+      &.groupedColumn {
+        background-color: var(--secondary-gray-color);
+        border-color: var(--tertiary-color) !important;
+      }
     }
     .fixedColumn {
       position: sticky;
