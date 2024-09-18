@@ -161,6 +161,10 @@ func (server *ServerMonitor) HasBackupLogicalCookie() bool {
 	return server.hasCookie("cookie_logicalbackup") || server.HasBackupMysqldumpCookie() || server.HasBackupMydumperCookie() || server.HasBackupDumplingCookie()
 }
 
+func (server *ServerMonitor) HasConfigCookie() bool {
+	return server.hasCookie("cookie_config")
+}
+
 func (server *ServerMonitor) HasBackupTypeCookie(backtype string) bool {
 	switch backtype {
 	case config.ConstBackupLogicalTypeMysqldump:

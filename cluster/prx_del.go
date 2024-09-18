@@ -53,3 +53,7 @@ func (proxy *Proxy) DelWaitStartCookie() error {
 func (proxy *Proxy) DelWaitStopCookie() error {
 	return proxy.delCookie("cookie_waitstop")
 }
+
+func (proxy *Proxy) DelConfigCookie() error {
+	return proxy.delCookie("cookie_config")
+}
