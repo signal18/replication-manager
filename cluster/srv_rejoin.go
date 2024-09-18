@@ -357,17 +357,25 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 		return errors.New("Server is in reseeding state")
 	}
 
+	tool := "direct"
+
+	server.SetInReseedBackup("direct")
+
 	if _, err := os.Stat(cluster.GetMysqlDumpPath()); os.IsNotExist(err) {
+		if server.HasReseedingState(tool) {
+			server.SetInReseedBackup("")
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlDumpPath())
 		return err
 	}
 
 	if _, err := os.Stat(cluster.GetMysqlclientPath()); os.IsNotExist(err) {
+		if server.HasReseedingState(tool) {
+			server.SetInReseedBackup("")
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlclientPath())
 		return err
 	}
-
-	server.SetInReseedBackup("direct")
 
 	realmaster := cluster.master
 	if cluster.Conf.MxsBinlogOn || cluster.Conf.MultiTierSlave {
@@ -375,7 +383,9 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 	}
 
 	if realmaster == nil {
-		server.SetInReseedBackup("")
+		if server.HasReseedingState(tool) {
+			server.SetInReseedBackup("")
+		}
 		return errors.New("No master defined exiting rejoin direct dump ")
 	}
 	// done change master just to set the host and port before dump
@@ -400,7 +410,9 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 		cluster.LogSQL(logs, err3, server.URL, "Rejoin", config.LvlErr, "Failed change master maxscale on %s: %s", server.URL, err3)
 	}
 	if err3 != nil {
-		server.SetInReseedBackup("")
+		if server.HasReseedingState(tool) {
+			server.SetInReseedBackup("")
+		}
 		return err3
 	}
 	// dump here

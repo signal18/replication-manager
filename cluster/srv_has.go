@@ -723,13 +723,3 @@ func (server *ServerMonitor) HasReseedingState(tool string) bool {
 func (server *ServerMonitor) HasAnyReseedingState() bool {
 	return server.IsReseeding != ""
 }
-
-/* Check agains listed MDEV issues, lower severity will include higher severity */
-func (server *ServerMonitor) HasFlashbackState(tool string) bool {
-	return server.IsFlashingBack == tool
-}
-
-/* Check agains listed MDEV issues, lower severity will include higher severity */
-func (server *ServerMonitor) HasAnyFlashbackState() bool {
-	return server.IsFlashingBack != ""
-}
