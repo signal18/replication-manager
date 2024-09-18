@@ -853,17 +853,17 @@ const initialState = {
   },
   database: {
     processList: null,
-    status: null,
-    statusDelta: {},
+    status: {
+      statusDelta: null,
+      statusInnoDB: null
+    },
     slowQueries: null,
     digestQueries: null,
     tables: null,
-    statuses: null,
-    statusInnoDb: null,
     errors: null,
     variables: null,
     serviceOpensvc: null,
-    metalocks: null,
+    metadataLocks: null,
     responsetime: null
   }
 }
@@ -947,6 +947,18 @@ export const clusterSlice = createSlice({
             state.database.digestQueries = action.payload.data
           } else if (serviceName === 'tables') {
             state.database.tables = action.payload.data
+          } else if (serviceName === 'status-delta') {
+            state.database.status.statusDelta = action.payload.data
+          } else if (serviceName === 'status-innodb') {
+            state.database.status.statusInnoDB = action.payload.data
+          } else if (serviceName === 'variables') {
+            state.database.variables = action.payload.data
+          } else if (serviceName === 'service-opensvc') {
+            state.database.serviceOpensvc = action.payload.data
+          } else if (serviceName === 'meta-data-locks') {
+            state.database.metadataLocks = action.payload.data
+          } else if (serviceName === 'query-response-time') {
+            state.database.responsetime = action.payload.data
           }
         }
       }

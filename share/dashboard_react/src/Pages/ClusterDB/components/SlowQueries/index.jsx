@@ -60,7 +60,7 @@ function SlowQueries({ clusterName, dbId, selectedDBServer }) {
   const columns = useMemo(
     () => [
       columnHelper.accessor((row, rowIndex) => rowIndex + 1, {
-        header: 'Id',
+        header: '#',
         enableSorting: false
       }),
       columnHelper.accessor((row) => row.lastSeen, {

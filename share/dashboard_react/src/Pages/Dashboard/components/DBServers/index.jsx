@@ -109,7 +109,7 @@ function DBServers({ selectedCluster, user }) {
         {
           cell: (info) => info.getValue(),
           header: 'Server',
-          maxWidth: 250,
+          width: 280,
           id: 'serverName'
         }
       ),

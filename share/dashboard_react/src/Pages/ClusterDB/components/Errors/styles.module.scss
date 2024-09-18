@@ -1,0 +1,6 @@
+.errorLogs {
+  max-height: 100%;
+  td[class*='timestamp'] {
+    min-width: rem(250) !important;
+  }
+}
