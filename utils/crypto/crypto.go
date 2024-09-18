@@ -14,9 +14,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 )
 
 type Password struct {
@@ -113,4 +115,77 @@ func GetSHA256Hash(text string) string {
 	hasher := sha256.New()
 	hasher.Write([]byte(text))
 	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+// GenerateChecksum computes the SHA256 checksum of a file and returns it as a hex string.
+func GenerateChecksum(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("could not open file %s: %w", filePath, err)
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", fmt.Errorf("could not compute checksum for file %s: %w", filePath, err)
+	}
+
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// ChecksumDirectory processes each file in the directory and recursively processes subdirectories.
+// It generates a checksums.txt file containing the checksums of files and directories.
+// It does not include files within subdirectories in the directory's checksum.
+func ChecksumDirectory(dir string) (string, error) {
+	checksumsFilePath := filepath.Join(dir, "checksums.txt")
+	checksumsFile, err := os.Create(checksumsFilePath)
+	if err != nil {
+		return "", fmt.Errorf("could not create checksums file %s: %w", checksumsFilePath, err)
+	}
+	defer checksumsFile.Close()
+
+	hash := sha256.New()
+	subDirChecksums := make(map[string]string)
+
+	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		// Skip if there's an error or if it's the checksums.txt file itself
+		if err != nil || path == checksumsFilePath {
+			return err
+		}
+
+		// If it's a directory (and not the root directory), process recursively
+		if info.IsDir() && path != dir {
+			subdirChecksum, err := ChecksumDirectory(path)
+			if err != nil {
+				return err
+			}
+			subDirChecksums[path] = subdirChecksum
+			return nil
+		}
+
+		// If it's a file, compute the checksum
+		if !info.IsDir() {
+			fileChecksum, err := GenerateChecksum(path)
+			if err != nil {
+				return err
+			}
+			relativePath, _ := filepath.Rel(dir, path)
+			fmt.Fprintf(checksumsFile, "%s  %s\n", fileChecksum, relativePath)
+			hash.Write([]byte(fileChecksum))
+		}
+		return nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	// Write checksums of subdirectories
+	for subDir, checksum := range subDirChecksums {
+		_, base := filepath.Split(subDir)
+		fmt.Fprintf(checksumsFile, "%s  %s\n", checksum, base)
+	}
+
+	// Return the checksum of the entire directory
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
