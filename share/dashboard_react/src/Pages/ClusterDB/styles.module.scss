@@ -57,9 +57,12 @@
         }
       }
     }
-    .clipboardText {
-      text-align: start;
+    .longColumnValue {
+      flex-wrap: wrap;
     }
+    // .clipboardText {
+
+    // }
 
     .tablesSchemaCol {
       gap: rem(16);
@@ -69,6 +72,43 @@
       div[class*='textOverlay'] {
         bottom: rem(12);
       }
+    }
+  }
+  .statusContainer {
+    flex-direction: column;
+    width: 100%;
+    gap: rem(16);
+    @include breakpoint('md') {
+      flex-direction: row;
+      gap: rem(32);
+    }
+
+    .statusInnerContainer {
+      width: 100%;
+      align-items: flex-start;
+      border-radius: $border-radius-md;
+      box-shadow: $box-shadow2-lg;
+      padding: rem(8);
+      @include breakpoint('md') {
+        width: 50%;
+      }
+      .accordion {
+        width: 100%;
+        td[class*='tableColumn'] {
+          text-align: left;
+        }
+      }
+    }
+  }
+
+  .variableContainer {
+    td[class*='tableColumn'] {
+      text-align: left;
+      padding-left: rem(16);
+    }
+    .longVariable {
+      white-space: break-spaces;
+      word-break: break-all;
     }
   }
 }

@@ -38,7 +38,8 @@ function Home() {
     'Graphs',
     'Agents',
     'Backups',
-    'Top'
+    'Top',
+    'Shards'
   ])
 
   const params = useParams()
@@ -133,7 +134,8 @@ function Home() {
             <Cluster tab='graphs' />,
             <Cluster tab='agents' />,
             <Cluster tab='backups' />,
-            <Cluster tab='top' />
+            <Cluster tab='top' />,
+            <Cluster tab='shards' />
           ]}
         />
       </Box>

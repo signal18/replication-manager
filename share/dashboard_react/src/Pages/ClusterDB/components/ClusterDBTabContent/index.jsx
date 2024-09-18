@@ -9,33 +9,23 @@ import ServerName from '../../../../components/ServerName'
 import SlowQueries from '../SlowQueries'
 import DigestQueries from '../DigestQueries'
 import Tables from '../Tables'
+import Status from '../Status'
+import Variables from '../Variables'
+import ServiceOpenSvc from '../ServiceOpenSvc'
+import MetadataLocks from '../MetadataLocks'
+import ResponseTime from '../ResponseTime'
+import Errors from '../Errors'
 
-function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode }) {
+function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode, user, selectedDBServer }) {
   const [currentTab, setCurrentTab] = useState('')
-  const [selectedDBServer, setSelectedDBServer] = useState(null)
-  const [user, setUser] = useState(null)
 
   const {
-    cluster: { clusterMaster, clusterServers, clusterData }
+    cluster: { clusterMaster, clusterData }
   } = useSelector((state) => state)
 
   useEffect(() => {
     setCurrentTab(tab)
   }, [tab])
-
-  useEffect(() => {
-    if (clusterServers?.length > 0 && dbId) {
-      const server = clusterServers.find((x) => x.id === dbId)
-      setSelectedDBServer(server)
-    }
-    if (clusterData?.apiUsers) {
-      const loggedUser = localStorage.getItem('username')
-      if (loggedUser && clusterData?.apiUsers[loggedUser]) {
-        const apiUser = clusterData.apiUsers[loggedUser]
-        setUser(apiUser)
-      }
-    }
-  }, [dbId, clusterServers])
 
   return (
     <VStack className={styles.contentContainer}>
@@ -54,7 +44,6 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
               />
               <ServerStatus state={selectedDBServer?.state} />
               <ServerName className={styles.serverName} name={`${selectedDBServer?.host}:${selectedDBServer?.port}`} />
-              {/* <Text className={styles.serverName}>{`${selectedDBServer?.host}:${selectedDBServer?.port}`}</Text> */}
             </>
           )}
         </HStack>
@@ -72,7 +61,7 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
           toggleDigestMode={toggleDigestMode}
         />
       ) : currentTab === 'errors' ? (
-        <div>errors</div>
+        <Errors clusterName={clusterName} dbId={dbId} />
       ) : currentTab === 'tables' ? (
         clusterData?.workLoad?.dbTableSize >= 0 ? (
           <Tables
@@ -83,7 +72,15 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
           />
         ) : null
       ) : currentTab === 'status' ? (
-        <div>status</div>
+        <Status clusterName={clusterName} dbId={dbId} />
+      ) : currentTab === 'variables' ? (
+        <Variables clusterName={clusterName} dbId={dbId} />
+      ) : currentTab === 'opensvc' ? (
+        <ServiceOpenSvc clusterName={clusterName} dbId={dbId} />
+      ) : currentTab === 'metadata' ? (
+        <MetadataLocks clusterName={clusterName} dbId={dbId} />
+      ) : currentTab === 'resptime' ? (
+        <ResponseTime clusterName={clusterName} dbId={dbId} />
       ) : null}
     </VStack>
   )
