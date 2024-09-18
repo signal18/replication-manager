@@ -17,13 +17,24 @@ function Top({ selectedCluster }) {
   const dispatch = useDispatch()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [fullInfoValue, setFullInfoValue] = useState('')
+  const [topProcessData, setTopProcessData] = useState([])
   const {
-    cluster: { topProcess }
+    cluster: { topProcess, clusterServers }
   } = useSelector((state) => state)
 
   useEffect(() => {
     dispatch(getTopProcess({ clusterName: selectedCluster?.name }))
   }, [])
+
+  useEffect(() => {
+    if (topProcess?.length > 0 && clusterServers?.length > 0) {
+      const processes = topProcess.filter((process) => {
+        const dbServer = clusterServers.find((server) => server.id === process.id)
+        return dbServer.state.toLowerCase() !== 'failed'
+      })
+      setTopProcessData(processes)
+    }
+  }, [topProcess, clusterServers])
 
   const openModal = (fullValue) => {
     setIsModalOpen(true)
@@ -103,8 +114,8 @@ function Top({ selectedCluster }) {
           body={<ClusterWorkload workload={selectedCluster?.workLoad} />}
         />
       )}
-      {topProcess?.length > 0 &&
-        topProcess.map((topP) => {
+      {topProcessData?.length > 0 &&
+        topProcessData.map((topP) => {
           return (
             <AccordionComponent
               className={styles.accordion}

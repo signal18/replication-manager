@@ -27,6 +27,15 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMen
           isNewProxy = !isNewProxy && index === 0
           data.push(readWriteData(proxy, readData, 'READ', isNewProxy))
         })
+        if (!proxy.backendsRead && !proxy.backendsWrite) {
+          data.push({
+            logo: <ProxyLogo proxyName={proxy.type} />,
+            proxyId: proxy.id,
+            showMenu: isMenuOptionsVisible,
+            server: `${proxy.host}:${proxy.port}`,
+            status: <ProxyStatus status={proxy.state} />
+          })
+        }
       })
       setTableData(data)
     }
@@ -79,7 +88,8 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMen
       }),
       columnHelper.accessor((row) => <ServerName name={row.server} />, {
         cell: (info) => info.getValue(),
-        header: 'Server'
+        header: 'Frontend',
+        width: 280
       }),
       columnHelper.accessor((row) => row.status, {
         cell: (info) => info.getValue(),
@@ -91,7 +101,8 @@ function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMen
       }),
       columnHelper.accessor((row) => row.dbName, {
         cell: (info) => info.getValue(),
-        header: 'DB Name'
+        header: 'Backend',
+        textAlign: 'left'
       }),
       columnHelper.accessor((row) => row.dbStatus, {
         cell: (info) => info.getValue(),

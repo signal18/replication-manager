@@ -82,12 +82,14 @@ function Toolbar({ tab, dbId, selectedDBServer, clusterName, digestMode, toggleD
         )}
         {tab === 'metadataLocks' && (
           <RMIconButton
+            tooltip='Toggle metadata lock plugin'
             onClick={() => openConfirmModal('toggleMetadataLock')}
             icon={selectedDBServer?.haveMetaDataLocksLog ? HiStop : HiPlay}
           />
         )}
         {tab === 'responseTime' && (
           <RMIconButton
+            tooltip='Toggle query response time plugin'
             onClick={() => openConfirmModal('toggleRespTime')}
             icon={selectedDBServer?.haveQueryResponseTimeLog ? HiStop : HiPlay}
           />

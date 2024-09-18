@@ -78,9 +78,9 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
       ) : currentTab === 'opensvc' ? (
         <ServiceOpenSvc clusterName={clusterName} dbId={dbId} />
       ) : currentTab === 'metadata' ? (
-        <MetadataLocks clusterName={clusterName} dbId={dbId} />
+        <MetadataLocks clusterName={clusterName} dbId={dbId} selectedDBServer={selectedDBServer} />
       ) : currentTab === 'resptime' ? (
-        <ResponseTime clusterName={clusterName} dbId={dbId} />
+        <ResponseTime clusterName={clusterName} dbId={dbId} selectedDBServer={selectedDBServer} />
       ) : null}
     </VStack>
   )
