@@ -2626,8 +2626,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"\\n[mysqld]\\n\\n!includedir ../etc/mysql/custom.d\\n!includedir ../etc/mysql/conf.d\\n\\n\\n\"}",
-                    "var_updated": "2021-01-04 16:18:14",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"\\n[mysqld]\\n!includedir ../etc/mysql/conf.d\\n!includedir ../etc/mysql/custom.d\\n\\n\\n\\n\"}",
+                    "var_updated": "2024-09-18 09:58:37",
                     "var_name": "db_cnf_server",
                     "id": 5904
                 },
@@ -7240,8 +7240,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"\\n[mysqld]\\n\\n!includedir /etc/mysql/custom.d\\n!includedir /etc/mysql/conf.d\\n\\n\\n\"}",
-                    "var_updated": "2024-08-01 12:43:30",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"\\n[mysqld]\\n!includedir /etc/mysql/conf.d\\n!includedir /etc/mysql/custom.d\\n\\n\\n\\n\"}",
+                    "var_updated": "2024-09-18 09:58:57",
                     "var_name": "db_cnf_server",
                     "id": 6311
                 },
@@ -7330,8 +7330,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"\\n[mysqld]\\n\\n!includedir /etc/mysql/custom.d\\n!includedir /etc/mysql/conf.d\\n\\n\\n\"}",
-                    "var_updated": "2024-08-02 05:21:57",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/my.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"\\n[mysqld]\\n!includedir /etc/mysql/conf.d\\n!includedir /etc/mysql/custom.d\\n\\n\\n\\n\"}",
+                    "var_updated": "2024-09-18 09:57:35",
                     "var_name": "db_cnf_server",
                     "id": 6325
                 },
