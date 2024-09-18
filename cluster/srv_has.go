@@ -713,3 +713,13 @@ func (server *ServerMonitor) HasMdevIssue() bool {
 		return server.HasBlockerIssue()
 	}
 }
+
+/* Check agains listed MDEV issues, lower severity will include higher severity */
+func (server *ServerMonitor) HasReseedingState(tool string) bool {
+	return server.IsReseeding == tool
+}
+
+/* Check agains listed MDEV issues, lower severity will include higher severity */
+func (server *ServerMonitor) HasAnyReseedingState() bool {
+	return server.IsReseeding != ""
+}

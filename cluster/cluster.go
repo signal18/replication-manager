@@ -704,7 +704,9 @@ func (cluster *Cluster) StateProcessing() {
 				err := servertoreseed.ProcessReseedPhysical(task)
 				if err != nil {
 					servertoreseed.JobsUpdateState(task, err.Error(), 2, 1)
-					servertoreseed.SetInReseedBackup(false)
+					if servertoreseed.HasReseedingState(task) {
+						servertoreseed.SetInReseedBackup("")
+					}
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
 				}
 			}
@@ -730,7 +732,9 @@ func (cluster *Cluster) StateProcessing() {
 				err := servertoreseed.ProcessFlashbackPhysical(task)
 				if err != nil {
 					servertoreseed.JobsUpdateState(task, err.Error(), 2, 1)
-					servertoreseed.SetInFlashbackBackup(false)
+					if servertoreseed.HasReseedingState(task) {
+						servertoreseed.SetInReseedBackup("")
+					}
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing flashback for %s: %s", servertoreseed.URL, err)
 				}
 			}

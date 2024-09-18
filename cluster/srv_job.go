@@ -395,19 +395,13 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 	//Delete wait physical backup cookie
 	server.DelWaitPhysicalBackupCookie()
 
-	if server.IsFlashingBack {
-		err := errors.New("Server is in flashback state")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
-		return err
-	}
-
-	if server.IsReseeding {
+	if server.HasAnyReseedingState() {
 		err := errors.New("Server is in reseeding state")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
 		return err
 	}
 
-	server.SetInReseedBackup(true)
+	server.SetInReseedBackup(backtype)
 
 	// If reset failed, better to stop PITR
 	if server.PointInTimeMeta.IsInPITR {
@@ -415,7 +409,9 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 		_, err := server.ResetSlave()
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
-				server.SetInReseedBackup(false)
+				if server.HasReseedingState(backtype) {
+					server.SetInReseedBackup("")
+				}
 				return err
 			}
 		}
@@ -468,7 +464,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 
 	master := cluster.GetMaster()
 	if master == nil {
-		return errors.New("No master found. Cancel reseed physical backup")
+		return errors.New("No master found. Cancel flashback physical backup")
 	}
 
 	useSelfBackup := true
@@ -495,26 +491,25 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 		if _, err := os.Stat(backupfile); err != nil {
 			//Remove false cookie
 			server.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
-			return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", cluster.Conf.BackupPhysicalType)
+			return fmt.Errorf("Cancelling flashback. No backup file found on master for %s", cluster.Conf.BackupPhysicalType)
 		}
 	}
 
 	//Delete wait physical backup cookie
 	server.DelWaitPhysicalBackupCookie()
 
-	if server.IsFlashingBack {
-		return errors.New("Server is in flashback state")
-	}
-
-	if server.IsReseeding {
+	if server.HasAnyReseedingState() {
 		return errors.New("Server is in reseeding state")
 	}
 
-	server.SetInFlashbackBackup(true)
+	task := "flashback" + cluster.Conf.BackupPhysicalType
+	server.SetInReseedBackup(task)
 
-	_, err := server.JobInsertTask("flashback"+cluster.Conf.BackupPhysicalType, server.SSTPort, cluster.Conf.MonitorAddress)
-
+	_, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
+		if server.HasReseedingState(task) {
+			server.SetInReseedBackup("")
+		}
 		return err
 	}
 
@@ -534,12 +529,14 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 		SSL:       cluster.Conf.ReplicationSSL,
 	}, server.DBVersion)
 	if err != nil {
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
-		server.SetInReseedBackup(false)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Flashback can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
+		if server.HasReseedingState(task) {
+			server.SetInReseedBackup("")
+		}
 		return err
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive flashback physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
 
 	return nil
 }
@@ -604,15 +601,11 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 		}
 	}
 
-	if server.IsFlashingBack {
+	if server.HasAnyReseedingState() {
 		return fmt.Errorf("Server is in flashback state")
 	}
 
-	if server.IsReseeding {
-		return fmt.Errorf("Server is in flashback state")
-	}
-
-	server.SetInReseedBackup(true)
+	server.SetInReseedBackup(backtype)
 
 	//Delete wait logical backup cookie
 	server.DelWaitLogicalBackupCookie()
@@ -623,7 +616,9 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 		_, err := server.ResetSlave()
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
-				server.SetInReseedBackup(false)
+				if server.HasReseedingState(backtype) {
+					server.SetInReseedBackup("")
+				}
 				return err
 			}
 		}
@@ -632,7 +627,9 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 
 	_, err := server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
 	if err != nil {
-		server.SetInReseedBackup(false)
+		if server.HasReseedingState(backtype) {
+			server.SetInReseedBackup("")
+		}
 		return err
 	}
 
@@ -655,7 +652,9 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			Channel:   cluster.Conf.MasterConn,
 		}, server.DBVersion)
 		if err != nil {
-			server.SetInReseedBackup(false)
+			if server.HasReseedingState(backtype) {
+				server.SetInReseedBackup("")
+			}
 			return err
 		}
 	}
@@ -806,22 +805,19 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		}
 	}
 
-	if server.IsFlashingBack {
-		err := errors.New("Server is in flashback state")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
-		return err
-	}
-
-	if server.IsReseeding {
+	if server.HasAnyReseedingState() {
 		err := errors.New("Server is in reseeding state")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
 		return err
 	}
 
-	server.SetInFlashbackBackup(true)
+	server.SetInReseedBackup(task)
 
 	_, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
+		if server.HasReseedingState(task) {
+			server.SetInReseedBackup("")
+		}
 		return err
 	}
 
@@ -843,6 +839,9 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	}, server.DBVersion)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "flashback can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
+		if server.HasReseedingState(task) {
+			server.SetInReseedBackup("")
+		}
 		return err
 	}
 
@@ -1029,7 +1028,7 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string) error {
 	cluster := server.ClusterGroup
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalLoadThreads)
 
-	defer server.SetInReseedBackup(false)
+	defer server.SetInReseedBackup("")
 
 	master := cluster.GetMaster()
 	if master == nil {
@@ -1085,7 +1084,7 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string) error {
 func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	cluster := server.ClusterGroup
 	var err error
-	defer server.SetInReseedBackup(false)
+	defer server.SetInReseedBackup("")
 
 	master := cluster.GetMaster()
 	if master == nil {
@@ -1150,7 +1149,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 
 func (server *ServerMonitor) JobReseedBackupScript() {
 	cluster := server.ClusterGroup
-	defer server.SetInReseedBackup(false)
+	defer server.SetInReseedBackup("")
 
 	cmd := exec.Command(cluster.Conf.BackupLoadScript, misc.Unbracket(server.Host), misc.Unbracket(cluster.master.Host))
 
@@ -1254,7 +1253,7 @@ func (server *ServerMonitor) JobsCheckPending() error {
 	}
 
 	//Only cancel if not reseeding status
-	if server.IsReseeding {
+	if server.HasAnyReseedingState() {
 		return nil
 	}
 
@@ -1331,7 +1330,9 @@ func (server *ServerMonitor) JobsCheckErrors() error {
 		p = append(p, "'"+task.String+"'")
 		switch task.String {
 		case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
-			defer server.SetInReseedBackup(false)
+			if server.HasReseedingState(task.String) {
+				defer server.SetInReseedBackup("")
+			}
 		case "xtrabackup", "mariabackup":
 			cluster.SetState("WARN0115", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0115"]), ErrFrom: "JOB", ServerUrl: server.URL})
 		}
@@ -1361,7 +1362,7 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 		key := k.(string)
 		val := v.(*config.Task)
 		if slices.Contains(tasks, key) {
-			if val.State > 0 {
+			if server.HasReseedingState(key) && val.State > 0 {
 				canCancel = false
 			}
 		}
@@ -1374,7 +1375,7 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 
 	if server.IsDown() {
 		if canCancel || force {
-			server.SetInReseedBackup(false)
+			server.SetInReseedBackup("")
 			server.SetNeedRefreshJobs(true)
 		}
 		return nil
@@ -1397,7 +1398,7 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 
 	_, err = conn.Exec("LOCK TABLES replication_manager_schema.jobs WRITE;")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't lock table jobs for cancel reseed")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't lock table jobs for cancel task")
 		return err
 	}
 
@@ -1425,10 +1426,14 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 	aff, err := res.RowsAffected()
 	if err == nil {
 		if aff > 0 {
-			server.SetInReseedBackup(false)
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed cancelled successfully on %s. Please start slave manually after checking data integrity.", server.URL)
+			for _, task := range tasks {
+				if server.HasReseedingState(task) {
+					server.SetInReseedBackup("")
+				}
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Task cancelled successfully on %s. Please start slave manually after checking data integrity.", server.URL)
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel reseed on %s. No rows found or reseed already started", server.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel task on %s. No rows found or task already started", server.URL)
 		}
 	}
 
@@ -1505,7 +1510,9 @@ func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
 		server.LastBackupMeta.Physical.Completed = true
 		errStr = "Backup completed"
 	case "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariabackup":
-		defer server.SetInReseedBackup(false)
+		if server.HasReseedingState(task.task) {
+			defer server.SetInReseedBackup("")
+		}
 		if !server.PointInTimeMeta.IsInPITR {
 			if _, err := server.StartSlave(); err != nil {
 				errStr = err.Error()
@@ -2323,7 +2330,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s", err.Error())
 		return err
 	}
-	if server.IsReseeding {
+	if server.HasAnyReseedingState() {
 		err = errors.New("Cancel job copy binlog during reseed")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s", err.Error())
 		return err
@@ -2510,7 +2517,9 @@ func (cluster *Cluster) CreateTmpClientConfFile() (string, error) {
 }
 
 func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest *ServerMonitor) error {
-	defer dest.SetInReseedBackup(false)
+	if dest.HasReseedingState("direct") {
+		defer dest.SetInReseedBackup("")
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rejoining from direct mysqldump from %s", source.URL)
 	dest.StopSlave()
 	usegtid := dest.JobGetDumpGtidParameter()
@@ -2707,18 +2716,18 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 		return nil
 	}
 
-	if !server.IsReseeding {
+	if !server.HasAnyReseedingState() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server is not in reseeding state, cancel sending file to %s", server.URL)
 		return nil
 	}
 
 	switch task {
 	case "reseedmariabackup", "reseedxtrabackup":
-		if !server.IsReseeding {
+		if !server.HasAnyReseedingState() {
 			return fmt.Errorf("Server is not in reseeding state, cancel sending file to %s", server.URL)
 		}
 	case "flashbackmariabackup", "flashbackxtrabackup":
-		if !server.IsFlashingBack {
+		if !server.HasAnyReseedingState() {
 			return fmt.Errorf("Server is not in flashback state, cancel sending file to %s", server.URL)
 		}
 	}
@@ -2776,8 +2785,8 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 	master := cluster.GetMaster()
 
 	//Prevent multiple reseed
-	if server.IsFlashingBack {
-		return errors.New("Server is in flashback state")
+	if !server.HasReseedingState(task) {
+		return errors.New("Server is not in flashback physical state")
 	}
 
 	if master == nil {
@@ -2825,8 +2834,8 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 	master := cluster.GetMaster()
 
 	//Prevent multiple reseed
-	if server.IsReseeding {
-		return errors.New("Server is in reseeding state")
+	if !server.HasReseedingState(task) {
+		return errors.New("Server is not in physical flashback state")
 	}
 
 	if master == nil {
@@ -3084,7 +3093,7 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 
 	_, err = conn.Exec("LOCK TABLES replication_manager_schema.jobs WRITE;")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't lock table jobs for cancel reseed")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't lock table jobs for cancel task")
 		return err
 	}
 

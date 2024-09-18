@@ -461,11 +461,7 @@ func (server *ServerMonitor) SetInRefreshBinlogMeta(value bool) {
 	server.IsRefreshingBinlogMeta = value
 }
 
-func (server *ServerMonitor) SetInReseedBackup(value bool) {
-	server.IsReseeding = value
-}
-
-func (server *ServerMonitor) SetInFlashbackBackup(value bool) {
+func (server *ServerMonitor) SetInReseedBackup(value string) {
 	server.IsReseeding = value
 }
 
