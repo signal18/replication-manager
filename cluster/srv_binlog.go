@@ -469,7 +469,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	}
 
 	//Purge binlog on restore
-	if cluster.Conf.ForceBinlogPurgeOnRestore && server.IsReseeding {
+	if cluster.Conf.ForceBinlogPurgeOnRestore && server.HasAnyReseedingState() {
 
 		filename := fmt.Sprintf("%s.%06d", cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix-1)
 		//Only purge if master has more than 2 files

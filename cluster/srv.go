@@ -192,8 +192,8 @@ type ServerMonitor struct {
 	WorkLoad                    *config.WorkLoadsMap       `json:"workLoad"`
 	DelayStat                   *ServerDelayStat           `json:"delayStat"`
 	SlaveVariables              SlaveVariables             `json:"slaveVariables"`
-	IsReseeding                 bool                       `json:"isReseeding"`
-	IsFlashingBack              bool                       `json:"isFlashingBack"`
+	IsReseeding                 string                     `json:"isReseeding"`
+	IsFlashingBack              string                     `json:"isFlashingBack"`
 	ReplicationTags             string                     `json:"replicationTags"`
 	JobResults                  *config.TasksMap           `json:"jobResults"`
 	IsInSlowQueryCapture        bool
