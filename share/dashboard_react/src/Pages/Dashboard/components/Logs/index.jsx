@@ -3,7 +3,7 @@ import TagPill from '../../../../components/TagPill'
 import { Box, Code } from '@chakra-ui/react'
 import styles from './styles.module.scss'
 
-function Logs({ logs }) {
+function Logs({ logs, className }) {
   const [isScrollable, setIsScrollable] = useState(true)
 
   const handleClick = () => {
@@ -11,13 +11,22 @@ function Logs({ logs }) {
   }
 
   return (
-    <Box onClick={handleClick} w='100%' maxH='500px' overflow={isScrollable ? 'auto' : 'hidden'}>
+    <Box
+      className={`${styles.logContainer} ${className}`}
+      onClick={handleClick}
+      overflow={isScrollable ? 'auto' : 'hidden'}>
       <table className={styles.table}>
         {logs
           ?.filter((log) => log.timestamp)
           .map((log, index) => {
             const levelColor =
-              log.level === 'INFO' ? 'blue' : log.level === 'WARN' ? 'orange' : log.level === 'ERROR' ? 'red' : 'gray'
+              log.level === 'INFO' || log.level.toLowerCase() === 'note'
+                ? 'blue'
+                : log.level.toLowerCase().startsWith('warn')
+                  ? 'orange'
+                  : log.level === 'ERROR'
+                    ? 'red'
+                    : 'gray'
             return (
               <tr key={index} className={styles.tr}>
                 <td className={`${styles.td} ${styles.timestamp}`}>

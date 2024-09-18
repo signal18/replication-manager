@@ -9,7 +9,6 @@ import Logs from './components/Logs'
 import DBServers from './components/DBServers'
 import Proxies from './components/Proxies'
 import RunTests from './components/RunTests/index.jsx'
-import Gauge from '../../components/Gauge/index.jsx'
 
 function Dashboard({ selectedCluster, user }) {
   const {

@@ -61,7 +61,7 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
           toggleDigestMode={toggleDigestMode}
         />
       ) : currentTab === 'errors' ? (
-        <Errors clusterName={clusterName} dbId={dbId} />
+        <Errors selectedDBServer={selectedDBServer} />
       ) : currentTab === 'tables' ? (
         clusterData?.workLoad?.dbTableSize >= 0 ? (
           <Tables
