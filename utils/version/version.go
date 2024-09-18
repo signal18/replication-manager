@@ -22,6 +22,7 @@ type Version struct {
 	Minor       int      `json:"minor"`
 	Release     int      `json:"release"`
 	Suffix      string   `json:"suffix"`
+	Path        string   `json:"path"`
 	DistVersion *Version `json:"dist"`
 }
 
