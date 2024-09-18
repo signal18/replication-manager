@@ -289,6 +289,20 @@ func (cluster *Cluster) HasRequestDBRestart() bool {
 	return false
 }
 
+func (cluster *Cluster) HasRequestDBConfigChange() bool {
+	if cluster.Servers == nil {
+		return false
+	}
+	for _, s := range cluster.Servers {
+		if s != nil {
+			if s.HasConfigCookie() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 	ret := true
 	if cluster.Servers == nil {
