@@ -186,6 +186,8 @@ var ClusterError = map[string]string{
 	"WARN0125":  "Scheduler error on %s: Unable delete record for insert job (%s). Err: %s",
 	"WARN0126":  "Scheduler error on %s: Unable to insert job (%s). Err: %s",
 	"WARN0127":  "Scheduler error on %s: %s",
+	"WARN0128":  "Provision is waiting for node %s refresh. Err: %s",
+	"WARN0129":  "Provision is waiting for node %s running. Err: %s",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",

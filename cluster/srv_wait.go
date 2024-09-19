@@ -11,11 +11,13 @@ package cluster
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (server *ServerMonitor) WaitSyncToMaster(master *ServerMonitor) {
@@ -53,7 +55,7 @@ func (server *ServerMonitor) WaitDatabaseStart() error {
 			wg.Wait()
 			err = server.Refresh()
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state refresh on %s failed with error %s ", server.URL, err)
+				cluster.SetState("WARN0128", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0128"], server.URL, err.Error()), ErrFrom: "PROV", ServerUrl: server.URL})
 			}
 
 			if cluster.GetTopology() == topoMultiMasterWsrep {
@@ -67,7 +69,7 @@ func (server *ServerMonitor) WaitDatabaseStart() error {
 
 				exitloop = 9999999
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state running on %s failed with error %s ", server.URL, err)
+				cluster.SetState("WARN0129", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0129"], server.URL, err.Error()), ErrFrom: "PROV", ServerUrl: server.URL})
 			}
 		}
 	}
