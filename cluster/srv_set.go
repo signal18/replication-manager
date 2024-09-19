@@ -385,6 +385,10 @@ func (server *ServerMonitor) SetReprovCookie() error {
 	return server.createCookie("cookie_reprov")
 }
 
+func (server *ServerMonitor) SetConfigCookie() error {
+	return server.createCookie("cookie_config")
+}
+
 func (server *ServerMonitor) SetWaitBackupCookie() error {
 	return server.createCookie("cookie_waitbackup")
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/share"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/sirupsen/logrus"
 )
@@ -594,6 +595,11 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/etc/mysql/ssl/server-key.pem")
 	misc.CopyFile(ClusterDir+"/client-cert.pem", Datadir+"/init/etc/mysql/ssl/client-cert.pem")
 	misc.CopyFile(ClusterDir+"/client-key.pem", Datadir+"/init/etc/mysql/ssl/client-key.pem")
+
+	rootchk, err := crypto.ChecksumDirectory(Datadir+"/init", false)
+	if err == nil {
+		os.WriteFile(Datadir+"/init/root-checksum.txt", []byte(rootchk), 0644)
+	}
 
 	configurator.TarGz(Datadir+"/config.tar.gz", Datadir+"/init")
 

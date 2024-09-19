@@ -103,6 +103,10 @@ func (proxy *Proxy) SetReprovCookie() error {
 	return proxy.createCookie("cookie_reprov")
 }
 
+func (proxy *Proxy) SetConfigCookie() error {
+	return proxy.createCookie("cookie_config")
+}
+
 func (p *Proxy) SetPrevState(state string) {
 	p.PrevState = state
 }

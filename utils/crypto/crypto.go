@@ -7,6 +7,7 @@
 package crypto
 
 import (
+	"bufio"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/md5"
@@ -14,9 +15,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 )
 
 type Password struct {
@@ -113,4 +118,219 @@ func GetSHA256Hash(text string) string {
 	hasher := sha256.New()
 	hasher.Write([]byte(text))
 	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+// GenerateChecksum computes the SHA256 checksum of a file and returns it as a hex string.
+// It skips lines that start with '#' (considered comments) and computes the checksum of the remaining content.
+func GenerateChecksum(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("could not open file %s: %w", filePath, err)
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Skip lines that start with '#' (considered comments)
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Write the line content to the hash object
+		if _, err := hash.Write([]byte(line + "\n")); err != nil {
+			return "", fmt.Errorf("could not compute checksum for file %s: %w", filePath, err)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("could not read file %s: %w", filePath, err)
+	}
+
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func ChecksumDirectory(dir string, multilevel bool) (string, error) {
+	checksumsFilePath := filepath.Join(dir, "checksums.txt")
+	checksumsFile, err := os.Create(checksumsFilePath)
+	if err != nil {
+		return "", fmt.Errorf("could not create checksums file %s: %w", checksumsFilePath, err)
+	}
+	defer checksumsFile.Close()
+
+	hash := sha256.New()
+
+	// Use a slice to collect all entries and ensure consistent sorting
+	var entries []string
+
+	if multilevel {
+		err = filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+			// Skip if there's an error or if it's the checksums.txt file itself
+			if err != nil {
+				return err
+			}
+
+			// Skip checksums.txt
+			if entry.Name() == "checksums.txt" {
+				return nil
+			}
+
+			relativePath, _ := filepath.Rel(dir, path)
+
+			// Only process files and directories in the current level
+			if strings.Count(relativePath, string(os.PathSeparator)) > 0 {
+				// Skip subdirectories and files in subdirectories
+				return nil
+			}
+
+			entryChecksum := ""
+
+			if entry.IsDir() {
+				// Generate checksum for subdirectory
+				entryChecksum, err = ChecksumDirectory(path, multilevel)
+				if err != nil {
+					return err
+				}
+			} else {
+				// Generate checksum for file
+				entryChecksum, err = GenerateChecksum(path)
+				if err != nil {
+					return err
+				}
+			}
+
+			// Write the checksum and the relative path to the checksums.txt file
+			fmt.Fprintf(checksumsFile, "%s  %s\n", entryChecksum, relativePath)
+
+			// Add the entry's checksum to the hash for the directory
+			hash.Write([]byte(entryChecksum))
+
+			return nil
+		})
+	} else {
+		err = filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return fmt.Errorf("error walking directory %s: %w", path, err)
+			}
+
+			// Skip the checksums.txt file itself
+			if entry.Name() == "checksums.txt" {
+				return nil
+			}
+
+			// Add relative path to the list of entries
+			relativePath, err := filepath.Rel(dir, path)
+			if err != nil {
+				return fmt.Errorf("error getting relative path for %s: %w", path, err)
+			}
+
+			entries = append(entries, relativePath)
+			return nil
+		})
+
+		if err != nil {
+			return "", fmt.Errorf("error traversing directory %s: %w", dir, err)
+		}
+
+		// Sort the entries
+		sort.Strings(entries)
+
+		// Process each entry
+		for _, relativePath := range entries {
+			fullPath := filepath.Join(dir, relativePath)
+			entryInfo, err := os.Lstat(fullPath)
+			if err != nil {
+				return "", fmt.Errorf("error getting file info for %s: %w", fullPath, err)
+			}
+
+			var entryChecksum string
+
+			if entryInfo.IsDir() {
+				// Calculate checksum for the directory
+				entryChecksum, err = CalculateDirChecksum(fullPath)
+				if err != nil {
+					return "", fmt.Errorf("error calculating checksum for directory %s: %w", fullPath, err)
+				}
+			} else {
+				// Calculate checksum for the file
+				entryChecksum, err = GenerateChecksum(fullPath)
+				if err != nil {
+					return "", fmt.Errorf("error calculating checksum for file %s: %w", fullPath, err)
+				}
+			}
+
+			// Write the checksum and path to the checksums.txt file
+			if _, err := fmt.Fprintf(checksumsFile, "%s  %s\n", entryChecksum, relativePath); err != nil {
+				return "", fmt.Errorf("error writing checksum to file for %s: %w", relativePath, err)
+			}
+
+			hash.Write([]byte(entryChecksum))
+		}
+
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	// Return the checksum of the entire directory
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func CalculateDirChecksum(dir string) (string, error) {
+	hash := sha256.New()
+
+	var entries []string
+
+	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("error walking directory %s: %w", path, err)
+		}
+
+		if path == dir {
+			return nil
+		}
+
+		relativePath, err := filepath.Rel(dir, path)
+		if err != nil {
+			return fmt.Errorf("error getting relative path for %s: %w", path, err)
+		}
+
+		entries = append(entries, relativePath)
+		return nil
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("error traversing directory %s: %w", dir, err)
+	}
+
+	sort.Strings(entries)
+
+	for _, relativePath := range entries {
+		fullPath := filepath.Join(dir, relativePath)
+		entryInfo, err := os.Lstat(fullPath)
+		if err != nil {
+			return "", fmt.Errorf("error getting file info for %s: %w", fullPath, err)
+		}
+
+		var entryChecksum string
+
+		if entryInfo.IsDir() {
+			entryChecksum, err = CalculateDirChecksum(fullPath)
+			if err != nil {
+				return "", fmt.Errorf("error calculating checksum for subdirectory %s: %w", fullPath, err)
+			}
+		} else {
+			entryChecksum, err = GenerateChecksum(fullPath)
+			if err != nil {
+				return "", fmt.Errorf("error calculating checksum for file %s: %w", fullPath, err)
+			}
+		}
+
+		hash.Write([]byte(entryChecksum))
+	}
+
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }

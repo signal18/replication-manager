@@ -148,6 +148,7 @@ type DatabaseProxy interface {
 	HasRestartCookie() bool
 	HasWaitStartCookie() bool
 	HasWaitStopCookie() bool
+	HasConfigCookie() bool
 	HasDNS() bool
 
 	DelProvisionCookie() error

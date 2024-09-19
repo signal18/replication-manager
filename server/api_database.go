@@ -48,7 +48,9 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-stop", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedStop)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-change", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedConfigChange)),
+	))
 	router.Handle("/api/clusters/{clusterName}/need-rolling-reprov", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRollingReprov)),
 	))
@@ -1589,6 +1591,43 @@ func (repman *ReplicationManager) handlerMuxServerNeedStop(w http.ResponseWriter
 			}
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("500 -No stop needed!"))
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No valid server!"))
+		}
+
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("500 -No cluster!"))
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxServerNeedConfigChange(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil {
+			if node.HasConfigCookie() {
+				w.Write([]byte("200 -Need config change!"))
+				node.DelConfigCookie()
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No config change needed!"))
+
+		} else if proxy != nil {
+			if proxy.HasConfigCookie() {
+				w.Write([]byte("200 -Need config change!"))
+				proxy.DelWaitStartCookie()
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No config change needed!"))
+			//http.Error(w, "No start needed", 501)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("500 -No valid server!"))
