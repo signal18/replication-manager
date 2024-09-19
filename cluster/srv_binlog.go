@@ -34,7 +34,6 @@ import (
 )
 
 func (server *ServerMonitor) RefreshBinaryLogs() error {
-	var logs string
 	var err error
 	cluster := server.ClusterGroup
 	var writeMeta bool
@@ -57,9 +56,9 @@ func (server *ServerMonitor) RefreshBinaryLogs() error {
 		oldmeta, err = server.ReadLocalBinaryLogMetadata()
 	}
 
-	count, oldest, trimmed, logs, err := dbhelper.GetBinaryLogs(server.Conn, server.DBVersion, server.BinaryLogFiles)
+	count, oldest, trimmed, _, err := dbhelper.GetBinaryLogs(server.Conn, server.DBVersion, server.BinaryLogFiles)
 	if err != nil {
-		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get binary log files %s %s", server.URL, err)
+		cluster.SetState("ERR00014", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00014"], server.URL, err), ErrFrom: "BINLOG", ServerUrl: server.URL})
 	}
 
 	if len(trimmed) > 0 {
