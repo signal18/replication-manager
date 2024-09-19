@@ -1,7 +1,6 @@
 import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
-import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
+import { handleError, showErrorBanner, showLoaderBanner, showSuccessBanner } from '../utility/common'
 import { settingsService } from '../services/settingsService'
-import { clusterService } from '../services/clusterService'
 
 export const switchSetting = createAsyncThunk('settings/switchSetting', async ({ clusterName, setting }, thunkAPI) => {
   try {
@@ -33,6 +32,7 @@ export const changeTopology = createAsyncThunk(
 
 export const setSetting = createAsyncThunk('settings/setSetting', async ({ clusterName, setting, value }, thunkAPI) => {
   try {
+    // showLoaderBanner(`${setting} `, thunkAPI)
     const { data, status } = await settingsService.setSetting(clusterName, setting, value)
     showSuccessBanner(`${setting} changed successfully!`, status, thunkAPI)
     return { data, status }

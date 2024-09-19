@@ -18,6 +18,11 @@ const toastSlice = createSlice({
       state.title = action.payload.title || ''
       state.description = action.payload.description || ''
     },
+    showLoadingToast: (state, action) => {
+      state.status = 'info'
+      state.title = action.payload.title || ''
+      state.description = action.payload.description || ''
+    },
     resetToast: (state) => {
       state.status = null
       state.title = ''
@@ -26,6 +31,6 @@ const toastSlice = createSlice({
   }
 })
 
-export const { showSuccessToast, showErrorToast, resetToast } = toastSlice.actions
+export const { showSuccessToast, showErrorToast, showLoadingToast, resetToast } = toastSlice.actions
 
 export default toastSlice.reducer

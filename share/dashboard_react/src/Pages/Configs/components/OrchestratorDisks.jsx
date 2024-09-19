@@ -1,4 +1,4 @@
-import { VStack } from '@chakra-ui/react'
+import { Text, VStack } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import Dropdown from '../../../components/Dropdown'
 import TableType2 from '../../../components/TableType2'
@@ -53,65 +53,100 @@ function OrchestratorDisks({ selectedCluster, user }) {
             />
           )
         },
-        {
-          key: 'Database Disk FS',
-          value: (
-            <Dropdown
-              className={parentStyles.dropdown}
-              options={serviceFS}
-              selectedValue={selectedCluster?.config?.provDbDiskFs}
-              confirmTitle={`Confirm change DB disk FS to `}
-              onChange={(value) => {
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'prov-db-disk-fs',
-                    value: value
-                  })
-                )
-              }}
-            />
-          )
-        },
-        {
-          key: 'Database Disk Pool',
-          value: (
-            <Dropdown
-              className={parentStyles.dropdown}
-              options={servicePool}
-              selectedValue={selectedCluster?.config?.provDbDiskPool}
-              confirmTitle={`Confirm change DB disk pool to `}
-              onChange={(value) => {
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'prov-db-disk-pool',
-                    value: value
-                  })
-                )
-              }}
-            />
-          )
-        },
-        {
-          key: 'Name',
-          value: (
-            <TextForm
-              value={selectedCluster?.config?.provDbDiskDevice}
-              confirmTitle={`Confirm change onfirm change DB disk device name to `}
-              className={parentStyles.textbox}
-              onSave={(value) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'prov-db-disk-device',
-                    value: value
-                  })
+        ...(selectedCluster?.config?.provDbDiskType === 'volume'
+          ? [
+              {
+                key: 'Volume Data',
+                value: (
+                  <TextForm
+                    value={selectedCluster?.config?.provDbVolumeData}
+                    confirmTitle={`Confirm db volume data to `}
+                    className={parentStyles.textbox}
+                    onSave={(value) =>
+                      dispatch(
+                        setSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'prov-db-volume-data',
+                          value: value
+                        })
+                      )
+                    }
+                  />
                 )
               }
-            />
-          )
-        }
+            ]
+          : []),
+        ...(selectedCluster?.config?.provDbDiskType !== 'volume'
+          ? [
+              {
+                key: 'Database Disk FS',
+                value: (
+                  <Dropdown
+                    className={parentStyles.dropdown}
+                    options={serviceFS}
+                    selectedValue={selectedCluster?.config?.provDbDiskFs}
+                    confirmTitle={`Confirm change DB disk FS to `}
+                    onChange={(value) => {
+                      dispatch(
+                        setSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'prov-db-disk-fs',
+                          value: value
+                        })
+                      )
+                    }}
+                  />
+                )
+              }
+            ]
+          : []),
+        ...(selectedCluster?.config?.provDbDiskType !== 'volume'
+          ? [
+              {
+                key: 'Database Disk Pool',
+                value: (
+                  <Dropdown
+                    className={parentStyles.dropdown}
+                    options={servicePool}
+                    selectedValue={selectedCluster?.config?.provDbDiskPool}
+                    confirmTitle={`Confirm change DB disk pool to `}
+                    onChange={(value) => {
+                      dispatch(
+                        setSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'prov-db-disk-pool',
+                          value: value
+                        })
+                      )
+                    }}
+                  />
+                )
+              }
+            ]
+          : []),
+        ...(selectedCluster?.config?.provDbDiskType !== 'volume'
+          ? [
+              {
+                key: 'Name',
+                value: (
+                  <TextForm
+                    value={selectedCluster?.config?.provDbDiskDevice}
+                    confirmTitle={`Confirm change DB disk device name to `}
+                    className={parentStyles.textbox}
+                    onSave={(value) =>
+                      dispatch(
+                        setSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'prov-db-disk-device',
+                          value: value
+                        })
+                      )
+                    }
+                  />
+                )
+              }
+            ]
+          : [])
       ]
     },
     {
@@ -137,65 +172,100 @@ function OrchestratorDisks({ selectedCluster, user }) {
             />
           )
         },
-        {
-          key: 'Proxy Disk FS',
-          value: (
-            <Dropdown
-              className={parentStyles.dropdown}
-              options={serviceFS}
-              selectedValue={selectedCluster?.config?.provProxyDiskFs}
-              confirmTitle={`Confirm change proxy disk FS to `}
-              onChange={(value) => {
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'prov-proxy-disk-fs',
-                    value: value
-                  })
-                )
-              }}
-            />
-          )
-        },
-        {
-          key: 'Proxy Disk Pool',
-          value: (
-            <Dropdown
-              className={parentStyles.dropdown}
-              options={servicePool}
-              selectedValue={selectedCluster?.config?.provProxyDiskPool}
-              confirmTitle={`Confirm change proxy disk pool to `}
-              onChange={(value) => {
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'prov-proxy-disk-pool',
-                    value: value
-                  })
-                )
-              }}
-            />
-          )
-        },
-        {
-          key: 'Name',
-          value: (
-            <TextForm
-              value={selectedCluster?.config?.provProxyDiskDevice}
-              confirmTitle={`Confirm change onfirm change proxy disk device name to `}
-              className={parentStyles.textbox}
-              onSave={(value) =>
-                dispatch(
-                  setSetting({
-                    clusterName: selectedCluster?.name,
-                    setting: 'prov-proxy-disk-device',
-                    value: value
-                  })
+        ...(selectedCluster?.config?.provProxyDiskType === 'volume'
+          ? [
+              {
+                key: 'Volume Data',
+                value: (
+                  <TextForm
+                    value={selectedCluster?.config?.provProxyVolumeData}
+                    confirmTitle={`Confirm db volume data to `}
+                    className={parentStyles.textbox}
+                    onSave={(value) =>
+                      dispatch(
+                        setSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'prov-proxy-volume-data',
+                          value: value
+                        })
+                      )
+                    }
+                  />
                 )
               }
-            />
-          )
-        }
+            ]
+          : []),
+        ...(selectedCluster?.config?.provProxyDiskType !== 'volume'
+          ? [
+              {
+                key: 'Proxy Disk FS',
+                value: (
+                  <Dropdown
+                    className={parentStyles.dropdown}
+                    options={serviceFS}
+                    selectedValue={selectedCluster?.config?.provProxyDiskFs}
+                    confirmTitle={`Confirm change proxy disk FS to `}
+                    onChange={(value) => {
+                      dispatch(
+                        setSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'prov-proxy-disk-fs',
+                          value: value
+                        })
+                      )
+                    }}
+                  />
+                )
+              }
+            ]
+          : []),
+        ...(selectedCluster?.config?.provProxyDiskType !== 'volume'
+          ? [
+              {
+                key: 'Proxy Disk Pool',
+                value: (
+                  <Dropdown
+                    className={parentStyles.dropdown}
+                    options={servicePool}
+                    selectedValue={selectedCluster?.config?.provProxyDiskPool}
+                    confirmTitle={`Confirm change proxy disk pool to `}
+                    onChange={(value) => {
+                      dispatch(
+                        setSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'prov-proxy-disk-pool',
+                          value: value
+                        })
+                      )
+                    }}
+                  />
+                )
+              }
+            ]
+          : []),
+        ...(selectedCluster?.config?.provProxyDiskType !== 'volume'
+          ? [
+              {
+                key: 'Name',
+                value: (
+                  <TextForm
+                    value={selectedCluster?.config?.provProxyDiskDevice}
+                    confirmTitle={`Confirm change proxy disk device name to `}
+                    className={parentStyles.textbox}
+                    onSave={(value) =>
+                      dispatch(
+                        setSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'prov-proxy-disk-device',
+                          value: value
+                        })
+                      )
+                    }
+                  />
+                )
+              }
+            ]
+          : [])
       ]
     }
   ]
