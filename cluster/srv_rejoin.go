@@ -361,7 +361,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 
 	tool := "direct"
 
-	server.SetInReseedBackup("direct")
+	server.SetInReseedBackup(tool)
 
 	if _, err := os.Stat(cluster.GetMysqlDumpPath()); os.IsNotExist(err) {
 		if server.HasReseedingState(tool) {
