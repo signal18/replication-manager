@@ -144,3 +144,14 @@ func Bool2Int(b bool) int {
 	}
 	return 0
 }
+
+func RemoveEmptyString(slice []string) []string {
+	// Create a new slice to hold the non-empty strings
+	var result []string
+	for _, str := range slice {
+		if str != "" {
+			result = append(result, str)
+		}
+	}
+	return result
+}
