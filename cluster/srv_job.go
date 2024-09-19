@@ -396,7 +396,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 	server.DelWaitPhysicalBackupCookie()
 
 	if server.HasAnyReseedingState() {
-		err := errors.New("Server is in reseeding state")
+		err := fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
 		return err
 	}
@@ -499,7 +499,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 	server.DelWaitPhysicalBackupCookie()
 
 	if server.HasAnyReseedingState() {
-		return errors.New("Server is in reseeding state")
+		return fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 	}
 
 	task := "flashback" + cluster.Conf.BackupPhysicalType
@@ -602,7 +602,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 	}
 
 	if server.HasAnyReseedingState() {
-		return fmt.Errorf("Server is in flashback state")
+		return fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 	}
 
 	server.SetInReseedBackup(backtype)
@@ -806,7 +806,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	}
 
 	if server.HasAnyReseedingState() {
-		err := errors.New("Server is in reseeding state")
+		err := fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
 		return err
 	}
@@ -1254,7 +1254,7 @@ func (server *ServerMonitor) JobsCheckPending() error {
 
 	//Only cancel if not reseeding status
 	if server.HasAnyReseedingState() {
-		return nil
+		return fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 	}
 
 	Conn, err := server.GetNewDBConn()
@@ -2331,7 +2331,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		return err
 	}
 	if server.HasAnyReseedingState() {
-		err = errors.New("Cancel job copy binlog during reseed")
+		err = fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s", err.Error())
 		return err
 	}

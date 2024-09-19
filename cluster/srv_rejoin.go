@@ -354,7 +354,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 	var err3 error
 
 	if server.HasAnyReseedingState() {
-		return errors.New("Server is in reseeding state")
+		return fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 	}
 
 	tool := "direct"
