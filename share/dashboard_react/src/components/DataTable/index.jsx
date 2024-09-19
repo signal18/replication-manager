@@ -95,7 +95,49 @@ export function DataTable({
           })}
         </Thead>
         <Tbody>
-          {table.getRowModel().rows.map((row, index) => {
+          {table.getRowModel().rows.length === 0 ? (
+            <Tr className={styles.nodataRow}>
+              <Td className={styles.tableColumn} colSpan={table.getHeaderGroups()[0].headers.length}>
+                No data found
+              </Td>
+            </Tr>
+          ) : (
+            table.getRowModel().rows.map((row, index) => {
+              let rowColor = ''
+              switch (row.original.state) {
+                case 'SlaveErr':
+                case 'SlaveLate':
+                case 'Suspect':
+                  rowColor = 'orange'
+                  break
+                case 'Failed':
+                  rowColor = 'red'
+                  break
+              }
+
+              return (
+                <Tr
+                  key={row.id}
+                  className={`${index % 2 !== 0 && styles.tableColumnEven} ${rowColor === 'red' ? styles.redBlinking : rowColor === 'orange' ? styles.orangeBlinking : ''}`}>
+                  {row.getVisibleCells().map((cell, index) => {
+                    const meta = cell.column.columnDef.meta
+                    return (
+                      <Td
+                        textAlign={cell.column.columnDef.textAlign || cellValueAlign}
+                        maxWidth={cell.column.columnDef.maxWidth}
+                        width={cell.column.columnDef.width}
+                        className={`${styles.tableColumn} ${index === fixedColumnIndex && styles.fixedColumn}`}
+                        key={cell.id}
+                        isNumeric={meta?.isNumeric}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </Td>
+                    )
+                  })}
+                </Tr>
+              )
+            })
+          )}
+          {/* {table.getRowModel().rows.map((row, index) => {
             let rowColor = ''
             switch (row.original.state) {
               case 'SlaveErr':
@@ -128,7 +170,7 @@ export function DataTable({
                 })}
               </Tr>
             )
-          })}
+          })} */}
         </Tbody>
       </Table>
       {enablePagination && (

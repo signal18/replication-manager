@@ -9,8 +9,11 @@ import { Flex, VStack } from '@chakra-ui/react'
 import RMButton from '../../components/RMButton'
 import { getTablePct } from '../../utility/common'
 import Gauge from '../../components/Gauge'
+import AccordionComponent from '../../components/AccordionComponent'
+import Logs from '../Dashboard/components/Logs'
+import NotFound from '../../components/NotFound'
 
-function Shards({ selectedCluster, user }) {
+function Shards({ selectedCluster }) {
   const dispatch = useDispatch()
 
   const {
@@ -101,6 +104,16 @@ function Shards({ selectedCluster, user }) {
         Checksum All Tables
       </RMButton>
       <DataTable data={data} columns={columns} className={styles.table} />
+      <AccordionComponent
+        className={styles.accordion}
+        heading={'Cluster Logs'}
+        body={<Logs logs={selectedCluster?.log?.buffer} />}
+      />
+      <AccordionComponent
+        className={styles.accordion}
+        heading={'Job Logs'}
+        body={<Logs logs={selectedCluster?.logTask?.buffer} />}
+      />
     </VStack>
   )
 }

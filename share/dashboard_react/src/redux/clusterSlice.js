@@ -104,6 +104,15 @@ export const getShardSchema = createAsyncThunk('cluster/getShardSchema', async (
   }
 })
 
+export const getQueryRules = createAsyncThunk('cluster/getQueryRules', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.getQueryRules(clusterName)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
 export const switchOverCluster = createAsyncThunk('cluster/switchOverCluster', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.switchOverCluster(clusterName)
@@ -876,6 +885,7 @@ const initialState = {
   backupSnapshots: null,
   topProcess: null,
   shardSchema: null,
+  queryRules: null,
   refreshInterval: 0,
   loadingStates: {
     switchOver: false,
@@ -953,7 +963,8 @@ export const clusterSlice = createSlice({
         getDatabaseService.fulfilled,
         getTopProcess.fulfilled,
         getBackupSnapshot.fulfilled,
-        getShardSchema.fulfilled
+        getShardSchema.fulfilled,
+        getQueryRules.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('getClusterData')) {
@@ -974,6 +985,8 @@ export const clusterSlice = createSlice({
           state.backupSnapshots = action.payload.data
         } else if (action.type.includes('getShardSchema')) {
           state.shardSchema = action.payload.data
+        } else if (action.type.includes('getQueryRules')) {
+          state.queryRules = action.payload.data
         } else if (action.type.includes('getDatabaseService')) {
           const { serviceName } = action.meta.arg
           if (serviceName === 'processlist') {

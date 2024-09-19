@@ -14,40 +14,41 @@ import {
   getClusterProxies,
   getClusters,
   getClusterServers,
-  getDatabaseService,
   getMonitoredData,
+  getQueryRules,
   getShardSchema,
   getTopProcess,
   setCluster,
   setRefreshInterval
 } from '../../redux/clusterSlice'
-import Cluster from '../Cluster'
 import { AppSettings } from '../../AppSettings'
 import styles from './styles.module.scss'
 import { useParams } from 'react-router-dom'
 import { HiArrowNarrowLeft } from 'react-icons/hi'
 import CustomIcon from '../../components/Icons/CustomIcon'
+import Dashboard from '../Dashboard'
+import Settings from '../Settings'
+import Configs from '../Configs'
+import Graphs from '../Graphs'
+import Agents from '../Agents'
+import Backups from '../Backups'
+import Top from '../Top'
+import Shards from '../Shards'
+import QueryRules from '../QueryRules'
 
 function Home() {
   const dispatch = useDispatch()
   const selectedTabRef = useRef(0)
   const selectedClusterNameRef = useRef('')
   const [selectedTab, setSelectedTab] = useState(0)
-  const [dashboardTabs, setDashboardTabs] = useState([
-    'Dashboard',
-    'Settings',
-    'Configs',
-    'Graphs',
-    'Agents',
-    'Backups',
-    'Top',
-    'Shards'
-  ])
+  const [user, setUser] = useState(null)
+  const [selectedCluster, setSelectedCluster] = useState(null)
+  const dashboardTabsRef = useRef([])
 
   const params = useParams()
 
   const {
-    cluster: { refreshInterval }
+    cluster: { refreshInterval, clusterData }
   } = useSelector((state) => state)
 
   useEffect(() => {
@@ -55,6 +56,39 @@ function Home() {
       setDashboardTab({ name: params.cluster })
     }
   }, [])
+
+  useEffect(() => {
+    if (clusterData) {
+      setSelectedCluster(clusterData)
+      if (clusterData.apiUsers) {
+        const loggedUser = localStorage.getItem('username')
+        if (loggedUser && clusterData?.apiUsers[loggedUser]) {
+          const apiUser = clusterData.apiUsers[loggedUser]
+          setUser(apiUser)
+          const authorizedTabs = ['Dashboard', 'Settings', 'Configs']
+          if (clusterData.config.graphiteMetrics && apiUser.grants['cluster-show-graphs']) {
+            authorizedTabs.push('Graphs')
+          }
+          if (apiUser.grants['cluster-show-agents']) {
+            authorizedTabs.push('Agents')
+          }
+          if (apiUser.grants['cluster-show-backups']) {
+            authorizedTabs.push('Backups')
+          }
+          if (apiUser.grants['db-show-process']) {
+            authorizedTabs.push('Tops')
+          }
+          if (clusterData.config.proxysql && apiUser.grants['cluster-show-agents']) {
+            authorizedTabs.push('Query Rules')
+          }
+          if (apiUser.grants['db-show-schema']) {
+            authorizedTabs.push('Shards')
+          }
+          dashboardTabsRef.current = authorizedTabs
+        }
+      }
+    }
+  }, [clusterData])
 
   useEffect(() => {
     let intervalId = 0
@@ -98,16 +132,19 @@ function Home() {
         dispatch(getClusterServers({ clusterName: selectedClusterNameRef.current }))
         dispatch(getClusterProxies({ clusterName: selectedClusterNameRef.current }))
       }
-      if (selectedTabRef.current === 3) {
+      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Configs') {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
       }
-      if (selectedTabRef.current === 6) {
+      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Backups') {
         dispatch(getBackupSnapshot({ clusterName: selectedClusterNameRef.current }))
       }
-      if (selectedTabRef.current === 7) {
+      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Tops') {
         dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
       }
-      if (selectedTabRef.current === 8) {
+      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Query Rules') {
+        dispatch(getQueryRules({ clusterName: selectedClusterNameRef.current }))
+      }
+      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Shards') {
         dispatch(getShardSchema({ clusterName: selectedClusterNameRef.current }))
       }
     }
@@ -133,17 +170,20 @@ function Home() {
         <TabItems
           tabIndex={selectedTab}
           onChange={handleTabChange}
-          options={selectedTab > 0 ? [renderClusterListTabWithArrow(), ...dashboardTabs] : ['Clusters']}
+          options={selectedTab > 0 ? [renderClusterListTabWithArrow(), ...dashboardTabsRef.current] : ['Clusters']}
           tabContents={[
             <ClusterList onClick={setDashboardTab} />,
-            <Cluster tab='dashboard' />,
-            <Cluster tab='settings' />,
-            <Cluster tab='configs' />,
-            <Cluster tab='graphs' />,
-            <Cluster tab='agents' />,
-            <Cluster tab='backups' />,
-            <Cluster tab='top' />,
-            <Cluster tab='shards' />
+            <Dashboard user={user} selectedCluster={selectedCluster} />,
+            <Settings user={user} selectedCluster={selectedCluster} />,
+            <Configs user={user} selectedCluster={selectedCluster} />,
+            ...(selectedCluster?.config?.graphiteMetrics && user?.grants['cluster-show-graphs'] ? [<Graphs />] : []),
+            ...(user?.grants['cluster-show-agents'] ? [<Agents user={user} selectedCluster={selectedCluster} />] : []),
+            ...(user?.grants['cluster-show-backups'] ? [<Backups selectedCluster={selectedCluster} />] : []),
+            ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} />] : []),
+            ...(selectedCluster?.config?.proxysql && user?.grants['cluster-show-agents']
+              ? [<QueryRules selectedCluster={selectedCluster} />]
+              : []),
+            ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} />] : [])
           ]}
         />
       </Box>

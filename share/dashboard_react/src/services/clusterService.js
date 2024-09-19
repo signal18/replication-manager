@@ -12,6 +12,7 @@ export const clusterService = {
   getTopProcess,
   getBackupSnapshot,
   getShardSchema,
+  getQueryRules,
 
   //cluster apis
   checksumAllTables,
@@ -127,6 +128,9 @@ function getBackupSnapshot(clusterName) {
 
 function getShardSchema(clusterName) {
   return getRequest(`clusters/${clusterName}/schema`)
+}
+function getQueryRules(clusterName) {
+  return getRequest(`clusters/${clusterName}/queryrules`)
 }
 
 function checksumAllTables(clusterName) {
