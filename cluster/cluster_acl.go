@@ -136,9 +136,6 @@ func (cluster *Cluster) LoadAPIUsers() error {
 }
 
 func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
-	/*
-		missing "/api/clusters/{clusterName}/servers/{serverName}/service-opensvc"
-	*/
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterProcess] {
 		if strings.Contains(URL, "/actions/run-jobs") {
 			return true
@@ -146,6 +143,9 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantProvDBProvision] {
 		if strings.Contains(URL, "/actions/provision") {
+			return true
+		}
+		if strings.Contains(URL, "/service-opensvc") {
 			return true
 		}
 	}
