@@ -596,7 +596,7 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 	misc.CopyFile(ClusterDir+"/client-cert.pem", Datadir+"/init/etc/mysql/ssl/client-cert.pem")
 	misc.CopyFile(ClusterDir+"/client-key.pem", Datadir+"/init/etc/mysql/ssl/client-key.pem")
 
-	rootchk, err := crypto.ChecksumDirectory(Datadir + "/init")
+	rootchk, err := crypto.ChecksumDirectory(Datadir+"/init", false)
 	if err == nil {
 		os.WriteFile(Datadir+"/init/root-checksum.txt", []byte(rootchk), 0644)
 	}
