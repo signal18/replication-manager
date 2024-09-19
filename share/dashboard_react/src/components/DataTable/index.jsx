@@ -116,7 +116,7 @@ export function DataTable({
                   const meta = cell.column.columnDef.meta
                   return (
                     <Td
-                      textAlign={cellValueAlign}
+                      textAlign={cell.column.columnDef.textAlign || cellValueAlign}
                       maxWidth={cell.column.columnDef.maxWidth}
                       width={cell.column.columnDef.width}
                       className={`${styles.tableColumn} ${index === fixedColumnIndex && styles.fixedColumn}`}

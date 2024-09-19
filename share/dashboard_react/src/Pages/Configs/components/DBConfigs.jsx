@@ -357,6 +357,7 @@ function DBConfigs({ selectedCluster, user }) {
                         }
                         return (
                           <AddRemovePill
+                            key={tag.name}
                             text={tag.name}
                             onAdd={(title) => {
                               setConfirmTitle(title)
@@ -377,20 +378,23 @@ function DBConfigs({ selectedCluster, user }) {
           <VStack className={styles.addedTags}>
             <h4 className={styles.sectionTitle}>{'Using Tags'}</h4>
             <HStack className={`${styles.tags} `}>
-              {usingDBServerTags.map((tag) => (
-                <AddRemovePill
-                  text={tag?.name}
-                  onRemove={(title) => {
-                    setConfirmTitle(title)
-                    setIsConfirmModalOpen(true)
-                    setConfirmHandler(
-                      () => () => dispatch(dropDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
-                    )
-                  }}
-                  used={true}
-                  category={tag?.category}
-                />
-              ))}
+              {usingDBServerTags
+                .filter((tag) => tag?.name)
+                .map((tag) => (
+                  <AddRemovePill
+                    key={tag?.name}
+                    text={tag?.name}
+                    onRemove={(title) => {
+                      setConfirmTitle(title)
+                      setIsConfirmModalOpen(true)
+                      setConfirmHandler(
+                        () => () => dispatch(dropDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
+                      )
+                    }}
+                    used={true}
+                    category={tag?.category}
+                  />
+                ))}
             </HStack>
           </VStack>
         </HStack>

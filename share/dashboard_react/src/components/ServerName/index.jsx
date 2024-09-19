@@ -5,17 +5,15 @@ import styles from './styles.module.scss'
 
 function ServerName({ name, isBlocking, as = 'span', className }) {
   return (
-    <RMButton className={`${styles.serverName} ${className}`}>
-      <Box
-        as={as}
-        className={isBlocking && styles.text}
-        maxWidth='100%'
-        whiteSpace='break-spaces'
-        textAlign='start'
-        overflowWrap='break-word'>
-        {name}
-      </Box>
-    </RMButton>
+    <Box
+      as={as}
+      className={`${styles.serverName} ${isBlocking && styles.text}  ${className} `}
+      maxWidth='100%'
+      whiteSpace='break-spaces'
+      textAlign='start'
+      overflowWrap='break-word'>
+      {name}
+    </Box>
   )
 }
 

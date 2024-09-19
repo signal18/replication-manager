@@ -593,7 +593,7 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 			if vars["backupMethod"] == "logicalmaster" {
 				err := node.RejoinDirectDump()
 				if err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "mysqldump reseed restore failed %s", err)
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "direct reseed restore failed %s", err)
 				}
 			}
 			if vars["backupMethod"] == "physicalbackup" {

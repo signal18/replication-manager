@@ -1,4 +1,4 @@
-button.serverName {
+.serverName {
   background-color: transparent !important;
   display: flex;
   justify-content: flex-start;
@@ -6,8 +6,9 @@ button.serverName {
   width: 100%;
   font-size: 15px !important;
   font-weight: 500;
+  word-break: break-all;
 
-  .text {
+  &.text {
     color: var(--white-color) !important;
   }
   &:hover {

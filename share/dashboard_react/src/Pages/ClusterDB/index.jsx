@@ -17,27 +17,14 @@ function ClusterDB(props) {
   const selectedTabRef = useRef(1)
   const digestModeRef = useRef('pfs')
   const [selectedTab, setSelectedTab] = useState(1)
+  const [user, setUser] = useState(null)
+  const [selectedDBServer, setSelectedDBServer] = useState(null)
   const [clusterName, setClusterName] = useState(params.cluster)
   const [dbId, setDbId] = useState(params.dbname)
-  const [tabs, setTabs] = useState([
-    <>
-      <CustomIcon icon={HiArrowNarrowLeft} /> Dashboard
-    </>,
-    'Process List',
-    'Slow Queries',
-    'Digest Queries',
-    'Errors',
-    'Tables',
-    'Status',
-    'Status InnoDB',
-    'Variables',
-    'Service OpenSVC',
-    'Metadata Locks',
-    'Response Time'
-  ])
+  const [tabs, setTabs] = useState([])
 
   const {
-    cluster: { refreshInterval }
+    cluster: { refreshInterval, clusterServers, clusterData }
   } = useSelector((state) => state)
   useEffect(() => {
     let intervalId = 0
@@ -60,6 +47,48 @@ function ClusterDB(props) {
     }
   }, [refreshInterval])
 
+  useEffect(() => {
+    if (clusterServers?.length > 0 && dbId) {
+      const server = clusterServers.find((x) => x.id === dbId)
+      setSelectedDBServer(server)
+    }
+    if (clusterData?.apiUsers) {
+      const loggedUser = localStorage.getItem('username')
+      if (loggedUser && clusterData?.apiUsers[loggedUser]) {
+        const apiUser = clusterData.apiUsers[loggedUser]
+        const authorizedTabs = [
+          <>
+            <CustomIcon icon={HiArrowNarrowLeft} /> Dashboard
+          </>
+        ]
+        if (apiUser.grants['db-show-process']) {
+          authorizedTabs.push('Process List')
+        }
+        if (apiUser.grants['db-show-logs']) {
+          authorizedTabs.push('Slow Queries')
+          authorizedTabs.push('Digest Queries')
+          authorizedTabs.push('Errors')
+        }
+        if (apiUser.grants['db-show-schema']) {
+          authorizedTabs.push('Tables')
+        }
+        if (apiUser.grants['db-show-status']) {
+          authorizedTabs.push('Status')
+        }
+        if (apiUser.grants['db-show-variables']) {
+          authorizedTabs.push('Variables')
+        }
+        authorizedTabs.push('Service OpenSVC')
+        if (apiUser.grants['db-show-logs']) {
+          authorizedTabs.push('Metadata Locks')
+          authorizedTabs.push('Response Time')
+        }
+        setTabs(authorizedTabs)
+        setUser(apiUser)
+      }
+    }
+  }, [dbId, clusterServers])
+
   const callServices = () => {
     dispatch(getClusterServers({ clusterName }))
     dispatch(getClusterData({ clusterName }))
@@ -78,6 +107,22 @@ function ClusterDB(props) {
     }
     if (selectedTabRef.current === 5) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'tables', dbId }))
+    }
+    if (selectedTabRef.current === 6) {
+      dispatch(getDatabaseService({ clusterName, serviceName: 'status-delta', dbId }))
+      dispatch(getDatabaseService({ clusterName, serviceName: 'status-innodb', dbId }))
+    }
+    if (selectedTabRef.current === 7) {
+      dispatch(getDatabaseService({ clusterName, serviceName: 'variables', dbId }))
+    }
+    if (selectedTabRef.current === 8) {
+      dispatch(getDatabaseService({ clusterName, serviceName: 'service-opensvc', dbId }))
+    }
+    if (selectedTabRef.current === 9) {
+      dispatch(getDatabaseService({ clusterName, serviceName: 'meta-data-locks', dbId }))
+    }
+    if (selectedTabRef.current === 10) {
+      dispatch(getDatabaseService({ clusterName, serviceName: 'query-response-time', dbId }))
     }
   }
 
@@ -103,18 +148,104 @@ function ClusterDB(props) {
           className={styles.tabs}
           tabContents={[
             null,
-            <ClusterDBTabContent tab='processlist' dbId={dbId} clusterName={clusterName} />,
-            <ClusterDBTabContent tab='slowqueries' dbId={dbId} clusterName={clusterName} />,
+            ...(user?.grants['db-show-process']
+              ? [
+                  <ClusterDBTabContent
+                    tab='processlist'
+                    dbId={dbId}
+                    clusterName={clusterName}
+                    user={user}
+                    selectedDBServer={selectedDBServer}
+                  />
+                ]
+              : []),
+            ...(user?.grants['db-show-logs']
+              ? [
+                  <ClusterDBTabContent
+                    tab='slowqueries'
+                    dbId={dbId}
+                    clusterName={clusterName}
+                    user={user}
+                    selectedDBServer={selectedDBServer}
+                  />,
+                  <ClusterDBTabContent
+                    tab='digestqueries'
+                    dbId={dbId}
+                    clusterName={clusterName}
+                    digestMode={digestModeRef.current}
+                    toggleDigestMode={toggleDigestMode}
+                    user={user}
+                    selectedDBServer={selectedDBServer}
+                  />,
+                  <ClusterDBTabContent
+                    tab='errors'
+                    dbId={dbId}
+                    clusterName={clusterName}
+                    user={user}
+                    selectedDBServer={selectedDBServer}
+                  />
+                ]
+              : []),
+            ...(user?.grants['db-show-schema']
+              ? [
+                  <ClusterDBTabContent
+                    tab='tables'
+                    dbId={dbId}
+                    clusterName={clusterName}
+                    user={user}
+                    selectedDBServer={selectedDBServer}
+                  />
+                ]
+              : []),
+            ...(user?.grants['db-show-status']
+              ? [
+                  <ClusterDBTabContent
+                    tab='status'
+                    dbId={dbId}
+                    clusterName={clusterName}
+                    user={user}
+                    selectedDBServer={selectedDBServer}
+                  />
+                ]
+              : []),
+            ...(user?.grants['db-show-variables']
+              ? [
+                  <ClusterDBTabContent
+                    tab='variables'
+                    dbId={dbId}
+                    clusterName={clusterName}
+                    user={user}
+                    selectedDBServer={selectedDBServer}
+                  />
+                ]
+              : []),
+
             <ClusterDBTabContent
-              tab='digestqueries'
+              tab='opensvc'
               dbId={dbId}
               clusterName={clusterName}
-              digestMode={digestModeRef.current}
-              toggleDigestMode={toggleDigestMode}
+              user={user}
+              selectedDBServer={selectedDBServer}
             />,
-            <ClusterDBTabContent tab='errors' dbId={dbId} clusterName={clusterName} />,
-            <ClusterDBTabContent tab='tables' dbId={dbId} clusterName={clusterName} />,
-            <ClusterDBTabContent tab='status' dbId={dbId} clusterName={clusterName} />
+
+            ...(user?.grants['db-show-logs']
+              ? [
+                  <ClusterDBTabContent
+                    tab='metadata'
+                    dbId={dbId}
+                    clusterName={clusterName}
+                    user={user}
+                    selectedDBServer={selectedDBServer}
+                  />,
+                  <ClusterDBTabContent
+                    tab='resptime'
+                    dbId={dbId}
+                    clusterName={clusterName}
+                    user={user}
+                    selectedDBServer={selectedDBServer}
+                  />
+                ]
+              : [])
           ]}
         />
       </Box>

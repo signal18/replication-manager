@@ -396,7 +396,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 	server.DelWaitPhysicalBackupCookie()
 
 	if server.HasAnyReseedingState() {
-		err := errors.New("Server is in reseeding state")
+		err := fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
 		return err
 	}
@@ -499,7 +499,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 	server.DelWaitPhysicalBackupCookie()
 
 	if server.HasAnyReseedingState() {
-		return errors.New("Server is in reseeding state")
+		return fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 	}
 
 	task := "flashback" + cluster.Conf.BackupPhysicalType
@@ -602,7 +602,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 	}
 
 	if server.HasAnyReseedingState() {
-		return fmt.Errorf("Server is in flashback state")
+		return fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 	}
 
 	server.SetInReseedBackup(backtype)
@@ -806,7 +806,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	}
 
 	if server.HasAnyReseedingState() {
-		err := errors.New("Server is in reseeding state")
+		err := fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
 		return err
 	}
@@ -1120,7 +1120,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 
 	cliParams := make([]string, 0)
 	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`, server.GetSSLClientParam("client"))
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), &buf)
 
 	stderr, _ := clientCmd.StdoutPipe()
@@ -1254,7 +1254,7 @@ func (server *ServerMonitor) JobsCheckPending() error {
 
 	//Only cancel if not reseeding status
 	if server.HasAnyReseedingState() {
-		return nil
+		return fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 	}
 
 	Conn, err := server.GetNewDBConn()
@@ -1667,7 +1667,7 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 
 	dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
 	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs", server.GetSSLClientParam("client-dump"))
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), misc.RemoveEmptyString(dumpargs)...)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 	// Get the stdout pipe from the command
 	stdout, err := dumpCmd.StdoutPipe()
@@ -2331,7 +2331,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		return err
 	}
 	if server.HasAnyReseedingState() {
-		err = errors.New("Cancel job copy binlog during reseed")
+		err = fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "%s", err.Error())
 		return err
 	}
@@ -2359,7 +2359,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 
 	var params []string = make([]string, 0)
 	params = append(params, "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory(), server.GetSSLClientParam("client-binlog"), binlogfile)
-	cmdrun := exec.Command(cluster.GetMysqlBinlogPath(), params...)
+	cmdrun := exec.Command(cluster.GetMysqlBinlogPath(), misc.RemoveEmptyString(params)...)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "%s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 
 	cmdErrPipe, _ := cmdrun.StderrPipe()
@@ -2517,9 +2517,8 @@ func (cluster *Cluster) CreateTmpClientConfFile() (string, error) {
 }
 
 func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest *ServerMonitor) error {
-	if dest.HasReseedingState("direct") {
-		defer dest.SetInReseedBackup("")
-	}
+	defer dest.SetInReseedBackup("")
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rejoining from direct mysqldump from %s", source.URL)
 	dest.StopSlave()
 	usegtid := dest.JobGetDumpGtidParameter()
@@ -2549,13 +2548,13 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+source.ClusterGroup.GetDbUser(), source.GetSSLClientParam("client-dump"))
 
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), misc.RemoveEmptyString(dumpargs)...)
 	stderrIn, _ := dumpCmd.StderrPipe()
 
 	cliParams := make([]string, 0)
 	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, dest.GetSSLClientParam("client"))
 
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 	stderrOut, _ := clientCmd.StderrPipe()
 
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
@@ -2591,7 +2590,16 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 	wg.Wait()
 
-	dumpCmd.Wait()
+	// Wait for the commands to complete
+	if err := dumpCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for dump client on %s: %s", source.URL, err.Error())
+		return err
+	}
+
+	if err := clientCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for db client on %s: %s", dest.URL, err.Error())
+		return err
+	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", dest.URL)
 	dest.StartSlave()

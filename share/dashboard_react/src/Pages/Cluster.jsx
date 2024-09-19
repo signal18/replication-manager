@@ -4,6 +4,7 @@ import Dashboard from './Dashboard'
 import Agents from './Agents'
 import Backups from './Backups'
 import Top from './Top'
+import Shards from './Shards'
 const Configs = lazy(() => import('./Configs'))
 const Settings = lazy(() => import('./Settings'))
 const Graphs = lazy(() => import('./Graphs'))
@@ -43,6 +44,8 @@ function Cluster({ tab }) {
     <Graphs />
   ) : currentTab === 'top' ? (
     <Top selectedCluster={clusterData} />
+  ) : currentTab === 'shards' ? (
+    <Shards />
   ) : null
 }
 
