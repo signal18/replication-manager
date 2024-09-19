@@ -167,7 +167,9 @@ func (server *ServerMonitor) RefreshBinlogMetaMySQL(meta *dbhelper.BinaryLogMeta
 		startpos := fmt.Sprintf("%d", ev.Pos)
 		endpos := fmt.Sprintf("%d", ev.End_log_pos)
 
-		mysqlbinlogcmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-position="+startpos, "--stop-position="+endpos, server.GetSSLClientParam("client-binlog"), meta.Filename)
+		binlogArgs := make([]string, 0)
+		binlogArgs = append(binlogArgs, "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-position="+startpos, "--stop-position="+endpos, server.GetSSLClientParam("client-binlog"), meta.Filename)
+		mysqlbinlogcmd := exec.Command(cluster.GetMysqlBinlogPath(), misc.RemoveEmptyString(binlogArgs)...)
 
 		result, err := mysqlbinlogcmd.Output()
 		if err != nil {
@@ -743,7 +745,9 @@ func (server *ServerMonitor) FindLogPositionForTimestamp(binlogFile string, time
 	}
 
 	timeString := timestamp.Format("2006-01-02 15:04:05")
-	cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", timeString, "--stop-datetime", timeString, "--base64-output=DECODE-ROWS", "--verbose", server.GetSSLClientParam("client-binlog"), binlogFile)
+	binlogArgs := make([]string, 0)
+	binlogArgs = append(binlogArgs, "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", timeString, "--stop-datetime", timeString, "--base64-output=DECODE-ROWS", "--verbose", server.GetSSLClientParam("client-binlog"), binlogFile)
+	cmd := exec.Command(cluster.GetMysqlBinlogPath(), misc.RemoveEmptyString(binlogArgs)...)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to execute mysqlbinlog: %w", err)
@@ -781,7 +785,9 @@ func (server *ServerMonitor) FindNearestLogPosition(binlogFile string, timestamp
 		endTime := startTime.Add(1 * time.Minute)
 		endTimeString := endTime.Format("2006-01-02 15:04:05")
 
-		cmd := exec.Command(cluster.GetMysqlBinlogPath(), "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", startTimeString, "--stop-datetime", endTimeString, "--base64-output=DECODE-ROWS", "--verbose", server.GetSSLClientParam("client-binlog"), binlogFile)
+		binlogArgs := make([]string, 0)
+		binlogArgs = append(binlogArgs, "--read-from-remote-server", "--server-id="+binsrvid, "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--start-datetime", startTimeString, "--stop-datetime", endTimeString, "--base64-output=DECODE-ROWS", "--verbose", server.GetSSLClientParam("client-binlog"), binlogFile)
+		cmd := exec.Command(cluster.GetMysqlBinlogPath(), misc.RemoveEmptyString(binlogArgs)...)
 		output, err := cmd.Output()
 		if err != nil {
 			return "", 0, fmt.Errorf("failed to execute mysqlbinlog: %w", err)
@@ -956,13 +962,13 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 	// Binlog filename parameter
 	params = append(params, server.GetSSLClientParam("client-binlog"), start.Filename)
 
-	binlogCmd := exec.Command(cluster.GetMysqlBinlogPath(), params...)
+	binlogCmd := exec.Command(cluster.GetMysqlBinlogPath(), misc.RemoveEmptyString(params)...)
 	iodumpreader, _ := binlogCmd.StdoutPipe()
 	stderrIn, _ := binlogCmd.StderrPipe()
 
 	cliParams := make([]string, 0)
 	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`, server.GetSSLClientParam("client"))
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 	cliErrPipe, _ := clientCmd.StderrPipe()
 	cliOutPipe, _ := clientCmd.StdoutPipe()
 

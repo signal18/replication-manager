@@ -1120,7 +1120,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 
 	cliParams := make([]string, 0)
 	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`, server.GetSSLClientParam("client"))
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), &buf)
 
 	stderr, _ := clientCmd.StdoutPipe()
@@ -1667,7 +1667,7 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 
 	dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
 	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs", server.GetSSLClientParam("client-dump"))
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), misc.RemoveEmptyString(dumpargs)...)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 	// Get the stdout pipe from the command
 	stdout, err := dumpCmd.StdoutPipe()
@@ -2359,7 +2359,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 
 	var params []string = make([]string, 0)
 	params = append(params, "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory(), server.GetSSLClientParam("client-binlog"), binlogfile)
-	cmdrun := exec.Command(cluster.GetMysqlBinlogPath(), params...)
+	cmdrun := exec.Command(cluster.GetMysqlBinlogPath(), misc.RemoveEmptyString(params)...)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "%s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 
 	cmdErrPipe, _ := cmdrun.StderrPipe()
@@ -2549,13 +2549,13 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+source.ClusterGroup.GetDbUser(), source.GetSSLClientParam("client-dump"))
 
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), misc.RemoveEmptyString(dumpargs)...)
 	stderrIn, _ := dumpCmd.StderrPipe()
 
 	cliParams := make([]string, 0)
 	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, dest.GetSSLClientParam("client"))
 
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), cliParams...)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 	stderrOut, _ := clientCmd.StderrPipe()
 
 	//disableBinlogCmd := exec.Command("echo", "\"set sql_bin_log=0;\"")
