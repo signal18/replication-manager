@@ -6,6 +6,7 @@ import TabItems from '../../components/TabItems'
 import ClusterList from '../ClusterList'
 import { useDispatch, useSelector } from 'react-redux'
 import {
+  getBackupSnapshot,
   getClusterAlerts,
   getClusterCertificates,
   getClusterData,
@@ -15,6 +16,7 @@ import {
   getClusterServers,
   getDatabaseService,
   getMonitoredData,
+  getShardSchema,
   getTopProcess,
   setCluster,
   setRefreshInterval
@@ -99,8 +101,14 @@ function Home() {
       if (selectedTabRef.current === 3) {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
       }
+      if (selectedTabRef.current === 6) {
+        dispatch(getBackupSnapshot({ clusterName: selectedClusterNameRef.current }))
+      }
       if (selectedTabRef.current === 7) {
         dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
+      }
+      if (selectedTabRef.current === 8) {
+        dispatch(getShardSchema({ clusterName: selectedClusterNameRef.current }))
       }
     }
   }

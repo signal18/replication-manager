@@ -45,7 +45,7 @@ function Cluster({ tab }) {
   ) : currentTab === 'top' ? (
     <Top selectedCluster={clusterData} />
   ) : currentTab === 'shards' ? (
-    <Shards />
+    <Shards selectedCluster={clusterData} user={user} />
   ) : null
 }
 

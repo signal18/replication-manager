@@ -61,7 +61,6 @@ function Tables({ clusterName, dbId, selectedDBServer, tableSize }) {
   }
 
   const handleChecksum = (schema, table) => {
-    console.log('schema', schema)
     dispatch(checksumTable({ clusterName, schema, table }))
   }
 
