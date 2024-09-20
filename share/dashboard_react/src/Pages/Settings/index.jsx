@@ -7,8 +7,6 @@ import MonitoringSettings from './MonitoringSettings'
 import AccordionComponent from '../../components/AccordionComponent'
 import LogsSettings from './LogsSettings'
 import RejoinSettings from './RejoinSettings'
-import BackupSettings from './BackupSettings'
-import SchedulerSettings from './SchedulerSettings'
 import ProxySettings from './ProxySettings'
 import GraphSettings from './GraphSettings'
 import CloudSettings from './CloudSettings'
@@ -27,8 +25,7 @@ function Settings({ selectedCluster, user }) {
   const { isOpen: isRepFailOverOpen, onToggle: onRepFailOverToggle } = useDisclosure()
   const { isOpen: isRepConfigOpen, onToggle: onRepConfigToggle } = useDisclosure()
   const { isOpen: isRejoinOpen, onToggle: onRejoinToggle } = useDisclosure()
-  const { isOpen: isBackupsOpen, onToggle: onBackupsToggle } = useDisclosure()
-  const { isOpen: isSchedulersOpen, onToggle: onSchedulersToggle } = useDisclosure()
+  const { isOpen: isAlertsOpen, onToggle: onAlertsToggle } = useDisclosure()
   const { isOpen: isProxiesOpen, onToggle: onProxiesToggle } = useDisclosure()
   const { isOpen: isGraphsOpen, onToggle: onGraphsToggle } = useDisclosure()
   const { isOpen: isCloud18Open, onToggle: onCloud18Toggle } = useDisclosure()
@@ -93,22 +90,6 @@ function Settings({ selectedCluster, user }) {
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<RejoinSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />
-      <AccordionComponent
-        heading={'Backups'}
-        onToggle={onBackupsToggle}
-        isOpen={isBackupsOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<BackupSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
-      />
-      <AccordionComponent
-        heading={'Schedulers'}
-        onToggle={onSchedulersToggle}
-        isOpen={isSchedulersOpen}
-        headerClassName={styles.accordionHeader}
-        panelClassName={styles.accordionPanel}
-        body={<SchedulerSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Proxies'}

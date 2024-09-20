@@ -47,7 +47,6 @@ function Dashboard({ selectedCluster, user }) {
 
       <AccordionComponent heading={'Cluster Logs'} body={<Logs logs={selectedCluster?.log?.buffer} />} />
       <AccordionComponent heading={'Job Logs'} body={<Logs logs={selectedCluster?.logTask?.buffer} />} />
-      <AccordionComponent heading={'Tests'} body={<RunTests selectedCluster={selectedCluster} />} />
     </Flex>
   )
 }

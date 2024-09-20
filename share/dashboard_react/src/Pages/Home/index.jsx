@@ -14,6 +14,7 @@ import {
   getClusterProxies,
   getClusters,
   getClusterServers,
+  getJobs,
   getMonitoredData,
   getQueryRules,
   getShardSchema,
@@ -73,7 +74,7 @@ function Home() {
             authorizedTabs.push('Agents')
           }
           if (apiUser.grants['cluster-show-backups']) {
-            authorizedTabs.push('Backups')
+            authorizedTabs.push('Maintenance')
           }
           if (apiUser.grants['db-show-process']) {
             authorizedTabs.push('Tops')
@@ -135,8 +136,9 @@ function Home() {
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Configs') {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
       }
-      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Backups') {
+      if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Maintenance') {
         dispatch(getBackupSnapshot({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getJobs({ clusterName: selectedClusterNameRef.current }))
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Tops') {
         dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
@@ -178,7 +180,9 @@ function Home() {
             <Configs user={user} selectedCluster={selectedCluster} />,
             ...(selectedCluster?.config?.graphiteMetrics && user?.grants['cluster-show-graphs'] ? [<Graphs />] : []),
             ...(user?.grants['cluster-show-agents'] ? [<Agents user={user} selectedCluster={selectedCluster} />] : []),
-            ...(user?.grants['cluster-show-backups'] ? [<Backups selectedCluster={selectedCluster} />] : []),
+            ...(user?.grants['cluster-show-backups']
+              ? [<Backups user={user} selectedCluster={selectedCluster} />]
+              : []),
             ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} />] : []),
             ...(selectedCluster?.config?.proxysql && user?.grants['cluster-show-agents']
               ? [<QueryRules selectedCluster={selectedCluster} />]

@@ -97,6 +97,7 @@ function Scheduler({
       let recType = ''
       //evaluate month part
       const monthPart = currentValue.split(' ')[4]
+
       const fromMonth = monthPart.split('-')[0]
       const toMonth = monthPart.split('-')[1]
       setSelectedFromMonth(fromMonth)
@@ -127,7 +128,7 @@ function Scheduler({
           return wd
         })
         setWeekdays(updatedWeekdays)
-        desc += `<strong>weekly</strong> on <strong>${weekdayNames.replace(/, $/, '')}</strong> starting from <strong>${getOrdinalSuffix(fromDay)} ${getMonthName(fromMonth)}</strong> till <strong>${getOrdinalSuffix(toDay)} ${getMonthName(toMonth)}</strong> <br/>`
+        desc += `<strong>weekly</strong> on <strong>${weekdayNames.replace(/, $/, '')}</strong> ${fromMonth > 0 && fromDay > 0 && toMonth > 0 && toDay > 0 ? `starting from <strong>${getOrdinalSuffix(fromDay)} ${getMonthName(fromMonth)}</strong> till <strong>${getOrdinalSuffix(toDay)} ${getMonthName(toMonth)}</strong>` : ''} <br/>`
       } else if (toMonth > 0 && !toDay) {
         recType = 'monthly'
         desc += `<strong>monthly</strong> on the date <strong>${fromDay}</strong> starting from the month <strong>${getMonthName(fromMonth)}</strong> till <strong>${getMonthName(toMonth)}</strong> <br/>`
