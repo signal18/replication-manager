@@ -5,16 +5,35 @@ import AccordionComponent from '../../components/AccordionComponent'
 import { DataTable } from '../../components/DataTable'
 import styles from './styles.module.scss'
 import { Box, HStack, VStack } from '@chakra-ui/react'
+import TableType3 from '../../components/TableType3'
+import { useDispatch, useSelector } from 'react-redux'
+import { getBackupSnapshot } from '../../redux/clusterSlice'
 
 function Backups({ selectedCluster }) {
+  const dispatch = useDispatch()
   const [data, setData] = useState([])
+  const [snapshotData, setSnapshotData] = useState([])
   const columnHelper = createColumnHelper()
+
+  const {
+    cluster: { backupSnapshots }
+  } = useSelector((state) => state)
+
+  useEffect(() => {
+    dispatch(getBackupSnapshot({ clusterName: selectedCluster?.name }))
+  }, [])
 
   useEffect(() => {
     if (selectedCluster?.backupList) {
       setData(convertObjectToArray(selectedCluster.backupList))
     }
   }, [selectedCluster?.backupList])
+  useEffect(() => {
+    if (backupSnapshots?.length > 0) {
+      setSnapshotData(backupSnapshots)
+    }
+  }, [backupSnapshots])
+  console.log('snapshotData::', snapshotData)
 
   const columns = useMemo(
     () => [
@@ -124,13 +143,61 @@ function Backups({ selectedCluster }) {
     ],
     []
   )
+
+  const snapshotDataStats = [
+    {
+      key: 'Total Size',
+      value: selectedCluster?.backupStat?.total_size
+    },
+    {
+      key: 'Total File Count',
+      value: selectedCluster?.backupStat?.total_file_count
+    },
+    {
+      key: 'Total Blob Count',
+      value: selectedCluster?.backupStat?.total_blob_count
+    }
+  ]
+
+  const snapshotColumns = useMemo(() => [
+    columnHelper.accessor((row) => row.short_id, {
+      header: 'ID',
+      id: 'id'
+    }),
+    columnHelper.accessor((row) => row.time, {
+      header: 'Time'
+    }),
+    columnHelper.accessor((row) => row.paths?.join(','), {
+      header: 'Path'
+    }),
+    columnHelper.accessor((row) => row.hostname, {
+      header: 'Hostname'
+    }),
+    columnHelper.accessor((row) => row.tags?.join(','), {
+      header: 'Tags'
+    })
+  ])
   return (
-    <AccordionComponent
-      heading={'Current Backups'}
-      allowToggle={false}
-      panelClassName={styles.accordionPanel}
-      body={<DataTable data={data} columns={columns} className={styles.table} />}
-    />
+    <VStack className={styles.backupContainer}>
+      <AccordionComponent
+        heading={'Current Backups'}
+        allowToggle={false}
+        panelClassName={styles.accordionPanel}
+        body={<DataTable data={data} columns={columns} className={styles.table} />}
+      />
+      <AccordionComponent
+        heading={'Backup Snapshots'}
+        allowToggle={false}
+        className={styles.accordion}
+        panelClassName={styles.accordionPanel}
+        body={
+          <VStack className={styles.snapshotContainer}>
+            <TableType3 dataArray={snapshotDataStats} className={styles.statsTable} />
+            <DataTable data={snapshotData} columns={snapshotColumns} className={styles.table} />
+          </VStack>
+        }
+      />
+    </VStack>
   )
 }
 

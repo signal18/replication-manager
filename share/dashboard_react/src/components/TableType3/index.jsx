@@ -2,9 +2,9 @@ import React from 'react'
 import { Box, Table, Tbody, Td, Th, Thead, Tr } from '@chakra-ui/react'
 import styles from './styles.module.scss'
 
-function TableType3({ dataArray, isBlocking, color }) {
+function TableType3({ dataArray, isBlocking, color, className }) {
   return (
-    <Box className={`${styles.tableContainer} ${isBlocking ? styles[color] : ''}`}>
+    <Box className={`${styles.tableContainer} ${isBlocking ? styles[color] : ''} ${className}`}>
       <Table variant='simple' className={styles.table}>
         <Thead>
           <Tr>

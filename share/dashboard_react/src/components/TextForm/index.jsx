@@ -79,6 +79,7 @@ function TextForm({ onSave, id, label, value, loading, maxLength = 120, classNam
           title={`${confirmTitle} ${currentValue}`}
           onConfirmClick={() => {
             onSave(currentValue)
+            setIsEditable(false)
             setIsConfirmModalOpen(false)
           }}
         />

@@ -86,6 +86,33 @@ export const getTopProcess = createAsyncThunk('cluster/getTopProcess', async ({ 
   }
 })
 
+export const getBackupSnapshot = createAsyncThunk('cluster/getBackupSnapshot', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.getBackupSnapshot(clusterName)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
+export const getShardSchema = createAsyncThunk('cluster/getShardSchema', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.getShardSchema(clusterName)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
+export const getQueryRules = createAsyncThunk('cluster/getQueryRules', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.getQueryRules(clusterName)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
 export const switchOverCluster = createAsyncThunk('cluster/switchOverCluster', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.switchOverCluster(clusterName)
@@ -386,6 +413,17 @@ export const configDynamic = createAsyncThunk('cluster/configDynamic', async ({ 
     return { data, status }
   } catch (error) {
     showErrorBanner('Databse apply dynamic config failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const checksumAllTables = createAsyncThunk('cluster/checksumAllTables', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.checksumAllTables(clusterName)
+    showSuccessBanner('Checksum all tables successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Checksum all tables failed!', error.message, thunkAPI)
     handleError(error, thunkAPI)
   }
 })
@@ -844,7 +882,10 @@ const initialState = {
   clusterServers: null,
   clusterProxies: null,
   clusterCertificates: null,
+  backupSnapshots: null,
   topProcess: null,
+  shardSchema: null,
+  queryRules: null,
   refreshInterval: 0,
   loadingStates: {
     switchOver: false,
@@ -920,7 +961,10 @@ export const clusterSlice = createSlice({
         getClusterProxies.fulfilled,
         getClusterCertificates.fulfilled,
         getDatabaseService.fulfilled,
-        getTopProcess.fulfilled
+        getTopProcess.fulfilled,
+        getBackupSnapshot.fulfilled,
+        getShardSchema.fulfilled,
+        getQueryRules.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('getClusterData')) {
@@ -937,6 +981,12 @@ export const clusterSlice = createSlice({
           state.clusterCertificates = action.payload.data
         } else if (action.type.includes('getTopProcess')) {
           state.topProcess = action.payload.data
+        } else if (action.type.includes('getBackupSnapshot')) {
+          state.backupSnapshots = action.payload.data
+        } else if (action.type.includes('getShardSchema')) {
+          state.shardSchema = action.payload.data
+        } else if (action.type.includes('getQueryRules')) {
+          state.queryRules = action.payload.data
         } else if (action.type.includes('getDatabaseService')) {
           const { serviceName } = action.meta.arg
           if (serviceName === 'processlist') {

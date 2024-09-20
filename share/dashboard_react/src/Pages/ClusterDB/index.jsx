@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../PageContainer'
 import styles from './styles.module.scss'
 import TabItems from '../../components/TabItems'
@@ -21,7 +21,7 @@ function ClusterDB(props) {
   const [selectedDBServer, setSelectedDBServer] = useState(null)
   const [clusterName, setClusterName] = useState(params.cluster)
   const [dbId, setDbId] = useState(params.dbname)
-  const [tabs, setTabs] = useState([])
+  const tabs = useRef([])
 
   const {
     cluster: { refreshInterval, clusterServers, clusterData }
@@ -83,7 +83,7 @@ function ClusterDB(props) {
           authorizedTabs.push('Metadata Locks')
           authorizedTabs.push('Response Time')
         }
-        setTabs(authorizedTabs)
+        tabs.current = authorizedTabs
         setUser(apiUser)
       }
     }
@@ -92,36 +92,39 @@ function ClusterDB(props) {
   const callServices = () => {
     dispatch(getClusterServers({ clusterName }))
     dispatch(getClusterData({ clusterName }))
-    if (selectedTabRef.current === 1) {
+    if (tabs.current[selectedTabRef.current] === 'Process List') {
       dispatch(getDatabaseService({ clusterName, serviceName: 'processlist', dbId }))
     }
-    if (selectedTabRef.current === 2) {
+    if (tabs.current[selectedTabRef.current] === 'Slow Queries') {
       dispatch(getDatabaseService({ clusterName, serviceName: 'slow-queries', dbId }))
     }
-    if (selectedTabRef.current === 3) {
+    if (tabs.current[selectedTabRef.current] === 'Digest Queries') {
       if (digestModeRef.current === 'pfs') {
         dispatch(getDatabaseService({ clusterName, serviceName: 'digest-statements-pfs', dbId }))
       } else {
         dispatch(getDatabaseService({ clusterName, serviceName: 'digest-statements-slow', dbId }))
       }
     }
-    if (selectedTabRef.current === 5) {
+    if (tabs.current[selectedTabRef.current] === 'Tables') {
       dispatch(getDatabaseService({ clusterName, serviceName: 'tables', dbId }))
     }
-    if (selectedTabRef.current === 6) {
+    if (tabs.current[selectedTabRef.current] === 'Status') {
       dispatch(getDatabaseService({ clusterName, serviceName: 'status-delta', dbId }))
       dispatch(getDatabaseService({ clusterName, serviceName: 'status-innodb', dbId }))
     }
-    if (selectedTabRef.current === 7) {
+    if (tabs.current[selectedTabRef.current] === 'Variables') {
       dispatch(getDatabaseService({ clusterName, serviceName: 'variables', dbId }))
     }
-    if (selectedTabRef.current === 8) {
+    if (tabs.current[selectedTabRef.current] === 'Service OpenSVC') {
+      // if (selectedTabRef.current === 8) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'service-opensvc', dbId }))
     }
-    if (selectedTabRef.current === 9) {
+    if (tabs.current[selectedTabRef.current] === 'Metadata Locks') {
+      // if (selectedTabRef.current === 9) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'meta-data-locks', dbId }))
     }
-    if (selectedTabRef.current === 10) {
+    if (tabs.current[selectedTabRef.current] === 'Response Time') {
+      //if (selectedTabRef.current === 10) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'query-response-time', dbId }))
     }
   }
@@ -144,7 +147,7 @@ function ClusterDB(props) {
         <TabItems
           tabIndex={selectedTab}
           onChange={handleTabChange}
-          options={tabs}
+          options={tabs.current}
           className={styles.tabs}
           tabContents={[
             null,

@@ -1,0 +1,21 @@
+.shardsContainer {
+  margin-top: rem(8);
+  align-items: flex-start;
+
+  .accordion {
+    width: 100%;
+  }
+  .btnChecksumAll {
+    margin-right: auto;
+  }
+  .tablesSchemaCol {
+    gap: rem(16);
+  }
+
+  .gauge {
+    margin: auto;
+    div[class*='textOverlay'] {
+      bottom: rem(12);
+    }
+  }
+}

@@ -10,7 +10,12 @@ export const clusterService = {
   getClusterProxies,
   getClusterCertificates,
   getTopProcess,
+  getBackupSnapshot,
+  getShardSchema,
+  getQueryRules,
+
   //cluster apis
+  checksumAllTables,
   switchOverCluster,
   failOverCluster,
   resetFailOverCounter,
@@ -36,6 +41,7 @@ export const clusterService = {
   configReload,
   configDiscoverDB,
   configDynamic,
+
   //db server apis
   setMaintenanceMode,
   promoteToLeader,
@@ -114,6 +120,21 @@ function getClusterCertificates(clusterName) {
 
 function getTopProcess(clusterName) {
   return getRequest(`clusters/${clusterName}/top`)
+}
+
+function getBackupSnapshot(clusterName) {
+  return getRequest(`clusters/${clusterName}/backups`)
+}
+
+function getShardSchema(clusterName) {
+  return getRequest(`clusters/${clusterName}/schema`)
+}
+function getQueryRules(clusterName) {
+  return getRequest(`clusters/${clusterName}/queryrules`)
+}
+
+function checksumAllTables(clusterName) {
+  return getRequest(`clusters/${clusterName}/actions/checksum-all-tables`)
 }
 
 function switchOverCluster(clusterName) {
@@ -213,6 +234,7 @@ function configDiscoverDB(clusterName) {
 function configDynamic(clusterName) {
   return getRequest(`clusters/${clusterName}/settings/actions/apply-dynamic-config`)
 }
+
 //#endregion cluster apis
 
 //#region cluster>servers apis
