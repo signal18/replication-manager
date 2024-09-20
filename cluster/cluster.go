@@ -251,7 +251,7 @@ type FullProcessListSorter []dbhelper.Processlist
 
 func (a FullProcessListSorter) Len() int           { return len(a) }
 func (a FullProcessListSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a FullProcessListSorter) Less(i, j int) bool { return a[i].Time.Float64 < a[j].Time.Float64 }
+func (a FullProcessListSorter) Less(i, j int) bool { return a[i].Time.Float64 > a[j].Time.Float64 }
 
 // The Agent describes the server where the cluster runs on.
 // swagger:response agent
