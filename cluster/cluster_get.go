@@ -907,7 +907,7 @@ func (cluster *Cluster) GetTopMetrics(srvid string) []config.ServerTop {
 	clustertop := make([]config.ServerTop, 0)
 	for _, srv := range cluster.Servers {
 		top := make([]dbhelper.Processlist, 0)
-		if srvid != "" && srv.Id != srvid && srv.IsFailed() {
+		if (srvid != "" && srv.Id != srvid )|| srv.IsFailed() {
 			continue
 		}
 		var topheader config.TopHeader
