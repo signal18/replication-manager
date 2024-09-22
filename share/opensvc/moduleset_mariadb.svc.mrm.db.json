@@ -2334,6 +2334,25 @@
                 }
             ],
             "fset_name": "mariadb.optimizer.noforcepk"
+        },
+        {
+            "fset_stats": false,
+            "id": 419,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "notmpdisk",
+                        "f_table": "v_tags",
+                        "id": 375
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.disk.notmpdisk"
         }
     ],
     "rulesets": [
@@ -3606,8 +3625,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/engine_s3.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL s3_pagecache_buffer_size=%%ENV:SVC_CONF_ENV_S3_CACHE_SIZE%%*1024*1024;\\n# mariadb_version: 10.5.3 \\n# maeiadb_documentation: https://mariadb.com/kb/en/s3-storage-engine/\\n\\n[mariadb]\\nplugin_load_add=ha_s3.so\\nloose_s3=on \\n#loose_s3_port=9000\\n#loose_s3_use_http=ON\\n# Primary and replica share same S3 tables.\\nloose_s3_slave_ignore_updates=1\\n#loose_s3_region=\\n#loose_s3_access_key=\\n#loose_s3_bucket=mariadb\\n#loose_s3_host_name= \\n#loose_s3_region=\\n#loose_s3_secret_key=\\nloose_s3_pagecache_buffer_size=%%ENV:SVC_CONF_ENV_S3_CACHE_SIZE%%M\"}",
-                    "var_updated": "2024-07-29 18:55:11",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/engine_s3.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL s3_pagecache_buffer_size=%%ENV:SVC_CONF_ENV_S3_CACHE_SIZE%%*1024*1024;\\n# mariadb_version: 10.5.3 \\n# mariadb_documentation: https://mariadb.com/kb/en/s3-storage-engine/\\n\\n[mariadb]\\nplugin_load_add=ha_s3.so\\nloose_s3=on \\n#loose_s3_port=9000\\n#loose_s3_use_http=ON\\n# Primary and replica share same S3 tables.\\nloose_s3_slave_ignore_updates=1\\n#loose_s3_region=\\n#loose_s3_access_key=\\n#loose_s3_bucket=mariadb\\n#loose_s3_host_name= \\n#loose_s3_region=\\n#loose_s3_secret_key=\\nloose_s3_pagecache_buffer_size=%%ENV:SVC_CONF_ENV_S3_CACHE_SIZE%%M\"}",
+                    "var_updated": "2024-09-22 13:18:28",
                     "var_name": "db_cnf_engine_s3",
                     "id": 6166
                 },
@@ -4098,6 +4117,14 @@
                     "var_updated": "2024-09-18 08:26:17",
                     "var_name": "db_cnf_script_dbjobs_dev",
                     "id": 6342
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_disk_tmp_table.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: SET GLOBAL tmdpir = \\\"/tmp\\\";\\n# mysql_command: SET GLOBAL tmdpir = \\\"/tmp\\\";\\n[mysql]\\ntmpdir=/tmp\"}",
+                    "var_updated": "2024-09-22 13:22:02",
+                    "var_name": "db_cnf_disk_no_disktmptable",
+                    "id": 6343
                 }
             ],
             "ruleset_public": false,
@@ -4221,7 +4248,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.disk_nosplitpath",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withgrouprep",
                 "mariadb.svc.mrm.db.cnf.generic.rep_noalter2phase",
-                "mariadb.svc.mrm.db.cnf.generic.opt_noforcepk"
+                "mariadb.svc.mrm.db.cnf.generic.opt_noforcepk",
+                "mariadb.svc.mrm.db.cnf.generic.disk_noatmpdisk"
             ],
             "publications": [
                 "replication-manager"
@@ -7409,6 +7437,30 @@
                 "replication-manager"
             ],
             "id": 1164,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.disk.notmpdisk",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.disk_noatmpdisk",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/40_no_disk_tmp_table.cnf\",\"target\":\"../replication-manager.d/no_disk_tmp_table.cnf\"}",
+                    "var_updated": "2024-09-22 12:26:29",
+                    "var_name": "link_no_tmp_disk",
+                    "id": 6345
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1168,
             "responsibles": [
                 "replication-manager"
             ]
