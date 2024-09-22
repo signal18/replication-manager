@@ -13,6 +13,7 @@ import CloudSettings from './CloudSettings'
 import GlobalSettings from './GlobalSettings'
 import RepFailOverSettings from './RepFailOverSettings'
 import RepConfigSettings from './RepConfigSettings'
+import AlertSettings from './AlertSettings'
 
 function Settings({ selectedCluster, user }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -74,6 +75,14 @@ function Settings({ selectedCluster, user }) {
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<MonitoringSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+      />
+      <AccordionComponent
+        heading={'Alerts'}
+        onToggle={onAlertsToggle}
+        isOpen={isAlertsOpen}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={<AlertSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
         heading={'Logs'}
