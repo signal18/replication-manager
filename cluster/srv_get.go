@@ -587,7 +587,7 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) {
 
 	Conn, err := server.GetNewDBConn()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error connecting to DB for slow_log table: %s", err)
+		server.ClusterGroup.SetState("WARN0131", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["WARN0131"], server.URL, "Error connecting to DB", err.Error()), ServerUrl: server.URL, ErrFrom: "LOGS"})
 		return
 	}
 	defer Conn.Close()
@@ -596,12 +596,12 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) {
 	dbhelper.MoveLogsToDailyTable(Conn, server.DBVersion, "slow_log", timeStampString)
 
 	if err := dbhelper.FetchLogsToBufferTable(Conn, server.DBVersion, "slow_log", timeStampString); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error fetching slow_log table to buffer: %s", err)
+		server.ClusterGroup.SetState("WARN0131", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["WARN0131"], server.URL, "Error fetching slow_log table to buffer", err.Error()), ServerUrl: server.URL, ErrFrom: "LOGS"})
 		return
 	}
 
 	if err := dbhelper.TruncateLogsTable(Conn, server.DBVersion, "slow_log"); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error truncating mysql.slow_log table: %s", err)
+		server.ClusterGroup.SetState("WARN0131", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["WARN0131"], server.URL, "Error truncating mysql.slow_log table", err.Error()), ServerUrl: server.URL, ErrFrom: "LOGS"})
 		return
 	}
 
@@ -621,7 +621,7 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) {
 	query := "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id, 0 as rows_affected FROM  replication_manager_schema.slow_log_buffer WHERE start_time > FROM_UNIXTIME(" + strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10) + ")"
 	err = server.Conn.Select(&slowqueries, query)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not get slow queries from table %s", err)
+		server.ClusterGroup.SetState("WARN0131", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["WARN0131"], server.URL, "Could not get slow queries from table", err.Error()), ServerUrl: server.URL, ErrFrom: "LOGS"})
 	}
 	for _, s := range slowqueries {
 
@@ -641,7 +641,7 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) {
 	}
 
 	if err := dbhelper.MoveLogsToDailyTable(Conn, server.DBVersion, "slow_log", timeStampString); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error moving logs from buffer to daily table: %s", err)
+		server.ClusterGroup.SetState("WARN0131", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["WARN0131"], server.URL, "Error moving logs from buffer to daily table", err.Error()), ServerUrl: server.URL, ErrFrom: "LOGS"})
 		return
 	}
 
