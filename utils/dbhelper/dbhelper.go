@@ -3232,3 +3232,107 @@ func CountBinaryLogs(db *sqlx.DB, version *version.Version) (int, error) {
 
 	return counter, nil
 }
+
+func FetchLogsToBufferTable(db *sqlx.DB, version *version.Version, table string, timeStampString string) error {
+	desttablename := table + "_" + timeStampString
+	copytablename := table + "_buffer"
+	query := "USE replication_manager_schema"
+
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to set database as replication_manager_schema: %s", err.Error())
+	}
+
+	if version.IsMariaDB() {
+		query = "SET SESSION sql_log_bin=0"
+	} else {
+		query = "SET sql_log_bin = OFF"
+	}
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to set sql_log_bin session to 0: %s", err.Error())
+	}
+
+	query = "DROP TABLE IF EXISTS `replication_manager_schema`." + copytablename
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to create drop replication_manager_schema.%s: %s", desttablename, err.Error())
+	}
+
+	query = "CREATE TABLE `replication_manager_schema`." + copytablename + " LIKE `mysql`." + table
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to create table replication_manager_schema.%s: %s", desttablename, err.Error())
+	}
+
+	query = "CREATE TABLE IF NOT EXISTS `replication_manager_schema`." + desttablename + " LIKE `mysql`." + table
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to create table replication_manager_schema.%s: %s", desttablename, err.Error())
+	}
+
+	query = "TRUNCATE TABLE `replication_manager_schema`." + copytablename
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to truncate table replication_manager_schema.%s: %s", copytablename, err.Error())
+	}
+
+	query = "INSERT INTO `replication_manager_schema`." + copytablename + " SELECT * FROM `mysql`." + table
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to create table replication_manager_schema.%s: %s", desttablename, err.Error())
+	}
+
+	return nil
+}
+
+func TruncateLogsTable(db *sqlx.DB, version *version.Version, table string) error {
+	query := "USE mysql"
+
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to set database as replication_manager_schema: %s", err.Error())
+	}
+
+	if version.IsMariaDB() {
+		query = "SET SESSION sql_log_bin=0"
+	} else {
+		query = "SET sql_log_bin = OFF"
+	}
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to set sql_log_bin session to 0: %s", err.Error())
+	}
+
+	query = "TRUNCATE TABLE `mysql`." + table
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to truncate table mysql.%s: %s", table, err.Error())
+	}
+
+	return nil
+}
+
+func MoveLogsToDailyTable(db *sqlx.DB, version *version.Version, table string, timeStampString string) error {
+	desttablename := table + "_" + timeStampString
+	copytablename := table + "_buffer"
+	query := "USE replication_manager_schema"
+
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to set database as replication_manager_schema: %s", err.Error())
+	}
+
+	if version.IsMariaDB() {
+		query = "SET SESSION sql_log_bin=0"
+	} else {
+		query = "SET sql_log_bin = OFF"
+	}
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to set sql_log_bin session to 0: %s", err.Error())
+	}
+
+	query = "CREATE TABLE IF NOT EXISTS `replication_manager_schema`." + desttablename + " LIKE `mysql`." + table
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to create table replication_manager_schema.%s: %s", desttablename, err.Error())
+	}
+
+	query = "INSERT INTO `replication_manager_schema`." + desttablename + " SELECT * FROM `replication_manager_schema`." + copytablename
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to set sql_log_bin session to 0: %s", err.Error())
+	}
+	query = "DROP TABLE IF EXISTS `replication_manager_schema`." + copytablename
+	if _, err := db.Exec(query); err != nil {
+		return fmt.Errorf("Unable to set sql_log_bin session to 0: %s", err.Error())
+	}
+	return nil
+}

@@ -9,6 +9,7 @@ package cluster
 import (
 	"errors"
 	"sort"
+	"sync"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -73,4 +74,24 @@ func (cluster *Cluster) JobsGetEntries() (config.JobEntries, error) {
 	}
 
 	return entries, nil
+}
+
+func (cluster *Cluster) GetSlowLogTable() {
+	// Skip if previous cycle is not finished yet
+	if !cluster.IsGettingSlowLog {
+		cluster.IsGettingSlowLog = true
+		wg := new(sync.WaitGroup)
+		defer func() {
+			cluster.IsGettingSlowLog = false
+		}()
+
+		for _, s := range cluster.Servers {
+			if s != nil {
+				wg.Add(1)
+				go s.GetSlowLogTable(wg)
+			}
+		}
+
+		wg.Wait()
+	}
 }
