@@ -4,7 +4,7 @@ import { convertObjectToArray, formatBytes, formatDate, getBackupMethod, getBack
 import AccordionComponent from '../../components/AccordionComponent'
 import { DataTable } from '../../components/DataTable'
 import styles from './styles.module.scss'
-import { Box, HStack, VStack } from '@chakra-ui/react'
+import { Box, HStack, useDisclosure, VStack } from '@chakra-ui/react'
 import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import { getBackupSnapshot } from '../../redux/clusterSlice'
@@ -18,6 +18,7 @@ function Maintenance({ selectedCluster, user }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
   const columnHelper = createColumnHelper()
+  const { isOpen: isBackupSettingsOpen, onToggle: onBackupSettingsToggle } = useDisclosure()
 
   const {
     cluster: { backupSnapshots }
@@ -190,6 +191,8 @@ function Maintenance({ selectedCluster, user }) {
       />
       <AccordionComponent
         heading={'Backups Settings'}
+        isOpen={isBackupSettingsOpen}
+        onToggle={onBackupSettingsToggle}
         className={styles.accordion}
         panelClassName={styles.accordionPanel}
         body={<BackupSettings selectedCluster={selectedCluster} user={user} />}
