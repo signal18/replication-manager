@@ -60,13 +60,13 @@ func (cluster *Cluster) GetShareDir() string {
 func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file string) []string {
 	events := ""
 	dumpslave := ""
-	//		if !server.HasMySQLGTID() {
+
 	if server.IsMaster() {
 		dumpslave = "--master-data=1"
 	} else {
 		dumpslave = "--dump-slave=1"
 	}
-	//	}
+
 	if server.HasEventScheduler() {
 		events = "--events=true"
 	} else {
