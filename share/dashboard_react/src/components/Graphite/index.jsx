@@ -38,7 +38,6 @@ function Graphite({ chartRef, context, title, title2, target, target2, className
     })
     return () => {
       // Remove the focus handler
-      console.log('context::', context)
       context.stop()
       context.on('focus', null)
 

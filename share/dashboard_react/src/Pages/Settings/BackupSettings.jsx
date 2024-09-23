@@ -308,6 +308,63 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      key: 'Backup Streaming Endpoint',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.backupStreamingEndpoint}
+          confirmTitle={`Confirm backup-streaming-endpoint to `}
+          className={styles.textbox}
+          onSave={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'backup-streaming-endpoint',
+                value: value
+              })
+            )
+          }
+        />
+      )
+    },
+    {
+      key: 'Backup Streaming Region',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.backupStreamingRegion}
+          confirmTitle={`Confirm backup-streaming-region to `}
+          className={styles.textbox}
+          onSave={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'backup-streaming-region',
+                value: value
+              })
+            )
+          }
+        />
+      )
+    },
+    {
+      key: 'Backup Streaming Bucket',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.backupStreamingBucket}
+          confirmTitle={`Confirm backup-streaming-bucket to `}
+          className={styles.textbox}
+          onSave={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'backup-streaming-bucket',
+                value: value
+              })
+            )
+          }
+        />
+      )
+    },
+    {
       key: 'Backup snapshots',
       value: [
         {
@@ -323,14 +380,94 @@ function BackupSettings({ selectedCluster, user }) {
         },
         ...(selectedCluster?.config?.backupRestic
           ? [
-              { key: 'backup restic aws', value: selectedCluster?.config?.backupResticAws },
-              // { key: 'backup restic aws access key id', value: selectedCluster?.config?.backupResticBinaryPath },
-              { key: 'backup restic aws access secret', value: selectedCluster?.config?.backupResticAwsAccessSecret },
-              { key: 'backup restic binary path', value: selectedCluster?.config?.backupResticBinaryPath },
-              { key: 'backup restic password', value: selectedCluster?.config?.backupResticPassword },
               {
-                key: 'backup restic repository',
-                value: selectedCluster?.config?.backupResticRepository
+                key: 'Backup restic aws',
+                value: (
+                  <RMSwitch
+                    isChecked={selectedCluster?.config?.backupResticAws}
+                    isDisabled={user?.grants['cluster-settings'] == false}
+                    confirmTitle={'Confirm switch settings for backup-restic-aws?'}
+                    onChange={() =>
+                      dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic-aws' }))
+                    }
+                  />
+                )
+              },
+              {
+                key: 'Backup restic aws access secret',
+                value: (
+                  <TextForm
+                    value={selectedCluster?.config?.backupResticAwsAccessSecret}
+                    confirmTitle={`Confirm backup-restic-aws-access-secret to `}
+                    className={styles.textbox}
+                    onSave={(value) =>
+                      dispatch(
+                        setSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'backup-restic-aws-access-secret',
+                          value: value
+                        })
+                      )
+                    }
+                  />
+                )
+              },
+              {
+                key: 'Backup restic binary path',
+                value: (
+                  <TextForm
+                    value={selectedCluster?.config?.backupResticBinaryPath}
+                    confirmTitle={`Confirm backup-restic-binary-path to `}
+                    className={styles.textbox}
+                    onSave={(value) =>
+                      dispatch(
+                        setSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'backup-restic-binary-path',
+                          value: value
+                        })
+                      )
+                    }
+                  />
+                )
+              },
+              {
+                key: 'Backup restic password',
+                value: (
+                  <TextForm
+                    value={selectedCluster?.config?.backupResticPassword}
+                    confirmTitle={`Confirm backup-restic-password to `}
+                    className={styles.textbox}
+                    onSave={(value) =>
+                      dispatch(
+                        setSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'backup-restic-password',
+                          value: value
+                        })
+                      )
+                    }
+                  />
+                )
+              },
+              {
+                key: 'Backup restic repository',
+                value: (
+                  <TextForm
+                    value={selectedCluster?.config?.backupResticRepository}
+                    confirmTitle={`Confirm backup-restic-repository to `}
+                    className={styles.textbox}
+                    onSave={(value) =>
+                      dispatch(
+                        setSetting({
+                          clusterName: selectedCluster?.name,
+                          setting: 'backup-restic-repository',
+                          value: value
+                        })
+                      )
+                    }
+                  />
+                )
               }
             ]
           : [])

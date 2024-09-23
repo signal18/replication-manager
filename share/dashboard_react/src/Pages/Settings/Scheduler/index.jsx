@@ -361,7 +361,7 @@ function Scheduler({
           isChecked={isSwitchChecked}
         />
       )}
-
+      {isSwitchChecked && <Text className={styles.cronValue}>{value}</Text>}
       {!hasSwitch || isSwitchChecked ? (
         editMode ? (
           <>
@@ -374,6 +374,7 @@ function Scheduler({
               }}>
               Cancel edit
             </RMButton>
+
             <RadioGroup className={styles.radios} value={recurrentType} onChange={handleRecurrentChange}>
               {recurrentOptions.map((recur) => (
                 <Radio key={recur.key} value={recur.key} size='lg'>
