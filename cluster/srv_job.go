@@ -1649,25 +1649,9 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 		return err2
 	}
 	defer os.Remove(file)
-	usegtid := server.JobGetDumpGtidParameter()
-	events := ""
-	dumpslave := ""
-	//		if !server.HasMySQLGTID() {
-	if server.IsMaster() {
-		dumpslave = "--master-data=1"
-	} else {
-		dumpslave = "--dump-slave=1"
-	}
-	//	}
-	if server.HasEventScheduler() {
-		events = "--events=true"
-	} else {
-		events = "--events=false"
-	}
 
-	dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs", server.GetSSLClientParam("client-dump"))
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), misc.RemoveEmptyString(dumpargs)...)
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(server, server.JobGetDumpGtidParameter(), file)...)
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 	// Get the stdout pipe from the command
 	stdout, err := dumpCmd.StdoutPipe()
@@ -2518,37 +2502,16 @@ func (cluster *Cluster) CreateTmpClientConfFile() (string, error) {
 
 func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest *ServerMonitor) error {
 	defer dest.SetInReseedBackup("")
-
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rejoining from direct mysqldump from %s", source.URL)
-	dest.StopSlave()
-	usegtid := dest.JobGetDumpGtidParameter()
 
-	events := ""
-	if source.HasEventScheduler() {
-		events = "--events=true"
-	} else {
-		events = "--events=false"
-	}
-	dumpslave := ""
-	//	if !source.HasMySQLGTID() {
-	if source.IsMaster() {
-		dumpslave = "--master-data=1"
-	} else {
-		dumpslave = "--dump-slave=1"
-	}
-	//	}
 	file, err := cluster.CreateTmpClientConfFile()
 	if err != nil {
 		return err
 	}
 	defer os.Remove(file)
-	dumpstring := "--defaults-file=" + file + " " + source.ClusterGroup.getDumpParameter() + " " + dumpslave + " " + usegtid + " " + events
 
-	dumpargs := strings.Split(strings.ReplaceAll(dumpstring, "  ", " "), " ")
-
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(source.Host), "--port="+source.Port, "--user="+source.ClusterGroup.GetDbUser(), source.GetSSLClientParam("client-dump"))
-
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), misc.RemoveEmptyString(dumpargs)...)
+	dest.StopSlave()
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(source, dest.JobGetDumpGtidParameter(), file)...)
 	stderrIn, _ := dumpCmd.StderrPipe()
 
 	cliParams := make([]string, 0)
@@ -2597,6 +2560,8 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", dest.URL)
 	dest.StartSlave()
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed slave from %s to %s finished", source.URL, dest.URL)
 	return nil
 }
 

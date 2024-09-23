@@ -57,6 +57,33 @@ func (cluster *Cluster) GetShareDir() string {
 }
 
 // This will use installed mysqldump first
+func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file string) []string {
+	events := ""
+	dumpslave := ""
+
+	if server.IsMaster() {
+		dumpslave = "--master-data=1"
+	} else {
+		dumpslave = "--dump-slave=1"
+	}
+
+	if server.HasEventScheduler() {
+		events = "--events=true"
+	} else {
+		events = "--events=false"
+	}
+
+	dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
+
+	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") {
+		dumpargs = append(dumpargs, "--skip-log-queries")
+	}
+
+	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs", server.GetSSLClientParam("client-dump"))
+	return misc.RemoveEmptyString(dumpargs)
+}
+
+// This will use installed mysqldump first
 func (cluster *Cluster) GetMysqlDumpPath() string {
 	if cluster.Conf.BackupMysqldumpPath == "" {
 		// Return installed mysql client on repman host instead of embedded if exists
@@ -907,7 +934,7 @@ func (cluster *Cluster) GetTopMetrics(srvid string) []config.ServerTop {
 	clustertop := make([]config.ServerTop, 0)
 	for _, srv := range cluster.Servers {
 		top := make([]dbhelper.Processlist, 0)
-		if (srvid != "" && srv.Id != srvid )|| srv.IsFailed() {
+		if (srvid != "" && srv.Id != srvid) || srv.IsFailed() {
 			continue
 		}
 		var topheader config.TopHeader
