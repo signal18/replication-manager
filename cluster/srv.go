@@ -1580,15 +1580,8 @@ func (server *ServerMonitor) RotateSystemLogs() {
 
 func (server *ServerMonitor) RotateTableToTime(database string, table string) {
 	cluster := server.ClusterGroup
-	currentTime := time.Now()
-	timeStampString := currentTime.Format("20060102150405")
-	newtablename := table + "_" + timeStampString
-	temptable := table + "_temp"
-	query := "CREATE TABLE IF NOT EXISTS " + database + "." + temptable + " LIKE " + database + "." + table
-	server.ExecQueryNoBinLog(query)
-	query = "RENAME TABLE  " + database + "." + table + " TO " + database + "." + newtablename + " , " + database + "." + temptable + " TO " + database + "." + table
-	server.ExecQueryNoBinLog(query)
-	query = "select table_name from information_schema.tables where table_schema='" + database + "' and table_name like '" + table + "_%' order by table_name desc limit " + strconv.Itoa(cluster.Conf.SchedulerMaintenanceDatabaseLogsTableKeep) + ",100"
+
+	query := "select table_name from information_schema.tables where table_schema='" + database + "' and table_name like '" + table + "_%' order by table_name desc limit " + strconv.Itoa(cluster.Conf.SchedulerMaintenanceDatabaseLogsTableKeep) + ",100"
 	cleantables := []string{}
 
 	err := server.Conn.Select(&cleantables, query)

@@ -578,7 +578,25 @@ func (server *ServerMonitor) GetSlowLogTable() {
 		return
 	}
 	server.IsInSlowQueryCapture = true
+
 	defer func() { server.IsInSlowQueryCapture = false }()
+	database := "mysql"
+	table := "slow_log"
+	currentTime := time.Now()
+	timeStampString := currentTime.Format("20060102")
+	desttablename := table + "_" + timeStampString
+	copytablename := table + "_copy"
+	emptytable := table + "_tmp"
+	query := "DROP TABLE IF EXISTS  " + database + "." + copytablename
+	server.ExecQueryNoBinLog(query)
+
+	query = "CREATE TABLE IF NOT EXISTS " + database + "." + emptytable + " LIKE " + database + "." + table
+	server.ExecQueryNoBinLog(query)
+	query = "CREATE TABLE IF NOT EXISTS " + database + "." + desttablename + " LIKE " + database + "." + table
+	server.ExecQueryNoBinLog(query)
+
+	query = "RENAME TABLE IF EXISTS " + database + "." + table + " TO " + database + "." + copytablename + " , " + database + "." + emptytable + " TO " + database + "." + table
+	server.ExecQueryNoBinLog(query)
 
 	f, err := os.OpenFile(server.Datadir+"/log/log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
@@ -595,9 +613,9 @@ func (server *ServerMonitor) GetSlowLogTable() {
 	slowqueries := []dbhelper.LogSlow{}
 
 	if server.DBVersion.IsMySQLOrPercona() {
-		err = server.Conn.Select(&slowqueries, "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id, 0 as rows_affected FROM  mysql.slow_log WHERE start_time > FROM_UNIXTIME("+strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10)+")")
+		err = server.Conn.Select(&slowqueries, "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id, 0 as rows_affected FROM  mysql.slow_log_cop WHERE start_time > FROM_UNIXTIME("+strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10)+")")
 	} else {
-		err = server.Conn.Select(&slowqueries, "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id,0 as rows_affected FROM  mysql.slow_log WHERE start_time > FROM_UNIXTIME("+strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10)+")")
+		err = server.Conn.Select(&slowqueries, "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id,0 as rows_affected FROM  mysql.slow_log_copy WHERE start_time > FROM_UNIXTIME("+strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10)+")")
 	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not get slow queries from table %s", err)
@@ -618,6 +636,12 @@ func (server *ServerMonitor) GetSlowLogTable() {
 		)
 		server.MaxSlowQueryTimestamp = s.Start_time
 	}
+	query = "INSERT INTO  " + database + "." + desttablename + " SELECT * FROM " + database + "." + copytablename
+	server.ExecQueryNoBinLog(query)
+	query = "DROP TABLE IF EXISTS  " + database + "." + copytablename
+	server.ExecQueryNoBinLog(query)
+	server.RotateSystemLogs()
+	time.Sleep(60 * time.Second)
 	//	server.ExecQueryNoBinLog("TRUNCATE mysql.slow_log")
 }
 
