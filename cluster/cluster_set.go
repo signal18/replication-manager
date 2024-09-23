@@ -1872,6 +1872,61 @@ func (cluster *Cluster) SetSSTBufferSize(value int) {
 	cluster.Conf.SSTSendBuffer = value
 }
 
+func (cluster *Cluster) SetAlertPushoverAppToken(value string) {
+	cluster.Conf.PushoverAppToken = value
+}
+
+func (cluster *Cluster) SetAlertPushoverUserToken(value string) {
+	cluster.Conf.PushoverUserToken = value
+}
+
+func (cluster *Cluster) SetAlertScript(value string) {
+	cluster.Conf.AlertScript = value
+}
+
+func (cluster *Cluster) SetAlertSlackChannel(value string) {
+	cluster.Conf.SlackChannel = value
+}
+
+func (cluster *Cluster) SetAlertSlackUrl(value string) {
+	cluster.Conf.SlackURL = value
+}
+
+func (cluster *Cluster) SetAlertSlackUser(value string) {
+	cluster.Conf.SlackUser = value
+}
+
+func (cluster *Cluster) SetAlertTeamsProxyUrl(value string) {
+	cluster.Conf.TeamsProxyUrl = value
+}
+
+func (cluster *Cluster) SetAlertTeamsState(value string) {
+	cluster.Conf.TeamsAlertState = value
+}
+
+func (cluster *Cluster) SetAlertTeamsUrl(value string) {
+	cluster.Conf.TeamsUrl = value
+}
+
+func (cluster *Cluster) SetMonitoringAlertTriggerl(value string) {
+	cluster.Conf.MonitoringAlertTrigger = value
+}
+
+func (cluster *Cluster) SetMailSmtpAddr(value string) {
+	cluster.Conf.MailSMTPAddr = value
+}
+
+func (cluster *Cluster) SetMailSmtpPassword(value string) {
+	cluster.Conf.MailSMTPAddr = value
+}
+
+func (cluster *Cluster) SetMailSmtpUser(value string) {
+	cluster.Conf.MailSMTPUser = value
+}
+
+func (cluster *Cluster) SetSchedulerAlertDisableTime(value int) {
+	cluster.Conf.SchedulerAlertDisableTime = value
+}
 func (cluster *Cluster) SetToolVersions() {
 	if err := cluster.SetDBClientVersion(); err != nil {
 		cluster.SetState("WARN0117", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0117"], err), ErrFrom: "CLUSTER"})

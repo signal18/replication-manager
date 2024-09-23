@@ -8,6 +8,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -1301,6 +1302,8 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchForceWriteConfig()
 	case "backup-keep-until-valid":
 		mycluster.SwitchBackupKeepUntilValid()
+	case "mail-smtp-tls-skip-verify":
+		mycluster.SwitchMailSmtpTlsSkipVerify()
 	}
 }
 
@@ -1317,7 +1320,11 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
 				repman.setServerSetting(user, URL, setting, vars["settingValue"])
 			} else {
-				repman.setSetting(mycluster, setting, vars["settingValue"])
+				err := repman.setSetting(mycluster, setting, vars["settingValue"])
+				if err != nil {
+					http.Error(w, "Setting Not Found", 501)
+					return
+				}
 			}
 		} else {
 			http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), 403)
@@ -1351,7 +1358,7 @@ func (repman *ReplicationManager) handlerMuxSetCron(w http.ResponseWriter, r *ht
 	}
 }
 
-func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name string, value string) {
+func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name string, value string) error {
 	//not immutable
 	if !mycluster.IsVariableImmutable(name) {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
@@ -1574,7 +1581,39 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "sst-send-buffer":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetSSTBufferSize(val)
+	case "alert-pushover-app-token":
+		mycluster.SetAlertPushoverAppToken(value)
+	case "alert-pushover-user-token":
+		mycluster.SetAlertPushoverUserToken(value)
+	case "alert-script":
+		mycluster.SetAlertScript(value)
+	case "alert-slack-channel":
+		mycluster.SetAlertSlackChannel(value)
+	case "alert-slack-url":
+		mycluster.SetAlertSlackUrl(value)
+	case "alert-slack-user":
+		mycluster.SetAlertSlackUser(value)
+	case "alert-teams-proxy-url":
+		mycluster.SetAlertTeamsProxyUrl(value)
+	case "alert-teams-state":
+		mycluster.SetAlertTeamsState(value)
+	case "alert-teams-url":
+		mycluster.SetAlertTeamsUrl(value)
+	case "monitoring-alert-trigger":
+		mycluster.SetMonitoringAlertTriggerl(value)
+	case "mail-smtp-addr":
+		mycluster.SetMailSmtpAddr(value)
+	case "mail-smtp-password":
+		mycluster.SetMailSmtpPassword(value)
+	case "mail-smtp-user":
+		mycluster.SetMailSmtpUser(value)
+	case "scheduler-alert-disable-time":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetSchedulerAlertDisableTime(val)
+	default:
+		return errors.New("Setting not found")
 	}
+	return nil
 }
 
 func (repman *ReplicationManager) setServerSetting(user string, URL string, name string, value string) {
