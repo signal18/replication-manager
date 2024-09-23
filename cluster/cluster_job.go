@@ -80,14 +80,16 @@ func (cluster *Cluster) GetSlowLogTable() {
 	// Skip if previous cycle is not finished yet
 	if !cluster.IsGettingSlowLog {
 		cluster.IsGettingSlowLog = true
-		var wg sync.WaitGroup
+		wg := new(sync.WaitGroup)
 		defer func() {
 			cluster.IsGettingSlowLog = false
 		}()
 
 		for _, s := range cluster.Servers {
-			wg.Add(1)
-			go s.GetSlowLogTable(&wg)
+			if s != nil {
+				wg.Add(1)
+				go s.GetSlowLogTable(wg)
+			}
 		}
 
 		wg.Wait()

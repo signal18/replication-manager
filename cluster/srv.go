@@ -1566,31 +1566,73 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 
 func (server *ServerMonitor) RotateSystemLogs() {
 	cluster := server.ClusterGroup
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Log rotate on %s", server.URL)
-
 	if server.HasLogsInSystemTables() && !server.IsDown() {
 		if server.HasLogSlowQuery() {
-			server.RotateTableToTime("mysql", "slow_log")
+			num, err := server.RotateTableToTime("replication_manager_schema", "slow_log")
+			if err != nil {
+				cluster.SetState("WARN0130", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0130"], server.URL, "slow_log", err.Error()), ErrFrom: "LOGS", ServerUrl: server.URL})
+			}
+			if num > 0 {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Log rotate on %s, %d tables rotated", server.URL, num)
+			}
 		}
 		if server.HasLogGeneral() {
-			server.RotateTableToTime("mysql", "general_log")
+			num, err := server.RotateTableToTime("mysql", "general_log")
+			if err != nil {
+				cluster.SetState("WARN0130", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0130"], server.URL, "general_log", err.Error()), ErrFrom: "LOGS", ServerUrl: server.URL})
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Log rotate on %s, %d tables rotated", server.URL, num)
+
 		}
 	}
 }
 
-func (server *ServerMonitor) RotateTableToTime(database string, table string) {
+func (server *ServerMonitor) RotateTableToTime(database string, table string) (int, error) {
 	cluster := server.ClusterGroup
+	dropped := 0
 
-	query := "select table_name from information_schema.tables where table_schema='" + database + "' and table_name like '" + table + "_%' order by table_name desc limit " + strconv.Itoa(cluster.Conf.SchedulerMaintenanceDatabaseLogsTableKeep) + ",100"
+	Conn, err := server.GetNewDBConn()
+	if err != nil {
+		return 0, err
+	}
+	defer Conn.Close()
+
+	_, err = Conn.Exec("USE " + database)
+	if err != nil {
+		return 0, err
+	}
+
+	_, err = Conn.Exec("set sql_log_bin=0")
+	if err != nil {
+		return 0, err
+	}
+
 	cleantables := []string{}
 
-	err := server.Conn.Select(&cleantables, query)
+	query := "SHOW TABLES LIKE '" + table + "_%'"
+	err = Conn.Select(&cleantables, query)
 	if err != nil {
-		return
+		return dropped, err
 	}
-	for _, row := range cleantables {
-		server.ExecQueryNoBinLog("DROP TABLE " + database + "." + row)
+
+	numtbl := len(cleantables)
+	keep := cluster.Conf.SchedulerMaintenanceDatabaseLogsTableKeep
+
+	if numtbl > keep {
+		// remove latest tables from remove slice
+		cleantables = cleantables[:numtbl-keep]
+
+		// Start dropping
+		for _, row := range cleantables {
+			if _, err := Conn.Exec("DROP TABLE " + database + "." + row); err != nil {
+				return dropped, err
+			} else {
+				dropped++
+			}
+		}
 	}
+
+	return dropped, nil
 }
 
 func (server *ServerMonitor) WaitInnoDBPurge() error {
