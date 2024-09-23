@@ -100,6 +100,7 @@ type Cluster struct {
 	IsNeedDatabasesRollingReprov  bool                 `json:"isNeedDatabasesRollingReprov"`
 	IsNeedDatabasesReprov         bool                 `json:"isNeedDatabasesReprov"`
 	IsNeedDatabasesConfigChange   bool                 `json:"isNeedDatabasesConfigChange"`
+	IsGettingSlowLog              bool                 `json:"isGettingSlowLog"`
 	IsValidBackup                 bool                 `json:"isValidBackup"`
 	IsNotMonitoring               bool                 `json:"isNotMonitoring"`
 	IsCapturing                   bool                 `json:"isCapturing"`
@@ -671,6 +672,7 @@ func (cluster *Cluster) Run() {
 
 				cluster.SetStatus()
 				cluster.StateProcessing()
+				go cluster.GetSlowLogTable() // prevent blocking cycle
 			}
 		}
 

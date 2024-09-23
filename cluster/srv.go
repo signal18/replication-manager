@@ -914,7 +914,7 @@ func (server *ServerMonitor) Refresh() error {
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get engine innodb status %s %s", server.URL, err)
 		}
 		go server.GetPFSQueries()
-		go server.GetSlowLogTable()
+
 		if server.HaveDiskMonitor {
 			server.Disks, logs, err = dbhelper.GetDisks(server.Conn, server.DBVersion)
 		}

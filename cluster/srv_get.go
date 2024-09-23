@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -559,8 +560,9 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 
 }
 
-func (server *ServerMonitor) GetSlowLogTable() {
+func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) {
 	cluster := server.ClusterGroup
+	defer wg.Done()
 
 	if cluster.IsInFailover() {
 		return
