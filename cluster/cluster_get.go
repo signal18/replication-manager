@@ -74,6 +74,11 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file
 	}
 
 	dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
+
+	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") {
+		dumpargs = append(dumpargs, "--skip-log-queries")
+	}
+
 	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs", server.GetSSLClientParam("client-dump"))
 	return misc.RemoveEmptyString(dumpargs)
 }
