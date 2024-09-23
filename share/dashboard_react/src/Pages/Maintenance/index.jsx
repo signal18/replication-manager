@@ -13,7 +13,7 @@ import SchedulerSettings from '../Settings/SchedulerSettings'
 import Logs from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
 
-function Backups({ selectedCluster, user }) {
+function Maintenance({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
@@ -227,4 +227,4 @@ function Backups({ selectedCluster, user }) {
   )
 }
 
-export default Backups
+export default Maintenance

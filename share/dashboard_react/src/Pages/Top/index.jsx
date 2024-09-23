@@ -6,7 +6,7 @@ import styles from './styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
 import { createColumnHelper } from '@tanstack/react-table'
 import { DataTable } from '../../components/DataTable'
-import { convertObjectToArrayForDropdown, getReadableTime } from '../../utility/common'
+import { convertObjectToArrayForDropdown, getColorFromServerStatus, getReadableTime } from '../../utility/common'
 import { Link } from 'react-router-dom'
 import { getTopProcess } from '../../redux/clusterSlice'
 import BarGraph from '../../components/BarGraph'
@@ -14,6 +14,7 @@ import ConfirmModal from '../../components/Modals/ConfirmModal'
 import CopyToClipboard from '../../components/CopyToClipboard'
 import Dropdown from '../../components/Dropdown'
 import RunTests from '../Dashboard/components/RunTests'
+import ServerStatus from '../../components/ServerStatus'
 
 function Top({ selectedCluster }) {
   const dispatch = useDispatch()
@@ -31,10 +32,10 @@ function Top({ selectedCluster }) {
   }, [])
 
   useEffect(() => {
-    if (topProcess?.length > 0 && clusterServers?.length > 0) {
+    if (topProcess?.length > 0) {
       const processes = topProcess.filter((process) => {
-        const dbServer = clusterServers.find((server) => server.id === process.id)
-        return dbServer.state.toLowerCase() !== 'failed'
+        const dbServer = clusterServers?.find((server) => server.id === process.id)
+        return dbServer?.state?.toLowerCase() !== 'failed'
       })
 
       const updatedProcesses = processes.map((process) => {
@@ -166,12 +167,18 @@ function Top({ selectedCluster }) {
       />
       {topProcessData?.length > 0 &&
         topProcessData.map((topP) => {
-          return (
+          const dbServer = clusterServers?.find((server) => server.id === topP.id)
+          const serverStatus = dbServer?.state || ''
+          const color = getColorFromServerStatus(serverStatus)
+          return serverStatus.toLowerCase() !== 'failed' ? (
             <AccordionComponent
+              headerClassName={`${styles.accordionHeader} ${styles[color]}`}
+              panelClassName={`${styles.accordionBody} ${styles[color]}`}
               className={styles.accordion}
               heading={
                 <HStack>
                   <Text> {topP.url}</Text>
+                  <ServerStatus state={serverStatus} isVirtualMaster={dbServer?.isVirtualMaster} isBlinking={true} />
                   <Link className={styles.morelink} to={`/clusters/${selectedCluster?.name}/${topP.id}`}>
                     show more
                   </Link>
@@ -193,7 +200,7 @@ function Top({ selectedCluster }) {
                 </>
               }
             />
-          )
+          ) : null
         })}
       {isModalOpen && (
         <ConfirmModal

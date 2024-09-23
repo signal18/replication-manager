@@ -32,7 +32,7 @@ import Settings from '../Settings'
 import Configs from '../Configs'
 import Graphs from '../Graphs'
 import Agents from '../Agents'
-import Backups from '../Backups'
+import Maintenance from '../Maintenance'
 import Top from '../Top'
 import Shards from '../Shards'
 import QueryRules from '../QueryRules'
@@ -181,7 +181,7 @@ function Home() {
             ...(selectedCluster?.config?.graphiteMetrics && user?.grants['cluster-show-graphs'] ? [<Graphs />] : []),
             ...(user?.grants['cluster-show-agents'] ? [<Agents user={user} selectedCluster={selectedCluster} />] : []),
             ...(user?.grants['cluster-show-backups']
-              ? [<Backups user={user} selectedCluster={selectedCluster} />]
+              ? [<Maintenance user={user} selectedCluster={selectedCluster} />]
               : []),
             ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} />] : []),
             ...(selectedCluster?.config?.proxysql && user?.grants['cluster-show-agents']

@@ -8,6 +8,7 @@ import TextForm from '../../components/TextForm'
 import styles from './styles.module.scss'
 import Scheduler from './Scheduler'
 import NumberInput from '../../components/NumberInput'
+import RMSwitch from '../../components/RMSwitch'
 
 function AlertSettings({ selectedCluster, user, openConfirmModal }) {
   const dispatch = useDispatch()
@@ -104,6 +105,20 @@ function AlertSettings({ selectedCluster, user, openConfirmModal }) {
                 value: value
               })
             )
+          }
+        />
+      )
+    },
+
+    {
+      key: 'Mail SMTP TLS Skip Verify',
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.mailSmtpTlsSkipVerify}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for mail-smtp-tls-skip-verify?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'mail-smtp-tls-skip-verify' }))
           }
         />
       )

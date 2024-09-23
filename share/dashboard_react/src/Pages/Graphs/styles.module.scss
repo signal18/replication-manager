@@ -12,8 +12,12 @@
   .graphs {
     position: relative;
     display: flex;
-    flex-direction: column;
+    // flex-direction: column;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    margin: 0 auto;
     gap: rem(24);
+
     .qpsGraph {
       min-height: rem(200);
     }
@@ -23,28 +27,28 @@
       border-radius: $border-radius-xs;
     }
     .width360 {
-      width: rem(360);
+      min-width: rem(360);
       text {
         font-size: rem(11);
       }
     }
     .width720 {
-      width: rem(720);
+      min-width: rem(720);
     }
     .width1080 {
-      width: rem(1080);
+      min-width: rem(1080);
     }
     .width1440 {
-      width: rem(1440);
+      min-width: rem(1440);
     }
     .width2160 {
-      width: rem(2160);
+      min-width: rem(2160);
     }
     .width2880 {
-      width: rem(2880);
+      min-width: rem(2880);
     }
     .width4320 {
-      width: rem(4320);
+      min-width: rem(4320);
     }
   }
 }

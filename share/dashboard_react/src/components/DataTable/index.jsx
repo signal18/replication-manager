@@ -18,6 +18,7 @@ import {
 } from 'react-icons/hi'
 import RMIconButton from '../RMIconButton'
 import Dropdown from '../Dropdown'
+import { getColorFromServerStatus } from '../../utility/common'
 
 export function DataTable({
   data,
@@ -103,18 +104,9 @@ export function DataTable({
             </Tr>
           ) : (
             table.getRowModel().rows.map((row, index) => {
-              let rowColor = ''
               //this logic is for db servers
-              switch (row.original.state) {
-                case 'SlaveErr':
-                case 'SlaveLate':
-                case 'Suspect':
-                  rowColor = 'orange'
-                  break
-                case 'Failed':
-                  rowColor = 'red'
-                  break
-              }
+              let rowColor = getColorFromServerStatus(row.original.state)
+
               //This logic is for process list
               if (row.original.command?.toLowerCase() === 'query') {
                 if (row.original.time?.Float64 > 1) {

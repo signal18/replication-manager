@@ -190,3 +190,18 @@ export const getTablePct = (table, index, dbTableSize) => {
 export const canCancelJob = (t) => {
   return t.state === 0 || (t.start < Math.floor((Date.now() - 300000) / 1000) && !t.end && t.state < 3)
 }
+
+export const getColorFromServerStatus = (status) => {
+  let color = ''
+  switch (status) {
+    case 'SlaveErr':
+    case 'SlaveLate':
+    case 'Suspect':
+      color = 'orange'
+      break
+    case 'Failed':
+      color = 'red'
+      break
+  }
+  return color
+}
