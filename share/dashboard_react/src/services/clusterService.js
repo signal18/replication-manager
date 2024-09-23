@@ -281,7 +281,7 @@ function flushLogs(clusterName, serverId) {
 }
 
 function physicalBackupMaster(clusterName, serverId) {
-  return getRequest(`clusters/${clusterName}/servers/${serverId}/actions/master-physical-backup`)
+  return getRequest(`clusters/${clusterName}/servers/${serverId}/actions/backup-physical`)
 }
 
 function logicalBackup(clusterName, serverId) {
