@@ -201,6 +201,9 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
 	))
+	router.Handle("/api/clusters/peers", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPeerClusters)),
+	))
 	router.Handle("/api/prometheus", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPrometheus)),
 	))
@@ -627,6 +630,19 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 		http.Error(w, "Unauthenticated resource: "+err.Error(), 401)
 		return
 	}
+}
+
+func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, r *http.Request) {
+
+	peerclusters := repman.Conf.GetCloud18PeerClusters()
+	cl, err := json.MarshalIndent(peerclusters, "", "\t")
+	if err != nil {
+		http.Error(w, "Error Marshal", 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(cl)
+
 }
 
 func (repman *ReplicationManager) validateTokenMiddleware(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {

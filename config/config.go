@@ -706,6 +706,17 @@ type Secret struct {
 	Value    string
 }
 
+type PeerCluster struct {
+	ClusterName                string   `json:"cluster-name"`
+	PeerUsers                  []string `json:"peer-users"`
+	Cloud18Domain              string   `json:"cloud18-domain"`
+	Cloud18PlatformDescription string   `json:"cloud18-platfom-desciption"`
+	Cloud18Shared              bool     `json:"cloud18-share"`
+	Cloud18SubDomain           string   `json:"cloud18-sub-domain"`
+	Cloud18SubDomainZone       string   `json:"cloud18-sub-domain-zone"`
+	ApiPublicUrl               string   `json:"api-plublic-url"`
+}
+
 // Compliance created in OpenSVC collector and exported as JSON
 type Compliance struct {
 	Filtersets []ComplianceFilterset `json:"filtersets"`
@@ -1528,6 +1539,42 @@ func (conf *Config) GetBackupLogicalType() map[string]bool {
 		ConstBackupLogicalTypeMydumper:  true,
 		ConstBackupLogicalTypeRiver:     false,
 		ConstBackupLogicalTypeDumpling:  false,
+	}
+}
+
+func (conf *Config) GetCloud18PeerClusters() []PeerCluster {
+
+	return []PeerCluster{
+		PeerCluster{
+			ClusterName:                "Bench",
+			PeerUsers:                  []string{"admin"},
+			Cloud18Domain:              "signal18",
+			Cloud18PlatformDescription: "Stephane 3 nodes mariadb",
+			Cloud18Shared:              false,
+			Cloud18SubDomain:           "ovh-1",
+			Cloud18SubDomainZone:       "fr",
+			ApiPublicUrl:               "10.8.0.50:10005",
+		},
+		PeerCluster{
+			ClusterName:                "Marie",
+			PeerUsers:                  []string{"admin"},
+			Cloud18Domain:              "signal18",
+			Cloud18PlatformDescription: "Priyanka 3 nodes mariadb",
+			Cloud18Shared:              false,
+			Cloud18SubDomain:           "ovh-1",
+			Cloud18SubDomainZone:       "fr",
+			ApiPublicUrl:               "repman.marie-dev.svc.cloud18:10005",
+		},
+		PeerCluster{
+			ClusterName:                "Ahmad",
+			PeerUsers:                  []string{"admin"},
+			Cloud18Domain:              "signal18",
+			Cloud18PlatformDescription: "Ahamd 3 nodes mariadb",
+			Cloud18Shared:              false,
+			Cloud18SubDomain:           "ovh-1",
+			Cloud18SubDomainZone:       "fr",
+			ApiPublicUrl:               "repman.ahmad.svc.cloud18:10005",
+		},
 	}
 }
 
