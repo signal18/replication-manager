@@ -388,7 +388,7 @@ function DBConfigs({ selectedCluster, user }) {
                       setConfirmTitle(title)
                       setIsConfirmModalOpen(true)
                       setConfirmHandler(
-                        () => () => dispatch(dropDBTag({ clusterName: selectedCluster?.name, tag: tag.name }))
+                        () => () => dispatch(dropDBTag({ clusterName: selectedCluster?.name, tag: tag?.name }))
                       )
                     }}
                     used={true}

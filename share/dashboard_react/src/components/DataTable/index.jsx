@@ -18,6 +18,7 @@ import {
 } from 'react-icons/hi'
 import RMIconButton from '../RMIconButton'
 import Dropdown from '../Dropdown'
+import { getColorFromServerStatus } from '../../utility/common'
 
 export function DataTable({
   data,
@@ -103,16 +104,16 @@ export function DataTable({
             </Tr>
           ) : (
             table.getRowModel().rows.map((row, index) => {
-              let rowColor = ''
-              switch (row.original.state) {
-                case 'SlaveErr':
-                case 'SlaveLate':
-                case 'Suspect':
+              //this logic is for db servers
+              let rowColor = getColorFromServerStatus(row.original.state)
+
+              //This logic is for process list
+              if (row.original.command?.toLowerCase() === 'query') {
+                if (row.original.time?.Float64 > 1) {
                   rowColor = 'orange'
-                  break
-                case 'Failed':
+                } else if (row.original?.time.Float64 > 10) {
                   rowColor = 'red'
-                  break
+                }
               }
 
               return (
@@ -137,40 +138,6 @@ export function DataTable({
               )
             })
           )}
-          {/* {table.getRowModel().rows.map((row, index) => {
-            let rowColor = ''
-            switch (row.original.state) {
-              case 'SlaveErr':
-              case 'SlaveLate':
-              case 'Suspect':
-                rowColor = 'orange'
-                break
-              case 'Failed':
-                rowColor = 'red'
-                break
-            }
-
-            return (
-              <Tr
-                key={row.id}
-                className={`${index % 2 !== 0 && styles.tableColumnEven} ${rowColor === 'red' ? styles.redBlinking : rowColor === 'orange' ? styles.orangeBlinking : ''}`}>
-                {row.getVisibleCells().map((cell, index) => {
-                  const meta = cell.column.columnDef.meta
-                  return (
-                    <Td
-                      textAlign={cell.column.columnDef.textAlign || cellValueAlign}
-                      maxWidth={cell.column.columnDef.maxWidth}
-                      width={cell.column.columnDef.width}
-                      className={`${styles.tableColumn} ${index === fixedColumnIndex && styles.fixedColumn}`}
-                      key={cell.id}
-                      isNumeric={meta?.isNumeric}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </Td>
-                  )
-                })}
-              </Tr>
-            )
-          })} */}
         </Tbody>
       </Table>
       {enablePagination && (

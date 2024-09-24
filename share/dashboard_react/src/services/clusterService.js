@@ -11,6 +11,7 @@ export const clusterService = {
   getClusterCertificates,
   getTopProcess,
   getBackupSnapshot,
+  getJobs,
   getShardSchema,
   getQueryRules,
 
@@ -68,6 +69,7 @@ export const clusterService = {
   toggleReadOnly,
   resetMaster,
   resetSlave,
+  cancelServerJob,
   //proxy apis
   provisionProxy,
   unprovisionProxy,
@@ -124,6 +126,10 @@ function getTopProcess(clusterName) {
 
 function getBackupSnapshot(clusterName) {
   return getRequest(`clusters/${clusterName}/backups`)
+}
+
+function getJobs(clusterName) {
+  return getRequest(`clusters/${clusterName}/jobs`)
 }
 
 function getShardSchema(clusterName) {
@@ -275,7 +281,7 @@ function flushLogs(clusterName, serverId) {
 }
 
 function physicalBackupMaster(clusterName, serverId) {
-  return getRequest(`clusters/${clusterName}/servers/${serverId}/actions/master-physical-backup`)
+  return getRequest(`clusters/${clusterName}/servers/${serverId}/actions/backup-physical`)
 }
 
 function logicalBackup(clusterName, serverId) {
@@ -336,6 +342,10 @@ function resetMaster(clusterName, serverId) {
 
 function resetSlave(clusterName, serverId) {
   return getRequest(`clusters/${clusterName}/servers/${serverId}/actions/reset-slave-all`)
+}
+
+function cancelServerJob(clusterName, serverId, taskId) {
+  return getRequest(`clusters/${clusterName}/servers/${serverId}/actions/job-cancel/${taskId}`)
 }
 //#endregion cluster>servers apis
 

@@ -33,5 +33,10 @@
         }
       }
     }
+    .table {
+      tr[class*='headerRow'] {
+        background-color: var(--quaternary-color) !important;
+      }
+    }
   }
 }

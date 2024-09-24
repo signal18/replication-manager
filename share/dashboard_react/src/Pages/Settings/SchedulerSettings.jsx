@@ -25,10 +25,34 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         />
       )
     },
+    {
+      key: 'Remote Jobs via SSH',
+      value: (
+        <Scheduler
+          user={user}
+          value={selectedCluster?.config?.schedulerJobsSshCron}
+          switchConfirmTitle={'Confirm switch settings for scheduler-jobs-ssh?'}
+          isSwitchChecked={selectedCluster?.config?.schedulerJobsSsh}
+          confirmTitle={'Confirm save JobsSsh scheduler to: '}
+          onSwitchChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'scheduler-jobs-ssh' }))
+          }
+          onSave={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'scheduler-jobs-ssh-cron',
+                value: value
+              })
+            )
+          }
+        />
+      )
+    },
     ...(selectedCluster?.config?.monitoringScheduler
       ? [
           {
-            key: 'Schedule Logical Backup',
+            key: 'Local Logical Backup',
             value: (
               <Scheduler
                 user={user}
@@ -57,7 +81,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
             )
           },
           {
-            key: 'Schedule Physical Backup',
+            key: 'Remote Physical Backup',
             value: (
               <Scheduler
                 user={user}
@@ -86,7 +110,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
             )
           },
           {
-            key: 'Schedule Optimize Tables',
+            key: 'Local Optimize Tables',
             value: (
               <Scheduler
                 user={user}
@@ -112,7 +136,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
             )
           },
           {
-            key: 'Schedule Analyze Tables',
+            key: 'Local Analyze Tables',
             value: (
               <Scheduler
                 user={user}
@@ -138,7 +162,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
             )
           },
           {
-            key: 'Schedule Fetch Error Log',
+            key: 'Remote Fetch Logs',
             value: (
               <Scheduler
                 user={user}
@@ -162,7 +186,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
             )
           },
           {
-            key: 'Schedule Rotate Log Tables',
+            key: 'Local Rotate Log Tables',
             value: (
               <Scheduler
                 user={user}
@@ -191,7 +215,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
             )
           },
           {
-            key: 'Schedule Rolling Restart',
+            key: 'Local Rolling Restart',
             value: (
               <Scheduler
                 user={user}
@@ -215,7 +239,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
             )
           },
           {
-            key: 'Schedule Rolling Reprov',
+            key: 'Local Rolling Reprov',
             value: (
               <Scheduler
                 user={user}
@@ -239,7 +263,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
             )
           },
           {
-            key: 'Schedule rotate SLA',
+            key: 'Local Rotate SLA',
             value: (
               <Scheduler
                 user={user}
@@ -259,31 +283,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
             )
           },
           {
-            key: 'Schedule dbjob SSH',
-            value: (
-              <Scheduler
-                user={user}
-                value={selectedCluster?.config?.schedulerJobsSshCron}
-                switchConfirmTitle={'Confirm switch settings for scheduler-jobs-ssh?'}
-                isSwitchChecked={selectedCluster?.config?.schedulerJobsSsh}
-                confirmTitle={'Confirm save JobsSsh scheduler to: '}
-                onSwitchChange={() =>
-                  dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'scheduler-jobs-ssh' }))
-                }
-                onSave={(value) =>
-                  dispatch(
-                    setSetting({
-                      clusterName: selectedCluster?.name,
-                      setting: 'scheduler-jobs-ssh-cron',
-                      value: value
-                    })
-                  )
-                }
-              />
-            )
-          },
-          {
-            key: 'Schedule Disable Alerting',
+            key: 'Local Disable Alerting',
             value: (
               <Scheduler
                 user={user}

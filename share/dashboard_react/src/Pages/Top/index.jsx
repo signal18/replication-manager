@@ -6,18 +6,23 @@ import styles from './styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
 import { createColumnHelper } from '@tanstack/react-table'
 import { DataTable } from '../../components/DataTable'
-import { getReadableTime } from '../../utility/common'
+import { convertObjectToArrayForDropdown, getColorFromServerStatus, getReadableTime } from '../../utility/common'
 import { Link } from 'react-router-dom'
 import { getTopProcess } from '../../redux/clusterSlice'
 import BarGraph from '../../components/BarGraph'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import CopyToClipboard from '../../components/CopyToClipboard'
+import Dropdown from '../../components/Dropdown'
+import RunTests from '../Dashboard/components/RunTests'
+import ServerStatus from '../../components/ServerStatus'
 
 function Top({ selectedCluster }) {
   const dispatch = useDispatch()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [fullInfoValue, setFullInfoValue] = useState('')
   const [topProcessData, setTopProcessData] = useState([])
+  const [numberOfRows, setNumberOfRows] = useState(convertObjectToArrayForDropdown([10, 15, 30, 40, 50]))
+  const [selectedNumberOfRows, setSelectedNumberOfRows] = useState({ name: 10, value: 10 })
   const {
     cluster: { topProcess, clusterServers }
   } = useSelector((state) => state)
@@ -27,14 +32,48 @@ function Top({ selectedCluster }) {
   }, [])
 
   useEffect(() => {
-    if (topProcess?.length > 0 && clusterServers?.length > 0) {
+    if (topProcess?.length > 0) {
       const processes = topProcess.filter((process) => {
-        const dbServer = clusterServers.find((server) => server.id === process.id)
-        return dbServer.state.toLowerCase() !== 'failed'
+        const dbServer = clusterServers?.find((server) => server.id === process.id)
+        return dbServer?.state?.toLowerCase() !== 'failed'
       })
-      setTopProcessData(processes)
+
+      const updatedProcesses = processes.map((process) => {
+        // Create a shallow copy of the current process object
+        const processCopy = { ...process }
+
+        // Create a shallow copy of the processlist array if it exists
+        processCopy.processlist = process.processlist ? [...process.processlist] : []
+
+        const emptyDataLength = selectedNumberOfRows.value - processCopy.processlist.length
+        if (emptyDataLength > 0) {
+          // Generate empty data to fill up the processlist
+          const emptyData = Array(emptyDataLength).fill({
+            id: '',
+            user: '',
+            host: '',
+            db: { String: '' },
+            command: '',
+            time: { Float64: '' },
+            timeMs: { Float64: '' },
+            state: { String: '' },
+            info: { String: '' },
+            progress: { Float64: '' },
+            rowsSent: '',
+            rowsExamined: '',
+            url: ''
+          })
+
+          // Append the empty data to processlist
+          processCopy.processlist = [...processCopy.processlist, ...emptyData]
+        }
+
+        return processCopy
+      })
+
+      setTopProcessData(updatedProcesses)
     }
-  }, [topProcess, clusterServers])
+  }, [topProcess, clusterServers, selectedNumberOfRows])
 
   const openModal = (fullValue) => {
     setIsModalOpen(true)
@@ -107,6 +146,11 @@ function Top({ selectedCluster }) {
 
   return (
     <VStack className={styles.topContainer}>
+      <AccordionComponent
+        className={styles.accordion}
+        heading={'Tests'}
+        body={<RunTests selectedCluster={selectedCluster} />}
+      />
       {selectedCluster?.workLoad && (
         <AccordionComponent
           className={styles.accordion}
@@ -114,14 +158,27 @@ function Top({ selectedCluster }) {
           body={<ClusterWorkload workload={selectedCluster?.workLoad} />}
         />
       )}
+      <Dropdown
+        label={'Select number of rows'}
+        options={numberOfRows}
+        selectedValue={selectedNumberOfRows.value}
+        classNameFormContainer={styles.dropdownRows}
+        onChange={(value) => setSelectedNumberOfRows(value)}
+      />
       {topProcessData?.length > 0 &&
         topProcessData.map((topP) => {
-          return (
+          const dbServer = clusterServers?.find((server) => server.id === topP.id)
+          const serverStatus = dbServer?.state || ''
+          const color = getColorFromServerStatus(serverStatus)
+          return serverStatus.toLowerCase() !== 'failed' ? (
             <AccordionComponent
+              headerClassName={`${styles.accordionHeader} ${styles[color]}`}
+              panelClassName={`${styles.accordionBody} ${styles[color]}`}
               className={styles.accordion}
               heading={
                 <HStack>
                   <Text> {topP.url}</Text>
+                  <ServerStatus state={serverStatus} isVirtualMaster={dbServer?.isVirtualMaster} isBlinking={true} />
                   <Link className={styles.morelink} to={`/clusters/${selectedCluster?.name}/${topP.id}`}>
                     show more
                   </Link>
@@ -143,7 +200,7 @@ function Top({ selectedCluster }) {
                 </>
               }
             />
-          )
+          ) : null
         })}
       {isModalOpen && (
         <ConfirmModal

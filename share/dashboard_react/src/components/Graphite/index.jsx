@@ -14,7 +14,7 @@ function Graphite({ chartRef, context, title, title2, target, target2, className
       data2 = graphite.metric(target2).alias(title2)
     }
 
-    const div = d3.select(chartRef.current)
+    const div = d3.select(chartRef.current).style('position', 'relative')
 
     // Render the chart
     div
@@ -38,7 +38,6 @@ function Graphite({ chartRef, context, title, title2, target, target2, className
     })
     return () => {
       // Remove the focus handler
-      console.log('context::', context)
       context.stop()
       context.on('focus', null)
 

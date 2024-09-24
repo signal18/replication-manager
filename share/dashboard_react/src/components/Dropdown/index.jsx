@@ -10,6 +10,7 @@ function Dropdown({
   placeholder = 'Select',
   label,
   selectedValue,
+  classNameFormContainer,
   className,
   onChange,
   confirmTitle,
@@ -52,7 +53,7 @@ function Dropdown({
   }
 
   return (
-    <Flex className={styles.selectFormContainer}>
+    <Flex className={`${styles.selectFormContainer} ${classNameFormContainer}`}>
       {label && (
         <label className={styles.label} htmlFor={id}>
           {label}

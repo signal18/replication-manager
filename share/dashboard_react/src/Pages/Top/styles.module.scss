@@ -4,6 +4,22 @@
   .accordion {
     width: 100%;
   }
+  .accordionHeader {
+    &.red {
+      background-color: var(--danger-secondary-color);
+    }
+    &.orange {
+      background-color: var(--warning-secondary-color);
+    }
+  }
+  .accordionBody {
+    &.red {
+      border-color: var(--danger-secondary-color);
+    }
+    &.orange {
+      border-color: var(--warning-secondary-color);
+    }
+  }
 
   .morelink {
     font-weight: normal;
@@ -23,6 +39,10 @@
   .showmore {
     text-decoration: underline;
     color: var(--primary-color);
+  }
+  .dropdownRows {
+    margin-left: auto;
+    width: 100%;
   }
 }
 

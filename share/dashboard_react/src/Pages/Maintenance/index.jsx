@@ -4,16 +4,21 @@ import { convertObjectToArray, formatBytes, formatDate, getBackupMethod, getBack
 import AccordionComponent from '../../components/AccordionComponent'
 import { DataTable } from '../../components/DataTable'
 import styles from './styles.module.scss'
-import { Box, HStack, VStack } from '@chakra-ui/react'
+import { Box, HStack, useDisclosure, VStack } from '@chakra-ui/react'
 import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import { getBackupSnapshot } from '../../redux/clusterSlice'
+import BackupSettings from '../Settings/BackupSettings'
+import SchedulerSettings from '../Settings/SchedulerSettings'
+import Logs from '../Dashboard/components/Logs'
+import DatabaseJobs from './DatabaseJobs'
 
-function Backups({ selectedCluster }) {
+function Maintenance({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
   const columnHelper = createColumnHelper()
+  const { isOpen: isBackupSettingsOpen, onToggle: onBackupSettingsToggle } = useDisclosure()
 
   const {
     cluster: { backupSnapshots }
@@ -33,7 +38,6 @@ function Backups({ selectedCluster }) {
       setSnapshotData(backupSnapshots)
     }
   }, [backupSnapshots])
-  console.log('snapshotData::', snapshotData)
 
   const columns = useMemo(
     () => [
@@ -180,14 +184,27 @@ function Backups({ selectedCluster }) {
   return (
     <VStack className={styles.backupContainer}>
       <AccordionComponent
+        heading={'Scheduler Settings'}
+        className={styles.accordion}
+        panelClassName={styles.accordionPanel}
+        body={<SchedulerSettings selectedCluster={selectedCluster} user={user} />}
+      />
+      <AccordionComponent
+        heading={'Backups Settings'}
+        isOpen={isBackupSettingsOpen}
+        onToggle={onBackupSettingsToggle}
+        className={styles.accordion}
+        panelClassName={styles.accordionPanel}
+        body={<BackupSettings selectedCluster={selectedCluster} user={user} />}
+      />
+      <AccordionComponent
         heading={'Current Backups'}
-        allowToggle={false}
+        className={styles.accordion}
         panelClassName={styles.accordionPanel}
         body={<DataTable data={data} columns={columns} className={styles.table} />}
       />
       <AccordionComponent
         heading={'Backup Snapshots'}
-        allowToggle={false}
         className={styles.accordion}
         panelClassName={styles.accordionPanel}
         body={
@@ -197,8 +214,20 @@ function Backups({ selectedCluster }) {
           </VStack>
         }
       />
+      <AccordionComponent
+        heading={'Database Jobs'}
+        className={styles.accordion}
+        panelClassName={styles.accordionPanel}
+        body={<DatabaseJobs clusterName={selectedCluster?.name} />}
+      />
+      <AccordionComponent
+        className={styles.accordion}
+        panelClassName={styles.accordionPanel}
+        heading={'Job Logs'}
+        body={<Logs logs={selectedCluster?.logTask?.buffer} />}
+      />
     </VStack>
   )
 }
 
-export default Backups
+export default Maintenance

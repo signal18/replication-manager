@@ -1,0 +1,22 @@
+.jobsContainer {
+  padding: rem(16);
+  .accordion {
+    width: 100%;
+  }
+  .accordionHeader {
+    background-color: var(--quaternary-color) !important;
+  }
+
+  tr[class*='headerRow'] {
+    background-color: var(--quaternary-color) !important;
+  }
+  .btnCancelTask {
+    background-color: transparent;
+    svg {
+      fill: var(--primary-color);
+    }
+    &:hover {
+      background-color: transparent;
+    }
+  }
+}

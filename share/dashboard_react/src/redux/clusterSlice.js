@@ -95,6 +95,15 @@ export const getBackupSnapshot = createAsyncThunk('cluster/getBackupSnapshot', a
   }
 })
 
+export const getJobs = createAsyncThunk('cluster/getJobs', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.getJobs(clusterName)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
 export const getShardSchema = createAsyncThunk('cluster/getShardSchema', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.getShardSchema(clusterName)
@@ -745,6 +754,20 @@ export const resetSlave = createAsyncThunk('cluster/resetSlave', async ({ cluste
   }
 })
 
+export const cancelServerJob = createAsyncThunk(
+  'cluster/cancelServerJob',
+  async ({ clusterName, serverId, taskId }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.cancelServerJob(clusterName, serverId, taskId)
+      showSuccessBanner(`Job ${taskId} cancelled successful!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Cancellation of job ${taskId} failed!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const provisionProxy = createAsyncThunk('cluster/provisionProxy', async ({ clusterName, proxyId }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.provisionProxy(clusterName, proxyId)
@@ -884,6 +907,7 @@ const initialState = {
   clusterCertificates: null,
   backupSnapshots: null,
   topProcess: null,
+  jobs: null,
   shardSchema: null,
   queryRules: null,
   refreshInterval: 0,
@@ -964,7 +988,8 @@ export const clusterSlice = createSlice({
         getTopProcess.fulfilled,
         getBackupSnapshot.fulfilled,
         getShardSchema.fulfilled,
-        getQueryRules.fulfilled
+        getQueryRules.fulfilled,
+        getJobs.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('getClusterData')) {
@@ -987,6 +1012,8 @@ export const clusterSlice = createSlice({
           state.shardSchema = action.payload.data
         } else if (action.type.includes('getQueryRules')) {
           state.queryRules = action.payload.data
+        } else if (action.type.includes('getJobs')) {
+          state.jobs = action.payload.data
         } else if (action.type.includes('getDatabaseService')) {
           const { serviceName } = action.meta.arg
           if (serviceName === 'processlist') {
