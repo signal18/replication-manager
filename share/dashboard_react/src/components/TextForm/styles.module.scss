@@ -11,4 +11,14 @@
   .label {
     font-weight: 500;
   }
+
+  .btnEdit {
+    background-color: transparent;
+    svg {
+      fill: var(--secondary-color);
+    }
+    &:hover {
+      background-color: transparent;
+    }
+  }
 }
