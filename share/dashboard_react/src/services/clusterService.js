@@ -2,6 +2,7 @@ import { getRequest } from './apiHelper'
 
 export const clusterService = {
   getClusters,
+  getClusterPeers,
   getMonitoredData,
   getClusterData,
   getClusterAlerts,
@@ -86,6 +87,9 @@ export const clusterService = {
 }
 
 //#region main
+function getClusterPeers() {
+  return getRequest('clusters/peers')
+}
 function getClusters() {
   return getRequest('clusters')
 }

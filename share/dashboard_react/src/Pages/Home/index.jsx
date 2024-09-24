@@ -11,6 +11,7 @@ import {
   getClusterCertificates,
   getClusterData,
   getClusterMaster,
+  getClusterPeers,
   getClusterProxies,
   getClusters,
   getClusterServers,
@@ -101,6 +102,7 @@ function Home() {
 
     if (refreshInterval > 0) {
       callServices()
+      dispatch(getClusterPeers({}))
       const intervalSeconds = refreshInterval * 1000
       intervalId = setInterval(() => {
         callServices()
