@@ -4,3 +4,27 @@
 .modalDarkContent {
   background-color: var(--primary-color) !important;
 }
+
+.aclContainer {
+  gap: 0 !important;
+  input[type='search'] {
+    border-radius: 0;
+    border-top-left-radius: $border-radius-sm;
+    border-top-right-radius: $border-radius-sm;
+  }
+  .aclList {
+    width: 100%;
+    max-height: rem(400);
+    overflow: auto;
+    border: rem(1) solid var(--secondary-color);
+    padding: rem(8);
+    border-bottom-left-radius: $border-radius-sm;
+    border-bottom-right-radius: $border-radius-sm;
+    .aclListItem {
+      padding: rem(4);
+      &:nth-of-type(odd) {
+        background-color: var(--secondary-gray-color);
+      }
+    }
+  }
+}

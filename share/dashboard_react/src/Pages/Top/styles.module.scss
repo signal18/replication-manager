@@ -36,28 +36,8 @@
       width: rem(250);
     }
   }
-  .showmore {
-    text-decoration: underline;
-    color: var(--primary-color);
-  }
   .dropdownRows {
     margin-left: auto;
     width: 100%;
-  }
-}
-
-.modalbodyText {
-  white-space: wrap;
-  display: flex;
-  flex-direction: column;
-  gap: rem(16);
-  button[class*='btnCopy'] {
-    margin-top: rem(20);
-    position: relative;
-    left: 0 !important;
-    right: 0 !important;
-    background-color: var(--secondary-color) !important;
-    display: flex;
-    gap: rem(16);
   }
 }

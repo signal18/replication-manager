@@ -9,18 +9,20 @@ import { Link } from 'react-router-dom'
 import { clearCluster } from '../../redux/clusterSlice'
 import AlertBadge from '../AlertBadge'
 import AlertModal from '../Modals/AlertModal'
-import { FaPowerOff } from 'react-icons/fa'
+import { FaPowerOff, FaUserPlus } from 'react-icons/fa'
 import ConfirmModal from '../Modals/ConfirmModal'
 import styles from './styles.module.scss'
 import RMButton from '../RMButton'
 import RMIconButton from '../RMIconButton'
 import { useTheme } from '../../ThemeProvider'
+import AddUserModal from '../Modals/AddUserModal'
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
   const [alertModalType, setAlertModalType] = useState('')
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const {
     common: { isMobile, isDesktop },
     cluster: { clusterAlerts, clusterData }
@@ -43,6 +45,13 @@ function Navbar({ username }) {
   const handleLogout = () => {
     dispatch(logout())
     dispatch(clearCluster())
+  }
+  const openAddUserModal = () => {
+    setIsAddUserModalOpen(true)
+  }
+
+  const closeAddUserModal = () => {
+    setIsAddUserModalOpen(false)
   }
 
   return (
@@ -96,6 +105,15 @@ function Navbar({ username }) {
               ) : (
                 <RMButton onClick={openLogoutModal}>Logout</RMButton>
               )}
+              {clusterData && (
+                <RMIconButton
+                  icon={FaUserPlus}
+                  tooltip={'Add User'}
+                  px='2'
+                  variant='outline'
+                  onClick={openAddUserModal}
+                />
+              )}
             </>
           )}
 
@@ -117,6 +135,9 @@ function Navbar({ username }) {
           isOpen={isLogoutModalOpen}
           title={'Are you sure you want to log out?'}
         />
+      )}
+      {isAddUserModalOpen && (
+        <AddUserModal clusterName={clusterData?.name} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
       )}
     </>
   )

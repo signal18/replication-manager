@@ -1,5 +1,5 @@
 import { Flex, useDisclosure } from '@chakra-ui/react'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import styles from './styles.module.scss'
 import GeneralSettings from './GeneralSettings'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
@@ -20,17 +20,77 @@ function Settings({ selectedCluster, user }) {
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [confirmTitle, setConfirmTitle] = useState('')
 
-  const { isOpen: isGeneralOpen, onToggle: onGeneralToggle } = useDisclosure({ defaultIsOpen: true })
-  const { isOpen: isMonitoringOpen, onToggle: onMonitoringToggle } = useDisclosure()
-  const { isOpen: isLogsOpen, onToggle: onLogsToggle } = useDisclosure()
-  const { isOpen: isRepFailOverOpen, onToggle: onRepFailOverToggle } = useDisclosure()
-  const { isOpen: isRepConfigOpen, onToggle: onRepConfigToggle } = useDisclosure()
-  const { isOpen: isRejoinOpen, onToggle: onRejoinToggle } = useDisclosure()
-  const { isOpen: isAlertsOpen, onToggle: onAlertsToggle } = useDisclosure()
-  const { isOpen: isProxiesOpen, onToggle: onProxiesToggle } = useDisclosure()
-  const { isOpen: isGraphsOpen, onToggle: onGraphsToggle } = useDisclosure()
-  const { isOpen: isCloud18Open, onToggle: onCloud18Toggle } = useDisclosure()
-  const { isOpen: isGlobalOpen, onToggle: onGlobalToggle } = useDisclosure()
+  const { isOpen: isGeneralOpen, onToggle: onGeneralToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isGeneralOpen')) === false ? false : true
+  })
+  const { isOpen: isMonitoringOpen, onToggle: onMonitoringToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isMonitoringOpen')) || false
+  })
+  const { isOpen: isLogsOpen, onToggle: onLogsToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isLogsOpen')) || false
+  })
+  const { isOpen: isRepFailOverOpen, onToggle: onRepFailOverToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isRepFailOverOpen')) || false
+  })
+  const { isOpen: isRepConfigOpen, onToggle: onRepConfigToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isRepConfigOpen')) || false
+  })
+  const { isOpen: isRejoinOpen, onToggle: onRejoinToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isRejoinOpen')) || false
+  })
+  const { isOpen: isAlertsOpen, onToggle: onAlertsToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isAlertsOpen')) || false
+  })
+  const { isOpen: isProxiesOpen, onToggle: onProxiesToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isProxiesOpen')) || false
+  })
+  const { isOpen: isGraphsOpen, onToggle: onGraphsToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isGraphsOpen')) || false
+  })
+  const { isOpen: isCloud18Open, onToggle: onCloud18Toggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isCloud18Open')) || false
+  })
+  const { isOpen: isGlobalOpen, onToggle: onGlobalToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isGlobalOpen')) || false
+  })
+
+  useEffect(() => {
+    localStorage.setItem('isGeneralOpen', JSON.stringify(isGeneralOpen))
+  }, [isGeneralOpen])
+  useEffect(() => {
+    localStorage.setItem('isMonitoringOpen', JSON.stringify(isMonitoringOpen))
+  }, [isMonitoringOpen])
+  useEffect(() => {
+    localStorage.setItem('isLogsOpen', JSON.stringify(isLogsOpen))
+  }, [isLogsOpen])
+  useEffect(() => {
+    localStorage.setItem('isRepFailOverOpen', JSON.stringify(isRepFailOverOpen))
+  }, [isRepFailOverOpen])
+  useEffect(() => {
+    localStorage.setItem('isRepConfigOpen', JSON.stringify(isRepConfigOpen))
+  }, [isRepConfigOpen])
+
+  useEffect(() => {
+    localStorage.setItem('isRejoinOpen', JSON.stringify(isRejoinOpen))
+  }, [isRejoinOpen])
+
+  useEffect(() => {
+    localStorage.setItem('isAlertsOpen', JSON.stringify(isAlertsOpen))
+  }, [isAlertsOpen])
+  useEffect(() => {
+    localStorage.setItem('isProxiesOpen', JSON.stringify(isProxiesOpen))
+  }, [isProxiesOpen])
+  useEffect(() => {
+    localStorage.setItem('isGraphsOpen', JSON.stringify(isGraphsOpen))
+  }, [isGraphsOpen])
+
+  useEffect(() => {
+    localStorage.setItem('isCloud18Open', JSON.stringify(isCloud18Open))
+  }, [isCloud18Open])
+
+  useEffect(() => {
+    localStorage.setItem('isGlobalOpen', JSON.stringify(isGlobalOpen))
+  }, [isGlobalOpen])
 
   const openConfirmModal = (title, handler) => {
     setIsConfirmModalOpen(true)
