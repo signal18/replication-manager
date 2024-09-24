@@ -11,6 +11,15 @@ export const getClusters = createAsyncThunk('cluster/getClusters', async ({}, th
   }
 })
 
+export const getClusterPeers = createAsyncThunk('cluster/getClusterPeers', async ({}, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.getClusterPeers()
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
 export const getMonitoredData = createAsyncThunk('cluster/getMonitoredData', async ({}, thunkAPI) => {
   try {
     const { data, status } = await clusterService.getMonitoredData()
