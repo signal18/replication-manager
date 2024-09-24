@@ -8,6 +8,7 @@ import CopyToClipboard from '../../../../components/CopyToClipboard'
 import { isEqual } from 'lodash'
 import { getDatabaseService } from '../../../../redux/clusterSlice'
 import Toolbar from '../Toolbar'
+import ShowMoreText from '../../../../components/ShowMoreText'
 
 function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggleDigestMode }) {
   const dispatch = useDispatch()
@@ -74,17 +75,10 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
         header: 'Schema',
         id: 'schema'
       }),
-      columnHelper.accessor((row) => row.query, {
+      columnHelper.accessor((row) => row.digest_text, {
         header: 'Query',
         id: 'query',
-        cell: (info) => (
-          <CopyToClipboard
-            text={info.getValue()}
-            className={styles.clipboardText}
-            textType='Query'
-            copyIconPosition='start'
-          />
-        )
+        cell: (info) => <ShowMoreText text={info.getValue()} />
       }),
       columnHelper.accessor((row) => row.execCount, {
         header: 'Count',

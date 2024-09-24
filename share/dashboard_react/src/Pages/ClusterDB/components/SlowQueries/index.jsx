@@ -8,6 +8,7 @@ import CopyToClipboard from '../../../../components/CopyToClipboard'
 import { isEqual } from 'lodash'
 import { getDatabaseService } from '../../../../redux/clusterSlice'
 import Toolbar from '../Toolbar'
+import ShowMoreText from '../../../../components/ShowMoreText'
 
 function SlowQueries({ clusterName, dbId, selectedDBServer }) {
   const dispatch = useDispatch()
@@ -55,6 +56,7 @@ function SlowQueries({ clusterName, dbId, selectedDBServer }) {
   const handleSearch = (e) => {
     setSearch(e.target.value)
   }
+
   const columnHelper = createColumnHelper()
 
   const columns = useMemo(
@@ -73,14 +75,8 @@ function SlowQueries({ clusterName, dbId, selectedDBServer }) {
       }),
       columnHelper.accessor((row) => row.query, {
         header: 'Query',
-        cell: (info) => (
-          <CopyToClipboard
-            text={info.getValue()}
-            className={styles.clipboardText}
-            textType='Query'
-            copyIconPosition='start'
-          />
-        ),
+        cell: (info) => <ShowMoreText text={info.getValue()} maxLength={80} />,
+        textAlign: 'start',
         enableSorting: false
       }),
       columnHelper.accessor((row) => row.execTimeTotal, {

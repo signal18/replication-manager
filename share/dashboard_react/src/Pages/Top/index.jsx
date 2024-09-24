@@ -15,6 +15,7 @@ import CopyToClipboard from '../../components/CopyToClipboard'
 import Dropdown from '../../components/Dropdown'
 import RunTests from '../Dashboard/components/RunTests'
 import ServerStatus from '../../components/ServerStatus'
+import ShowMoreText from '../../components/ShowMoreText'
 
 function Top({ selectedCluster }) {
   const dispatch = useDispatch()
@@ -122,22 +123,7 @@ function Top({ selectedCluster }) {
       columnHelper.accessor((row) => row.info.String, {
         header: 'Info',
         maxWidth: '400px',
-        cell: (info) => {
-          const fullString = info.getValue()
-          const fullLength = fullString.length
-          const slicedValue = fullString.slice(0, 30)
-
-          return (
-            <>
-              <span>{fullLength > 30 ? `${slicedValue}...` : fullString}</span>
-              {fullLength > 30 && (
-                <button onClick={() => openModal(fullString)} className={styles.showmore}>
-                  more
-                </button>
-              )}
-            </>
-          )
-        },
+        cell: (info) => <ShowMoreText text={info.getValue()} />,
         enableSorting: false
       })
     ],
