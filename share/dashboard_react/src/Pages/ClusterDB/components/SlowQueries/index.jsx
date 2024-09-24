@@ -67,7 +67,7 @@ function SlowQueries({ clusterName, dbId, selectedDBServer }) {
       }),
       columnHelper.accessor((row) => row.lastSeen, {
         header: 'Time',
-        enableSorting: false
+        enableSorting: true
       }),
       columnHelper.accessor((row) => row.shemaName || '-', {
         header: 'Schema',

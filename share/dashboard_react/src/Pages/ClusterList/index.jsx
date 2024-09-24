@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { getClusters, setCluster } from '../../redux/clusterSlice'
 import { Box, HStack, Text, Wrap } from '@chakra-ui/react'
@@ -10,9 +10,14 @@ import TableType2 from '../../components/TableType2'
 import styles from './styles.module.scss'
 import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
 import CustomIcon from '../../components/Icons/CustomIcon'
+import { FaUserPlus } from 'react-icons/fa'
+import RMIconButton from '../../components/RMIconButton'
+import AddUserModal from '../../components/Modals/AddUserModal'
 
 function ClusterList({ onClick }) {
   const dispatch = useDispatch()
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
+  const [clusterName, setClusterName] = useState('')
 
   const {
     cluster: { clusters, loading }
@@ -21,6 +26,17 @@ function ClusterList({ onClick }) {
   useEffect(() => {
     dispatch(getClusters({}))
   }, [])
+
+  const openAddUserModal = (e, name) => {
+    e.stopPropagation()
+    setIsAddUserModalOpen(true)
+    setClusterName(name)
+  }
+
+  const closeAddUserModal = () => {
+    setIsAddUserModalOpen(false)
+    setClusterName('')
+  }
 
   return !loading && clusters?.length === 0 ? (
     <NotFound text={'No cluster found!'} />
@@ -110,6 +126,14 @@ function ClusterList({ onClick }) {
                 <HStack className={styles.heading}>
                   <CustomIcon icon={AiOutlineCluster} />{' '}
                   <span className={styles.cardHeaderText}>{clusterItem.name}</span>
+                  <RMIconButton
+                    icon={FaUserPlus}
+                    tooltip={'Add User'}
+                    px='2'
+                    variant='outline'
+                    onClick={(e) => openAddUserModal(e, clusterItem.name)}
+                    className={styles.btnAddUser}
+                  />
                 </HStack>
               }
               body={
@@ -124,6 +148,9 @@ function ClusterList({ onClick }) {
           </Box>
         )
       })}
+      {isAddUserModalOpen && (
+        <AddUserModal clusterName={clusterName} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
+      )}
     </Wrap>
   )
 }

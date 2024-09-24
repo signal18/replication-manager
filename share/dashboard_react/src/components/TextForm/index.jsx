@@ -63,6 +63,7 @@ function TextForm({ onSave, id, label, value, loading, maxLength = 120, classNam
         ) : (
           <RMIconButton
             icon={HiPencilAlt}
+            className={styles.btnEdit}
             tooltip='Edit'
             onClick={() => {
               setIsEditable(true)

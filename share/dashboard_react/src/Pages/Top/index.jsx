@@ -10,8 +10,6 @@ import { convertObjectToArrayForDropdown, getColorFromServerStatus, getReadableT
 import { Link } from 'react-router-dom'
 import { getTopProcess } from '../../redux/clusterSlice'
 import BarGraph from '../../components/BarGraph'
-import ConfirmModal from '../../components/Modals/ConfirmModal'
-import CopyToClipboard from '../../components/CopyToClipboard'
 import Dropdown from '../../components/Dropdown'
 import RunTests from '../Dashboard/components/RunTests'
 import ServerStatus from '../../components/ServerStatus'
@@ -19,8 +17,6 @@ import ShowMoreText from '../../components/ShowMoreText'
 
 function Top({ selectedCluster }) {
   const dispatch = useDispatch()
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [fullInfoValue, setFullInfoValue] = useState('')
   const [topProcessData, setTopProcessData] = useState([])
   const [numberOfRows, setNumberOfRows] = useState(convertObjectToArrayForDropdown([10, 15, 30, 40, 50]))
   const [selectedNumberOfRows, setSelectedNumberOfRows] = useState({ name: 10, value: 10 })
@@ -76,16 +72,6 @@ function Top({ selectedCluster }) {
     }
   }, [topProcess, clusterServers, selectedNumberOfRows])
 
-  const openModal = (fullValue) => {
-    setIsModalOpen(true)
-    setFullInfoValue(fullValue)
-  }
-
-  const closeModal = () => {
-    setIsModalOpen(false)
-    setFullInfoValue('')
-  }
-
   const columnHelper = createColumnHelper()
 
   const columns = useMemo(
@@ -134,6 +120,7 @@ function Top({ selectedCluster }) {
     <VStack className={styles.topContainer}>
       <AccordionComponent
         className={styles.accordion}
+        headerClassName={styles.accordionHeader}
         heading={'Tests'}
         body={<RunTests selectedCluster={selectedCluster} />}
       />
@@ -188,16 +175,6 @@ function Top({ selectedCluster }) {
             />
           ) : null
         })}
-      {isModalOpen && (
-        <ConfirmModal
-          isOpen={isModalOpen}
-          closeModal={closeModal}
-          title='Info'
-          body={<CopyToClipboard text={fullInfoValue} className={styles.modalbodyText} keepOpen={true} />}
-          showCancelButton={false}
-          showConfirmButton={false}
-        />
-      )}
     </VStack>
   )
 }
