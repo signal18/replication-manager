@@ -346,11 +346,21 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	errLogFile := server.Datadir + "/log/log_error.log"
 	slowLogFile := server.Datadir + "/log/log_slow_query.log"
-	if _, err := os.Stat(errLogFile); os.IsNotExist(err) {
+	logInfo, err := os.Stat(errLogFile)
+	if os.IsNotExist(err) || logInfo.Size() > 1024 {
+		// If size is bigger than 1KB when init, rotate it
+		if logInfo.Size() > 1024 {
+			os.Rename(errLogFile, fmt.Sprintf("%s/log/log_error_%s.log", server.Datadir, time.Now().Format("20060102_150405")))
+		}
 		nofile, _ := os.OpenFile(errLogFile, os.O_WRONLY|os.O_CREATE, 0600)
 		nofile.Close()
 	}
-	if _, err := os.Stat(slowLogFile); os.IsNotExist(err) {
+	logInfo, err = os.Stat(slowLogFile)
+	if os.IsNotExist(err) || logInfo.Size() > 1024 {
+		// If size is bigger than 1KB when init, rotate it
+		if logInfo.Size() > 1024 {
+			os.Rename(slowLogFile, fmt.Sprintf("%s/log/log_slow_query_%s.log", server.Datadir, time.Now().Format("20060102_150405")))
+		}
 		nofile, _ := os.OpenFile(slowLogFile, os.O_WRONLY|os.O_CREATE, 0600)
 		nofile.Close()
 	}

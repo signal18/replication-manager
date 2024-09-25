@@ -933,7 +933,7 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	if err != nil {
 		return 0, nil
 	}
-	return server.JobInsertTask("error", port, cluster.Conf.MonitorAddress)
+	return server.JobInsertTask("errorlog", port, cluster.Conf.MonitorAddress)
 }
 
 // ErrorLogWatcher monitor the tail of the log and populate ring buffer
@@ -971,13 +971,13 @@ func (server *ServerMonitor) SlowLogWatcher() {
 	for line := range server.SlowLogTailer.Lines {
 		newlog := s18log.NewSlowMessage()
 		if cluster.Conf.LogSST {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "New line %s", line.Text)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "New line %s", line.Text)
 		}
 		log.Group = cluster.GetClusterName()
 		if headerRe.MatchString(line.Text) && !headerRe.MatchString(preline) {
 			// new querySelector
 			if cluster.Conf.LogSST {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "New query %s", log)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "New query %s", log)
 			}
 			if log.Query != "" {
 				server.SlowLog.Add(log)
@@ -1480,7 +1480,9 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 			if err := server.AfterJobProcess(task); err != nil {
 				logrow = []string{config.LvlErr, "[ERROR] Scheduler error fetching finished replication_manager_schema.jobs %s", err.Error()}
 			} else {
-				logrow = []string{config.LvlInfo, "[SUCCESS] Finished %s successfully", task.task}
+				if task.task != "errorlog" || task.task != "slowquery" {
+					logrow = []string{config.LvlInfo, "[SUCCESS] Finished %s successfully", task.task}
+				}
 			}
 			logs = append(logs, logrow)
 			server.SetNeedRefreshJobs(true)
