@@ -344,13 +344,32 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		os.MkdirAll(server.Datadir+"/init", os.ModePerm)
 	}
 
-	errLogFile := server.Datadir + "/log/log_error.log"
-	slowLogFile := server.Datadir + "/log/log_slow_query.log"
-	if _, err := os.Stat(errLogFile); os.IsNotExist(err) {
+	logDir := server.Datadir + "/log"
+	errLogFile := logDir + "/log_error.log"
+	slowLogFile := logDir + "/log_slow_query.log"
+	timeFormat := "20060102_150405"
+
+	// Remove old files, prevent too many logs
+	misc.RemoveOldLogFiles(logDir, "log_error_", cluster.Conf.LogRotateMaxAge, timeFormat)
+	misc.RemoveOldLogFiles(logDir, "log_slow_query_", cluster.Conf.LogRotateMaxAge, timeFormat)
+
+	logInfo, err := os.Stat(errLogFile)
+	if os.IsNotExist(err) || logInfo.Size() > 1024 {
+		// If size is bigger than 1KB when init, rotate it
+		if logInfo.Size() > 1024 {
+			os.Rename(errLogFile, fmt.Sprintf("%s/log_error_%s.log", logDir, time.Now().Format(timeFormat)))
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate error log for %s on monitor datadir", server.URL)
+		}
 		nofile, _ := os.OpenFile(errLogFile, os.O_WRONLY|os.O_CREATE, 0600)
 		nofile.Close()
 	}
-	if _, err := os.Stat(slowLogFile); os.IsNotExist(err) {
+	logInfo, err = os.Stat(slowLogFile)
+	if os.IsNotExist(err) || logInfo.Size() > 1024 {
+		// If size is bigger than 1KB when init, rotate it
+		if logInfo.Size() > 1024 {
+			os.Rename(slowLogFile, fmt.Sprintf("%s/log_slow_query_%s.log", logDir, time.Now().Format(timeFormat)))
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate slow query log for %s on monitor datadir", server.URL)
+		}
 		nofile, _ := os.OpenFile(slowLogFile, os.O_WRONLY|os.O_CREATE, 0600)
 		nofile.Close()
 	}

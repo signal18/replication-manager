@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 func ChownR(path string, uid, gid int) error {
@@ -164,4 +166,63 @@ func CopyDir(src string, dst string) (err error) {
 	}
 
 	return
+}
+
+// RemoveOldLogFiles removes log files older than a specified number of days
+// from the given directory, based on a specified prefix and timestamp format.
+func RemoveOldLogFiles(dir, prefix string, daysOld int, timestampFormat string) error {
+	// Get the current time and define the threshold time based on the specified number of days
+	currentTime := time.Now()
+	threshold := currentTime.Add(-time.Duration(daysOld) * 24 * time.Hour)
+
+	// Create a pattern for log files
+	pattern := filepath.Join(dir, fmt.Sprintf("%s*.log", prefix))
+
+	// Use Glob to find files matching the pattern
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		return err
+	}
+
+	// Track any errors during file deletion
+	var deletionErrors []error
+
+	// Iterate over the matched files
+	for _, filePath := range files {
+		info, err := os.Stat(filePath)
+		if err != nil {
+			deletionErrors = append(deletionErrors, err)
+			continue
+		}
+
+		// Check if the file is a regular file
+		if !info.Mode().IsRegular() {
+			continue
+		}
+
+		// Extract the timestamp from the filename
+		fileDateString := strings.TrimSuffix(strings.TrimPrefix(info.Name(), prefix), ".log")
+		fileTime, err := time.Parse(timestampFormat, fileDateString)
+		if err != nil {
+			deletionErrors = append(deletionErrors, err)
+			continue // Skip files with invalid timestamp format
+		}
+
+		// Check if the file is older than the threshold
+		if fileTime.Before(threshold) {
+			// Remove the log file
+			err := os.Remove(filePath)
+			if err != nil {
+				deletionErrors = append(deletionErrors, err)
+				continue
+			}
+			fmt.Printf("Deleted: %s\n", filePath)
+		}
+	}
+
+	// Report any errors encountered during deletion
+	if len(deletionErrors) > 0 {
+		return fmt.Errorf("errors encountered during deletion: %v", deletionErrors)
+	}
+	return nil
 }
