@@ -152,6 +152,7 @@ func (repman *ReplicationManager) rootHandler(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		log.Printf("rootHandler read error : %s", err)
 	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write(html)
 }
 
