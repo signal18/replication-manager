@@ -41,6 +41,7 @@ import (
 
 	termbox "github.com/nsf/termbox-go"
 
+	"github.com/signal18/replication-manager/auth"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/etc"
@@ -58,6 +59,7 @@ var RepMan *ReplicationManager
 
 // Global variables
 type ReplicationManager struct {
+	Auth             auth.Auth                         `json:"-"`
 	OpenSVC          opensvc.Collector                 `json:"-"`
 	Version          string                            `json:"version"`
 	Fullversion      string                            `json:"fullVersion"`
