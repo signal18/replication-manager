@@ -17,14 +17,12 @@ type AuthTry struct {
 type Auth struct {
 	Attempts *AuthTryMap
 	Users    *user.UserMap
-	Tokens   *user.UserTokenMap
 }
 
 func InitAuth() Auth {
 	return Auth{
 		Attempts: NewAuthTryMap(),
 		Users:    user.NewUserMap(),
-		Tokens:   user.NewUserTokenMap(),
 	}
 }
 

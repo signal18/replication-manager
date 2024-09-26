@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/codegangsta/negroni"
 	"github.com/signal18/replication-manager/auth/user"
 )
 
@@ -15,9 +16,18 @@ type contextKey string
 // Key to store/retrieve user from context
 const userContextKey = contextKey("user")
 
-// CheckServerPermission ensures the user has the necessary server-level permission.
-func CheckServerPermission(permission string, usermap *user.UserMap, verificationKey []byte, OAuthProvider string, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// PermissionType specifies the type of permission check
+type PermissionType int
+
+const (
+	AuthPermission PermissionType = iota
+	ServerPermission
+	ClusterPermission
+)
+
+// CheckPermission ensures the user has the necessary permissions based on the permission type.
+func CheckPermission(permission string, permissionType PermissionType, usermap *user.UserMap, verificationKey []byte, OAuthProvider string) negroni.HandlerFunc {
+	return negroni.HandlerFunc(func(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 		// Get user from context or token
 		user, err := GetUserFromJWT(r, usermap, verificationKey, OAuthProvider)
 		if err != nil {
@@ -25,40 +35,27 @@ func CheckServerPermission(permission string, usermap *user.UserMap, verificatio
 			return
 		}
 
-		// Check for server-level permission
-		if !user.HasClusterPermission("Default", permission) {
-			http.Error(w, "Forbidden: insufficient server permissions", http.StatusForbidden)
-			return
+		// Check permissions based on the type
+		// Auth Permission only check if user JWT is valid
+		switch permissionType {
+		case ServerPermission:
+			if !user.HasClusterPermission("Default", permission) {
+				http.Error(w, "Forbidden: insufficient server permissions", http.StatusForbidden)
+				return
+			}
+		case ClusterPermission:
+			clusterID := strings.Split(strings.TrimPrefix(r.URL.Path, "/clusters/"), "/")[0]
+			if !user.HasClusterPermission(clusterID, permission) {
+				http.Error(w, "Forbidden: insufficient cluster permissions", http.StatusForbidden)
+				return
+			}
 		}
 
 		// Set user in context so we can reuse it later if needed
 		ctx := context.WithValue(r.Context(), userContextKey, user)
 
 		// Call the next handler with the updated context
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-// CheckClusterPermission ensures the user has the necessary cluster-level permission.
-func CheckClusterPermission(permission string, usermap *user.UserMap, verificationKey []byte, OAuthProvider string, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, err := GetUserFromJWT(r, usermap, verificationKey, OAuthProvider)
-		if err != nil {
-			http.Error(w, "Unauthorized: user not found", http.StatusUnauthorized)
-			return
-		}
-
-		clusterID := strings.Split(strings.TrimPrefix(r.URL.Path, "/clusters/"), "/")[0]
-		if !user.HasClusterPermission(clusterID, permission) {
-			http.Error(w, "Forbidden: insufficient cluster permissions", http.StatusForbidden)
-			return
-		}
-
-		// Set user in context so we can reuse it later if needed
-		ctx := context.WithValue(r.Context(), userContextKey, user)
-
-		// Call the next handler with the updated context
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next(w, r.WithContext(ctx))
 	})
 }
 

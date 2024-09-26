@@ -393,10 +393,6 @@ app.controller('DashboardController', function (
     return AppService.getClusterUrl($scope.selectedClusterName);
   };
 
-  var git_user = { username: "", password: "" };
-  var token;
-  var git_data = $location.search();
-
   var timeFrame = $routeParams.timeFrame;
 
   $scope.formatBytes = function (bytes, decimals = 2) {
@@ -411,13 +407,23 @@ app.controller('DashboardController', function (
 
   $scope.bufferList = [1024, 2048, 4096, 8192, 16384, 32768, 65536, 1048576]
 
-  if (git_data["user"] && git_data["token"] && !AppService.hasAuthHeaders()) {
-    git_user.username = git_data["user"];
-    token = git_data["token"];
-    git_user.password = git_data["pass"]
-    AppService.setAuthenticated(git_user.username, token);
-    timeFrame = "";
-    $location.url($location.path());
+  var urlparams = $location.search();
+
+  // If url has token and not having headers
+  if (urlparams["token"] && !AppService.hasAuthHeaders()) {
+    //Set token for getting user
+    AppService.setAuthToken(token);
+
+    $http.get(AppService.getApiDomain() + '/auth/user')
+      .then(function (success) {
+        var data = success.data;
+        if (data.user) {
+          AppService.setAuthUser(data.user);
+        }
+      }).finally(() => {
+        timeFrame = "";
+        $location.url($location.path());
+      });
   }
 
   $scope.isLoggedIn = AppService.hasAuthHeaders();

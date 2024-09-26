@@ -16,7 +16,7 @@ type User struct {
 }
 
 type UserToken struct {
-	User  string `json:"user"`
+	User  *User  `json:"user"`
 	Token string `json:"token"`
 }
 
@@ -126,101 +126,6 @@ func FromUserMap(m *UserMap, c *UserMap) *UserMap {
 
 	if c != nil {
 		c.Callback(func(key string, value *User) bool {
-			m.Set(key, value)
-			return true
-		})
-	}
-
-	return m
-}
-
-type UserTokenMap struct {
-	*sync.Map
-}
-
-func NewUserTokenMap() *UserTokenMap {
-	s := new(sync.Map)
-	m := &UserTokenMap{Map: s}
-	return m
-}
-
-func (m *UserTokenMap) Get(key string) *UserToken {
-	if v, ok := m.Load(key); ok {
-		return v.(*UserToken)
-	}
-	return nil
-}
-
-func (m *UserTokenMap) CheckAndGet(key string) (*UserToken, bool) {
-	v, ok := m.Load(key)
-	if ok {
-		return v.(*UserToken), true
-	}
-	return nil, false
-}
-
-func (m *UserTokenMap) Set(key string, value *UserToken) {
-	m.Store(key, value)
-}
-
-func (m *UserTokenMap) ToNormalMap(c map[string]*UserToken) {
-	// Clear the old values in the output map
-	for k := range c {
-		delete(c, k)
-	}
-
-	// Insert all values from the UserTokenMap to the output map
-	m.Callback(func(key string, value *UserToken) bool {
-		c[key] = value
-		return true
-	})
-}
-
-func (m *UserTokenMap) ToNewMap() map[string]*UserToken {
-	result := make(map[string]*UserToken)
-	m.Range(func(k, v any) bool {
-		result[k.(string)] = v.(*UserToken)
-		return true
-	})
-	return result
-}
-
-func (m *UserTokenMap) Callback(f func(key string, value *UserToken) bool) {
-	m.Range(func(k, v any) bool {
-		return f(k.(string), v.(*UserToken))
-	})
-}
-
-func (m *UserTokenMap) Clear() {
-	m.Range(func(key, value any) bool {
-		m.Delete(key.(string))
-		return true
-	})
-}
-
-func FromNormalUserTokenMap(m *UserTokenMap, c map[string]*UserToken) *UserTokenMap {
-	if m == nil {
-		m = NewUserTokenMap()
-	} else {
-		m.Clear()
-	}
-
-	for k, v := range c {
-		m.Set(k, v)
-	}
-
-	return m
-}
-
-func FromUserTokenMap(m *UserTokenMap, c *UserTokenMap) *UserTokenMap {
-	if m == nil {
-		m = NewUserTokenMap()
-	} else {
-		m.Clear()
-	}
-
-	if c != nil {
-		c.Callback(func(key string, value *UserToken) bool {
 			m.Set(key, value)
 			return true
 		})

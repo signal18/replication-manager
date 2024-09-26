@@ -227,6 +227,11 @@ func (repman *ReplicationManager) apiserver() {
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
 	))
 
+	router.Handle("/api/auth/user", negroni.New(
+		negroni.HandlerFunc(auth.CheckPermission("auth", auth.ServerPermission, repman.Auth.Users, verificationKey, repman.Conf.OAuthProvider)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetCurrentUser)),
+	))
+
 	router.Handle("/api/monitor/actions/adduser/{userName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddUser)),
@@ -386,29 +391,29 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 
 	repman.OAuthAccessToken = oauth2Token
 
-	user, ok := repman.Auth.Users.CheckAndGet(userInfo.Email)
+	u, ok := repman.Auth.Users.CheckAndGet(userInfo.Email)
 	if !ok {
 		http.Error(w, "User not found in user list", http.StatusInternalServerError)
 		return
 	}
 
 	tmp := strings.Split(userInfo.Profile, "/")
-	user.GitUser = tmp[len(tmp)-1]
-	user.GitToken = oauth2Token.AccessToken
+	u.GitUser = tmp[len(tmp)-1]
+	u.GitToken = oauth2Token.AccessToken
 
-	tokenString, err := auth.IssueJWT(user, repman.Conf.TokenTimeout, signingKey)
+	tokenString, err := auth.IssueJWT(u, repman.Conf.TokenTimeout, signingKey)
 	if err != nil {
 		http.Error(w, "Error while signing the token: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	//create a token instance using the token string
 	specs := r.Header.Get("Accept")
-	resp := token{tokenString}
 	if strings.Contains(specs, "text/html") {
 		http.Redirect(w, r, repman.Conf.APIPublicURL+"/#!/dashboard?token="+tokenString, http.StatusTemporaryRedirect)
 		return
 	} else {
+		//create a token instance using the token string
+		resp := token{tokenString}
 		repman.jsonResponse(resp, w)
 		return
 	}
@@ -459,6 +464,24 @@ func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *ht
 		}
 	}
 
+}
+
+func (repman *ReplicationManager) handlerMuxGetCurrentUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	u, err := auth.GetUserFromRequest(r)
+	if err != nil {
+		http.Error(w, "Error getting user from token: "+err.Error(), http.StatusInternalServerError)
+	}
+
+	res, err := json.Marshal(u)
+	if err != nil {
+		http.Error(w, "Error Marshal", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(res)
 }
 
 // swagger:route GET /api/clusters clusters
