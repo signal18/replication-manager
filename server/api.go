@@ -36,8 +36,10 @@ import (
 	"github.com/signal18/replication-manager/auth/user"
 	"github.com/signal18/replication-manager/cert"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/share"
+	"github.com/signal18/replication-manager/utils/githelper"
 )
 
 //RSA KEYS AND INITIALISATION
@@ -191,6 +193,7 @@ func (repman *ReplicationManager) apiserver() {
 	}
 
 	router.HandleFunc("/api/login", repman.loginHandler)
+	router.HandleFunc("/api/login-git", repman.loginHandler)
 	//router.Handle("/api", v3.NewHandler("My API", "/swagger.json", "/api"))
 
 	router.Handle("/api/auth/callback", negroni.New(
@@ -343,6 +346,8 @@ func (repman *ReplicationManager) IsValidClusterACL(r *http.Request, cluster *cl
 func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var cred user.UserCredentials
+	var u *user.User
+	var ok bool
 
 	//decode request into UserCredentials struct
 	err := json.NewDecoder(r.Body).Decode(&cred)
@@ -351,13 +356,51 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	user, err := repman.Auth.LoginAttempt(cred)
+	auth_try, err := repman.Auth.LogAttempt(cred)
 	if err != nil {
-		http.Error(w, "Error logging in: "+err.Error(), http.StatusUnauthorized)
+		http.Error(w, "Too many request: "+err.Error(), http.StatusTooManyRequests)
 		return
 	}
 
-	tokenString, err := auth.IssueJWT(user, repman.Conf.TokenTimeout, signingKey)
+	if strings.Contains(r.URL.Path, "login-git") {
+		u, ok = repman.Auth.Users.CheckAndGet(cred.Username)
+		if !ok {
+			http.Error(w, "Error logging in: User is not registered", http.StatusUnauthorized)
+			return
+		}
+
+		token, resp, err := githelper.GetGitLabTokenBasicAuth(cred.Username, cred.Password)
+
+		if repman.Conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg) {
+			log.Debugf("Git Body Response: %s", string(resp))
+		}
+
+		if err != nil {
+			http.Error(w, "Error logging in to gitlab: "+err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		if token == "" {
+			http.Error(w, "Error logging in to gitlab: Token is empty", http.StatusUnauthorized)
+			return
+		}
+
+		u.GitUser = cred.Username
+		u.GitToken = token
+
+	} else {
+		u, ok = repman.Auth.Users.CheckAndGet(cred.Username)
+		if !ok || u.Password != cred.Password {
+			http.Error(w, "Error logging in: "+err.Error(), http.StatusUnauthorized)
+			return
+		}
+	}
+
+	auth_try.User = cred.Username
+	auth_try.Try = 1
+	auth_try.Time = time.Now()
+
+	tokenString, err := auth.IssueJWT(u, repman.Conf.TokenTimeout, signingKey)
 	if err != nil {
 		http.Error(w, "Error while signing the token: "+err.Error(), http.StatusInternalServerError)
 		return

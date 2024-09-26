@@ -1223,8 +1223,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	}
 
 	if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
-		acces_tok := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.LogGit)
-		personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, conf.LogGit)
+		acces_tok, _, _ := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"))
+		personal_access_token, _, _, _ := githelper.GetGitLabTokenOAuth(acces_tok)
 		if personal_access_token != "" {
 			var Secrets config.Secret
 			Secrets.Value = personal_access_token
@@ -1733,7 +1733,7 @@ func (repman *ReplicationManager) Run() error {
 					//to obtain new app access token
 					repman.OAuthAccessToken.AccessToken, repman.OAuthAccessToken.RefreshToken, err = githelper.RefreshAccessToken(repman.OAuthAccessToken.RefreshToken, repman.Conf.OAuthClientID, repman.Conf.GetDecryptedPassword("api-oauth-client-secret", repman.Conf.OAuthClientSecret), repman.Conf.LogGit)
 					//to obtain a new PAT
-					new_tok, _ := githelper.GetGitLabTokenOAuth(repman.OAuthAccessToken.AccessToken, repman.Conf.LogGit)
+					new_tok, _, _, _ := githelper.GetGitLabTokenOAuth(repman.OAuthAccessToken.AccessToken)
 
 					//save the new PAT
 					newSecret := repman.Conf.Secrets["git-acces-token"]

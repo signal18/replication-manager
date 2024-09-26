@@ -71,28 +71,11 @@ func (auth *Auth) LogAttempt(user user.UserCredentials) (*AuthTry, error) {
 			}
 		} else {
 			auth_try.Try += 1
+			auth_try.Time = time.Now()
 		}
 	} else {
 		auth_try = initAuth
 	}
 
 	return auth_try, nil
-}
-
-func (auth *Auth) LoginAttempt(cred user.UserCredentials) (*user.User, error) {
-	auth_try, err := auth.LogAttempt(cred)
-	if err != nil {
-		return nil, err
-	}
-
-	u, ok := auth.Users.CheckAndGet(cred.Username)
-	if !ok || u.Password != cred.Password {
-		return nil, fmt.Errorf("invalid credentials")
-	}
-
-	auth_try.User = cred.Username
-	auth_try.Try = 1
-	auth_try.Time = time.Now()
-
-	return u, nil
 }
