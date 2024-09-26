@@ -1729,7 +1729,7 @@ func (conf *Config) GetMemoryPctThreaded() (map[string]int, error) {
 	return engines, nil
 }
 
-func (conf *Config) GetGrantType() map[string]string {
+func GetGrantType() map[string]string {
 	return map[string]string{
 		GrantDBStart:                   GrantDBStart,
 		GrantDBStop:                    GrantDBStop,

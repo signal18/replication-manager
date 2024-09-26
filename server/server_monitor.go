@@ -83,6 +83,7 @@ For interacting with this daemon use,
 		//	RepMan.DefaultFlagMap = defaultFlagMap
 		RepMan.InitConfig(conf)
 		RepMan.Auth = auth.InitAuth()
+		RepMan.LoadAPIUsers("Default", &conf)
 		RepMan.Run()
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {

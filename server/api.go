@@ -347,8 +347,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	//decode request into UserCredentials struct
 	err := json.NewDecoder(r.Body).Decode(&cred)
 	if err != nil {
-		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error in request")
+		http.Error(w, "Error in request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 

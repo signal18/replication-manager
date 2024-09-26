@@ -2,9 +2,12 @@ package auth
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/auth/user"
+	"github.com/signal18/replication-manager/config"
 )
 
 type AuthTry struct {
@@ -15,21 +18,49 @@ type AuthTry struct {
 
 // Users will be stored here
 type Auth struct {
-	Attempts *AuthTryMap
-	Users    *user.UserMap
+	Attempts         *AuthTryMap
+	Users            *user.UserMap
+	ServerGrantOpts  []string
+	ClusterGrantOpts []string
 }
 
 func InitAuth() Auth {
-	return Auth{
-		Attempts: NewAuthTryMap(),
-		Users:    user.NewUserMap(),
+	a := Auth{
+		Attempts:         NewAuthTryMap(),
+		Users:            user.NewUserMap(),
+		ServerGrantOpts:  make([]string, 0),
+		ClusterGrantOpts: make([]string, 0),
 	}
+
+	a.InitGrants()
+
+	return a
+}
+
+func (auth *Auth) InitGrants() {
+	for _, v := range config.GetGrantType() {
+		if strings.HasPrefix(v, "server") {
+			auth.ServerGrantOpts = append(auth.ServerGrantOpts, v)
+		} else {
+			auth.ClusterGrantOpts = append(auth.ClusterGrantOpts, v)
+		}
+	}
+
+	slices.Sort(auth.ServerGrantOpts)
+	slices.Sort(auth.ClusterGrantOpts)
 }
 
 func (auth *Auth) LogAttempt(user user.UserCredentials) (*AuthTry, error) {
 	var auth_try *AuthTry
 
-	if auth_try, ok := auth.Attempts.CheckAndGet(user.Username); ok {
+	initAuth := new(AuthTry)
+	initAuth.User = user.Username
+	initAuth.Try = 1
+	initAuth.Time = time.Now()
+
+	try, ok := auth.Attempts.LoadOrStore(user.Username, initAuth)
+	if ok {
+		auth_try = try.(*AuthTry)
 		// If exceed 3 times
 		if auth_try.Try == 3 {
 			if time.Now().Before(auth_try.Time.Add(3 * time.Minute)) {
@@ -42,28 +73,24 @@ func (auth *Auth) LogAttempt(user user.UserCredentials) (*AuthTry, error) {
 			auth_try.Try += 1
 		}
 	} else {
-		auth_try = new(AuthTry)
-		auth_try.User = user.Username
-		auth_try.Try = 1
-		auth_try.Time = time.Now()
-		auth.Attempts.Set(user.Username, auth_try)
+		auth_try = initAuth
 	}
 
 	return auth_try, nil
 }
 
-func (auth *Auth) LoginAttempt(user user.UserCredentials) (*user.User, error) {
-	auth_try, err := auth.LogAttempt(user)
+func (auth *Auth) LoginAttempt(cred user.UserCredentials) (*user.User, error) {
+	auth_try, err := auth.LogAttempt(cred)
 	if err != nil {
 		return nil, err
 	}
 
-	u, ok := auth.Users.CheckAndGet(user.Username)
-	if !ok || user.Password != u.Password {
+	u, ok := auth.Users.CheckAndGet(cred.Username)
+	if !ok || u.Password != cred.Password {
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
-	auth_try.User = user.Username
+	auth_try.User = cred.Username
 	auth_try.Try = 1
 	auth_try.Time = time.Now()
 

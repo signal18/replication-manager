@@ -1821,6 +1821,9 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
+
+	repman.LoadAPIUsers(clusterName, &myClusterConf)
+
 	go repman.currentCluster.Run()
 	return repman.currentCluster, nil
 }
@@ -2037,7 +2040,7 @@ func (repman *ReplicationManager) InitGrants() error {
 
 	acls := []config.Grant{}
 
-	for _, value := range repman.Conf.GetGrantType() {
+	for _, value := range config.GetGrantType() {
 		var acl config.Grant
 		acl.Grant = value
 		acls = append(acls, acl)
