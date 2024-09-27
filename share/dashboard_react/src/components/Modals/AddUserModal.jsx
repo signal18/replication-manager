@@ -23,7 +23,7 @@ import RMButton from '../RMButton'
 import { useTheme } from '../../ThemeProvider'
 import parentStyles from './styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
-import { getMonitoredData } from '../../redux/clusterSlice'
+import { getMonitoredData } from '../../redux/globalClustersSlice'
 
 function AddUserModal({ clusterName, isOpen, closeModal }) {
   const dispatch = useDispatch()
@@ -33,7 +33,7 @@ function AddUserModal({ clusterName, isOpen, closeModal }) {
   const [acls, setAcls] = useState([])
   const { theme } = useTheme()
   const {
-    cluster: { monitor }
+    globalClusters: { monitor }
   } = useSelector((state) => state)
 
   useEffect(() => {

@@ -11,7 +11,7 @@ import TextForm from '../../../components/TextForm'
 function OrchestratorDisks({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const {
-    cluster: { monitor }
+    globalClusters: { monitor }
   } = useSelector((state) => state)
   const [serviceDisks, setServiceDisks] = useState([])
   const [serviceFS, setServiceFS] = useState([])

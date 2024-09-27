@@ -2,33 +2,6 @@ import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import { clusterService } from '../services/clusterService'
 import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
 
-export const getClusters = createAsyncThunk('cluster/getClusters', async ({}, thunkAPI) => {
-  try {
-    const { data, status } = await clusterService.getClusters()
-    return { data, status }
-  } catch (error) {
-    handleError(error, thunkAPI)
-  }
-})
-
-export const getClusterPeers = createAsyncThunk('cluster/getClusterPeers', async ({}, thunkAPI) => {
-  try {
-    const { data, status } = await clusterService.getClusterPeers()
-    return { data, status }
-  } catch (error) {
-    handleError(error, thunkAPI)
-  }
-})
-
-export const getMonitoredData = createAsyncThunk('cluster/getMonitoredData', async ({}, thunkAPI) => {
-  try {
-    const { data, status } = await clusterService.getMonitoredData()
-    return { data, status }
-  } catch (error) {
-    handleError(error, thunkAPI)
-  }
-})
-
 export const getClusterData = createAsyncThunk('cluster/getClusterData', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.getClusterData(clusterName)
@@ -906,8 +879,6 @@ export const toggleDatabaseActions = createAsyncThunk(
 const initialState = {
   loading: false,
   error: null,
-  clusters: null,
-  monitor: null,
   clusterData: null,
   clusterAlerts: null,
   clusterMaster: null,
@@ -965,26 +936,6 @@ export const clusterSlice = createSlice({
     }
   },
   extraReducers: (builder) => {
-    builder
-      .addCase(getClusters.pending, (state) => {
-        state.loading = true
-      })
-      .addCase(getClusters.fulfilled, (state, action) => {
-        state.loading = false
-        state.clusters = action.payload.data
-      })
-      .addCase(getClusters.rejected, (state, action) => {
-        state.loading = false
-        state.error = action.error
-      })
-      .addCase(getMonitoredData.pending, (state) => {})
-      .addCase(getMonitoredData.fulfilled, (state, action) => {
-        state.monitor = action.payload.data
-      })
-      .addCase(getMonitoredData.rejected, (state, action) => {
-        state.error = action.error
-      })
-
     builder.addMatcher(
       isAnyOf(
         getClusterData.fulfilled,

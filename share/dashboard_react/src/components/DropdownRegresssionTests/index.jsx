@@ -6,12 +6,13 @@ import styles from './styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
 import ConfirmModal from '../Modals/ConfirmModal'
 import { convertObjectToArrayForDropdown } from '../../utility/common'
-import { getMonitoredData, runRegressionTests } from '../../redux/clusterSlice'
+import { getMonitoredData } from '../../redux/globalClustersSlice'
+import { runRegressionTests } from '../../redux/clusterSlice'
 
 function DropdownRegresssionTests({ clusterName }) {
   const dispatch = useDispatch()
   const {
-    cluster: { monitor }
+    globalClusters: { monitor }
   } = useSelector((state) => state)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [options, setOptions] = useState([])

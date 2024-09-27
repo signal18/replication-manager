@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { getClusters, setCluster } from '../../redux/clusterSlice'
-import { Box, HStack, Text, Wrap } from '@chakra-ui/react'
+import { getClusters } from '../../redux/globalClustersSlice'
+import { setCluster } from '../../redux/clusterSlice'
+import { Box, Flex, HStack, Text, Wrap } from '@chakra-ui/react'
 import NotFound from '../../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
 import { HiExclamation } from 'react-icons/hi'
@@ -20,7 +21,7 @@ function ClusterList({ onClick }) {
   const [clusterName, setClusterName] = useState('')
 
   const {
-    cluster: { clusters, loading }
+    globalClusters: { clusters, loading }
   } = useSelector((state) => state)
 
   useEffect(() => {
@@ -41,14 +42,15 @@ function ClusterList({ onClick }) {
   return !loading && clusters?.length === 0 ? (
     <NotFound text={'No cluster found!'} />
   ) : (
-    <Wrap>
-      {clusters?.map((clusterItem) => {
+    <Flex className={styles.clusterList}>
+      {clusters?.map((clusterItem, index) => {
+        const headerText = clusterItem.name
         const dataObject = [
           {
             key: 'Is Monitoring',
             value: (
               <HStack spacing='4'>
-                {clusterItem.config.monitoringPause ? (
+                {clusterItem.config?.monitoringPause ? (
                   <>
                     <CheckOrCrossIcon isValid={false} />
                     <Text>No</Text>
@@ -63,9 +65,9 @@ function ClusterList({ onClick }) {
             )
           },
           { key: 'Topology', value: clusterItem.topology },
-          { key: 'Orchestrator', value: clusterItem.config.provOrchestrator },
-          { key: 'Databases', value: clusterItem.dbServers.length },
-          { key: 'Proxies', value: clusterItem.proxyServers.length },
+          { key: 'Orchestrator', value: clusterItem.config?.provOrchestrator },
+          { key: 'Databases', value: clusterItem.dbServers?.length },
+          { key: 'Proxies', value: clusterItem.proxyServers?.length },
           {
             key: 'Is Healthy',
             value: (
@@ -110,22 +112,23 @@ function ClusterList({ onClick }) {
           { key: 'SLA', value: clusterItem.uptime }
         ]
         return (
-          <Box
-            className={styles.cardWrapper}
-            as={'button'}
-            onClick={() => {
-              dispatch(setCluster({ data: clusterItem }))
-              if (onClick) {
-                onClick(clusterItem)
-              }
-            }}>
+          <Box key={clusterItem.name} className={styles.cardWrapper}>
             <Card
-              className={styles.card}
+              className={`${styles.card}`}
               width={'400px'}
               header={
-                <HStack className={styles.heading}>
-                  <CustomIcon icon={AiOutlineCluster} />{' '}
-                  <span className={styles.cardHeaderText}>{clusterItem.name}</span>
+                <HStack
+                  as='button'
+                  className={styles.btnHeading}
+                  onClick={() => {
+                    dispatch(setCluster({ data: clusterItem }))
+                    if (onClick) {
+                      onClick(clusterItem)
+                    }
+                  }}>
+                  <CustomIcon icon={AiOutlineCluster} />
+                  <span className={styles.cardHeaderText}>{headerText}</span>
+
                   <RMIconButton
                     icon={FaUserPlus}
                     tooltip={'Add User'}
@@ -151,7 +154,7 @@ function ClusterList({ onClick }) {
       {isAddUserModalOpen && (
         <AddUserModal clusterName={clusterName} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
       )}
-    </Wrap>
+    </Flex>
   )
 }
 

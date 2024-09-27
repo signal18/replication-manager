@@ -5,6 +5,7 @@ import ConfirmModal from '../Modals/ConfirmModal'
 import CopyToClipboard from '../CopyToClipboard'
 
 function ShowMoreText({ text, maxLength = 30 }) {
+  console.log('text::', text)
   const [truncatedText, setTruncatedText] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   useEffect(() => {
