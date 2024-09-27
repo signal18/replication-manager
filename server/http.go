@@ -82,6 +82,15 @@ func (repman *ReplicationManager) httpserver() {
 		router.PathPrefix("/graphite/").Handler(http.StripPrefix("/graphite/", graphiteProxy))
 	}
 
+	// Use api/v4/ for API use (/meet/api/v4)
+	meetURL, err := url.Parse("http://meet.signal18.io/api/v4")
+	if err == nil {
+		// Set up the reverse proxy target for Graphite API
+		meetProxy := httputil.NewSingleHostReverseProxy(meetURL)
+		// Set up a route that forwards the request to the Graphite API
+		router.PathPrefix("/meet/").Handler(http.StripPrefix("/meet/", meetProxy))
+	}
+
 	//router.HandleFunc("/", repman.handlerApp)
 	// page to view which does not need authorization
 	if repman.Conf.Test {

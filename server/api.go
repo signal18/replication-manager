@@ -176,6 +176,14 @@ func (repman *ReplicationManager) apiserver() {
 		router.PathPrefix("/graphite/").Handler(http.StripPrefix("/graphite/", graphiteProxy))
 	}
 
+	meetURL, err := url.Parse("https://meet.signal18.io/api/v4")
+	if err == nil {
+		// Set up the reverse proxy target for Graphite API
+		meetProxy := httputil.NewSingleHostReverseProxy(meetURL)
+		// Set up a route that forwards the request to the Graphite API
+		router.PathPrefix("/meet/").Handler(http.StripPrefix("/meet/", meetProxy))
+	}
+
 	if repman.Conf.Test {
 		router.HandleFunc("/", repman.handlerApp)
 		router.PathPrefix("/images/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
