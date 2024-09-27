@@ -1,6 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit'
 import authReducer from '../redux/authSlice'
 import clusterReducer from '../redux/clusterSlice'
+import globalClustersReducer from '../redux/globalClustersSlice'
 import settingsReducer from '../redux/settingsSlice'
 import configReducer from '../redux/configSlice'
 import commonReducer from '../redux/commonSlice'
@@ -14,7 +15,8 @@ export default configureStore({
     settings: settingsReducer,
     config: configReducer,
     common: commonReducer,
-    toast: toastReducer
+    toast: toastReducer,
+    globalClusters: globalClustersReducer
   },
   middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(logger)
 })
