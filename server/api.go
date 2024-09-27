@@ -114,6 +114,22 @@ type token struct {
 	Token string `json:"token"`
 }
 
+// Proxy function that forwards the request to the target URL
+func (repman *ReplicationManager) proxyToURL(target string) http.Handler {
+	url, err := url.Parse(target)
+	if err != nil {
+		log.Fatalf("Failed to parse target URL: %v", err)
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(url)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Modify the request as needed before forwarding
+		r.Host = url.Host
+		proxy.ServeHTTP(w, r)
+	})
+}
+
 func (repman *ReplicationManager) SharedirHandler(folder string) http.Handler {
 	sub, err := fs.Sub(share.EmbededDbModuleFS, folder)
 	if err != nil {
@@ -176,13 +192,7 @@ func (repman *ReplicationManager) apiserver() {
 		router.PathPrefix("/graphite/").Handler(http.StripPrefix("/graphite/", graphiteProxy))
 	}
 
-	meetURL, err := url.Parse("https://meet.signal18.io/api/v4")
-	if err == nil {
-		// Set up the reverse proxy target for Graphite API
-		meetProxy := httputil.NewSingleHostReverseProxy(meetURL)
-		// Set up a route that forwards the request to the Graphite API
-		router.PathPrefix("/meet/").Handler(http.StripPrefix("/meet/", meetProxy))
-	}
+	router.PathPrefix("/meet/").Handler(http.StripPrefix("/meet/", repman.proxyToURL("https://meet.signal18.io/api/v4")))
 
 	if repman.Conf.Test {
 		router.HandleFunc("/", repman.handlerApp)
