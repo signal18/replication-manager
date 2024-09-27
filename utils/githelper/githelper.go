@@ -43,7 +43,16 @@ type AccessToken struct {
 
 func GetGitLabTokenOAuth(acces_token string, log_git bool) (string, int) {
 
-	req, err := http.NewRequest("GET", "https://gitlab.signal18.io/api/v4/personal_access_tokens?revoked=false", nil)
+	uid, _, err := GetGitLabUserId(acces_token)
+	if err != nil {
+		return "", -1
+	}
+
+	if uid == 0 {
+		return "", -1
+	}
+
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://gitlab.signal18.io/api/v4/personal_access_tokens?revoked=false&user_id=%d", uid), nil)
 	if err != nil {
 		log.Println("Gitlab API Error: ", err)
 	}
@@ -257,5 +266,37 @@ func GetGitLabTokenBasicAuth(user string, password string, log_git bool) string 
 	}
 
 	return accessToken.AccessToken
+
+}
+
+type UserId struct {
+	ID int `json:"id"`
+}
+
+func GetGitLabUserId(acces_token string) (int, []byte, error) {
+	var body = make([]byte, 0)
+
+	req, err := http.NewRequest("GET", "https://gitlab.signal18.io/api/v4/user", nil)
+	if err != nil {
+		return 0, body, fmt.Errorf("Gitlab User API Error: ", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+acces_token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, body, fmt.Errorf("Gitlab User API Error: ", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ = io.ReadAll(resp.Body)
+
+	var userId UserId
+
+	err = json.Unmarshal(body, &userId)
+	if err != nil {
+		return 0, body, fmt.Errorf("Gitlab User API Unmarshall Error: ", err)
+	}
+
+	return userId.ID, body, nil
 
 }
