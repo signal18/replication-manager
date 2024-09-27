@@ -194,6 +194,7 @@ func (repman *ReplicationManager) apiserver() {
 	}
 
 	router.HandleFunc("/api/login", repman.loginHandler)
+	router.HandleFunc("/api/login-git", repman.loginHandler)
 	//router.Handle("/api", v3.NewHandler("My API", "/swagger.json", "/api"))
 
 	router.Handle("/api/auth/callback", negroni.New(
@@ -378,60 +379,73 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	for _, cluster := range repman.Clusters {
 		//validate user credentials
-		if cluster.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
-			var auth_try authTry = authTry{
-				User: user.Username,
-				Try:  1,
-				Time: time.Now(),
-			}
-			repman.UserAuthTry.Store(user.Username, auth_try)
-
-			signer := jwt.New(jwt.SigningMethodRS256)
-			claims := signer.Claims.(jwt.MapClaims)
-			//set claims
-			claims["iss"] = "https://api.replication-manager.signal18.io"
-			claims["iat"] = time.Now().Unix()
-			claims["exp"] = time.Now().Add(time.Hour * time.Duration(cluster.Conf.TokenTimeout)).Unix()
-			claims["jti"] = "1" // should be user ID(?)
-			claims["CustomUserInfo"] = struct {
-				Name     string
-				Role     string
-				Password string
-			}{user.Username, "Member", user.Password}
-			signer.Claims = claims
-			sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
-			//sk, _ := jwt.ParseRSAPublicKeyFromPEM(signingKey)
-
-			tokenString, err := signer.SignedString(sk)
-			// log.Printf("Token expiration: %d hour\n", repman.Conf.TokenTimeout)
-
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				fmt.Fprintln(w, "Error while signing the token")
-				log.Printf("Error signing token: %v\n", err)
-			}
-
-			//create a token instance using the token string
-
-			specs := r.Header.Get("Accept")
-			resp := token{tokenString}
-			if strings.Contains(specs, "text/html") {
-				w.Write([]byte(tokenString))
+		if strings.Contains(r.URL.Path, "login-git") {
+			if u, ok := cluster.APIUsers[user.Username]; !ok {
+				http.Error(w, "Error logging in: User is not registered", http.StatusUnauthorized)
 				return
-			}
+			} else {
+				token := githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
+				if token == "" {
+					http.Error(w, "Error logging in to gitlab: Token is empty", http.StatusUnauthorized)
+					return
+				}
 
-			repman.jsonResponse(resp, w)
+				u.GitToken = token
+				cluster.APIUsers[user.Username] = u
+			}
+		} else if !cluster.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
+			continue
+		}
+
+		var auth_try authTry = authTry{
+			User: user.Username,
+			Try:  1,
+			Time: time.Now(),
+		}
+		repman.UserAuthTry.Store(user.Username, auth_try)
+
+		signer := jwt.New(jwt.SigningMethodRS256)
+		claims := signer.Claims.(jwt.MapClaims)
+		//set claims
+		claims["iss"] = "https://api.replication-manager.signal18.io"
+		claims["iat"] = time.Now().Unix()
+		claims["exp"] = time.Now().Add(time.Hour * time.Duration(cluster.Conf.TokenTimeout)).Unix()
+		claims["jti"] = "1" // should be user ID(?)
+		claims["CustomUserInfo"] = struct {
+			Name     string
+			Role     string
+			Password string
+		}{user.Username, "Member", user.Password}
+		signer.Claims = claims
+		sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+		//sk, _ := jwt.ParseRSAPublicKeyFromPEM(signingKey)
+
+		tokenString, err := signer.SignedString(sk)
+		// log.Printf("Token expiration: %d hour\n", repman.Conf.TokenTimeout)
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintln(w, "Error while signing the token")
+			log.Printf("Error signing token: %v\n", err)
+		}
+
+		//create a token instance using the token string
+
+		specs := r.Header.Get("Accept")
+		resp := token{tokenString}
+		if strings.Contains(specs, "text/html") {
+			w.Write([]byte(tokenString))
 			return
 		}
+
+		repman.jsonResponse(resp, w)
+		return
 	}
 
 	w.WriteHeader(http.StatusForbidden)
 	fmt.Println("Error logging in")
 	fmt.Fprint(w, "Invalid credentials")
 	return
-
-	//create a rsa 256 signer
-
 }
 
 func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, r *http.Request) {
