@@ -11,7 +11,7 @@ import RMButton from '../../../components/RMButton'
 function OrchestratorImages({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const {
-    cluster: { monitor }
+    globalClusters: { monitor }
   } = useSelector((state) => state)
   const [serviceRepos, setServiceRepos] = useState([])
   const [versionOptions, setVersionOptions] = useState([])

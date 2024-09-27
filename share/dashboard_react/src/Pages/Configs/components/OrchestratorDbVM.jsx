@@ -12,7 +12,7 @@ import RMSwitch from '../../../components/RMSwitch'
 function OrchestratorDbVM({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const {
-    cluster: { monitor }
+    globalClusters: { monitor }
   } = useSelector((state) => state)
   const [serviceVMs, setServiceVMs] = useState([])
 

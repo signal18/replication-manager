@@ -11,18 +11,16 @@ import {
   getClusterCertificates,
   getClusterData,
   getClusterMaster,
-  getClusterPeers,
   getClusterProxies,
-  getClusters,
   getClusterServers,
   getJobs,
-  getMonitoredData,
   getQueryRules,
   getShardSchema,
   getTopProcess,
   setCluster,
   setRefreshInterval
 } from '../../redux/clusterSlice'
+import { getClusters, getMonitoredData, getClusterPeers } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
 import styles from './styles.module.scss'
 import { useParams } from 'react-router-dom'
@@ -37,11 +35,14 @@ import Maintenance from '../Maintenance'
 import Top from '../Top'
 import Shards from '../Shards'
 import QueryRules from '../QueryRules'
+import PeerClusterList from '../PeerClusterList'
+import ClustersGlobalSettings from '../ClustersGlobalSettings'
 
 function Home() {
   const dispatch = useDispatch()
   const selectedTabRef = useRef(0)
   const selectedClusterNameRef = useRef('')
+  const isClusterOpenRef = useRef(false)
   const [selectedTab, setSelectedTab] = useState(0)
   const [user, setUser] = useState(null)
   const [selectedCluster, setSelectedCluster] = useState(null)
@@ -50,9 +51,10 @@ function Home() {
   const params = useParams()
 
   const {
-    cluster: { refreshInterval, clusterData }
+    cluster: { refreshInterval, clusterData },
+    globalClusters: { monitor }
   } = useSelector((state) => state)
-
+  console.log('monitor::', monitor)
   useEffect(() => {
     if (params?.cluster) {
       setDashboardTab({ name: params.cluster })
@@ -102,7 +104,6 @@ function Home() {
 
     if (refreshInterval > 0) {
       callServices()
-      dispatch(getClusterPeers({}))
       const intervalSeconds = refreshInterval * 1000
       intervalId = setInterval(() => {
         callServices()
@@ -126,6 +127,7 @@ function Home() {
     if (selectedTabRef.current === 0) {
       dispatch(getClusters({}))
       dispatch(getMonitoredData({}))
+      dispatch(getClusterPeers({}))
     } else if (selectedClusterNameRef.current) {
       const isAutoReloadPaused = localStorage.getItem('pause_auto_reload')
       if (!isAutoReloadPaused) {
@@ -157,6 +159,7 @@ function Home() {
     selectedTabRef.current = tabIndex
     setSelectedTab(tabIndex)
     if (tabIndex === 0) {
+      isClusterOpenRef.current = false
       dispatch(setCluster({ data: null }))
       selectedClusterNameRef.current = ''
     }
@@ -164,6 +167,7 @@ function Home() {
 
   const setDashboardTab = (cluster) => {
     selectedTabRef.current = 1
+    isClusterOpenRef.current = true
     selectedClusterNameRef.current = cluster.name
     setSelectedTab(1)
   }
@@ -174,22 +178,38 @@ function Home() {
         <TabItems
           tabIndex={selectedTab}
           onChange={handleTabChange}
-          options={selectedTab > 0 ? [renderClusterListTabWithArrow(), ...dashboardTabsRef.current] : ['Clusters']}
+          options={
+            isClusterOpenRef.current
+              ? [renderClusterListTabWithArrow(), ...dashboardTabsRef.current]
+              : monitor?.config?.cloud18
+                ? ['Clusters', 'Peer Clusters', 'Settings']
+                : ['Clusters', 'Settings'] // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
+          }
           tabContents={[
             <ClusterList onClick={setDashboardTab} />,
-            <Dashboard user={user} selectedCluster={selectedCluster} />,
-            <Settings user={user} selectedCluster={selectedCluster} />,
-            <Configs user={user} selectedCluster={selectedCluster} />,
-            ...(selectedCluster?.config?.graphiteMetrics && user?.grants['cluster-show-graphs'] ? [<Graphs />] : []),
-            ...(user?.grants['cluster-show-agents'] ? [<Agents user={user} selectedCluster={selectedCluster} />] : []),
-            ...(user?.grants['cluster-show-backups']
-              ? [<Maintenance user={user} selectedCluster={selectedCluster} />]
-              : []),
-            ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} />] : []),
-            ...(selectedCluster?.config?.proxysql && user?.grants['cluster-show-agents']
-              ? [<QueryRules selectedCluster={selectedCluster} />]
-              : []),
-            ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} />] : [])
+            ...(isClusterOpenRef.current
+              ? [
+                  <Dashboard user={user} selectedCluster={selectedCluster} />,
+                  <Settings user={user} selectedCluster={selectedCluster} />,
+                  <Configs user={user} selectedCluster={selectedCluster} />,
+                  ...(selectedCluster?.config?.graphiteMetrics && user?.grants['cluster-show-graphs']
+                    ? [<Graphs />]
+                    : []),
+                  ...(user?.grants['cluster-show-agents']
+                    ? [<Agents user={user} selectedCluster={selectedCluster} />]
+                    : []),
+                  ...(user?.grants['cluster-show-backups']
+                    ? [<Maintenance user={user} selectedCluster={selectedCluster} />]
+                    : []),
+                  ...(user?.grants['db-show-process'] ? [<Top selectedCluster={selectedCluster} />] : []),
+                  ...(selectedCluster?.config?.proxysql && user?.grants['cluster-show-agents']
+                    ? [<QueryRules selectedCluster={selectedCluster} />]
+                    : []),
+                  ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} />] : [])
+                ]
+              : monitor?.config?.cloud18 // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
+                ? [<PeerClusterList />, <ClustersGlobalSettings />]
+                : [<ClustersGlobalSettings />])
           ]}
         />
       </Box>
