@@ -4,6 +4,7 @@ import styles from './styles.module.scss'
 import CopyTextModal from '../Modals/CopyTextModal'
 
 function ShowMoreText({ text, maxLength = 30 }) {
+  console.log('text::', text)
   const [truncatedText, setTruncatedText] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   useEffect(() => {
