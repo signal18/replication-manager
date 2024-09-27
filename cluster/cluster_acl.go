@@ -399,7 +399,7 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL check failed for user %s : %s ", strUser, URL)
+
 	return false
 }
 
