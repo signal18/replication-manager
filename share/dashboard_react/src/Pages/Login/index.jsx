@@ -61,7 +61,7 @@ function Login(props) {
   }
 
   const onGitButtonClick = () => {
-    dispatch(gitLogin({}))
+    dispatch(gitLogin({ username, password }))
   }
 
   return (

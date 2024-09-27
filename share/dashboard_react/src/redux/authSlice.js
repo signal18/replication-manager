@@ -13,7 +13,7 @@ export const login = createAsyncThunk('auth/login', async ({ username, password 
   }
 })
 
-export const gitLogin = createAsyncThunk('auth/gitLogin', async ({}, thunkAPI) => {
+export const gitLogin = createAsyncThunk('auth/gitLogin', async ({ username, password }, thunkAPI) => {
   try {
     const response = await authService.gitLogin()
     return response
