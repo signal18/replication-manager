@@ -82,6 +82,8 @@ func (repman *ReplicationManager) httpserver() {
 		router.PathPrefix("/graphite/").Handler(http.StripPrefix("/graphite/", graphiteProxy))
 	}
 
+	router.PathPrefix("/meet/").Handler(http.StripPrefix("/meet/", repman.proxyToURL("https://meet.signal18.io/api/v4")))
+
 	//router.HandleFunc("/", repman.handlerApp)
 	// page to view which does not need authorization
 	if repman.Conf.Test {
