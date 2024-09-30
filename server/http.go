@@ -64,8 +64,6 @@ func (repman *ReplicationManager) testFile(fn string) error {
 }
 
 func (repman *ReplicationManager) httpserver() {
-
-	repman.initKeys()
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)

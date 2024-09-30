@@ -174,7 +174,6 @@ func (repman *ReplicationManager) rootHandler(w http.ResponseWriter, r *http.Req
 
 func (repman *ReplicationManager) apiserver() {
 	var err error
-	repman.initKeys()
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
 	//router.HandleFunc("/", repman.handlerApp)
