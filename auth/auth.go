@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/auth/user"
@@ -19,15 +20,16 @@ type AuthTry struct {
 // Users will be stored here
 type Auth struct {
 	Attempts         *AuthTryMap
-	Users            *user.UserMap
+	Users            map[string]*user.User
 	ServerGrantOpts  []string
 	ClusterGrantOpts []string
+	mu               sync.RWMutex
 }
 
 func InitAuth() Auth {
 	a := Auth{
 		Attempts:         NewAuthTryMap(),
-		Users:            user.NewUserMap(),
+		Users:            make(map[string]*user.User),
 		ServerGrantOpts:  make([]string, 0),
 		ClusterGrantOpts: make([]string, 0),
 	}
@@ -78,4 +80,52 @@ func (auth *Auth) LogAttempt(user user.UserCredentials) (*AuthTry, error) {
 	}
 
 	return auth_try, nil
+}
+
+// StoreUser stores user data in the userStore.
+func (auth *Auth) AddUser(username string, user *user.User) {
+	auth.mu.Lock()
+	defer auth.mu.Unlock()
+	auth.Users[username] = user
+}
+
+// LoadUser retrieves user data from the userStore.
+func (auth *Auth) LoadUser(username string) (*user.User, bool) {
+	auth.mu.RLock()
+	defer auth.mu.RUnlock()
+	u, exists := auth.Users[username]
+	return u, exists
+}
+
+// LoadOrStoreUser retrieves user data or stores a default user if not found.
+func (auth *Auth) LoadOrStoreUser(username string, defaultUser *user.User) (*user.User, bool) {
+	auth.mu.RLock()
+	u, exists := auth.Users[username]
+	auth.mu.RUnlock()
+
+	if exists {
+		return u, true
+	}
+
+	// If not exists, store the default value.
+	auth.mu.Lock()
+	defer auth.mu.Unlock()
+
+	// Double-check existence before storing.
+	if u, exists = auth.Users[username]; !exists {
+		auth.Users[username] = defaultUser
+		return defaultUser, false
+	}
+	return u, true
+}
+
+// DeleteUser removes a user from the userStore.
+func (auth *Auth) DeleteUser(username string) {
+	auth.mu.Lock()
+	defer auth.mu.Unlock()
+	u, ok := auth.LoadUser(username)
+	if ok {
+		u.WG.Wait()
+	}
+	delete(auth.Users, username)
 }

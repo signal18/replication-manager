@@ -1822,8 +1822,6 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 
-	repman.LoadAPIUsers(clusterName, &myClusterConf)
-
 	go repman.currentCluster.Run()
 	return repman.currentCluster, nil
 }

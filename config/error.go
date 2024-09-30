@@ -190,6 +190,7 @@ var ClusterError = map[string]string{
 	"WARN0129":  "Provision is waiting for node %s running. Err: %s",
 	"WARN0130":  "Error while rotating system logs on %s: %s. Err: %s",
 	"WARN0131":  "Error while reading slow_log on %s. %s. Err: %s",
+	"WARN0132":  "ACL check failed for user %s on %s",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",

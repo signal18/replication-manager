@@ -63,6 +63,16 @@ func SplitPair(s string) (string, string) {
 	return items[0], items[1]
 }
 
+/* Returns generic items from acl, e.g. user:acl:cluster:role */
+func SplitACL(s string) (string, string, string, string) {
+	items := strings.Split(s, ":")
+	for len(items) < 4 {
+		items = append(items, "")
+	}
+
+	return items[0], items[1], items[2], items[3]
+}
+
 /* Validate server host and port */
 func ValidateHostPort(h string, p string) bool {
 	if net.ParseIP(h) == nil {

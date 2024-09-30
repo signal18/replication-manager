@@ -26,7 +26,7 @@ const (
 )
 
 // CheckPermission ensures the user has the necessary permissions based on the permission type.
-func CheckPermission(permission string, permissionType PermissionType, usermap *user.UserMap, verificationKey []byte, OAuthProvider string) negroni.HandlerFunc {
+func CheckPermission(permission string, permissionType PermissionType, usermap map[string]*user.User, verificationKey []byte, OAuthProvider string) negroni.HandlerFunc {
 	return negroni.HandlerFunc(func(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 		// Get user from context or token
 		user, err := GetUserFromJWT(r, usermap, verificationKey, OAuthProvider)
@@ -60,8 +60,8 @@ func CheckPermission(permission string, permissionType PermissionType, usermap *
 }
 
 // Helper to retrieve user from request context
-func GetUserFromJWT(r *http.Request, userMap *user.UserMap, verificationKey []byte, OAuthProvider string) (*user.User, error) {
-	var user *user.User
+func GetUserFromJWT(r *http.Request, usermap map[string]*user.User, verificationKey []byte, OAuthProvider string) (*user.User, error) {
+	var u *user.User
 
 	claims, err := ValidateJWT(r, verificationKey)
 	if err != nil {
@@ -76,10 +76,10 @@ func GetUserFromJWT(r *http.Request, userMap *user.UserMap, verificationKey []by
 		if profile, ok := mycutinfo["profile"]; !ok {
 			meuser := mycutinfo["Name"].(string)
 			mepwd := mycutinfo["Password"].(string)
-			user, ok = userMap.CheckAndGet(meuser)
+			u, ok = usermap[meuser]
 			if !ok {
 				return nil, fmt.Errorf("User is not found in cluster")
-			} else if mepwd != user.Password {
+			} else if mepwd != u.Password {
 				return nil, fmt.Errorf("Wrong credentials in JWT")
 			}
 		} else {
@@ -89,7 +89,7 @@ func GetUserFromJWT(r *http.Request, userMap *user.UserMap, verificationKey []by
 				if meuser, ok := mycutinfo["email"]; !ok {
 					return nil, fmt.Errorf("Email is not found in JWT")
 				} else {
-					user, ok = userMap.CheckAndGet(meuser.(string))
+					u, ok = usermap[meuser.(string)]
 					if !ok {
 						return nil, fmt.Errorf("User is not found")
 					}
@@ -98,7 +98,7 @@ func GetUserFromJWT(r *http.Request, userMap *user.UserMap, verificationKey []by
 		}
 	}
 
-	return user, nil
+	return u, nil
 }
 
 // Retrieve the user from the request context

@@ -382,7 +382,8 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	if strings.Contains(r.URL.Path, "login-git") {
-		u, ok = repman.Auth.Users.CheckAndGet(cred.Username)
+
+		u, ok = repman.Auth.LoadUser(cred.Username)
 		if !ok {
 			http.Error(w, "Error logging in: User is not registered", http.StatusUnauthorized)
 			return
@@ -408,7 +409,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		u.GitToken = token
 
 	} else {
-		u, ok = repman.Auth.Users.CheckAndGet(cred.Username)
+		u, ok = repman.Auth.LoadUser(cred.Username)
 		if !ok || u.Password != cred.Password {
 			http.Error(w, "Error logging in: "+err.Error(), http.StatusUnauthorized)
 			return
@@ -452,7 +453,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 
 	repman.OAuthAccessToken = oauth2Token
 
-	u, ok := repman.Auth.Users.CheckAndGet(userInfo.Email)
+	u, ok := repman.Auth.LoadUser(userInfo.Email)
 	if !ok {
 		http.Error(w, "User not found in user list", http.StatusInternalServerError)
 		return
@@ -518,13 +519,147 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 
 func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	for _, cluster := range repman.Clusters {
-		if valid, _ := repman.IsValidClusterACL(r, cluster); valid {
-			cluster.AddUser(vars["userName"])
-		}
+	var cred user.UserForm
+
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&cred)
+	if err != nil {
+		http.Error(w, "Error in request: "+err.Error(), http.StatusBadRequest)
+		return
 	}
 
+	u, err := repman.AddUser(cred)
+	if err != nil {
+		http.Error(w, "Error creating user: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	res, err := json.Marshal(u)
+	if err != nil {
+		http.Error(w, "Error Marshal", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(res)
+}
+
+func (repman *ReplicationManager) handlerMuxDropUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	// Server scope
+	_, ok := repman.Auth.LoadUser(vars["userName"])
+	if !ok {
+		http.Error(w, "Error in request: username is not exists", http.StatusBadRequest)
+		return
+	}
+
+	repman.Auth.DeleteUser(vars["userName"])
+}
+
+func (repman *ReplicationManager) handlerMuxSetRole(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	u, ok := repman.Auth.LoadUser(vars["userName"])
+	if !ok {
+		http.Error(w, "Error in request: username is not exists", http.StatusBadRequest)
+		return
+	}
+
+	u.WG.Add(1)
+	defer u.WG.Done()
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Error set cluster role: clustername is not registered", http.StatusBadRequest)
+		return
+	}
+
+	u.SetClusterRole(vars["clusterName"], vars["role"])
+
+	res, err := json.Marshal(u)
+	if err != nil {
+		http.Error(w, "Error Marshal", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(res)
+
+}
+
+func (repman *ReplicationManager) handlerMuxAddACL(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	var cred user.UserForm
+
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&cred)
+	if err != nil {
+		http.Error(w, "Error in request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	u, ok := repman.Auth.LoadUser(cred.Username)
+	if !ok {
+		http.Error(w, "Error in add ACL: User is not exists in this server", http.StatusInternalServerError)
+		return
+	}
+
+	u.WG.Add(1)
+	defer u.WG.Done()
+
+	err = repman.AddUserACL(cred, u)
+	if err != nil {
+		http.Error(w, "Error in add ACL: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	res, err := json.Marshal(u)
+	if err != nil {
+		http.Error(w, "Error Marshal", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(res)
+}
+
+func (repman *ReplicationManager) handlerMuxDropACL(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	var cred user.UserForm
+
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&cred)
+	if err != nil {
+		http.Error(w, "Error in request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	u, ok := repman.Auth.LoadUser(cred.Username)
+	if !ok {
+		http.Error(w, "Error in add ACL: User is not exists in this server", http.StatusInternalServerError)
+		return
+	}
+
+	u.WG.Add(1)
+	defer u.WG.Done()
+
+	err = repman.DropUserACL(cred, u)
+	if err != nil {
+		http.Error(w, "Error in add ACL: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	res, err := json.Marshal(u)
+	if err != nil {
+		http.Error(w, "Error Marshal", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(res)
 }
 
 func (repman *ReplicationManager) handlerMuxGetCurrentUser(w http.ResponseWriter, r *http.Request) {
