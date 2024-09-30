@@ -15,6 +15,11 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
+type UserResponse struct {
+	Message string     `json:"msg"`
+	User    *user.User `json:"user"`
+}
+
 func (repman *ReplicationManager) LoadAPIUsers(conf *config.Config) error {
 
 	credentials := strings.Split(conf.Secrets["api-credentials"].Value+","+conf.Secrets["api-credentials-external"].Value, ",")

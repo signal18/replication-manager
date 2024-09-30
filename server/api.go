@@ -254,9 +254,28 @@ func (repman *ReplicationManager) apiserver() {
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetCurrentUser)),
 	))
 
-	router.Handle("/api/monitor/actions/adduser/{userName}", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
+	// For adding user with server-wide scope
+	router.Handle("/api/monitor/actions/user-add", negroni.New(
+		negroni.HandlerFunc(auth.CheckPermission("user-add", auth.ServerPermission, repman.Auth.Users, verificationKey, repman.Conf.OAuthProvider)),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddUser)),
+	))
+
+	// For adding user with server-wide scope
+	router.Handle("/api/monitor/actions/user-drop", negroni.New(
+		negroni.HandlerFunc(auth.CheckPermission("user-drop", auth.ServerPermission, repman.Auth.Users, verificationKey, repman.Conf.OAuthProvider)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropUser)),
+	))
+
+	// For adding user with server-wide scope
+	router.Handle("/api/monitor/actions/user-acl-allow", negroni.New(
+		negroni.HandlerFunc(auth.CheckPermission("acl-allow", auth.ServerPermission, repman.Auth.Users, verificationKey, repman.Conf.OAuthProvider)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddACL)),
+	))
+
+	// For adding user with server-wide scope
+	router.Handle("/api/monitor/actions/user-acl-revoke", negroni.New(
+		negroni.HandlerFunc(auth.CheckPermission("acl-revoke", auth.ServerPermission, repman.Auth.Users, verificationKey, repman.Conf.OAuthProvider)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropACL)),
 	))
 
 	repman.apiDatabaseUnprotectedHandler(router)
@@ -555,6 +574,9 @@ func (repman *ReplicationManager) handlerMuxDropUser(w http.ResponseWriter, r *h
 	}
 
 	repman.Auth.DeleteUser(vars["userName"])
+
+	w.WriteHeader(http.StatusNoContent)
+	w.Write([]byte("User has been deleted"))
 }
 
 func (repman *ReplicationManager) handlerMuxSetRole(w http.ResponseWriter, r *http.Request) {
@@ -616,7 +638,12 @@ func (repman *ReplicationManager) handlerMuxAddACL(w http.ResponseWriter, r *htt
 		return
 	}
 
-	res, err := json.Marshal(u)
+	resp := UserResponse{
+		Message: "ACL updated",
+		User:    u,
+	}
+
+	res, err := json.Marshal(resp)
 	if err != nil {
 		http.Error(w, "Error Marshal", http.StatusInternalServerError)
 		return
@@ -652,7 +679,12 @@ func (repman *ReplicationManager) handlerMuxDropACL(w http.ResponseWriter, r *ht
 		return
 	}
 
-	res, err := json.Marshal(u)
+	resp := UserResponse{
+		Message: "ACL revoked",
+		User:    u,
+	}
+
+	res, err := json.Marshal(resp)
 	if err != nil {
 		http.Error(w, "Error Marshal", http.StatusInternalServerError)
 		return
