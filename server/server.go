@@ -59,7 +59,7 @@ var RepMan *ReplicationManager
 
 // Global variables
 type ReplicationManager struct {
-	Auth             auth.Auth                         `json:"-"`
+	Auth             *auth.Auth                        `json:"-"`
 	OpenSVC          opensvc.Collector                 `json:"-"`
 	Version          string                            `json:"version"`
 	Fullversion      string                            `json:"fullVersion"`
@@ -1519,6 +1519,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.InitServicePlans()
 	repman.ServiceOrchestrators = repman.Conf.GetOrchestratorsProv()
 	repman.InitGrants()
+	RepMan.Auth = auth.InitAuth()
 	repman.ServiceRepos, err = repman.Conf.GetDockerRepos(repman.Conf.ShareDir+"/repo/repos.json", repman.Conf.Test)
 	if err != nil {
 		repman.Logrus.WithError(err).Errorf("Initialization docker repo failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
@@ -1593,6 +1594,7 @@ func (repman *ReplicationManager) Run() error {
 	//repman.InitRestic()
 	repman.Logrus.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
 	repman.Logrus.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
+	RepMan.LoadAPIUsers(&repman.Conf)
 
 	// If there's an existing encryption key, decrypt the passwords
 
@@ -1604,6 +1606,8 @@ func (repman *ReplicationManager) Run() error {
 
 		cluster.SetCarbonLogger(repman.clog)
 	}
+
+	repman.initKeys()
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
 	if repman.Conf.ApiServ {

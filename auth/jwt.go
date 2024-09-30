@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -25,7 +26,10 @@ func IssueJWT(user *user.User, timeout int, signingKey []byte) (string, error) {
 		Password string
 	}{user.User, "Member", user.Password}
 	signer.Claims = claims
-	sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+	sk, err := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+	if err != nil {
+		fmt.Printf("Error signing:" + err.Error())
+	}
 
 	return signer.SignedString(sk)
 }
@@ -38,7 +42,11 @@ func ValidateJWT(r *http.Request, verificationKey []byte) (jwt.MapClaims, error)
 		return vk, nil
 	})
 
-	if err != nil || !token.Valid {
+	if err != nil {
+		return nil, err
+	}
+
+	if !token.Valid {
 		return nil, errors.New("invalid token")
 	}
 

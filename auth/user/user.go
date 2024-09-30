@@ -87,9 +87,18 @@ func (u *User) HasClusterPermission(clusterID, permission string) bool {
 	u.mu.RLock()
 	defer u.mu.RUnlock()
 
+	if u.User == "admin" {
+		return true
+	}
+
 	cGrants, ok := u.GrantMap[clusterID]
 	if ok {
 		for key, value := range cGrants.Grants {
+			// If any permission, return true if any permission is allowed
+			if permission == "any" && value {
+				return true
+			}
+
 			if strings.HasPrefix(permission, key) {
 				return value // Return the value (true or false) for the permission.
 			}

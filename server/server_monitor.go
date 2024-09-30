@@ -19,7 +19,6 @@ import (
 	mysqllog "log"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/signal18/replication-manager/auth"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -82,8 +81,6 @@ For interacting with this daemon use,
 		RepMan.CommandLineFlag = GetCommandLineFlag(cmd)
 		//	RepMan.DefaultFlagMap = defaultFlagMap
 		RepMan.InitConfig(conf)
-		RepMan.Auth = auth.InitAuth()
-		RepMan.LoadAPIUsers(&conf)
 		RepMan.Run()
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {

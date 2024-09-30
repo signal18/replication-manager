@@ -44,6 +44,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
+	"github.com/signal18/replication-manager/auth"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -64,8 +65,6 @@ func (repman *ReplicationManager) testFile(fn string) error {
 }
 
 func (repman *ReplicationManager) httpserver() {
-
-	repman.initKeys()
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
@@ -115,6 +114,7 @@ func (repman *ReplicationManager) httpserver() {
 	router.HandleFunc("/api/login-git", repman.loginHandler)
 
 	router.Handle("/api/clusters", negroni.New(
+		negroni.HandlerFunc(auth.CheckPermission("any", auth.ServerPermission, repman.Auth, repman.Conf.OAuthProvider)),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
 	))
 	router.Handle("/api/status", negroni.New(

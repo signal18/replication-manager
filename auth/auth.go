@@ -17,17 +17,23 @@ type AuthTry struct {
 	Time time.Time `json:"time"`
 }
 
+type BufferKeys struct {
+	PrivateKey []byte
+	PublicKey  []byte
+}
+
 // Users will be stored here
 type Auth struct {
 	Attempts         *AuthTryMap
 	Users            map[string]*user.User
+	SecureKey        BufferKeys
 	ServerGrantOpts  []string
 	ClusterGrantOpts []string
 	mu               sync.RWMutex
 }
 
-func InitAuth() Auth {
-	a := Auth{
+func InitAuth() *Auth {
+	a := &Auth{
 		Attempts:         NewAuthTryMap(),
 		Users:            make(map[string]*user.User),
 		ServerGrantOpts:  make([]string, 0),
@@ -50,6 +56,10 @@ func (auth *Auth) InitGrants() {
 
 	slices.Sort(auth.ServerGrantOpts)
 	slices.Sort(auth.ClusterGrantOpts)
+}
+
+func (auth *Auth) GetUsers() map[string]*user.User {
+	return auth.Users
 }
 
 func (auth *Auth) LogAttempt(user user.UserCredentials) (*AuthTry, error) {
@@ -82,14 +92,14 @@ func (auth *Auth) LogAttempt(user user.UserCredentials) (*AuthTry, error) {
 	return auth_try, nil
 }
 
-// StoreUser stores user data in the userStore.
+// StoreUser stores user data in the users.
 func (auth *Auth) AddUser(username string, user *user.User) {
 	auth.mu.Lock()
 	defer auth.mu.Unlock()
 	auth.Users[username] = user
 }
 
-// LoadUser retrieves user data from the userStore.
+// LoadUser retrieves user data from the users.
 func (auth *Auth) LoadUser(username string) (*user.User, bool) {
 	auth.mu.RLock()
 	defer auth.mu.RUnlock()
@@ -119,8 +129,19 @@ func (auth *Auth) LoadOrStoreUser(username string, defaultUser *user.User) (*use
 	return u, true
 }
 
-// DeleteUser removes a user from the userStore.
+// DeleteUser removes a user from the users.
 func (auth *Auth) DeleteUser(username string) {
+	auth.mu.Lock()
+	defer auth.mu.Unlock()
+	u, ok := auth.LoadUser(username)
+	if ok {
+		u.WG.Wait()
+	}
+	delete(auth.Users, username)
+}
+
+// DeleteCLusterUser revoke a user from the cluster.
+func (auth *Auth) DeleteClusterUser(username string) {
 	auth.mu.Lock()
 	defer auth.mu.Unlock()
 	u, ok := auth.LoadUser(username)

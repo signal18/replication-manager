@@ -36,7 +36,6 @@ import (
 	"github.com/signal18/replication-manager/auth/user"
 	"github.com/signal18/replication-manager/cert"
 	"github.com/signal18/replication-manager/cluster"
-	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/githelper"
@@ -74,9 +73,9 @@ func (repman *ReplicationManager) initKeys() {
 	privKeyPEMBuffer := new(bytes.Buffer)
 	pem.Encode(privKeyPEMBuffer, privPEMBlock)
 	//done
-	signingKey = privKeyPEMBuffer.Bytes()
+	repman.Auth.SecureKey.PrivateKey = privKeyPEMBuffer.Bytes()
 
-	//fmt.Println(string(signingKey))
+	// fmt.Println(string(repman.Auth.SecureKey.PrivateKey))
 
 	// create verificationKey from pubKey. Also in PEM-format
 	pubKeyBytes, err = x509.MarshalPKIXPublicKey(pubKey) //serialize key bytes
@@ -93,9 +92,9 @@ func (repman *ReplicationManager) initKeys() {
 	pubKeyPEMBuffer := new(bytes.Buffer)
 	pem.Encode(pubKeyPEMBuffer, pubPEMBlock)
 	// done
-	verificationKey = pubKeyPEMBuffer.Bytes()
+	repman.Auth.SecureKey.PublicKey = pubKeyPEMBuffer.Bytes()
 
-	//	fmt.Println(string(verificationKey))
+	// fmt.Println("Pub key: " + string(repman.Auth.SecureKey.PublicKey))
 }
 
 //STRUCT DEFINITIONS
@@ -174,7 +173,7 @@ func (repman *ReplicationManager) rootHandler(w http.ResponseWriter, r *http.Req
 
 func (repman *ReplicationManager) apiserver() {
 	var err error
-	repman.initKeys()
+
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
 	//router.HandleFunc("/", repman.handlerApp)
@@ -219,7 +218,13 @@ func (repman *ReplicationManager) apiserver() {
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAuthCallback)),
 	))
 	router.Handle("/api/clusters", negroni.New(
+		negroni.HandlerFunc(auth.CheckPermission("any", auth.AuthPermission, repman.Auth, repman.Conf.OAuthProvider)),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
+	))
+
+	router.Handle("/api/monitor", negroni.New(
+		negroni.HandlerFunc(auth.CheckPermission("any", auth.AuthPermission, repman.Auth, repman.Conf.OAuthProvider)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
 	))
 	router.Handle("/api/clusters/peers", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPeerClusters)),
@@ -239,42 +244,33 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/configs/grafana", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGrafana)),
 	))
-	//UNPROTECTED ENDPOINTS FOR SETTINGS
-	router.Handle("/api/monitor", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
-	))
-	//PROTECTED ENDPOINTS FOR SETTINGS
-	router.Handle("/api/monitor", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
-	))
 
 	router.Handle("/api/auth/user", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("auth", auth.ServerPermission, repman.Auth.Users, verificationKey, repman.Conf.OAuthProvider)),
+		negroni.HandlerFunc(auth.CheckPermission("any", auth.AuthPermission, repman.Auth, repman.Conf.OAuthProvider)),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetCurrentUser)),
 	))
 
 	// For adding user with server-wide scope
 	router.Handle("/api/monitor/actions/user-add", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("user-add", auth.ServerPermission, repman.Auth.Users, verificationKey, repman.Conf.OAuthProvider)),
+		negroni.HandlerFunc(auth.CheckPermission("user-add", auth.ServerPermission, repman.Auth, repman.Conf.OAuthProvider)),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddUser)),
 	))
 
 	// For adding user with server-wide scope
 	router.Handle("/api/monitor/actions/user-drop", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("user-drop", auth.ServerPermission, repman.Auth.Users, verificationKey, repman.Conf.OAuthProvider)),
+		negroni.HandlerFunc(auth.CheckPermission("user-drop", auth.ServerPermission, repman.Auth, repman.Conf.OAuthProvider)),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropUser)),
 	))
 
 	// For adding user with server-wide scope
 	router.Handle("/api/monitor/actions/user-acl-allow", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("acl-allow", auth.ServerPermission, repman.Auth.Users, verificationKey, repman.Conf.OAuthProvider)),
+		negroni.HandlerFunc(auth.CheckPermission("acl-allow", auth.ServerPermission, repman.Auth, repman.Conf.OAuthProvider)),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddACL)),
 	))
 
 	// For adding user with server-wide scope
 	router.Handle("/api/monitor/actions/user-acl-revoke", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("acl-revoke", auth.ServerPermission, repman.Auth.Users, verificationKey, repman.Conf.OAuthProvider)),
+		negroni.HandlerFunc(auth.CheckPermission("acl-revoke", auth.ServerPermission, repman.Auth, repman.Conf.OAuthProvider)),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropACL)),
 	))
 
@@ -404,15 +400,17 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 		u, ok = repman.Auth.LoadUser(cred.Username)
 		if !ok {
-			http.Error(w, "Error logging in: User is not registered", http.StatusUnauthorized)
+			res, _ := json.Marshal(repman.Auth.GetUsers())
+
+			http.Error(w, "Error logging in: "+string(res), http.StatusUnauthorized)
 			return
 		}
 
-		token, resp, err := githelper.GetGitLabTokenBasicAuth(cred.Username, cred.Password)
+		token, _, err := githelper.GetGitLabTokenBasicAuth(cred.Username, cred.Password)
 
-		if repman.Conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg) {
-			log.Debugf("Git Body Response: %s", string(resp))
-		}
+		// if repman.Conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg) {
+		// log.Infof("Git Body Response: %s", string(resp))
+		// }
 
 		if err != nil {
 			http.Error(w, "Error logging in to gitlab: "+err.Error(), http.StatusUnauthorized)
@@ -424,6 +422,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			return
 		}
 
+		u.Password = cred.Password
 		u.GitUser = cred.Username
 		u.GitToken = token
 
@@ -439,7 +438,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	auth_try.Try = 1
 	auth_try.Time = time.Now()
 
-	tokenString, err := auth.IssueJWT(u, repman.Conf.TokenTimeout, signingKey)
+	tokenString, err := auth.IssueJWT(u, repman.Conf.TokenTimeout, repman.Auth.SecureKey.PrivateKey)
 	if err != nil {
 		http.Error(w, "Error while signing the token: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -482,7 +481,7 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 	u.GitUser = tmp[len(tmp)-1]
 	u.GitToken = oauth2Token.AccessToken
 
-	tokenString, err := auth.IssueJWT(u, repman.Conf.TokenTimeout, signingKey)
+	tokenString, err := auth.IssueJWT(u, repman.Conf.TokenTimeout, repman.Auth.SecureKey.PrivateKey)
 	if err != nil {
 		http.Error(w, "Error while signing the token: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -505,12 +504,17 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	mycopy := repman
+	u, err := auth.GetUserFromRequest(r)
+	if err != nil {
+		http.Error(w, "Error Getting User Context: "+err.Error(), 500)
+		return
+	}
+
+	mycopy := *repman
 	var cl []string
 
 	for _, cluster := range repman.Clusters {
-
-		if valid, _ := repman.IsValidClusterACL(r, cluster); valid {
+		if u.HasClusterPermission(cluster.Name, "any") {
 			cl = append(cl, cluster.Name)
 		}
 	}
@@ -525,11 +529,10 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 
 	for crkey, _ := range mycopy.Conf.Secrets {
 		res, err = jsonparser.Set(res, []byte(`"*:*" `), "config", strcase.ToLowerCamel(crkey))
-	}
-
-	if err != nil {
-		http.Error(w, "Encoding error", 500)
-		return
+		if err != nil {
+			http.Error(w, "Parse error", 500)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -547,13 +550,24 @@ func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// This is for cluster wide scope
+	vars := mux.Vars(r)
+	if _, ok := vars["clusterName"]; ok {
+		cred.Clusters = vars["clusterName"]
+	}
+
 	u, err := repman.AddUser(cred)
 	if err != nil {
 		http.Error(w, "Error creating user: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	res, err := json.Marshal(u)
+	resp := UserResponse{
+		Message: "User created",
+		User:    u,
+	}
+
+	res, err := json.Marshal(resp)
 	if err != nil {
 		http.Error(w, "Error Marshal", http.StatusInternalServerError)
 		return
@@ -601,7 +615,12 @@ func (repman *ReplicationManager) handlerMuxSetRole(w http.ResponseWriter, r *ht
 
 	u.SetClusterRole(vars["clusterName"], vars["role"])
 
-	res, err := json.Marshal(u)
+	resp := UserResponse{
+		Message: "Role updated",
+		User:    u,
+	}
+
+	res, err := json.Marshal(resp)
 	if err != nil {
 		http.Error(w, "Error Marshal", http.StatusInternalServerError)
 		return
@@ -720,40 +739,43 @@ func (repman *ReplicationManager) handlerMuxGetCurrentUser(w http.ResponseWriter
 //	  200: clusters
 func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if ok, err := repman.isValidRequest(r); ok {
 
-		var clusters []*cluster.Cluster
-
-		for _, cluster := range repman.Clusters {
-			if valid, _ := repman.IsValidClusterACL(r, cluster); valid {
-				clusters = append(clusters, cluster)
-			}
-		}
-
-		sort.Sort(cluster.ClusterSorter(clusters))
-
-		cl, err := json.MarshalIndent(clusters, "", "\t")
-		if err != nil {
-			http.Error(w, "Error Marshal", 500)
-			return
-		}
-
-		for i, cluster := range clusters {
-			for crkey, _ := range cluster.Conf.Secrets {
-				cl, err = jsonparser.Set(cl, []byte(`"*:*" `), fmt.Sprintf("[%d]", i), "config", strcase.ToLowerCamel(crkey))
-				if err != nil {
-					http.Error(w, "Encoding error", 500)
-					return
-				}
-			}
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(cl)
-
-	} else {
+	u, err := auth.GetUserFromRequest(r)
+	if err != nil {
 		http.Error(w, "Unauthenticated resource: "+err.Error(), 401)
 		return
 	}
+
+	var clusters []*cluster.Cluster
+
+	for _, cluster := range repman.Clusters {
+		// Has any cluster permission
+		if u.HasClusterPermission(cluster.Name, "any") {
+			clusters = append(clusters, cluster)
+		}
+	}
+
+	sort.Sort(cluster.ClusterSorter(clusters))
+
+	cl, err := json.MarshalIndent(clusters, "", "\t")
+	if err != nil {
+		http.Error(w, "Error Marshal", 500)
+		return
+	}
+
+	for i, cluster := range clusters {
+		for crkey, _ := range cluster.Conf.Secrets {
+			cl, err = jsonparser.Set(cl, []byte(`"*:*" `), fmt.Sprintf("[%d]", i), "config", strcase.ToLowerCamel(crkey))
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+				return
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(cl)
+
 }
 
 func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, r *http.Request) {

@@ -105,7 +105,7 @@ func (cluster *Cluster) LoadAPIUsers() error {
 				for key, value := range cluster.Grants {
 					found := false
 					for _, acl := range acls {
-						if strings.HasPrefix(key, acl) && acl != "" {
+						if strings.HasPrefix(key, acl) && acl != ""  {
 							found = true
 							break
 						}
