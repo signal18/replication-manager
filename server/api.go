@@ -408,6 +408,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				}
 
 				u.GitToken = token
+				u.Password = user.Password // Now using git-login has no profile so must use password for check
 				cluster.APIUsers[user.Username] = u
 			}
 		} else if !cluster.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
