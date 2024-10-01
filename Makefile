@@ -15,7 +15,8 @@ BIN-ARB = $(BIN)-arb
 BIN-EMBED = $(BIN)
 PROTO_DIR = signal18/replication-manager/v3
 EMBED = -X github.com/signal18/replication-manager/server.WithEmbed=ON
-
+WITH_REACT = ON 
+	
 all: bin tar cli arb
 
 bin: osc tst pro osc-cgo emb
@@ -23,6 +24,12 @@ bin: osc tst pro osc-cgo emb
 non-cgo: osc tst pro arb cli emb
 
 tar: osc-basedir tst-basedir pro-basedir osc-cgo-basedir
+
+osc pro emb pro-basedir osc-basedir: react 
+
+react:
+	$(Building react frontend $(REACT))
+	@if [ $(WITH_REACT) = "ON" ]; then npm --prefix=./share/dashboard_react install; npm --prefix=./share/dashboard_react run build; cp -rp ./share/dashboard_react/dist/* ./share/dashboard/; fi
 
 osc:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -v --tags "server" --ldflags "-extldflags '-static' -w -s -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD) -X github.com/signal18/replication-manager/server.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC)
@@ -46,13 +53,7 @@ tst:
 tst-basedir:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server"  --ldflags "-w -s $(TAR) -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD)   -X github.com/signal18/replication-manager/server.WithDeprecate=OFF"  $(LDFLAGS) -o $(BINDIR)/$(BIN-TST)-basedir
 
-pro:
-	npm --prefix=./share/dashboard_react install
-	npm --prefix=./share/dashboard_react run build
-	cp -rp ./share/dashboard_react/dist/* ./share/dashboard/
-	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server" --ldflags " -w -s -X 'github.com/signal18/replication-manager/server.Version=$(VERSION)' -X 'github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION)' -X 'github.com/signal18/replication-manager/server.Build=$(BUILD)' -X github.com/signal18/replication-manager/server.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-PRO)
-
-pro-skip-fe:
+pro:  
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server" --ldflags " -w -s -X 'github.com/signal18/replication-manager/server.Version=$(VERSION)' -X 'github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION)' -X 'github.com/signal18/replication-manager/server.Build=$(BUILD)' -X github.com/signal18/replication-manager/server.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-PRO)
 
 pro-basedir:

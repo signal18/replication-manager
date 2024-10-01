@@ -5,6 +5,7 @@ WORKDIR /go/src/github.com/signal18/replication-manager
 
 COPY . .
 
+RUN apt-get update && apt-get -y install nodejs npm
 RUN make osc cli
 
 FROM debian:bookworm-slim
