@@ -45,6 +45,7 @@ import (
 	"github.com/iu0v1/gelada"
 	"github.com/iu0v1/gelada/authguard"
 	"github.com/signal18/replication-manager/auth"
+	"github.com/signal18/replication-manager/config"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -62,6 +63,31 @@ func (repman *ReplicationManager) testFile(fn string) error {
 	}
 	f.Close()
 	return nil
+}
+
+func (repman *ReplicationManager) GetUnprotectedRoutes() []Route {
+	return []Route{
+		{auth.PublicPermission, config.GrantNone, "/api/clusters/{clusterName}/servers/{serverName}/master-status", repman.handlerMuxServerMasterStatus},
+		{auth.PublicPermission, config.GrantNone, "/api/clusters/{clusterName}/servers/{serverName}/is-master", repman.handlerMuxServersIsMasterStatus},
+		{auth.PublicPermission, config.GrantNone, "/api/clusters/{clusterName}/servers/{serverName}/is-slave", repman.handlerMuxServersIsSlaveStatus},
+		{auth.PublicPermission, config.GrantNone, "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-master", repman.handlerMuxServersPortIsMasterStatus},
+		{auth.PublicPermission, config.GrantNone, "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave", repman.handlerMuxServersPortIsSlaveStatus},
+		{auth.PublicPermission, config.GrantNone, "/api/clusters/{clusterName}/sphinx-indexes", repman.handlerMuxSphinxIndexes},
+		{auth.PublicPermission, config.GrantNone, "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup", repman.handlerMuxServersPortBackup},
+	}
+}
+
+func (repman *ReplicationManager) GetOldRoutes() []Route {
+	return []Route{
+		// handle API 2.0 compatibility for external checks
+		{auth.PublicPermission, config.GrantNone, "/clusters/{clusterName}/servers/{serverName}/master-status", repman.handlerMuxServersIsMasterStatus},
+		{auth.PublicPermission, config.GrantNone, "/clusters/{clusterName}/servers/{serverName}/slave-status", repman.handlerMuxServersIsSlaveStatus},
+		{auth.PublicPermission, config.GrantNone, "/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", repman.handlerMuxServersPortIsMasterStatus},
+		{auth.PublicPermission, config.GrantNone, "/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", repman.handlerMuxServersPortIsSlaveStatus},
+		{auth.PublicPermission, config.GrantNone, "/clusters/{clusterName}/sphinx-indexes", repman.handlerMuxSphinxIndexes},
+		{auth.PublicPermission, config.GrantNone, "/repocomp/current", repman.handlerRepoComp},
+		{auth.PublicPermission, config.GrantNone, "/heartbeat", repman.handlerHeartbeat},
+	}
 }
 
 func (repman *ReplicationManager) httpserver() {
@@ -110,99 +136,29 @@ func (repman *ReplicationManager) httpserver() {
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", repman.SharedirHandler("grafana")))
 	}
 
-	router.HandleFunc("/api/login", repman.loginHandler)
-	router.HandleFunc("/api/login-git", repman.loginHandler)
+	repman.RouteParser(router, repman.GetUnprotectedRoutes())
+	repman.RouteParser(router, repman.GetOldRoutes())
 
-	router.Handle("/api/clusters", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("any", auth.ServerPermission, repman.Auth, repman.Conf.OAuthProvider)),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
-	))
-	router.Handle("/api/status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxStatus)),
-	))
-	router.Handle("/api/auth/callback", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAuthCallback)),
-	))
-
-	router.Handle("/api/prometheus", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPrometheus)),
-	))
-
-	router.Handle("/api/configs/grafana", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGrafana)),
-	))
-
-	router.Handle("/api/timeout", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTimeout)),
-	))
-	router.Handle("/api/heartbeat", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxMonitorHeartbeat)),
-	))
-
-	router.Handle("/api/clusters/{clusterName}/status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterStatus)),
-	))
-
-	router.Handle("/api/clusters/{clusterName}/actions/master-physical-backup", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterMasterPhysicalBackup)),
-	))
-
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/master-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerMasterStatus)),
-	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/is-master", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersIsMasterStatus)),
-	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/is-slave", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersIsSlaveStatus)),
-	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-master", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortIsMasterStatus)),
-	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortIsSlaveStatus)),
-	))
-	// handle API 2.0 compatibility for external checks
-	router.Handle("/clusters/{clusterName}/servers/{serverName}/master-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersIsMasterStatus)),
-	))
-	router.Handle("/clusters/{clusterName}/servers/{serverName}/slave-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersIsSlaveStatus)),
-	))
-	router.Handle("/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortIsMasterStatus)),
-	))
-	router.Handle("/clusters/{clusterName}/servers/{serverName}/{serverPort}/slave-status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortIsSlaveStatus)),
-	))
-
-	router.Handle("/clusters/{clusterName}/sphinx-indexes", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSphinxIndexes)),
-	))
-
-	router.Handle("/api/clusters/{clusterName}/sphinx-indexes", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSphinxIndexes)),
-	))
-
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortBackup)),
-	))
-
+	repman.RouteParser(router, repman.GetServerPublicRoutes())
 	//USER PROTECTED ENDPOINTS
 
-	repman.apiClusterUnprotectedHandler(router)
-	repman.apiDatabaseUnprotectedHandler(router)
+	// repman.apiClusterUnprotectedHandler(router)
+	// repman.apiDatabaseUnprotectedHandler(router)
+	repman.RouteParser(router, repman.GetClusterPublicRoutes())
+	repman.RouteParser(router, repman.GetDatabasePublicRoutes())
+
 	if !repman.Conf.APIHttpsBind {
 		router.Handle("/api/monitor", negroni.New(
 			negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
 		))
-		repman.apiClusterProtectedHandler(router)
-		repman.apiDatabaseProtectedHandler(router)
-		repman.apiProxyProtectedHandler(router)
+		// repman.apiClusterProtectedHandler(router)
+		// repman.apiDatabaseProtectedHandler(router)
+		// repman.apiProxyProtectedHandler(router)
+		repman.RouteParser(router, repman.GetClusterProtectedRoutes())
+		repman.RouteParser(router, repman.GetDatabaseProtectedRoutes())
+		repman.RouteParser(router, repman.GetProxyProtectedRoutes())
 	}
 	// create mux router
-	router.HandleFunc("/repocomp/current", repman.handlerRepoComp)
-	router.HandleFunc("/heartbeat", repman.handlerHeartbeat)
 
 	if repman.Conf.Verbose {
 		log.Printf("Starting HTTP server on " + repman.Conf.BindAddr + ":" + repman.Conf.HttpPort)

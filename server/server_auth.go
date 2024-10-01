@@ -7,6 +7,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -34,28 +35,48 @@ func (repman *ReplicationManager) LoadAPIUsers(conf *config.Config) error {
 
 	repman.LoadAPIUsersACL(conf)
 
+	res, _ := json.Marshal(repman.Auth.Users)
+	fmt.Printf("Users: " + string(res))
+
 	return nil
 }
 
 func (repman *ReplicationManager) LoadAPIUsersACL(conf *config.Config) error {
-	usersAllowACL := strings.Split(conf.APIUsersACLAllow, ",")
-	for _, userACL := range usersAllowACL {
-		useracl, listacls, cluster, role := misc.SplitACL(userACL)
-		acls := strings.Split(listacls, " ")
-		u, ok := repman.Auth.LoadUser(useracl)
-		if ok {
-			u.SetClusterRole(cluster, role)
-			u.SetClusterPermissions(cluster, acls, true)
+	if conf.APIUsersACLAllow != "" {
+		usersAllowACL := strings.Split(conf.APIUsersACLAllow, ",")
+		for _, userACL := range usersAllowACL {
+			useracl, listacls, cluster, role := misc.SplitACL(userACL)
+			acls := strings.Split(listacls, " ")
+			u, ok := repman.Auth.LoadUser(useracl)
+			if ok {
+				if cluster != "*" {
+					u.SetClusterRole(cluster, role)
+					u.SetClusterPermissions(cluster, acls, true)
+				} else {
+					for _, cl := range repman.Clusters {
+						u.SetClusterRole(cl.Name, role)
+						u.SetClusterPermissions(cl.Name, acls, true)
+					}
+				}
+			}
 		}
 	}
 
-	usersDiscardACL := strings.Split(conf.APIUsersACLDiscard, ",")
-	for _, userACL := range usersDiscardACL {
-		useracl, listacls, cluster, _ := misc.SplitACL(userACL)
-		acls := strings.Split(listacls, " ")
-		u, ok := repman.Auth.LoadUser(useracl)
-		if ok {
-			u.SetClusterPermissions(cluster, acls, false)
+	if conf.APIUsersACLDiscard != "" {
+		usersDiscardACL := strings.Split(conf.APIUsersACLDiscard, ",")
+		for _, userACL := range usersDiscardACL {
+			useracl, listacls, cluster, _ := misc.SplitACL(userACL)
+			acls := strings.Split(listacls, " ")
+			u, ok := repman.Auth.LoadUser(useracl)
+			if ok {
+				if cluster != "*" {
+					u.SetClusterPermissions(cluster, acls, false)
+				} else {
+					for _, cl := range repman.Clusters {
+						u.SetClusterPermissions(cl.Name, acls, false)
+					}
+				}
+			}
 		}
 	}
 
@@ -130,9 +151,9 @@ func (repman *ReplicationManager) AddUserACL(cred user.UserForm, u *user.User) e
 	return nil
 }
 
-func (repman *ReplicationManager) DropUserACL(cred user.UserForm, u *user.User) error {
+func (repman *ReplicationManager) RevokeUserACL(cred user.UserForm, u *user.User) error {
 	if cred.Clusters == "" {
-		return fmt.Errorf("Error in creating grants: clustername is empty")
+		return fmt.Errorf("Error in revoking grants: clustername is empty")
 	}
 
 	cList := make([]string, 0)
@@ -145,7 +166,7 @@ func (repman *ReplicationManager) DropUserACL(cred user.UserForm, u *user.User) 
 	for _, cl := range cList {
 		mycluster := repman.getClusterByName(cl)
 		if mycluster == nil {
-			return fmt.Errorf("Error in creating grants: clustername is not registered")
+			return fmt.Errorf("Error in revoking grants: clustername is not registered")
 		}
 
 		if cred.Role != "" {
@@ -156,6 +177,29 @@ func (repman *ReplicationManager) DropUserACL(cred user.UserForm, u *user.User) 
 			perms := strings.Split(cred.Grants, ",")
 			u.SetClusterPermissions(cl, perms, false)
 		}
+	}
+
+	return nil
+}
+
+func (repman *ReplicationManager) DropUserACL(clusters string, u *user.User) error {
+	cList := make([]string, 0)
+	if clusters == "" {
+		return fmt.Errorf("Error in dropping ACL: clustername is empty")
+	}
+	if clusters == "*" {
+		cList = repman.ClusterList
+	} else {
+		cList = strings.Split(clusters, ",")
+	}
+
+	for _, cl := range cList {
+		mycluster := repman.getClusterByName(cl)
+		if mycluster == nil {
+			return fmt.Errorf("Error in dropping ACL: clustername is not registered")
+		}
+
+		u.DropClusterACL(mycluster.Name)
 	}
 
 	return nil

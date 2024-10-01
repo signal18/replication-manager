@@ -36,6 +36,7 @@ import (
 	"github.com/signal18/replication-manager/auth/user"
 	"github.com/signal18/replication-manager/cert"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/githelper"
@@ -46,6 +47,13 @@ import (
 var signingKey, verificationKey []byte
 var apiPass string
 var apiUser string
+
+type Route struct {
+	Level      auth.PermissionType                          `json:"level"`
+	Permission string                                       `json:"permission"`
+	URL        string                                       `json:"url"`
+	Handler    func(w http.ResponseWriter, r *http.Request) `json:"handler"`
+}
 
 func (repman *ReplicationManager) initKeys() {
 	repman.Lock()
@@ -171,6 +179,55 @@ func (repman *ReplicationManager) rootHandler(w http.ResponseWriter, r *http.Req
 	w.Write(html)
 }
 
+func (repman *ReplicationManager) RouteParser(router *mux.Router, routes []Route) {
+	for _, route := range routes {
+		router.Handle(route.URL, negroni.New(
+			negroni.HandlerFunc(auth.CheckPermission(route.Permission, route.Level, repman.Auth, repman.Conf.OAuthProvider)),
+			negroni.Wrap(http.HandlerFunc(route.Handler)),
+		))
+	}
+}
+
+func (repman *ReplicationManager) GetServerPublicRoutes() []Route {
+	return []Route{
+		{auth.PublicPermission, config.GrantNone, "/api/login", repman.loginHandler},
+		{auth.PublicPermission, config.GrantNone, "/api/login-git", repman.loginHandler},
+		{auth.PublicPermission, config.GrantNone, "/api/auth/callback", repman.handlerMuxAuthCallback},
+		{auth.PublicPermission, config.GrantNone, "/api/prometheus", repman.handlerMuxPrometheus},
+		{auth.PublicPermission, config.GrantNone, "/api/status", repman.handlerMuxStatus},
+		{auth.PublicPermission, config.GrantNone, "/api/timeout", repman.handlerMuxTimeout},
+		{auth.PublicPermission, config.GrantNone, "/api/configs/grafana", repman.handlerMuxGrafana},
+		{auth.PublicPermission, config.GrantNone, "/api/heartbeat", repman.handlerMuxMonitorHeartbeat},
+		{auth.PublicPermission, config.GrantNone, "/api/repocomp/current", repman.handlerRepoComp},
+	}
+}
+
+func (repman *ReplicationManager) GetServerProtectedRoutes() []Route {
+	return []Route{
+		// Empty grant allow url hit but clusters will be shown based on cluster ACL
+		{auth.AuthPermission, config.GrantNone, "/api/clusters", repman.handlerMuxClusters},
+		{auth.AuthPermission, config.GrantNone, "/api/clusters/peers", repman.handlerMuxPeerClusters},
+
+		// Check current user
+		{auth.AuthPermission, config.GrantNone, "/api/auth/user", repman.handlerMuxGetCurrentUser},
+
+		// For adding user with server-wide scope
+		{auth.ServerPermission, config.GrantServerUsers, "/api/monitor/actions/user-add", repman.handlerMuxAddUser},
+		{auth.ServerPermission, config.GrantServerUsers, "/api/monitor/actions/user-drop", repman.handlerMuxDropUser},
+
+		// For adding user with server-wide scope
+		{auth.ServerPermission, config.GrantServerUsers, "/api/monitor/actions/user-acl-allow", repman.handlerMuxAddACL},
+		{auth.ServerPermission, config.GrantServerUsers, "/api/monitor/actions/user-acl-revoke", repman.handlerMuxRevokeACL},
+	}
+}
+
+func (repman *ReplicationManager) GetAPIProtectedRoutes() []Route {
+	return []Route{
+		// Empty grant allow url hit but clusters will be shown based on cluster ACL
+		{auth.PublicPermission, config.GrantNone, "/api/monitor", repman.handlerMuxReplicationManager},
+	}
+}
+
 func (repman *ReplicationManager) apiserver() {
 	var err error
 
@@ -210,75 +267,20 @@ func (repman *ReplicationManager) apiserver() {
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", repman.SharedirHandler("grafana")))
 	}
 
-	router.HandleFunc("/api/login", repman.loginHandler)
-	router.HandleFunc("/api/login-git", repman.loginHandler)
-	//router.Handle("/api", v3.NewHandler("My API", "/swagger.json", "/api"))
+	repman.RouteParser(router, repman.GetServerPublicRoutes())
+	repman.RouteParser(router, repman.GetServerProtectedRoutes())
+	repman.RouteParser(router, repman.GetAPIProtectedRoutes())
 
-	router.Handle("/api/auth/callback", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAuthCallback)),
-	))
-	router.Handle("/api/clusters", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("any", auth.AuthPermission, repman.Auth, repman.Conf.OAuthProvider)),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
-	))
-
-	router.Handle("/api/monitor", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("any", auth.AuthPermission, repman.Auth, repman.Conf.OAuthProvider)),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
-	))
-	router.Handle("/api/clusters/peers", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPeerClusters)),
-	))
-	router.Handle("/api/prometheus", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPrometheus)),
-	))
-	router.Handle("/api/status", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxStatus)),
-	))
-	router.Handle("/api/timeout", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTimeout)),
-	))
-	router.Handle("/api/repocomp/current", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerRepoComp)),
-	))
-	router.Handle("/api/configs/grafana", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGrafana)),
-	))
-
-	router.Handle("/api/auth/user", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("any", auth.AuthPermission, repman.Auth, repman.Conf.OAuthProvider)),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetCurrentUser)),
-	))
-
-	// For adding user with server-wide scope
-	router.Handle("/api/monitor/actions/user-add", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("user-add", auth.ServerPermission, repman.Auth, repman.Conf.OAuthProvider)),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddUser)),
-	))
-
-	// For adding user with server-wide scope
-	router.Handle("/api/monitor/actions/user-drop", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("user-drop", auth.ServerPermission, repman.Auth, repman.Conf.OAuthProvider)),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropUser)),
-	))
-
-	// For adding user with server-wide scope
-	router.Handle("/api/monitor/actions/user-acl-allow", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("acl-allow", auth.ServerPermission, repman.Auth, repman.Conf.OAuthProvider)),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddACL)),
-	))
-
-	// For adding user with server-wide scope
-	router.Handle("/api/monitor/actions/user-acl-revoke", negroni.New(
-		negroni.HandlerFunc(auth.CheckPermission("acl-revoke", auth.ServerPermission, repman.Auth, repman.Conf.OAuthProvider)),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropACL)),
-	))
-
-	repman.apiDatabaseUnprotectedHandler(router)
-	repman.apiDatabaseProtectedHandler(router)
-	repman.apiClusterUnprotectedHandler(router)
-	repman.apiClusterProtectedHandler(router)
-	repman.apiProxyProtectedHandler(router)
+	// repman.apiDatabaseUnprotectedHandler(router)
+	// repman.apiDatabaseProtectedHandler(router)
+	// repman.apiClusterUnprotectedHandler(router)
+	// repman.apiClusterProtectedHandler(router)
+	// repman.apiProxyProtectedHandler(router)
+	repman.RouteParser(router, repman.GetDatabasePublicRoutes())
+	repman.RouteParser(router, repman.GetDatabaseProtectedRoutes())
+	repman.RouteParser(router, repman.GetClusterPublicRoutes())
+	repman.RouteParser(router, repman.GetClusterProtectedRoutes())
+	repman.RouteParser(router, repman.GetProxyProtectedRoutes())
 
 	tlsConfig := Repmanv3TLS{
 		Enabled: false,
@@ -581,13 +583,13 @@ func (repman *ReplicationManager) handlerMuxDropUser(w http.ResponseWriter, r *h
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	// Server scope
-	_, ok := repman.Auth.LoadUser(vars["userName"])
+	_, ok := repman.Auth.LoadUser(vars["username"])
 	if !ok {
 		http.Error(w, "Error in request: username is not exists", http.StatusBadRequest)
 		return
 	}
 
-	repman.Auth.DeleteUser(vars["userName"])
+	repman.Auth.DeleteUser(vars["username"])
 
 	w.WriteHeader(http.StatusNoContent)
 	w.Write([]byte("User has been deleted"))
@@ -598,7 +600,7 @@ func (repman *ReplicationManager) handlerMuxSetRole(w http.ResponseWriter, r *ht
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 
-	u, ok := repman.Auth.LoadUser(vars["userName"])
+	u, ok := repman.Auth.LoadUser(vars["username"])
 	if !ok {
 		http.Error(w, "Error in request: username is not exists", http.StatusBadRequest)
 		return
@@ -672,7 +674,7 @@ func (repman *ReplicationManager) handlerMuxAddACL(w http.ResponseWriter, r *htt
 	w.Write(res)
 }
 
-func (repman *ReplicationManager) handlerMuxDropACL(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxRevokeACL(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var cred user.UserForm
 
@@ -692,7 +694,7 @@ func (repman *ReplicationManager) handlerMuxDropACL(w http.ResponseWriter, r *ht
 	u.WG.Add(1)
 	defer u.WG.Done()
 
-	err = repman.DropUserACL(cred, u)
+	err = repman.RevokeUserACL(cred, u)
 	if err != nil {
 		http.Error(w, "Error in add ACL: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -711,6 +713,23 @@ func (repman *ReplicationManager) handlerMuxDropACL(w http.ResponseWriter, r *ht
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(res)
+}
+
+func (repman *ReplicationManager) handlerMuxDropClusterUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	// Server scope
+	_, ok := repman.Auth.LoadUser(vars["username"])
+	if !ok {
+		http.Error(w, "Error in request: username is not exists", http.StatusBadRequest)
+		return
+	}
+
+	// Equivalent to dropping ACL
+	repman.Auth.DeleteClusterUser(vars["username"], vars["clusterName"])
+
+	w.WriteHeader(http.StatusNoContent)
+	w.Write([]byte("User has been deleted for cluster: " + vars["clusterName"]))
 }
 
 func (repman *ReplicationManager) handlerMuxGetCurrentUser(w http.ResponseWriter, r *http.Request) {

@@ -87,10 +87,6 @@ func (u *User) HasClusterPermission(clusterID, permission string) bool {
 	u.mu.RLock()
 	defer u.mu.RUnlock()
 
-	if u.User == "admin" {
-		return true
-	}
-
 	cGrants, ok := u.GrantMap[clusterID]
 	if ok {
 		for key, value := range cGrants.Grants {
@@ -105,4 +101,12 @@ func (u *User) HasClusterPermission(clusterID, permission string) bool {
 		}
 	}
 	return false
+}
+
+// SetClusterPermissions bulk sets permissions for the user.
+func (u *User) DropClusterACL(clusterID string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	delete(u.GrantMap, clusterID)
 }

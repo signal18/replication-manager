@@ -105,7 +105,7 @@ func (cluster *Cluster) LoadAPIUsers() error {
 				for key, value := range cluster.Grants {
 					found := false
 					for _, acl := range acls {
-						if strings.HasPrefix(key, acl) && acl != ""  {
+						if strings.HasPrefix(key, acl) && acl != "" {
 							found = true
 							break
 						}
@@ -232,6 +232,9 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 		if strings.Contains(URL, "/actions/backup-physical") {
+			return true
+		}
+		if strings.Contains(URL, "/actions/backup") {
 			return true
 		}
 		if strings.Contains(URL, "/actions/backup-slowquery-log") {
@@ -511,7 +514,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterSwitchover] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterFailover] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/switchover") {
 			return true
 		}

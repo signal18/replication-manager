@@ -10,29 +10,19 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
+	"github.com/signal18/replication-manager/auth"
+	"github.com/signal18/replication-manager/config"
 )
 
-func (repman *ReplicationManager) apiProxyProtectedHandler(router *mux.Router) {
+func (repman *ReplicationManager) GetProxyProtectedRoutes() []Route {
 	//PROTECTED ENDPOINTS FOR PROXIES
-
-	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyUnprovision)),
-	))
-	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/provision", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyProvision)),
-	))
-	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/stop", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyStop)),
-	))
-	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/start", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyStart)),
-	))
+	return []Route{
+		{auth.ClusterPermission, config.GrantProvProxyUnprovision, "/api/clusters/{clusterName}/proxies/{proxyName}/actions/unprovision", repman.handlerMuxProxyUnprovision},
+		{auth.ClusterPermission, config.GrantProvProxyProvision, "/api/clusters/{clusterName}/proxies/{proxyName}/actions/provision", repman.handlerMuxProxyProvision},
+		{auth.ClusterPermission, config.GrantProxyStop, "/api/clusters/{clusterName}/proxies/{proxyName}/actions/stop", repman.handlerMuxProxyStop},
+		{auth.ClusterPermission, config.GrantProxyStart, "/api/clusters/{clusterName}/proxies/{proxyName}/actions/start", repman.handlerMuxProxyStart},
+	}
 
 }
 
@@ -41,10 +31,11 @@ func (repman *ReplicationManager) handlerMuxProxyStart(w http.ResponseWriter, r 
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
+		// Not used anymore
+		// if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		// 	http.Error(w, "No valid ACL", 403)
+		// 	return
+		// }
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		if node != nil {
 			mycluster.StartProxyService(node)
@@ -63,10 +54,11 @@ func (repman *ReplicationManager) handlerMuxProxyStop(w http.ResponseWriter, r *
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
+		// Not used anymore
+		// if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		// 	http.Error(w, "No valid ACL", 403)
+		// 	return
+		// }
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		if node != nil {
 			mycluster.StopProxyService(node)
@@ -84,10 +76,11 @@ func (repman *ReplicationManager) handlerMuxProxyProvision(w http.ResponseWriter
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
+		// Not used anymore
+		// if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		// 	http.Error(w, "No valid ACL", 403)
+		// 	return
+		// }
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		if node != nil {
 			mycluster.InitProxyService(node)
@@ -106,10 +99,11 @@ func (repman *ReplicationManager) handlerMuxProxyUnprovision(w http.ResponseWrit
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
+		// Not used anymore
+		// if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		// 	http.Error(w, "No valid ACL", 403)
+		// 	return
+		// }
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		if node != nil {
 			mycluster.UnprovisionProxyService(node)
@@ -128,10 +122,11 @@ func (repman *ReplicationManager) handlerMuxSphinxIndexes(w http.ResponseWriter,
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
+		// Not used anymore
+		// if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		// 	http.Error(w, "No valid ACL", 403)
+		// 	return
+		// }
 		data, err := os.ReadFile(mycluster.GetConf().SphinxConfig)
 		if err != nil {
 			w.WriteHeader(404)
@@ -150,10 +145,11 @@ func (repman *ReplicationManager) handlerMuxProxyNeedRestart(w http.ResponseWrit
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
+		// Not used anymore
+		// if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		// 	http.Error(w, "No valid ACL", 403)
+		// 	return
+		// }
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		if node != nil && node.IsDown() == false {
 			if node.HasRestartCookie() {
@@ -178,10 +174,11 @@ func (repman *ReplicationManager) handlerMuxProxyNeedReprov(w http.ResponseWrite
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
+		// Not used anymore
+		// if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		// 	http.Error(w, "No valid ACL", 403)
+		// 	return
+		// }
 		node := mycluster.GetProxyFromName(vars["proxyName"])
 		if node != nil && node.IsDown() == false {
 			if node.HasReprovCookie() {

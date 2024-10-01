@@ -66,6 +66,12 @@ func SplitPair(s string) (string, string) {
 /* Returns generic items from acl, e.g. user:acl:cluster:role */
 func SplitACL(s string) (string, string, string, string) {
 	items := strings.Split(s, ":")
+
+	// Set to all clusters if no clusters mentioned i.e. user:acl only
+	if len(items) == 2 {
+		items = append(items, "*")
+	}
+
 	for len(items) < 4 {
 		items = append(items, "")
 	}

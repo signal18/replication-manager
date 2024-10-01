@@ -908,6 +908,8 @@ const (
 	GrantClusterGrant              string = "cluster-grant"
 	GrantClusterChecksum           string = "cluster-checksum"
 	GrantClusterSharding           string = "cluster-sharding"
+	GrantClusterSharing            string = "cluster-sharing"
+	GrantClusterVault              string = "cluster-vault"
 	GrantClusterReplication        string = "cluster-replication"
 	GrantClusterCertificatesRotate string = "cluster-certificates-rotate"
 	GrantClusterCertificatesReload string = "cluster-certificates-reload"
@@ -924,6 +926,7 @@ const (
 	GrantClusterRotatePasswords    string = "cluster-rotate-passwords"
 	GrantClusterResetSLA           string = "cluster-reset-sla"
 	GrantClusterDebug              string = "cluster-debug"
+	GrantClusterUsers              string = "cluster-users"
 
 	GrantProxyConfigCreate      string = "proxy-config-create"
 	GrantProxyConfigGet         string = "proxy-config-get"
@@ -939,6 +942,11 @@ const (
 	GrantProvDBUnprovision      string = "prov-db-unprovision"
 	GrantProvSettings           string = "prov-settings"
 	GrantProvCluster            string = "prov-cluster"
+
+	GrantServerUsers string = "server-users"
+
+	GrantAny  string = "any"
+	GrantNone string = ""
 )
 
 const (

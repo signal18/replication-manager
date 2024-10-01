@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/codegangsta/negroni"
+	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/auth/user"
 )
 
@@ -29,10 +30,12 @@ const (
 // CheckPermission ensures the user has the necessary permissions based on the permission type.
 func CheckPermission(permission string, permissionType PermissionType, auth *Auth, OAuthProvider string) negroni.HandlerFunc {
 	return negroni.HandlerFunc(func(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+		var err error
+		var u *user.User
+		// Get user from context or token
+		u, err = GetUserFromJWT(r, auth.Users, auth.SecureKey.PublicKey, OAuthProvider)
 		// Read user if not public permission
 		if permissionType != PublicPermission {
-			// Get user from context or token
-			u, err := GetUserFromJWT(r, auth.Users, auth.SecureKey.PublicKey, OAuthProvider)
 			if err != nil {
 				http.Error(w, "Unauthorized: user not found - "+err.Error(), http.StatusUnauthorized)
 				return
@@ -42,27 +45,24 @@ func CheckPermission(permission string, permissionType PermissionType, auth *Aut
 			// Auth Permission only check if user JWT is valid
 			switch permissionType {
 			case ServerPermission:
-				if u.User != "admin" && !u.HasClusterPermission("Default", permission) {
+				if !u.HasClusterPermission("Default", permission) {
 					http.Error(w, "Forbidden: insufficient server permissions", http.StatusForbidden)
 					return
 				}
 			case ClusterPermission:
-				clusterID := strings.Split(strings.TrimPrefix(r.URL.Path, "/clusters/"), "/")[0]
-				if !u.HasClusterPermission(clusterID, permission) {
+				vars := mux.Vars(r)
+				if !u.HasClusterPermission(vars["clusterName"], permission) {
 					http.Error(w, "Forbidden: insufficient cluster permissions", http.StatusForbidden)
 					return
 				}
 			}
 
-			// Set user in context so we can reuse it later if needed
-			ctx := context.WithValue(r.Context(), userContextKey, u)
-
-			// Call the next handler with the updated context
-			next(w, r.WithContext(ctx))
 		}
+		// Set user in context so we can reuse it later if needed
+		ctx := context.WithValue(r.Context(), userContextKey, u)
 
-		//Call the next handler
-		next(w, r)
+		// Call the next handler with the updated context
+		next(w, r.WithContext(ctx))
 	})
 }
 

@@ -141,12 +141,12 @@ func (auth *Auth) DeleteUser(username string) {
 }
 
 // DeleteCLusterUser revoke a user from the cluster.
-func (auth *Auth) DeleteClusterUser(username string) {
+func (auth *Auth) DeleteClusterUser(username string, clusterId string) {
 	auth.mu.Lock()
 	defer auth.mu.Unlock()
 	u, ok := auth.LoadUser(username)
 	if ok {
 		u.WG.Wait()
 	}
-	delete(auth.Users, username)
+	u.DropClusterACL(clusterId)
 }
