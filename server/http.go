@@ -64,8 +64,6 @@ func (repman *ReplicationManager) testFile(fn string) error {
 }
 
 func (repman *ReplicationManager) httpserver() {
-
-	repman.initKeys()
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
@@ -81,6 +79,8 @@ func (repman *ReplicationManager) httpserver() {
 		// Set up a route that forwards the request to the Graphite API
 		router.PathPrefix("/graphite/").Handler(http.StripPrefix("/graphite/", graphiteProxy))
 	}
+
+	router.PathPrefix("/meet/").Handler(http.StripPrefix("/meet/", repman.proxyToURL("https://meet.signal18.io/api/v4")))
 
 	//router.HandleFunc("/", repman.handlerApp)
 	// page to view which does not need authorization
@@ -110,6 +110,8 @@ func (repman *ReplicationManager) httpserver() {
 	}
 
 	router.HandleFunc("/api/login", repman.loginHandler)
+	router.HandleFunc("/api/login-git", repman.loginHandler)
+
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
 	))

@@ -184,6 +184,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	if len(cluster.Servers) == 1 {
 		cluster.Topology = topoActivePassive
 		cluster.Conf.ActivePassive = true
+		for _, sv := range cluster.Servers {
+			cluster.master = sv
+		}
 		return nil
 	} else {
 		cluster.Conf.ActivePassive = false

@@ -1605,6 +1605,8 @@ func (repman *ReplicationManager) Run() error {
 		cluster.SetCarbonLogger(repman.clog)
 	}
 
+	repman.initKeys()
+
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
 	if repman.Conf.ApiServ {
 		go repman.apiserver()
