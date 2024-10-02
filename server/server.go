@@ -1458,7 +1458,7 @@ func (repman *ReplicationManager) GenerateKeygen() error {
 			repman.Logrus.Errorf("Error when generating key for encryption: %v", err)
 			return err
 		}
-		err = crypto.WriteKey(p.Key, keyPath, overwrite)
+		err = crypto.WriteKey(p.Key, repman.Conf.MonitoringKeyPath, false)
 		if err != nil {
 			repman.Logrus.Errorf("Error when writing key for encryption: %v", err)
 			return err
