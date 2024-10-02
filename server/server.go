@@ -52,6 +52,7 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -1446,6 +1447,35 @@ func (repman *ReplicationManager) InitRestic() error {
 	return nil
 }
 
+func (repman *ReplicationManager) GenerateKeygen() error {
+	_, err := os.Stat(repman.Conf.MonitoringKeyPath)
+	// Check if the file does not exist
+	if err == nil {
+		repman.Logrus.Infof("Repman discovered that key is already generated. Using existing key.")
+	} else {
+		if !os.IsNotExist(err) {
+			repman.Logrus.Errorf("Error when checking key for encryption: %v", err)
+			return err
+		}
+
+		repman.Logrus.Infof("Key not found. Generating : %s", repman.Conf.MonitoringKeyPath)
+		p := crypto.Password{}
+		var err error
+		p.Key, err = crypto.Keygen()
+		if err != nil {
+			repman.Logrus.Errorf("Error when generating key for encryption: %v", err)
+			return err
+		}
+		err = crypto.WriteKey(p.Key, keyPath, overwrite)
+		if err != nil {
+			repman.Logrus.Errorf("Error when writing key for encryption: %v", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (repman *ReplicationManager) Run() error {
 	var err error
 
@@ -1602,6 +1632,7 @@ func (repman *ReplicationManager) Run() error {
 	//repman.InitRestic()
 	repman.Logrus.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
 	repman.Logrus.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
+	repman.GenerateKeygen()
 
 	// If there's an existing encryption key, decrypt the passwords
 
