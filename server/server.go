@@ -29,7 +29,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v5"
+	git_obj "github.com/go-git/go-git/v5/plumbing/object"
+	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
+	"github.com/pelletier/go-toml"
 	"github.com/spf13/viper"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
@@ -113,6 +117,10 @@ type ReplicationManager struct {
 	cloud18CheckSum                                  hash.Hash                      `json:"-"`
 	clog                                             *clog.Logger                   `json:"-"`
 	Logrus                                           *log.Logger                    `json:"-"`
+	IsGitPull                                        bool                           `json:"isGitPull"`
+	CanConnectVault                                  bool                           `json:"canConnectVault"`
+	errorConnectVault                                error                          `json:"-"`
+	CheckSumConfig                                   map[string]hash.Hash           `json:"-"`
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -1448,6 +1456,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.MemProfile = memprofile
 	repman.CpuProfile = cpuprofile
 	repman.clog = clog.New()
+	repman.CheckSumConfig = make(map[string]hash.Hash)
 
 	repman.clog.SetLevel(repman.Conf.ToLogrusLevel(repman.Conf.LogGraphiteLevel))
 	if repman.CpuProfile != "" {
@@ -1771,6 +1780,7 @@ func (repman *ReplicationManager) Run() error {
 
 	}()
 
+	var counter int64 = 0
 	for repman.exit == false {
 		if repman.Conf.Arbitration {
 			repman.Heartbeat()
@@ -1779,6 +1789,10 @@ func (repman *ReplicationManager) Run() error {
 			//			agents = svc.GetNodes()
 		}
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
+		if counter%60 == 0 {
+			repman.Save()
+		}
+		counter++
 	}
 	if repman.exitMsg != "" {
 		repman.Logrus.Println(repman.exitMsg)
@@ -1955,6 +1969,10 @@ func (repman *ReplicationManager) Stop() {
 		}
 		pprof.WriteHeapProfile(f)
 		f.Close()
+	}
+	repman.Save()
+	if repman.Conf.GitUrl != "" {
+		go repman.PushConfigToGit(repman.Conf.Secrets["git-acces-token"].Value, repman.Conf.GitUsername, repman.Conf.WorkingDir)
 	}
 
 }
@@ -2135,4 +2153,215 @@ func (repman *ReplicationManager) LogModulePrintf(forcingLog bool, module int, l
 	}
 
 	return line
+}
+
+func (repman *ReplicationManager) PushConfigToGit(tok string, user string, dir string) {
+
+	if repman.Conf.LogGit {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Push default to git : tok %s, dir %s, user %s\n", repman.Conf.PrintSecret(tok), dir, user)
+	}
+	auth := &git_https.BasicAuth{
+		Username: user, // yes, this can be anything except an empty string
+		Password: tok,
+	}
+	path := dir
+	r, err := git.PlainOpen(path)
+	if err != nil && repman.Conf.LogGit {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot PlainOpen : %s", err)
+		return
+	}
+
+	w, err := r.Worktree()
+	if err != nil && repman.Conf.LogGit {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Worktree : %s", err)
+		return
+	}
+
+	msg := "Update default.toml file"
+
+	// Adds the new file to the staging area.
+	err = w.AddGlob("*.toml")
+	if err != nil && repman.Conf.LogGit {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add %s : %s", "*.toml", err)
+	}
+
+	_, err = w.Commit(msg, &git.CommitOptions{
+		Author: &git_obj.Signature{
+			Name: "Replication-manager",
+			When: time.Now(),
+		},
+	})
+
+	if err != nil && repman.Conf.LogGit {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Commit : %s", err)
+	}
+
+	// push using default options
+	err = r.Push(&git.PushOptions{Auth: auth})
+	if err != nil && repman.Conf.LogGit {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Push : %s", err)
+
+	}
+}
+
+func (repman *ReplicationManager) Overwrite(has_changed bool) error {
+
+	if repman.Conf.ConfRewrite {
+		var myconf = make(map[string]config.Config)
+
+		myconf["overwrite-default"] = repman.Conf
+
+		file, err := os.OpenFile(repman.Conf.WorkingDir+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/overwrite.toml")
+			}
+			return err
+		}
+		defer file.Close()
+
+		readconf, _ := toml.Marshal(repman.Conf)
+		t, _ := toml.LoadBytes(readconf)
+		s := t
+		keys := t.Keys()
+		for _, key := range keys {
+
+			v, ok := repman.Conf.ImmuableFlagMap[key]
+
+			// Won't handle secrets currently. Will be handled later when scope already clear
+			_, ok2 := repman.Conf.Secrets[key]
+			if !ok || fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) || ok2 {
+				s.Delete(key)
+			}
+
+		}
+
+		file.WriteString("[overwrite-default]\n")
+		s.WriteTo(file)
+
+		new_h := md5.New()
+		if _, err := io.Copy(new_h, file); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+		}
+
+		h, ok := repman.CheckSumConfig["overwrite"]
+		if !ok {
+			has_changed = true
+		}
+		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
+			has_changed = true
+		}
+
+		repman.CheckSumConfig["overwrite"] = new_h
+
+	}
+
+	return nil
+}
+
+func (repman *ReplicationManager) Save() error {
+	//Needed to preserve diretory before Pull
+	if !repman.IsGitPull && repman.Conf.Cloud18 {
+		return nil
+	}
+	_, file, no, ok := runtime.Caller(1)
+	if ok {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
+	}
+
+	has_changed := false
+
+	if repman.Conf.ConfRewrite {
+
+		var myconf = make(map[string]config.Config)
+
+		myconf["saved-default"] = repman.Conf
+
+		file, err := os.OpenFile(repman.Conf.WorkingDir+"/default.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/default.toml")
+			}
+			return err
+		}
+		defer file.Close()
+		file.WriteString("[saved-default]\ntitle = \"replication-manager\" \n")
+		readconf, _ := toml.Marshal(repman.Conf)
+		t, _ := toml.LoadBytes(readconf)
+		s := t
+		keys := t.Keys()
+		for _, key := range keys {
+			_, ok := repman.Conf.ImmuableFlagMap[key]
+			if ok {
+				s.Delete(key)
+			} else {
+				v, ok := repman.Conf.DefaultFlagMap[key]
+				_, ok2 := repman.Conf.Secrets[key]
+
+				// Won't handle secrets currently. Will be handled later when scope already clear
+				if !ok || fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) || ok2 {
+					s.Delete(key)
+				}
+			}
+		}
+
+		s.WriteTo(file)
+		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", repman.Conf.ImmuableFlagMap)
+		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", repman.Conf.DynamicFlagMap)
+		new_h := md5.New()
+		if _, err := io.Copy(new_h, file); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+		}
+
+		h, ok := repman.CheckSumConfig["saved"]
+		if !ok {
+			has_changed = true
+		}
+		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
+			has_changed = true
+		}
+
+		repman.CheckSumConfig["saved"] = new_h
+
+		file2, err := os.OpenFile(repman.Conf.WorkingDir+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/"+"/immutable.toml")
+			}
+			return err
+		}
+		defer file2.Close()
+		for key, val := range repman.Conf.ImmuableFlagMap {
+			_, ok := repman.Conf.Secrets[key]
+			if !ok {
+				if fmt.Sprintf("%T", val) == "string" {
+					file2.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
+				} else {
+					file2.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
+				}
+			}
+		}
+
+		new_h = md5.New()
+		if _, err := io.Copy(new_h, file2); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+		}
+
+		h, ok = repman.CheckSumConfig["immutable"]
+		if !ok {
+			has_changed = true
+		}
+		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
+			has_changed = true
+		}
+
+		repman.CheckSumConfig["immutable"] = new_h
+
+		err = repman.Overwrite(has_changed)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+		}
+	}
+
+	return nil
 }
