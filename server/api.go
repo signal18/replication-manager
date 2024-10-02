@@ -230,7 +230,6 @@ func (repman *ReplicationManager) GetAPIProtectedRoutes() []Route {
 
 func (repman *ReplicationManager) apiserver() {
 	var err error
-
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
 	//router.HandleFunc("/", repman.handlerApp)
