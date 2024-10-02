@@ -927,7 +927,7 @@ func (repman *ReplicationManager) initEmbedOrExtraConfDir() error {
 	//test y'a  un repertoire ./.replication-manager/share sinon on le créer
 	if _, err := os.Stat(repman.GetExtraConfigDir()); os.IsNotExist(err) {
 		os.MkdirAll(repman.GetExtraConfigDir(), os.ModePerm)
-		os.MkdirAll(repman.GetExtraConfigDir()+"/clsuter.d", os.ModePerm)
+		os.MkdirAll(repman.GetExtraConfigDir()+"/cluster.d", os.ModePerm)
 		if conf.WithEmbed == "ON" {
 			os.MkdirAll(repman.GetExtraDataDir()+"/data", os.ModePerm)
 			os.MkdirAll(repman.GetExtraDataDir()+"/share", os.ModePerm)
