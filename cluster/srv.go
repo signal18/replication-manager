@@ -356,7 +356,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	logInfo, err := os.Stat(errLogFile)
 	if os.IsNotExist(err) || logInfo.Size() > 1024 {
 		// If size is bigger than 1KB when init, rotate it
-		if logInfo.Size() > 1024 {
+		if !os.IsNotExist(err) {
 			os.Rename(errLogFile, fmt.Sprintf("%s/log_error_%s.log", logDir, time.Now().Format(timeFormat)))
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate error log for %s on monitor datadir", server.URL)
 		}
@@ -366,7 +366,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	logInfo, err = os.Stat(slowLogFile)
 	if os.IsNotExist(err) || logInfo.Size() > 1024 {
 		// If size is bigger than 1KB when init, rotate it
-		if logInfo.Size() > 1024 {
+		if !os.IsNotExist(err) {
 			os.Rename(slowLogFile, fmt.Sprintf("%s/log_slow_query_%s.log", logDir, time.Now().Format(timeFormat)))
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate slow query log for %s on monitor datadir", server.URL)
 		}
