@@ -1632,7 +1632,7 @@ func (repman *ReplicationManager) Run() error {
 	//repman.InitRestic()
 	repman.Logrus.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
 	repman.Logrus.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
-	repman.GenerateKeygen()
+	// repman.GenerateKeygen()
 
 	// If there's an existing encryption key, decrypt the passwords
 
