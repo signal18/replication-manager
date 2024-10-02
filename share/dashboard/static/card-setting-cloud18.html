@@ -16,7 +16,7 @@
         </tr>
         <tr>
             <td>
-                <md-switch ng-disabled="settings.apiUsers[user].grants['cluster-settings']==false" ng-true-value="true" ng-false-value="false" ng-model="settings.config.cloud18Shared" ng-click="switchsettings('cloud18-shared')" aria-label="Share the cluster to the Cloud18">
+                <md-switch ng-disabled="settings.apiUsers[user].grants['cluster-settings']==false || !settings.config.cloud18" ng-true-value="true" ng-false-value="false" ng-model="settings.config.cloud18Shared" ng-click="switchsettings('cloud18-shared')" aria-label="Share the cluster to the Cloud18">
                     <span ng-if="settings.config.cloud18Shared" class="label label-primary">On</span><span ng-if="!settings.config.cloud18Shared" class="label label-warning">Off</span>
                 </md-switch>
             </td>

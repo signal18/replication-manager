@@ -1864,10 +1864,6 @@ func (cluster *Cluster) SetMasterNil() {
 	cluster.master = nil
 }
 
-func (cluster *Cluster) SetApiTokenTimeout(value int) {
-	cluster.Conf.TokenTimeout = value
-}
-
 func (cluster *Cluster) SetSSTBufferSize(value int) {
 	cluster.Conf.SSTSendBuffer = value
 }

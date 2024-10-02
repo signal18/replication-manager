@@ -515,16 +515,6 @@ func (cluster *Cluster) IsVariableDiffFromRepmanDefault(v string) bool {
 	return val_clust == val_def
 }
 
-func (cluster *Cluster) IsVariableImmutable(v string) bool {
-	_, ok := cluster.Conf.ImmuableFlagMap[v]
-	return ok
-}
-
-func (cluster *Cluster) IsVariableServerLevel(v string) bool {
-	_, ok := cluster.Conf.ImmuableFlagMap[v]
-	return ok
-}
-
 func (cluster *Cluster) IsInBackup() bool {
 	return cluster.InPhysicalBackup || cluster.InLogicalBackup || cluster.InBinlogBackup || cluster.InResticBackup
 }
