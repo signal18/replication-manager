@@ -2380,15 +2380,43 @@ type LogEntry struct {
 }
 
 func (conf *Config) AppendUser(user, pass string) {
+	// Rotate Old Secret
+	var new_secret Secret
+	new_secret.OldValue = conf.GetDecryptedValue("api-credentials-external")
+
 	if conf.GetDecryptedValue("api-credentials-external") == "" {
 		conf.APIUsersExternal = user + ":" + pass
 	} else {
 		conf.APIUsersExternal = conf.GetDecryptedValue("api-credentials-external") + "," + user + ":" + pass
 	}
 
-	//Rotate Old Secret
-	var new_secret Secret
 	new_secret.Value = conf.APIUsersExternal
+
+	conf.Secrets["api-credentials-external"] = new_secret
+}
+
+func (conf *Config) DropUser(user string) {
+	// Rotate Old Secret
+	var new_secret Secret
 	new_secret.OldValue = conf.GetDecryptedValue("api-credentials-external")
+
+	idx := -1
+	cList := strings.Split(new_secret.OldValue, ",")
+	for i, cred := range cList {
+		u, _ := misc.SplitPair(cred)
+		if u == user {
+			idx = i
+			break
+		}
+	}
+
+	// No user found
+	if idx == -1 {
+		return
+	}
+
+	conf.APIUsersExternal = strings.Join(append(cList[:idx], cList[idx+1:]...), ",")
+	new_secret.Value = conf.APIUsersExternal
+
 	conf.Secrets["api-credentials-external"] = new_secret
 }

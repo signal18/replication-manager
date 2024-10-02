@@ -589,6 +589,7 @@ func (repman *ReplicationManager) handlerMuxDropUser(w http.ResponseWriter, r *h
 	}
 
 	repman.Auth.DeleteUser(vars["username"])
+	repman.Conf.DropUser(vars["username"])
 
 	w.WriteHeader(http.StatusNoContent)
 	w.Write([]byte("User has been deleted"))
