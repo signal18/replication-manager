@@ -944,7 +944,14 @@ const (
 	GrantProvSettings           string = "prov-settings"
 	GrantProvCluster            string = "prov-cluster"
 
-	GrantServerUsers string = "server-users"
+	GrantServerUsers  string = "server-users"
+	GrantServerConfig string = "server-config"
+
+	GrantServer  string = "server"
+	GrantProv    string = "prov"
+	GrantCluster string = "cluster"
+	GrantDB      string = "db"
+	GrantProxy   string = "proxy"
 
 	GrantAny  string = "any"
 	GrantNone string = ""
@@ -2370,4 +2377,18 @@ func IsValidLogLevel(lvl string) bool {
 type LogEntry struct {
 	Server string `json:"server"`
 	Log    string `json:"log"`
+}
+
+func (conf *Config) AppendUser(user, pass string) {
+	if conf.GetDecryptedValue("api-credentials-external") == "" {
+		conf.APIUsersExternal = user + ":" + pass
+	} else {
+		conf.APIUsersExternal = conf.GetDecryptedValue("api-credentials-external") + "," + user + ":" + pass
+	}
+
+	//Rotate Old Secret
+	var new_secret Secret
+	new_secret.Value = conf.APIUsersExternal
+	new_secret.OldValue = conf.GetDecryptedValue("api-credentials-external")
+	conf.Secrets["api-credentials-external"] = new_secret
 }

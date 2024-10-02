@@ -91,32 +91,31 @@ func (repman *ReplicationManager) AddUser(cred user.UserForm) (*user.User, error
 
 	u := user.NewUser(cred.Username, cred.Password)
 
-	if cred.Clusters == "" {
-		return nil, fmt.Errorf("Error in creating grants: clustername is not registered")
-	}
-
-	cList := make([]string, 0)
-	if cred.Clusters == "*" {
-		cList = repman.ClusterList
-	} else {
-		cList = strings.Split(cred.Clusters, ",")
-	}
-
-	for _, cl := range cList {
-		mycluster := repman.getClusterByName(cl)
-		if mycluster == nil {
-			return nil, fmt.Errorf("Error in creating grants: clustername is not registered")
+	if cred.Clusters != "" {
+		var cList []string
+		if cred.Clusters == "*" {
+			cList = repman.ClusterList
+		} else {
+			cList = strings.Split(cred.Clusters, ",")
 		}
 
-		u.SetClusterRole(cl, cred.Role)
+		for _, cl := range cList {
+			mycluster := repman.getClusterByName(cl)
+			if mycluster == nil {
+				continue
+			}
 
-		if cred.Grants != "" {
-			perms := strings.Split(cred.Grants, ",")
-			u.SetClusterPermissions(cl, perms, true)
+			u.SetClusterRole(cl, cred.Role)
+
+			if cred.Grants != "" {
+				perms := strings.Split(cred.Grants, ",")
+				u.SetClusterPermissions(cl, perms, true)
+			}
 		}
 	}
 
 	repman.Auth.AddUser(cred.Username, u)
+	repman.Conf.AppendUser(u.User, u.Password)
 	return u, nil
 }
 
@@ -125,7 +124,7 @@ func (repman *ReplicationManager) AddUserACL(cred user.UserForm, u *user.User) e
 		return fmt.Errorf("Error in creating grants: clustername is empty")
 	}
 
-	cList := make([]string, 0)
+	var cList []string
 	if cred.Clusters == "*" {
 		cList = repman.ClusterList
 	} else {
@@ -135,7 +134,7 @@ func (repman *ReplicationManager) AddUserACL(cred user.UserForm, u *user.User) e
 	for _, cl := range cList {
 		mycluster := repman.getClusterByName(cl)
 		if mycluster == nil {
-			return fmt.Errorf("Error in creating grants: clustername is not registered")
+			continue
 		}
 
 		if cred.Role != "" {
@@ -166,7 +165,7 @@ func (repman *ReplicationManager) RevokeUserACL(cred user.UserForm, u *user.User
 	for _, cl := range cList {
 		mycluster := repman.getClusterByName(cl)
 		if mycluster == nil {
-			return fmt.Errorf("Error in revoking grants: clustername is not registered")
+			continue
 		}
 
 		if cred.Role != "" {
@@ -183,10 +182,11 @@ func (repman *ReplicationManager) RevokeUserACL(cred user.UserForm, u *user.User
 }
 
 func (repman *ReplicationManager) DropUserACL(clusters string, u *user.User) error {
-	cList := make([]string, 0)
 	if clusters == "" {
 		return fmt.Errorf("Error in dropping ACL: clustername is empty")
 	}
+
+	var cList []string
 	if clusters == "*" {
 		cList = repman.ClusterList
 	} else {
@@ -196,7 +196,7 @@ func (repman *ReplicationManager) DropUserACL(clusters string, u *user.User) err
 	for _, cl := range cList {
 		mycluster := repman.getClusterByName(cl)
 		if mycluster == nil {
-			return fmt.Errorf("Error in dropping ACL: clustername is not registered")
+			continue
 		}
 
 		u.DropClusterACL(mycluster.Name)

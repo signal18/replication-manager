@@ -122,11 +122,6 @@ func (repman *ReplicationManager) handlerMuxSphinxIndexes(w http.ResponseWriter,
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		// Not used anymore
-		// if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-		// 	http.Error(w, "No valid ACL", 403)
-		// 	return
-		// }
 		data, err := os.ReadFile(mycluster.GetConf().SphinxConfig)
 		if err != nil {
 			w.WriteHeader(404)

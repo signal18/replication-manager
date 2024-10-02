@@ -1477,11 +1477,6 @@ func (repman *ReplicationManager) handlerMuxServersPortIsMasterStatus(w http.Res
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		/*	// Not used anymore
-			// if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			// 	http.Error(w, "No valid ACL", 403)
-			// 	return
-			// }*/
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node == nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -1554,11 +1549,6 @@ func (repman *ReplicationManager) handlerMuxServersIsSlaveStatus(w http.Response
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		/*	// Not used anymore
-			// if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			// 	http.Error(w, "No valid ACL", 403)
-			// 	return
-			// }*/
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
 			w.Write([]byte("200 -Valid Slave!"))
@@ -1580,10 +1570,6 @@ func (repman *ReplicationManager) handlerMuxServersPortIsSlaveStatus(w http.Resp
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		/*		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-				http.Error(w, "No valid ACL", 403)
-				return
-			}*/
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
 			w.Write([]byte("200 -Valid Slave!"))
