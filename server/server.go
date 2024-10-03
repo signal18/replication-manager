@@ -1479,6 +1479,13 @@ func (repman *ReplicationManager) GenerateKeygen() error {
 func (repman *ReplicationManager) Run() error {
 	var err error
 
+	// Defer to recover and log panics
+	defer func() {
+		if r := recover(); r != nil {
+			repman.LogPanicToFile(r)
+		}
+	}()
+
 	repman.Version = Version
 	repman.Fullversion = FullVersion
 	repman.Arch = GoArch
