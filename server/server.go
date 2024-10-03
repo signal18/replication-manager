@@ -1650,6 +1650,9 @@ func (repman *ReplicationManager) Run() error {
 
 	repman.initKeys()
 
+	if WithProvisioning != "ON" {
+		repman.Conf.HttpUseReact = false
+	}
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
 	if repman.Conf.ApiServ {
 		go repman.apiserver()
