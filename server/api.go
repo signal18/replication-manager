@@ -150,7 +150,7 @@ func (repman *ReplicationManager) DashboardFSHandler() http.Handler {
 
 func (repman *ReplicationManager) DashboardFSHandlerApp() http.Handler {
 	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard/index.html")
-	if !repman.Conf.HttpUseReact {
+	if !repman.Conf.HttpUseReact || WithProvisioning != "ON" {
 		sub, err = fs.Sub(share.EmbededDbModuleFS, "dashboard/app.html")
 	}
 	if err != nil {
@@ -162,7 +162,7 @@ func (repman *ReplicationManager) DashboardFSHandlerApp() http.Handler {
 
 func (repman *ReplicationManager) rootHandler(w http.ResponseWriter, r *http.Request) {
 	html, err := share.EmbededDbModuleFS.ReadFile("dashboard/index.html")
-	if !repman.Conf.HttpUseReact {
+	if !repman.Conf.HttpUseReact || WithProvisioning != "ON" {
 		html, err = share.EmbededDbModuleFS.ReadFile("dashboard/app.html")
 	}
 	if err != nil {
