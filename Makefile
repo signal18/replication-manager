@@ -25,7 +25,7 @@ non-cgo: osc tst pro arb cli emb
 
 tar: osc-basedir tst-basedir pro-basedir osc-cgo-basedir
 
-osc pro emb pro-basedir osc-basedir: react 
+pro emb pro-basedir : react 
 
 react:
 	$(Building react frontend $(REACT))
