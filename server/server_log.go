@@ -98,5 +98,5 @@ func (repman *ReplicationManager) LogPanicToFile(r interface{}) {
 	repman.Logrus.WithFields(logrus.Fields{
 		"panic":      r,
 		"stacktrace": string(debug.Stack()),
-	}).Error("App crashed")
+	}).Error("Application terminated unexpectedly")
 }
