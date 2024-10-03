@@ -913,34 +913,37 @@ func (repman *ReplicationManager) OverwriteParameterFlags(destViper *viper.Viper
 
 }
 
-func (repman *ReplicationManager) initEmbedOrExtraConfDir() error {
+func (repman *ReplicationManager) initEmbed() error {
 	//test si y'a  un repertoire ./.replication-manager sinon on le créer
 	//test si y'a  un repertoire ./.replication-manager/config.toml sinon on le créer depuis embed
 	//test y'a  un repertoire ./.replication-manager/data sinon on le créer
 	//test y'a  un repertoire ./.replication-manager/share sinon on le créer
-	if _, err := os.Stat(repman.GetExtraConfigDir()); os.IsNotExist(err) {
-		os.MkdirAll(repman.GetExtraConfigDir(), os.ModePerm)
-		os.MkdirAll(repman.GetExtraConfigDir()+"/clsuter.d", os.ModePerm)
-		if conf.WithEmbed == "ON" {
-			os.MkdirAll(repman.GetExtraDataDir()+"/data", os.ModePerm)
-			os.MkdirAll(repman.GetExtraDataDir()+"/share", os.ModePerm)
-		}
+	if _, err := os.Stat("./.replication-manager"); os.IsNotExist(err) {
+		os.MkdirAll("./.replication-manager", os.ModePerm)
+		os.MkdirAll("./.replication-manager/data", os.ModePerm)
+		os.MkdirAll("./.replication-manager/share", os.ModePerm)
+		os.MkdirAll("./.replication-manager/cluster.d", os.ModePerm)
 	}
 
-	if _, err := os.Stat(repman.GetExtraConfigDir() + "/config.toml"); os.IsNotExist(err) {
+	if _, err := os.Stat("./replication-manager"); os.IsNotExist(err) {
+		os.MkdirAll("./replication-manager", os.ModePerm)
+		os.MkdirAll("./replication-manager/data", os.ModePerm)
+		os.MkdirAll("./replication-manager/share", os.ModePerm)
+	}
+
+	if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
 
 		file, err := etc.EmbededDbModuleFS.ReadFile("local/embed/config.toml")
-
 		if err != nil {
 			repman.Logrus.Errorf("failed opening file because: %s", err.Error())
 			return err
 		}
-		err = os.WriteFile(repman.GetExtraConfigDir()+"/config.toml", file, 0644) //remplacer nil par l'obj créer pour config.toml dans etc/local/embed
+		err = os.WriteFile("./.replication-manager/config.toml", file, 0644) //remplacer nil par l'obj créer pour config.toml dans etc/local/embed
 		if err != nil {
 			repman.Logrus.Errorf("failed write file because: %s", err.Error())
 			return err
 		}
-		if _, err := os.Stat(repman.GetExtraConfigDir() + "/config.toml"); os.IsNotExist(err) {
+		if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
 			repman.Logrus.Errorf("failed create ./.replication-manager/config.toml file because: %s", err.Error())
 			return err
 		}
@@ -960,8 +963,10 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	repman.cloud18CheckSum = nil
 	// call after init if configuration file is provide
 
-	// create extra user config and if repman is embed,  create folders and load missing embedded files
-	repman.initEmbedOrExtraConfDir()
+	//if repman is embed, create folders and load missing embedded files
+	if conf.WithEmbed == "ON" {
+		repman.initEmbed()
+	}
 
 	//init viper to read config file .toml
 	fistRead := viper.GetViper()
@@ -984,7 +989,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		if conf.WithEmbed == "OFF" {
 			fistRead.AddConfigPath("/etc/replication-manager/")
 		} else {
-			fistRead.AddConfigPath(repman.GetExtraConfigDir() + "")
+			fistRead.AddConfigPath("./.replication-manager")
 		}
 		fistRead.AddConfigPath(".")
 
@@ -997,7 +1002,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		}
 		//if embed, add config path
 		if conf.WithEmbed == "ON" {
-			if _, err := os.Stat(repman.GetExtraConfigDir() + "/config.toml"); os.IsNotExist(err) {
+			if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
 				repman.Logrus.Warning("No config file ./.replication-manager/config.toml ")
 			}
 		} else {
