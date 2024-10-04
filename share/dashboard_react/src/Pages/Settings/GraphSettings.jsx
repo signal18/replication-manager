@@ -92,7 +92,7 @@ function GraphSettings({ selectedCluster, user, openConfirmModal }) {
                 dispatch(
                   updateGraphiteWhiteList({
                     clusterName: selectedCluster?.name,
-                    value: value
+                    whiteListValue: value
                   })
                 )
               }
@@ -115,7 +115,7 @@ function GraphSettings({ selectedCluster, user, openConfirmModal }) {
                 dispatch(
                   updateGraphiteBlackList({
                     clusterName: selectedCluster?.name,
-                    value: value
+                    blackListValue: value
                   })
                 )
               }

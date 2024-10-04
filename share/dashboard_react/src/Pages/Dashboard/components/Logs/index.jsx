@@ -1,10 +1,19 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import TagPill from '../../../../components/TagPill'
 import { Box, Code } from '@chakra-ui/react'
 import styles from './styles.module.scss'
+import NotFound from '../../../../components/NotFound'
 
 function Logs({ logs, className }) {
   const [isScrollable, setIsScrollable] = useState(true)
+  const [logsData, setLogsData] = useState([])
+
+  useEffect(() => {
+    if (logs?.length > 0) {
+      const nonEmptyLogs = logs.filter((log) => log.timestamp)
+      setLogsData(nonEmptyLogs)
+    }
+  }, [logs])
 
   const handleClick = () => {
     //setIsScrollable(true)
@@ -16,9 +25,8 @@ function Logs({ logs, className }) {
       onClick={handleClick}
       overflow={isScrollable ? 'auto' : 'hidden'}>
       <table className={styles.table}>
-        {logs
-          ?.filter((log) => log.timestamp)
-          .map((log, index) => {
+        {logsData?.length > 0 ? (
+          logsData.map((log, index) => {
             const levelColor =
               log.level === 'INFO' || log.level.toLowerCase() === 'note'
                 ? 'blue'
@@ -40,7 +48,10 @@ function Logs({ logs, className }) {
                 </td>
               </tr>
             )
-          })}
+          })
+        ) : (
+          <NotFound text={'No logs found'} className={styles.notfound} />
+        )}
       </table>
     </Box>
   )

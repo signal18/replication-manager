@@ -1,0 +1,35 @@
+.modalContent {
+  width: 90% !important;
+  max-width: unset !important;
+
+  @include breakpoint('md', 'lg') {
+    width: 80% !important;
+  }
+  @include breakpoint('lg') {
+    width: 60% !important;
+  }
+  .modalHeader {
+    white-space: pre-line;
+    font-size: rem(16);
+    margin-top: rem(24);
+  }
+  .modalBody {
+    span[class*='textToCopy'] {
+      max-height: 60vh;
+      overflow: auto;
+      white-space: wrap;
+      display: flex;
+      flex-direction: column;
+      gap: rem(16);
+    }
+    button[class*='btnCopy'] {
+      margin-top: rem(20);
+      position: relative;
+      left: 0 !important;
+      right: 0 !important;
+      background-color: var(--secondary-color) !important;
+      display: flex;
+      gap: rem(16);
+    }
+  }
+}
