@@ -66,6 +66,7 @@ func (repman *ReplicationManager) testFile(fn string) error {
 func (repman *ReplicationManager) httpserver() {
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
+	router.Use(repman.RecoveryMiddleware)
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 
 	graphiteHost := repman.Conf.GraphiteCarbonHost

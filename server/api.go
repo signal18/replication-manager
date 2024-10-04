@@ -21,6 +21,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"github.com/buger/jsonparser"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/iancoleman/strcase"
+	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
 
@@ -176,6 +178,8 @@ func (repman *ReplicationManager) apiserver() {
 	var err error
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
+
+	router.Use(repman.RecoveryMiddleware)
 	//router.HandleFunc("/", repman.handlerApp)
 	// page to view which does not need authorization
 	graphiteHost := repman.Conf.GraphiteCarbonHost
@@ -873,4 +877,21 @@ func (repman *ReplicationManager) handlerMuxGrafana(w http.ResponseWriter, r *ht
 		http.Error(w, "Encoding error", 500)
 		return
 	}
+}
+
+func (repman *ReplicationManager) RecoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				logrus.WithFields(logrus.Fields{
+					"error":      err,
+					"stacktrace": string(debug.Stack()),
+					"url":        r.URL.String(),
+				}).Error("Recovered from panic")
+
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
