@@ -11,8 +11,10 @@ import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import TagPill from '../../components/TagPill'
 
-function PeerClusterList({}) {
+function PeerClusterList({ mode }) {
   const dispatch = useDispatch()
+
+  const [clusters, setClusters] = useState([])
 
   const {
     globalClusters: { loading, clusterPeers }
@@ -22,11 +24,22 @@ function PeerClusterList({}) {
     dispatch(getClusterPeers({}))
   }, [])
 
-  return !loading && clusterPeers?.length === 0 ? (
-    <NotFound text={'No peer cluster found!'} />
+  useEffect(() => {
+    if (clusterPeers?.length > 0) {
+      if (mode === 'shared') {
+        const shared = clusterPeers.filter((cluster) => cluster['cloud18-share'])
+        setClusters(shared)
+      } else {
+        setClusters(clusterPeers)
+      }
+    }
+  }, [clusterPeers])
+
+  return !loading && clusters?.length === 0 ? (
+    <NotFound text={mode === 'shared' ? 'No shared peer cluster found!' : 'No peer cluster found!'} />
   ) : (
     <Flex className={styles.clusterList}>
-      {clusterPeers?.map((clusterItem) => {
+      {clusters?.map((clusterItem) => {
         const headerText = `${clusterItem['cluster-name']}@${clusterItem['cloud18-domain']}-${clusterItem['cloud18-sub-domain']}-${clusterItem['cloud18-sub-domain-zone']}`
 
         const dataObject = [

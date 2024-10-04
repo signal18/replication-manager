@@ -64,9 +64,9 @@ function Home() {
 
   useEffect(() => {
     if (monitor?.config?.cloud18) {
-      globalTabsRef.current = ['Clusters', 'Peer Clusters', 'Settings']
+      globalTabsRef.current = ['Clusters Local', 'Clusters Peer', 'Clusters For Sale', 'Settings']
     } else {
-      globalTabsRef.current = ['Clusters', 'Settings']
+      globalTabsRef.current = ['Clusters Local', 'Settings']
     }
   }, [monitor?.config?.cloud18])
 
@@ -134,15 +134,17 @@ function Home() {
 
   const callServices = () => {
     if (!isClusterOpenRef.current) {
-      console.log('selectedTabRef.current::', selectedTabRef.current)
       if (
-        globalTabsRef.current[selectedTabRef.current] === 'Clusters' ||
+        globalTabsRef.current[selectedTabRef.current] === 'Clusters Local' ||
         globalTabsRef.current[selectedTabRef.current] === 'Settings'
       ) {
         dispatch(getClusters({}))
         dispatch(getMonitoredData({}))
       }
-      if (globalTabsRef.current[selectedTabRef.current] === 'Peer Clusters') {
+      if (
+        globalTabsRef.current[selectedTabRef.current] === 'Clusters Peer' ||
+        globalTabsRef.current[selectedTabRef.current] === 'Clusters For Sale'
+      ) {
         dispatch(getClusterPeers({}))
       }
     } else if (selectedClusterNameRef.current) {
@@ -222,8 +224,8 @@ function Home() {
                     : []),
                   ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} />] : [])
                 ]
-              : globalTabsRef.current.includes('Peer Clusters') // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
-                ? [<PeerClusterList />, <ClustersGlobalSettings />]
+              : globalTabsRef.current.includes('Clusters Peer') // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
+                ? [<PeerClusterList />, <PeerClusterList mode='shared' />, <ClustersGlobalSettings />]
                 : [<ClustersGlobalSettings />])
           ]}
         />

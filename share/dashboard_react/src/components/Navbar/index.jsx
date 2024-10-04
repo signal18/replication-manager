@@ -25,6 +25,7 @@ function Navbar({ username }) {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const {
     common: { isMobile, isDesktop },
+    globalClusters: { monitor },
     cluster: { clusterAlerts, clusterData }
   } = useSelector((state) => state)
 
@@ -105,7 +106,7 @@ function Navbar({ username }) {
               ) : (
                 <RMButton onClick={openLogoutModal}>Logout</RMButton>
               )}
-              {clusterData && (
+              {clusterData && monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0 && (
                 <RMIconButton
                   icon={FaUserPlus}
                   tooltip={'Add User'}

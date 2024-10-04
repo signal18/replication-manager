@@ -893,6 +893,20 @@ export const toggleDatabaseActions = createAsyncThunk(
   }
 )
 
+export const addUser = createAsyncThunk(
+  'cluster/addUser',
+  async ({ clusterName, username, password, grants }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.addUser(clusterName, username, password, grants)
+      showSuccessBanner(`User is added successful!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Adding user failed!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   error: null,
