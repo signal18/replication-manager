@@ -617,7 +617,7 @@ func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *ht
 	//decode request into UserCredentials struct
 	err := json.NewDecoder(r.Body).Decode(&userform)
 	if err != nil {
-		w.WriteHeader(http.StatusForbidden)
+		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "Error in request")
 		return
 	}
