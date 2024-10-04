@@ -1651,6 +1651,12 @@ func (repman *ReplicationManager) handlerMuxAddProxyTag(w http.ResponseWriter, r
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+
+		if vars["tagValue"] == "" {
+			http.Error(w, "Empty tag value", 500)
+			return
+		}
+		mycluster.AddProxyTag(vars["tagValue"])
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return
