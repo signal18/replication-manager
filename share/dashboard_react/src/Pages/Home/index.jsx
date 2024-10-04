@@ -47,6 +47,7 @@ function Home() {
   const [user, setUser] = useState(null)
   const [selectedCluster, setSelectedCluster] = useState(null)
   const dashboardTabsRef = useRef([])
+  const globalTabsRef = useRef([])
 
   const params = useParams()
 
@@ -54,12 +55,20 @@ function Home() {
     cluster: { refreshInterval, clusterData },
     globalClusters: { monitor }
   } = useSelector((state) => state)
-  console.log('monitor::', monitor)
+
   useEffect(() => {
     if (params?.cluster) {
       setDashboardTab({ name: params.cluster })
     }
   }, [])
+
+  useEffect(() => {
+    if (monitor?.config?.cloud18) {
+      globalTabsRef.current = ['Clusters', 'Peer Clusters', 'Settings']
+    } else {
+      globalTabsRef.current = ['Clusters', 'Settings']
+    }
+  }, [monitor?.config?.cloud18])
 
   useEffect(() => {
     if (clusterData) {
@@ -124,10 +133,18 @@ function Home() {
   }
 
   const callServices = () => {
-    if (selectedTabRef.current === 0) {
-      dispatch(getClusters({}))
-      dispatch(getMonitoredData({}))
-      dispatch(getClusterPeers({}))
+    if (!isClusterOpenRef.current) {
+      console.log('selectedTabRef.current::', selectedTabRef.current)
+      if (
+        globalTabsRef.current[selectedTabRef.current] === 'Clusters' ||
+        globalTabsRef.current[selectedTabRef.current] === 'Settings'
+      ) {
+        dispatch(getClusters({}))
+        dispatch(getMonitoredData({}))
+      }
+      if (globalTabsRef.current[selectedTabRef.current] === 'Peer Clusters') {
+        dispatch(getClusterPeers({}))
+      }
     } else if (selectedClusterNameRef.current) {
       const isAutoReloadPaused = localStorage.getItem('pause_auto_reload')
       if (!isAutoReloadPaused) {
@@ -181,9 +198,7 @@ function Home() {
           options={
             isClusterOpenRef.current
               ? [renderClusterListTabWithArrow(), ...dashboardTabsRef.current]
-              : monitor?.config?.cloud18
-                ? ['Clusters', 'Peer Clusters', 'Settings']
-                : ['Clusters', 'Settings'] // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
+              : globalTabsRef.current
           }
           tabContents={[
             <ClusterList onClick={setDashboardTab} />,
@@ -207,7 +222,7 @@ function Home() {
                     : []),
                   ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} />] : [])
                 ]
-              : monitor?.config?.cloud18 // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
+              : globalTabsRef.current.includes('Peer Clusters') // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
                 ? [<PeerClusterList />, <ClustersGlobalSettings />]
                 : [<ClustersGlobalSettings />])
           ]}

@@ -76,20 +76,7 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
-      key: 'ProxySQL Bootsrap Query Rules`',
-      value: (
-        <RMSwitch
-          confirmTitle={'Confirm switch settings for proxysql-bootstrap-query-rules?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxysql-bootstrap-query-rules' }))
-          }
-          isDisabled={user?.grants['cluster-settings'] == false}
-          isChecked={selectedCluster?.config?.proxysqlBootstrapQueryRules}
-        />
-      )
-    },
-    {
-      key: 'ProxySQL Bootsrap Query Rules`',
+      key: 'ProxySQL Bootsrap Query Rules',
       value: (
         <RMSwitch
           confirmTitle={'Confirm switch settings for proxysql-bootstrap-query-rules?'}

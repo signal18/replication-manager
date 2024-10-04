@@ -37,6 +37,7 @@ export const switchGlobalSetting = createAsyncThunk(
       showSuccessBanner('Cloud18 setting switch is successful!', status, thunkAPI)
       return { data, status }
     } catch (error) {
+      console.log('error::', error)
       showErrorBanner('Cloud18 setting switch is failed!', error, thunkAPI)
       handleError(error, thunkAPI)
     }

@@ -1,11 +1,9 @@
 import { Box } from '@chakra-ui/react'
 import React, { useEffect, useState } from 'react'
 import styles from './styles.module.scss'
-import ConfirmModal from '../Modals/ConfirmModal'
-import CopyToClipboard from '../CopyToClipboard'
+import CopyTextModal from '../Modals/CopyTextModal'
 
 function ShowMoreText({ text, maxLength = 30 }) {
-  console.log('text::', text)
   const [truncatedText, setTruncatedText] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   useEffect(() => {
@@ -30,16 +28,7 @@ function ShowMoreText({ text, maxLength = 30 }) {
           more
         </button>
       )}
-      {isModalOpen && (
-        <ConfirmModal
-          isOpen={isModalOpen}
-          closeModal={closeModal}
-          title='Info'
-          body={<CopyToClipboard text={text} className={styles.modalbodyText} keepOpen={true} />}
-          showCancelButton={false}
-          showConfirmButton={false}
-        />
-      )}
+      {isModalOpen && <CopyTextModal isOpen={isModalOpen} closeModal={closeModal} title='Info' text={text} />}
     </Box>
   )
 }

@@ -4,7 +4,6 @@ import { Flex, HStack, Input, Tooltip, VStack, Text, Box } from '@chakra-ui/reac
 import { createColumnHelper } from '@tanstack/react-table'
 import { useDispatch, useSelector } from 'react-redux'
 import { DataTable } from '../../../../components/DataTable'
-import CopyToClipboard from '../../../../components/CopyToClipboard'
 import { isEqual } from 'lodash'
 import { getDatabaseService } from '../../../../redux/clusterSlice'
 import Toolbar from '../Toolbar'

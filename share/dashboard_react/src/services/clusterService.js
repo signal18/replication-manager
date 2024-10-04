@@ -23,8 +23,7 @@ export const clusterService = {
   addServer,
   provisionCluster,
   unProvisionCluster,
-  setDBCredential,
-  setReplicationCredential,
+  setCredentials,
   rotateDBCredential,
   rollingOptimize,
   rollingRestart,
@@ -161,12 +160,8 @@ function unProvisionCluster(clusterName) {
   return getRequest(`clusters/${clusterName}/services/actions/unprovision`)
 }
 
-function setDBCredential(clusterName, credential) {
-  return getRequest(`clusters/${clusterName}/settings/actions/set/db-servers-credential/${credential}`)
-}
-
-function setReplicationCredential(clusterName, credential) {
-  return getRequest(`clusters/${clusterName}/settings/actions/set/replication-credential/${credential}`)
+function setCredentials(clusterName, credentialType, credential) {
+  return getRequest(`clusters/${clusterName}/settings/actions/set/${credentialType}/${credential}`)
 }
 
 function rotateDBCredential(clusterName) {
