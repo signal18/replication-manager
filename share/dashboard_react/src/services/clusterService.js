@@ -1,4 +1,4 @@
-import { getRequest } from './apiHelper'
+import { getRequest, postRequest } from './apiHelper'
 
 export const clusterService = {
   getClusterData,
@@ -79,7 +79,9 @@ export const clusterService = {
   checksumTable,
   //tests run
   runSysbench,
-  runRegressionTests
+  runRegressionTests,
+  //user
+  addUser
 }
 
 //#region cluster apis
@@ -379,3 +381,10 @@ function runRegressionTests(clusterName, testName) {
   return getRequest(`clusters/${clusterName}/tests/actions/run/${testName}`)
 }
 //#endregion cluster>run tests
+
+//#region cluster> add user
+function addUser(clusterName, username, password, grants) {
+  return postRequest(`clusters/${clusterName}/users/add`, { username, password, grants })
+}
+
+//#endregion cluster>add user

@@ -23,7 +23,7 @@ function ClusterList({ onClick }) {
   const [clusterName, setClusterName] = useState('')
 
   const {
-    globalClusters: { clusters, loading }
+    globalClusters: { clusters, loading, monitor }
   } = useSelector((state) => state)
 
   useEffect(() => {
@@ -141,15 +141,16 @@ function ClusterList({ onClick }) {
                   }}>
                   <CustomIcon icon={AiOutlineCluster} />
                   <span className={styles.cardHeaderText}>{headerText}</span>
-
-                  <RMIconButton
-                    icon={FaUserPlus}
-                    tooltip={'Add User'}
-                    px='2'
-                    variant='outline'
-                    onClick={(e) => openAddUserModal(e, clusterItem.name)}
-                    className={styles.btnAddUser}
-                  />
+                  {monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0 && (
+                    <RMIconButton
+                      icon={FaUserPlus}
+                      tooltip={'Add User'}
+                      px='2'
+                      variant='outline'
+                      onClick={(e) => openAddUserModal(e, clusterItem.name)}
+                      className={styles.btnAddUser}
+                    />
+                  )}
                 </HStack>
               }
               body={
