@@ -612,13 +612,44 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 
 func (repman *ReplicationManager) handlerMuxAddUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
+
+	var userform cluster.UserForm
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&userform)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "Error in request")
+		return
+	}
+
 	for _, cluster := range repman.Clusters {
 		if valid, _ := repman.IsValidClusterACL(r, cluster); valid {
-			cluster.AddUser(vars["userName"])
+			cluster.AddUser(userform)
 		}
 	}
 
+}
+
+func (repman *ReplicationManager) handlerMuxAddClusterUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	var userform cluster.UserForm
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&userform)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Error in request")
+		return
+	}
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		mycluster.AddUser(userform)
+	} else {
+		http.Error(w, "No valid cluster", 500)
+		return
+	}
 }
 
 // swagger:route GET /api/clusters clusters

@@ -658,6 +658,13 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 			return true
 		}
 	}
+
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterGrant] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/users/add") {
+			return true
+		}
+	}
+
 	/*	case cluster.APIUsers[strUser].Grants[config.GrantClusterGrant] == true:
 			return false
 		case cluster.APIUsers[strUser].Grants[config.GrantClusterDropMonitor] == true:
