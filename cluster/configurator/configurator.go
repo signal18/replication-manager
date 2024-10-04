@@ -639,7 +639,12 @@ func (configurator *Configurator) GetDatabaseDynamicConfig(filter string, cmd st
 									}
 
 									if r.MatchString(scanner.Text()) {
-										mydynamicconf = mydynamicconf + strings.Split(scanner.Text(), ":")[1]
+										cmd_lines := strings.Split(scanner.Text(), ":")
+										if len(cmd_lines) > 1 {
+											mydynamicconf = mydynamicconf + cmd_lines[1]
+										} else {
+											return mydynamicconf, fmt.Errorf("Error in dynamic config: separator ':' not found in file")
+										}
 									}
 								}
 								file.Close()
