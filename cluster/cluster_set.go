@@ -1917,7 +1917,7 @@ func (cluster *Cluster) SetMailSmtpAddr(value string) {
 }
 
 func (cluster *Cluster) SetMailSmtpPassword(value string) {
-	cluster.Conf.MailSMTPAddr = value
+	cluster.Conf.MailSMTPPassword = value
 }
 
 func (cluster *Cluster) SetMailSmtpUser(value string) {
