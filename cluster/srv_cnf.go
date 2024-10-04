@@ -150,10 +150,12 @@ func (server *ServerMonitor) GetDatabaseClientBasedir() string {
 
 func (server *ServerMonitor) GetDbErrorLog() string {
 
-	//Not using Variables[] due to uppercase values
-	v, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_ERROR", server.DBVersion)
-	if err == nil && v != "" {
-		return v
+	if server.Conn != nil {
+		//Not using Variables[] due to uppercase values
+		v, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_ERROR", server.DBVersion)
+		if err == nil && v != "" {
+			return v
+		}
 	}
 
 	// If has nosplitpath
@@ -167,9 +169,11 @@ func (server *ServerMonitor) GetDbErrorLog() string {
 func (server *ServerMonitor) GetDbSlowLog() string {
 
 	//Not using Variables[] due to uppercase values
-	v, _, err := dbhelper.GetVariableByName(server.Conn, "SLOW_QUERY_LOG_FILE", server.DBVersion)
-	if err == nil && v != "" {
-		return v
+	if server.Conn != nil {
+		v, _, err := dbhelper.GetVariableByName(server.Conn, "SLOW_QUERY_LOG_FILE", server.DBVersion)
+		if err == nil && v != "" {
+			return v
+		}
 	}
 
 	// If has nosplitpath
