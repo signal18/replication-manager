@@ -55,7 +55,7 @@ function Home() {
     cluster: { refreshInterval, clusterData },
     globalClusters: { monitor }
   } = useSelector((state) => state)
-  console.log('monitor::', monitor)
+
   useEffect(() => {
     if (params?.cluster) {
       setDashboardTab({ name: params.cluster })
