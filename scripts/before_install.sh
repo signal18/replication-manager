@@ -2,16 +2,11 @@
 
 # Check if the group already exists
 if ! getent group repman > /dev/null; then
-    echo "Creating group 'repman'..."
     groupadd repman
-else
-    echo "Group 'repman' already exists."
 fi
 
 # Check if the user already exists
-if id "repman" &>/dev/null; then
-    echo "User 'repman' already exists."
-else
+if ! id "repman" &>/dev/null; then
     # Create a regular user with a home directory, bash as the shell, and add to 'repman' group
     echo "Creating user 'repman' with home directory and adding to group 'repman'..."
     useradd -m -d /home/repman -s /bin/bash -g repman repman
