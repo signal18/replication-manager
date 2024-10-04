@@ -155,7 +155,15 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 	return nil
 }
 
-func (cluster *Cluster) AddUser(user string) error {
+type UserForm struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Grants   string `json:"grants"`
+}
+
+func (cluster *Cluster) AddUser(userform UserForm) error {
+	user := userform.Username
+	grants := userform.Grants
 	pass, _ := cluster.GeneratePassword()
 	if _, ok := cluster.APIUsers[user]; ok {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "User %s already exist ", user)
@@ -171,10 +179,28 @@ func (cluster *Cluster) AddUser(user string) error {
 		new_secret.OldValue = cluster.Conf.GetDecryptedValue("api-credentials-external")
 		cluster.Conf.Secrets["api-credentials-external"] = new_secret
 		cluster.LoadAPIUsers()
+		cluster.AddUserGrants(user, grants)
 		cluster.Save()
 	}
 
 	return nil
+}
+
+func (cluster *Cluster) AddUserGrants(user string, grants string) {
+
+	acls := strings.Split(grants, " ")
+	for key, value := range cluster.Grants {
+		found := false
+		for _, acl := range acls {
+			if strings.HasPrefix(key, acl) && acl != "" {
+				found = true
+				break
+			}
+		}
+		cluster.APIUsers[user].Grants[value] = found
+	}
+
+	cluster.SaveAcls()
 }
 
 func (cluster *Cluster) AddShardingHostGroup(proxy *MariadbShardProxy) error {
