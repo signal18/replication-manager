@@ -252,7 +252,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
                     value={selectedCluster?.config?.provProxyDiskDevice}
                     confirmTitle={`Confirm change proxy disk device name to `}
                     className={parentStyles.textbox}
-                    onSave={(value) =>
+                    onSave={(value) => {
                       dispatch(
                         setSetting({
                           clusterName: selectedCluster?.name,
@@ -260,7 +260,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
                           value: value
                         })
                       )
-                    }
+                    }}
                   />
                 )
               }

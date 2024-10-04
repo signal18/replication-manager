@@ -31,6 +31,8 @@ import {
 } from '../../../redux/clusterSlice'
 import NewServerModal from '../../../components/Modals/NewServerModal'
 import parentStyles from '../styles.module.scss'
+import CopyTextModal from '../../../components/Modals/CopyTextModal'
+import SetCredentialsModal from '../../../components/Modals/SetCredentialsModal'
 
 function ClusterDetail({ selectedCluster }) {
   const dispatch = useDispatch()
@@ -38,24 +40,31 @@ function ClusterDetail({ selectedCluster }) {
     common: { isDesktop },
     cluster: {
       clusterMaster,
+      clusterServers,
+      clusterProxies,
       loadingStates: { menuActions: menuActionsLoading }
     }
   } = useSelector((state) => state)
 
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [isNewServerModalOpen, setIsNewServerModalOpen] = useState(false)
+  const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
+  const [isClipboardModalOpen, setIsClipboardModalOpen] = useState(false)
+  const [clipboardText, setClipboardText] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [confirmTitle, setConfirmTitle] = useState('')
-  const confirmBootrapMessage =
-    'Bootstrap operation will destroy your existing replication setup. \n Are you really sure?'
+  const [credentialType, setCredentialType] = useState('')
+  const confirmBootrapMessage = 'Bootstrap operation will destroy your existing replication setup. \n Are you sure?'
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
   }
   const closeConfirmModal = () => {
     setIsConfirmModalOpen(false)
+    setIsClipboardModalOpen(false)
     setConfirmHandler(null)
     setConfirmTitle('')
+    setClipboardText('')
   }
 
   const menuOptions = [
@@ -141,11 +150,41 @@ function ClusterDetail({ selectedCluster }) {
     {
       name: 'Credentials',
       subMenu: [
-        { name: 'Set Database Credentials' },
-        { name: 'Set Replication Credentials' },
-        { name: 'Set ProxySQL Credentials' },
-        { name: 'Set Maxscale Credentials' },
-        { name: 'Set Sharding Proxy Credentials' },
+        {
+          name: 'Set Database Credentials',
+          onClick: () => {
+            setIsCredentialModalOpen(true)
+            setCredentialType('Database Server Credential')
+          }
+        },
+        {
+          name: 'Set Replication Credentials',
+          onClick: () => {
+            setIsCredentialModalOpen(true)
+            setCredentialType('Replication Credential')
+          }
+        },
+        {
+          name: 'Set ProxySQL Credentials',
+          onClick: () => {
+            setIsCredentialModalOpen(true)
+            setCredentialType('ProxySQL Credential')
+          }
+        },
+        {
+          name: 'Set Maxscale Credentials',
+          onClick: () => {
+            setIsCredentialModalOpen(true)
+            setCredentialType('Maxscale Credential')
+          }
+        },
+        {
+          name: 'Set Sharding Proxy Credentials',
+          onClick: () => {
+            setIsCredentialModalOpen(true)
+            setCredentialType('Sharding Proxy Credential')
+          }
+        },
         {
           name: 'Rotate Database Credentials',
           onClick: () => {
@@ -285,7 +324,32 @@ function ClusterDetail({ selectedCluster }) {
     },
     {
       name: 'Debug',
-      subMenu: [{ name: 'Clusters' }, { name: 'Servers' }, { name: 'Proxies' }]
+      subMenu: [
+        {
+          name: 'Clusters',
+          onClick: () => {
+            setIsClipboardModalOpen(true)
+            setClipboardText(JSON.stringify(selectedCluster))
+            setConfirmTitle('Json of selected cluster')
+          }
+        },
+        {
+          name: 'Servers',
+          onClick: () => {
+            setIsClipboardModalOpen(true)
+            setClipboardText(JSON.stringify(clusterServers))
+            setConfirmTitle('Json of database servers')
+          }
+        },
+        {
+          name: 'Proxies',
+          onClick: () => {
+            setIsClipboardModalOpen(true)
+            setClipboardText(JSON.stringify(clusterProxies))
+            setConfirmTitle('Json of proxy servers')
+          }
+        }
+      ]
     }
   ]
 
@@ -363,11 +427,32 @@ function ClusterDetail({ selectedCluster }) {
         />
       )}
 
+      {isClipboardModalOpen && (
+        <CopyTextModal
+          isOpen={isClipboardModalOpen}
+          text={clipboardText}
+          closeModal={closeConfirmModal}
+          title={confirmTitle}
+          showPrettyJsonCheckbox={true}
+        />
+      )}
+
       {isNewServerModalOpen && (
         <NewServerModal
           clusterName={selectedCluster?.name}
           isOpen={isNewServerModalOpen}
           closeModal={() => setIsNewServerModalOpen(false)}
+        />
+      )}
+      {isCredentialModalOpen && (
+        <SetCredentialsModal
+          clusterName={selectedCluster?.name}
+          isOpen={isCredentialModalOpen}
+          type={credentialType}
+          closeModal={() => {
+            setIsCredentialModalOpen(false)
+            setCredentialType('')
+          }}
         />
       )}
     </>

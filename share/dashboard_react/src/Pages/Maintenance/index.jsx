@@ -67,7 +67,8 @@ function Maintenance({ selectedCluster, user }) {
 
   useEffect(() => {
     if (selectedCluster?.backupList) {
-      setData(convertObjectToArray(selectedCluster.backupList))
+      const arrData = convertObjectToArray(selectedCluster.backupList)
+      setData(arrData.reverse())
     }
   }, [selectedCluster?.backupList])
   useEffect(() => {

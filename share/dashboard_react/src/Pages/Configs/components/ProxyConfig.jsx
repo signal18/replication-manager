@@ -7,6 +7,7 @@ import { Flex, HStack, VStack } from '@chakra-ui/react'
 import AddRemovePill from '../../../components/AddRemovePill'
 import { addProxyTag, dropProxyTag } from '../../../redux/configSlice'
 import { useDispatch } from 'react-redux'
+import { setSetting } from '../../../redux/settingsSlice'
 
 function ProxyConfig({ selectedCluster, user }) {
   const dispatch = useDispatch()

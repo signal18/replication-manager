@@ -20,9 +20,9 @@ const getContentType = (type) => {
   return {}
 }
 
-export async function getRequest(apiUrl, params, authValue = 1) {
+export async function getRequest(apiUrl, params, authValue = 1, isMeetApi = false) {
   try {
-    const response = await fetch(`/api/${apiUrl}`, {
+    const response = await fetch(isMeetApi ? `/${apiUrl}` : `/api/${apiUrl}`, {
       method: 'GET',
       headers: authHeader(authValue),
       ...(params ? { body: JSON.stringify(params) } : {})
@@ -32,7 +32,6 @@ export async function getRequest(apiUrl, params, authValue = 1) {
       localStorage.removeItem('user_token')
       localStorage.removeItem('username')
       window.location.reload()
-      // window.location.href = `${window.location}/login`
     } else {
       const contentType = response.headers.get('Content-Type')
       let data = null
@@ -57,38 +56,39 @@ export async function getRequest(apiUrl, params, authValue = 1) {
   }
 }
 
-export function getRequestAll(urls, params, authValue = 1) {
+export function getRequestAll(urls, params, authValue = 1, isMeetApi = false) {
   const requestHeaders = {
     method: 'GET',
     headers: authHeader(authValue),
     ...(params ? { body: JSON.stringify(params) } : {})
   }
-  const fetchUrls = urls.map((url) => fetch(`/api/${url}`, requestHeaders))
+  const fetchUrls = urls.map((url) => fetch(isMeetApi ? `/${url}` : `/api/${url}`, requestHeaders))
   return Promise.all(fetchUrls).then((responses) => responses)
 }
 
-export async function postRequest(apiUrl, params, authValue = 1) {
+export async function postRequest(apiUrl, params, authValue = 1, isMeetApi = false) {
   try {
-    const response = await fetch(`/api/${apiUrl}`, {
+    const response = await fetch(isMeetApi ? `/${apiUrl}` : `/api/${apiUrl}`, {
       method: 'POST',
       headers: authHeader(authValue), // Spread the headers from authHeader
       body: JSON.stringify(params)
     })
+
     const contentType = response.headers.get('Content-Type')
     // Handle HTTP errors
     let data = null
-    // try {
-    //   data = await response.json()
-    // } catch (e) {
-    //   console.log('data::', data, contentType)
-    //   data = await response.text()
-    //   console.log('data text::', data)
-    // }
-    if ((contentType && contentType.includes('application/json')) || apiUrl.includes('login')) {
+
+    if (contentType && contentType.includes('application/json')) {
       data = await response.json()
+      if (response.status === 403 || response.status === 401) {
+        throw new Error(data)
+      }
     } else if (contentType && contentType.includes('text/plain')) {
       // Handle plain text response
       data = await response.text()
+      if (response.status === 403 || response.status === 401) {
+        throw new Error(data)
+      }
     }
 
     return {

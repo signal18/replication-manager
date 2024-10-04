@@ -14,6 +14,8 @@ import CustomIcon from '../../components/Icons/CustomIcon'
 import { FaUserPlus } from 'react-icons/fa'
 import RMIconButton from '../../components/RMIconButton'
 import AddUserModal from '../../components/Modals/AddUserModal'
+import { getMeet } from '../../redux/meetSlice'
+import authHeader from '../../services/apiHelper'
 
 function ClusterList({ onClick }) {
   const dispatch = useDispatch()
@@ -26,7 +28,18 @@ function ClusterList({ onClick }) {
 
   useEffect(() => {
     dispatch(getClusters({}))
+    // getChannels()
   }, [])
+
+  // const getChannels = async () => {
+  //   const response = await fetch(`https://repman.marie-dev.svc.cloud18:10005/meet/channels`, {
+  //     method: 'GET',
+  //     headers: authHeader()
+  //   })
+  //   console.log('response::', response)
+  //   const data = await response.json()
+  //   console.log('channels::', data)
+  // }
 
   const openAddUserModal = (e, name) => {
     e.stopPropagation()

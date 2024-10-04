@@ -197,22 +197,39 @@ export const unProvisionCluster = createAsyncThunk('cluster/unProvisionCluster',
   }
 })
 
-export const setDBCredential = createAsyncThunk('cluster/setDBCredential', async ({ clusterName }, thunkAPI) => {
-  try {
-    const { data, status } = await clusterService.setDBCredential(clusterName)
-    showSuccessBanner('Database credentials set!', status, thunkAPI)
-    return { data, status }
-  } catch (error) {
-    showErrorBanner('Setting Database credentials failed!', error, thunkAPI)
-    handleError(error, thunkAPI)
+export const setCredentials = createAsyncThunk(
+  'cluster/setCredentials',
+  async ({ clusterName, credentialType, credential }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.setCredentials(clusterName, credentialType, credential)
+      showSuccessBanner(`Credentials for ${credentialType} set!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Setting credentials for ${credentialType} failed!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
   }
-})
+)
+
+export const setDBCredential = createAsyncThunk(
+  'cluster/setDBCredential',
+  async ({ clusterName, credential }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.setDBCredential(clusterName, credential)
+      showSuccessBanner('Database credentials set!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Setting Database credentials failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
 
 export const setReplicationCredential = createAsyncThunk(
   'cluster/setReplicationCredential',
-  async ({ clusterName }, thunkAPI) => {
+  async ({ clusterName, credential }, thunkAPI) => {
     try {
-      const { data, status } = await clusterService.setReplicationCredential(clusterName)
+      const { data, status } = await clusterService.setReplicationCredential(clusterName, credential)
       showSuccessBanner('Replication credentials set!', status, thunkAPI)
       return { data, status }
     } catch (error) {
