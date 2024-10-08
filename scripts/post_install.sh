@@ -65,3 +65,27 @@ chown repman:repman /var/lib/replication-manager
 
 # Set appropriate permissions to 755 (owner read/write/execute, group/others read/execute)
 chmod 755 /var/lib/replication-manager
+
+# Create /usr/share/replication-manager if it doesn't exist
+echo "Creating directory /usr/share/replication-manager if it doesn't exist..."
+if [ ! -d /usr/share/replication-manager ]; then
+    mkdir -p /usr/share/replication-manager
+else
+    echo "Directory /usr/share/replication-manager already exists."
+fi
+
+# Set ownership to repman:repman
+echo "Setting ownership of /usr/share/replication-manager to repman:repman..."
+chown -R repman:repman /usr/share/replication-manager
+
+# Create /var/log/replication-manager if it doesn't exist
+echo "Creating directory /var/log/replication-manager if it doesn't exist..."
+if [ ! -d /var/log/replication-manager ]; then
+    mkdir -p /var/log/replication-manager
+else
+    echo "Directory /var/log/replication-manager already exists."
+fi
+
+# Set ownership to repman:repman
+echo "Setting ownership of /var/log/replication-manager to repman:repman..."
+chown -R repman:repman /var/log/replication-manager
