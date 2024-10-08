@@ -25,29 +25,31 @@ if [ ! -d /home/repman/.ssh ]; then
     chown repman:repman /home/repman/.ssh
 fi
 
-# Check and copy private keys from /root/.ssh to /home/repman/.ssh (RSA, ECDSA, ED25519)
+# Key types to check for (RSA, ECDSA, ED25519)
 declare -a key_types=("id_rsa" "id_ecdsa" "id_ed25519")
+
+# Check and copy private keys from /root/.ssh to /home/repman/.ssh if they do not exist
 for key in "${key_types[@]}"; do
-    if [ -f /root/.ssh/$key ]; then
+    if [ -f /root/.ssh/$key ] && [ ! -f /home/repman/.ssh/$key ]; then
         echo "Copying $key from /root/.ssh to /home/repman/.ssh/$key..."
         cp /root/.ssh/$key /home/repman/.ssh/
         chmod 600 /home/repman/.ssh/$key
         chown repman:repman /home/repman/.ssh/$key
     else
-        echo "No $key found in /root/.ssh."
+        echo "$key already exists in /home/repman/.ssh or not found in /root/.ssh."
     fi
 done
 
-# Check and copy corresponding public keys from /root/.ssh to /home/repman/.ssh (RSA, ECDSA, ED25519)
+# Check and copy corresponding public keys if they do not exist
 for key in "${key_types[@]}"; do
     pub_key="${key}.pub"
-    if [ -f /root/.ssh/$pub_key ]; then
+    if [ -f /root/.ssh/$pub_key ] && [ ! -f /home/repman/.ssh/$pub_key ]; then
         echo "Copying $pub_key from /root/.ssh to /home/repman/.ssh/$pub_key..."
         cp /root/.ssh/$pub_key /home/repman/.ssh/
         chmod 644 /home/repman/.ssh/$pub_key
         chown repman:repman /home/repman/.ssh/$pub_key
     else
-        echo "No $pub_key found in /root/.ssh."
+        echo "$pub_key already exists in /home/repman/.ssh or not found in /root/.ssh."
     fi
 done
 
