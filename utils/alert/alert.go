@@ -34,6 +34,7 @@ type Alert struct {
 	User        string
 	Password    string
 	TlsVerify   bool
+	Resolved    bool
 }
 
 func (a *Alert) EmailMessage(msg string, subj string, Conf config.Config) error {
@@ -49,7 +50,11 @@ func (a *Alert) EmailMessage(msg string, subj string, Conf config.Config) error 
 		e.Subject = fmt.Sprintf("Replication-Manager@%s Alert - Cluster %s state change detected", Conf.MonitorAddress, a.Cluster)
 		text := fmt.Sprintf("Alert: State changed from %s to %s\nMonitor: %s\nCluster: %s\n%s", a.PrevState, a.State, Conf.MonitorAddress, a.Cluster, host)
 		if a.PrevState == "" {
-			text = fmt.Sprintf("Alert: %s\nMonitor: %s\nCluster: %s\n%s", a.State, Conf.MonitorAddress, a.Cluster, host)
+			if a.Resolved {
+				text = fmt.Sprintf("Resolved: %s\nMonitor: %s\nCluster: %s\n%s", a.State, Conf.MonitorAddress, a.Cluster, host)
+			} else {
+				text = fmt.Sprintf("Alert: %s\nMonitor: %s\nCluster: %s\n%s", a.State, Conf.MonitorAddress, a.Cluster, host)
+			}
 		}
 		e.Text = []byte(text)
 	} else {
