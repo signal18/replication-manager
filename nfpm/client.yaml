@@ -1,0 +1,10 @@
+name: replication-manager-client
+version: 2.4.0-dev  # Replace with your version variable
+maintainer: "Guillaume Lefranc <guillaume@signal18.io>"
+description: "Replication Manager for MariaDB and MySQL - client package"
+license: "GPLv3"
+arch: amd64
+platform: linux
+contents:
+  - src: build/binaries/replication-manager-cli
+    dst: /usr/bin/

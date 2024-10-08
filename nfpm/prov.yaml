@@ -1,0 +1,19 @@
+name: replication-manager-pro
+version: 2.4.0-dev  # Replace with your version variable
+maintainer: "Guillaume Lefranc <guillaume@signal18.io>"
+description: "Replication Manager for MariaDB and MySQL - provisioning version"
+license: "GPLv3"
+arch: amd64
+platform: linux
+contents:
+  - src: build/binaries/replication-manager-pro
+    dst: /usr/bin/
+  - src: etc/cluster.d/cluster1.toml.sample
+    dst: /etc/replication-manager/cluster.d/cluster1.toml.sample
+    type: config
+  - src: etc/config.toml
+    dst: /etc/replication-manager/config.toml
+    type: config
+
+scripts:
+  postinstall: ./scripts/post_install.sh
