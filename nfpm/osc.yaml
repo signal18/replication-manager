@@ -17,6 +17,9 @@ contents:
   - src: service/replication-manager-osc.service 
     dst: /etc/systemd/system/replication-manager.service
     type: config
+  - src: share/
+    dst: /usr/share/replication-manager
+    type: tree
 
 scripts:
   postinstall: ./scripts/post_install.sh

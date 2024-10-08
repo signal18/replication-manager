@@ -14,6 +14,9 @@ contents:
   - src: etc/config.toml
     dst: /etc/replication-manager/config.toml
     type: config
+  - src: share/
+    dst: /usr/share/replication-manager
+    type: tree    
 
 scripts:
   postinstall: ./scripts/post_install.sh
