@@ -8,7 +8,15 @@ import styles from './styles.module.scss'
 import RMButton from '../RMButton'
 import CustomIcon from '../Icons/CustomIcon'
 
-function CopyToClipboard({ text, textType = 'Text', copyIconPosition = 'center', className, fromModal = false }) {
+function CopyToClipboard({
+  text,
+  textType = 'Text',
+  copyIconPosition = 'center',
+  className,
+  fromModal = false,
+  keepOpen = false,
+  printPretty = false
+}) {
   const { isOpen, onOpen, onClose } = useDisclosure()
   const dispatch = useDispatch()
 
@@ -39,7 +47,8 @@ function CopyToClipboard({ text, textType = 'Text', copyIconPosition = 'center',
   }
 
   const fallbackCopyTextToClipboard = (textToCopy) => {
-    const element = fromModal ? document.querySelector("[class*='modalBody']") : document.body
+    const element = fromModal ? document.querySelector("[class*='modal__body']") : document.body
+    console.log('element::', element)
     const textArea = document.createElement('textarea')
     textArea.value = textToCopy
     textArea.style.position = 'fixed'
@@ -76,8 +85,8 @@ function CopyToClipboard({ text, textType = 'Text', copyIconPosition = 'center',
   }
   return (
     <Box className={`${styles.container} ${className}`} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-      {(isOpen || fromModal) &&
-        (fromModal ? (
+      {(isOpen || keepOpen) &&
+        (keepOpen ? (
           <RMButton aria-label='Copy to clipboard' onClick={handleCopyClick} className={`${styles.btnCopy} `}>
             <CustomIcon icon={FaCopy} />
             Copy to clipboard
@@ -91,7 +100,14 @@ function CopyToClipboard({ text, textType = 'Text', copyIconPosition = 'center',
             aria-label='Copy to clipboard'
           />
         ))}
-      <span className={'textToCopy'} dangerouslySetInnerHTML={{ __html: text }} />
+
+      {keepOpen && printPretty ? (
+        <span className={'textToCopy'}>
+          <pre>{JSON.stringify(JSON.parse(text), null, 2)} </pre>
+        </span>
+      ) : (
+        <span className={'textToCopy'} dangerouslySetInnerHTML={{ __html: text }} />
+      )}
     </Box>
   )
 }

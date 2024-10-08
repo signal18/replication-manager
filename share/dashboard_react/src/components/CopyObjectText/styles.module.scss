@@ -1,0 +1,25 @@
+.copyContainer {
+  align-items: flex-start !important;
+  span[class*='textToCopy'] {
+    max-height: 60vh;
+    overflow: auto;
+    white-space: wrap;
+    display: flex;
+    flex-direction: column;
+    gap: rem(16);
+    word-break: break-all;
+    pre {
+      white-space: break-spaces;
+    }
+  }
+
+  button[class*='btnCopy'] {
+    margin-top: rem(20);
+    position: relative;
+    left: 0 !important;
+    right: 0 !important;
+    background-color: var(--secondary-color) !important;
+    display: flex;
+    gap: rem(16);
+  }
+}
