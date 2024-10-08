@@ -1,5 +1,5 @@
 name: replication-manager-pro
-version: 2.4.0-dev  # Replace with your version variable
+version: ${version}
 maintainer: "Guillaume Lefranc <guillaume@signal18.io>"
 description: "Replication Manager for MariaDB and MySQL - provisioning version"
 license: "GPLv3"
@@ -13,6 +13,9 @@ contents:
     type: config
   - src: etc/config.toml
     dst: /etc/replication-manager/config.toml
+    type: config
+  - src: service/replication-manager-pro.service 
+    dst: /etc/systemd/system/replication-manager.service
     type: config
   - src: share/
     dst: /usr/share/replication-manager

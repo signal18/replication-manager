@@ -1,5 +1,6 @@
 name: replication-manager-osc
-version: 2.4.0-dev  # Replace with your version variable
+version: ${version}
+release: 1
 maintainer: "Guillaume Lefranc <guillaume@signal18.io>"
 description: "Replication Manager for MariaDB and MySQL - open source core"
 license: "GPLv3"

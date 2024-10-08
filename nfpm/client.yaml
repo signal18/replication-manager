@@ -1,5 +1,5 @@
 name: replication-manager-client
-version: 2.4.0-dev  # Replace with your version variable
+version: ${version}
 maintainer: "Guillaume Lefranc <guillaume@signal18.io>"
 description: "Replication Manager for MariaDB and MySQL - client package"
 license: "GPLv3"
