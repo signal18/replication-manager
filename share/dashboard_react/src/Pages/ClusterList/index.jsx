@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { getClusters, setCluster } from '../../redux/clusterSlice'
-import { Box, HStack, Text, Wrap } from '@chakra-ui/react'
+import { getClusters } from '../../redux/globalClustersSlice'
+import { setCluster } from '../../redux/clusterSlice'
+import { Box, Flex, HStack, Text, Wrap } from '@chakra-ui/react'
 import NotFound from '../../components/NotFound'
 import { AiOutlineCluster } from 'react-icons/ai'
 import { HiExclamation } from 'react-icons/hi'
@@ -10,29 +11,59 @@ import TableType2 from '../../components/TableType2'
 import styles from './styles.module.scss'
 import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
 import CustomIcon from '../../components/Icons/CustomIcon'
+import { FaUserPlus } from 'react-icons/fa'
+import RMIconButton from '../../components/RMIconButton'
+import AddUserModal from '../../components/Modals/AddUserModal'
+import { getMeet } from '../../redux/meetSlice'
+import authHeader from '../../services/apiHelper'
 
 function ClusterList({ onClick }) {
   const dispatch = useDispatch()
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
+  const [clusterName, setClusterName] = useState('')
 
   const {
-    cluster: { clusters, loading }
+    globalClusters: { clusters, loading, monitor }
   } = useSelector((state) => state)
 
   useEffect(() => {
     dispatch(getClusters({}))
+    // getChannels()
   }, [])
+
+  // const getChannels = async () => {
+  //   const response = await fetch(`https://repman.marie-dev.svc.cloud18:10005/meet/channels`, {
+  //     method: 'GET',
+  //     headers: authHeader()
+  //   })
+  //   console.log('response::', response)
+  //   const data = await response.json()
+  //   console.log('channels::', data)
+  // }
+
+  const openAddUserModal = (e, name) => {
+    e.stopPropagation()
+    setIsAddUserModalOpen(true)
+    setClusterName(name)
+  }
+
+  const closeAddUserModal = () => {
+    setIsAddUserModalOpen(false)
+    setClusterName('')
+  }
 
   return !loading && clusters?.length === 0 ? (
     <NotFound text={'No cluster found!'} />
   ) : (
-    <Wrap>
-      {clusters?.map((clusterItem) => {
+    <Flex className={styles.clusterList}>
+      {clusters?.map((clusterItem, index) => {
+        const headerText = clusterItem.name
         const dataObject = [
           {
             key: 'Is Monitoring',
             value: (
               <HStack spacing='4'>
-                {clusterItem.config.monitoringPause ? (
+                {clusterItem.config?.monitoringPause ? (
                   <>
                     <CheckOrCrossIcon isValid={false} />
                     <Text>No</Text>
@@ -47,9 +78,9 @@ function ClusterList({ onClick }) {
             )
           },
           { key: 'Topology', value: clusterItem.topology },
-          { key: 'Orchestrator', value: clusterItem.config.provOrchestrator },
-          { key: 'Databases', value: clusterItem.dbServers.length },
-          { key: 'Proxies', value: clusterItem.proxyServers.length },
+          { key: 'Orchestrator', value: clusterItem.config?.provOrchestrator },
+          { key: 'Databases', value: clusterItem.dbServers?.length },
+          { key: 'Proxies', value: clusterItem.proxyServers?.length },
           {
             key: 'Is Healthy',
             value: (
@@ -94,22 +125,32 @@ function ClusterList({ onClick }) {
           { key: 'SLA', value: clusterItem.uptime }
         ]
         return (
-          <Box
-            className={styles.cardWrapper}
-            as={'button'}
-            onClick={() => {
-              dispatch(setCluster({ data: clusterItem }))
-              if (onClick) {
-                onClick(clusterItem)
-              }
-            }}>
+          <Box key={clusterItem.name} className={styles.cardWrapper}>
             <Card
-              className={styles.card}
+              className={`${styles.card}`}
               width={'400px'}
               header={
-                <HStack className={styles.heading}>
-                  <CustomIcon icon={AiOutlineCluster} />{' '}
-                  <span className={styles.cardHeaderText}>{clusterItem.name}</span>
+                <HStack
+                  as='button'
+                  className={styles.btnHeading}
+                  onClick={() => {
+                    dispatch(setCluster({ data: clusterItem }))
+                    if (onClick) {
+                      onClick(clusterItem)
+                    }
+                  }}>
+                  <CustomIcon icon={AiOutlineCluster} />
+                  <span className={styles.cardHeaderText}>{headerText}</span>
+                  {monitor?.config?.monitoringSaveConfig && monitor?.config?.cloud18GitUser?.length > 0 && (
+                    <RMIconButton
+                      icon={FaUserPlus}
+                      tooltip={'Add User'}
+                      px='2'
+                      variant='outline'
+                      onClick={(e) => openAddUserModal(e, clusterItem.name)}
+                      className={styles.btnAddUser}
+                    />
+                  )}
                 </HStack>
               }
               body={
@@ -124,7 +165,10 @@ function ClusterList({ onClick }) {
           </Box>
         )
       })}
-    </Wrap>
+      {isAddUserModalOpen && (
+        <AddUserModal clusterName={clusterName} isOpen={isAddUserModalOpen} closeModal={closeAddUserModal} />
+      )}
+    </Flex>
   )
 }
 

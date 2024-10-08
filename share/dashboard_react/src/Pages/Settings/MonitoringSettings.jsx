@@ -105,7 +105,7 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
-                setting: 'monitşring-ignore-errors',
+                setting: 'monitoring-ignore-errors',
                 value: errorListValue.length === 0 ? '{undefined}' : errorListValue
               })
             )

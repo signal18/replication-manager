@@ -87,12 +87,12 @@ function RepConfigSettings({ selectedCluster, user, openConfirmModal, closeConfi
       key: 'Enforce replication queries in slow queries log',
       value: (
         <RMSwitch
-          confirmTitle={'Confirm switch settings for force-binlog-compress?'}
+          confirmTitle={'Confirm switch settings for force-binlog-slowqueries?'}
           onChange={() =>
             dispatch(
               switchSetting({
                 clusterName: selectedCluster?.name,
-                setting: 'force-binlog-compress'
+                setting: 'force-binlog-slowqueries'
               })
             )
           }

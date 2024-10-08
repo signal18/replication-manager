@@ -16,7 +16,7 @@ function PageContainer({ children }) {
   const {
     common: { isDesktop },
     auth: { isLogged, user },
-    cluster: { clusters }
+    globalClusters: { clusters }
   } = useSelector((state) => state)
 
   const currentBreakpoint = useBreakpointValue({

@@ -1,8 +1,6 @@
-import { getRequest } from './apiHelper'
+import { getRequest, postRequest } from './apiHelper'
 
 export const clusterService = {
-  getClusters,
-  getMonitoredData,
   getClusterData,
   getClusterAlerts,
   getClusterMaster,
@@ -25,8 +23,7 @@ export const clusterService = {
   addServer,
   provisionCluster,
   unProvisionCluster,
-  setDBCredential,
-  setReplicationCredential,
+  setCredentials,
   rotateDBCredential,
   rollingOptimize,
   rollingRestart,
@@ -82,18 +79,10 @@ export const clusterService = {
   checksumTable,
   //tests run
   runSysbench,
-  runRegressionTests
+  runRegressionTests,
+  //user
+  addUser
 }
-
-//#region main
-function getClusters() {
-  return getRequest('clusters')
-}
-
-function getMonitoredData() {
-  return getRequest('monitor')
-}
-//#endregion main
 
 //#region cluster apis
 function getClusterData(clusterName) {
@@ -173,12 +162,8 @@ function unProvisionCluster(clusterName) {
   return getRequest(`clusters/${clusterName}/services/actions/unprovision`)
 }
 
-function setDBCredential(clusterName, credential) {
-  return getRequest(`clusters/${clusterName}/settings/actions/set/db-servers-credential/${credential}`)
-}
-
-function setReplicationCredential(clusterName, credential) {
-  return getRequest(`clusters/${clusterName}/settings/actions/set/replication-credential/${credential}`)
+function setCredentials(clusterName, credentialType, credential) {
+  return getRequest(`clusters/${clusterName}/settings/actions/set/${credentialType}/${credential}`)
 }
 
 function rotateDBCredential(clusterName) {
@@ -396,3 +381,10 @@ function runRegressionTests(clusterName, testName) {
   return getRequest(`clusters/${clusterName}/tests/actions/run/${testName}`)
 }
 //#endregion cluster>run tests
+
+//#region cluster> add user
+function addUser(clusterName, username, password, grants) {
+  return postRequest(`clusters/${clusterName}/users/add`, { username, password, grants })
+}
+
+//#endregion cluster>add user

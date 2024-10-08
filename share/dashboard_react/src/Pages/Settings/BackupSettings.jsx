@@ -25,7 +25,7 @@ function BackupSettings({ selectedCluster, user }) {
   const [selectedBinlogBackupType, setselectedBinlogBackupType] = useState('')
 
   const {
-    cluster: { monitor }
+    globalClusters: { monitor }
   } = useSelector((state) => state)
 
   useEffect(() => {

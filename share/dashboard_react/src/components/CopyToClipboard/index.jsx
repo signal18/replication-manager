@@ -8,7 +8,15 @@ import styles from './styles.module.scss'
 import RMButton from '../RMButton'
 import CustomIcon from '../Icons/CustomIcon'
 
-function CopyToClipboard({ text, textType = 'Text', copyIconPosition = 'center', className, keepOpen = false }) {
+function CopyToClipboard({
+  text,
+  textType = 'Text',
+  copyIconPosition = 'center',
+  className,
+  fromModal = false,
+  keepOpen = false,
+  printPretty = false
+}) {
   const { isOpen, onOpen, onClose } = useDisclosure()
   const dispatch = useDispatch()
 
@@ -39,11 +47,13 @@ function CopyToClipboard({ text, textType = 'Text', copyIconPosition = 'center',
   }
 
   const fallbackCopyTextToClipboard = (textToCopy) => {
+    const element = fromModal ? document.querySelector("[class*='modal__body']") : document.body
+    console.log('element::', element)
     const textArea = document.createElement('textarea')
     textArea.value = textToCopy
     textArea.style.position = 'fixed'
-    textArea.style.top = 0
-    textArea.style.left = 0
+    textArea.style.top = '-9999px' //  Move it off-screen
+    textArea.style.left = '-9999px'
     textArea.style.width = '2em'
     textArea.style.height = '2em'
     textArea.style.padding = 0
@@ -51,10 +61,9 @@ function CopyToClipboard({ text, textType = 'Text', copyIconPosition = 'center',
     textArea.style.outline = 'none'
     textArea.style.boxShadow = 'none'
     textArea.style.background = 'transparent'
-    document.body.appendChild(textArea)
+    element.appendChild(textArea)
     textArea.focus()
     textArea.select()
-
     try {
       document.execCommand('copy')
       dispatch(
@@ -72,11 +81,10 @@ function CopyToClipboard({ text, textType = 'Text', copyIconPosition = 'center',
       )
     }
 
-    document.body.removeChild(textArea)
+    element.removeChild(textArea)
   }
   return (
     <Box className={`${styles.container} ${className}`} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
-      <span>{text}</span>
       {(isOpen || keepOpen) &&
         (keepOpen ? (
           <RMButton aria-label='Copy to clipboard' onClick={handleCopyClick} className={`${styles.btnCopy} `}>
@@ -92,6 +100,14 @@ function CopyToClipboard({ text, textType = 'Text', copyIconPosition = 'center',
             aria-label='Copy to clipboard'
           />
         ))}
+
+      {keepOpen && printPretty ? (
+        <span className={'textToCopy'}>
+          <pre>{JSON.stringify(JSON.parse(text), null, 2)} </pre>
+        </span>
+      ) : (
+        <span className={'textToCopy'} dangerouslySetInnerHTML={{ __html: text }} />
+      )}
     </Box>
   )
 }

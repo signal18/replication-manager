@@ -1,14 +1,19 @@
 .modalContent {
-  max-width: 90%;
+  width: 90% !important;
+  max-width: unset !important;
+
   @include breakpoint('md', 'lg') {
-    max-width: 70%;
+    width: 80% !important;
   }
   @include breakpoint('lg') {
-    max-width: 45%;
+    width: 60% !important;
   }
   .modalHeader {
     white-space: pre-line;
     font-size: rem(16);
     margin-top: rem(24);
+  }
+  .modalBody {
+    // display: flex;
   }
 }

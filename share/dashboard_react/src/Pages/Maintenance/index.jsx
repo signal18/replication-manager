@@ -18,7 +18,24 @@ function Maintenance({ selectedCluster, user }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
   const columnHelper = createColumnHelper()
-  const { isOpen: isBackupSettingsOpen, onToggle: onBackupSettingsToggle } = useDisclosure()
+  const { isOpen: isBackupSettingsOpen, onToggle: onBackupSettingsToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isBackupSettingsOpen')) || false
+  })
+  const { isOpen: isSchedulerOpen, onToggle: onSchedulerToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isSchedulerOpen')) || false
+  })
+  const { isOpen: isBackupsOpen, onToggle: onBackupsToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isBackupsOpen')) === false ? false : true
+  })
+  const { isOpen: isBackupSnapshotOpen, onToggle: onBackupSnapshotToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isBackupSnapshotOpen')) || false
+  })
+  const { isOpen: isDBJobsOpen, onToggle: onDBJobsToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isDBJobsOpen')) || false
+  })
+  const { isOpen: isLogsOpen, onToggle: onLogsToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isLogsInBackupOpen')) || false
+  })
 
   const {
     cluster: { backupSnapshots }
@@ -29,8 +46,29 @@ function Maintenance({ selectedCluster, user }) {
   }, [])
 
   useEffect(() => {
+    localStorage.setItem('isBackupSettingsOpen', JSON.stringify(isBackupSettingsOpen))
+  }, [isBackupSettingsOpen])
+  useEffect(() => {
+    localStorage.setItem('isSchedulerOpen', JSON.stringify(isSchedulerOpen))
+  }, [isSchedulerOpen])
+  useEffect(() => {
+    localStorage.setItem('isBackupSnapshotOpen', JSON.stringify(isBackupSnapshotOpen))
+  }, [isBackupSnapshotOpen])
+  useEffect(() => {
+    localStorage.setItem('isDBJobsOpen', JSON.stringify(isDBJobsOpen))
+  }, [isDBJobsOpen])
+
+  useEffect(() => {
+    localStorage.setItem('isLogsInBackupOpen', JSON.stringify(isLogsOpen))
+  }, [isLogsOpen])
+  useEffect(() => {
+    localStorage.setItem('isBackupsOpen', JSON.stringify(isBackupsOpen))
+  }, [isBackupsOpen])
+
+  useEffect(() => {
     if (selectedCluster?.backupList) {
-      setData(convertObjectToArray(selectedCluster.backupList))
+      const arrData = convertObjectToArray(selectedCluster.backupList)
+      setData(arrData.reverse())
     }
   }, [selectedCluster?.backupList])
   useEffect(() => {
@@ -185,7 +223,10 @@ function Maintenance({ selectedCluster, user }) {
     <VStack className={styles.backupContainer}>
       <AccordionComponent
         heading={'Scheduler Settings'}
+        isOpen={isSchedulerOpen}
+        onToggle={onSchedulerToggle}
         className={styles.accordion}
+        headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<SchedulerSettings selectedCluster={selectedCluster} user={user} />}
       />
@@ -194,18 +235,25 @@ function Maintenance({ selectedCluster, user }) {
         isOpen={isBackupSettingsOpen}
         onToggle={onBackupSettingsToggle}
         className={styles.accordion}
+        headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<BackupSettings selectedCluster={selectedCluster} user={user} />}
       />
       <AccordionComponent
         heading={'Current Backups'}
+        isOpen={isBackupsOpen}
+        onToggle={onBackupsToggle}
         className={styles.accordion}
+        headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<DataTable data={data} columns={columns} className={styles.table} />}
       />
       <AccordionComponent
         heading={'Backup Snapshots'}
+        isOpen={isBackupSnapshotOpen}
+        onToggle={onBackupSnapshotToggle}
         className={styles.accordion}
+        headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={
           <VStack className={styles.snapshotContainer}>
@@ -216,12 +264,18 @@ function Maintenance({ selectedCluster, user }) {
       />
       <AccordionComponent
         heading={'Database Jobs'}
+        isOpen={isDBJobsOpen}
+        onToggle={onDBJobsToggle}
         className={styles.accordion}
+        headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<DatabaseJobs clusterName={selectedCluster?.name} />}
       />
       <AccordionComponent
         className={styles.accordion}
+        isOpen={isLogsOpen}
+        onToggle={onLogsToggle}
+        headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         heading={'Job Logs'}
         body={<Logs logs={selectedCluster?.logTask?.buffer} />}
