@@ -17,27 +17,51 @@ else
     echo "User 'repman' already exists."
 fi
 
-# Check if the .ssh directory already exists for the repman user
+# Ensure the .ssh directory exists for the repman user
 if [ ! -d /home/repman/.ssh ]; then
-    # Create the .ssh directory if it does not exist
     echo "Creating .ssh directory for user 'repman'..."
     mkdir -p /home/repman/.ssh
     chmod 700 /home/repman/.ssh
     chown repman:repman /home/repman/.ssh
 fi
 
-# Check if the authorized_keys file exists
-if [ ! -f /home/repman/.ssh/authorized_keys ]; then
-    # Copy the .ssh directory from root if no keys exist
-    if [ -d /root/.ssh ]; then
-        echo "Copying SSH configuration from /root/.ssh to /home/repman/.ssh..."
-        cp -r /root/.ssh/* /home/repman/.ssh/
-        chmod 700 /home/repman/.ssh
-        chmod 600 /home/repman/.ssh/authorized_keys
-        chown -R repman:repman /home/repman/.ssh
+# Check and copy private keys from /root/.ssh to /home/repman/.ssh (RSA, ECDSA, ED25519)
+declare -a key_types=("id_rsa" "id_ecdsa" "id_ed25519")
+for key in "${key_types[@]}"; do
+    if [ -f /root/.ssh/$key ]; then
+        echo "Copying $key from /root/.ssh to /home/repman/.ssh/$key..."
+        cp /root/.ssh/$key /home/repman/.ssh/
+        chmod 600 /home/repman/.ssh/$key
+        chown repman:repman /home/repman/.ssh/$key
     else
-        echo "No SSH configuration found in /root/.ssh."
+        echo "No $key found in /root/.ssh."
     fi
+done
+
+# Check and copy corresponding public keys from /root/.ssh to /home/repman/.ssh (RSA, ECDSA, ED25519)
+for key in "${key_types[@]}"; do
+    pub_key="${key}.pub"
+    if [ -f /root/.ssh/$pub_key ]; then
+        echo "Copying $pub_key from /root/.ssh to /home/repman/.ssh/$pub_key..."
+        cp /root/.ssh/$pub_key /home/repman/.ssh/
+        chmod 644 /home/repman/.ssh/$pub_key
+        chown repman:repman /home/repman/.ssh/$pub_key
+    else
+        echo "No $pub_key found in /root/.ssh."
+    fi
+done
+
+# Ensure necessary directories for the application exist
+echo "Creating directory /var/lib/replication-manager if it doesn't exist..."
+if [ ! -d /var/lib/replication-manager ]; then
+    mkdir -p /var/lib/replication-manager
 else
-    echo ".ssh directory and authorized_keys already exist for user 'repman'. Skipping copy."
+    echo "Directory /var/lib/replication-manager already exists."
 fi
+
+# Set ownership to repman:repman
+echo "Setting ownership of /var/lib/replication-manager to repman:repman..."
+chown repman:repman /var/lib/replication-manager
+
+# Set appropriate permissions to 755 (owner read/write/execute, group/others read/execute)
+chmod 755 /var/lib/replication-manager
