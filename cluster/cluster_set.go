@@ -2069,3 +2069,11 @@ func (cluster *Cluster) SetResticVersion() error {
 func (cluster *Cluster) SetInRollingRestart(value bool) {
 	cluster.InRollingRestart = value
 }
+
+func (cluster *Cluster) SetSlackAlertStates(value string) {
+	cluster.Conf.SlackAlertState = value
+}
+
+func (cluster *Cluster) SetPushoverAlertStates(value string) {
+	cluster.Conf.PushoverAlertState = value
+}

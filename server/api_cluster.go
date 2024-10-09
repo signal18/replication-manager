@@ -1310,6 +1310,12 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchBackupKeepUntilValid()
 	case "mail-smtp-tls-skip-verify":
 		mycluster.SwitchMailSmtpTlsSkipVerify()
+	case "alert-slack":
+		mycluster.SwitchAlertSlack()
+	case "alert-pushover":
+		mycluster.SwitchAlertPushover()
+	case "alert-teams":
+		mycluster.SwitchAlertTeams()
 	}
 }
 
@@ -1591,6 +1597,8 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetAlertPushoverAppToken(value)
 	case "alert-pushover-user-token":
 		mycluster.SetAlertPushoverUserToken(value)
+	case "alert-pushover-state":
+		mycluster.SetPushoverAlertStates(value)
 	case "alert-script":
 		mycluster.SetAlertScript(value)
 	case "alert-slack-channel":
@@ -1599,6 +1607,8 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetAlertSlackUrl(value)
 	case "alert-slack-user":
 		mycluster.SetAlertSlackUser(value)
+	case "alert-slack-state":
+		mycluster.SetSlackAlertStates(value)
 	case "alert-teams-proxy-url":
 		mycluster.SetAlertTeamsProxyUrl(value)
 	case "alert-teams-state":

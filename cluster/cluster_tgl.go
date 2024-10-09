@@ -648,3 +648,15 @@ func (cluster *Cluster) SwitchForceWriteConfig() {
 func (cluster *Cluster) SwitchBackupKeepUntilValid() {
 	cluster.Conf.BackupKeepUntilValid = !cluster.Conf.BackupKeepUntilValid
 }
+
+func (cluster *Cluster) SwitchAlertSlack() {
+	cluster.Conf.SlackAlert = !cluster.Conf.SlackAlert
+}
+
+func (cluster *Cluster) SwitchAlertPushover() {
+	cluster.Conf.PushoverAlert = !cluster.Conf.PushoverAlert
+}
+
+func (cluster *Cluster) SwitchAlertTeams() {
+	cluster.Conf.TeamsAlert = !cluster.Conf.TeamsAlert
+}
