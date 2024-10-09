@@ -275,7 +275,6 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorCapture, "monitoring-capture", true, "Enable capture on error for 5 monitor loops")
 	flags.StringVar(&conf.MonitorCaptureTrigger, "monitoring-capture-trigger", "ERR00076,ERR00041", "List of errno triggering capture mode")
 	flags.IntVar(&conf.MonitorCaptureFileKeep, "monitoring-capture-file-keep", 5, "Purge capture file keep that number of them")
-	flags.StringVar(&conf.MonitoringAlertTrigger, "monitoring-alert-trigger", "ERR00027,ERR00042,ERR00087", "List of errno triggering an alert to be send")
 
 	flags.BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
 
@@ -420,7 +419,19 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.StringVar(&conf.TeamsUrl, "alert-teams-url", "", "Teams url channel for alerts")
 	flags.StringVar(&conf.TeamsProxyUrl, "alert-teams-proxy-url", "", "Proxy url for Teams Webhook")
-	flags.StringVar(&conf.TeamsAlertState, "alert-teams-state", "", "State Code for Teams Alert : ERR|WARN|INFO")
+
+	// Toggler for channels other than emails
+	flags.BoolVar(&conf.TeamsAlert, "alert-teams", false, "Enable teams alert")
+	flags.BoolVar(&conf.SlackAlert, "alert-slack", false, "Enable slack alert")
+	flags.BoolVar(&conf.PushoverAlert, "alert-pushover", false, "Enable pushover alert")
+
+	// Default alert trigger state
+	flags.StringVar(&conf.MonitoringAlertTrigger, "monitoring-alert-trigger", "ERR00027,ERR00042,ERR00087", "List of errno triggering an alert to be send")
+
+	// Specific channel state
+	flags.StringVar(&conf.TeamsAlertState, "alert-teams-state", "MONITORING", "List of state codes for Teams Alert: 'ERR00001' or prefix 'ERR|WARN|INFO' or set same as monitoring-alert-trigger 'MONITORING'")
+	flags.StringVar(&conf.SlackAlertState, "alert-slack-state", "MONITORING", "List of state codes for Slack Alert: 'ERR00001' or prefix 'ERR|WARN|INFO' or set same as monitoring-alert-trigger 'MONITORING'")
+	flags.StringVar(&conf.PushoverAlertState, "alert-pushover-state", "MONITORING", "List of state codes for Pushover Alert: 'ERR00001' or prefix 'ERR|WARN|INFO' or set same as monitoring-alert-trigger 'MONITORING'")
 
 	conf.CheckType = "tcp"
 	flags.BoolVar(&conf.CheckReplFilter, "check-replication-filters", true, "Check that possible master have equal replication filters")

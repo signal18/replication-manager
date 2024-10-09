@@ -280,11 +280,16 @@ type Config struct {
 	MailSMTPUser                              string                 `mapstructure:"mail-smtp-user" toml:"mail-smtp-user" json:"mailSmtpUser"`
 	MailSMTPPassword                          string                 `mapstructure:"mail-smtp-password" toml:"mail-smtp-password" json:"mailSmtpPassword"`
 	MailSMTPTLSSkipVerify                     bool                   `mapstructure:"mail-smtp-tls-skip-verify" toml:"mail-smtp-tls-skip-verify" json:"mailSmtpTlsSkipVerify"`
+	SlackAlert                                bool                   `mapstructure:"alert-slack" toml:"alert-slack" json:"alertSlack"`
 	SlackURL                                  string                 `mapstructure:"alert-slack-url" toml:"alert-slack-url" json:"alertSlackUrl"`
 	SlackChannel                              string                 `mapstructure:"alert-slack-channel" toml:"alert-slack-channel" json:"alertSlackChannel"`
 	SlackUser                                 string                 `mapstructure:"alert-slack-user" toml:"alert-slack-user" json:"alertSlackUser"`
+	SlackAlertState                           string                 `mapstructure:"alert-slack-state" toml:"alert-slack-state" json:"alertSlackState"`
+	PushoverAlert                             bool                   `mapstructure:"alert-pushover" toml:"alert-pushover" json:"alertPushover"`
 	PushoverAppToken                          string                 `mapstructure:"alert-pushover-app-token" toml:"alert-pushover-app-token" json:"alertPushoverAppToken"`
 	PushoverUserToken                         string                 `mapstructure:"alert-pushover-user-token" toml:"alert-pushover-user-token" json:"alertPushoverUserToken"`
+	PushoverAlertState                        string                 `mapstructure:"alert-pushover-state" toml:"alert-pushover-state" json:"alertPushoverState"`
+	TeamsAlert                                bool                   `mapstructure:"alert-teams" toml:"alert-teams" json:"alertTeams"`
 	TeamsUrl                                  string                 `mapstructure:"alert-teams-url" toml:"alert-teams-url" json:"alertTeamsUrl"`
 	TeamsProxyUrl                             string                 `mapstructure:"alert-teams-proxy-url" toml:"alert-teams-proxy-url" json:"alertTeamsProxyUrl"`
 	TeamsAlertState                           string                 `mapstructure:"alert-teams-state" toml:"alert-teams-state" json:"alertTeamsState"`
