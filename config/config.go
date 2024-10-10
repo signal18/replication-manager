@@ -1317,7 +1317,7 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger, withEmbed string) error {
 		Logger.Infof("Key not found. Generating : %s", conf.MonitoringKeyPath)
 
 		if err := misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && withEmbed == "OFF" {
-			newdir := "/home/repman/.replication-manager"
+			newdir := "/home/repman/.config/replication-manager/etc"
 			newpath := newdir + "/.replication-manager.key"
 
 			Logger.Infof("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, newpath)
@@ -1331,19 +1331,19 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger, withEmbed string) error {
 			_, err = os.Stat(newdir)
 			if err != nil {
 				if !os.IsNotExist(err) {
-					Logger.Errorf("Can't access /home/repman/.replication-manager : %v", err)
+					Logger.Errorf("Can't access %s : %v", newdir, err)
 					return err
 				} else {
 					err = os.MkdirAll(newdir, 0755)
 					if err != nil {
-						Logger.Errorf("Can't create directory /home/repman/.replication-manager : %v", err)
+						Logger.Errorf("Can't create directory %s : %v", newdir, err)
 						return err
 					}
 				}
 			}
 
 			if err := misc.TryOpenFile(newpath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
-				Logger.Errorf("Can't write keys in in /etc/replication-manager and /home/repman/.replication-manager : %v", err)
+				Logger.Errorf("Can't write keys in %s : %v", newdir, err)
 				return err
 			}
 
