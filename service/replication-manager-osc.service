@@ -1,13 +1,13 @@
 [Unit]
-Description=replication-manager open source
+Description=Signal 18 Replication Manager open source community edition
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/replication-manager-osc monitor
-
 Restart=on-failure
-
-# Configures the time to wait before service is stopped forcefully.
+RestartSec=5
+StartLimitBurst=3
+StartLimitInterval=10s
 TimeoutStopSec=10
 
 [Install]
