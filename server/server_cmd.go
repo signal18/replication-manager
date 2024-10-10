@@ -84,6 +84,7 @@ func init() {
 	conf.FullVersion = FullVersion
 	conf.WithTarball = WithTarball
 	conf.WithEmbed = WithEmbed
+	rootCmd.PersistentFlags().StringVar(&cmdUser, "user", "", "OS User for running repman")
 	rootCmd.PersistentFlags().StringVar(&conf.ConfigFile, "config", "", "Configuration file (default is config.toml)")
 	rootCmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Configuration group (default is none)")
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")

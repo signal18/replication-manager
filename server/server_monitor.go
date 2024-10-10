@@ -80,6 +80,7 @@ For interacting with this daemon use,
 		RepMan.SetDefaultFlags(viper.GetViper())
 		RepMan.CommandLineFlag = GetCommandLineFlag(cmd)
 		//	RepMan.DefaultFlagMap = defaultFlagMap
+		RepMan.InitUser()
 		RepMan.InitConfig(conf)
 		RepMan.Run()
 	},

@@ -17,10 +17,12 @@ import (
 	"log/syslog"
 	"net"
 	"os/signal"
+	"os/user"
 	"runtime"
 	"runtime/pprof"
 	"sort"
 	"sync"
+	"syscall"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -63,6 +65,7 @@ type ReplicationManager struct {
 	Version          string                            `json:"version"`
 	Fullversion      string                            `json:"fullVersion"`
 	Os               string                            `json:"os"`
+	OsUser           *user.User                        `json:"osUser"`
 	Arch             string                            `json:"arch"`
 	MemProfile       string                            `json:"memprofile"`
 	CpuProfile       string                            `json:"cpuprofile"`
@@ -194,6 +197,7 @@ type Heartbeat struct {
 }
 
 var confs = make(map[string]config.Config)
+var cmdUser string
 var cfgGroup string
 var cfgGroupIndex int
 
@@ -1442,6 +1446,78 @@ func (repman *ReplicationManager) InitRestic() error {
 	os.Setenv("RESTIC_PASSWORD", repman.Conf.GetDecryptedValue("backup-restic-password"))
 	//os.Setenv("RESTIC_FORGET_ARGS", repman.Conf.BackupResticStoragePolicy)
 	return nil
+}
+
+func (repman *ReplicationManager) InitUser() {
+	var err error
+	var currentUser *user.User
+	// Get the current user
+	currentUser, err = user.Current()
+	if err != nil {
+		log.Errorf("Error getting current user: %v", err)
+		return
+	}
+
+	repman.OsUser = currentUser
+
+	// Check if the current user is root (UID 0)
+	if repman.OsUser.Uid == "0" {
+		if cmdUser != "" {
+			log.Infof("Running as root, switching to another user...")
+
+			// Lookup the user you want to switch to
+			targetUser, err := user.Lookup(cmdUser)
+			if err != nil {
+				log.Errorf("Error looking up user: %v", err)
+				return
+			}
+
+			// Get the user's UID and GID
+			uid := targetUser.Uid
+			gid := targetUser.Gid
+
+			// Convert UID and GID to integers
+			uidInt, err := strconv.Atoi(uid)
+			if err != nil {
+				log.Errorf("Error converting UID: %v", err)
+				return
+			}
+			gidInt, err := strconv.Atoi(gid)
+			if err != nil {
+				log.Errorf("Error converting GID: %v", err)
+				return
+			}
+
+			// Set GID (Group ID)
+			err = syscall.Setgid(gidInt)
+			if err != nil {
+				log.Errorf("Error setting GID: %v", err)
+				return
+			}
+
+			// Set UID (User ID)
+			err = syscall.Setuid(uidInt)
+			if err != nil {
+				log.Errorf("Error setting UID: %v", err)
+				return
+			}
+
+			// Verify the user switch
+			currentUser, err = user.Current()
+			if err != nil {
+				log.Errorf("Error getting current user: %v", err)
+				return
+			}
+
+			repman.OsUser = currentUser
+
+			log.Infof("Running as user: %s", repman.OsUser.Username)
+		} else {
+			log.Infof("Running as root as no user defined in --user flag")
+		}
+	} else {
+		log.Infof("Not running as root, current user: %s", repman.OsUser.Username)
+	}
 }
 
 func (repman *ReplicationManager) GenerateKeygen() error {
