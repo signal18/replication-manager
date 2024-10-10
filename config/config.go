@@ -1303,7 +1303,7 @@ func (conf *Config) IsVaultUsed() bool {
 	return true
 }
 
-func (conf *Config) GenerateKey(Logger *logrus.Logger, withEmbed string) error {
+func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 	_, err := os.Stat(conf.MonitoringKeyPath)
 	// Check if the file does not exist
 	if err == nil {
@@ -1316,7 +1316,7 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger, withEmbed string) error {
 
 		Logger.Infof("Key not found. Generating : %s", conf.MonitoringKeyPath)
 
-		if err := misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && withEmbed == "OFF" {
+		if err := misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
 			newdir := "/home/repman/.config/replication-manager/etc"
 			newpath := newdir + "/.replication-manager.key"
 

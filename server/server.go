@@ -1184,8 +1184,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		cf1.SetEnvPrefix("DEFAULT")
 		repman.initAlias(cf1)
 		cf1.Unmarshal(&conf)
+
 		// Generate default keygen
-		conf.GenerateKey(repman.Logrus, WithEmbed)
+		conf.GenerateKey(repman.Logrus)
 		k, _ := conf.LoadEncrytionKey()
 		if k == nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key in global section")
@@ -1913,6 +1914,11 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
 	//log.Infof("Default config for %s workingdir:\n %v", clusterName, myClusterConf.DefaultFlagMap)
+
+	// Use default key if cluster key is not found
+	if repman.VersionConfs[clusterName].ConfInit.ConfDirExtra == "" {
+		repman.VersionConfs[clusterName].ConfInit.ConfDirExtra = repman.Conf.ConfDirExtra
+	}
 
 	// Use default key if cluster key is not found
 	k, _ := repman.VersionConfs[clusterName].ConfInit.LoadEncrytionKey()

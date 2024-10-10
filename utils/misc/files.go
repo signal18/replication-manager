@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -240,4 +241,76 @@ func TryOpenFile(path string, flag int, perm fs.FileMode, remove bool) error {
 	}
 
 	return nil
+}
+
+// CopyFilesWithSuffix copies files with specified suffixes from srcDir to dstDir
+func CopyFilesWithSuffix(srcDir, dstDir string, suffixes ...string) error {
+	return filepath.WalkDir(srcDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !d.IsDir() {
+			for _, sfx := range suffixes {
+				if strings.HasSuffix(d.Name(), sfx) {
+					destPath := filepath.Join(dstDir, d.Name())
+					log.Printf("Copying %s to %s\n", path, destPath)
+					err := CopyFile(path, destPath)
+					if err != nil {
+						return err
+					}
+					break
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// CopyFilesWithSuffix copies files with specified suffixes from srcDir to dstDir
+func CopyFilesWithPrefix(srcDir, dstDir string, prefixes ...string) error {
+	return filepath.WalkDir(srcDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !d.IsDir() {
+			for _, pfx := range prefixes {
+				if strings.HasPrefix(d.Name(), pfx) {
+					destPath := filepath.Join(dstDir, d.Name())
+					log.Printf("Copying %s to %s\n", path, destPath)
+					err := CopyFile(path, destPath)
+					if err != nil {
+						return err
+					}
+					break
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// CopyFilesContainFilenames copies files with specified substrings from srcDir to dstDir
+func CopyFilesContainFilenames(srcDir, dstDir string, substrings ...string) error {
+	return filepath.WalkDir(srcDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !d.IsDir() {
+			for _, substr := range substrings {
+				if strings.Contains(d.Name(), substr) {
+					destPath := filepath.Join(dstDir, d.Name())
+					log.Printf("Copying %s to %s\n", path, destPath)
+					err := CopyFile(path, destPath)
+					if err != nil {
+						return err
+					}
+					break
+				}
+			}
+		}
+		return nil
+	})
 }
