@@ -227,36 +227,17 @@ func RemoveOldLogFiles(dir, prefix string, daysOld int, timestampFormat string) 
 	return nil
 }
 
-// IsWritable checks if the given path is writable (either file or directory)
-func IsWritable(path string) bool {
-	// Get the file or directory info
-	info, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		fmt.Printf("The file or folder does not exist: %s\n", path)
-		return false
-	} else if err != nil {
-		fmt.Printf("Error retrieving file info: %v\n", err)
-		return false
-	}
-
-	// If it's a directory, try creating a temporary file inside it
-	if info.IsDir() {
-		tempFile, err := os.CreateTemp(path, "checkwrite")
-		if err != nil {
-			return false
-		}
-		// Clean up the temporary file
-		tempFile.Close()
-		os.Remove(tempFile.Name())
-		return true
-	}
-
+func TryOpenFile(path string, flag int, perm fs.FileMode, remove bool) error {
 	// If it's a file, try opening it with write permissions
-	file, err := os.OpenFile(path, os.O_WRONLY, 0666)
+	file, err := os.OpenFile(path, flag, 0666)
 	if err != nil {
-		return false
+		return err
 	}
 	file.Close()
 
-	return true
+	if remove {
+		os.Remove(path)
+	}
+
+	return nil
 }

@@ -50,10 +50,10 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
-	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/pflag"
 )
 
@@ -1184,7 +1184,12 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		cf1.SetEnvPrefix("DEFAULT")
 		repman.initAlias(cf1)
 		cf1.Unmarshal(&conf)
-		conf.LoadEncrytionKey()
+		// Generate default keygen
+		conf.GenerateKey(repman.Logrus, WithEmbed)
+		k, _ := conf.LoadEncrytionKey()
+		if k == nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key in global section")
+		}
 		repman.Conf = conf
 
 	}
@@ -1517,35 +1522,6 @@ func (repman *ReplicationManager) InitUser() {
 	}
 }
 
-func (repman *ReplicationManager) GenerateKeygen() error {
-	_, err := os.Stat(repman.Conf.MonitoringKeyPath)
-	// Check if the file does not exist
-	if err == nil {
-		repman.Logrus.Infof("Repman discovered that key is already generated. Using existing key.")
-	} else {
-		if !os.IsNotExist(err) {
-			repman.Logrus.Errorf("Error when checking key for encryption: %v", err)
-			return err
-		}
-
-		repman.Logrus.Infof("Key not found. Generating : %s", repman.Conf.MonitoringKeyPath)
-		p := crypto.Password{}
-		var err error
-		p.Key, err = crypto.Keygen()
-		if err != nil {
-			repman.Logrus.Errorf("Error when generating key for encryption: %v", err)
-			return err
-		}
-		err = crypto.WriteKey(p.Key, repman.Conf.MonitoringKeyPath, false)
-		if err != nil {
-			repman.Logrus.Errorf("Error when writing key for encryption: %v", err)
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (repman *ReplicationManager) Run() error {
 	var err error
 
@@ -1708,7 +1684,6 @@ func (repman *ReplicationManager) Run() error {
 	//repman.InitRestic()
 	repman.Logrus.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
 	repman.Logrus.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
-	// repman.GenerateKeygen()
 
 	// If there's an existing encryption key, decrypt the passwords
 
@@ -1939,9 +1914,21 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
 	//log.Infof("Default config for %s workingdir:\n %v", clusterName, myClusterConf.DefaultFlagMap)
 
+	// Use default key if cluster key is not found
+	k, _ := repman.VersionConfs[clusterName].ConfInit.LoadEncrytionKey()
+	if k == nil && repman.Conf.SecretKey != nil {
+		repman.VersionConfs[clusterName].ConfInit.SecretKey = repman.Conf.SecretKey
+		repman.VersionConfs[clusterName].ConfInit.MonitoringKeyPath = repman.Conf.MonitoringKeyPath
+	}
+
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
+
+	if repman.currentCluster.Conf.SecretKey == nil {
+		repman.currentCluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(repman.currentCluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
+	}
+
 	go repman.currentCluster.Run()
 	return repman.currentCluster, nil
 }

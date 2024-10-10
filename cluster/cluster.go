@@ -380,18 +380,21 @@ func (cluster *Cluster) InitFromConf() {
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.StateMachine = new(state.StateMachine)
 	cluster.StateMachine.Init()
-	k, _ := cluster.Conf.LoadEncrytionKey()
-	if k == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key")
-		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
-	}
+
+	// k, _ := cluster.Conf.LoadEncrytionKey()
+	// if k == nil {
+	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key")
+	// 	cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
+	// }
 
 	if cluster.Conf.Interactive {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover in interactive mode")
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover in automatic mode")
 	}
-	log.Infof("Creating direcrory  %s", cluster.WorkingDir)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Creating directory  %s", cluster.WorkingDir)
+
 	//working directory of the cluster is working directory of server and cluster name
 	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {
 		//	os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
