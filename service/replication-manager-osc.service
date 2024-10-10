@@ -3,7 +3,7 @@ Description=replication-manager open source
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/replication-manager-osc monitor
+ExecStart=/usr/bin/replication-manager-osc --user=repman monitor
 
 Restart=on-failure
 
