@@ -1463,7 +1463,7 @@ func (repman *ReplicationManager) InitUser() {
 	// Check if the current user is root (UID 0)
 	if repman.OsUser.Uid == "0" {
 		if cmdUser != "" {
-			log.Infof("Running as root, switching to another user...")
+			log.Infof("Running as root...")
 
 			// Lookup the user you want to switch to
 			targetUser, err := user.Lookup(cmdUser)
@@ -1488,6 +1488,8 @@ func (repman *ReplicationManager) InitUser() {
 				return
 			}
 
+			log.Infof("Setting uid and gid to target user: %s, uid: %d, gid: %d", targetUser.Username, uidInt, gidInt)
+
 			// Set GID (Group ID)
 			err = syscall.Setgid(gidInt)
 			if err != nil {
@@ -1502,14 +1504,9 @@ func (repman *ReplicationManager) InitUser() {
 				return
 			}
 
-			// Verify the user switch
-			currentUser, err = user.Current()
-			if err != nil {
-				log.Errorf("Error getting current user: %v", err)
-				return
-			}
-
-			repman.OsUser = currentUser
+			//Should reassign manually because user.Current() locked to init value
+			log.Infof("Set GID and UID success without error. Store user as current OS User")
+			repman.OsUser = targetUser
 
 			log.Infof("Running as user: %s", repman.OsUser.Username)
 		} else {
