@@ -1308,50 +1308,64 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 	// Check if the file does not exist
 	if err == nil {
 		Logger.Infof("Repman discovered that key is already generated. Using existing key.")
+		return nil
 	} else {
 		if !os.IsNotExist(err) {
 			Logger.Errorf("Error when checking key for encryption: %v", err)
 			return err
 		}
 
-		Logger.Infof("Key not found. Generating : %s", conf.MonitoringKeyPath)
+		newdir := "/home/repman/.config/replication-manager/etc"
+		newpath := newdir + "/.replication-manager.key"
 
-		if err := misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
-			newdir := "/home/repman/.config/replication-manager/etc"
-			newpath := newdir + "/.replication-manager.key"
+		Logger.Infof("Key not found. Checking in extra path : %s", newpath)
 
-			Logger.Infof("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, newpath)
+		_, err = os.Stat(newpath)
+		if err == nil {
+			Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", newpath)
+			conf.MonitoringKeyPath = newpath
+			return nil
+		} else {
 
-			_, err := os.Stat(newpath)
-			if err == nil {
-				Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", newpath)
-				return nil
-			}
+			Logger.Infof("Key not found. Generating : %s", conf.MonitoringKeyPath)
 
-			_, err = os.Stat(newdir)
-			if err != nil {
-				if !os.IsNotExist(err) {
-					Logger.Errorf("Can't access %s : %v", newdir, err)
-					return err
-				} else {
-					err = os.MkdirAll(newdir, 0755)
-					if err != nil {
-						Logger.Errorf("Can't create directory %s : %v", newdir, err)
+			if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
+				newdir := "/home/repman/.config/replication-manager/etc"
+				newpath := newdir + "/.replication-manager.key"
+
+				Logger.Infof("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, newpath)
+
+				_, err := os.Stat(newpath)
+				if err == nil {
+					Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", newpath)
+					return nil
+				}
+
+				_, err = os.Stat(newdir)
+				if err != nil {
+					if !os.IsNotExist(err) {
+						Logger.Errorf("Can't access %s : %v", newdir, err)
 						return err
+					} else {
+						err = os.MkdirAll(newdir, 0755)
+						if err != nil {
+							Logger.Errorf("Can't create directory %s : %v", newdir, err)
+							return err
+						}
 					}
 				}
+
+				if err := misc.TryOpenFile(newpath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
+					Logger.Errorf("Can't write keys in %s : %v", newdir, err)
+					return err
+				}
+
+				// New path is writable
+				conf.MonitoringKeyPath = newpath
+				Logger.Infof("Path writable. Flag 'monitoring-key-path' set to: %s.", newpath)
+				Logger.Infof("Generating key on: %s", conf.MonitoringKeyPath)
+
 			}
-
-			if err := misc.TryOpenFile(newpath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
-				Logger.Errorf("Can't write keys in %s : %v", newdir, err)
-				return err
-			}
-
-			// New path is writable
-			conf.MonitoringKeyPath = newpath
-			Logger.Infof("Path writable. Flag 'monitoring-key-path' set to: %s.", newpath)
-			Logger.Infof("Generating key on: %s", conf.MonitoringKeyPath)
-
 		}
 
 		p := crypto.Password{}

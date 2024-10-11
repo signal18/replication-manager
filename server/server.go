@@ -917,40 +917,46 @@ func (repman *ReplicationManager) OverwriteParameterFlags(destViper *viper.Viper
 
 }
 
-func (repman *ReplicationManager) initEmbed() error {
-	//test si y'a  un repertoire ./.replication-manager sinon on le créer
-	//test si y'a  un repertoire ./.replication-manager/config.toml sinon on le créer depuis embed
-	//test y'a  un repertoire ./.replication-manager/data sinon on le créer
-	//test y'a  un repertoire ./.replication-manager/share sinon on le créer
-	if _, err := os.Stat("./.replication-manager"); os.IsNotExist(err) {
-		os.MkdirAll("./.replication-manager", os.ModePerm)
-		os.MkdirAll("./.replication-manager/data", os.ModePerm)
-		os.MkdirAll("./.replication-manager/share", os.ModePerm)
-		os.MkdirAll("./.replication-manager/cluster.d", os.ModePerm)
-	}
+func (repman *ReplicationManager) initDirectories(conf *config.Config) error {
+	confdir := repman.OsUser.HomeDir + "/.config/replication-manager"
+	confdirextra := repman.OsUser.HomeDir + "/.config/replication-manager/recover"
+	datadir := repman.OsUser.HomeDir + "/replication-manager/data"
+	sharedir := repman.OsUser.HomeDir + "/replication-manager/share"
+	// Init directories
+	if conf.WithEmbed == "ON" {
+		os.MkdirAll(confdir+"/cluster.d", os.ModePerm)
+		os.MkdirAll(datadir, os.ModePerm)
+		os.MkdirAll(sharedir, os.ModePerm)
 
-	if _, err := os.Stat("./replication-manager"); os.IsNotExist(err) {
-		os.MkdirAll("./replication-manager", os.ModePerm)
-		os.MkdirAll("./replication-manager/data", os.ModePerm)
-		os.MkdirAll("./replication-manager/share", os.ModePerm)
-	}
+		confpath := confdir + "/config.toml"
+		if _, err := os.Stat(confpath); os.IsNotExist(err) {
+			file, err := etc.EmbededDbModuleFS.ReadFile("local/embed/config.toml")
+			if err != nil {
+				repman.Logrus.Errorf("failed opening file because: %s", err.Error())
+				return err
+			}
+			err = os.WriteFile(confpath, file, 0644) //remplacer nil par l'obj créer pour config.toml dans etc/local/embed
+			if err != nil {
+				repman.Logrus.Errorf("failed write file because: %s", err.Error())
+				return err
+			}
+			if _, err := os.Stat(confpath); os.IsNotExist(err) {
+				repman.Logrus.Errorf("failed create ./.replication-manager/config.toml file because: %s", err.Error())
+				return err
+			}
+		}
+	} else {
+		// This will make extra config dir if set and back to default if not writable
+		if conf.ConfDirExtra != "" {
+			err := os.MkdirAll(conf.ConfDirExtra, os.ModePerm)
+			if err == nil {
+				return nil
+			}
+		}
 
-	if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
-
-		file, err := etc.EmbededDbModuleFS.ReadFile("local/embed/config.toml")
-		if err != nil {
-			repman.Logrus.Errorf("failed opening file because: %s", err.Error())
-			return err
-		}
-		err = os.WriteFile("./.replication-manager/config.toml", file, 0644) //remplacer nil par l'obj créer pour config.toml dans etc/local/embed
-		if err != nil {
-			repman.Logrus.Errorf("failed write file because: %s", err.Error())
-			return err
-		}
-		if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
-			repman.Logrus.Errorf("failed create ./.replication-manager/config.toml file because: %s", err.Error())
-			return err
-		}
+		// This will set extra config dir to default
+		conf.ConfDirExtra = confdirextra
+		os.MkdirAll(conf.ConfDirExtra, os.ModePerm)
 	}
 
 	return nil
@@ -967,10 +973,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	repman.cloud18CheckSum = nil
 	// call after init if configuration file is provide
 
-	//if repman is embed, create folders and load missing embedded files
-	if conf.WithEmbed == "ON" {
-		repman.initEmbed()
-	}
+	repman.initDirectories(&conf)
 
 	//init viper to read config file .toml
 	fistRead := viper.GetViper()
@@ -1465,14 +1468,19 @@ func (repman *ReplicationManager) InitUser() {
 	}
 
 	repman.OsUser = currentUser
+}
+
+func (repman *ReplicationManager) LimitPrivileges() {
+	var err error
+	var targetUser *user.User
 
 	// Check if the current user is root (UID 0)
 	if repman.OsUser.Uid == "0" {
 		if cmdUser != "" {
-			log.Infof("Running as root...")
+			log.Infof("Switching from root to less privileged user: %s", cmdUser)
 
 			// Lookup the user you want to switch to
-			targetUser, err := user.Lookup(cmdUser)
+			targetUser, err = user.Lookup(cmdUser)
 			if err != nil {
 				log.Errorf("Error looking up user: %v", err)
 				return
@@ -1519,7 +1527,7 @@ func (repman *ReplicationManager) InitUser() {
 			log.Infof("Running as root as no user defined in --user flag")
 		}
 	} else {
-		log.Infof("Not running as root, current user: %s", repman.OsUser.Username)
+		log.Infof("Unable to change non-root user, current user: %s", repman.OsUser.Username)
 	}
 }
 
@@ -1686,7 +1694,8 @@ func (repman *ReplicationManager) Run() error {
 	repman.Logrus.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
 	repman.Logrus.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
 
-	// If there's an existing encryption key, decrypt the passwords
+	repman.initKeys()
+	repman.LimitPrivileges()
 
 	for _, gl := range repman.ClusterList {
 		repman.StartCluster(gl)
@@ -1696,8 +1705,6 @@ func (repman *ReplicationManager) Run() error {
 
 		cluster.SetCarbonLogger(repman.clog)
 	}
-
-	repman.initKeys()
 
 	if WithProvisioning != "ON" {
 		repman.Conf.HttpUseReact = false
