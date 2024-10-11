@@ -504,7 +504,7 @@ func (cluster *Cluster) CheckCapture(st state.State) {
 	}
 }
 
-func (cluster *Cluster) CheckAlert(state state.State) {
+func (cluster *Cluster) CheckAlert(state state.State, resolved bool) {
 	if cluster.Conf.MonitoringAlertTrigger == "" {
 		return
 	}
@@ -516,8 +516,9 @@ func (cluster *Cluster) CheckAlert(state state.State) {
 
 	if strings.Contains(cluster.Conf.MonitoringAlertTrigger, state.ErrKey) {
 		a := alert.Alert{
-			State:   state.ErrDesc,
-			Cluster: cluster.Name,
+			State:    state.ErrDesc,
+			Cluster:  cluster.Name,
+			Resolved: resolved,
 		}
 
 		err := cluster.SendAlert(a)
