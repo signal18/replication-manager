@@ -22,12 +22,15 @@ func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Clust
 }
 
 func (repman *ReplicationManager) GetExtraConfigDir() string {
-	dirname, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatal(err)
+	if repman.Conf.ConfDirExtra != "" {
+		return repman.Conf.ConfDirExtra
 	}
-	return dirname + "/.replication-manager"
 
+	if repman.Conf.WithEmbed == "ON" {
+		return repman.OsUser.HomeDir + "/.config/replication-manager"
+	}
+
+	return "/home/repman/.config/replication-manager"
 }
 
 func (repman *ReplicationManager) GetExtraDataDir() string {
