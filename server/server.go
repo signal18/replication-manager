@@ -17,12 +17,10 @@ import (
 	"log/syslog"
 	"net"
 	"os/signal"
-	"os/user"
 	"runtime"
 	"runtime/pprof"
 	"sort"
 	"sync"
-	"syscall"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -50,10 +48,10 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
-	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/pflag"
 )
 
@@ -65,7 +63,6 @@ type ReplicationManager struct {
 	Version          string                            `json:"version"`
 	Fullversion      string                            `json:"fullVersion"`
 	Os               string                            `json:"os"`
-	OsUser           *user.User                        `json:"osUser"`
 	Arch             string                            `json:"arch"`
 	MemProfile       string                            `json:"memprofile"`
 	CpuProfile       string                            `json:"cpuprofile"`
@@ -117,6 +114,10 @@ type ReplicationManager struct {
 	cloud18CheckSum                                  hash.Hash                      `json:"-"`
 	clog                                             *clog.Logger                   `json:"-"`
 	Logrus                                           *log.Logger                    `json:"-"`
+	IsGitPull                                        bool                           `json:"isGitPull"`
+	CanConnectVault                                  bool                           `json:"canConnectVault"`
+	errorConnectVault                                error                          `json:"-"`
+	CheckSumConfig                                   map[string]hash.Hash           `json:"-"`
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -197,7 +198,6 @@ type Heartbeat struct {
 }
 
 var confs = make(map[string]config.Config)
-var cmdUser string
 var cfgGroup string
 var cfgGroupIndex int
 
@@ -226,6 +226,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	if WithTarball == "ON" {
 		flags.StringVar(&conf.BaseDir, "monitoring-basedir", "/usr/local/replication-manager", "Path to a basedir where data and share sub directory can be found")
 		flags.StringVar(&conf.ConfDir, "monitoring-confdir", "/usr/local/replication-manager/etc", "Path to a config directory")
+	} else if WithEmbed == "ON" {
+		flags.StringVar(&conf.BaseDir, "monitoring-basedir", repman.GetExtraDataDir(), "Path to a basedir where data and share sub directory can be found")
+		flags.StringVar(&conf.ConfDir, "monitoring-confdir", repman.GetExtraConfigDir(), "Path to a config directory")
 	} else {
 		flags.StringVar(&conf.BaseDir, "monitoring-basedir", "system", "Path to a basedir where a data and share directory can be found")
 		flags.StringVar(&conf.ConfDir, "monitoring-confdir", "/etc/replication-manager", "Path to a config directory")
@@ -917,46 +920,40 @@ func (repman *ReplicationManager) OverwriteParameterFlags(destViper *viper.Viper
 
 }
 
-func (repman *ReplicationManager) initDirectories(conf *config.Config) error {
-	confdir := repman.OsUser.HomeDir + "/.config/replication-manager"
-	confdirextra := repman.OsUser.HomeDir + "/.config/replication-manager/recover"
-	datadir := repman.OsUser.HomeDir + "/replication-manager/data"
-	sharedir := repman.OsUser.HomeDir + "/replication-manager/share"
-	// Init directories
+func (repman *ReplicationManager) initFS(conf config.Config) error {
+	//test si y'a  un repertoire ./.replication-manager sinon on le créer
+	//test si y'a  un repertoire ./.replication-manager/config.toml sinon on le créer depuis embed
+	//test y'a  un repertoire ./.replication-manager/data sinon on le créer
+	//test y'a  un repertoire ./.replication-manager/share sinon on le créer
+	if _, err := os.Stat(repman.GetExtraConfigDir()); os.IsNotExist(err) {
+		os.MkdirAll(repman.GetExtraConfigDir(), os.ModePerm)
+		os.MkdirAll(repman.GetExtraConfigDir()+"/cluster.d", os.ModePerm)
+		os.MkdirAll(repman.GetExtraConfigDir()+"/recover", os.ModePerm)
+	}
 	if conf.WithEmbed == "ON" {
-		os.MkdirAll(confdir+"/cluster.d", os.ModePerm)
-		os.MkdirAll(datadir, os.ModePerm)
-		os.MkdirAll(sharedir, os.ModePerm)
+		if _, err := os.Stat(repman.GetExtraDataDir()); os.IsNotExist(err) {
+			os.MkdirAll(repman.GetExtraDataDir(), os.ModePerm)
+			os.MkdirAll(repman.GetExtraDataDir()+"/data", os.ModePerm)
+			os.MkdirAll(repman.GetExtraDataDir()+"/share", os.ModePerm)
+		}
 
-		confpath := confdir + "/config.toml"
-		if _, err := os.Stat(confpath); os.IsNotExist(err) {
+		if _, err := os.Stat(repman.GetExtraConfigDir() + "/config.toml"); os.IsNotExist(err) {
+
 			file, err := etc.EmbededDbModuleFS.ReadFile("local/embed/config.toml")
 			if err != nil {
 				repman.Logrus.Errorf("failed opening file because: %s", err.Error())
 				return err
 			}
-			err = os.WriteFile(confpath, file, 0644) //remplacer nil par l'obj créer pour config.toml dans etc/local/embed
+			err = os.WriteFile(repman.GetExtraConfigDir()+"/config.toml", file, 0644) //remplacer nil par l'obj créer pour config.toml dans etc/local/embed
 			if err != nil {
 				repman.Logrus.Errorf("failed write file because: %s", err.Error())
 				return err
 			}
-			if _, err := os.Stat(confpath); os.IsNotExist(err) {
-				repman.Logrus.Errorf("failed create ./.replication-manager/config.toml file because: %s", err.Error())
+			if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
+				repman.Logrus.Errorf("failed create "+repman.GetExtraConfigDir()+"config.toml file because: %s", err.Error())
 				return err
 			}
 		}
-	} else {
-		// This will make extra config dir if set and back to default if not writable
-		if conf.ConfDirExtra != "" {
-			err := os.MkdirAll(conf.ConfDirExtra, os.ModePerm)
-			if err == nil {
-				return nil
-			}
-		}
-
-		// This will set extra config dir to default
-		conf.ConfDirExtra = confdirextra
-		os.MkdirAll(conf.ConfDirExtra, os.ModePerm)
 	}
 
 	return nil
@@ -973,7 +970,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	repman.cloud18CheckSum = nil
 	// call after init if configuration file is provide
 
-	repman.initDirectories(&conf)
+	//if repman is embed, create folders and load missing embedded files
+
+	repman.initFS(conf)
 
 	//init viper to read config file .toml
 	fistRead := viper.GetViper()
@@ -996,7 +995,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		if conf.WithEmbed == "OFF" {
 			fistRead.AddConfigPath("/etc/replication-manager/")
 		} else {
-			fistRead.AddConfigPath("./.replication-manager")
+			fistRead.AddConfigPath(repman.GetExtraConfigDir())
 		}
 		fistRead.AddConfigPath(".")
 
@@ -1009,8 +1008,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		}
 		//if embed, add config path
 		if conf.WithEmbed == "ON" {
-			if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
-				repman.Logrus.Warning("No config file ./.replication-manager/config.toml ")
+			if _, err := os.Stat(repman.GetExtraConfigDir() + "/config.toml"); os.IsNotExist(err) {
+				repman.Logrus.Warning("No config file " + repman.GetExtraConfigDir() + "/config.toml ")
 			}
 		} else {
 			if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
@@ -1187,13 +1186,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		cf1.SetEnvPrefix("DEFAULT")
 		repman.initAlias(cf1)
 		cf1.Unmarshal(&conf)
-
-		// Generate default keygen
-		conf.GenerateKey(repman.Logrus)
-		k, _ := conf.LoadEncrytionKey()
-		if k == nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key in global section")
-		}
+		conf.LoadEncrytionKey()
 		repman.Conf = conf
 
 	}
@@ -1457,78 +1450,33 @@ func (repman *ReplicationManager) InitRestic() error {
 	return nil
 }
 
-func (repman *ReplicationManager) InitUser() {
-	var err error
-	var currentUser *user.User
-	// Get the current user
-	currentUser, err = user.Current()
-	if err != nil {
-		log.Errorf("Error getting current user: %v", err)
-		return
-	}
-
-	repman.OsUser = currentUser
-}
-
-func (repman *ReplicationManager) LimitPrivileges() {
-	var err error
-	var targetUser *user.User
-
-	// Check if the current user is root (UID 0)
-	if repman.OsUser.Uid == "0" {
-		if cmdUser != "" {
-			log.Infof("Switching from root to less privileged user: %s", cmdUser)
-
-			// Lookup the user you want to switch to
-			targetUser, err = user.Lookup(cmdUser)
-			if err != nil {
-				log.Errorf("Error looking up user: %v", err)
-				return
-			}
-
-			// Get the user's UID and GID
-			uid := targetUser.Uid
-			gid := targetUser.Gid
-
-			// Convert UID and GID to integers
-			uidInt, err := strconv.Atoi(uid)
-			if err != nil {
-				log.Errorf("Error converting UID: %v", err)
-				return
-			}
-			gidInt, err := strconv.Atoi(gid)
-			if err != nil {
-				log.Errorf("Error converting GID: %v", err)
-				return
-			}
-
-			log.Infof("Setting uid and gid to target user: %s, uid: %d, gid: %d", targetUser.Username, uidInt, gidInt)
-
-			// Set GID (Group ID)
-			err = syscall.Setgid(gidInt)
-			if err != nil {
-				log.Errorf("Error setting GID: %v", err)
-				return
-			}
-
-			// Set UID (User ID)
-			err = syscall.Setuid(uidInt)
-			if err != nil {
-				log.Errorf("Error setting UID: %v", err)
-				return
-			}
-
-			//Should reassign manually because user.Current() locked to init value
-			log.Infof("Set GID and UID success without error. Store user as current OS User")
-			repman.OsUser = targetUser
-
-			log.Infof("Running as user: %s", repman.OsUser.Username)
-		} else {
-			log.Infof("Running as root as no user defined in --user flag")
-		}
+func (repman *ReplicationManager) GenerateKeygen() error {
+	_, err := os.Stat(repman.Conf.MonitoringKeyPath)
+	// Check if the file does not exist
+	if err == nil {
+		repman.Logrus.Infof("Repman discovered that key is already generated. Using existing key.")
 	} else {
-		log.Infof("Unable to change non-root user, current user: %s", repman.OsUser.Username)
+		if !os.IsNotExist(err) {
+			repman.Logrus.Errorf("Error when checking key for encryption: %v", err)
+			return err
+		}
+
+		repman.Logrus.Infof("Key not found. Generating : %s", repman.Conf.MonitoringKeyPath)
+		p := crypto.Password{}
+		var err error
+		p.Key, err = crypto.Keygen()
+		if err != nil {
+			repman.Logrus.Errorf("Error when generating key for encryption: %v", err)
+			return err
+		}
+		err = crypto.WriteKey(p.Key, repman.Conf.MonitoringKeyPath, false)
+		if err != nil {
+			repman.Logrus.Errorf("Error when writing key for encryption: %v", err)
+			return err
+		}
 	}
+
+	return nil
 }
 
 func (repman *ReplicationManager) Run() error {
@@ -1548,6 +1496,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.MemProfile = memprofile
 	repman.CpuProfile = cpuprofile
 	repman.clog = clog.New()
+	repman.CheckSumConfig = make(map[string]hash.Hash)
 
 	repman.clog.SetLevel(repman.Conf.ToLogrusLevel(repman.Conf.LogGraphiteLevel))
 	if repman.CpuProfile != "" {
@@ -1693,9 +1642,9 @@ func (repman *ReplicationManager) Run() error {
 	//repman.InitRestic()
 	repman.Logrus.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
 	repman.Logrus.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
+	// repman.GenerateKeygen()
 
-	repman.initKeys()
-	repman.LimitPrivileges()
+	// If there's an existing encryption key, decrypt the passwords
 
 	for _, gl := range repman.ClusterList {
 		repman.StartCluster(gl)
@@ -1705,6 +1654,8 @@ func (repman *ReplicationManager) Run() error {
 
 		cluster.SetCarbonLogger(repman.clog)
 	}
+
+	repman.initKeys()
 
 	if WithProvisioning != "ON" {
 		repman.Conf.HttpUseReact = false
@@ -1873,6 +1824,7 @@ func (repman *ReplicationManager) Run() error {
 
 	}()
 
+	var counter int64 = 0
 	for repman.exit == false {
 		if repman.Conf.Arbitration {
 			repman.Heartbeat()
@@ -1881,6 +1833,10 @@ func (repman *ReplicationManager) Run() error {
 			//			agents = svc.GetNodes()
 		}
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
+		if counter%60 == 0 {
+			repman.Save()
+		}
+		counter++
 	}
 	if repman.exitMsg != "" {
 		repman.Logrus.Println(repman.exitMsg)
@@ -1922,26 +1878,9 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
 	//log.Infof("Default config for %s workingdir:\n %v", clusterName, myClusterConf.DefaultFlagMap)
 
-	// Use default key if cluster key is not found
-	if repman.VersionConfs[clusterName].ConfInit.ConfDirExtra == "" {
-		repman.VersionConfs[clusterName].ConfInit.ConfDirExtra = repman.Conf.ConfDirExtra
-	}
-
-	// Use default key if cluster key is not found
-	k, _ := repman.VersionConfs[clusterName].ConfInit.LoadEncrytionKey()
-	if k == nil && repman.Conf.SecretKey != nil {
-		repman.VersionConfs[clusterName].ConfInit.SecretKey = repman.Conf.SecretKey
-		repman.VersionConfs[clusterName].ConfInit.MonitoringKeyPath = repman.Conf.MonitoringKeyPath
-	}
-
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
-
-	if repman.currentCluster.Conf.SecretKey == nil {
-		repman.currentCluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(repman.currentCluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
-	}
-
 	go repman.currentCluster.Run()
 	return repman.currentCluster, nil
 }
@@ -2074,6 +2013,10 @@ func (repman *ReplicationManager) Stop() {
 		}
 		pprof.WriteHeapProfile(f)
 		f.Close()
+	}
+	repman.Save()
+	if repman.Conf.GitUrl != "" {
+		go repman.PushConfigToGit(repman.Conf.Secrets["git-acces-token"].Value, repman.Conf.GitUsername, repman.Conf.WorkingDir)
 	}
 
 }
