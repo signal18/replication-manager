@@ -805,6 +805,7 @@ func (cluster *Cluster) StateProcessing() {
 			}
 
 			//		cluster.statecloseChan <- s
+			cluster.CheckAlert(s, true)
 			cluster.BashScriptCloseSate(s)
 		}
 
@@ -819,7 +820,7 @@ func (cluster *Cluster) StateProcessing() {
 
 		for _, s := range cluster.StateMachine.GetLastOpenedStates() {
 
-			cluster.CheckAlert(s)
+			cluster.CheckAlert(s, false)
 			cluster.BashScriptOpenSate(s)
 
 		}
