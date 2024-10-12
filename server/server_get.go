@@ -22,6 +22,9 @@ func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Clust
 }
 
 func (repman *ReplicationManager) GetExtraConfigDir() string {
+	if repman.Conf.ConfDirExtra != "" {
+		return repman.Conf.ConfDirExtra
+	}
 
 	if repman.Conf.WithEmbed == "ON" {
 		return repman.OsUser.HomeDir + "/.config/replication-manager"

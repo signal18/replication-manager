@@ -17,10 +17,12 @@ import (
 	"log/syslog"
 	"net"
 	"os/signal"
+	"os/user"
 	"runtime"
 	"runtime/pprof"
 	"sort"
 	"sync"
+	"syscall"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -29,7 +31,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v5"
+	git_obj "github.com/go-git/go-git/v5/plumbing/object"
+	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
+	"github.com/pelletier/go-toml"
 	"github.com/spf13/viper"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
@@ -48,10 +54,10 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
-	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/pflag"
 )
 
@@ -63,6 +69,7 @@ type ReplicationManager struct {
 	Version          string                            `json:"version"`
 	Fullversion      string                            `json:"fullVersion"`
 	Os               string                            `json:"os"`
+	OsUser           *user.User                        `json:"osUser"`
 	Arch             string                            `json:"arch"`
 	MemProfile       string                            `json:"memprofile"`
 	CpuProfile       string                            `json:"cpuprofile"`
@@ -198,6 +205,7 @@ type Heartbeat struct {
 }
 
 var confs = make(map[string]config.Config)
+var cmdUser string
 var cfgGroup string
 var cfgGroupIndex int
 
@@ -1189,7 +1197,13 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		cf1.SetEnvPrefix("DEFAULT")
 		repman.initAlias(cf1)
 		cf1.Unmarshal(&conf)
-		conf.LoadEncrytionKey()
+
+		// Generate default keygen
+		conf.GenerateKey(repman.Logrus)
+		k, _ := conf.LoadEncrytionKey()
+		if k == nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key in global section")
+		}
 		repman.Conf = conf
 
 	}
@@ -1453,33 +1467,78 @@ func (repman *ReplicationManager) InitRestic() error {
 	return nil
 }
 
-func (repman *ReplicationManager) GenerateKeygen() error {
-	_, err := os.Stat(repman.Conf.MonitoringKeyPath)
-	// Check if the file does not exist
-	if err == nil {
-		repman.Logrus.Infof("Repman discovered that key is already generated. Using existing key.")
-	} else {
-		if !os.IsNotExist(err) {
-			repman.Logrus.Errorf("Error when checking key for encryption: %v", err)
-			return err
-		}
-
-		repman.Logrus.Infof("Key not found. Generating : %s", repman.Conf.MonitoringKeyPath)
-		p := crypto.Password{}
-		var err error
-		p.Key, err = crypto.Keygen()
-		if err != nil {
-			repman.Logrus.Errorf("Error when generating key for encryption: %v", err)
-			return err
-		}
-		err = crypto.WriteKey(p.Key, repman.Conf.MonitoringKeyPath, false)
-		if err != nil {
-			repman.Logrus.Errorf("Error when writing key for encryption: %v", err)
-			return err
-		}
+func (repman *ReplicationManager) InitUser() {
+	var err error
+	var currentUser *user.User
+	// Get the current user
+	currentUser, err = user.Current()
+	if err != nil {
+		log.Errorf("Error getting current user: %v", err)
+		return
 	}
 
-	return nil
+	repman.OsUser = currentUser
+}
+
+func (repman *ReplicationManager) LimitPrivileges() {
+	var err error
+	var targetUser *user.User
+
+	// Check if the current user is root (UID 0)
+	if repman.OsUser.Uid == "0" {
+		if cmdUser != "" {
+			log.Infof("Switching from root to less privileged user: %s", cmdUser)
+
+			// Lookup the user you want to switch to
+			targetUser, err = user.Lookup(cmdUser)
+			if err != nil {
+				log.Errorf("Error looking up user: %v", err)
+				return
+			}
+
+			// Get the user's UID and GID
+			uid := targetUser.Uid
+			gid := targetUser.Gid
+
+			// Convert UID and GID to integers
+			uidInt, err := strconv.Atoi(uid)
+			if err != nil {
+				log.Errorf("Error converting UID: %v", err)
+				return
+			}
+			gidInt, err := strconv.Atoi(gid)
+			if err != nil {
+				log.Errorf("Error converting GID: %v", err)
+				return
+			}
+
+			log.Infof("Setting uid and gid to target user: %s, uid: %d, gid: %d", targetUser.Username, uidInt, gidInt)
+
+			// Set GID (Group ID)
+			err = syscall.Setgid(gidInt)
+			if err != nil {
+				log.Errorf("Error setting GID: %v", err)
+				return
+			}
+
+			// Set UID (User ID)
+			err = syscall.Setuid(uidInt)
+			if err != nil {
+				log.Errorf("Error setting UID: %v", err)
+				return
+			}
+
+			//Should reassign manually because user.Current() locked to init value
+			log.Infof("Set GID and UID success without error. Store user as current OS User")
+			repman.OsUser = targetUser
+
+			log.Infof("Running as user: %s", repman.OsUser.Username)
+		} else {
+			log.Infof("Running as root as no user defined in --user flag")
+		}
+	} else {
+		log.Infof("Unable to change non-root user, current user: %s", repman.OsUser.Username)
+	}
 }
 
 func (repman *ReplicationManager) Run() error {
@@ -1645,9 +1704,9 @@ func (repman *ReplicationManager) Run() error {
 	//repman.InitRestic()
 	repman.Logrus.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
 	repman.Logrus.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
-	// repman.GenerateKeygen()
 
-	// If there's an existing encryption key, decrypt the passwords
+	repman.initKeys()
+	repman.LimitPrivileges()
 
 	for _, gl := range repman.ClusterList {
 		repman.StartCluster(gl)
@@ -1657,8 +1716,6 @@ func (repman *ReplicationManager) Run() error {
 
 		cluster.SetCarbonLogger(repman.clog)
 	}
-
-	repman.initKeys()
 
 	if WithProvisioning != "ON" {
 		repman.Conf.HttpUseReact = false
@@ -1881,9 +1938,26 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
 	//log.Infof("Default config for %s workingdir:\n %v", clusterName, myClusterConf.DefaultFlagMap)
 
+	// Use default key if cluster key is not found
+	if repman.VersionConfs[clusterName].ConfInit.ConfDirExtra == "" {
+		repman.VersionConfs[clusterName].ConfInit.ConfDirExtra = repman.Conf.ConfDirExtra
+	}
+
+	// Use default key if cluster key is not found
+	k, _ := repman.VersionConfs[clusterName].ConfInit.LoadEncrytionKey()
+	if k == nil && repman.Conf.SecretKey != nil {
+		repman.VersionConfs[clusterName].ConfInit.SecretKey = repman.Conf.SecretKey
+		repman.VersionConfs[clusterName].ConfInit.MonitoringKeyPath = repman.Conf.MonitoringKeyPath
+	}
+
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
+
+	if repman.currentCluster.Conf.SecretKey == nil {
+		repman.currentCluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(repman.currentCluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
+	}
+
 	go repman.currentCluster.Run()
 	return repman.currentCluster, nil
 }
@@ -2117,4 +2191,215 @@ func (repman *ReplicationManager) InitGrants() error {
 func IsDefault(p string, v *viper.Viper) bool {
 
 	return false
+}
+
+func (repman *ReplicationManager) PushConfigToGit(tok string, user string, dir string) {
+
+	if repman.Conf.LogGit {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Push default to git : tok %s, dir %s, user %s\n", repman.Conf.PrintSecret(tok), dir, user)
+	}
+	auth := &git_https.BasicAuth{
+		Username: user, // yes, this can be anything except an empty string
+		Password: tok,
+	}
+	path := dir
+	r, err := git.PlainOpen(path)
+	if err != nil && repman.Conf.LogGit {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot PlainOpen : %s", err)
+		return
+	}
+
+	w, err := r.Worktree()
+	if err != nil && repman.Conf.LogGit {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Worktree : %s", err)
+		return
+	}
+
+	msg := "Update default.toml file"
+
+	// Adds the new file to the staging area.
+	err = w.AddGlob("*.toml")
+	if err != nil && repman.Conf.LogGit {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add %s : %s", "*.toml", err)
+	}
+
+	_, err = w.Commit(msg, &git.CommitOptions{
+		Author: &git_obj.Signature{
+			Name: "Replication-manager",
+			When: time.Now(),
+		},
+	})
+
+	if err != nil && repman.Conf.LogGit {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Commit : %s", err)
+	}
+
+	// push using default options
+	err = r.Push(&git.PushOptions{Auth: auth})
+	if err != nil && repman.Conf.LogGit {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Push : %s", err)
+
+	}
+}
+
+func (repman *ReplicationManager) Overwrite(has_changed bool) error {
+
+	if repman.Conf.ConfRewrite {
+		var myconf = make(map[string]config.Config)
+
+		myconf["overwrite-default"] = repman.Conf
+
+		file, err := os.OpenFile(repman.Conf.WorkingDir+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/overwrite.toml")
+			}
+			return err
+		}
+		defer file.Close()
+
+		readconf, _ := toml.Marshal(repman.Conf)
+		t, _ := toml.LoadBytes(readconf)
+		s := t
+		keys := t.Keys()
+		for _, key := range keys {
+
+			v, ok := repman.Conf.ImmuableFlagMap[key]
+
+			// Won't handle secrets currently. Will be handled later when scope already clear
+			_, ok2 := repman.Conf.Secrets[key]
+			if !ok || fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) || ok2 {
+				s.Delete(key)
+			}
+
+		}
+
+		file.WriteString("[overwrite-default]\n")
+		s.WriteTo(file)
+
+		new_h := md5.New()
+		if _, err := io.Copy(new_h, file); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+		}
+
+		h, ok := repman.CheckSumConfig["overwrite"]
+		if !ok {
+			has_changed = true
+		}
+		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
+			has_changed = true
+		}
+
+		repman.CheckSumConfig["overwrite"] = new_h
+
+	}
+
+	return nil
+}
+
+func (repman *ReplicationManager) Save() error {
+	//Needed to preserve diretory before Pull
+	if !repman.IsGitPull && repman.Conf.Cloud18 {
+		return nil
+	}
+	_, file, no, ok := runtime.Caller(1)
+	if ok {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
+	}
+
+	has_changed := false
+
+	if repman.Conf.ConfRewrite {
+
+		var myconf = make(map[string]config.Config)
+
+		myconf["saved-default"] = repman.Conf
+
+		file, err := os.OpenFile(repman.Conf.WorkingDir+"/default.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/default.toml")
+			}
+			return err
+		}
+		defer file.Close()
+		file.WriteString("[saved-default]\ntitle = \"replication-manager\" \n")
+		readconf, _ := toml.Marshal(repman.Conf)
+		t, _ := toml.LoadBytes(readconf)
+		s := t
+		keys := t.Keys()
+		for _, key := range keys {
+			_, ok := repman.Conf.ImmuableFlagMap[key]
+			if ok {
+				s.Delete(key)
+			} else {
+				v, ok := repman.Conf.DefaultFlagMap[key]
+				_, ok2 := repman.Conf.Secrets[key]
+
+				// Won't handle secrets currently. Will be handled later when scope already clear
+				if !ok || fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) || ok2 {
+					s.Delete(key)
+				}
+			}
+		}
+
+		s.WriteTo(file)
+		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", repman.Conf.ImmuableFlagMap)
+		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", repman.Conf.DynamicFlagMap)
+		new_h := md5.New()
+		if _, err := io.Copy(new_h, file); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+		}
+
+		h, ok := repman.CheckSumConfig["saved"]
+		if !ok {
+			has_changed = true
+		}
+		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
+			has_changed = true
+		}
+
+		repman.CheckSumConfig["saved"] = new_h
+
+		file2, err := os.OpenFile(repman.Conf.WorkingDir+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/"+"/immutable.toml")
+			}
+			return err
+		}
+		defer file2.Close()
+		for key, val := range repman.Conf.ImmuableFlagMap {
+			_, ok := repman.Conf.Secrets[key]
+			if !ok {
+				if fmt.Sprintf("%T", val) == "string" {
+					file2.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
+				} else {
+					file2.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
+				}
+			}
+		}
+
+		new_h = md5.New()
+		if _, err := io.Copy(new_h, file2); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+		}
+
+		h, ok = repman.CheckSumConfig["immutable"]
+		if !ok {
+			has_changed = true
+		}
+		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
+			has_changed = true
+		}
+
+		repman.CheckSumConfig["immutable"] = new_h
+
+		err = repman.Overwrite(has_changed)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+		}
+	}
+
+	return nil
 }
