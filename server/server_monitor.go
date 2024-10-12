@@ -19,6 +19,7 @@ import (
 	mysqllog "log"
 
 	"github.com/go-sql-driver/mysql"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -27,12 +28,14 @@ import (
 var defaultFlagMap map[string]interface{}
 
 func init() {
-	fmt.Println("init")
+
 	conf.ProvOrchestrator = "local"
 	var errLog = mysql.Logger(mysqllog.New(io.Discard, "", 0))
 	mysql.SetLogger(errLog)
 	if RepMan == nil {
 		RepMan = new(ReplicationManager)
+		log.Infof("Monitor command initialyzed")
+
 		RepMan.InitUser()
 	}
 
@@ -76,10 +79,9 @@ For interacting with this daemon use,
 - Command line clients: "replication-manager-cli switchover|failover|topology|test".
 - HTTP dashboards on port 10001
 - HTTPS dashboards on port 10005
-
 `,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("monitor cmd")
+		//	fmt.Println("monitor cmd")
 		RepMan.SetDefaultFlags(viper.GetViper())
 		RepMan.CommandLineFlag = GetCommandLineFlag(cmd)
 		//	RepMan.DefaultFlagMap = defaultFlagMap

@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"hash"
 	"hash/crc64"
@@ -205,7 +206,7 @@ type Heartbeat struct {
 }
 
 var confs = make(map[string]config.Config)
-var cmdUser string
+
 var cfgGroup string
 var cfgGroupIndex int
 
@@ -230,30 +231,55 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	if WithDeprecate == "ON" {
 		//	initDeprecated() // not needed used alias in main
 	}
+	var usr string
+	var config string
+	//var pid string
+	flag.StringVar(&usr, "user", "", "help message")
+	//flag.StringVar(&pid, "pidfile", "", "help message")
+	flag.StringVar(&config, "config", "", "help message")
+	flag.Parse()
 
+	if usr == "" {
+		usr = repman.OsUser.Name
+	}
+	flags.StringVar(&conf.MonitoringSystemUser, "user", "", "OS User for running repman")
 	if WithTarball == "ON" {
 		flags.StringVar(&conf.BaseDir, "monitoring-basedir", "/usr/local/replication-manager", "Path to a basedir where data and share sub directory can be found")
+		flags.StringVar(&conf.WorkingDir, "monitoring-datadir", "/usr/local/replication-manager/data", "Path to write temporary and persistent files")
 		flags.StringVar(&conf.ConfDir, "monitoring-confdir", "/usr/local/replication-manager/etc", "Path to a config directory")
+		flags.StringVar(&conf.ShareDir, "monitoring-sharedir", "/usr/local/replication-manager/share", "Path to share files")
+		flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", "/usr/local/replication-manager/etc", "Path to an extra writable config directory default to user home directory ./.config/replication-manage")
+		flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", "/usr/local/replication-manager/etc/recover", "Path to abackup config directory default to user home directory ./.config/replication-manage/recover")
+
 	} else if WithEmbed == "ON" {
-		flags.StringVar(&conf.BaseDir, "monitoring-basedir", repman.GetExtraDataDir(), "Path to a basedir where data and share sub directory can be found")
-		flags.StringVar(&conf.ConfDir, "monitoring-confdir", repman.GetExtraConfigDir(), "Path to a config directory")
-	} else {
+		flags.StringVar(&conf.BaseDir, "monitoring-basedir", repman.OsUser.HomeDir+"/replication-manager", "Path to a basedir where data and share sub directory can be found")
+		flags.StringVar(&conf.WorkingDir, "monitoring-datadir", repman.OsUser.HomeDir+"/replication-manager/data", "Path to write temporary and persistent files")
+		flags.StringVar(&conf.ConfDir, "monitoring-confdir", repman.OsUser.HomeDir+"/.config/replication-manager", "Path to a config directory")
+		flags.StringVar(&conf.ShareDir, "monitoring-sharedir", repman.OsUser.HomeDir+"/replication-manager/share", "Path to share files")
+		flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", repman.OsUser.HomeDir+"/.config/replication-manager", "Path to an extra writable config directory default to user home directory ./.config/replication-manage")
+		flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", repman.OsUser.HomeDir+"/.config/replication-manage/recoverr", "Path to backup writable config directory default to user home directory ./.config/replication-manage/recover")
+
+	} else { //package
 		flags.StringVar(&conf.BaseDir, "monitoring-basedir", "system", "Path to a basedir where a data and share directory can be found")
+		flags.StringVar(&conf.WorkingDir, "monitoring-datadir", "/var/lib/replication-manager", "Path to write temporary and persistent files")
 		flags.StringVar(&conf.ConfDir, "monitoring-confdir", "/etc/replication-manager", "Path to a config directory")
-	}
-	if runtime.GOOS == "darwin" {
-		flags.StringVar(&conf.ShareDir, "monitoring-sharedir", "/opt/replication-manager/share", "Path to share files")
-	} else {
-		flags.StringVar(&conf.ShareDir, "monitoring-sharedir", "/usr/share/replication-manager", "Path to share files")
+		if runtime.GOOS == "darwin" {
+			flags.StringVar(&conf.ShareDir, "monitoring-sharedir", "/opt/replication-manager/share", "Path to share files")
+		} else {
+			flags.StringVar(&conf.ShareDir, "monitoring-sharedir", "/usr/share/replication-manager", "Path to share files")
+		}
+		ExpectedUser, err := user.Lookup(usr)
+		if err == nil {
+			flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", ExpectedUser.HomeDir+"/.config/replication-manager", "Path to an extra writable config directory default to user home directory ./.config/replication-manage")
+			flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", ExpectedUser.HomeDir+"/.config/replication-manager/recover", "Path to an extra writable config directory default to user home directory ./.config/replication-manage/recover")
+		} else {
+			flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", "", "Path to an extra writable config directory default to user home directory ./.config/replication-manage")
+			flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", "", "Path to an extra writable config directory default to user home directory ./.config/replication-manage/recover")
+		}
 	}
 
-	flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", "", "Path to an extta writable config directory default to user home directory ./.replication-manage")
-	if conf.ConfDirExtra != "" {
-		conf.ConfDir = conf.ConfDirExtra
-	}
 	// Important flags for monitoring
 	flags.BoolVar(&conf.ConfRewrite, "monitoring-save-config", true, "Save configuration changes to <monitoring-datadir>/<cluster_name> ")
-	flags.StringVar(&conf.WorkingDir, "monitoring-datadir", "/var/lib/replication-manager", "Path to write temporary and persistent files")
 	flags.Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in seconds")
 
 	//not working so far
@@ -936,32 +962,37 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 	//test si y'a  un repertoire ./.replication-manager/config.toml sinon on le créer depuis embed
 	//test y'a  un repertoire ./.replication-manager/data sinon on le créer
 	//test y'a  un repertoire ./.replication-manager/share sinon on le créer
-	if _, err := os.Stat(repman.GetExtraConfigDir()); os.IsNotExist(err) {
-		os.MkdirAll(repman.GetExtraConfigDir(), os.ModePerm)
-		os.MkdirAll(repman.GetExtraConfigDir()+"/cluster.d", os.ModePerm)
-		os.MkdirAll(repman.GetExtraConfigDir()+"/recover", os.ModePerm)
+	if conf.ConfDirBackup == "" {
+		repman.Logrus.Fatalf("Monitoring config backup directory not defined")
+
+	}
+
+	if _, err := os.Stat(conf.ConfDirExtra); os.IsNotExist(err) {
+		os.MkdirAll(conf.ConfDirExtra, os.ModePerm)
+		os.MkdirAll(conf.ConfDirExtra+"/cluster.d", os.ModePerm)
+		os.MkdirAll(conf.ConfDirBackup, os.ModePerm)
 	}
 	if conf.WithEmbed == "ON" {
-		if _, err := os.Stat(repman.GetExtraDataDir()); os.IsNotExist(err) {
-			os.MkdirAll(repman.GetExtraDataDir(), os.ModePerm)
-			os.MkdirAll(repman.GetExtraDataDir()+"/data", os.ModePerm)
-			os.MkdirAll(repman.GetExtraDataDir()+"/share", os.ModePerm)
+		if _, err := os.Stat(conf.BaseDir); os.IsNotExist(err) {
+			os.MkdirAll(conf.BaseDir, os.ModePerm)
+			os.MkdirAll(conf.BaseDir+"/data", os.ModePerm)
+			os.MkdirAll(conf.BaseDir+"/share", os.ModePerm)
 		}
 
-		if _, err := os.Stat(repman.GetExtraConfigDir() + "/config.toml"); os.IsNotExist(err) {
+		if _, err := os.Stat(conf.ConfDir + "/config.toml"); os.IsNotExist(err) {
 
 			file, err := etc.EmbededDbModuleFS.ReadFile("local/embed/config.toml")
 			if err != nil {
 				repman.Logrus.Errorf("failed opening file because: %s", err.Error())
 				return err
 			}
-			err = os.WriteFile(repman.GetExtraConfigDir()+"/config.toml", file, 0644) //remplacer nil par l'obj créer pour config.toml dans etc/local/embed
+			err = os.WriteFile(conf.ConfDir+"/config.toml", file, 0644) //remplacer nil par l'obj créer pour config.toml dans etc/local/embed
 			if err != nil {
 				repman.Logrus.Errorf("failed write file because: %s", err.Error())
 				return err
 			}
-			if _, err := os.Stat("./.replication-manager/config.toml"); os.IsNotExist(err) {
-				repman.Logrus.Errorf("failed create "+repman.GetExtraConfigDir()+"config.toml file because: %s", err.Error())
+			if _, err := os.Stat(conf.BaseDir + "/config.toml"); os.IsNotExist(err) {
+				repman.Logrus.Errorf("failed create "+conf.ConfDirBackup+"config.toml file because: %s", err.Error())
 				return err
 			}
 		}
@@ -1006,7 +1037,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		if conf.WithEmbed == "OFF" {
 			fistRead.AddConfigPath("/etc/replication-manager/")
 		} else {
-			fistRead.AddConfigPath(repman.GetExtraConfigDir())
+			fistRead.AddConfigPath(conf.ConfDirExtra)
 		}
 		fistRead.AddConfigPath(".")
 
@@ -1019,8 +1050,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		}
 		//if embed, add config path
 		if conf.WithEmbed == "ON" {
-			if _, err := os.Stat(repman.GetExtraConfigDir() + "/config.toml"); os.IsNotExist(err) {
-				repman.Logrus.Warning("No config file " + repman.GetExtraConfigDir() + "/config.toml ")
+			if _, err := os.Stat(conf.ConfDirExtra + "/config.toml"); os.IsNotExist(err) {
+				repman.Logrus.Warning("No config file " + conf.ConfDirExtra + "/config.toml ")
 			}
 		} else {
 			if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
@@ -1486,11 +1517,11 @@ func (repman *ReplicationManager) LimitPrivileges() {
 
 	// Check if the current user is root (UID 0)
 	if repman.OsUser.Uid == "0" {
-		if cmdUser != "" {
-			log.Infof("Switching from root to less privileged user: %s", cmdUser)
+		if repman.Conf.MonitoringSystemUser != "" {
+			log.Infof("Switching from root to less privileged user: %s", repman.Conf.MonitoringSystemUser)
 
 			// Lookup the user you want to switch to
-			targetUser, err = user.Lookup(cmdUser)
+			targetUser, err = user.Lookup(repman.Conf.MonitoringSystemUser)
 			if err != nil {
 				log.Errorf("Error looking up user: %v", err)
 				return
@@ -1937,11 +1968,6 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
 	//log.Infof("Default config for %s workingdir:\n %v", clusterName, myClusterConf.DefaultFlagMap)
-
-	// Use default key if cluster key is not found
-	if repman.VersionConfs[clusterName].ConfInit.ConfDirExtra == "" {
-		repman.VersionConfs[clusterName].ConfInit.ConfDirExtra = repman.Conf.ConfDirExtra
-	}
 
 	// Use default key if cluster key is not found
 	k, _ := repman.VersionConfs[clusterName].ConfInit.LoadEncrytionKey()

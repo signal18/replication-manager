@@ -7,10 +7,7 @@
 package server
 
 import (
-	"os"
-
 	"github.com/signal18/replication-manager/cluster"
-	log "github.com/sirupsen/logrus"
 )
 
 func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Cluster {
@@ -19,22 +16,6 @@ func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Clust
 	c = repman.Clusters[clname]
 	repman.Unlock()
 	return c
-}
-
-func (repman *ReplicationManager) GetExtraConfigDir() string {
-	if conf.WithEmbed == "ON" {
-		return repman.OsUser.HomeDir + "/.config/replication-manager"
-	}
-
-	return "/home/repman/.config/replication-manager"
-}
-
-func (repman *ReplicationManager) GetExtraDataDir() string {
-	dirname, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatal(err)
-	}
-	return dirname + "/replication-manager"
 }
 
 // func (repman *ReplicationManager) GenerateKey(conf *config.Config) error {

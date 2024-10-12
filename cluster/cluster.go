@@ -1088,7 +1088,7 @@ func (cluster *Cluster) PushConfigToExtraDir(dir string, name string) {
 	}
 
 	srcDir := cluster.Conf.WorkingDir + "/" + cluster.Name
-	dstDir := cluster.Conf.ConfDirExtra + "/" + cluster.Name
+	dstDir := cluster.Conf.ConfDirBackup + "/" + cluster.Name
 
 	_, err = os.Stat(srcDir)
 	if err != nil {

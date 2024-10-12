@@ -48,10 +48,12 @@ type Config struct {
 	WithEmbed                                 string                 `mapstructure:"-" toml:"-" json:"withEmbed"`
 	MemProfile                                string                 `mapstructure:"-" toml:"-" json:"-"`
 	Include                                   string                 `mapstructure:"include" toml:"-" json:"-"`
+	MonitoringSystemUser                      string                 `mapstructure:"user" toml:"-" json:"-"`
 	BaseDir                                   string                 `mapstructure:"monitoring-basedir" toml:"monitoring-basedir" json:"monitoringBasedir"`
 	WorkingDir                                string                 `mapstructure:"monitoring-datadir" toml:"monitoring-datadir" json:"monitoringDatadir"`
 	ShareDir                                  string                 `mapstructure:"monitoring-sharedir" toml:"monitoring-sharedir" json:"monitoringSharedir"`
 	ConfDir                                   string                 `mapstructure:"monitoring-confdir" toml:"monitoring-confdir" json:"monitoringConfdir"`
+	ConfDirBackup                             string                 `mapstructure:"monitoring-confdir-backup" toml:"monitoring-confdir-backup" json:"monitoringConfdirBackup"`
 	ConfDirExtra                              string                 `mapstructure:"monitoring-confdir-extra" toml:"monitoring-confdir-extra" json:"monitoringConfdirExtra"`
 	ConfRewrite                               bool                   `mapstructure:"monitoring-save-config" toml:"monitoring-save-config" json:"monitoringSaveConfig"`
 	MonitoringSSLCert                         string                 `mapstructure:"monitoring-ssl-cert" toml:"monitoring-ssl-cert" json:"monitoringSSLCert"`
