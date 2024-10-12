@@ -31,6 +31,10 @@ func init() {
 	conf.ProvOrchestrator = "local"
 	var errLog = mysql.Logger(mysqllog.New(io.Discard, "", 0))
 	mysql.SetLogger(errLog)
+	if RepMan == nil {
+		RepMan = new(ReplicationManager)
+		RepMan.InitUser()
+	}
 
 	RepMan.AddFlags(monitorCmd.Flags(), &conf)
 
@@ -76,11 +80,9 @@ For interacting with this daemon use,
 `,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("monitor cmd")
-		RepMan = new(ReplicationManager)
 		RepMan.SetDefaultFlags(viper.GetViper())
 		RepMan.CommandLineFlag = GetCommandLineFlag(cmd)
 		//	RepMan.DefaultFlagMap = defaultFlagMap
-		RepMan.InitUser()
 		RepMan.InitConfig(conf)
 		RepMan.Run()
 	},
@@ -98,7 +100,6 @@ var configMergeCmd = &cobra.Command{
 		fmt.Printf("Start config-merge command !\n")
 		fmt.Printf("Cluster: %s\n", cfgGroup)
 		fmt.Printf("Config : %s\n", conf.ConfigFile)
-		RepMan = new(ReplicationManager)
 		RepMan.SetDefaultFlags(viper.GetViper())
 		//		RepMan.DefaultFlagMap = defaultFlagMap
 
