@@ -1111,6 +1111,8 @@ func (cluster *Cluster) PushConfigToExtraDir(dir string, name string) {
 		return
 	}
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Config : Success copying *.toml files to destination dir :%s", dstDir)
+
 }
 
 func (cluster *Cluster) Overwrite(has_changed bool) error {
