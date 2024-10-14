@@ -23,20 +23,22 @@ func (cluster *Cluster) OnPremiseProvisionBootsrapProxy(server DatabaseProxy, cl
 	if user, ok := cluster.APIUsers[adminuser]; ok {
 		adminpassword = user.Password
 	}
-	out, err := client.Cmd("export MYSQL_ROOT_PASSWORD=" + server.GetPass()).Cmd("export REPLICATION_MANAGER_URL=" + cluster.Conf.MonitorAddress + ":" + cluster.Conf.APIPort).Cmd("export REPLICATION_MANAGER_USER=" + adminuser).Cmd("export REPLICATION_MANAGER_PASSWORD=" + adminpassword).Cmd("export REPLICATION_MANAGER_HOST_NAME=" + server.GetHost()).Cmd("export REPLICATION_MANAGER_HOST_PORT=" + server.GetPort()).Cmd("export REPLICATION_MANAGER_CLUSTER_NAME=" + cluster.Name).SmartOutput()
-	if err != nil {
-		return errors.New("OnPremise Bootsrap via SSH %s" + err.Error())
-	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise Provisioning  : %s", string(out))
-	cmd := "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + server.GetType() + "/bootstrap | sh"
+	envs := "export REPLICATION_MANAGER_URL=\"" + cluster.Conf.APIPublicURL + "\""
+	envs += " REPLICATION_MANAGER_USER=\"" + adminuser + "\""
+	envs += " REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\""
+	envs += " REPLICATION_MANAGER_HOST_NAME=\"" + server.GetHost() + "\""
+	envs += " REPLICATION_MANAGER_HOST_PORT=\"" + server.GetPort() + "\""
+	envs += " REPLICATION_MANAGER_CLUSTER_NAME=\"" + cluster.Name + "\""
+        cmd := envs + "&& "
+	cmd += "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + server.GetType() + "/bootstrap | sh"
 	if cluster.Configurator.HaveDBTag("rpm") {
-		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + server.GetType() + "/bootstrap | sh"
+		cmd += "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + server.GetType() + "/bootstrap | sh"
 	}
 	if cluster.Configurator.HaveDBTag("package") {
-		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/package/linux/" + server.GetType() + "/bootstrap | sh"
+		cmd += "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/package/linux/" + server.GetType() + "/bootstrap | sh"
 	}
 
-	out, err = client.Cmd(cmd).SmartOutput()
+	out, err := client.Cmd(cmd).SmartOutput()
 	if err != nil {
 		return errors.New("OnPremise Bootsrap via SSH %s" + err.Error())
 	}
@@ -49,7 +51,7 @@ func (cluster *Cluster) OnPremiseConnectProxy(server DatabaseProxy) (*sshclient.
 	if cluster.IsInFailover() {
 		return nil, errors.New("OnPremise Provisioning cancel during connect")
 	}
-	if cluster.Conf.OnPremiseSSH {
+	if ! cluster.Conf.OnPremiseSSH {
 		return nil, errors.New("onpremise-ssh disable ")
 	}
 
