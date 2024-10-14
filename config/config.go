@@ -33,6 +33,7 @@ import (
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/spf13/viper"
@@ -47,10 +48,12 @@ type Config struct {
 	WithEmbed                                 string                 `mapstructure:"-" toml:"-" json:"withEmbed"`
 	MemProfile                                string                 `mapstructure:"-" toml:"-" json:"-"`
 	Include                                   string                 `mapstructure:"include" toml:"-" json:"-"`
+	MonitoringSystemUser                      string                 `mapstructure:"user" toml:"-" json:"-"`
 	BaseDir                                   string                 `mapstructure:"monitoring-basedir" toml:"monitoring-basedir" json:"monitoringBasedir"`
 	WorkingDir                                string                 `mapstructure:"monitoring-datadir" toml:"monitoring-datadir" json:"monitoringDatadir"`
 	ShareDir                                  string                 `mapstructure:"monitoring-sharedir" toml:"monitoring-sharedir" json:"monitoringSharedir"`
 	ConfDir                                   string                 `mapstructure:"monitoring-confdir" toml:"monitoring-confdir" json:"monitoringConfdir"`
+	ConfDirBackup                             string                 `mapstructure:"monitoring-confdir-backup" toml:"monitoring-confdir-backup" json:"monitoringConfdirBackup"`
 	ConfDirExtra                              string                 `mapstructure:"monitoring-confdir-extra" toml:"monitoring-confdir-extra" json:"monitoringConfdirExtra"`
 	ConfRewrite                               bool                   `mapstructure:"monitoring-save-config" toml:"monitoring-save-config" json:"monitoringSaveConfig"`
 	MonitoringSSLCert                         string                 `mapstructure:"monitoring-ssl-cert" toml:"monitoring-ssl-cert" json:"monitoringSSLCert"`
@@ -1300,6 +1303,88 @@ func (conf *Config) IsVaultUsed() bool {
 		return false
 	}
 	return true
+}
+
+func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
+	_, err := os.Stat(conf.MonitoringKeyPath)
+	// Check if the file does not exist
+	if err == nil {
+		Logger.Infof("Repman discovered that key is already generated. Using existing key.")
+		return nil
+	} else {
+		if !os.IsNotExist(err) {
+			Logger.Errorf("Error when checking key for encryption: %v", err)
+			return err
+		}
+
+		newdir := "/home/repman/.config/replication-manager/etc"
+		newpath := newdir + "/.replication-manager.key"
+
+		Logger.Infof("Key not found. Checking in extra path : %s", newpath)
+
+		_, err = os.Stat(newpath)
+		if err == nil {
+			Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", newpath)
+			conf.MonitoringKeyPath = newpath
+			return nil
+		} else {
+
+			Logger.Infof("Key not found. Generating : %s", conf.MonitoringKeyPath)
+
+			if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
+				newdir := "/home/repman/.config/replication-manager/etc"
+				newpath := newdir + "/.replication-manager.key"
+
+				Logger.Infof("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, newpath)
+
+				_, err := os.Stat(newpath)
+				if err == nil {
+					Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", newpath)
+					return nil
+				}
+
+				_, err = os.Stat(newdir)
+				if err != nil {
+					if !os.IsNotExist(err) {
+						Logger.Errorf("Can't access %s : %v", newdir, err)
+						return err
+					} else {
+						err = os.MkdirAll(newdir, 0755)
+						if err != nil {
+							Logger.Errorf("Can't create directory %s : %v", newdir, err)
+							return err
+						}
+					}
+				}
+
+				if err := misc.TryOpenFile(newpath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
+					Logger.Errorf("Can't write keys in %s : %v", newdir, err)
+					return err
+				}
+
+				// New path is writable
+				conf.MonitoringKeyPath = newpath
+				Logger.Infof("Path writable. Flag 'monitoring-key-path' set to: %s.", newpath)
+				Logger.Infof("Generating key on: %s", conf.MonitoringKeyPath)
+
+			}
+		}
+
+		p := crypto.Password{}
+		var err error
+		p.Key, err = crypto.Keygen()
+		if err != nil {
+			Logger.Errorf("Error when generating key for encryption: %v", err)
+			return err
+		}
+		err = crypto.WriteKey(p.Key, conf.MonitoringKeyPath, false)
+		if err != nil {
+			Logger.Errorf("Error when writing key for encryption: %v", err)
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (conf *Config) LoadEncrytionKey() ([]byte, error) {

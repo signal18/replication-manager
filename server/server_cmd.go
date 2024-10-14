@@ -113,7 +113,6 @@ func initLogFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&conf.LogRotateMaxSize, "log-rotate-max-size", 5, "Log rotate max size")
 	cmd.Flags().IntVar(&conf.LogRotateMaxBackup, "log-rotate-max-backup", 7, "Log rotate max backup")
 	cmd.Flags().IntVar(&conf.LogRotateMaxAge, "log-rotate-max-age", 7, "Log rotate max age")
-
 	cmd.Flags().IntVar(&conf.LogLevel, "log-level", 3, "Log verbosity level. Default 3 (INFO)")
 	cmd.Flags().BoolVar(&conf.LogConfigLoad, "log-config-load", true, "Log config decryption")
 	cmd.Flags().IntVar(&conf.LogConfigLoadLevel, "log-config-load-level", 2, "Log Config Load Level. Default 2 (WARNING)")

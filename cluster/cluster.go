@@ -39,6 +39,7 @@ import (
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 	clog "github.com/sirupsen/logrus"
@@ -105,6 +106,8 @@ type Cluster struct {
 	IsNotMonitoring               bool                 `json:"isNotMonitoring"`
 	IsCapturing                   bool                 `json:"isCapturing"`
 	IsGitPull                     bool                 `json:"isGitPull"`
+	IsGitPush                     bool                 `json:"isGitPush"`
+	IsExportPush                  bool                 `json:"isExportPush"`
 	IsAlertDisable                bool                 `json:"isAlertDisable"`
 	Conf                          config.Config        `json:"config"`
 	Confs                         *config.ConfVersion  `json:"-"`
@@ -380,18 +383,21 @@ func (cluster *Cluster) InitFromConf() {
 	// Initialize the state machine at this stage where everything is fine.
 	cluster.StateMachine = new(state.StateMachine)
 	cluster.StateMachine.Init()
-	k, _ := cluster.Conf.LoadEncrytionKey()
-	if k == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key")
-		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
-	}
+
+	// k, _ := cluster.Conf.LoadEncrytionKey()
+	// if k == nil {
+	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key")
+	// 	cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
+	// }
 
 	if cluster.Conf.Interactive {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover in interactive mode")
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover in automatic mode")
 	}
-	log.Infof("Creating direcrory  %s", cluster.WorkingDir)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating directory  %s", cluster.WorkingDir)
+
 	//working directory of the cluster is working directory of server and cluster name
 	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {
 		//	os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
@@ -832,9 +838,7 @@ func (cluster *Cluster) Stop() {
 	defer cluster.Unlock()
 	//	cluster.scheduler.Stop()
 	cluster.Save()
-	if cluster.Conf.GitUrl != "" {
-		go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
-	}
+	cluster.PushConfigs()
 	cluster.exit = true
 
 }
@@ -842,6 +846,7 @@ func (cluster *Cluster) Stop() {
 func (cluster *Cluster) Save() error {
 	//Needed to preserve diretory before Pull
 	if !cluster.IsGitPull && cluster.Conf.Cloud18 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Cannot save cluster config, cloud18 active but config is not pulled yet.")
 		return nil
 	}
 	_, file, no, ok := runtime.Caller(1)
@@ -1009,6 +1014,11 @@ func (cluster *Cluster) Save() error {
 }
 
 func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, name string) {
+	// Prevent concurrent
+	cluster.IsGitPush = true
+	defer func() {
+		cluster.IsGitPush = false
+	}()
 
 	if cluster.Conf.LogGit {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Push to git : tok %s, dir %s, user %s, name %s\n", cluster.Conf.PrintSecret(tok), dir, user, name)
@@ -1064,6 +1074,43 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Push : %s", err)
 
 	}
+}
+
+func (cluster *Cluster) PushConfigToExtraDir(dir string, name string) {
+	var err error
+	cluster.IsExportPush = true
+	defer func() {
+		cluster.IsExportPush = false
+	}()
+
+	if cluster.Conf.WithEmbed == "ON" {
+		return
+	}
+
+	srcDir := cluster.Conf.WorkingDir + "/" + cluster.Name
+	dstDir := cluster.Conf.ConfDirBackup + "/" + cluster.Name
+
+	_, err = os.Stat(srcDir)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Config : error accessing source dir (%s): %s", srcDir, err)
+		return
+	}
+
+	_, err = os.Stat(dstDir)
+	if os.IsNotExist(err) {
+		err = os.MkdirAll(dstDir, 0755)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Config : error creating destination dir (%s)  : %s", dstDir, err)
+			return
+		}
+	}
+
+	err = misc.CopyFilesWithSuffix(srcDir, dstDir, ".toml")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Config : error copying *.toml files to destination dir (%s)  : %s", dstDir, err)
+		return
+	}
+
 }
 
 func (cluster *Cluster) Overwrite(has_changed bool) error {
