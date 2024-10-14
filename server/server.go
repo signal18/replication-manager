@@ -1748,9 +1748,6 @@ func (repman *ReplicationManager) Run() error {
 		cluster.SetCarbonLogger(repman.clog)
 	}
 
-	if WithProvisioning != "ON" {
-		repman.Conf.HttpUseReact = false
-	}
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
 	if repman.Conf.ApiServ {
 		go repman.apiserver()
