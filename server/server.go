@@ -257,7 +257,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ConfDir, "monitoring-confdir", repman.OsUser.HomeDir+"/.config/replication-manager", "Path to a config directory")
 		flags.StringVar(&conf.ShareDir, "monitoring-sharedir", repman.OsUser.HomeDir+"/replication-manager/share", "Path to share files")
 		flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", repman.OsUser.HomeDir+"/.config/replication-manager", "Path to an extra writable config directory default to user home directory ./.config/replication-manage")
-		flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", repman.OsUser.HomeDir+"/.config/replication-manage/recoverr", "Path to backup writable config directory default to user home directory ./.config/replication-manage/recover")
+		flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", repman.OsUser.HomeDir+"/.config/replication-manage/recover", "Path to backup writable config directory default to user home directory ./.config/replication-manage/recover")
 
 	} else { //package
 		flags.StringVar(&conf.BaseDir, "monitoring-basedir", "system", "Path to a basedir where a data and share directory can be found")
@@ -1514,12 +1514,12 @@ func (repman *ReplicationManager) LimitPrivileges() {
 	// Check if the current user is root (UID 0)
 	if repman.OsUser.Uid == "0" {
 		if repman.Conf.MonitoringSystemUser != "" {
-			log.Infof("Switching from root to less privileged user: %s", repman.Conf.MonitoringSystemUser)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Switching from root to less privileged user: %s", repman.Conf.MonitoringSystemUser)
 
 			// Lookup the user you want to switch to
 			targetUser, err = user.Lookup(repman.Conf.MonitoringSystemUser)
 			if err != nil {
-				log.Errorf("Error looking up user: %v", err)
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error looking up user: %v", err)
 				return
 			}
 
@@ -1530,41 +1530,66 @@ func (repman *ReplicationManager) LimitPrivileges() {
 			// Convert UID and GID to integers
 			uidInt, err := strconv.Atoi(uid)
 			if err != nil {
-				log.Errorf("Error converting UID: %v", err)
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error converting UID: %v", err)
 				return
 			}
 			gidInt, err := strconv.Atoi(gid)
 			if err != nil {
-				log.Errorf("Error converting GID: %v", err)
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error converting GID: %v", err)
 				return
 			}
 
-			log.Infof("Setting uid and gid to target user: %s, uid: %d, gid: %d", targetUser.Username, uidInt, gidInt)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting uid and gid to target user: %s, uid: %d, gid: %d", targetUser.Username, uidInt, gidInt)
 
 			// Set GID (Group ID)
 			err = syscall.Setgid(gidInt)
 			if err != nil {
-				log.Errorf("Error setting GID: %v", err)
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error setting GID: %v", err)
 				return
 			}
 
 			// Set UID (User ID)
 			err = syscall.Setuid(uidInt)
 			if err != nil {
-				log.Errorf("Error setting UID: %v", err)
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error setting UID: %v", err)
 				return
 			}
 
 			//Should reassign manually because user.Current() locked to init value
-			log.Infof("Set GID and UID success without error. Store user as current OS User")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set GID and UID success without error. Store user as current OS User")
 			repman.OsUser = targetUser
+			backdir := repman.OsUser.HomeDir + "/.config/replication-manage/recover"
+			extradir := repman.OsUser.HomeDir + "/.config/replication-manage/etc"
+			if err = misc.TryOpenFile(repman.Conf.ConfDirBackup+"/testfile", os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
+				repman.Conf.ConfDirBackup = backdir
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Changing config backup dir to %s due to privilege", repman.Conf.ConfDirBackup)
+			}
+			if err = misc.TryOpenFile(repman.Conf.ConfDirExtra+"/testfile", os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
+				repman.Conf.ConfDirExtra = extradir
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Changing extra config dir to %s due to privilege", repman.Conf.ConfDirExtra)
+			}
 
-			log.Infof("Running as user: %s", repman.OsUser.Username)
+			repman.Lock()
+			// Move backupdir if not writable
+			for cl, cnf := range repman.Confs {
+				if err = misc.TryOpenFile(cnf.ConfDirBackup+"/testfile", os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
+					cnf.ConfDirBackup = backdir
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Changing cluster %s config backup dir to %s due to privilege", cl, repman.Conf.ConfDirBackup)
+
+				}
+				if err = misc.TryOpenFile(cnf.ConfDirExtra+"/testfile", os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
+					cnf.ConfDirExtra = extradir
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Changing cluster %s extra config dir to %s due to privilege", cl, repman.Conf.ConfDirExtra)
+				}
+				repman.Confs[cl] = cnf
+			}
+			repman.Unlock()
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Running as user: %s", repman.OsUser.Username)
 		} else {
-			log.Infof("Running as root as no user defined in --user flag")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Running as root as no user defined in --user flag")
 		}
 	} else {
-		log.Infof("Unable to change non-root user, current user: %s", repman.OsUser.Username)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unable to change non-root user, current user: %s", repman.OsUser.Username)
 	}
 }
 
