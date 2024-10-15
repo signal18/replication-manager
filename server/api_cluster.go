@@ -1725,17 +1725,17 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		val, _ := strconv.Atoi(value)
 		mycluster.SetSchedulerAlertDisableTime(val)
 	case "cloud18-domain":
-		repman.Conf.Cloud18Domain = value
+		mycluster.Conf.Cloud18Domain = value
 	case "cloud18-sub-domain":
-		repman.Conf.Cloud18SubDomain = value
+		mycluster.Conf.Cloud18SubDomain = value
 	case "cloud18-sub-domain-zone":
-		repman.Conf.Cloud18SubDomainZone = value
+		mycluster.Conf.Cloud18SubDomainZone = value
 	case "cloud18-gitlab-user":
-		repman.Conf.Cloud18GitUser = value
+		mycluster.Conf.Cloud18GitUser = value
 	case "cloud18-gitlab-password":
-		repman.Conf.Cloud18GitPassword = value
+		mycluster.Conf.Cloud18GitPassword = value
 	case "cloud18-platform-description":
-		repman.Conf.Cloud18PlatformDescription = value
+		mycluster.Conf.Cloud18PlatformDescription = value
 	default:
 		return errors.New("Setting not found")
 	}
