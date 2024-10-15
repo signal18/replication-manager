@@ -248,16 +248,16 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.WorkingDir, "monitoring-datadir", "/usr/local/replication-manager/data", "Path to write temporary and persistent files")
 		flags.StringVar(&conf.ConfDir, "monitoring-confdir", "/usr/local/replication-manager/etc", "Path to a config directory")
 		flags.StringVar(&conf.ShareDir, "monitoring-sharedir", "/usr/local/replication-manager/share", "Path to share files")
-		flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", "/usr/local/replication-manager/etc", "Path to an extra writable config directory default to user home directory ./.config/replication-manage")
-		flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", "/usr/local/replication-manager/etc/recover", "Path to abackup config directory default to user home directory ./.config/replication-manage/recover")
+		flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", "/usr/local/replication-manager/etc", "Path to an extra writable config directory default to user home directory ./.config/replication-manager")
+		flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", "/usr/local/replication-manager/etc/recover", "Path to abackup config directory default to user home directory ./.config/replication-manager/recover")
 
 	} else if WithEmbed == "ON" {
 		flags.StringVar(&conf.BaseDir, "monitoring-basedir", repman.OsUser.HomeDir+"/replication-manager", "Path to a basedir where data and share sub directory can be found")
 		flags.StringVar(&conf.WorkingDir, "monitoring-datadir", repman.OsUser.HomeDir+"/replication-manager/data", "Path to write temporary and persistent files")
 		flags.StringVar(&conf.ConfDir, "monitoring-confdir", repman.OsUser.HomeDir+"/.config/replication-manager", "Path to a config directory")
 		flags.StringVar(&conf.ShareDir, "monitoring-sharedir", repman.OsUser.HomeDir+"/replication-manager/share", "Path to share files")
-		flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", repman.OsUser.HomeDir+"/.config/replication-manager", "Path to an extra writable config directory default to user home directory ./.config/replication-manage")
-		flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", repman.OsUser.HomeDir+"/.config/replication-manage/recover", "Path to backup writable config directory default to user home directory ./.config/replication-manage/recover")
+		flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", repman.OsUser.HomeDir+"/.config/replication-manager", "Path to an extra writable config directory default to user home directory ./.config/replication-manager")
+		flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", repman.OsUser.HomeDir+"/.config/replication-manager/recover", "Path to backup writable config directory default to user home directory ./.config/replication-manager/recover")
 
 	} else { //package
 		flags.StringVar(&conf.BaseDir, "monitoring-basedir", "system", "Path to a basedir where a data and share directory can be found")
@@ -270,11 +270,11 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		}
 		ExpectedUser, err := user.Lookup(usr)
 		if err == nil {
-			flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", ExpectedUser.HomeDir+"/.config/replication-manager", "Path to an extra writable config directory default to user home directory ./.config/replication-manage")
-			flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", ExpectedUser.HomeDir+"/.config/replication-manager/recover", "Path to an extra writable config directory default to user home directory ./.config/replication-manage/recover")
+			flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", ExpectedUser.HomeDir+"/.config/replication-manager", "Path to an extra writable config directory default to user home directory ./.config/replication-manager")
+			flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", ExpectedUser.HomeDir+"/.config/replication-manager/recover", "Path to an extra writable config directory default to user home directory ./.config/replication-manager/recover")
 		} else {
-			flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", "", "Path to an extra writable config directory default to user home directory ./.config/replication-manage")
-			flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", "", "Path to an extra writable config directory default to user home directory ./.config/replication-manage/recover")
+			flags.StringVar(&conf.ConfDirExtra, "monitoring-confdir-extra", "", "Path to an extra writable config directory default to user home directory ./.config/replication-manager")
+			flags.StringVar(&conf.ConfDirBackup, "monitoring-confdir-backup", "", "Path to an extra writable config directory default to user home directory ./.config/replication-manager/recover")
 		}
 	}
 
@@ -1558,7 +1558,7 @@ func (repman *ReplicationManager) LimitPrivileges() {
 			//Should reassign manually because user.Current() locked to init value
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set GID and UID success without error. Store user as current OS User")
 			repman.OsUser = targetUser
-			backdir := repman.OsUser.HomeDir + "/.config/replication-manage/recover"
+			backdir := repman.OsUser.HomeDir + "/.config/replication-manager/recover"
 			extradir := repman.OsUser.HomeDir + "/.config/replication-manage/etc"
 			if err = misc.TryOpenFile(repman.Conf.ConfDirBackup+"/testfile", os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
 				repman.Conf.ConfDirBackup = backdir
