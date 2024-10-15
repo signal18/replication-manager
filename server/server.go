@@ -1559,7 +1559,7 @@ func (repman *ReplicationManager) LimitPrivileges() {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set GID and UID success without error. Store user as current OS User")
 			repman.OsUser = targetUser
 			backdir := repman.OsUser.HomeDir + "/.config/replication-manager/recover"
-			extradir := repman.OsUser.HomeDir + "/.config/replication-manage/etc"
+			extradir := repman.OsUser.HomeDir + "/.config/replication-manager/etc"
 			if err = misc.TryOpenFile(repman.Conf.ConfDirBackup+"/testfile", os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
 				repman.Conf.ConfDirBackup = backdir
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Changing config backup dir to %s due to privilege", repman.Conf.ConfDirBackup)
