@@ -105,6 +105,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettings)),
 	))
+	router.Handle("/api/clusters/settings/actions/set/{settingName}/{settingValue}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetGlobalSettings)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/set-cron/{settingName}/{settingValue:.*}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetCron)),
@@ -1071,45 +1075,36 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 	vars := mux.Vars(r)
 	cName := vars["clusterName"]
 	setting := vars["settingName"]
+
+	// Should be handled with global settings
 	serverScope := config.IsScope(setting, "server")
 	if serverScope {
-		cName = repman.ClusterList[0]
+		r.URL.Path = strings.Replace(r.URL.Path, "/api/clusters/"+vars["clusterName"], "/api/clusters/", 1)
+		repman.handlerMuxSwitchGlobalSettings(w, r)
+		return
 	}
+
 	mycluster := repman.getClusterByName(cName)
 	if mycluster != nil {
-		valid, user := repman.IsValidClusterACL(r, mycluster)
-		URL := strings.Replace(r.URL.Path, "/api/clusters/"+vars["clusterName"], "/api/clusters/%s", 1)
-
-		// Double check for server scope ACL since the clustername might not defined
-		if !valid && serverScope && mycluster.IsURLPassACL(user, fmt.Sprintf(URL, cName), false) {
-			valid = true
-		}
-
+		valid, _ := repman.IsValidClusterACL(r, mycluster)
 		if valid {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch setting %s", setting)
 			//Set server scope
-			if serverScope {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
-				repman.switchServerSetting(user, URL, setting)
-			} else {
-				err := repman.switchClusterSettings(mycluster, setting)
-				if err != nil {
-					http.Error(w, "Setting Not Found", 501)
-				}
+			err := repman.switchClusterSettings(mycluster, setting)
+			if err != nil {
+				http.Error(w, "Setting Not Found", 501)
+				return
 			}
 		} else {
-			if serverScope {
-				http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", setting), 403)
-			} else {
-				http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), 403)
-			}
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), 403)
+			return
 		}
 
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
+
 }
 
 func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.ResponseWriter, r *http.Request) {
@@ -1132,13 +1127,12 @@ func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.Response
 
 	if mycluster != nil {
 		valid, user := repman.IsValidClusterACL(r, mycluster)
-		URL := strings.Replace(r.URL.Path, "/api/clusters", "/api/clusters/%s", 1)
 		if valid {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch setting %s", setting)
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
-			repman.switchServerSetting(user, URL, setting)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch global setting %s", setting)
+			repman.switchServerSetting(user, r.URL.Path, setting)
 		} else {
 			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", setting), 403)
+			return
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
@@ -1386,39 +1380,62 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 	vars := mux.Vars(r)
 	cName := vars["clusterName"]
 	setting := vars["settingName"]
+
+	// Should be handled with global settings
 	serverScope := config.IsScope(setting, "server")
 	if serverScope {
-		cName = repman.ClusterList[0]
+		r.URL.Path = strings.Replace(r.URL.Path, "/api/clusters/"+vars["clusterName"], "/api/clusters/", 1)
+		repman.handlerMuxSetGlobalSettings(w, r)
+		return
 	}
+
 	mycluster := repman.getClusterByName(cName)
 	if mycluster != nil {
-		valid, user := repman.IsValidClusterACL(r, mycluster)
-		URL := strings.Replace(r.URL.Path, "/api/clusters/"+vars["clusterName"], "/api/clusters/%s", 1)
-
-		// Double check for server scope ACL since the clustername might not defined
-		if !valid && serverScope && mycluster.IsURLPassACL(user, fmt.Sprintf(URL, cName), false) {
-			valid = true
-		}
-
+		valid, _ := repman.IsValidClusterACL(r, mycluster)
 		if valid {
-			//Set server scope
-			if serverScope {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
-				repman.setServerSetting(user, URL, setting, vars["settingValue"])
-			} else {
-				err := repman.setClusterSetting(mycluster, setting, vars["settingValue"])
-				if err != nil {
-					http.Error(w, "Setting Not Found", 501)
-				}
+			err := repman.setClusterSetting(mycluster, setting, vars["settingValue"])
+			if err != nil {
+				http.Error(w, "Setting Not Found", 501)
+				return
 			}
 		} else {
-			if serverScope {
-				http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", setting), 403)
-			} else {
-				http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), 403)
-			}
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), 403)
+			return
 		}
+	} else {
+		http.Error(w, "No cluster", 500)
 		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	setting := vars["settingName"]
+	serverScope := config.IsScope(setting, "server")
+	if !serverScope {
+		http.Error(w, "Setting Not Found", 501)
+		return
+	}
+
+	var mycluster *cluster.Cluster
+	for _, v := range repman.Clusters {
+		if v != nil {
+			mycluster = repman.getClusterByName(v.Name)
+			break
+		}
+	}
+
+	if mycluster != nil {
+		valid, user := repman.IsValidClusterACL(r, mycluster)
+		if valid {
+			//Set server scope
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
+			repman.setServerSetting(user, r.URL.Path, setting, vars["settingValue"])
+		} else {
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", setting), 403)
+			return
+		}
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -1747,9 +1764,9 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 func (repman *ReplicationManager) setServerSetting(user string, URL string, name string, value string) {
 	repman.setRepmanSetting(name, value)
 
-	for cname, cl := range repman.Clusters {
+	for _, cl := range repman.Clusters {
 		//Don't print error with no valid ACL
-		if cl.IsURLPassACL(user, fmt.Sprintf(URL, cname), false) {
+		if cl.IsURLPassACL(user, URL, false) {
 			repman.setClusterSetting(cl, name, value)
 		}
 	}

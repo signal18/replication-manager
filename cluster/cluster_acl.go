@@ -448,9 +448,13 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		return true
 	}
 
-	if strings.Contains(URL, "/api/clusters/settings/actions/switch/") {
+	if strings.Contains(URL, "/api/clusters/settings/actions/switch") {
 		return cluster.APIUsers[strUser].Grants[config.GrantGlobalSettings]
 	}
+	if strings.Contains(URL, "/api/clusters/settings/actions/set") {
+		return cluster.APIUsers[strUser].Grants[config.GrantGlobalSettings]
+	}
+
 	if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/servers") {
 		return cluster.IsURLPassDatabasesACL(strUser, URL)
 	}
