@@ -4,7 +4,7 @@ import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
-import { switchGlobalSetting } from '../../redux/globalClustersSlice'
+import { switchGlobalSetting, setGlobalSetting } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
 
 function CloudSettings({ monitor }) {
@@ -28,13 +28,7 @@ function CloudSettings({ monitor }) {
           value={monitor?.config?.cloud18Domain}
           confirmTitle={`Confirm cloud18 Domain to `}
           onSave={(value) => {
-            // dispatch(
-            //   setSetting({
-            //     clusterName: selectedCluster?.name,
-            //     setting: 'prov-db-volume-data',
-            //     value: value
-            //   })
-            // )
+            dispatch(setGlobalSetting({ setting: 'cloud18-domain', value }))
           }}
         />
       )
@@ -46,13 +40,7 @@ function CloudSettings({ monitor }) {
           value={monitor?.config?.cloud18GitUser}
           confirmTitle={`Confirm git username to `}
           onSave={(value) => {
-            // dispatch(
-            //   setSetting({
-            //     clusterName: selectedCluster?.name,
-            //     setting: 'prov-db-volume-data',
-            //     value: value
-            //   })
-            // )
+            dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-user', value }))
           }}
         />
       )
@@ -64,13 +52,7 @@ function CloudSettings({ monitor }) {
           value={monitor?.config?.cloud18GitlabPassword}
           confirmTitle={`Confirm gitlab password to `}
           onSave={(value) => {
-            // dispatch(
-            //   setSetting({
-            //     clusterName: selectedCluster?.name,
-            //     setting: 'prov-db-volume-data',
-            //     value: value
-            //   })
-            // )
+            dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-password', value }))
           }}
         />
       )
@@ -82,13 +64,7 @@ function CloudSettings({ monitor }) {
           value={monitor?.config?.cloud18PlatformDescription}
           confirmTitle={`Confirm platform description to `}
           onSave={(value) => {
-            // dispatch(
-            //   setSetting({
-            //     clusterName: selectedCluster?.name,
-            //     setting: 'prov-db-volume-data',
-            //     value: value
-            //   })
-            // )
+            dispatch(setGlobalSetting({ setting: 'cloud18-platform-description', value }))
           }}
         />
       )
@@ -110,13 +86,7 @@ function CloudSettings({ monitor }) {
           value={monitor?.config?.cloud18SubDomain}
           confirmTitle={`Confirm subdomain to `}
           onSave={(value) => {
-            // dispatch(
-            //   setSetting({
-            //     clusterName: selectedCluster?.name,
-            //     setting: 'prov-db-volume-data',
-            //     value: value
-            //   })
-            // )
+            dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain', value }))
           }}
         />
       )
@@ -128,13 +98,7 @@ function CloudSettings({ monitor }) {
           value={monitor?.config?.cloud18SubDomainZone}
           confirmTitle={`Confirm subdomain zone to `}
           onSave={(value) => {
-            // dispatch(
-            //   setSetting({
-            //     clusterName: selectedCluster?.name,
-            //     setting: 'prov-db-volume-data',
-            //     value: value
-            //   })
-            // )
+            dispatch(setGlobalSetting({ setting: 'cloud18-sub-domain-zone', value }))
           }}
         />
       )
