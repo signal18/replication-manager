@@ -1118,10 +1118,14 @@ func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.Response
 	}
 
 	var mycluster *cluster.Cluster
-	for _, v := range repman.Clusters {
-		if v != nil {
-			mycluster = v
-			break
+	if cName, ok := vars["clusterName"]; ok {
+		mycluster = repman.getClusterByName(cName)
+	} else {
+		for _, v := range repman.Clusters {
+			if v != nil {
+				mycluster = v
+				break
+			}
 		}
 	}
 
@@ -1419,10 +1423,14 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 	}
 
 	var mycluster *cluster.Cluster
-	for _, v := range repman.Clusters {
-		if v != nil {
-			mycluster = repman.getClusterByName(v.Name)
-			break
+	if cName, ok := vars["clusterName"]; ok {
+		mycluster = repman.getClusterByName(cName)
+	} else {
+		for _, v := range repman.Clusters {
+			if v != nil {
+				mycluster = v
+				break
+			}
 		}
 	}
 
@@ -1716,6 +1724,18 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "scheduler-alert-disable-time":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetSchedulerAlertDisableTime(val)
+	case "cloud18-domain":
+		repman.Conf.Cloud18Domain = value
+	case "cloud18-sub-domain":
+		repman.Conf.Cloud18SubDomain = value
+	case "cloud18-sub-domain-zone":
+		repman.Conf.Cloud18SubDomainZone = value
+	case "cloud18-gitlab-user":
+		repman.Conf.Cloud18GitUser = value
+	case "cloud18-gitlab-password":
+		repman.Conf.Cloud18GitPassword = value
+	case "cloud18-platform-description":
+		repman.Conf.Cloud18PlatformDescription = value
 	default:
 		return errors.New("Setting not found")
 	}
@@ -1735,6 +1755,18 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "api-token-timeout":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.SetApiTokenTimeout(val)
+	case "cloud18-domain":
+		repman.Conf.Cloud18Domain = value
+	case "cloud18-sub-domain":
+		repman.Conf.Cloud18SubDomain = value
+	case "cloud18-sub-domain-zone":
+		repman.Conf.Cloud18SubDomainZone = value
+	case "cloud18-gitlab-user":
+		repman.Conf.Cloud18GitUser = value
+	case "cloud18-gitlab-password":
+		repman.Conf.Cloud18GitPassword = value
+	case "cloud18-platform-description":
+		repman.Conf.Cloud18PlatformDescription = value
 	default:
 		return errors.New("Setting not found")
 	}
