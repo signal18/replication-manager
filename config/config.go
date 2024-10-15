@@ -1883,6 +1883,8 @@ func (conf *Config) GetGrantType() map[string]string {
 		GrantProvDBProvision:           GrantProvDBProvision,
 		GrantProvProxyProvision:        GrantProvProxyProvision,
 		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
+		GrantGlobalGrant:               GrantGlobalGrant,
+		GrantGlobalSettings:            GrantGlobalSettings,
 	}
 }
 
